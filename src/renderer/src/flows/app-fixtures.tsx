@@ -1,69 +1,36 @@
-import { useMemo, useRef, useState } from "react";
-import {
-  ReviewWorkbench,
-  type ReviewWorkbenchActions,
-  type ReviewWorkbenchInitialState,
-} from "../components/review-workbench";
-import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import { DiffWorkbench } from "../components/diff-workbench";
 import { CompactMergeCommand } from "../components/compact-merge-command";
-import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import { PullRequestDescription } from "../components/pull-request-description";
-import { Button } from "../components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
-import { ModelCombobox } from "../components/model-combobox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parsePullRequestInput } from "../../../domain/pull-request";
-import { PatchdeskApiError } from "../api-client";
-import type { AssigneesSectionActions } from "../components/assignee-picker";
-import type { ReviewerPickerActions } from "../components/reviewer-picker";
-import type {
-  AssignableUserListResponse,
-  RepositoryLabelListResponse,
-  ReviewerListResponse,
-  WorkbenchResponse,
-} from "../renderer-contracts";
+import type { WorkbenchResponse } from "../renderer-contracts";
+import { CanonicalFixtureWorkbench } from "./fixtures/canonical-fixture-workbench";
+import type { NavigationState } from "./fixtures/navigation-state";
+import {
+  fixtureAssigneeActionsCapExceeded,
+  fixtureAssigneeActionsDenied,
+  fixtureAssigneeActionsReadFailure,
+  fixtureAssigneeActionsUnknown,
+  fixtureAssigneeActionsWriteFailure,
+  fixtureReviewerActionsDenied,
+  fixtureReviewerActionsEmpty,
+  fixtureReviewerActionsReadFailure,
+  fixtureReviewerActionsUnknown,
+  fixtureReviewerActionsWriteFailure,
+} from "./fixtures/rail-fixture-actions";
+import { WalkthroughFixture } from "./fixtures/walkthrough-fixture";
+import {
+  activeFollowFixtureData,
+  fixturePatch,
+  longConversationFixtureEntries,
+  longWorkbenchFixtureData,
+  workbenchFixtureData,
+} from "./fixtures/workbench-fixture-data";
 
-type NavigationState = "clear" | "dirty_draft" | "write_pending";
+type FixtureRenderer = (
+  onNavigationStateChange: (state: NavigationState) => void,
+) => React.ReactNode;
 
-/** A `conversation.inline.threads` entry, as the Threads navigator section
- * consumes it -- seeded per fixture so the browser suite can exercise the
- * Threads section against real thread data without inventing a new model
- * shape. */
-type FixtureConversationThread = NonNullable<
-  WorkbenchResponse["conversation"]["inline"]
->["threads"][number];
-const noConversationThreads: ReadonlyArray<FixtureConversationThread> = [];
-
-/** Mutable form of `ReviewWorkbenchActions`, so a fixture can assign its
- * optional `merge` field only when present instead of using a conditional
- * empty-object spread. */
-type MutableReviewWorkbenchActions = {
-  -readonly [K in keyof ReviewWorkbenchActions]: ReviewWorkbenchActions[K];
-};
-
-// Pre-existing giant component (257 lines on `main` before this change, a
-// flat if-chain over fixture hashes; the Reviewers section's fixture
-// branches add to that same chain rather than introducing a new pattern).
-// Splitting it is the renderer god-file refactor the project's own plans
-// explicitly defer to dedicated, separately-scoped work (mirrors
-// `review-workbench.tsx`'s and `review-workbench-flow.tsx`'s own comments on
-// this same rule), not a fix this feature change should take on.
-// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function AppFixtureContent({
   hash,
   onNavigationStateChange,
@@ -71,52 +38,62 @@ export function AppFixtureContent({
   readonly hash: string;
   readonly onNavigationStateChange: (state: NavigationState) => void;
 }): React.ReactNode {
-  if (hash === "#mermaid-fixture") {
-    const parsedPullRequest = parsePullRequestInput(
-      "https://github.com/centraldigital/patchdesk/pull/42",
-    );
-    if (parsedPullRequest._tag === "err")
-      throw new Error("Fixture pull request is invalid");
-    return (
-      <div className="mx-auto max-w-3xl p-6">
-        <PullRequestDescription
-          markdown={"```mermaid\ngraph TD\n  A[Open] --> B[Review]\n```"}
-          pullRequest={parsedPullRequest.value}
-        />
-      </div>
-    );
-  }
-  if (hash === "#diff-fixture")
-    return (
+  const render = fixtureRenderers.get(hash);
+  return render === undefined ? undefined : render(onNavigationStateChange);
+}
+
+// One entry per fixture hash -- adding a fixture is a one-line addition here
+// rather than another branch in a growing if/else chain. `fixture-routes.ts`
+// still owns the allow-list (`fixtureHashes`) that gates fixture mode; a hash
+// missing there never reaches this lookup. A Map rather than a plain object
+// so `AppFixtureContent` needs no key assertion: `Map#get` already answers
+// `FixtureRenderer | undefined` for an arbitrary string, which is exactly
+// what an unrecognized hash is.
+const fixtureRenderers = new Map<string, FixtureRenderer>(
+  Object.entries({
+    "#mermaid-fixture": () => {
+      const parsedPullRequest = parsePullRequestInput(
+        "https://github.com/centraldigital/patchdesk/pull/42",
+      );
+      if (parsedPullRequest._tag === "err")
+        throw new Error("Fixture pull request is invalid");
+      return (
+        <div className="mx-auto max-w-3xl p-6">
+          <PullRequestDescription
+            markdown={"```mermaid\ngraph TD\n  A[Open] --> B[Review]\n```"}
+            pullRequest={parsedPullRequest.value}
+          />
+        </div>
+      );
+    },
+    "#diff-fixture": () => (
       <DiffWorkbench
         patch={fixturePatch}
         finding={{ file: "src/b.ts", lineStart: 1, diffSide: "new" }}
       />
-    );
-  if (hash === "#walkthrough-fixture")
-    return (
+    ),
+    "#walkthrough-fixture": (onNavigationStateChange) => (
       <WalkthroughFixture onNavigationStateChange={onNavigationStateChange} />
-    );
-  if (
-    hash === "#workbench-fixture" ||
-    hash === "#long-workbench-fixture" ||
-    hash === "#active-follow-fixture"
-  ) {
-    const fixture =
-      hash === "#long-workbench-fixture"
-        ? longWorkbenchFixtureData
-        : hash === "#active-follow-fixture"
-          ? activeFollowFixtureData
-          : workbenchFixtureData;
-    return (
+    ),
+    "#workbench-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
-        data={fixture}
+        data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
       />
-    );
-  }
-  if (hash === "#workbench-empty-labels-fixture")
-    return (
+    ),
+    "#long-workbench-fixture": (onNavigationStateChange) => (
+      <CanonicalFixtureWorkbench
+        data={longWorkbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+      />
+    ),
+    "#active-follow-fixture": (onNavigationStateChange) => (
+      <CanonicalFixtureWorkbench
+        data={activeFollowFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+      />
+    ),
+    "#workbench-empty-labels-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={{
           ...workbenchFixtureData,
@@ -124,9 +101,8 @@ export function AppFixtureContent({
         }}
         onNavigationStateChange={onNavigationStateChange}
       />
-    );
-  if (hash === "#workbench-empty-assignees-fixture")
-    return (
+    ),
+    "#workbench-empty-assignees-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={{
           ...workbenchFixtureData,
@@ -134,9 +110,8 @@ export function AppFixtureContent({
         }}
         onNavigationStateChange={onNavigationStateChange}
       />
-    );
-  if (hash === "#workbench-assignees-denied-fixture")
-    return (
+    ),
+    "#workbench-assignees-denied-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={{
           ...workbenchFixtureData,
@@ -145,9 +120,8 @@ export function AppFixtureContent({
         onNavigationStateChange={onNavigationStateChange}
         assigneeActions={fixtureAssigneeActionsDenied}
       />
-    );
-  if (hash === "#workbench-assignees-unknown-fixture")
-    return (
+    ),
+    "#workbench-assignees-unknown-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={{
           ...workbenchFixtureData,
@@ -156,33 +130,29 @@ export function AppFixtureContent({
         onNavigationStateChange={onNavigationStateChange}
         assigneeActions={fixtureAssigneeActionsUnknown}
       />
-    );
-  if (hash === "#workbench-assignees-write-failure-fixture")
-    return (
+    ),
+    "#workbench-assignees-write-failure-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
         assigneeActions={fixtureAssigneeActionsWriteFailure}
       />
-    );
-  if (hash === "#workbench-assignees-cap-fixture")
-    return (
+    ),
+    "#workbench-assignees-cap-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
         assigneeActions={fixtureAssigneeActionsCapExceeded}
       />
-    );
-  if (hash === "#workbench-assignees-read-failure-fixture")
-    return (
+    ),
+    "#workbench-assignees-read-failure-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
         assigneeActions={fixtureAssigneeActionsReadFailure}
       />
-    );
-  if (hash === "#workbench-empty-reviewers-fixture")
-    return (
+    ),
+    "#workbench-empty-reviewers-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={{
           ...workbenchFixtureData,
@@ -194,41 +164,36 @@ export function AppFixtureContent({
         onNavigationStateChange={onNavigationStateChange}
         reviewerActions={fixtureReviewerActionsEmpty}
       />
-    );
-  if (hash === "#workbench-reviewers-denied-fixture")
-    return (
+    ),
+    "#workbench-reviewers-denied-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
         reviewerActions={fixtureReviewerActionsDenied}
       />
-    );
-  if (hash === "#workbench-reviewers-unknown-fixture")
-    return (
+    ),
+    "#workbench-reviewers-unknown-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
         reviewerActions={fixtureReviewerActionsUnknown}
       />
-    );
-  if (hash === "#workbench-reviewers-write-failure-fixture")
-    return (
+    ),
+    "#workbench-reviewers-write-failure-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
         reviewerActions={fixtureReviewerActionsWriteFailure}
       />
-    );
-  if (hash === "#workbench-reviewers-read-failure-fixture")
-    return (
+    ),
+    "#workbench-reviewers-read-failure-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
         reviewerActions={fixtureReviewerActionsReadFailure}
       />
-    );
-  if (hash === "#workbench-reviewers-pending-fixture")
-    return (
+    ),
+    "#workbench-reviewers-pending-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
@@ -244,9 +209,8 @@ export function AppFixtureContent({
           },
         }}
       />
-    );
-  if (hash === "#workbench-merged-fixture")
-    return (
+    ),
+    "#workbench-merged-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
@@ -254,9 +218,8 @@ export function AppFixtureContent({
           review: { id: "fixture-review", status: "merged" },
         }}
       />
-    );
-  if (hash === "#conversation-rail-fixture")
-    return (
+    ),
+    "#conversation-rail-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
@@ -267,101 +230,28 @@ export function AppFixtureContent({
           },
         }}
       />
-    );
-  if (
-    hash === "#blocked-merge-fixture" ||
-    hash === "#acknowledgement-merge-fixture" ||
-    hash === "#overview-detail-fixture"
-  ) {
-    const blocked = hash === "#blocked-merge-fixture";
-    const detail = hash === "#overview-detail-fixture";
-    const readiness: MergeReadiness = blocked
-      ? { _tag: "Blocked", blockers: [], warnings: [] }
-      : {
-          _tag: "NeedsAcknowledgement",
-          blockers: [],
-          warnings: ["request_changes", "analysis_finding"],
-        };
-    // SAFETY: `readiness` is a MergeReadiness domain value built two lines
-    // above; its `blockers`/`warnings` are readonly arrays of a narrower
-    // literal-union blocker/warning code, which the renderer-contract type
-    // widens to plain `string[]`. Every element is already a valid member of
-    // that wider type, so the cast only relaxes readonly-ness and literal
-    // narrowing, not the runtime shape.
-    const mergeReadiness = readiness as WorkbenchResponse["mergeReadiness"];
-    const mergeReasons = blocked
-      ? [
-          {
-            code: "checks" as const,
-            message: "Required checks have not passed.",
-            source: "checks" as const,
-            availability: "available" as const,
-            openOnGitHub: true,
-          },
-        ]
-      : [];
-    const parsedPullRequest = parsePullRequestInput(
-      "https://github.com/centraldigital/patchdesk/pull/42",
-    );
-    if (parsedPullRequest._tag === "err")
-      throw new Error("Fixture pull request is invalid");
-    return (
-      <CanonicalFixtureWorkbench
-        data={workbenchFixtureData}
-        onNavigationStateChange={onNavigationStateChange}
-        modelOverrides={
-          detail
-            ? {
-                conversation: {
-                  prDescription: "",
-                  entries: [
-                    {
-                      _tag: "ReviewSummary" as const,
-                      review: {
-                        id: "published-1",
-                        author: "fixture-maintainer",
-                        body: "Published review body",
-                        event: "COMMENTED" as const,
-                        submittedAt: "2026-07-17T00:00:00.000Z",
-                        canDismiss: false,
-                      },
-                    },
-                  ],
-                },
-              }
-            : { mergeReadiness, mergeReasons }
-        }
-        {...(detail
-          ? {}
-          : {
-              mergeAction: {
-                readiness,
-                mergeReasons,
-                pullRequest: parsedPullRequest.value,
-                context: {
-                  repo: `${workbenchFixtureData.pullRequest.ref.owner}/${workbenchFixtureData.pullRequest.ref.repo}`,
-                  prNumber: workbenchFixtureData.pullRequest.ref.number,
-                  title: workbenchFixtureData.pullRequest.title,
-                  base: workbenchFixtureData.pullRequest.baseBranch,
-                  head: workbenchFixtureData.pullRequest.headBranch,
-                  headSha: workbenchFixtureData.pullRequest.headSha,
-                },
-                methods: ["squash", "merge", "rebase"] as const,
-                onRecoverMerge: async () => undefined,
-                onMerge: async () => ({}),
-              },
-            })}
-      />
-    );
-  }
-  if (hash === "#submission-fixture")
-    return (
+    ),
+    "#blocked-merge-fixture": (onNavigationStateChange) =>
+      renderMergeReadinessFixture(
+        "#blocked-merge-fixture",
+        onNavigationStateChange,
+      ),
+    "#acknowledgement-merge-fixture": (onNavigationStateChange) =>
+      renderMergeReadinessFixture(
+        "#acknowledgement-merge-fixture",
+        onNavigationStateChange,
+      ),
+    "#overview-detail-fixture": (onNavigationStateChange) =>
+      renderMergeReadinessFixture(
+        "#overview-detail-fixture",
+        onNavigationStateChange,
+      ),
+    "#submission-fixture": () => (
       <p className="p-6 text-sm text-muted-foreground">
         Use the Review workbench to manage a GitHub pending review.
       </p>
-    );
-  if (hash === "#merge-fixture")
-    return (
+    ),
+    "#merge-fixture": () => (
       <div className="mx-auto max-w-3xl p-6">
         <CompactMergeCommand
           readiness={{
@@ -382,1287 +272,99 @@ export function AppFixtureContent({
           onMerge={async () => ({ mergeCommitSha: "abcdef" })}
         />
       </div>
-    );
-  return undefined;
-}
+    ),
+  } satisfies Record<string, FixtureRenderer>),
+);
 
-function WalkthroughFixture({
-  onNavigationStateChange,
-}: {
-  readonly onNavigationStateChange: (state: NavigationState) => void;
-}): React.JSX.Element {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [lifecycle, setLifecycle] = useState<"idle" | "generating" | "ready">(
-    "idle",
-  );
-  const [model, setModel] = useState<string>();
-  const [reasoning, setReasoning] = useState<"low" | "medium" | "high">(
-    "medium",
-  );
-  const [generateRequests, setGenerateRequests] = useState(0);
-  const [open, setOpen] = useState(false);
-  const openButtonRef = useRef<HTMLButtonElement>(null);
-  const [reviewedSectionIds, setReviewedSectionIds] = useState<
-    ReadonlyArray<string>
-  >([]);
-  const [supportReviewed, setSupportReviewed] = useState(false);
-  const walkthrough = useMemo(
-    () => ({
-      snapshot: {
-        profileId: "fixture",
-        sessionId: "fixture-session",
-        headSha: "abcdef1234567890abcdef1234567890abcdef12",
-        patchHash: "b".repeat(64),
-      },
-      citationStatus: "verified" as const,
-      title: "Walkthrough fixture",
-      focus: "The focused review path remains separate from Files mode.",
-      chapters: [
+// `#blocked-merge-fixture`, `#acknowledgement-merge-fixture`, and
+// `#overview-detail-fixture` share one merge-readiness model shaped three
+// ways, so this stays a single function the lookup's three entries call
+// rather than three near-duplicate inline renderers.
+function renderMergeReadinessFixture(
+  hash:
+    | "#blocked-merge-fixture"
+    | "#acknowledgement-merge-fixture"
+    | "#overview-detail-fixture",
+  onNavigationStateChange: (state: NavigationState) => void,
+): React.ReactNode {
+  const blocked = hash === "#blocked-merge-fixture";
+  const detail = hash === "#overview-detail-fixture";
+  const readiness: MergeReadiness = blocked
+    ? { _tag: "Blocked", blockers: [], warnings: [] }
+    : {
+        _tag: "NeedsAcknowledgement",
+        blockers: [],
+        warnings: ["request_changes", "analysis_finding"],
+      };
+  // SAFETY: `readiness` is a MergeReadiness domain value built two lines
+  // above; its `blockers`/`warnings` are readonly arrays of a narrower
+  // literal-union blocker/warning code, which the renderer-contract type
+  // widens to plain `string[]`. Every element is already a valid member of
+  // that wider type, so the cast only relaxes readonly-ness and literal
+  // narrowing, not the runtime shape.
+  const mergeReadiness = readiness as WorkbenchResponse["mergeReadiness"];
+  const mergeReasons = blocked
+    ? [
         {
-          id: "chapter-1",
-          title: "Read first",
-          sections: [
-            {
-              id: "section-1",
-              title: "Keep the review local",
-              prose:
-                "This fixture proves a manual walkthrough without starting an Analysis run.",
-              hunkIds: ["h1"],
-              hunks: [
-                {
-                  id: "h1",
-                  path: "src/a.ts",
-                  header: "@@ -1 +1 @@",
-                  raw: "@@ -1 +1 @@\\n-old\\n+new",
-                  oldStart: 1,
-                  oldLines: 1,
-                  newStart: 1,
-                  newLines: 1,
-                },
-              ],
-            },
-            {
-              id: "section-2",
-              title: "Follow the changed path",
-              prose:
-                "The chapter rail keeps the next section available without leaving the saved Files surface.",
-              hunkIds: ["h2"],
-              hunks: [
-                {
-                  id: "h2",
-                  path: "src/b.ts",
-                  header: "@@ -1 +1 @@",
-                  raw: "@@ -1 +1 @@\\n-old\\n+new",
-                  oldStart: 1,
-                  oldLines: 1,
-                  newStart: 1,
-                  newLines: 1,
-                },
-              ],
-            },
-          ],
+          code: "checks" as const,
+          message: "Required checks have not passed.",
+          source: "checks" as const,
+          availability: "available" as const,
+          openOnGitHub: true,
         },
-      ],
-      support: {
-        id: "support" as const,
-        title: "Support" as const,
-        hunkIds: ["h3"],
-        hunks: [
-          {
-            id: "h3",
-            path: "src/c.ts",
-            header: "@@ -1 +1 @@",
-            raw: "@@ -1 +1 @@\\n-old\\n+new",
-            oldStart: 1,
-            oldLines: 1,
-            newStart: 1,
-            newLines: 1,
-          },
-        ],
-      },
-    }),
-    [],
+      ]
+    : [];
+  const parsedPullRequest = parsePullRequestInput(
+    "https://github.com/centraldigital/patchdesk/pull/42",
   );
-  const confirmGeneration = (): void => {
-    setDialogOpen(false);
-    setGenerateRequests((current) => current + 1);
-    setLifecycle("generating");
-    window.setTimeout(() => setLifecycle("ready"), 50);
-  };
-  const markSectionReviewed = (sectionId: string): void => {
-    setReviewedSectionIds((current) =>
-      current.includes(sectionId) ? current : [...current, sectionId],
-    );
-  };
+  if (parsedPullRequest._tag === "err")
+    throw new Error("Fixture pull request is invalid");
   return (
-    <div data-walkthrough-generate-requests={generateRequests}>
-      <WalkthroughFixtureControls
-        lifecycle={lifecycle}
-        dialogOpen={dialogOpen}
-        model={model}
-        reasoning={reasoning}
-        walkthrough={walkthrough}
-        actions={{
-          onOpenDialog: () => setDialogOpen(true),
-          onCloseDialog: () => setDialogOpen(false),
-          onModelChange: (value) => {
-            if (value !== null) setModel(value);
-          },
-          onReasoningChange: (value) => {
-            if (value === "low" || value === "medium" || value === "high")
-              setReasoning(value);
-          },
-          onConfirm: confirmGeneration,
-          onOpen: () => {
-            setOpen(true);
-          },
-          onMarkSectionReviewed: markSectionReviewed,
-          onMarkSupportReviewed: () => setSupportReviewed(true),
-          onSelectSection: () => undefined,
-        }}
-        reviewedSectionIds={reviewedSectionIds}
-        supportReviewed={supportReviewed}
-        open={open}
-        openButtonRef={openButtonRef}
-      />
-      <CanonicalFixtureWorkbench
-        data={{ ...workbenchFixtureData, fullPatch: walkthroughFixturePatch }}
-        onNavigationStateChange={onNavigationStateChange}
-      />
-    </div>
-  );
-}
-
-// The repository's full label catalog, as the Labels picker's `fetchLabels`
-// reads it -- deliberately a superset of `workbenchFixtureData.pullRequest
-// .labels` (one already-attached label plus one not-yet-attached one) so a
-// browser test can open the picker and toggle a label that starts
-// unchecked.
-const fixtureLabelCatalog: RepositoryLabelListResponse = {
-  state: "ready",
-  labels: [
-    // Deliberately the only label with a `description`, so a browser test
-    // can prove the picker renders it for this row and renders nothing
-    // extra for the other two (#12's UI half).
-    {
-      id: "LA_bug",
-      name: "bug",
-      color: "d73a4a",
-      description: "Something isn't working",
-    },
-    { id: "LA_needs_review", name: "needs-review", color: "0075ca" },
-    { id: "LA_documentation", name: "documentation", color: "0e8a16" },
-  ],
-  totalCount: 3,
-  permission: "permitted",
-};
-
-// A tiny, obviously-fake `data:` URI standing in for a resolved avatar --
-// never a real image, just enough for `Avatar` to take the `<img>` branch
-// instead of the initials-badge one. Mirrors the placeholder style
-// `conversation.ui.test.tsx` already uses for `authorAvatarDataUri`.
-const FIXTURE_AVATAR_DATA_URI = "data:image/png;base64,AAAA";
-
-// The repository's assignable people, as the Assignees picker's
-// `fetchAssignableUsers` reads it -- deliberately a superset of
-// `workbenchFixtureData.pullRequest.assignees` (one already-assigned person
-// plus two not-yet-assigned ones) so a browser test can open the picker,
-// search, and toggle someone who starts unchecked. `fetchAssignableUsers`
-// filters this list by `query` the same way the real, server-side filter
-// does, so the search/debounce wiring has something real to exercise.
-// `fixture-assignee` carries a resolved `avatarDataUri` and the other two do
-// not, so both `Avatar` branches (cached image, initials fallback) render
-// somewhere in this same list -- for the rail's own assignee row and for the
-// picker, which reads this exact list.
-const fixtureAssignableUsers: NonNullable<AssignableUserListResponse["users"]> =
-  [
-    {
-      id: "MDQ6VXNlcjEwMQ==",
-      login: "fixture-assignee",
-      avatarDataUri: FIXTURE_AVATAR_DATA_URI,
-    },
-    { id: "MDQ6VXNlcjEwMg==", login: "fixture-collaborator" },
-    { id: "MDQ6VXNlcjEwMw==", login: "fixture-maintainer" },
-  ];
-
-async function fixtureFetchAssignableUsers(
-  query?: string,
-): Promise<AssignableUserListResponse> {
-  const users =
-    query === undefined || query === ""
-      ? fixtureAssignableUsers
-      : fixtureAssignableUsers.filter((user) => user.login.includes(query));
-  return {
-    state: "ready",
-    users,
-    totalCount: users.length,
-    permission: "permitted",
-  };
-}
-
-const fixtureAssigneeActions: AssigneesSectionActions = {
-  fetchAssignableUsers: fixtureFetchAssignableUsers,
-  addAssignees: async () => undefined,
-  removeAssignees: async () => undefined,
-  assignSelf: async () => ["fixture-viewer"],
-};
-
-const fixtureAssigneeActionsDenied: AssigneesSectionActions = {
-  ...fixtureAssigneeActions,
-  fetchAssignableUsers: async () => ({
-    state: "ready",
-    users: fixtureAssignableUsers,
-    totalCount: fixtureAssignableUsers.length,
-    permission: "denied",
-  }),
-};
-
-const fixtureAssigneeActionsUnknown: AssigneesSectionActions = {
-  ...fixtureAssigneeActions,
-  fetchAssignableUsers: async () => ({
-    state: "ready",
-    users: fixtureAssignableUsers,
-    totalCount: fixtureAssignableUsers.length,
-    permission: "unknown",
-  }),
-};
-
-const fixtureAssigneeActionsWriteFailure: AssigneesSectionActions = {
-  ...fixtureAssigneeActions,
-  addAssignees: async () => {
-    throw new PatchdeskApiError(
-      "unavailable",
-      503,
-      true,
-      "fixture-assignee-write",
-      "Patchdesk could not reach GitHub.",
-    );
-  },
-  removeAssignees: async () => {
-    throw new PatchdeskApiError(
-      "unavailable",
-      503,
-      true,
-      "fixture-assignee-write",
-      "Patchdesk could not reach GitHub.",
-    );
-  },
-};
-
-const fixtureAssigneeActionsCapExceeded: AssigneesSectionActions = {
-  ...fixtureAssigneeActions,
-  addAssignees: async () => {
-    throw new PatchdeskApiError(
-      "assignee_cap_exceeded",
-      400,
-      false,
-      "fixture-assignee-cap",
-      "GitHub limits a pull request to ten assignees.",
-    );
-  },
-};
-
-const fixtureAssigneeActionsReadFailure: AssigneesSectionActions = {
-  ...fixtureAssigneeActions,
-  fetchAssignableUsers: async () => ({ state: "github_read" }),
-};
-
-// The pull request's reviewer rows, as the Reviewers section's own
-// `fetchReviewers` (no query) reads it -- deliberately covers three states
-// in one fixture: a requested reviewer with no verdict yet
-// ("fixture-reviewer", matching `workbenchFixtureData.pullRequest
-// .requestedReviewers`), a current, on-revision approval
-// ("fixture-approved-reviewer"), and an outdated changes-requested verdict
-// ("fixture-outdated-reviewer") -- so a single browser test can assert the
-// requested-pending state, a verdict badge, and the outdated marking
-// together.
-// `fixture-approved-reviewer` carries a resolved `avatarDataUri`; the other
-// two do not, so the Reviewers section renders both an `<img>` and an
-// initials badge in the same list.
-const fixtureReviewerRows: NonNullable<ReviewerListResponse["reviewers"]> = [
-  { login: "fixture-reviewer", outdated: false },
-  {
-    login: "fixture-approved-reviewer",
-    verdict: "approved",
-    outdated: false,
-    submittedAt: "2026-07-16T00:00:00.000Z",
-    avatarDataUri: FIXTURE_AVATAR_DATA_URI,
-  },
-  {
-    login: "fixture-outdated-reviewer",
-    verdict: "changes_requested",
-    outdated: true,
-    submittedAt: "2026-07-10T00:00:00.000Z",
-  },
-];
-
-// GitHub's own suggested reviewers, as the Reviewer picker's own fetch reads
-// it -- one collaborator flagged only `isAuthor`, so a browser test can
-// assert the picker's honest, Patchdesk-authored suggestion caption.
-const fixtureSuggestedReviewers: NonNullable<
-  ReviewerListResponse["suggested"]
-> = [
-  {
-    isAuthor: true,
-    isCommenter: false,
-    reviewer: {
-      login: "fixture-suggested-reviewer",
-      avatarDataUri: FIXTURE_AVATAR_DATA_URI,
-    },
-  },
-];
-
-// The repository's reviewer candidates, as the Reviewer picker's
-// `fetchReviewers` reads it -- includes the already-requested reviewer (so
-// the picker can prove it starts checked), the suggested collaborator (so
-// the picker can prove it renders once, grouped above the rest), and one
-// not-yet-requested collaborator for toggling. `fixture-suggested-reviewer`
-// carries a resolved `avatarDataUri` (it's the row the picker actually
-// renders an avatar from -- see `ReviewerCandidateRow`); the other two do
-// not, so the picker's suggested group and its plain candidate list each
-// exercise a different `Avatar` branch.
-const fixtureReviewerCandidates: NonNullable<
-  ReviewerListResponse["candidates"]
-> = [
-  { id: "MDQ6VXNlcjIwMQ==", login: "fixture-reviewer" },
-  {
-    id: "MDQ6VXNlcjIwMg==",
-    login: "fixture-suggested-reviewer",
-    avatarDataUri: FIXTURE_AVATAR_DATA_URI,
-  },
-  { id: "MDQ6VXNlcjIwMw==", login: "fixture-other-reviewer" },
-];
-
-async function fixtureFetchReviewers(
-  query?: string,
-): Promise<ReviewerListResponse> {
-  const candidates =
-    query === undefined || query === ""
-      ? fixtureReviewerCandidates
-      : fixtureReviewerCandidates.filter((candidate) =>
-          candidate.login.includes(query),
-        );
-  return {
-    state: "ready",
-    reviewers: fixtureReviewerRows,
-    suggested: fixtureSuggestedReviewers,
-    candidates,
-    candidatesTotalCount: candidates.length,
-    permission: "permitted",
-  };
-}
-
-const fixtureReviewerActions: ReviewerPickerActions = {
-  fetchReviewers: fixtureFetchReviewers,
-  requestReviewers: async () => undefined,
-  removeReviewers: async () => undefined,
-};
-
-const fixtureReviewerActionsEmpty: ReviewerPickerActions = {
-  ...fixtureReviewerActions,
-  fetchReviewers: async () => ({
-    state: "ready",
-    reviewers: [],
-    suggested: [],
-    candidates: fixtureReviewerCandidates,
-    candidatesTotalCount: fixtureReviewerCandidates.length,
-    permission: "permitted",
-  }),
-};
-
-const fixtureReviewerActionsDenied: ReviewerPickerActions = {
-  ...fixtureReviewerActions,
-  fetchReviewers: async () => ({
-    state: "ready",
-    reviewers: fixtureReviewerRows,
-    suggested: fixtureSuggestedReviewers,
-    candidates: fixtureReviewerCandidates,
-    candidatesTotalCount: fixtureReviewerCandidates.length,
-    permission: "denied",
-  }),
-};
-
-const fixtureReviewerActionsUnknown: ReviewerPickerActions = {
-  ...fixtureReviewerActions,
-  fetchReviewers: async () => ({
-    state: "ready",
-    reviewers: fixtureReviewerRows,
-    suggested: fixtureSuggestedReviewers,
-    candidates: fixtureReviewerCandidates,
-    candidatesTotalCount: fixtureReviewerCandidates.length,
-    permission: "unknown",
-  }),
-};
-
-const fixtureReviewerActionsWriteFailure: ReviewerPickerActions = {
-  ...fixtureReviewerActions,
-  requestReviewers: async () => {
-    throw new PatchdeskApiError(
-      "unavailable",
-      503,
-      true,
-      "fixture-reviewer-write",
-      "Patchdesk could not reach GitHub.",
-    );
-  },
-  removeReviewers: async () => {
-    throw new PatchdeskApiError(
-      "unavailable",
-      503,
-      true,
-      "fixture-reviewer-write",
-      "Patchdesk could not reach GitHub.",
-    );
-  },
-};
-
-const fixtureReviewerActionsReadFailure: ReviewerPickerActions = {
-  ...fixtureReviewerActions,
-  fetchReviewers: async () => ({ state: "github_read" }),
-};
-
-function CanonicalFixtureWorkbench({
-  data,
-  onNavigationStateChange,
-  modelOverrides,
-  mergeAction,
-  assigneeActions,
-  reviewerActions,
-}: {
-  readonly data: typeof workbenchFixtureData;
-  readonly onNavigationStateChange: (state: NavigationState) => void;
-  readonly modelOverrides?: Partial<
-    Pick<
-      WorkbenchResponse,
-      | "mergeReadiness"
-      | "mergeReasons"
-      | "conversation"
-      | "review"
-      | "pendingReview"
-    >
-  >;
-  readonly mergeAction?: PullRequestOverviewMerge;
-  readonly assigneeActions?: AssigneesSectionActions;
-  readonly reviewerActions?: ReviewerPickerActions;
-}): React.JSX.Element {
-  const model = canonicalWorkbenchModel(data);
-  const merged =
-    modelOverrides === undefined ? model : { ...model, ...modelOverrides };
-  // Built as a mutable local (assignable to the readonly-field
-  // `ReviewWorkbenchActions` structurally) and given `merge` only when
-  // present, rather than a conditional empty-object spread: under this
-  // project's `exactOptionalPropertyTypes`, an optional field must be
-  // absent, not merely set to `undefined`.
-  const actions: MutableReviewWorkbenchActions = {
-    detectUpdates: async () => undefined,
-    refresh: async () => undefined,
-    loadCommitDiff: async () => {
-      throw new Error("No commit fixture is configured");
-    },
-    localCommentAuthoring: { enabled: true, onSave: async () => undefined },
-    reportNavigationState: onNavigationStateChange,
-    labels: {
-      fetchLabels: async () => fixtureLabelCatalog,
-      addLabels: async () => undefined,
-      removeLabels: async () => undefined,
-    },
-    assignees: assigneeActions ?? fixtureAssigneeActions,
-    reviewers: reviewerActions ?? fixtureReviewerActions,
-  };
-  if (mergeAction !== undefined) actions.merge = mergeAction;
-  return (
-    <ReviewWorkbench
-      model={merged}
-      actions={actions}
-      slots={{
-        insights: (
-          <section aria-label="Review insights" className="p-6">
-            <h2 className="text-lg font-semibold">Insights</h2>
-            <p className="text-sm text-muted-foreground">
-              Insight fixture content.
-            </p>
-          </section>
-        ),
-        conversation: null,
-        mergeAction: null,
-      }}
+    <CanonicalFixtureWorkbench
+      data={workbenchFixtureData}
+      onNavigationStateChange={onNavigationStateChange}
+      modelOverrides={
+        detail
+          ? {
+              conversation: {
+                prDescription: "",
+                entries: [
+                  {
+                    _tag: "ReviewSummary" as const,
+                    review: {
+                      id: "published-1",
+                      author: "fixture-maintainer",
+                      body: "Published review body",
+                      event: "COMMENTED" as const,
+                      submittedAt: "2026-07-17T00:00:00.000Z",
+                      canDismiss: false,
+                    },
+                  },
+                ],
+              },
+            }
+          : { mergeReadiness, mergeReasons }
+      }
+      {...(detail
+        ? {}
+        : {
+            mergeAction: {
+              readiness,
+              mergeReasons,
+              pullRequest: parsedPullRequest.value,
+              context: {
+                repo: `${workbenchFixtureData.pullRequest.ref.owner}/${workbenchFixtureData.pullRequest.ref.repo}`,
+                prNumber: workbenchFixtureData.pullRequest.ref.number,
+                title: workbenchFixtureData.pullRequest.title,
+                base: workbenchFixtureData.pullRequest.baseBranch,
+                head: workbenchFixtureData.pullRequest.headBranch,
+                headSha: workbenchFixtureData.pullRequest.headSha,
+              },
+              methods: ["squash", "merge", "rebase"] as const,
+              onRecoverMerge: async () => undefined,
+              onMerge: async () => ({}),
+            },
+          })}
     />
   );
 }
-
-export type UnifiedReviewFixtureState =
-  | "files-default"
-  | "files-commit-selected"
-  | "updates-draft"
-  | "draft-expanded"
-  | "needs-attention"
-  | "pr-overview"
-  | "merged"
-  | "closed"
-  | "insights-overview"
-  | "analysis-running"
-  | "analysis-current"
-  | "analysis-outdated"
-  | "analysis-failed"
-  | "analysis-replacement-running"
-  | "analysis-replacement-failed"
-  | "walkthrough-current"
-  | "walkthrough-outdated"
-  | "publication-ready"
-  | "publication-publishing"
-  | "publication-confirmed"
-  | "publication-needs-confirmation"
-  | "published-feedback-collapsed"
-  | "published-feedback-expanded";
-
-/** Build every design state from one production-shaped Review projection. */
-// oxlint-disable-next-line react/only-export-components -- Design bridge consumes the typed fixture factory.
-export function unifiedReviewInitialState(
-  state: UnifiedReviewFixtureState,
-): ReviewWorkbenchInitialState {
-  switch (state) {
-    case "files-commit-selected":
-      return { section: "commits", selectedCommitSha: "b".repeat(40) };
-    case "insights-overview":
-    case "analysis-running":
-    case "analysis-failed":
-      return { section: "insights" };
-    case "analysis-current":
-    case "analysis-outdated":
-    case "analysis-replacement-running":
-    case "analysis-replacement-failed":
-      return { section: "insights", insightDetail: "analysis" };
-    case "walkthrough-current":
-      return { section: "insights", insightDetail: "walkthrough" };
-    case "walkthrough-outdated":
-      return { section: "insights", insightDetail: "walkthrough" };
-    case "draft-expanded":
-      return {
-        section: "files",
-        selectedPath: "src/a.ts",
-        draftExpanded: true,
-      };
-    case "pr-overview":
-      return { section: "files", selectedPath: "src/a.ts", overviewOpen: true };
-    default:
-      return { section: "files", selectedPath: "src/a.ts" };
-  }
-}
-
-// oxlint-disable-next-line react/only-export-components -- Design bridge consumes the typed fixture factory.
-export function createUnifiedReviewFixture(
-  state: UnifiedReviewFixtureState = "files-default",
-): WorkbenchResponse {
-  const base = canonicalWorkbenchModel(workbenchFixtureData);
-  const retainedWalkthrough = fixtureWalkthroughRetention(
-    base.session.id,
-    base.revision.reviewedHeadSha,
-  );
-  const withFeedback =
-    state === "published-feedback-collapsed" ||
-    state === "published-feedback-expanded" ||
-    state === "pr-overview" ||
-    state === "merged" ||
-    state === "closed";
-  const analysisFailure = {
-    runId: "insight-analysis-1-aaaaaaaaaaaa-review",
-    category: "unexpected_failure" as const,
-    model: "fixture-model",
-    reasoning: "medium" as const,
-    retryable: true,
-  };
-  let analysis: WorkbenchResponse["insights"]["analysis"];
-  if (state === "analysis-running") {
-    analysis = {
-      status: "running",
-      activeRun: {
-        runId: "analysis-first-run",
-        sessionId: base.session.id,
-        startedAt: base.revision.refreshedAt,
-      },
-    };
-  } else if (state === "analysis-replacement-running") {
-    analysis = {
-      ...base.insights.analysis,
-      status: "running",
-      activeRun: {
-        runId: "analysis-replacement-run",
-        sessionId: base.session.id,
-        startedAt: base.revision.refreshedAt,
-      },
-    };
-  } else if (state === "analysis-failed") {
-    analysis = { status: "failed", replacementFailure: analysisFailure };
-  } else if (
-    state === "analysis-outdated" ||
-    state === "analysis-replacement-failed"
-  ) {
-    analysis = {
-      ...base.insights.analysis,
-      status: state === "analysis-outdated" ? "outdated" : "failed",
-    };
-    // Built as a separate statement rather than a conditional spread: only
-    // the replacement-failed branch of this already-narrowed state carries
-    // `replacementFailure`.
-    if (state === "analysis-replacement-failed") {
-      analysis = {
-        ...analysis,
-        replacementFailure: { ...analysisFailure },
-      };
-    }
-  } else if (state === "analysis-current") {
-    analysis = { ...base.insights.analysis, status: "current" };
-  } else {
-    analysis = base.insights.analysis;
-  }
-  const walkthrough =
-    state === "walkthrough-current" || state === "walkthrough-outdated"
-      ? {
-          status:
-            state === "walkthrough-outdated"
-              ? ("outdated" as const)
-              : ("current" as const),
-          retained: retainedWalkthrough,
-          progress: { reviewedSectionIds: [], supportReviewed: false },
-        }
-      : base.insights.walkthrough;
-  return {
-    ...base,
-    review:
-      state === "merged"
-        ? { id: base.review.id, status: "merged" }
-        : state === "closed"
-          ? { id: base.review.id, status: "closed" }
-          : base.review,
-    revision:
-      state === "updates-draft" ||
-      state === "analysis-outdated" ||
-      state === "walkthrough-outdated"
-        ? {
-            ...base.revision,
-            freshness:
-              state === "updates-draft"
-                ? ("updates_available" as const)
-                : base.revision.freshness,
-            currentHeadSha: "b".repeat(40),
-          }
-        : base.revision,
-    insights: { analysis, walkthrough },
-    conversation: withFeedback
-      ? {
-          prDescription: base.conversation.prDescription ?? "",
-          entries: [
-            ...base.conversation.entries,
-            {
-              _tag: "ReviewSummary" as const,
-              review: {
-                id: "published-1",
-                author: "fixture-maintainer",
-                body: "Published review body",
-                event: "COMMENTED" as const,
-                submittedAt: base.revision.refreshedAt,
-                canDismiss: true,
-              },
-            },
-            {
-              _tag: "IssueComment" as const,
-              comment: {
-                id: "comment-1",
-                author: "fixture-maintainer",
-                body: "Published inline feedback",
-                createdAt: base.revision.refreshedAt,
-                location: {
-                  path: "src/b.ts",
-                  line: 1,
-                  diffSide: "new" as const,
-                },
-              },
-            },
-          ],
-        }
-      : base.conversation,
-  };
-}
-
-function fixtureWalkthroughRetention(
-  sessionId: string,
-  headSha: string,
-): NonNullable<WorkbenchResponse["insights"]["walkthrough"]["retained"]> {
-  return {
-    runId: "walkthrough-fixture",
-    sessionId,
-    headSha,
-    generatedAt: "2026-07-17T00:00:00.000Z",
-    value: {
-      snapshot: {
-        profileId: "fixture",
-        sessionId,
-        headSha,
-        patchHash: "b".repeat(64),
-      },
-      citationStatus: "verified",
-      title: "Walkthrough fixture",
-      focus: "Follow the changed path through this Review.",
-      chapters: [
-        {
-          id: "chapter-1",
-          title: "Context",
-          sections: [
-            {
-              id: "section-1",
-              title: "Keep the review local",
-              prose:
-                "This stored walkthrough explains the immutable Review revision.",
-              hunkIds: ["h1"],
-              hunks: [
-                {
-                  id: "h1",
-                  path: "src/a.ts",
-                  header: "@@ -1 +1 @@",
-                  raw: "@@ -1 +1 @@\\n-old\\n+new",
-                  oldStart: 1,
-                  oldLines: 1,
-                  newStart: 1,
-                  newLines: 1,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      support: { id: "support", title: "Support", hunkIds: [], hunks: [] },
-    },
-  };
-}
-
-function canonicalWorkbenchModel(
-  data: typeof workbenchFixtureData,
-): WorkbenchResponse {
-  const headSha = data.pullRequest.headSha;
-  const conversation: WorkbenchResponse["conversation"] = {
-    prDescription: "",
-    entries: [],
-  };
-  // Built as a separate statement rather than a conditional spread: most
-  // fixtures carry no seeded Conversation threads at all, so `inline` is
-  // genuinely absent (not present-with-an-empty-array) for them.
-  if (data.conversationThreads.length > 0) {
-    // A mutable copy: `data.conversationThreads` is deliberately a
-    // `ReadonlyArray`, and the contract's `inline.threads` field is plain
-    // `Array`, so this spread relaxes variance without a cast.
-    const threads = [...data.conversationThreads];
-    conversation.inline = { threads };
-  }
-  // SAFETY: `data.pullRequest` and `data.result` are deliberately typed with
-  // widened `string` fields (not `as const`), not narrowed
-  // `WorkbenchResponse` literal unions (e.g. `reviewState`, `verdict`,
-  // finding `severity`), so `longWorkbenchFixtureData` below can override one
-  // finding via `.map()` without TypeScript treating "index 0" and "index 1"
-  // as interchangeable branches of a narrowed union. Every fixture literal's
-  // actual string values are already valid members of the narrower target
-  // enums; only that intentional widening needs bridging here.
-  return {
-    state: "review",
-    review: { id: "fixture-review", status: "open" },
-    session: {
-      id: "fixture-session",
-      key: {
-        profileId: "fixture",
-        host: data.pullRequest.ref.host,
-        owner: data.pullRequest.ref.owner,
-        repo: data.pullRequest.ref.repo,
-        prNumber: data.pullRequest.ref.number,
-        headSha,
-      },
-    },
-    revision: {
-      reviewedHeadSha: headSha,
-      currentHeadSha: headSha,
-      freshness: "fresh",
-      refreshedAt: "2026-07-17T00:00:00.000Z",
-    },
-    fullPatch: data.fullPatch,
-    pullRequest: data.pullRequest,
-    commits: data.commits,
-    insights: {
-      analysis: {
-        status: "current",
-        retained: {
-          runId: "insight-fixture",
-          sessionId: "fixture-session",
-          headSha,
-          generatedAt: "2026-07-17T00:00:00.000Z",
-          value: data.result,
-        },
-      },
-      walkthrough: { status: "not_generated" },
-    },
-    conversation,
-    checks: data.checks,
-    mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
-    mergeReasons: [],
-  } as WorkbenchResponse;
-}
-
-function WalkthroughFixtureControls({
-  lifecycle,
-  dialogOpen,
-  model,
-  reasoning,
-  walkthrough,
-  actions,
-  reviewedSectionIds,
-  supportReviewed,
-  open,
-  openButtonRef,
-}: {
-  readonly lifecycle: "idle" | "generating" | "ready";
-  readonly dialogOpen: boolean;
-  readonly model: string | undefined;
-  readonly reasoning: "low" | "medium" | "high";
-  readonly walkthrough: Parameters<
-    typeof NarrativeWalkthrough
-  >[0]["walkthrough"];
-  readonly actions: {
-    readonly onOpenDialog: () => void;
-    readonly onCloseDialog: () => void;
-    readonly onModelChange: (value: string | null) => void;
-    readonly onReasoningChange: (value: string | null) => void;
-    readonly onConfirm: () => void;
-    readonly onOpen: () => void;
-    readonly onMarkSectionReviewed: (sectionId: string) => void;
-    readonly onMarkSupportReviewed: () => void;
-    readonly onSelectSection: (sectionId: string) => void;
-  };
-  readonly reviewedSectionIds: ReadonlyArray<string>;
-  readonly supportReviewed: boolean;
-  readonly open: boolean;
-  readonly openButtonRef: React.RefObject<HTMLButtonElement | null>;
-}): React.JSX.Element {
-  return (
-    <div className="border-b p-4">
-      {lifecycle === "ready" && !open ? (
-        <Button ref={openButtonRef} onClick={actions.onOpen}>
-          Open walkthrough
-        </Button>
-      ) : null}
-      {lifecycle !== "ready" ? (
-        <Button
-          onClick={actions.onOpenDialog}
-          disabled={lifecycle === "generating"}
-        >
-          {lifecycle === "generating"
-            ? "Generating walkthrough…"
-            : "Generate walkthrough"}
-        </Button>
-      ) : null}
-      <Dialog
-        open={dialogOpen}
-        onOpenChange={(next) =>
-          next ? actions.onOpenDialog() : actions.onCloseDialog()
-        }
-      >
-        <DialogContent data-testid="walkthrough-generate-dialog">
-          <DialogHeader>
-            <DialogTitle>Generate walkthrough</DialogTitle>
-            <DialogDescription>
-              Choose how Patchdesk should explain this Review.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <label
-              className="grid gap-1.5 text-sm font-medium"
-              htmlFor="fixture-walkthrough-model"
-            >
-              Model
-              <ModelCombobox
-                id="fixture-walkthrough-model"
-                ariaLabel="Model"
-                options={[{ id: "pi-design", label: "Design model" }]}
-                value={model ?? null}
-                onValueChange={actions.onModelChange}
-              />
-            </label>
-            <label
-              className="grid gap-1.5 text-sm font-medium"
-              htmlFor="fixture-walkthrough-reasoning"
-            >
-              Reasoning
-              <Select
-                value={reasoning}
-                onValueChange={actions.onReasoningChange}
-              >
-                <SelectTrigger
-                  id="fixture-walkthrough-reasoning"
-                  aria-label="Reasoning"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={actions.onCloseDialog}>
-              Cancel
-            </Button>
-            <Button
-              data-testid="walkthrough-confirm"
-              disabled={model === undefined}
-              onClick={actions.onConfirm}
-            >
-              Generate walkthrough
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {open ? (
-        <NarrativeWalkthrough
-          walkthrough={walkthrough}
-          reviewedSectionIds={reviewedSectionIds}
-          supportReviewed={supportReviewed}
-          rawPatch={walkthroughFixturePatch}
-          sourceSession={{ profileId: "fixture", sessionId: "fixture-session" }}
-          actions={{
-            onMarkSectionReviewed: actions.onMarkSectionReviewed,
-            onMarkSupportReviewed: actions.onMarkSupportReviewed,
-            onSelectSection: actions.onSelectSection,
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-const fixturePatch = buildFixturePatch();
-const walkthroughFixturePatch = `${fixturePatch}diff --git a/src/c.ts b/src/c.ts\n--- a/src/c.ts\n+++ b/src/c.ts\n@@ -1 +1 @@\n-old\n+new\n`;
-const activeFollowFixturePatch = buildActiveFollowPatch();
-function buildFixturePatch(): string {
-  const changedLines = Array.from(
-    { length: 48 },
-    (_, index) => `-old-${index + 1}\n+new-${index + 1}`,
-  ).join("\n");
-  return `diff --git a/src/a.ts b/src/a.ts
---- a/src/a.ts
-+++ b/src/a.ts
-@@ -1,48 +1,48 @@
-${changedLines}
-diff --git a/src/b.ts b/src/b.ts
---- a/src/b.ts
-+++ b/src/b.ts
-@@ -1 +1 @@
--old
-+new
-`;
-}
-function buildActiveFollowPatch(): string {
-  return Array.from({ length: 3 }, (_, fileIndex) => {
-    const path = `src/${String.fromCharCode(97 + fileIndex)}.ts`;
-    const lines = Array.from(
-      { length: 48 },
-      (_, lineIndex) =>
-        `-old-${fileIndex}-${lineIndex}\n+new-${fileIndex}-${lineIndex}`,
-    ).join("\n");
-    return `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,48 +1,48 @@\n${lines}\n`;
-  }).join("");
-}
-
-// A Conversation timeline long enough that its tab genuinely scrolls past
-// the viewport -- `#workbench-fixture`'s own conversation is empty ("No
-// conversation yet."), which can't exercise "the rail stays in view while
-// the timeline scrolls" (nothing to scroll). Twenty multi-sentence issue
-// comments comfortably exceed any realistic test viewport height.
-const longConversationFixtureEntries: WorkbenchResponse["conversation"]["entries"] =
-  Array.from({ length: 20 }, (_, index) => ({
-    _tag: "IssueComment" as const,
-    comment: {
-      id: `conversation-rail-comment-${index}`,
-      author: `reviewer-${index}`,
-      body: `Comment ${index}: this fixture body is deliberately long enough, across several sentences, to make the Conversation timeline taller than any realistic browser viewport. It exists only to prove the metadata rail stays pinned in view while this timeline scrolls underneath it.`,
-      createdAt: "2026-07-17T00:00:00.000Z",
-    },
-  }));
-
-// oxlint-disable-next-line react/only-export-components -- Design reuses this deterministic completed-workbench payload.
-export const workbenchFixtureData = {
-  fullPatch: fixturePatch,
-  pullRequest: {
-    ref: {
-      host: "github.com",
-      owner: "centraldigital",
-      repo: "patchdesk",
-      number: 42,
-    },
-    title: "Protect review writes",
-    description:
-      "## Review path\n\n<details open><summary>Deployment notes</summary><p>Keep this preview readable.</p></details>\n\n```mermaid\ngraph TD\n  A[Open] --> B[Review]\n```",
-    author: "fixture",
-    headBranch: "feat/review",
-    baseBranch: "sit",
-    headSha: "abcdef1234567890abcdef1234567890abcdef12",
-    isOpen: true,
-    isDraft: false,
-    reviewState: "none",
-    mergeability: "mergeable",
-    labels: [
-      { name: "bug", color: "d73a4a" },
-      { name: "needs-review", color: "0075ca" },
-    ],
-    assignees: ["fixture-assignee"],
-    requestedReviewers: ["fixture-reviewer"],
-    updatedAt: "2026-07-17T00:00:00.000Z",
-  },
-  result: {
-    changeSummary: "Review completed for Patchdesk workbench",
-    verdict: "comment",
-    summary: "One mapped finding and one finding that needs manual placement.",
-    findings: [
-      {
-        id: "mapped",
-        severity: "P1",
-        title: "Keep writes behind the stale-head check",
-        file: "src/b.ts",
-        lineStart: 1,
-        diffSide: "new",
-        explanation:
-          "A GitHub adapter must never bypass the current head check.",
-        suggestedComment: "Keep the stale-head check at the write boundary.",
-        confidence: "high",
-        mappingStatus: "mapped",
-      },
-      {
-        id: "unmapped",
-        severity: "P2",
-        title: "Document the manual placement",
-        explanation: "This review point has no verified diff coordinate.",
-        confidence: "medium",
-        mappingStatus: "unmapped",
-      },
-    ],
-    validationPlan: [
-      "pnpm test -- --run review-workbench",
-      "pnpm test:e2e -- --grep completed-review",
-    ],
-    assumptions: [
-      "The head SHA remains current while this Review is inspected.",
-    ],
-  },
-
-  commits: [
-    {
-      sha: "b".repeat(40),
-      message: "Preserve review write coordination",
-      author: "fixture",
-      authoredAt: "2026-07-17T00:00:00.000Z",
-      isHead: true,
-    },
-    {
-      sha: "a".repeat(40),
-      message: "Add review workbench",
-      author: "fixture",
-      authoredAt: "2026-07-16T00:00:00.000Z",
-      isHead: false,
-    },
-  ],
-  comments: {
-    threads: [
-      {
-        id: "thread-1",
-        state: "open" as const,
-        location: { path: "src/b.ts", line: 1 },
-        comments: [
-          {
-            id: "comment-1",
-            author: "reviewer",
-            body: "Existing GitHub review comment.",
-            createdAt: "2026-07-16T00:00:00.000Z",
-            url: "https://github.com/centraldigital/patchdesk/pull/1#discussion_r1",
-          },
-        ],
-      },
-    ],
-  },
-  checks: {
-    overall: "failing" as const,
-    checks: [
-      {
-        name: "unit",
-        required: true as const,
-        status: "completed" as const,
-        conclusion: "failure" as const,
-        url: "https://github.com/centraldigital/patchdesk/actions/runs/1",
-      },
-      { name: "docs", required: false as const, status: "queued" as const },
-    ],
-  },
-  conversationThreads: noConversationThreads,
-};
-// Threads placed for the browser suite's Threads-navigator coverage: one new-
-// side single line, one old-side single line, one multi-line range, and one
-// in src/c.ts -- the third file of `activeFollowFixturePatch`, which the
-// diff's progressive loading leaves un-hydrated until scrolled to (see
-// "streamed files can become the passive active path" above), so selecting
-// it exercises the same progressive-materialization path a deep file-tree
-// jump does.
-const activeFollowFixtureConversationThreads: ReadonlyArray<FixtureConversationThread> =
-  [
-    {
-      // Kept in src/a.ts -- the file the diff already shows before any
-      // selection -- but deep enough (line 45 of 48) that centering the
-      // target row still forces the viewport to scroll away from its
-      // initial scrollTop: 0 render, rather than landing on a position
-      // close enough to 0 that a real regression could hide behind it.
-      id: "thread-new-side",
-      state: "open",
-      location: { path: "src/a.ts", line: 45, diffSide: "new" },
-      comments: [
-        {
-          id: "comment-new-side",
-          author: "new-side-thread-author",
-          body: "New-side thread body.",
-          createdAt: "2026-07-17T00:00:00.000Z",
-        },
-      ],
-    },
-    {
-      id: "thread-old-side",
-      state: "open",
-      location: { path: "src/b.ts", line: 12, diffSide: "old" },
-      comments: [
-        {
-          id: "comment-old-side",
-          author: "old-side-thread-author",
-          body: "Old-side thread body.",
-          createdAt: "2026-07-17T00:00:00.000Z",
-        },
-      ],
-    },
-    {
-      id: "thread-multiline",
-      state: "open",
-      location: { path: "src/b.ts", line: 30, lineEnd: 33, diffSide: "new" },
-      comments: [
-        {
-          id: "comment-multiline",
-          author: "multiline-thread-author",
-          body: "Multi-line thread body.",
-          createdAt: "2026-07-17T00:00:00.000Z",
-        },
-      ],
-    },
-    {
-      id: "thread-deep-file",
-      state: "open",
-      location: { path: "src/c.ts", line: 30, diffSide: "new" },
-      comments: [
-        {
-          id: "comment-deep-file",
-          author: "deep-file-thread-author",
-          body: "Deep-file thread body.",
-          createdAt: "2026-07-17T00:00:00.000Z",
-        },
-      ],
-    },
-  ];
-const activeFollowFixtureData = {
-  ...workbenchFixtureData,
-  fullPatch: activeFollowFixturePatch,
-  conversationThreads: activeFollowFixtureConversationThreads,
-};
-const longFixturePath =
-  "src/features/review-workbench/components/extremely-long-directory-name-without-shortcuts/authoritative-review-write-coordination-and-recovery-surface.ts";
-const longFixtureTitle =
-  "Protect the authoritative review write boundary when a pull request title contains localized text, identifiers, and enough detail to exceed the available header width";
-const longWorkbenchFixtureData = {
-  ...workbenchFixtureData,
-  fullPatch: `diff --git a/${longFixturePath} b/${longFixturePath}\n--- a/${longFixturePath}\n+++ b/${longFixturePath}\n@@ -1 +1 @@\n-old\n+new\n`,
-  pullRequest: {
-    ...workbenchFixtureData.pullRequest,
-    ref: {
-      ...workbenchFixtureData.pullRequest.ref,
-      owner: "centraldigital-platform-engineering-maintainers",
-      repo: "patchdesk-desktop-review-workbench-with-a-long-repository-name",
-    },
-    title: longFixtureTitle,
-    author: "reviewer-with-a-long-github-handle-for-layout-validation",
-    headBranch:
-      "feat/CFW-1234-preserve-authoritative-review-coordination-across-desktop-restarts",
-    baseBranch: "release/2026-07-operational-readiness-and-accessibility",
-  },
-  result: {
-    ...workbenchFixtureData.result,
-    findings: workbenchFixtureData.result.findings.map((finding, index) =>
-      index === 0
-        ? {
-            ...finding,
-            file: longFixturePath,
-            title:
-              "Keep every pending GitHub write attached to the exact authoritative revision even when the finding title is unusually descriptive",
-            explanation:
-              "This deliberately long explanation proves that detailed review guidance wraps without making the action rail or navigation pane wider than the viewport.",
-          }
-        : finding,
-    ),
-    validationPlan: [
-      "pnpm test -- --run tests/services/review-write-controller-with-authoritative-revision-and-recovery.test.ts",
-      "pnpm test:e2e -- --grep completed-review-long-localized-content-and-responsive-navigation",
-      "authoritativeReviewWriteCoordinationAndRecoverySurfaceWithoutNaturalBreakpointsMustRemainReadableInsideTheInspector",
-    ],
-  },
-  comments: {
-    threads: workbenchFixtureData.comments.threads.map((thread) => ({
-      ...thread,
-      location: { path: longFixturePath, line: 1 },
-      comments: thread.comments.map((comment) => ({
-        ...comment,
-        author: "reviewer-with-a-long-github-handle-for-layout-validation",
-        body: "Existing GitHub review comment with enough detail to wrap across several lines while retaining the complete author, timestamp, and discussion content for assistive technology.",
-      })),
-    })),
-  },
-  checks: {
-    ...workbenchFixtureData.checks,
-    checks: workbenchFixtureData.checks.checks.map((check, index) =>
-      index === 0
-        ? {
-            ...check,
-            name: "required-review-workbench-authoritative-write-and-restart-recovery-validation",
-          }
-        : check,
-    ),
-  },
-};
-// oxlint-disable-next-line react/only-export-components -- Design reuses this deterministic submission payload.
-export const submissionFixtureData = {
-  batch: {
-    sessionId:
-      "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdefabcdef",
-    state: { _tag: "Local" as const },
-    summaryBody: "Request changes before merge.",
-    suggestedEvent: "COMMENT" as const,
-    items: [
-      {
-        _tag: "InlineComment" as const,
-        id: "p1",
-        provenance: { _tag: "human" as const },
-        source: "manual" as const,
-        include: true,
-        anchor: {
-          path: "src/services/review-submission-service.ts",
-          startLine: 34,
-          line: 34,
-          side: "new" as const,
-        },
-        body: "Keep the stale-head check at the write boundary.",
-        postability: "postable",
-      },
-    ],
-    receipts: [],
-    createdAt: "2026-07-18T10:00:00.000Z",
-    updatedAt: "2026-07-18T10:00:00.000Z",
-  },
-};

@@ -141,6 +141,7 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { InsightType } from "../domain/insight-record";
+import type { RawJsonValue } from "../domain/json";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -1408,8 +1409,7 @@ function corsForRenderer(
   };
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the server's one raw HTTP-body I/O boundary; each route handler runs its own schema against the result immediately, so there is no single concrete type to return here.
-async function jsonBody(context: Context): Promise<unknown> {
+async function jsonBody(context: Context): Promise<RawJsonValue | undefined> {
   const maximumBytes = 1024 * 1024;
   const declaredLength = Number(context.req.header("Content-Length") ?? "0");
   if (Number.isFinite(declaredLength) && declaredLength > maximumBytes)
@@ -1437,8 +1437,9 @@ async function jsonBody(context: Context): Promise<unknown> {
   }
   try {
     // SAFETY: JSON.parse's return type is `any`; this cast narrows it to
-    // `unknown` so every caller must validate the parsed body before use.
-    return JSON.parse(new TextDecoder().decode(combined)) as unknown;
+    // `RawJsonValue` (the JSON value grammar) so every caller must still
+    // validate the parsed body's shape before use.
+    return JSON.parse(new TextDecoder().decode(combined)) as RawJsonValue;
   } catch {
     return undefined;
   }
@@ -2139,8 +2140,7 @@ function labelListResponse(
 async function assigneeResponse(
   context: Context,
   service: AssigneeService,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-  body: unknown,
+  body: RawJsonValue | undefined,
 ): Promise<Response> {
   const parsed = safeParse(assigneeCommandSchema, body);
   if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
@@ -2216,8 +2216,7 @@ function assigneeListResponse(
 async function reviewerResponse(
   context: Context,
   service: ReviewerService,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-  body: unknown,
+  body: RawJsonValue | undefined,
 ): Promise<Response> {
   const parsed = safeParse(reviewerCommandSchema, body);
   if (!parsed.success) return context.json({ error: "invalid_input" }, 400);

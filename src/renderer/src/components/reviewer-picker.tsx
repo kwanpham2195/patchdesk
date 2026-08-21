@@ -4,6 +4,7 @@ import { Settings2 } from "lucide-react";
 import type { PullRequestAssigneePermission } from "../../../domain/github-context";
 import { PatchdeskApiError } from "../api-client";
 import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
+import { withoutMember } from "../picker-selection";
 import type { ReviewerListResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
@@ -68,16 +69,6 @@ type ReadState =
         | "insufficient_scopes"
         | "unknown";
     };
-
-function withoutLogin<T extends string>(
-  set: ReadonlySet<T>,
-  login: T,
-): ReadonlySet<T> {
-  if (!set.has(login)) return set;
-  const next = new Set(set);
-  next.delete(login);
-  return next;
-}
 
 /** Honest, Patchdesk-authored copy for why GitHub suggested this person —
  * GitHub's own API exposes only `isAuthor`/`isCommenter`, never a
@@ -200,10 +191,10 @@ export function ReviewerPicker({
     setBusyLogins((current) => new Set(current).add(candidate.login));
     if (nextAttached) {
       setPendingRequests((current) => new Set(current).add(candidate.login));
-      setPendingRemovals((current) => withoutLogin(current, candidate.login));
+      setPendingRemovals((current) => withoutMember(current, candidate.login));
     } else {
       setPendingRemovals((current) => new Set(current).add(candidate.login));
-      setPendingRequests((current) => withoutLogin(current, candidate.login));
+      setPendingRequests((current) => withoutMember(current, candidate.login));
     }
     const ref = { id: candidate.id, login: candidate.login };
     const write = nextAttached
@@ -214,11 +205,11 @@ export function ReviewerPicker({
         // The optimistic guess did not hold: revert it.
         if (nextAttached)
           setPendingRequests((current) =>
-            withoutLogin(current, candidate.login),
+            withoutMember(current, candidate.login),
           );
         else
           setPendingRemovals((current) =>
-            withoutLogin(current, candidate.login),
+            withoutMember(current, candidate.login),
           );
         // Permission state is never inferred from this: it already comes
         // from the read path (`readState.permission`). A rejected write
@@ -233,7 +224,7 @@ export function ReviewerPicker({
         );
       })
       .finally(() => {
-        setBusyLogins((current) => withoutLogin(current, candidate.login));
+        setBusyLogins((current) => withoutMember(current, candidate.login));
       });
   };
 

@@ -4,6 +4,7 @@ import { Settings2 } from "lucide-react";
 import type { PullRequestAssigneePermission } from "../../../domain/github-context";
 import { PatchdeskApiError } from "../api-client";
 import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
+import { withoutMember } from "../picker-selection";
 import type { AssignableUserListResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
@@ -81,16 +82,6 @@ type ReadState =
         | "insufficient_scopes"
         | "unknown";
     };
-
-function withoutLogin<T extends string>(
-  set: ReadonlySet<T>,
-  login: T,
-): ReadonlySet<T> {
-  if (!set.has(login)) return set;
-  const next = new Set(set);
-  next.delete(login);
-  return next;
-}
 
 /**
  * Assigns and removes people on the pull request under review. Rendered as
@@ -193,10 +184,10 @@ export function AssigneePicker({
     setBusyLogins((current) => new Set(current).add(user.login));
     if (nextAttached) {
       setPendingAdds((current) => new Set(current).add(user.login));
-      setPendingRemoves((current) => withoutLogin(current, user.login));
+      setPendingRemoves((current) => withoutMember(current, user.login));
     } else {
       setPendingRemoves((current) => new Set(current).add(user.login));
-      setPendingAdds((current) => withoutLogin(current, user.login));
+      setPendingAdds((current) => withoutMember(current, user.login));
     }
     const ref = { id: user.id, login: user.login };
     const write = nextAttached
@@ -206,8 +197,8 @@ export function AssigneePicker({
       .catch((cause: unknown) => {
         // The optimistic guess did not hold: revert it.
         if (nextAttached)
-          setPendingAdds((current) => withoutLogin(current, user.login));
-        else setPendingRemoves((current) => withoutLogin(current, user.login));
+          setPendingAdds((current) => withoutMember(current, user.login));
+        else setPendingRemoves((current) => withoutMember(current, user.login));
         // Permission state is never inferred from this: it already comes
         // from the read path (`readState.permission`). A rejected write
         // here still gets a specific reason surfaced (the ten-assignee cap,
@@ -222,7 +213,7 @@ export function AssigneePicker({
         );
       })
       .finally(() => {
-        setBusyLogins((current) => withoutLogin(current, user.login));
+        setBusyLogins((current) => withoutMember(current, user.login));
       });
   };
 

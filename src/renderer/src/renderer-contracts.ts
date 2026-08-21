@@ -1,5 +1,7 @@
 import * as v from "valibot";
 
+import type { RawJsonValue } from "../../domain/json";
+
 const pullRequestRefSchema = v.strictObject({
   host: v.pipe(v.string(), v.minLength(1)),
   owner: v.pipe(v.string(), v.minLength(1)),
@@ -350,8 +352,7 @@ export type AssignableUserListResponse = v.InferOutput<
 
 /** Parses the local API's assignable-user listing before an assignee picker owns it. */
 export function parseAssignableUserListResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
-  input: unknown,
+  input: RawJsonValue | undefined,
 ): AssignableUserListResponse | undefined {
   const parsed = v.safeParse(assignableUserListResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
@@ -439,8 +440,7 @@ export type ReviewerListResponse = v.InferOutput<
 
 /** Parses the local API's reviewer listing before the reviewer rail owns it. */
 export function parseReviewerListResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
-  input: unknown,
+  input: RawJsonValue | undefined,
 ): ReviewerListResponse | undefined {
   const parsed = v.safeParse(reviewerListResponseSchema, input);
   return parsed.success ? parsed.output : undefined;

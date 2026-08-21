@@ -1,3 +1,5 @@
+import type { RawJsonValue } from "../domain/json";
+
 /** Header accepted by the loopback API for every request. */
 export const APP_CAPABILITY_HEADER = "X-Patchdesk-Capability";
 
@@ -48,7 +50,14 @@ export type DesktopRequest =
 export type DesktopResponse = {
   readonly ok: boolean;
   readonly status: number;
-  readonly body: unknown;
+  /**
+   * The local API's response body, as the JSON grammar it always is: the
+   * bridge only ever fills it from `JSON.parse` output or its own object
+   * literals. Naming the grammar rather than `unknown` lets the renderer's
+   * `requestJson` hand every call site a real type to run its own parser
+   * against, with no assertion in between.
+   */
+  readonly body: RawJsonValue | undefined;
   readonly correlationId: string;
 };
 

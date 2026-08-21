@@ -1,3 +1,4 @@
+import type { RawJsonValue } from "../../src/domain/json";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
 
 /**
@@ -10,7 +11,7 @@ import type { DesktopResponse } from "../../src/main/ipc-contract";
  */
 
 /** Builds a successful `DesktopResponse` carrying the given body. */
-export function success<Body>(body: Body) {
+export function success(body: RawJsonValue) {
   return {
     ok: true,
     status: 200,
@@ -20,7 +21,7 @@ export function success<Body>(body: Body) {
 }
 
 /** Builds a failed `DesktopResponse` carrying the given body. */
-export function failure<Body>(body: Body, status = 503) {
+export function failure(body: RawJsonValue, status = 503) {
   return {
     ok: false,
     status,

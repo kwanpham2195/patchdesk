@@ -1,3 +1,4 @@
+import type { RawJsonValue } from "../domain/json";
 import { randomUUID } from "node:crypto";
 import type { IpcMain } from "electron";
 import {
@@ -307,8 +308,7 @@ export function installDesktopRequestBridge(
 async function readBridgeResponseBody(
   response: Response,
   maxResponseBytes: number,
-  // oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the desktop bridge's raw HTTP-response-body I/O boundary; the renderer runs its own route-specific parser against DesktopResponse.body, so there is no single concrete type to return here.
-): Promise<unknown> {
+): Promise<RawJsonValue | undefined> {
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > maxResponseBytes)
     return { error: "response_too_large" };
@@ -316,16 +316,12 @@ async function readBridgeResponseBody(
   return text.length === 0 ? undefined : parseJson(text);
 }
 
-// No explicit return type: an explicit `unknown` here trips
-// anti-slop/no-known-value-widening on the `{ error: "invalid_response" }`
-// fallback below. Leaving the annotation off costs nothing — the `as
-// unknown` cast in the try branch already makes the inferred return type
-// `unknown` (it absorbs the fallback's object type in the union).
-function parseJson(value: string) {
+function parseJson(value: string): RawJsonValue {
   try {
     // SAFETY: JSON.parse's return type is `any`; this cast narrows it to
-    // `unknown` so every caller must validate the parsed body before use.
-    return JSON.parse(value) as unknown;
+    // `RawJsonValue` (the JSON value grammar) so every caller must still
+    // validate the parsed body's shape before use.
+    return JSON.parse(value) as RawJsonValue;
   } catch {
     return { error: "invalid_response" };
   }

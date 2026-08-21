@@ -6,6 +6,7 @@ import type {
   RepositoryLabelPermission,
 } from "../../../domain/github-context";
 import { PatchdeskApiError } from "../api-client";
+import { withoutMember } from "../picker-selection";
 import type { RepositoryLabelListResponse } from "../renderer-contracts";
 import { LabelChip } from "./label-chip";
 import { Button } from "./ui/button";
@@ -55,16 +56,6 @@ type ReadState =
         | "insufficient_scopes"
         | "unknown";
     };
-
-function withoutName<T extends string>(
-  set: ReadonlySet<T>,
-  name: T,
-): ReadonlySet<T> {
-  if (!set.has(name)) return set;
-  const next = new Set(set);
-  next.delete(name);
-  return next;
-}
 
 /**
  * Assigns and removes labels on the pull request under review. Rendered as
@@ -168,10 +159,10 @@ export function LabelPicker({
     setBusyNames((current) => new Set(current).add(label.name));
     if (nextAttached) {
       setPendingAdds((current) => new Set(current).add(label.name));
-      setPendingRemoves((current) => withoutName(current, label.name));
+      setPendingRemoves((current) => withoutMember(current, label.name));
     } else {
       setPendingRemoves((current) => new Set(current).add(label.name));
-      setPendingAdds((current) => withoutName(current, label.name));
+      setPendingAdds((current) => withoutMember(current, label.name));
     }
     const ref = { id: label.id, name: label.name };
     const write = nextAttached
@@ -181,8 +172,8 @@ export function LabelPicker({
       .catch((cause: unknown) => {
         // The optimistic guess did not hold: revert it.
         if (nextAttached)
-          setPendingAdds((current) => withoutName(current, label.name));
-        else setPendingRemoves((current) => withoutName(current, label.name));
+          setPendingAdds((current) => withoutMember(current, label.name));
+        else setPendingRemoves((current) => withoutMember(current, label.name));
         // Permission state is never inferred from this: it already comes
         // from the read path (`readState.permission`), evidenced by
         // `getRepositoryPermission`. A rejected write here still gets a
@@ -198,7 +189,7 @@ export function LabelPicker({
         );
       })
       .finally(() => {
-        setBusyNames((current) => withoutName(current, label.name));
+        setBusyNames((current) => withoutMember(current, label.name));
       });
   };
 
@@ -308,8 +299,8 @@ function LabelPickerList({
   if (readState._tag === "github_read")
     return (
       <p role="alert" className="text-xs text-destructive">
-        Patchdesk could not load this repository&apos;s labels. Reopen this
-        menu to retry.
+        Patchdesk could not load this repository&apos;s labels. Reopen this menu
+        to retry.
       </p>
     );
   if (readState._tag === "github_rate_limited")
@@ -341,9 +332,7 @@ function LabelPickerList({
                   onCheckedChange={() => onToggle(label, !attached)}
                 />
                 <span className="flex min-w-0 flex-col">
-                  <LabelChip
-                    label={{ name: label.name, color: label.color }}
-                  />
+                  <LabelChip label={{ name: label.name, color: label.color }} />
                   {label.description === undefined ? null : (
                     <span
                       data-slot="label-description"
@@ -380,7 +369,12 @@ function rateLimitedCopy(resumeAt: string | undefined): string {
 }
 
 function forbiddenCopy(
-  reason: "ip_allow_list" | "saml" | "insufficient_scopes" | "unknown" | undefined,
+  reason:
+    | "ip_allow_list"
+    | "saml"
+    | "insufficient_scopes"
+    | "unknown"
+    | undefined,
 ): string {
   switch (reason) {
     case "ip_allow_list":

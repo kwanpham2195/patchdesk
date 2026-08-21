@@ -1,4 +1,5 @@
 import type { LocalApiDesktopRequest } from "../../main/ipc-contract";
+import type { RawJsonValue } from "../../domain/json";
 import { appLog } from "./lib/logger";
 
 export type ApiFailureKind =
@@ -41,8 +42,7 @@ export class PatchdeskApiError extends Error {
 export async function requestJson(
   path: string,
   init: Omit<LocalApiDesktopRequest, "path"> = {},
-  // oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the renderer's own request boundary; every call site immediately parses the result with a dedicated parser (parseInboxResponse, parseGlobalSettings, isProfile, ...).
-): Promise<unknown> {
+): Promise<RawJsonValue | undefined> {
   const startedAt = performance.now();
   const skipLogging = path === "/v1/logs" || path === "/health";
   if (globalThis.window === undefined || !("patchdesk" in window)) {
@@ -73,6 +73,10 @@ export async function requestJson(
       });
     }
   }
+  // `DesktopResponse.body` is already typed as the JSON grammar, so no
+  // assertion is needed here; each call site runs its own parser against it.
+  // `undefined` is preserved rather than folded into `null`: a route that
+  // answered with no body at all is not a route that answered `null`.
   if (response.ok) return response.body;
 
   const serverCode = errorCode(response.body);
@@ -103,8 +107,7 @@ export async function selectDirectory(
       "Patchdesk desktop services are unavailable.",
     );
   }
-  const defaultPathField =
-    defaultPath === undefined ? {} : { defaultPath };
+  const defaultPathField = defaultPath === undefined ? {} : { defaultPath };
   const response = await window.patchdesk.request({
     operation: "selectDirectory",
     ...defaultPathField,

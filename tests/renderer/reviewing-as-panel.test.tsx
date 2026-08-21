@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { EnvironmentCheckResponse } from "../../src/renderer/src/renderer-contracts";
 import type { Profile } from "../../src/renderer/src/renderer-models";
+import type { RawJsonValue } from "../../src/domain/json";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
 
 function makeProfile(
@@ -369,6 +370,6 @@ function installDesktopApi(
   });
 }
 
-function success<T>(body: T): DesktopResponse {
+function success(body: RawJsonValue): DesktopResponse {
   return { ok: true, status: 200, body, correlationId: "test" };
 }

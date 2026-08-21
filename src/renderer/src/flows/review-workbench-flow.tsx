@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as v from "valibot";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
+import type { RawJsonValue } from "../../../domain/json";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -3056,8 +3057,7 @@ type AssigneeReceipt =
     };
 
 function parseAssigneeReceipt(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the assignees command response; there is no earlier boundary to run it at.
-  value: unknown,
+  value: RawJsonValue | undefined,
 ): AssigneeReceipt | undefined {
   const parsed = v.safeParse(assigneeReceiptSchema, value);
   return parsed.success ? parsed.output : undefined;
@@ -3085,8 +3085,7 @@ type ReviewerReceipt =
     };
 
 function parseReviewerReceipt(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the reviewers command response; there is no earlier boundary to run it at.
-  value: unknown,
+  value: RawJsonValue | undefined,
 ): ReviewerReceipt | undefined {
   const parsed = v.safeParse(reviewerReceiptSchema, value);
   return parsed.success ? parsed.output : undefined;

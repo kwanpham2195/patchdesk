@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { RawJsonValue } from "../../src/domain/json";
 import { SettingsModal } from "../../src/renderer/src/components/settings-modal";
 import { failure, success } from "./fake-desktop-response";
 
@@ -571,7 +572,7 @@ function renderModal(
 function installDesktopApi(
   options: {
     readonly clearLocalDataFails?: boolean;
-    readonly models?: unknown;
+    readonly models?: RawJsonValue;
     readonly profileSaveFailures?: number;
   } = {},
 ): ReturnType<typeof vi.fn> {
