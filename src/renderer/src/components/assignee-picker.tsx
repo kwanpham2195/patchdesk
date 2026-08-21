@@ -3,6 +3,7 @@ import { Settings2 } from "lucide-react";
 
 import type { PullRequestAssigneePermission } from "../../../domain/github-context";
 import { PatchdeskApiError } from "../api-client";
+import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
 import type { AssignableUserListResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
@@ -251,8 +252,8 @@ export function AssigneePicker({
           </p>
         ) : readState._tag === "ready" && permission === "unknown" ? (
           <p className="text-xs text-muted-foreground">
-            Patchdesk could not confirm you can manage assignees here — a
-            change may be refused.
+            Patchdesk could not confirm you can manage assignees here — a change
+            may be refused.
           </p>
         ) : null}
         {writeError === undefined ? null : (
@@ -362,9 +363,7 @@ function AssigneePickerList({
       </p>
     );
   if (readState.users.length === 0)
-    return (
-      <p className="text-xs text-muted-foreground">No matching people.</p>
-    );
+    return <p className="text-xs text-muted-foreground">No matching people.</p>;
   return (
     <div className="max-h-64 overflow-y-auto">
       <ul className="flex flex-col gap-0.5" aria-label="Assignable people">
@@ -396,30 +395,4 @@ function AssigneePickerList({
       ) : null}
     </div>
   );
-}
-
-function rateLimitedCopy(resumeAt: string | undefined): string {
-  const resumeAtMs = resumeAt === undefined ? Number.NaN : Date.parse(resumeAt);
-  if (Number.isNaN(resumeAtMs))
-    return "GitHub rate-limited this account. Try again once the limit clears.";
-  const formatted = new Date(resumeAtMs).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `GitHub rate-limited this account. Try again at ${formatted}.`;
-}
-
-function forbiddenCopy(
-  reason: "ip_allow_list" | "saml" | "insufficient_scopes" | "unknown" | undefined,
-): string {
-  switch (reason) {
-    case "ip_allow_list":
-      return "GitHub blocked this read: an IP allow list is enabled and this network is not on it.";
-    case "saml":
-      return "GitHub blocked this read: this account's token needs SAML single sign-on authorization.";
-    case "insufficient_scopes":
-      return "GitHub blocked this read: this account's token lacks the scopes this repository requires.";
-    default:
-      return "GitHub blocked this read and did not say why.";
-  }
 }

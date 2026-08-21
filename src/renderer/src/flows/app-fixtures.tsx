@@ -30,9 +30,11 @@ import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parsePullRequestInput } from "../../../domain/pull-request";
 import { PatchdeskApiError } from "../api-client";
 import type { AssigneesSectionActions } from "../components/assignee-picker";
+import type { ReviewerPickerActions } from "../components/reviewer-picker";
 import type {
   AssignableUserListResponse,
   RepositoryLabelListResponse,
+  ReviewerListResponse,
   WorkbenchResponse,
 } from "../renderer-contracts";
 
@@ -54,6 +56,14 @@ type MutableReviewWorkbenchActions = {
   -readonly [K in keyof ReviewWorkbenchActions]: ReviewWorkbenchActions[K];
 };
 
+// Pre-existing giant component (257 lines on `main` before this change, a
+// flat if-chain over fixture hashes; the Reviewers section's fixture
+// branches add to that same chain rather than introducing a new pattern).
+// Splitting it is the renderer god-file refactor the project's own plans
+// explicitly defer to dedicated, separately-scoped work (mirrors
+// `review-workbench.tsx`'s and `review-workbench-flow.tsx`'s own comments on
+// this same rule), not a fix this feature change should take on.
+// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function AppFixtureContent({
   hash,
   onNavigationStateChange,
@@ -169,6 +179,70 @@ export function AppFixtureContent({
         data={workbenchFixtureData}
         onNavigationStateChange={onNavigationStateChange}
         assigneeActions={fixtureAssigneeActionsReadFailure}
+      />
+    );
+  if (hash === "#workbench-empty-reviewers-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={{
+          ...workbenchFixtureData,
+          pullRequest: {
+            ...workbenchFixtureData.pullRequest,
+            requestedReviewers: [],
+          },
+        }}
+        onNavigationStateChange={onNavigationStateChange}
+        reviewerActions={fixtureReviewerActionsEmpty}
+      />
+    );
+  if (hash === "#workbench-reviewers-denied-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        reviewerActions={fixtureReviewerActionsDenied}
+      />
+    );
+  if (hash === "#workbench-reviewers-unknown-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        reviewerActions={fixtureReviewerActionsUnknown}
+      />
+    );
+  if (hash === "#workbench-reviewers-write-failure-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        reviewerActions={fixtureReviewerActionsWriteFailure}
+      />
+    );
+  if (hash === "#workbench-reviewers-read-failure-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        reviewerActions={fixtureReviewerActionsReadFailure}
+      />
+    );
+  if (hash === "#workbench-reviewers-pending-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        modelOverrides={{
+          pendingReview: {
+            state: "pending",
+            count: 3,
+            review: {
+              nodeId: "PR_fixture_pending",
+              headSha: workbenchFixtureData.pullRequest.headSha,
+              comments: [],
+            },
+          },
+        }}
       />
     );
   if (hash === "#workbench-merged-fixture")
@@ -470,7 +544,12 @@ const fixtureLabelCatalog: RepositoryLabelListResponse = {
     // Deliberately the only label with a `description`, so a browser test
     // can prove the picker renders it for this row and renders nothing
     // extra for the other two (#12's UI half).
-    { id: "LA_bug", name: "bug", color: "d73a4a", description: "Something isn't working" },
+    {
+      id: "LA_bug",
+      name: "bug",
+      color: "d73a4a",
+      description: "Something isn't working",
+    },
     { id: "LA_needs_review", name: "needs-review", color: "0075ca" },
     { id: "LA_documentation", name: "documentation", color: "0e8a16" },
   ],
@@ -574,23 +653,168 @@ const fixtureAssigneeActionsReadFailure: AssigneesSectionActions = {
   fetchAssignableUsers: async () => ({ state: "github_read" }),
 };
 
+// The pull request's reviewer rows, as the Reviewers section's own
+// `fetchReviewers` (no query) reads it -- deliberately covers three states
+// in one fixture: a requested reviewer with no verdict yet
+// ("fixture-reviewer", matching `workbenchFixtureData.pullRequest
+// .requestedReviewers`), a current, on-revision approval
+// ("fixture-approved-reviewer"), and an outdated changes-requested verdict
+// ("fixture-outdated-reviewer") -- so a single browser test can assert the
+// requested-pending state, a verdict badge, and the outdated marking
+// together.
+const fixtureReviewerRows: NonNullable<ReviewerListResponse["reviewers"]> = [
+  { login: "fixture-reviewer", outdated: false },
+  {
+    login: "fixture-approved-reviewer",
+    verdict: "approved",
+    outdated: false,
+    submittedAt: "2026-07-16T00:00:00.000Z",
+  },
+  {
+    login: "fixture-outdated-reviewer",
+    verdict: "changes_requested",
+    outdated: true,
+    submittedAt: "2026-07-10T00:00:00.000Z",
+  },
+];
+
+// GitHub's own suggested reviewers, as the Reviewer picker's own fetch reads
+// it -- one collaborator flagged only `isAuthor`, so a browser test can
+// assert the picker's honest, Patchdesk-authored suggestion caption.
+const fixtureSuggestedReviewers: NonNullable<
+  ReviewerListResponse["suggested"]
+> = [
+  {
+    isAuthor: true,
+    isCommenter: false,
+    reviewer: { login: "fixture-suggested-reviewer" },
+  },
+];
+
+// The repository's reviewer candidates, as the Reviewer picker's
+// `fetchReviewers` reads it -- includes the already-requested reviewer (so
+// the picker can prove it starts checked), the suggested collaborator (so
+// the picker can prove it renders once, grouped above the rest), and one
+// not-yet-requested collaborator for toggling.
+const fixtureReviewerCandidates: NonNullable<
+  ReviewerListResponse["candidates"]
+> = [
+  { id: "MDQ6VXNlcjIwMQ==", login: "fixture-reviewer" },
+  { id: "MDQ6VXNlcjIwMg==", login: "fixture-suggested-reviewer" },
+  { id: "MDQ6VXNlcjIwMw==", login: "fixture-other-reviewer" },
+];
+
+async function fixtureFetchReviewers(
+  query?: string,
+): Promise<ReviewerListResponse> {
+  const candidates =
+    query === undefined || query === ""
+      ? fixtureReviewerCandidates
+      : fixtureReviewerCandidates.filter((candidate) =>
+          candidate.login.includes(query),
+        );
+  return {
+    state: "ready",
+    reviewers: fixtureReviewerRows,
+    suggested: fixtureSuggestedReviewers,
+    candidates,
+    candidatesTotalCount: candidates.length,
+    permission: "permitted",
+  };
+}
+
+const fixtureReviewerActions: ReviewerPickerActions = {
+  fetchReviewers: fixtureFetchReviewers,
+  requestReviewers: async () => undefined,
+  removeReviewers: async () => undefined,
+};
+
+const fixtureReviewerActionsEmpty: ReviewerPickerActions = {
+  ...fixtureReviewerActions,
+  fetchReviewers: async () => ({
+    state: "ready",
+    reviewers: [],
+    suggested: [],
+    candidates: fixtureReviewerCandidates,
+    candidatesTotalCount: fixtureReviewerCandidates.length,
+    permission: "permitted",
+  }),
+};
+
+const fixtureReviewerActionsDenied: ReviewerPickerActions = {
+  ...fixtureReviewerActions,
+  fetchReviewers: async () => ({
+    state: "ready",
+    reviewers: fixtureReviewerRows,
+    suggested: fixtureSuggestedReviewers,
+    candidates: fixtureReviewerCandidates,
+    candidatesTotalCount: fixtureReviewerCandidates.length,
+    permission: "denied",
+  }),
+};
+
+const fixtureReviewerActionsUnknown: ReviewerPickerActions = {
+  ...fixtureReviewerActions,
+  fetchReviewers: async () => ({
+    state: "ready",
+    reviewers: fixtureReviewerRows,
+    suggested: fixtureSuggestedReviewers,
+    candidates: fixtureReviewerCandidates,
+    candidatesTotalCount: fixtureReviewerCandidates.length,
+    permission: "unknown",
+  }),
+};
+
+const fixtureReviewerActionsWriteFailure: ReviewerPickerActions = {
+  ...fixtureReviewerActions,
+  requestReviewers: async () => {
+    throw new PatchdeskApiError(
+      "unavailable",
+      503,
+      true,
+      "fixture-reviewer-write",
+      "Patchdesk could not reach GitHub.",
+    );
+  },
+  removeReviewers: async () => {
+    throw new PatchdeskApiError(
+      "unavailable",
+      503,
+      true,
+      "fixture-reviewer-write",
+      "Patchdesk could not reach GitHub.",
+    );
+  },
+};
+
+const fixtureReviewerActionsReadFailure: ReviewerPickerActions = {
+  ...fixtureReviewerActions,
+  fetchReviewers: async () => ({ state: "github_read" }),
+};
+
 function CanonicalFixtureWorkbench({
   data,
   onNavigationStateChange,
   modelOverrides,
   mergeAction,
   assigneeActions,
+  reviewerActions,
 }: {
   readonly data: typeof workbenchFixtureData;
   readonly onNavigationStateChange: (state: NavigationState) => void;
   readonly modelOverrides?: Partial<
     Pick<
       WorkbenchResponse,
-      "mergeReadiness" | "mergeReasons" | "conversation" | "review"
+      | "mergeReadiness"
+      | "mergeReasons"
+      | "conversation"
+      | "review"
+      | "pendingReview"
     >
   >;
   readonly mergeAction?: PullRequestOverviewMerge;
   readonly assigneeActions?: AssigneesSectionActions;
+  readonly reviewerActions?: ReviewerPickerActions;
 }): React.JSX.Element {
   const model = canonicalWorkbenchModel(data);
   const merged =
@@ -614,6 +838,7 @@ function CanonicalFixtureWorkbench({
       removeLabels: async () => undefined,
     },
     assignees: assigneeActions ?? fixtureAssigneeActions,
+    reviewers: reviewerActions ?? fixtureReviewerActions,
   };
   if (mergeAction !== undefined) actions.merge = mergeAction;
   return (
@@ -1159,6 +1384,7 @@ export const workbenchFixtureData = {
       { name: "needs-review", color: "0075ca" },
     ],
     assignees: ["fixture-assignee"],
+    requestedReviewers: ["fixture-reviewer"],
     updatedAt: "2026-07-17T00:00:00.000Z",
   },
   result: {

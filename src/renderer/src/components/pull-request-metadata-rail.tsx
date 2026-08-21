@@ -1,11 +1,25 @@
 import { useEffect, useState } from "react";
+import {
+  Ban,
+  CheckCircle2,
+  History,
+  MessageCircle,
+  PenLine,
+  XCircle,
+} from "lucide-react";
 
 import type {
   GitHubLabel,
   PullRequestAssigneePermission,
 } from "../../../domain/github-context";
+import type { ReviewVerdictState } from "../../../domain/review-verdicts";
 import { PatchdeskApiError } from "../api-client";
+import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
 import { freshnessCopy, type RevisionFreshness } from "../rail-freshness";
+import type {
+  PendingReviewProjection,
+  ReviewerListResponse,
+} from "../renderer-contracts";
 import {
   AssigneePicker,
   type AssigneePickerActions,
@@ -13,15 +27,16 @@ import {
 } from "./assignee-picker";
 import { LabelChip } from "./label-chip";
 import { LabelPicker, type LabelPickerActions } from "./label-picker";
+import { ReviewerPicker, type ReviewerPickerActions } from "./reviewer-picker";
 import { Avatar } from "./ui/avatar";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Spinner } from "./ui/spinner";
 
 /**
- * One topic section inside `PullRequestMetadataRail` (Labels today;
- * Assignees and Reviewers in later slices). Exported so those later slices
- * only need to add another `<RailSection>` rather than rebuild the header
- * row, freshness line, and settings-control slot.
+ * One topic section inside `PullRequestMetadataRail`. Exported so a later
+ * slice only needs to add another `<RailSection>` rather than rebuild the
+ * header row, freshness line, and settings-control slot.
  */
 export function RailSection({
   title,
@@ -55,10 +70,9 @@ export function RailSection({
   );
 }
 
-/** Mutable form of `RailSection`'s header props, so `AssigneesSection` can
- * assign `settings` only when present instead of a conditional
- * empty-object spread (mirrors `MutableGeneralThreadOverrides` in
- * `conversation.tsx`). */
+/** Mutable form of `RailSection`'s header props, so a section can assign
+ * `settings` only when present instead of a conditional empty-object spread
+ * (mirrors `MutableGeneralThreadOverrides` in `conversation.tsx`). */
 type MutableRailSectionHeaderProps = {
   title: string;
   freshness: RevisionFreshness;
@@ -79,6 +93,302 @@ type MutableAssigneesSectionProps = {
   terminal: boolean;
   actions?: AssigneesSectionActions;
 };
+
+/** Mutable form of `ReviewerPicker`'s props, for the same reason. */
+type MutableReviewerPickerProps = {
+  attachedReviewers: ReadonlyArray<string>;
+  actions?: ReviewerPickerActions;
+};
+
+/** Mutable form of `ReviewersSection`'s props, for the same reason. */
+type MutableReviewersSectionProps = {
+  requestedReviewers: ReadonlyArray<string>;
+  pendingReview?: PendingReviewProjection;
+  freshness: RevisionFreshness;
+  refreshedAt: string;
+  terminal: boolean;
+  actions?: ReviewerPickerActions;
+};
+
+/** Mutable form of `PullRequestMetadataRail`'s Labels `<RailSection>` header, for the same reason. */
+type MutableLabelsRailSectionProps = {
+  title: string;
+  freshness: RevisionFreshness;
+  settings?: React.ReactNode;
+};
+
+type ReviewerRow = NonNullable<ReviewerListResponse["reviewers"]>[number];
+
+type ReviewerSectionReadState =
+  | { readonly _tag: "loading" }
+  | { readonly _tag: "github_read" }
+  | { readonly _tag: "github_auth" }
+  | { readonly _tag: "ready"; readonly reviewers: ReadonlyArray<ReviewerRow> }
+  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
+  | {
+      readonly _tag: "github_forbidden";
+      readonly reason?:
+        | "ip_allow_list"
+        | "saml"
+        | "insufficient_scopes"
+        | "unknown";
+    };
+
+function projectReviewerSectionReadState(
+  response: ReviewerListResponse | undefined,
+): ReviewerSectionReadState {
+  if (response === undefined) return { _tag: "github_read" };
+  if (response.state === "ready")
+    return { _tag: "ready", reviewers: response.reviewers ?? [] };
+  if (response.state === "github_rate_limited") {
+    const resumeAtField =
+      response.resumeAt === undefined ? {} : { resumeAt: response.resumeAt };
+    return { _tag: "github_rate_limited", ...resumeAtField };
+  }
+  if (response.state === "github_forbidden") {
+    const reasonField =
+      response.forbiddenReason === undefined
+        ? {}
+        : { reason: response.forbiddenReason };
+    return { _tag: "github_forbidden", ...reasonField };
+  }
+  return { _tag: response.state };
+}
+
+/** Human copy for a submitted review verdict, matching the wording `conversation.tsx`'s `ReviewSummaryEntry` already uses for the same four states. */
+function reviewVerdictLabel(verdict: ReviewVerdictState): string {
+  switch (verdict) {
+    case "approved":
+      return "Approved";
+    case "changes_requested":
+      return "Changes requested";
+    case "commented":
+      return "Commented";
+    case "dismissed":
+      return "Dismissed";
+  }
+}
+
+/** A verdict's icon, so the outdated marking and each verdict stay legible without relying on colour alone. */
+function ReviewVerdictIcon({
+  verdict,
+}: {
+  readonly verdict: ReviewVerdictState;
+}): React.JSX.Element {
+  switch (verdict) {
+    case "approved":
+      return <CheckCircle2 className="size-3" />;
+    case "changes_requested":
+      return <XCircle className="size-3" />;
+    case "commented":
+      return <MessageCircle className="size-3" />;
+    case "dismissed":
+      return <Ban className="size-3" />;
+  }
+}
+
+/**
+ * One reviewer row: an initials badge, the login, and either the person's
+ * latest submitted verdict or, for a requested-but-unanswered reviewer, an
+ * explicit "Requested" label — never blank, since a pending ask is not a
+ * silent one. `outdated` renders as a second, plainly-worded badge (text
+ * plus icon, not colour alone) rather than a colour change on the verdict
+ * badge, so "approved, but not on this revision" stays legible under any
+ * colour-vision condition.
+ */
+function ReviewerListRow({
+  reviewer,
+}: {
+  readonly reviewer: ReviewerRow;
+}): React.JSX.Element {
+  return (
+    <li className="flex items-center gap-2">
+      <Avatar
+        name={reviewer.name ?? reviewer.login}
+        className="size-5 text-[10px]"
+      />
+      <span className="min-w-0 flex-1 truncate text-xs">{reviewer.login}</span>
+      {reviewer.verdict === undefined ? (
+        <span className="text-[10px] text-muted-foreground">Requested</span>
+      ) : (
+        <span className="flex shrink-0 items-center gap-1">
+          <Badge variant="outline" className="gap-1 text-[10px]">
+            <ReviewVerdictIcon verdict={reviewer.verdict} />
+            {reviewVerdictLabel(reviewer.verdict)}
+          </Badge>
+          {reviewer.outdated ? (
+            <Badge
+              variant="outline"
+              className="gap-1 text-[10px] text-muted-foreground"
+            >
+              <History className="size-3" />
+              Outdated
+            </Badge>
+          ) : null}
+        </span>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The viewer's own open GitHub pending review, rendered as an additional row
+ * — never a replacement for anyone's verdict row. Visually distinct from a
+ * submitted verdict through more than colour: a dashed border, an italic
+ * "draft" label, and a pen icon on its comment-count badge.
+ */
+function PendingReviewRow({
+  count,
+}: {
+  readonly count: number;
+}): React.JSX.Element {
+  return (
+    <div
+      aria-label="Your review in progress"
+      className="flex items-center gap-2 rounded-md border border-dashed border-muted-foreground/40 px-1.5 py-1"
+    >
+      <Avatar name="You" className="size-5 text-[10px]" />
+      <span className="min-w-0 flex-1 truncate text-xs italic text-muted-foreground">
+        Your review · draft
+      </span>
+      <Badge variant="outline" className="gap-1 text-[10px]">
+        <PenLine className="size-3" />
+        {count} {count === 1 ? "comment" : "comments"}
+      </Badge>
+    </div>
+  );
+}
+
+/** The Reviewers section's fetched body: the read state's failure/loading copy, or its list of reviewer rows plus the empty state. */
+function ReviewersSectionBody({
+  readState,
+}: {
+  readonly readState: ReviewerSectionReadState;
+}): React.JSX.Element {
+  if (readState._tag === "loading")
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Spinner className="size-3" /> Loading reviewers…
+      </p>
+    );
+  if (readState._tag === "github_auth")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        GitHub authentication is required before Patchdesk can show this pull
+        request&apos;s reviewers.
+      </p>
+    );
+  if (readState._tag === "github_read")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        Patchdesk could not load this pull request&apos;s reviewers. Refresh to
+        retry.
+      </p>
+    );
+  if (readState._tag === "github_rate_limited")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        {rateLimitedCopy(readState.resumeAt)}
+      </p>
+    );
+  if (readState._tag === "github_forbidden")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        {forbiddenCopy(readState.reason)}
+      </p>
+    );
+  if (readState.reviewers.length === 0)
+    return (
+      <p className="text-xs text-muted-foreground">
+        No review has been requested, and none has been submitted.
+      </p>
+    );
+  return (
+    <ul className="flex flex-col gap-1.5" aria-label="Pull request reviewers">
+      {readState.reviewers.map((reviewer) => (
+        <ReviewerListRow key={reviewer.login} reviewer={reviewer} />
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The Reviewers section: every reviewer's Revision-bound review verdict (or
+ * their pending "Requested" ask), plus the viewer's own open pending review
+ * when there is one. Unlike `AssigneesSection` (whose row list comes
+ * straight from the `assignees` prop), the verdict-augmented row list here
+ * only exists behind `GET /v1/reviews/reviewers`, so this section owns its
+ * own fetch-on-mount discipline — once when mounted, again whenever the
+ * workbench re-baselines (`refreshedAt` changes), never polling — the same
+ * discipline `AssigneesSection` already uses for its own permission read.
+ */
+function ReviewersSection({
+  requestedReviewers,
+  pendingReview,
+  freshness,
+  refreshedAt,
+  terminal,
+  actions,
+}: {
+  readonly requestedReviewers: ReadonlyArray<string>;
+  readonly pendingReview?: PendingReviewProjection;
+  readonly freshness: RevisionFreshness;
+  readonly refreshedAt: string;
+  readonly terminal: boolean;
+  readonly actions?: ReviewerPickerActions;
+}): React.JSX.Element {
+  const [readState, setReadState] = useState<ReviewerSectionReadState>({
+    _tag: "loading",
+  });
+
+  useEffect(() => {
+    if (actions === undefined) {
+      setReadState({ _tag: "loading" });
+      return;
+    }
+    let cancelled = false;
+    setReadState({ _tag: "loading" });
+    actions
+      .fetchReviewers()
+      .then((response) => {
+        if (cancelled) return;
+        setReadState(projectReviewerSectionReadState(response));
+      })
+      .catch(() => {
+        if (!cancelled) setReadState({ _tag: "github_read" });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `refreshedAt` re-triggers the fetch on every workbench re-baseline;
+    // it is intentionally in the dependency list purely as a re-fetch key.
+  }, [actions, refreshedAt]);
+
+  const pickerProps: MutableReviewerPickerProps = {
+    attachedReviewers: requestedReviewers,
+  };
+  if (actions !== undefined) pickerProps.actions = actions;
+
+  const headerProps: MutableRailSectionHeaderProps = {
+    title: "Reviewers",
+    freshness,
+  };
+  if (!terminal) headerProps.settings = <ReviewerPicker {...pickerProps} />;
+
+  const pendingCount =
+    pendingReview?.state === "pending" ? pendingReview.count : undefined;
+
+  return (
+    <RailSection {...headerProps}>
+      <div className="flex flex-col gap-1.5">
+        <ReviewersSectionBody readState={readState} />
+        {pendingCount === undefined ? null : (
+          <PendingReviewRow count={pendingCount} />
+        )}
+      </div>
+    </RailSection>
+  );
+}
 
 /**
  * The Assignees section: the pull request's current assignees (as an
@@ -240,10 +550,11 @@ function AssigneesSection({
 
 /**
  * The sticky right-hand rail on the Conversation tab, holding one
- * `RailSection` per pull-request metadata topic. `ReviewWorkbench` builds
- * this element (it holds the model) and passes it to `Conversation` as a
- * plain `rail` prop, which keeps the rail off the Diff and Insights tabs by
- * construction — `Conversation` only ever renders what it's given.
+ * `RailSection` per pull-request metadata topic, in order: Reviewers,
+ * Assignees, Labels. `ReviewWorkbench` builds this element (it holds the
+ * model) and passes it to `Conversation` as a plain `rail` prop, which keeps
+ * the rail off the Diff and Insights tabs by construction — `Conversation`
+ * only ever renders what it's given.
  *
  * Under `terminal` (the Review is no longer open), every section renders
  * read-only: `settings` is withheld entirely rather than left to
@@ -253,20 +564,37 @@ function AssigneesSection({
 export function PullRequestMetadataRail({
   labels,
   assignees,
+  requestedReviewers,
+  pendingReview,
   freshness,
   refreshedAt,
   terminal,
   labelActions,
   assigneeActions,
+  reviewerActions,
 }: {
   readonly labels: ReadonlyArray<GitHubLabel>;
   readonly assignees: ReadonlyArray<string>;
+  readonly requestedReviewers: ReadonlyArray<string>;
+  readonly pendingReview?: PendingReviewProjection;
   readonly freshness: RevisionFreshness;
   readonly refreshedAt: string;
   readonly terminal: boolean;
   readonly labelActions?: LabelPickerActions;
   readonly assigneeActions?: AssigneesSectionActions;
+  readonly reviewerActions?: ReviewerPickerActions;
 }): React.JSX.Element {
+  const reviewersSectionProps: MutableReviewersSectionProps = {
+    requestedReviewers,
+    freshness,
+    refreshedAt,
+    terminal,
+  };
+  if (pendingReview !== undefined)
+    reviewersSectionProps.pendingReview = pendingReview;
+  if (reviewerActions !== undefined)
+    reviewersSectionProps.actions = reviewerActions;
+
   const assigneesSectionProps: MutableAssigneesSectionProps = {
     assignees,
     freshness,
@@ -275,28 +603,27 @@ export function PullRequestMetadataRail({
   };
   if (assigneeActions !== undefined)
     assigneesSectionProps.actions = assigneeActions;
+
+  const labelsSectionHeaderProps: MutableLabelsRailSectionProps = {
+    title: "Labels",
+    freshness,
+  };
+  if (!terminal)
+    labelsSectionHeaderProps.settings = (
+      <LabelPicker
+        attachedLabels={labels}
+        {...(labelActions === undefined ? {} : { actions: labelActions })}
+      />
+    );
+
   return (
     <aside
       aria-label="Pull request metadata"
       className="w-full min-[1100px]:sticky min-[1100px]:top-0 min-[1100px]:w-[272px] min-[1100px]:shrink-0"
     >
+      <ReviewersSection {...reviewersSectionProps} />
       <AssigneesSection {...assigneesSectionProps} />
-      <RailSection
-        title="Labels"
-        freshness={freshness}
-        {...(terminal
-          ? {}
-          : {
-              settings: (
-                <LabelPicker
-                  attachedLabels={labels}
-                  {...(labelActions === undefined
-                    ? {}
-                    : { actions: labelActions })}
-                />
-              ),
-            })}
-      >
+      <RailSection {...labelsSectionHeaderProps}>
         {labels.length === 0 ? (
           <p className="text-xs text-muted-foreground">No labels.</p>
         ) : (

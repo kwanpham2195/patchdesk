@@ -39,15 +39,16 @@ import type { PullRequestRef } from "../../../domain/pull-request";
 import type { AssigneesSectionActions } from "./assignee-picker";
 import type { LabelPickerActions } from "./label-picker";
 import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
+import type { ReviewerPickerActions } from "./reviewer-picker";
 
 /** Mutable form of `PullRequestMetadataRail`'s props, so `ReviewWorkbench`
  * can assign `labelActions`/`assigneeActions` only when present instead of a
  * conditional empty-object spread (mirrors `MutableGeneralThreadOverrides`
  * in `conversation.tsx`). */
 type MutablePullRequestMetadataRailProps = {
-  -readonly [K in keyof React.ComponentProps<
-    typeof PullRequestMetadataRail
-  >]: React.ComponentProps<typeof PullRequestMetadataRail>[K];
+  -readonly [
+    K in keyof React.ComponentProps<typeof PullRequestMetadataRail>
+  ]: React.ComponentProps<typeof PullRequestMetadataRail>[K];
 };
 import type {
   CommitDiffResponse,
@@ -355,6 +356,7 @@ export type ReviewWorkbenchActions = {
   readonly deleteComment?: (commentId: string) => Promise<void>;
   readonly labels?: LabelPickerActions;
   readonly assignees?: AssigneesSectionActions;
+  readonly reviewers?: ReviewerPickerActions;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
@@ -490,9 +492,9 @@ export function ReviewWorkbench({
   // diff range it anchors to. Not part of restored position (screen-restore's
   // schema stays as widened in slice B) — a stale mark on reopen would be
   // worse than none.
-  const [selectedThreadId, setSelectedThreadId] = useState<
-    string | undefined
-  >(undefined);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | undefined>(
+    undefined,
+  );
   const [selectedRange, setSelectedRange] = useState<
     SelectedDiffRange | undefined
   >(undefined);
@@ -783,13 +785,18 @@ export function ReviewWorkbench({
   const railProps: MutablePullRequestMetadataRailProps = {
     labels: model.pullRequest?.labels ?? [],
     assignees: model.pullRequest?.assignees ?? [],
+    requestedReviewers: model.pullRequest?.requestedReviewers ?? [],
     freshness: model.revision.freshness,
     refreshedAt: model.revision.refreshedAt,
     terminal,
   };
+  if (model.pendingReview !== undefined)
+    railProps.pendingReview = model.pendingReview;
   if (actions.labels !== undefined) railProps.labelActions = actions.labels;
   if (actions.assignees !== undefined)
     railProps.assigneeActions = actions.assignees;
+  if (actions.reviewers !== undefined)
+    railProps.reviewerActions = actions.reviewers;
   const conversationRail =
     model.pullRequest === undefined ? undefined : (
       <PullRequestMetadataRail {...railProps} />

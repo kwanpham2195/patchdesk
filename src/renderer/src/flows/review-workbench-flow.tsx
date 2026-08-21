@@ -35,6 +35,7 @@ import {
 } from "../components/review-workbench";
 import type { AssigneesSectionActions } from "../components/assignee-picker";
 import type { LabelPickerActions } from "../components/label-picker";
+import type { ReviewerPickerActions } from "../components/reviewer-picker";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
@@ -57,12 +58,14 @@ import {
   parseInsightProviderCatalog,
   parsePendingReviewProjection,
   parseRepositoryLabelListResponse,
+  parseReviewerListResponse,
   parseWorkbenchResponse,
   type AssignableUserListResponse,
   type CommitDiffResponse,
   type DirectSummaryReviewProjection,
   type PendingReviewProjection,
   type RepositoryLabelListResponse,
+  type ReviewerListResponse,
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
@@ -558,9 +561,10 @@ export function ReviewWorkbenchFlow({
   const saveInlineComment = useCallback(
     async (
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
-    ): Promise<
-      { readonly commentId: string; readonly threadId?: string } | void
-    > => {
+    ): Promise<{
+      readonly commentId: string;
+      readonly threadId?: string;
+    } | void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
         throw new Error("The current Diff cannot accept comments.");
@@ -910,6 +914,70 @@ export function ReviewWorkbenchFlow({
     }
     return [];
   }, [workbench, runDirectCommand]);
+  // Reviewers are pull-request-level metadata, gated the same way as labels
+  // and assignees above (see `canWriteLabels`'s comment).
+  const canWriteReviewers = workbench.review.status === "open";
+  const fetchReviewers = useCallback(
+    async (query?: string): Promise<ReviewerListResponse | undefined> => {
+      const queryField =
+        query === undefined || query === ""
+          ? ""
+          : `&query=${encodeURIComponent(query)}`;
+      const value = await requestJson(
+        `/v1/reviews/reviewers?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}${queryField}`,
+      );
+      return parseReviewerListResponse(value);
+    },
+    [workbench],
+  );
+  const requestReviewers = useCallback(
+    async (
+      reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
+    ): Promise<void> => {
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/reviewers/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: { _tag: "RequestReviewers", reviewers },
+          },
+        }),
+      );
+      const receipt = parseReviewerReceipt(value);
+      if (receipt?._tag === "ReviewersRequested") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "ReviewerChange", requested: receipt.requested, removed: [] },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
+  const removeReviewers = useCallback(
+    async (
+      reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
+    ): Promise<void> => {
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/reviewers/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: { _tag: "RemoveReviewers", reviewers },
+          },
+        }),
+      );
+      const receipt = parseReviewerReceipt(value);
+      if (receipt?._tag === "ReviewersRemoved") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "ReviewerChange", requested: [], removed: receipt.removed },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
     workbench.revision.freshness === "fresh" &&
@@ -1009,17 +1077,14 @@ export function ReviewWorkbenchFlow({
                     anchor: command.anchor,
                     body: command.body,
                   };
-        const value = await requestJson(
-          "/v1/reviews/pending-review/command",
-          {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-              command: requestCommand,
-            },
+        const value = await requestJson("/v1/reviews/pending-review/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: requestCommand,
           },
-        );
+        });
         const projection = applyPendingReviewProjection(value);
         setFinishDialogError(undefined);
         // Journal the exact pending-thread mutations so the detector never reads
@@ -1567,17 +1632,17 @@ export function ReviewWorkbenchFlow({
   const labelActions: LabelPickerActions | undefined = canWriteLabels
     ? { fetchLabels, addLabels, removeLabels }
     : undefined;
-  const assigneeActions: AssigneesSectionActions | undefined =
-    canWriteAssignees
-      ? { fetchAssignableUsers, addAssignees, removeAssignees, assignSelf }
-      : undefined;
+  const assigneeActions: AssigneesSectionActions | undefined = canWriteAssignees
+    ? { fetchAssignableUsers, addAssignees, removeAssignees, assignSelf }
+    : undefined;
+  const reviewerActions: ReviewerPickerActions | undefined = canWriteReviewers
+    ? { fetchReviewers, requestReviewers, removeReviewers }
+    : undefined;
 
   const workbenchActionsBase = {
     detectUpdates: runDetect,
     refresh,
-    loadCommitDiff: async (
-      commitSha: string,
-    ): Promise<CommitDiffResponse> => {
+    loadCommitDiff: async (commitSha: string): Promise<CommitDiffResponse> => {
       const value = await requestJson("/v1/reviews/commit-diff", {
         method: "POST",
         body: {
@@ -1587,8 +1652,7 @@ export function ReviewWorkbenchFlow({
         },
       });
       const parsed = parseCommitDiffResponse(value);
-      if (parsed === undefined)
-        throw new Error("Invalid commit diff response");
+      if (parsed === undefined) throw new Error("Invalid commit diff response");
       return parsed;
     },
     reportNavigationState: onNavigationStateChange,
@@ -1638,10 +1702,14 @@ export function ReviewWorkbenchFlow({
     assigneeActions === undefined
       ? workbenchActionsWithLabels
       : { ...workbenchActionsWithLabels, assignees: assigneeActions };
+  const workbenchActionsWithReviewers =
+    reviewerActions === undefined
+      ? workbenchActionsWithAssignees
+      : { ...workbenchActionsWithAssignees, reviewers: reviewerActions };
   const workbenchActions =
     conversationActions === undefined
-      ? workbenchActionsWithAssignees
-      : { ...workbenchActionsWithAssignees, ...conversationActions };
+      ? workbenchActionsWithReviewers
+      : { ...workbenchActionsWithReviewers, ...conversationActions };
 
   return (
     <>
@@ -2992,6 +3060,35 @@ function parseAssigneeReceipt(
   value: unknown,
 ): AssigneeReceipt | undefined {
   const parsed = v.safeParse(assigneeReceiptSchema, value);
+  return parsed.success ? parsed.output : undefined;
+}
+
+const reviewerReceiptSchema = v.variant("_tag", [
+  v.looseObject({
+    _tag: v.literal("ReviewersRequested"),
+    requested: v.array(v.string()),
+  }),
+  v.looseObject({
+    _tag: v.literal("ReviewersRemoved"),
+    removed: v.array(v.string()),
+  }),
+]);
+
+type ReviewerReceipt =
+  | {
+      readonly _tag: "ReviewersRequested";
+      readonly requested: ReadonlyArray<string>;
+    }
+  | {
+      readonly _tag: "ReviewersRemoved";
+      readonly removed: ReadonlyArray<string>;
+    };
+
+function parseReviewerReceipt(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the reviewers command response; there is no earlier boundary to run it at.
+  value: unknown,
+): ReviewerReceipt | undefined {
+  const parsed = v.safeParse(reviewerReceiptSchema, value);
   return parsed.success ? parsed.output : undefined;
 }
 

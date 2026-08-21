@@ -206,9 +206,19 @@ test.describe("pull request metadata rail", () => {
     await expect(
       rail.getByRole("button", { name: "Assign yourself" }),
     ).toHaveCount(0);
+    // The Reviewers section is read-only the same way: reviewer rows still
+    // render (both a verdict and a requested-but-unanswered row), but no
+    // picker trigger is offered.
+    await expect(rail.getByText("fixture-approved-reviewer")).toBeVisible();
+    await expect(
+      rail.locator('[data-slot="badge"]', { hasText: "Approved" }),
+    ).toBeVisible();
+    await expect(
+      rail.getByRole("button", { name: "Manage reviewers" }),
+    ).toHaveCount(0);
   });
 
-  test("renders an Assignees section above Labels, listing assignees with initials badges", async ({
+  test("renders Reviewers above Assignees above Labels, listing assignees with initials badges", async ({
     page,
   }) => {
     await page.goto(`${origin(server)}/#workbench-fixture`);
@@ -219,17 +229,279 @@ test.describe("pull request metadata rail", () => {
       name: "Pull request metadata",
     });
     const headings = rail.getByRole("heading", { level: 2 });
-    await expect(headings.nth(0)).toHaveText("Assignees");
-    await expect(headings.nth(1)).toHaveText("Labels");
-    const assigneeRow = rail.getByText("fixture-assignee");
-    await expect(assigneeRow).toBeVisible();
+    await expect(headings.nth(0)).toHaveText("Reviewers");
+    await expect(headings.nth(1)).toHaveText("Assignees");
+    await expect(headings.nth(2)).toHaveText("Labels");
+    const assigneeRow = rail.getByRole("list", {
+      name: "Pull request assignees",
+    });
+    await expect(assigneeRow.getByText("fixture-assignee")).toBeVisible();
     await expect(
       rail.getByRole("button", { name: "Manage assignees" }),
     ).toBeVisible();
     // An initials badge (`Avatar` with no `dataUri`) renders next to the row.
     await expect(
-      rail.locator('[data-slot="avatar"]', { hasText: "F" }),
+      assigneeRow.locator('[data-slot="avatar"]', { hasText: "F" }),
     ).toBeVisible();
+  });
+
+  test("renders reviewer rows: a requested-but-unanswered row, a current verdict, and an outdated verdict marked as such without relying on colour alone", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    const reviewerList = rail.getByRole("list", {
+      name: "Pull request reviewers",
+    });
+    await expect(reviewerList).toBeVisible();
+    // A requested reviewer with no verdict yet reads as "Requested", not blank.
+    const requestedRow = reviewerList.locator("li", {
+      hasText: "fixture-reviewer",
+    });
+    await expect(requestedRow).toBeVisible();
+    await expect(requestedRow.getByText("Requested")).toBeVisible();
+    // A current, on-revision verdict carries no outdated marking.
+    const approvedRow = reviewerList.locator("li", {
+      hasText: "fixture-approved-reviewer",
+    });
+    await expect(
+      approvedRow.locator('[data-slot="badge"]', { hasText: "Approved" }),
+    ).toBeVisible();
+    await expect(
+      approvedRow.locator('[data-slot="badge"]', { hasText: "Outdated" }),
+    ).toHaveCount(0);
+    // An outdated verdict is marked in text, not only by colour.
+    const outdatedRow = reviewerList.locator("li", {
+      hasText: "fixture-outdated-reviewer",
+    });
+    await expect(
+      outdatedRow.locator('[data-slot="badge"]', {
+        hasText: "Changes requested",
+      }),
+    ).toBeVisible();
+    await expect(
+      outdatedRow.locator('[data-slot="badge"]', { hasText: "Outdated" }),
+    ).toBeVisible();
+  });
+
+  test("states plainly, and distinctly from a failure, when no review has been requested or submitted", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-empty-reviewers-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await expect(
+      rail.getByText(
+        "No review has been requested, and none has been submitted.",
+      ),
+    ).toBeVisible();
+    await expect(rail.getByRole("alert")).toHaveCount(0);
+  });
+
+  test("reads a failed reviewer fetch as a failure, not as nobody reviewing", async ({
+    page,
+  }) => {
+    await page.goto(
+      `${origin(server)}/#workbench-reviewers-read-failure-fixture`,
+    );
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await expect(
+      rail.getByText(
+        "Patchdesk could not load this pull request's reviewers. Refresh to retry.",
+      ),
+    ).toBeVisible();
+    await expect(rail.getByText("No review has been requested")).toHaveCount(0);
+  });
+
+  test("renders the viewer's own pending review as an additional, visually distinct row, while a prior verdict stays visible", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-reviewers-pending-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    const pendingRow = rail.locator('[aria-label="Your review in progress"]');
+    await expect(pendingRow).toBeVisible();
+    await expect(pendingRow.getByText("3 comments")).toBeVisible();
+    await expect(pendingRow.getByText("draft", { exact: false })).toBeVisible();
+    // The prior submitted verdict is still visible alongside the draft row.
+    await expect(rail.getByText("fixture-approved-reviewer")).toBeVisible();
+    await expect(
+      rail.locator('[data-slot="badge"]', { hasText: "Approved" }),
+    ).toBeVisible();
+  });
+
+  test("no pending row renders when there is no open pending review", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await expect(
+      rail.locator('[aria-label="Your review in progress"]'),
+    ).toHaveCount(0);
+  });
+
+  test("the Reviewers picker groups suggested reviewers above candidates, states no reviewer number, filters by search, and requests someone", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage reviewers" }).click();
+    // No cap is stated anywhere, unlike the assignee picker's ten-person cap.
+    await expect(page.getByText(/up to \d+ reviewer/i)).toHaveCount(0);
+    const suggestedGroup = page.getByRole("group", {
+      name: "Suggested reviewers",
+    });
+    await expect(suggestedGroup).toBeVisible();
+    await expect(
+      suggestedGroup.getByText("fixture-suggested-reviewer"),
+    ).toBeVisible();
+    await expect(
+      suggestedGroup.getByText("Authored this change"),
+    ).toBeVisible();
+    const requestedCheckbox = page.getByRole("checkbox", {
+      name: "fixture-reviewer",
+    });
+    const otherCheckbox = page.getByRole("checkbox", {
+      name: "fixture-other-reviewer",
+    });
+    expect(await requestedCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(await otherCheckbox.getAttribute("aria-checked")).toBe("false");
+
+    await page
+      .getByRole("searchbox", { name: "Search reviewer candidates" })
+      .fill("other");
+    await expect(requestedCheckbox).toHaveCount(0);
+    await expect(otherCheckbox).toBeVisible();
+
+    await otherCheckbox.click();
+    await expect(otherCheckbox).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("toggling a requested reviewer off removes the request", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage reviewers" }).click();
+    const requestedCheckbox = page.getByRole("checkbox", {
+      name: "fixture-reviewer",
+    });
+    await expect(requestedCheckbox).toHaveAttribute("aria-checked", "true");
+    await requestedCheckbox.click();
+    await expect(requestedCheckbox).toHaveAttribute("aria-checked", "false");
+  });
+
+  test("a failed reviewer write reverts and names the person", async ({
+    page,
+  }) => {
+    await page.goto(
+      `${origin(server)}/#workbench-reviewers-write-failure-fixture`,
+    );
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage reviewers" }).click();
+    const otherCheckbox = page.getByRole("checkbox", {
+      name: "fixture-other-reviewer",
+    });
+    await otherCheckbox.click();
+    await expect(otherCheckbox).toHaveAttribute("aria-checked", "false");
+    await expect(
+      page.getByText('Patchdesk could not ask "fixture-other-reviewer"', {
+        exact: false,
+      }),
+    ).toBeVisible();
+  });
+
+  test("the reviewer picker is disabled and states the account cannot manage reviewers when permission is denied", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-reviewers-denied-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage reviewers" }).click();
+    await expect(
+      page.getByText(
+        "This account cannot manage reviewers on this repository.",
+      ),
+    ).toBeVisible();
+    const otherCheckbox = page.getByRole("checkbox", {
+      name: "fixture-other-reviewer",
+    });
+    expect(await otherCheckbox.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  test("the reviewer picker states an honest, unconfirmed caveat when permission is unknown", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-reviewers-unknown-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage reviewers" }).click();
+    await expect(
+      page.getByText(
+        "Patchdesk could not confirm you can manage reviewers here — a change may be refused.",
+      ),
+    ).toBeVisible();
+  });
+
+  test("under Terminal state the Reviewers section is read-only: no picker trigger", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-merged-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await expect(
+      rail.getByRole("button", { name: "Manage reviewers" }),
+    ).toHaveCount(0);
   });
 
   test("states plainly when nobody is assigned, and offers a self-assign shortcut", async ({
@@ -339,10 +611,7 @@ test.describe("pull request metadata rail", () => {
       name: "fixture-collaborator",
     });
     await collaboratorCheckbox.click();
-    await expect(collaboratorCheckbox).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
+    await expect(collaboratorCheckbox).toHaveAttribute("aria-checked", "false");
     await expect(
       page.getByText('Patchdesk could not assign "fixture-collaborator".', {
         exact: false,
@@ -361,9 +630,7 @@ test.describe("pull request metadata rail", () => {
       name: "Pull request metadata",
     });
     await rail.getByRole("button", { name: "Manage assignees" }).click();
-    await page
-      .getByRole("checkbox", { name: "fixture-collaborator" })
-      .click();
+    await page.getByRole("checkbox", { name: "fixture-collaborator" }).click();
     await expect(
       page.getByText("GitHub limits a pull request to ten assignees.", {
         exact: false,
