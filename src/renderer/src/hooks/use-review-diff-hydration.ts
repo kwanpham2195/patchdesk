@@ -7,29 +7,51 @@ import {
   useState,
 } from "react";
 import { processFile, type FileDiffMetadata } from "@pierre/diffs";
+import * as v from "valibot";
 
 import { requestJson } from "@/api-client";
 import type { ReviewContextStatus } from "@/review-context-control";
+import type { RawJsonValue } from "../../../domain/json";
 
 const HYDRATION_CONCURRENCY = 2;
+
+// `@pierre/diffs` does not export `ProcessFileOptions` directly; derive it
+// structurally from `processFile`'s own signature instead of duplicating it.
+type ProcessFileOptions = NonNullable<Parameters<typeof processFile>[1]>;
 
 export type ReviewDiffSourceSession = {
   readonly profileId: string;
   readonly sessionId: string;
 };
 
+type DiffFileContents = { readonly name: string; readonly contents: string };
+
+type ReadyDiffSourceResponse = {
+  readonly state: "ready";
+  readonly oldFile?: DiffFileContents;
+  readonly newFile?: DiffFileContents;
+};
+
+/** Mutable draft of `ReadyDiffSourceResponse`, built in statements so the
+ * optional `oldFile`/`newFile` are added only when they parsed. */
+type MutableReadyDiffSourceResponse = {
+  -readonly [K in keyof ReadyDiffSourceResponse]: ReadyDiffSourceResponse[K];
+};
+
 type DiffSourceResponse =
-  | {
-      readonly state: "ready";
-      readonly oldFile?: { readonly name: string; readonly contents: string };
-      readonly newFile?: { readonly name: string; readonly contents: string };
-    }
+  | ReadyDiffSourceResponse
   | { readonly state: "unavailable"; readonly reason: string };
 
 type HydrationSource = {
   readonly patch: string;
   readonly profileId?: string;
   readonly sessionId?: string;
+};
+
+/** Mutable draft of `HydrationSource`, built in statements so the optional
+ * `profileId`/`sessionId` are added only when the session carries them. */
+type MutableHydrationSource = {
+  -readonly [K in keyof HydrationSource]: HydrationSource[K];
 };
 
 export type ReviewDiffHydration = {
@@ -61,11 +83,9 @@ export function useReviewDiffHydration({
     useState<ReviewContextStatus>("idle");
   const sourceProfileId = sourceSession?.profileId;
   const sourceSessionId = sourceSession?.sessionId;
-  const currentSource: HydrationSource = {
-    patch,
-    ...(sourceProfileId === undefined ? {} : { profileId: sourceProfileId }),
-    ...(sourceSessionId === undefined ? {} : { sessionId: sourceSessionId }),
-  };
+  const currentSource: MutableHydrationSource = { patch };
+  if (sourceProfileId !== undefined) currentSource.profileId = sourceProfileId;
+  if (sourceSessionId !== undefined) currentSource.sessionId = sourceSessionId;
   const [hydrationSource, setHydrationSource] =
     useState<HydrationSource>(currentSource);
   const [hydrationGeneration, setHydrationGeneration] = useState(0);
@@ -88,6 +108,7 @@ export function useReviewDiffHydration({
   const hydratedFilesRef = useRef(hydratedFiles);
   const unavailableHydrationPaths = useRef(new Set<string>());
   const committedHydrationGeneration = useRef(hydrationGeneration);
+  const hydratedFlushScheduled = useRef(false);
   const rawFilePatches = useMemo(() => splitPatch(patch), [patch]);
   const rawPatchesByPath = useMemo(
     () => indexPatchPaths(rawFilePatches),
@@ -102,6 +123,22 @@ export function useReviewDiffHydration({
     hydrationRequests.current.clear();
     unavailableHydrationPaths.current.clear();
   }, [hydrationGeneration]);
+
+  // Concurrent hydration responses (up to HYDRATION_CONCURRENCY at once) each
+  // land in their own microtask; flushing every one to React state would
+  // re-render once per response and re-trigger CodeView's layout
+  // invalidation mid-scroll. queueMicrotask (not requestAnimationFrame) still
+  // fires before the tests' `await act(async () => { ...; await
+  // Promise.all(...) })` resolves, since it's queued from inside the
+  // response's own .then() before that handler's promise chain settles.
+  const scheduleHydratedFlush = useCallback(() => {
+    if (hydratedFlushScheduled.current) return;
+    hydratedFlushScheduled.current = true;
+    queueMicrotask(() => {
+      hydratedFlushScheduled.current = false;
+      setHydratedFiles(hydratedFilesRef.current);
+    });
+  }, []);
 
   const hydrateFile = useCallback(
     (path: string): Promise<boolean> => {
@@ -139,14 +176,12 @@ export function useReviewDiffHydration({
             unavailableHydrationPaths.current.add(path);
             return false;
           }
-          const hydrated = processFile(rawFilePatch, {
-            ...(source.oldFile === undefined
-              ? {}
-              : { oldFile: source.oldFile }),
-            ...(source.newFile === undefined
-              ? {}
-              : { newFile: source.newFile }),
-          });
+          const hydrateOptions: ProcessFileOptions = {};
+          if (source.oldFile !== undefined)
+            hydrateOptions.oldFile = source.oldFile;
+          if (source.newFile !== undefined)
+            hydrateOptions.newFile = source.newFile;
+          const hydrated = processFile(rawFilePatch, hydrateOptions);
           if (hydrated === undefined) {
             unavailableHydrationPaths.current.add(path);
             return false;
@@ -154,7 +189,7 @@ export function useReviewDiffHydration({
           const next = new Map(hydratedFilesRef.current);
           next.set(path, hydrated);
           hydratedFilesRef.current = next;
-          setHydratedFiles(next);
+          scheduleHydratedFlush();
           return true;
         })
         .catch(() => {
@@ -176,6 +211,7 @@ export function useReviewDiffHydration({
       patch,
       rawFilePatches,
       rawPatchesByPath,
+      scheduleHydratedFlush,
       sourceProfileId,
       sourceSessionId,
     ],
@@ -271,37 +307,40 @@ function indexPatchPaths(
   return indexed;
 }
 
+const diffFileContentsSchema = v.looseObject({
+  name: v.string(),
+  contents: v.string(),
+});
+
+// Loose at the envelope level so `reason`/`oldFile`/`newFile` can each be
+// re-validated independently below: a malformed `oldFile` must not reject a
+// response whose `newFile` is well-formed (and vice versa), so the two
+// cannot be folded into one atomic object schema.
+const diffSourceEnvelopeSchema = v.looseObject({
+  state: v.string(),
+  reason: v.optional(v.unknown()),
+  oldFile: v.optional(v.unknown()),
+  newFile: v.optional(v.unknown()),
+});
+
 function parseDiffSourceResponse(
-  value: unknown,
+  value: RawJsonValue | undefined,
 ): DiffSourceResponse | undefined {
-  if (typeof value !== "object" || value === null || !("state" in value)) {
-    return undefined;
-  }
-  const candidate = value as Record<string, unknown>;
-  if (
-    candidate.state === "unavailable" &&
-    typeof candidate.reason === "string"
-  ) {
-    return { state: "unavailable", reason: candidate.reason };
-  }
-  if (candidate.state !== "ready") return undefined;
-  const parseFile = (
-    input: unknown,
-  ): { readonly name: string; readonly contents: string } | undefined =>
-    typeof input === "object" &&
-    input !== null &&
-    "name" in input &&
-    "contents" in input &&
-    typeof input.name === "string" &&
-    typeof input.contents === "string"
-      ? { name: input.name, contents: input.contents }
+  const envelope = v.safeParse(diffSourceEnvelopeSchema, value);
+  if (!envelope.success) return undefined;
+  const { state, reason, oldFile, newFile } = envelope.output;
+  if (state === "unavailable") {
+    const parsedReason = v.safeParse(v.string(), reason);
+    return parsedReason.success
+      ? { state: "unavailable", reason: parsedReason.output }
       : undefined;
-  const oldFile = parseFile(candidate.oldFile);
-  const newFile = parseFile(candidate.newFile);
-  if (oldFile === undefined && newFile === undefined) return undefined;
-  return {
-    state: "ready",
-    ...(oldFile === undefined ? {} : { oldFile }),
-    ...(newFile === undefined ? {} : { newFile }),
-  };
+  }
+  if (state !== "ready") return undefined;
+  const parsedOldFile = v.safeParse(diffFileContentsSchema, oldFile);
+  const parsedNewFile = v.safeParse(diffFileContentsSchema, newFile);
+  if (!parsedOldFile.success && !parsedNewFile.success) return undefined;
+  const response: MutableReadyDiffSourceResponse = { state: "ready" };
+  if (parsedOldFile.success) response.oldFile = parsedOldFile.output;
+  if (parsedNewFile.success) response.newFile = parsedNewFile.output;
+  return response;
 }

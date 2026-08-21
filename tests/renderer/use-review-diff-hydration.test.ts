@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useReviewDiffHydration } from "../../src/renderer/src/hooks/use-review-diff-hydration";
+import type { RawJsonValue } from "../../src/domain/json";
 
 const patchA =
   "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
@@ -31,15 +32,16 @@ function ready(oldText = "old", newText = "new") {
 }
 
 function installBridge(
-  response: () => Promise<unknown> | unknown,
-): Array<{ readonly path: string; readonly body?: unknown }> {
-  const calls: Array<{ readonly path: string; readonly body?: unknown }> = [];
+  response: () => Promise<RawJsonValue> | RawJsonValue,
+): Array<{ readonly path: string; readonly body?: RawJsonValue }> {
+  const calls: Array<{ readonly path: string; readonly body?: RawJsonValue }> =
+    [];
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
     value: {
       request: async (input: {
         readonly path: string;
-        readonly body?: unknown;
+        readonly body?: RawJsonValue;
       }) => {
         calls.push(input);
         return {
@@ -54,13 +56,22 @@ function installBridge(
   return calls;
 }
 
+// The mocked `request` for a single `diff-file` call, typed to the one field
+// these tests actually branch on (`path`) instead of leaving `body` unknown.
+type MockDiffFileRequestInput = {
+  readonly path: string;
+  readonly body?: { readonly path?: string };
+};
+
 afterEach(() => {
-  delete (window as unknown as { patchdesk?: unknown }).patchdesk;
+  // SAFETY: removes the test-installed `window.patchdesk` stub between
+  // tests; the global itself is declared optional elsewhere in the app.
+  delete (window as { patchdesk?: unknown }).patchdesk;
 });
 
 describe("useReviewDiffHydration", () => {
   it("shares one concurrent bridge request for duplicate paths", async () => {
-    const source = deferred<unknown>();
+    const source = deferred<RawJsonValue>();
     const calls = installBridge(() => source.promise);
     const { result } = renderHook(() =>
       useReviewDiffHydration({
@@ -88,7 +99,7 @@ describe("useReviewDiffHydration", () => {
   });
 
   it("rejects a late response from an old patch generation", async () => {
-    const oldSource = deferred<unknown>();
+    const oldSource = deferred<RawJsonValue>();
     const calls = installBridge(() => oldSource.promise);
     const { result, rerender } = renderHook(
       ({ patch, sessionId }) =>
@@ -122,12 +133,9 @@ describe("useReviewDiffHydration", () => {
     Object.defineProperty(window, "patchdesk", {
       configurable: true,
       value: {
-        request: async (input: {
-          readonly path: string;
-          readonly body?: unknown;
-        }) => {
+        request: async (input: MockDiffFileRequestInput) => {
           calls.push(input);
-          const body = input.body as { readonly path?: string } | undefined;
+          const body = input.body;
           return {
             ok: true,
             status: 200,
@@ -167,7 +175,7 @@ describe("useReviewDiffHydration", () => {
 
   it("does not retry a failed path until the generation changes", async () => {
     let requestNumber = 0;
-    const retry = deferred<unknown>();
+    const retry = deferred<RawJsonValue>();
     const calls = installBridge(() => {
       requestNumber += 1;
       return requestNumber === 1
@@ -202,5 +210,104 @@ describe("useReviewDiffHydration", () => {
       await retryHydration;
     });
     expect(result.current.hydratedFiles.has("src/a.ts")).toBe(true);
+  });
+
+  it("coalesces concurrent hydration responses into a single render", async () => {
+    const firstFile = deferred<unknown>();
+    const secondFile = deferred<unknown>();
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async (input: MockDiffFileRequestInput) => {
+          const body = input.body;
+          return {
+            ok: true,
+            status: 200,
+            correlationId: input.path,
+            body:
+              body?.path === "src/a.ts"
+                ? await firstFile.promise
+                : await secondFile.promise,
+          };
+        },
+      },
+    });
+    let renderCount = 0;
+    const { result } = renderHook(() => {
+      renderCount += 1;
+      return useReviewDiffHydration({
+        patch: patchBoth,
+        sourceSession: { profileId: "profile", sessionId: "session-a" },
+      });
+    });
+
+    let hydration!: Promise<void>;
+    act(() => {
+      hydration = result.current.hydrateFiles(["src/a.ts", "src/b.ts"]);
+    });
+    const renderCountBeforeResponses = renderCount;
+
+    // Both responses resolve in the same synchronous tick, so their .then
+    // handlers run back-to-back on the microtask queue: the coalescing
+    // scheduler should collapse them into exactly one flush/render, not two.
+    await act(async () => {
+      firstFile.resolve(ready());
+      secondFile.resolve(ready("old-b", "new-b"));
+      await hydration;
+    });
+
+    expect(renderCount).toBe(renderCountBeforeResponses + 1);
+    expect(result.current.hydratedFiles.has("src/a.ts")).toBe(true);
+    expect(result.current.hydratedFiles.has("src/b.ts")).toBe(true);
+  });
+
+  it("drops a stale-generation response that resolves alongside an in-generation one", async () => {
+    const staleSource = deferred<unknown>();
+    const freshSource = deferred<unknown>();
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async (input: MockDiffFileRequestInput) => {
+          const body = input.body;
+          return {
+            ok: true,
+            status: 200,
+            correlationId: input.path,
+            body:
+              body?.path === "src/a.ts"
+                ? await staleSource.promise
+                : await freshSource.promise,
+          };
+        },
+      },
+    });
+    const { result, rerender } = renderHook(
+      ({ patch, sessionId }) =>
+        useReviewDiffHydration({
+          patch,
+          sourceSession: { profileId: "profile", sessionId },
+        }),
+      { initialProps: { patch: patchA, sessionId: "session-a" } },
+    );
+
+    let staleHydration!: Promise<void>;
+    act(() => {
+      staleHydration = result.current.hydrateFiles(["src/a.ts"]);
+    });
+    rerender({ patch: patchBoth, sessionId: "session-b" });
+
+    let freshHydration!: Promise<void>;
+    act(() => {
+      freshHydration = result.current.hydrateFiles(["src/b.ts"]);
+    });
+
+    await act(async () => {
+      staleSource.resolve(ready());
+      freshSource.resolve(ready("old-b", "new-b"));
+      await Promise.all([staleHydration, freshHydration]);
+    });
+
+    expect(result.current.hydratedFiles.has("src/a.ts")).toBe(false);
+    expect(result.current.hydratedFiles.has("src/b.ts")).toBe(true);
   });
 });
