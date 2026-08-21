@@ -118,8 +118,9 @@ registerPierreThemeLoaders();
 const DIFF_CODE_METRICS = {
   fontSize: "13px",
   lineHeight: "20px",
-  fontFamily:
-    '"Berkeley Mono", "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+  // Pierre renders into a shadow root, so the stack is passed as an inline
+  // value rather than inherited from the `font-mono` utility.
+  fontFamily: "var(--font-mono)",
 } as CSSProperties;
 // Pierre derives diff chrome colors from the selected Shiki theme. Some themes
 // use saturated terminal red/green values that produce poor contrast in the
@@ -2888,10 +2889,6 @@ function AccessiblePatch({
           ? "max-h-[calc(100vh-12rem)] min-h-0 overflow-auto p-3 font-mono text-[13px] leading-5"
           : "min-h-0 overflow-x-auto p-3 font-mono text-[13px] leading-5"
       }
-      style={{
-        fontFamily:
-          '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
-      }}
       role="region"
       aria-label="Plain text diff"
       tabIndex={0}
