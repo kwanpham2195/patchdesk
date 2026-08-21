@@ -4,6 +4,7 @@ import {
   parseUnifiedPatch,
   type FindingLocationInput,
 } from "../../../domain/patch";
+import { DiffWorkerPoolProvider } from "./diff-worker-pool";
 import { PierreFileTree } from "./pierre-file-tree";
 import {
   ReviewDiffView,
@@ -151,118 +152,122 @@ export function DiffWorkbench({
       setActivePath(controlledSelectedPath);
   }, [controlledSelectedPath]);
   return (
-    <section
-      aria-label="Diff workbench"
-      data-patch-bytes={patch.length}
-      className={cn(
-        `grid min-w-0 overflow-hidden ${hideFileNavigation ? "grid-cols-1" : "min-[1100px]:grid-cols-[15rem_minmax(0,1fr)] max-[1099px]:grid-cols-1"}`,
-        fillViewport
-          ? "min-h-[calc(100vh-3.5rem)] min-[1100px]:h-[calc(100vh-3.5rem)]"
-          : "h-full min-h-0",
-        className,
-      )}
-    >
-      {hideFileNavigation ? null : (
-        <aside
-          aria-label="Review navigation"
-          className="min-w-0 overflow-hidden border-r bg-card p-3 max-[1099px]:hidden"
-        >
-          <PierreFileTree
-            files={fileRows}
-            {...(selectedPath === undefined ? {} : { selectedPath })}
-            {...(activePath === undefined ? {} : { activePath })}
-            onSelect={selectFile}
-          />
-        </aside>
-      )}
-      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
-        <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
-          <div className="min-w-0">
-            <p
-              className="truncate text-sm font-medium"
-              data-diff-workbench-header-path={headerPath}
-            >
-              {headerPath ?? "No file selected"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {diffSubtitle ??
-                "Review snapshot · GitHub writes require confirmation"}
-            </p>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            {surfaceAction}
-            {copyValue === undefined ? null : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void navigator.clipboard?.writeText(copyValue)}
+    <DiffWorkerPoolProvider>
+      <section
+        aria-label="Diff workbench"
+        data-patch-bytes={patch.length}
+        className={cn(
+          `grid min-w-0 overflow-hidden ${hideFileNavigation ? "grid-cols-1" : "min-[1100px]:grid-cols-[15rem_minmax(0,1fr)] max-[1099px]:grid-cols-1"}`,
+          fillViewport
+            ? "min-h-[calc(100vh-3.5rem)] min-[1100px]:h-[calc(100vh-3.5rem)]"
+            : "h-full min-h-0",
+          className,
+        )}
+      >
+        {hideFileNavigation ? null : (
+          <aside
+            aria-label="Review navigation"
+            className="min-w-0 overflow-hidden border-r bg-card p-3 max-[1099px]:hidden"
+          >
+            <PierreFileTree
+              files={fileRows}
+              {...(selectedPath === undefined ? {} : { selectedPath })}
+              {...(activePath === undefined ? {} : { activePath })}
+              onSelect={selectFile}
+            />
+          </aside>
+        )}
+        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+          <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
+            <div className="min-w-0">
+              <p
+                className="truncate text-sm font-medium"
+                data-diff-workbench-header-path={headerPath}
               >
-                Copy commit SHA
-              </Button>
-            )}
-            {hideFileNavigation ? null : (
-              <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
-                <SheetTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="max-[1099px]:inline-flex min-[1100px]:hidden"
-                    />
-                  }
+                {headerPath ?? "No file selected"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {diffSubtitle ??
+                  "Review snapshot · GitHub writes require confirmation"}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {surfaceAction}
+              {copyValue === undefined ? null : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void navigator.clipboard?.writeText(copyValue)}
                 >
-                  Files
-                </SheetTrigger>
-                <SheetContent side="left">
-                  <SheetHeader>
-                    <SheetTitle>Changed files</SheetTitle>
-                    <SheetDescription>
-                      Choose a file to inspect its change.
-                    </SheetDescription>
-                  </SheetHeader>
-                  <div className="min-h-0 overflow-auto p-4">
-                    <PierreFileTree
-                      files={fileRows}
-                      {...(selectedPath === undefined ? {} : { selectedPath })}
-                      {...(activePath === undefined ? {} : { activePath })}
-                      onSelect={(path) => {
-                        selectFile(path);
-                        setNavigationOpen(false);
-                      }}
-                    />
-                  </div>
-                </SheetContent>
-              </Sheet>
-            )}
-          </div>
-        </header>
-        <ReviewDiffView
-          patch={patch}
-          parsedFiles={parsedDiff.files}
-          fileStatsByPath={parsedDiff.statsByPath}
-          {...(selectedPath === undefined ? {} : { selectedPath })}
-          onActiveFileChange={(path) => {
-            setActivePath(path);
-            onActiveFileChange?.(path);
-          }}
-          preferences={preferences}
-          collapsedPaths={collapsedPaths}
-          onPreferencesChange={updatePreferences}
-          onCollapsedPathsChange={setCollapsedPaths}
-          {...(sourceSession === undefined ? {} : { sourceSession })}
-          {...(localCommentAuthoring === undefined
-            ? {}
-            : { localCommentAuthoring })}
-          {...(pendingReviewComposer === undefined
-            ? {}
-            : { pendingReviewComposer })}
-          {...(conversationActions === undefined
-            ? {}
-            : { conversationActions })}
-          {...(annotations === undefined ? {} : { annotations })}
-          {...(selectedRange === undefined ? {} : { selectedRange })}
-        />
-      </div>
-    </section>
+                  Copy commit SHA
+                </Button>
+              )}
+              {hideFileNavigation ? null : (
+                <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
+                  <SheetTrigger
+                    render={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="max-[1099px]:inline-flex min-[1100px]:hidden"
+                      />
+                    }
+                  >
+                    Files
+                  </SheetTrigger>
+                  <SheetContent side="left">
+                    <SheetHeader>
+                      <SheetTitle>Changed files</SheetTitle>
+                      <SheetDescription>
+                        Choose a file to inspect its change.
+                      </SheetDescription>
+                    </SheetHeader>
+                    <div className="min-h-0 overflow-auto p-4">
+                      <PierreFileTree
+                        files={fileRows}
+                        {...(selectedPath === undefined
+                          ? {}
+                          : { selectedPath })}
+                        {...(activePath === undefined ? {} : { activePath })}
+                        onSelect={(path) => {
+                          selectFile(path);
+                          setNavigationOpen(false);
+                        }}
+                      />
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              )}
+            </div>
+          </header>
+          <ReviewDiffView
+            patch={patch}
+            parsedFiles={parsedDiff.files}
+            fileStatsByPath={parsedDiff.statsByPath}
+            {...(selectedPath === undefined ? {} : { selectedPath })}
+            onActiveFileChange={(path) => {
+              setActivePath(path);
+              onActiveFileChange?.(path);
+            }}
+            preferences={preferences}
+            collapsedPaths={collapsedPaths}
+            onPreferencesChange={updatePreferences}
+            onCollapsedPathsChange={setCollapsedPaths}
+            {...(sourceSession === undefined ? {} : { sourceSession })}
+            {...(localCommentAuthoring === undefined
+              ? {}
+              : { localCommentAuthoring })}
+            {...(pendingReviewComposer === undefined
+              ? {}
+              : { pendingReviewComposer })}
+            {...(conversationActions === undefined
+              ? {}
+              : { conversationActions })}
+            {...(annotations === undefined ? {} : { annotations })}
+            {...(selectedRange === undefined ? {} : { selectedRange })}
+          />
+        </div>
+      </section>
+    </DiffWorkerPoolProvider>
   );
 }

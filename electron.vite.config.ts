@@ -6,21 +6,6 @@ import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-type RendererChunk = {
-  readonly type: "chunk";
-  readonly fileName: string;
-  readonly imports: ReadonlyArray<string>;
-  readonly dynamicImports: ReadonlyArray<string>;
-  readonly isEntry: boolean;
-  readonly isDynamicEntry: boolean;
-  readonly modules: Record<string, unknown>;
-};
-
-type RendererBundle = Record<
-  string,
-  RendererChunk | { readonly type: "asset" }
->;
-
 function rendererGraphArtifact(): Plugin {
   return {
     name: "patchdesk-renderer-graph-artifact",
@@ -33,7 +18,10 @@ function rendererGraphArtifact(): Plugin {
         readonly isDynamicEntry: boolean;
         readonly modules: ReadonlyArray<string>;
       }> = [];
-      for (const output of Object.values(bundle as unknown as RendererBundle)) {
+      // `bundle`'s contextual type already comes from Rollup's own
+      // `OutputBundle` (Record<string, OutputChunk | OutputAsset>) via the
+      // `Plugin["generateBundle"]` hook signature -- no cast needed.
+      for (const output of Object.values(bundle)) {
         if (output.type !== "chunk") continue;
         chunks.push({
           fileName: output.fileName,
@@ -45,8 +33,7 @@ function rendererGraphArtifact(): Plugin {
         });
       }
       chunks.sort((left, right) => left.fileName.localeCompare(right.fileName));
-      const outputDirectory =
-        typeof options.dir === "string" ? options.dir : "out/renderer";
+      const outputDirectory = options.dir ?? "out/renderer";
       await writeFile(
         join(outputDirectory, "renderer-graph.json"),
         `${JSON.stringify({ chunks }, null, 2)}\n`,
@@ -82,6 +69,13 @@ export default defineConfig({
     plugins: [react(), tailwindcss(), rendererGraphArtifact()],
     build: {
       manifest: true,
+    },
+    // @pierre/diffs' syntax-highlighting worker (mounted in
+    // diff-worker-pool.tsx) code-splits internally for a conditional
+    // `import("shiki/wasm")`. Vite's default worker.format is "iife", which
+    // Rollup rejects for code-splitting builds; "es" is required.
+    worker: {
+      format: "es",
     },
     resolve: {
       alias: {
