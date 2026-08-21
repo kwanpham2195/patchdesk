@@ -2337,7 +2337,7 @@ function ReviewDiffSurface({
             items={items}
             containerRef={setViewerContainer}
             selectedLines={selectedLines}
-            className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-auto overflow-y-auto font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-auto overflow-y-auto font-mono outline-none [contain:strict] [overflow-anchor:none] focus-visible:ring-2 focus-visible:ring-ring"
             style={DIFF_CODE_METRICS}
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
