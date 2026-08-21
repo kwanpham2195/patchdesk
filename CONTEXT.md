@@ -111,7 +111,7 @@ The high-level scope, change, verification, and proposed-verdict portion of a cu
 _Avoid_: Analysis body, generated review draft
 
 **Conversation**:
-The chronological timeline of the PR description, issue comments, review summaries, and general conversation threads that GitHub surfaces on the pull request's main tab. All of it is GitHub-owned content, separate from the GitHub pending review. The Conversation screen is read-only and reconciles while its represented revision remains current.
+The chronological timeline of the PR description, issue comments, review summaries, and general conversation threads that GitHub surfaces on the pull request's main tab. All of it is GitHub-owned content, separate from the GitHub pending review. The timeline itself is read-only and reconciles while its represented revision remains current; the Pull request metadata rail beside it is where the screen's writes live.
 _Avoid_: Published feedback, discussion tab, timeline
 
 **Conversation thread**:
@@ -121,6 +121,10 @@ _Avoid_: Review thread, discussion thread
 **Mapped conversation thread**:
 An inline Conversation thread in open or resolved state whose GitHub anchor can be placed unambiguously on either the old or new side of the current diff. Only mapped Conversation threads appear in the diff view and the Threads section. Outdated threads are excluded from both.
 _Avoid_: Current thread, unresolved thread
+
+**Revision-bound review verdict**:
+A reviewer's latest submitted verdict on the represented pull request, reported against the commit it was submitted on and marked outdated when that commit is not the represented revision's head. An unfinished draft is not a verdict.
+_Avoid_: Approval state, review status, latest review
 
 **Thread state change**:
 An explicit maintainer action that changes a mapped Conversation thread between open and resolved. A direct Resolve or Unresolve command confirms the GitHub update.
@@ -141,6 +145,14 @@ _Avoid_: Timeline entry, discussion entry
 **Threads section**:
 The Review workbench navigator section, beside Files and Commits, that lists exactly the Conversation threads the diff renders as annotations for the current revision: Mapped conversation threads and the viewer's pending-review threads. Selecting an entry reveals and marks its anchored lines in the diff; the section carries no thread actions, which stay with the thread itself. Threads the diff cannot place do not appear.
 _Avoid_: Thread inbox, thread roster, unresolved list, discussion queue
+
+**Pull request metadata rail**:
+The Conversation screen's persistent side rail for the people and tags on the represented pull request: its Reviewers, Assignees, and Labels, each shown as of the maintainer's last refresh and each editable from there. It holds no lifecycle action and is not a second pull request overview.
+_Avoid_: Sidebar, PR overview, metadata panel
+
+**Reviewer request**:
+A pending ask for someone to review the represented pull request. It records that the person was asked, not what they concluded; it is answered by a Revision-bound review verdict and is removed by un-requesting them.
+_Avoid_: Reviewer, pending review, requested approval
 
 **Walkthrough**:
 The latest successful guided explanation of a pinned pull request revision.
