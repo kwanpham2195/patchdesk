@@ -19,7 +19,6 @@ import {
   DEFAULT_REVIEW_VIEW_PREFERENCES,
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
-import { useLatestCommitted } from "@/hooks/use-latest-committed";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -116,48 +115,23 @@ export function DiffWorkbench({
       fileMode: "all",
     });
   const preferences = controlledPreferences ?? internalPreferences;
-  const [pendingLargeFileMode, setPendingLargeFileMode] = useState<string>();
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const updatePreferences = useCallback(
     (update: Partial<ReviewViewPreferences>): void => {
-      if (update.fileMode !== undefined) setPendingLargeFileMode(undefined);
       setInternalPreferences((current) => ({ ...current, ...update }));
       onPreferencesChange?.(update);
     },
     [onPreferencesChange],
   );
-  const updatePreferencesRef = useLatestCommitted(updatePreferences);
-  useEffect(() => {
-    if (pendingLargeFileMode === undefined) return;
-    // Do not let a single deep selection synchronously reconstruct a 10 MB
-    // virtual surface. A brief quiet period still opens the requested file,
-    // while quick navigator movement remains responsive.
-    const timer = window.setTimeout(() => {
-      updatePreferencesRef.current({ fileMode: "selected" });
-      setPendingLargeFileMode(undefined);
-    }, 150);
-    return () => window.clearTimeout(timer);
-  }, [pendingLargeFileMode, updatePreferencesRef]);
   const selectFile = useCallback(
     (path: string): void => {
       if (controlledSelectedPath === undefined) setInternalSelectedPath(path);
       onSelectedPathChange?.(path);
       setActivePath(path);
-      const targetIndex = files.findIndex((file) => file.newPath === path);
-      // A direct jump deep into an exceptionally large stream would require
-      // synchronously materializing hundreds of file metrics. Switch to the
-      // explicit selected-file view instead; the toolbar keeps All files one
-      // click away, and ordinary review-sized streams retain their continuous
-      // all-files navigation.
-      if (files.length > 256 && targetIndex > 128) {
-        setPendingLargeFileMode(path);
-      } else {
-        setPendingLargeFileMode(undefined);
-      }
     },
-    [controlledSelectedPath, files, onSelectedPathChange],
+    [controlledSelectedPath, onSelectedPathChange],
   );
   const fileRows = useMemo(
     () =>

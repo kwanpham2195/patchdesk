@@ -71,10 +71,7 @@ import {
   activeFilePathAtScrollTop,
   type ActiveFileViewport,
 } from "@/review-diff-active-file";
-import {
-  materializeAndScrollTo,
-  type MaterializeScrollProgress,
-} from "@/review-diff-materialize-and-scroll";
+import { materializeAndScrollTo } from "@/review-diff-materialize-and-scroll";
 import {
   adjacentCommentAnchor,
   adjacentFilePath,
@@ -98,10 +95,7 @@ import {
   type ReviewDiffSourceSession,
 } from "@/hooks/use-review-diff-hydration";
 import { useReviewDiffQaScrollDiagnostics } from "@/hooks/use-review-diff-qa-scroll-diagnostics";
-import {
-  useProgressiveReviewDiffStream,
-  type PierreCodeView,
-} from "@/hooks/use-progressive-review-diff-stream";
+import { useScrollSettledValue } from "@/hooks/use-scroll-settled-value";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -156,6 +150,12 @@ function hunkAnchor(filePath: string, hunk: Hunk): HunkAnchor {
     ? { filePath, lineNumber: hunk.additionStart, side: "additions" }
     : { filePath, lineNumber: hunk.deletionStart, side: "deletions" };
 }
+
+/** The live CodeView instance handed to imperative-ref callers (scroll,
+ * measurement, rendered-item queries). */
+type PierreCodeView<T = undefined> = NonNullable<
+  ReturnType<CodeViewHandle<T>["getInstance"]>
+>;
 
 /** Mutable draft of `useReviewDiffHydration`'s input, built in statements so
  * each optional field is added only when it has a value. */
@@ -219,7 +219,9 @@ type MutableLocalComposerConfig = {
 /** Mutable draft of `ConversationThreadCardData`, built in statements so
  * each optional callback is added only when its action is wired. */
 type MutableConversationThreadCardData = {
-  -readonly [K in keyof ConversationThreadCardData]: ConversationThreadCardData[K];
+  -readonly [
+    K in keyof ConversationThreadCardData
+  ]: ConversationThreadCardData[K];
 };
 
 export type PendingReviewWriteConfig = {
@@ -265,11 +267,10 @@ export type LocalCommentAuthoring = {
   readonly canAuthor?: (input: LocalCommentLocation) => boolean;
   /** Reports the exact current diff range before a composer is opened. */
   readonly onSelectionChange?: (input: LocalCommentLocation) => void;
-  readonly onSave: (
-    input: LocalCommentAuthoringSaveInput,
-  ) => Promise<
-    { readonly commentId: string; readonly threadId?: string } | void
-  >;
+  readonly onSave: (input: LocalCommentAuthoringSaveInput) => Promise<{
+    readonly commentId: string;
+    readonly threadId?: string;
+  } | void>;
 };
 
 export type LocalCommentAuthoringSaveInput = {
@@ -283,7 +284,9 @@ export type LocalCommentAuthoringSaveInput = {
 /** Mutable draft of `LocalCommentAuthoringSaveInput`, built in statements so
  * the optional `fingerprint` is added only when it has a value. */
 type MutableLocalCommentAuthoringSaveInput = {
-  -readonly [K in keyof LocalCommentAuthoringSaveInput]: LocalCommentAuthoringSaveInput[K];
+  -readonly [
+    K in keyof LocalCommentAuthoringSaveInput
+  ]: LocalCommentAuthoringSaveInput[K];
 };
 
 function FileChangeCounts({
@@ -692,6 +695,12 @@ function ReviewDiffSurface({
     rawPatchesByPath,
     hydrateFiles,
   } = useReviewDiffHydration(hydrationInput);
+  // `hydratedFiles` lands live for `hasExpandableRenderedFile` below, but
+  // must NOT reach CodeView's item list (the `files` and `items` memos)
+  // while a scroll is in flight -- see `useScrollSettledValue` for why a
+  // layout change mid-scroll can blank the viewport for a frame.
+  const { settledValue: settledHydratedFiles, notifyScroll } =
+    useScrollSettledValue(hydratedFiles);
   useEffect(() => {
     const onAppearance = (event: Event): void => {
       // SAFETY: only `window.dispatchEvent(new CustomEvent("patchdesk:appearance", ...))`
@@ -722,15 +731,17 @@ function ReviewDiffSurface({
     [patch, rawFilePatches, rawPatchesByPath, selectedPath],
   );
   const files = useMemo(() => {
+    // Reads the settled map, not the live one -- see the comment at the
+    // `useScrollSettledValue` call site above.
     const hydrated = parsedFiles.map(
-      (file) => hydratedFiles.get(file.name) ?? file,
+      (file) => settledHydratedFiles.get(file.name) ?? file,
     );
     // Large generated diffs already arrive in source/tree order. Avoid a
     // full re-sort whenever one of their files hydrates.
     return parsedFiles.length > TREE_ORDER_SORT_LIMIT
       ? hydrated
       : hydrated.sort((left, right) => compareTreePaths(left.name, right.name));
-  }, [hydratedFiles, parsedFiles]);
+  }, [settledHydratedFiles, parsedFiles]);
   const visibleFiles = useMemo(
     () =>
       preferences.fileMode === "selected" && selectedPath !== undefined
@@ -1049,7 +1060,8 @@ function ReviewDiffSurface({
         if (conversationActions?.editComment !== undefined)
           conversationThread.onEditComment = conversationActions.editComment;
         if (conversationActions?.deleteComment !== undefined)
-          conversationThread.onDeleteComment = conversationActions.deleteComment;
+          conversationThread.onDeleteComment =
+            conversationActions.deleteComment;
         return {
           id: `conversation:${entry.commentId}`,
           path: entry.path,
@@ -1246,7 +1258,10 @@ function ReviewDiffSurface({
           // see the replacement.
           version: reviewDiffItemVersion({
             collapsed: collapsedPaths.has(file.name),
-            hydrated: hydratedFiles.has(file.name),
+            // Settled, not live: the version bump is itself a layout
+            // mutation to CodeView (see the `useScrollSettledValue` call
+            // site), so it must not fire mid-scroll either.
+            hydrated: settledHydratedFiles.has(file.name),
             annotationKey,
           }),
         }),
@@ -1254,7 +1269,7 @@ function ReviewDiffSurface({
     [
       annotationKey,
       collapsedPaths,
-      hydratedFiles,
+      settledHydratedFiles,
       displayedAnnotations,
       visibleFiles,
     ],
@@ -1308,13 +1323,27 @@ function ReviewDiffSurface({
   const viewerKey = preferences.fileMode;
   const sourceProfileId = hydrationSourceSession?.profileId;
   const sourceSessionId = hydrationSourceSession?.sessionId;
-  const { loadedCount, nextItemIndex, appendItemsThrough, handleViewerScroll } =
-    useProgressiveReviewDiffStream<ReviewInlineAnnotation | undefined>({
-      items,
-      fileMode: preferences.fileMode,
-      hydrateFiles,
-      viewerContainer,
-    });
+  // `items`'s identity changes on every hydration response -- each response
+  // bumps that item's `version`, which rebuilds the `items` useMemo above --
+  // so hydration keyed on `items` would refire on every response instead of
+  // once per actual change to the set of files. Key it on the file paths
+  // themselves, joined with the same NUL separator `annotationKey` uses so a
+  // path containing a space cannot collide with the separator.
+  const hydrationPathKey = useMemo(
+    () => items.map((item) => item.id).join("\u0000"),
+    [items],
+  );
+  // Rebuilt from the key, not captured from `items`, so this array's identity
+  // tracks the effect's own dependency exactly rather than the churning memo.
+  const hydrationPaths = useMemo(
+    () => (hydrationPathKey === "" ? [] : hydrationPathKey.split("\u0000")),
+    [hydrationPathKey],
+  );
+  // Every file hydrates up front now that CodeView receives the full item
+  // list at mount instead of a growing prefix.
+  useEffect(() => {
+    void hydrateFiles(hydrationPaths);
+  }, [hydrateFiles, hydrationPaths]);
 
   useEffect(() => {
     activePathRef.current = undefined;
@@ -1344,28 +1373,46 @@ function ReviewDiffSurface({
     [viewerContainer],
   );
 
+  // The one place that calls `activeFilePathAtScrollTop`. Every caller asks
+  // the same question -- "which file is the reader looking at right now" --
+  // so there is exactly one answer, shared by scroll tracking below and by
+  // both keyboard-jump listeners' first-press seed further down.
+  //
+  // Deliberately reads `codeView.getRenderedItems()`, never `items` (the
+  // full diff's item list, always handed to CodeView at mount).
+  // `getTopForItem` only returns a measured top for a file inside CodeView's
+  // rendered window; outside that window it falls back to an estimate that
+  // drifts whenever ANY item's layout is invalidated,
+  // regardless of where the reader has scrolled to (see the module
+  // contract in `review-diff-active-file.ts`). `getRenderedItems()` is the
+  // window CodeView has actually laid out and measured, and it always
+  // straddles the current viewport, so it is exactly the set of files this
+  // question can be answered about honestly.
+  const resolveActiveFilePathAt = useCallback(
+    (
+      scrollTop: number,
+      codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
+    ): string | undefined =>
+      activeFilePathAtScrollTop(
+        codeView.getRenderedItems(),
+        readActiveFileViewport(scrollTop),
+        (id) => codeView.getTopForItem(id),
+      ),
+    [readActiveFileViewport],
+  );
+
   const updateActivePath = useCallback(
     (
       scrollTop: number,
       codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
     ): void => {
       if (preferences.fileMode !== "all") return;
-      const path = activeFilePathAtScrollTop(
-        items.slice(0, loadedCount),
-        readActiveFileViewport(scrollTop),
-        (id) => codeView.getTopForItem(id),
-      );
+      const path = resolveActiveFilePathAt(scrollTop, codeView);
       if (path === undefined || path === activePathRef.current) return;
       activePathRef.current = path;
       onActiveFileChange?.(path);
     },
-    [
-      items,
-      loadedCount,
-      onActiveFileChange,
-      preferences.fileMode,
-      readActiveFileViewport,
-    ],
+    [onActiveFileChange, preferences.fileMode, resolveActiveFilePathAt],
   );
 
   useEffect(() => {
@@ -1376,17 +1423,20 @@ function ReviewDiffSurface({
       updateActivePath(codeView.getScrollTop(), codeView);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [loadedCount, preferences.fileMode, updateActivePath]);
+    // This effect used to rerun as more files were progressively appended
+    // (`loadedCount` growing). Now the full list mounts at once, so
+    // `items.length` is the equivalent "the file set changed" signal.
+  }, [items.length, preferences.fileMode, updateActivePath]);
 
   const handleCodeViewScroll = useCallback(
     (
       scrollTop: number,
       codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
     ): void => {
-      handleViewerScroll(scrollTop, codeView);
       updateActivePath(scrollTop, codeView);
+      notifyScroll();
     },
-    [handleViewerScroll, updateActivePath],
+    [notifyScroll, updateActivePath],
   );
 
   const selectionScrollKey = [
@@ -1407,16 +1457,14 @@ function ReviewDiffSurface({
   // merely re-ran" for "this selection was already scrolled to."
   const selectionScrollProgress = useRef<{
     key: string;
-    attempts: number;
     completed: boolean;
-  }>({ key: "", attempts: 0, completed: false });
+  }>({ key: "", completed: false });
 
   useEffect(() => {
     if (selectedPath === undefined) return;
     if (selectionScrollProgress.current.key !== selectionScrollKey) {
       selectionScrollProgress.current = {
         key: selectionScrollKey,
-        attempts: 0,
         completed: false,
       };
     }
@@ -1428,18 +1476,9 @@ function ReviewDiffSurface({
       viewer,
       items,
       itemId: selectedPath,
-      nextItemIndex,
-      appendItemsThrough,
-      progress: selectionScrollProgress.current,
       isStale: () =>
         selectionScrollProgress.current.key !== selectionScrollKey ||
         selectionScrollProgress.current.completed,
-      // DiffWorkbench promotes exceptionally deep direct selections to its
-      // explicit selected-file mode. Do not spend a frame materializing a
-      // large all-files stream while that controlled preference update is in
-      // flight.
-      shouldBail: (targetIndex) =>
-        preferences.fileMode === "all" && targetIndex > 128,
       buildTarget: () =>
         selectedLines === null
           ? { type: "item", id: selectedPath, align: "start" }
@@ -1454,9 +1493,7 @@ function ReviewDiffSurface({
       },
     });
   }, [
-    appendItemsThrough,
     items,
-    nextItemIndex,
     preferences.diffStyle,
     preferences.fileMode,
     selectionScrollKey,
@@ -1473,7 +1510,6 @@ function ReviewDiffSurface({
   const fileNavLatest = useLatestCommitted({
     items,
     onActiveFileChange,
-    appendItemsThrough,
   });
   // Owns the in-flight keypress-triggered scroll, independent of
   // `selectionScrollProgress` above. That progress ref's `completed` latch
@@ -1512,7 +1548,6 @@ function ReviewDiffSurface({
       const {
         items: currentItems,
         onActiveFileChange: currentOnActiveFileChange,
-        appendItemsThrough: currentAppendItemsThrough,
       } = fileNavLatest.current;
       const direction: ReviewNavDirection =
         event.key === "." ? "next" : "previous";
@@ -1525,11 +1560,7 @@ function ReviewDiffSurface({
         fileNavCurrentPath.current =
           codeView === undefined
             ? undefined
-            : activeFilePathAtScrollTop(
-                currentItems,
-                readActiveFileViewport(codeView.getScrollTop()),
-                (id) => codeView.getTopForItem(id),
-              );
+            : resolveActiveFilePathAt(codeView.getScrollTop(), codeView);
       }
       const target = adjacentFilePath(
         currentItems.map((item) => item.id),
@@ -1552,14 +1583,10 @@ function ReviewDiffSurface({
       fileNavJump.current.cancel?.();
       const token = fileNavJump.current.token + 1;
       fileNavJump.current.token = token;
-      const progress: MaterializeScrollProgress = { attempts: 0 };
       fileNavJump.current.cancel = materializeAndScrollTo({
         viewer,
         items: currentItems,
         itemId: target,
-        nextItemIndex,
-        appendItemsThrough: currentAppendItemsThrough,
-        progress,
         isStale: () => fileNavJump.current.token !== token,
         buildTarget: () => ({ type: "item", id: target, align: "start" }),
         onScrolled: () => {
@@ -1573,12 +1600,17 @@ function ReviewDiffSurface({
       window.removeEventListener("keydown", onKeyDown);
       fileNavJump.current.cancel?.();
     };
-  }, [fileNavLatest, nextItemIndex, preferences.fileMode, readActiveFileViewport, virtualized]);
+  }, [
+    fileNavLatest,
+    preferences.fileMode,
+    resolveActiveFilePathAt,
+    virtualized,
+  ]);
 
   // `[`/`]` jump to the previous/next hunk, across file boundaries once a
   // file's hunks are exhausted. Shares `fileNavLatest`'s items/
-  // appendItemsThrough/onActiveFileChange snapshot -- the same
-  // unrelated-re-render rationale documented above applies unchanged.
+  // onActiveFileChange snapshot -- the same unrelated-re-render rationale
+  // documented above applies unchanged.
   const hunkNavJump = useRef<{ token: number; cancel?: () => void }>({
     token: 0,
   });
@@ -1609,7 +1641,6 @@ function ReviewDiffSurface({
       const {
         items: currentItems,
         onActiveFileChange: currentOnActiveFileChange,
-        appendItemsThrough: currentAppendItemsThrough,
       } = fileNavLatest.current;
       const direction: ReviewNavDirection =
         event.key === "]" ? "next" : "previous";
@@ -1633,11 +1664,7 @@ function ReviewDiffSurface({
         const activePath =
           codeView === undefined
             ? undefined
-            : activeFilePathAtScrollTop(
-                currentItems,
-                readActiveFileViewport(codeView.getScrollTop()),
-                (id) => codeView.getTopForItem(id),
-              );
+            : resolveActiveFilePathAt(codeView.getScrollTop(), codeView);
         hunkNavCurrentAnchor.current =
           activePath === undefined
             ? undefined
@@ -1664,16 +1691,12 @@ function ReviewDiffSurface({
       hunkNavJump.current.cancel?.();
       const token = hunkNavJump.current.token + 1;
       hunkNavJump.current.token = token;
-      const progress: MaterializeScrollProgress = { attempts: 0 };
       hunkNavJump.current.cancel = materializeAndScrollTo({
         viewer,
         // The target's file, not the hunk, is what must exist in the viewer
         // before a line inside it can be scrolled to.
         items: currentItems,
         itemId: target.filePath,
-        nextItemIndex,
-        appendItemsThrough: currentAppendItemsThrough,
-        progress,
         isStale: () => hunkNavJump.current.token !== token,
         buildTarget: () => ({
           type: "line",
@@ -1693,15 +1716,20 @@ function ReviewDiffSurface({
       window.removeEventListener("keydown", onKeyDown);
       hunkNavJump.current.cancel?.();
     };
-  }, [fileNavLatest, nextItemIndex, preferences.fileMode, readActiveFileViewport, virtualized]);
+  }, [
+    fileNavLatest,
+    preferences.fileMode,
+    resolveActiveFilePathAt,
+    virtualized,
+  ]);
 
   // `{`/`}` jump to the previous/next unresolved comment thread, in document
   // order (file order, then line order within each file -- the same order
   // the diff and file tree already use). A resolved thread is finished work
   // and is never a target: the point of this binding is "have I dealt with
   // everything", not a tour of every thread ever opened. Shares
-  // `fileNavLatest`'s items/appendItemsThrough/onActiveFileChange snapshot,
-  // same rationale as `[`/`]` above.
+  // `fileNavLatest`'s items/onActiveFileChange snapshot, same rationale as
+  // `[`/`]` above.
   const commentNavJump = useRef<{ token: number; cancel?: () => void }>({
     token: 0,
   });
@@ -1712,12 +1740,10 @@ function ReviewDiffSurface({
   // true top, which would make `updateActivePath` recompute the wrong file
   // as active and overwrite `activePathRef` right after `onScrolled` sets
   // it). This ref is written only by a keyboard jump.
-  const commentNavCurrentAnchor = useRef<CommentAnchor | undefined>(
+  const commentNavCurrentAnchor = useRef<CommentAnchor | undefined>(undefined);
+  const [commentNavStatus, setCommentNavStatus] = useState<string | undefined>(
     undefined,
   );
-  const [commentNavStatus, setCommentNavStatus] = useState<
-    string | undefined
-  >(undefined);
   useEffect(() => {
     // Same surface restriction as the file- and hunk-jump listeners above.
     if (!virtualized || preferences.fileMode !== "all") return;
@@ -1733,7 +1759,6 @@ function ReviewDiffSurface({
       const {
         items: currentItems,
         onActiveFileChange: currentOnActiveFileChange,
-        appendItemsThrough: currentAppendItemsThrough,
       } = fileNavLatest.current;
       const direction: ReviewNavDirection =
         event.key === "}" ? "next" : "previous";
@@ -1759,16 +1784,12 @@ function ReviewDiffSurface({
       commentNavJump.current.cancel?.();
       const token = commentNavJump.current.token + 1;
       commentNavJump.current.token = token;
-      const progress: MaterializeScrollProgress = { attempts: 0 };
       commentNavJump.current.cancel = materializeAndScrollTo({
         viewer,
         // The target's file, not the thread, is what must exist in the
         // viewer before a line inside it can be scrolled to.
         items: currentItems,
         itemId: target.filePath,
-        nextItemIndex,
-        appendItemsThrough: currentAppendItemsThrough,
-        progress,
         isStale: () => commentNavJump.current.token !== token,
         buildTarget: () => ({
           type: "line",
@@ -1799,7 +1820,7 @@ function ReviewDiffSurface({
       window.removeEventListener("keydown", onKeyDown);
       commentNavJump.current.cancel?.();
     };
-  }, [fileNavLatest, nextItemIndex, preferences.fileMode, virtualized]);
+  }, [fileNavLatest, preferences.fileMode, virtualized]);
 
   const setAllCollapsed = (collapsed: boolean): void => {
     onCollapsedPathsChange(
@@ -1843,12 +1864,12 @@ function ReviewDiffSurface({
   );
   const hasExpandableRenderedFile = useMemo(
     () =>
-      items.slice(0, loadedCount).some((item) => {
+      items.some((item) => {
         if (item.type !== "diff") return false;
         const hydrated = hydratedFiles.get(item.id);
         return hydrated !== undefined && !hydrated.isPartial;
       }),
-    [hydratedFiles, items, loadedCount],
+    [hydratedFiles, items],
   );
   const contextControl = reviewContextControl({
     hasSourceSession:
@@ -1960,7 +1981,10 @@ function ReviewDiffSurface({
           };
         }
         return (
-          <ConversationThreadCard thread={cardThread} navAnchorId={finding.id} />
+          <ConversationThreadCard
+            thread={cardThread}
+            navAnchorId={finding.id}
+          />
         );
       }
       if (finding.localComment !== undefined) {
@@ -2307,14 +2331,10 @@ function ReviewDiffSurface({
         )
       ) : (
         <div className="relative min-h-0 flex-1">
-          <span
-            className="hidden"
-            data-review-diff-loaded-file-count={loadedCount}
-          />
           <CodeView<ReviewInlineAnnotation | undefined>
             key={`${viewerKey}-${themePreferences.light}-${themePreferences.dark}-${appearance}`}
             ref={viewer}
-            items={items.slice(0, loadedCount)}
+            items={items}
             containerRef={setViewerContainer}
             selectedLines={selectedLines}
             className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-auto overflow-y-auto font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"

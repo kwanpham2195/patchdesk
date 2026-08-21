@@ -71,8 +71,7 @@ export function adjacentFilePath(
 ): string | undefined {
   if (order.length === 0) return undefined;
   const currentIndex = current === undefined ? -1 : order.indexOf(current);
-  const nextIndex =
-    direction === "next" ? currentIndex + 1 : currentIndex - 1;
+  const nextIndex = direction === "next" ? currentIndex + 1 : currentIndex - 1;
   if (nextIndex < 0 || nextIndex >= order.length) return undefined;
   return order[nextIndex];
 }
@@ -121,8 +120,7 @@ export function adjacentHunkAnchor(
             anchor.lineNumber === current.lineNumber &&
             anchor.side === current.side,
         );
-  const nextIndex =
-    direction === "next" ? currentIndex + 1 : currentIndex - 1;
+  const nextIndex = direction === "next" ? currentIndex + 1 : currentIndex - 1;
   if (nextIndex < 0 || nextIndex >= order.length) return undefined;
   return order[nextIndex];
 }
@@ -166,8 +164,7 @@ export function adjacentCommentAnchor(
     current === undefined
       ? -1
       : order.findIndex((anchor) => anchor.id === current.id);
-  const nextIndex =
-    direction === "next" ? currentIndex + 1 : currentIndex - 1;
+  const nextIndex = direction === "next" ? currentIndex + 1 : currentIndex - 1;
   if (nextIndex < 0 || nextIndex >= order.length) return undefined;
   return order[nextIndex];
 }
@@ -263,8 +260,7 @@ export function buildCommentOrder(
 
 // Bounds the post-scroll focus poll below: a target that never renders a
 // card (a defect in its own right) gives up honestly instead of polling
-// forever, the same discipline `materializeAndScrollTo` uses for its own
-// materialize retries.
+// forever.
 export const MAX_COMMENT_FOCUS_ATTEMPTS = 30;
 
 /** Finds the `ConversationThreadCard` root rendered for `anchorId`, matching

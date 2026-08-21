@@ -142,4 +142,74 @@ describe("activeFilePathAtScrollTop", () => {
       ),
     ).toBe("unreachable");
   });
+
+  it("does not let a far-off unrendered file's stale estimated top outrank the rendered window", () => {
+    // Regression test for the defect the module contract above documents:
+    // `getTopForItem` only returns a measured top for a file CodeView has
+    // actually rendered; for anything outside that window it falls back to
+    // an estimate that drifts whenever any item's layout is invalidated,
+    // with nothing to do with where the reader actually scrolled. Simulate
+    // that drift directly: "far-unrendered" is a file the reader hasn't
+    // scrolled anywhere near, but its estimated top has drifted down to
+    // 250 -- at or above scrollTop, and past "near-b"'s real top -- purely
+    // from an unrelated layout recompute.
+    const tops = new Map([
+      ["near-a", 0],
+      ["near-b", 240],
+      ["far-unrendered", 250],
+    ]);
+
+    // The fix: callers pass only the rendered window (what
+    // `codeView.getRenderedItems()` returns), which never includes
+    // "far-unrendered" in the first place, so its drifted estimate can
+    // never be compared at all.
+    const renderedWindow = [{ id: "near-a" }, { id: "near-b" }];
+    expect(
+      activeFilePathAtScrollTop(renderedWindow, viewport(260), (id) =>
+        tops.get(id),
+      ),
+    ).toBe("near-b");
+
+    // The defect, reproduced directly: feeding the full item list back in
+    // (the old, wrong behavior) lets "far-unrendered"'s drifted estimate
+    // (250) beat "near-b"'s real top (240) and wrongly take over as the
+    // active file, even though the reader never scrolled near it.
+    const fullList = [...renderedWindow, { id: "far-unrendered" }];
+    expect(
+      activeFilePathAtScrollTop(fullList, viewport(260), (id) => tops.get(id)),
+    ).toBe("far-unrendered");
+  });
+
+  it("falls back to the rendered window's first item when scrollTop sits in the paddingTop gap", () => {
+    // Regression test for the sticky-header/tree mismatch: CodeView's
+    // DEFAULT_CODE_VIEW_LAYOUT.paddingTop is 8
+    // (@pierre/diffs/dist/constants.js), and getTopForItem adds it to every
+    // item's top (@pierre/diffs/dist/components/CodeView.js), so the very
+    // first rendered item's real, measured top is 8 -- never 0. At scrollTop
+    // 0, "first"'s top (8) fails `top <= scrollTop` (reachable-and-at-top),
+    // and fails `unreachableButVisible` too on a list taller than the
+    // viewport, so the pre-fallback loop finds nothing even though the
+    // reader is looking at exactly this item.
+    const items = [{ id: "first" }, { id: "second" }];
+    const tops = new Map([
+      ["first", 8],
+      ["second", 300],
+    ]);
+
+    expect(
+      activeFilePathAtScrollTop(items, viewport(0), (id) => tops.get(id)),
+    ).toBe("first");
+  });
+
+  it("still returns undefined when no item in the window has a measured top", () => {
+    // The fallback must not invent an active file out of thin air: if every
+    // item's top is undefined (nothing in the rendered window has been
+    // measured yet), there is nothing on screen to report, and the caller's
+    // early-return-on-undefined must keep whatever it already had.
+    const items = [{ id: "first" }, { id: "second" }];
+
+    expect(
+      activeFilePathAtScrollTop(items, viewport(0), () => undefined),
+    ).toBeUndefined();
+  });
 });

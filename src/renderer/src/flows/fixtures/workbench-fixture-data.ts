@@ -175,11 +175,14 @@ export const workbenchFixtureData = {
 };
 // Threads placed for the browser suite's Threads-navigator coverage: one new-
 // side single line, one old-side single line, one multi-line range, and one
-// in src/c.ts -- the third file of `activeFollowFixturePatch`, which the
-// diff's progressive loading leaves un-hydrated until scrolled to (see
-// "streamed files can become the passive active path" above), so selecting
-// it exercises the same progressive-materialization path a deep file-tree
-// jump does.
+// in src/c.ts -- the third file of `activeFollowFixturePatch`. Every file in
+// the patch is handed to the diff at mount, but Pierre's CodeView still
+// virtualizes its own rendering, so a file this far down has no header in
+// the DOM until something scrolls the viewport near it. Selecting the
+// src/c.ts thread must drive that scroll itself, exercising the same
+// scroll-to-selection path a deep file-tree jump does (see "Threads section
+// selection on a file below the fold scrolls the diff and marks the
+// anchored line" in tests/browser/review-workbench.spec.ts).
 const activeFollowFixtureConversationThreads: ReadonlyArray<FixtureConversationThread> =
   [
     {

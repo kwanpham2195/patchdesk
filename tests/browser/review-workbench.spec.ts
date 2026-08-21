@@ -275,74 +275,6 @@ test("Patchdesk has no application sidebar and keeps the desktop width", async (
   }
 });
 
-test("all-files stream appends when the diff scroll reaches its end", async ({
-  page,
-}) => {
-  const server = await serveRenderer();
-  try {
-    await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
-    await expect(
-      page.getByRole("checkbox", { name: "Mark file src/a.ts as viewed" }),
-    ).toBeVisible();
-    await expect(
-      page.locator("[data-review-diff-loaded-file-count]"),
-    ).toHaveAttribute("data-review-diff-loaded-file-count", "2");
-    await expect(
-      page.getByRole("button", { name: /Load more files/ }),
-    ).toHaveCount(0);
-
-    const diffViewport = page.locator(".review-diff-viewport");
-    const box = await diffViewport.boundingBox();
-    if (box === null) throw new Error("Review diff viewport was not visible");
-    const layout = await page.evaluate(() => {
-      const viewport = document.querySelector<HTMLElement>(
-        ".review-diff-viewport",
-      );
-      if (viewport === null)
-        throw new Error("Review diff viewport was not found");
-      return {
-        documentOverflow:
-          document.documentElement.scrollHeight -
-          document.documentElement.clientHeight,
-        diffOverflow: viewport.scrollHeight - viewport.clientHeight,
-      };
-    });
-    expect(layout.documentOverflow).toBeLessThanOrEqual(1);
-    expect(layout.diffOverflow).toBeGreaterThan(0);
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await page.mouse.wheel(0, 10_000);
-    }
-
-    await expect(
-      page.getByRole("button", { name: /Load more files/ }),
-    ).toHaveCount(0);
-    const viewportScroll = await diffViewport.evaluate((viewport) => ({
-      clientHeight: viewport.clientHeight,
-      scrollHeight: viewport.scrollHeight,
-      scrollTop: viewport.scrollTop,
-    }));
-    expect(viewportScroll.scrollHeight).toBeGreaterThan(
-      viewportScroll.clientHeight,
-    );
-    expect(viewportScroll.scrollTop).toBeGreaterThan(0);
-
-    const workbenchToolbar = page.locator("[data-review-workbench-toolbar]");
-    const diffToolbar = page.locator("[data-review-diff-toolbar]");
-    const workbenchToolbarBox = await workbenchToolbar.boundingBox();
-    const diffToolbarBox = await diffToolbar.boundingBox();
-    if (workbenchToolbarBox === null || diffToolbarBox === null) {
-      throw new Error("Review toolbars were not visible");
-    }
-    expect(diffToolbarBox.y).toBeGreaterThanOrEqual(
-      workbenchToolbarBox.y + workbenchToolbarBox.height - 1,
-    );
-  } finally {
-    await close(server);
-  }
-});
-
 test("native diff scrolling passively follows the active file without changing finding state", async ({
   page,
 }) => {
@@ -365,9 +297,6 @@ test("native diff scrolling passively follows the active file without changing f
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await page.mouse.wheel(0, 10_000);
     }
-    await expect(
-      page.locator("[data-review-diff-loaded-file-count]"),
-    ).toHaveAttribute("data-review-diff-loaded-file-count", "3");
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await page.mouse.wheel(0, 1_000);
       await page.waitForTimeout(100);
@@ -397,41 +326,9 @@ test("native diff scrolling passively follows the active file without changing f
     // remounting on every active-file change, focus starts on
     // "file-tree-container" and this proves mouse-wheel-scrolling an
     // unrelated region (the diff viewport, not the tree) doesn't disturb it.
-    expect(
-      await page.evaluate(() => document.activeElement?.localName),
-    ).toBe(focusAfterClick);
-  } finally {
-    await close(server);
-  }
-});
-
-test("streamed files can become the passive active path", async ({ page }) => {
-  const server = await serveRenderer();
-  try {
-    await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#active-follow-fixture`);
-    await expect(
-      page.locator("[data-review-diff-loaded-file-count]"),
-    ).toHaveAttribute("data-review-diff-loaded-file-count", "2");
-    await expect(
-      page.getByRole("button", { name: /Load more files/ }),
-    ).toHaveCount(0);
-
-    const viewport = page.locator(".review-diff-viewport");
-    const box = await viewport.boundingBox();
-    if (box === null) throw new Error("Review diff viewport was not visible");
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.wheel(0, 10_000);
-    await expect(
-      page.locator("[data-review-diff-loaded-file-count]"),
-    ).toHaveAttribute("data-review-diff-loaded-file-count", "3");
-    await page.mouse.wheel(0, 3_000);
-    await expect(
-      page.locator('file-tree-container[data-active-path="src/c.ts"]'),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /Load more files/ }),
-    ).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.localName)).toBe(
+      focusAfterClick,
+    );
   } finally {
     await close(server);
   }
@@ -464,9 +361,6 @@ test("the file tree does not remount when the active file changes via passive sc
     if (box === null) throw new Error("Review diff viewport was not visible");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.wheel(0, 10_000);
-    await expect(
-      page.locator("[data-review-diff-loaded-file-count]"),
-    ).toHaveAttribute("data-review-diff-loaded-file-count", "3");
     await page.mouse.wheel(0, 3_000);
     await expect(
       page.locator('file-tree-container[data-active-path="src/c.ts"]'),
@@ -502,9 +396,7 @@ test("the active-file highlight replaces stale click selection instead of leavin
         if (shadow == null) throw new Error("Expected an open shadow root");
         const backgroundOf = (path: string): string | null => {
           const row = shadow.querySelector(`[data-item-path="${path}"]`);
-          return row === null
-            ? null
-            : getComputedStyle(row).backgroundColor;
+          return row === null ? null : getComputedStyle(row).backgroundColor;
         };
         return {
           a: backgroundOf("src/a.ts"),
@@ -533,9 +425,6 @@ test("the active-file highlight replaces stale click selection instead of leavin
     if (box === null) throw new Error("Review diff viewport was not visible");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.wheel(0, 10_000);
-    await expect(
-      page.locator("[data-review-diff-loaded-file-count]"),
-    ).toHaveAttribute("data-review-diff-loaded-file-count", "3");
     await page.mouse.wheel(0, 3_000);
     await expect(
       page.locator('file-tree-container[data-active-path="src/c.ts"]'),
@@ -649,9 +538,7 @@ test("Threads section selection on the new side scrolls the diff and marks the a
     const diffViewport = page.locator(".review-diff-viewport");
 
     await page.getByRole("tab", { name: "Threads" }).click();
-    await page
-      .getByRole("button", { name: "new-side-thread-author" })
-      .click();
+    await page.getByRole("button", { name: "new-side-thread-author" }).click();
 
     await expect(diff).toHaveAttribute("data-selected-path", "src/a.ts");
     // src/a.ts is already the file the diff shows before any selection, so
@@ -689,9 +576,7 @@ test("Threads section selection on the old side scrolls the diff and marks the a
     const diffViewport = page.locator(".review-diff-viewport");
 
     await page.getByRole("tab", { name: "Threads" }).click();
-    await page
-      .getByRole("button", { name: "old-side-thread-author" })
-      .click();
+    await page.getByRole("button", { name: "old-side-thread-author" }).click();
 
     await expect(diff).toHaveAttribute("data-selected-path", "src/b.ts");
     await expect
@@ -721,9 +606,7 @@ test("Threads section selection on a multi-line thread marks the whole anchored 
     const diffViewport = page.locator(".review-diff-viewport");
 
     await page.getByRole("tab", { name: "Threads" }).click();
-    await page
-      .getByRole("button", { name: "multiline-thread-author" })
-      .click();
+    await page.getByRole("button", { name: "multiline-thread-author" }).click();
 
     await expect(diff).toHaveAttribute("data-selected-path", "src/b.ts");
     await expect
@@ -747,7 +630,7 @@ test("Threads section selection on a multi-line thread marks the whole anchored 
   }
 });
 
-test("Threads section selection on a file not yet loaded progressively materializes it, scrolls, and marks the anchored line", async ({
+test("Threads section selection on a file below the fold scrolls the diff and marks the anchored line", async ({
   page,
 }) => {
   const server = await serveRenderer();
@@ -758,19 +641,19 @@ test("Threads section selection on a file not yet loaded progressively materiali
     const diffViewport = page.locator(".review-diff-viewport");
     const path = "src/c.ts";
 
-    // src/c.ts is the third file of the active-follow fixture's patch, which
-    // (per "streamed files can become the passive active path" above) is
-    // not among the files the diff loads up front -- selecting its thread
-    // must drive the same progressive-materialization path a deep file-tree
-    // jump does, not just scroll within already-rendered content.
+    // src/c.ts is the third file of the active-follow fixture's patch. Every
+    // file is handed to CodeView's item list at mount, but CodeView still
+    // virtualizes its own rendering, so a file this far down has no header in
+    // the DOM until something scrolls the viewport near it. Selecting its
+    // thread must drive that scroll itself, through
+    // `materializeAndScrollTo`'s scroll-to-selection path, not merely move
+    // within content the viewport had already rendered.
     await expect(
       page.locator(`[data-review-diff-file-header="${path}"]`),
     ).toHaveCount(0);
 
     await page.getByRole("tab", { name: "Threads" }).click();
-    await page
-      .getByRole("button", { name: "deep-file-thread-author" })
-      .click();
+    await page.getByRole("button", { name: "deep-file-thread-author" }).click();
 
     await expect(diff).toHaveAttribute("data-selected-path", path);
     const header = page.locator(`[data-review-diff-file-header="${path}"]`);
@@ -815,20 +698,22 @@ test("file-tree search selects a file deep in a large patch and scrolls its head
     const diffViewport = page.locator(".review-diff-viewport");
     const path = "src/generated/file-0050.ts";
 
-    // Index 50 stays well under the all-files direct-selection guard
-    // (`targetIndex > 128` in review-diff-view.tsx), so a failure here
-    // proves the scroll-to-selection retry chain, not that guard.
+    // A failure here proves the scroll-to-selection effect
+    // (`materializeAndScrollTo`, driven from review-diff-view.tsx) works
+    // under item churn, full stop.
     await page.locator("[data-file-tree-search-input]").fill("file-0050");
     const target = page.getByRole("treeitem", { name: "file-0050.ts" });
     await expect(target).toBeVisible();
 
-    // Progressive hydration mutates `items` (a dependency of the
-    // scroll-to-selection effect) on its own schedule as files stream in,
-    // which is what let that effect's retry chain get cancelled mid-flight.
-    // Toggling an already-loaded file's "viewed" state churns `items` the
-    // same way, so hammering it on nearly every frame reproduces that race
-    // deterministically instead of hoping a real hydration tick lands at
-    // the wrong moment.
+    // The scroll-to-selection effect depends on `items` and restarts --
+    // cancelling its own prior in-flight attempt via the cleanup
+    // `materializeAndScrollTo` returns -- whenever `items`'s identity
+    // changes. Per-file hydration mutates `items` on its own schedule as
+    // each file's real content swaps in, which is what can race a restart
+    // against a real scroll. Toggling an already-loaded file's "viewed"
+    // state churns `items` the same way, so hammering it on nearly every
+    // frame reproduces that race deterministically instead of hoping a real
+    // hydration tick lands at the wrong moment.
     await page.evaluate(() => {
       const checkbox = document.querySelector<HTMLElement>(
         '[data-review-diff-file-header] [role="checkbox"]',
@@ -898,7 +783,7 @@ test("keyboard input scrolls the diff viewport once it is focusable", async ({
         (viewport) => viewport.scrollHeight - viewport.clientHeight,
       );
     // The performance fixture is a ~1000-file synthetic patch, so genuine
-    // overflow is present well before any progressive-loading tail.
+    // overflow well past this low bar is present from the first render.
     await expect.poll(overflow).toBeGreaterThan(500);
 
     const scrollTop = () =>
@@ -940,13 +825,15 @@ test("keyboard input scrolls the diff viewport once it is focusable", async ({
     // position has actually stopped moving.
     //
     // This is deliberately NOT reused for End (see the comment at afterEnd
-    // below): End scrolling toward the bottom can trigger this fixture's
-    // progressive file loading, which keeps extending scrollHeight out from
-    // under a "wait for scrollTop to stop changing" loop -- two consecutive
-    // equal reads there can mean "no more files have streamed in yet", not
-    // "truly at rest", making that signal actively misleading for End.
-    // Scrolling up toward already-rendered content triggers no such
-    // loading, so it is a sound settle signal for Home specifically.
+    // below): End scrolling toward the bottom lands among files that have
+    // not finished hydrating yet, and each one's real content can render at
+    // a different height than its placeholder, which keeps shifting
+    // scrollHeight out from under a "wait for scrollTop to stop changing"
+    // loop -- two consecutive equal reads there can mean "no file near here
+    // has hydrated in a while", not "truly at rest", making that signal
+    // actively misleading for End. Scrolling up toward already-rendered,
+    // already-hydrated content triggers no such shift, so it is a sound
+    // settle signal for Home specifically.
     const pressUntilSettled = async (key: string): Promise<number> => {
       let previous = await scrollTop();
       let observedMovement = false;
@@ -1003,16 +890,19 @@ test("keyboard input scrolls the diff viewport once it is focusable", async ({
     // the near-maximum position Home starts from after End, so Pierre's
     // few-pixel re-anchoring correction cannot plausibly invert this
     // comparison the way it inverted Home's. A settle-based wait was tried
-    // here too and made things worse: this viewport streams its ~1,000
-    // files in 5-file batches as you scroll near the bottom
-    // (`useProgressiveReviewDiffStream` / `handleViewerScroll` in
-    // review-diff-view.tsx), each gated by an async hydrate() call, so
-    // "wait until scrollTop stops changing" chases a target that keeps
-    // growing on its own schedule and can declare a false settle mid-batch
-    // (observed: afterEnd landing anywhere from ~400 to ~1200 across
-    // otherwise-identical runs, well short of a real bottom). Left on
-    // pressUntil's original wait condition, which only needs a single
-    // genuine jump past afterSecondPageDown to hold.
+    // here too and made things worse: every one of this fixture's ~1,000
+    // files is in the diff's item list from the first render, but each
+    // file's real content still hydrates asynchronously, one at a time
+    // (`hydrateFiles` in review-diff-view.tsx), and a file's hydrated
+    // content can render at a different height than its pre-hydration
+    // placeholder. So scrollHeight keeps shifting for a while after mount
+    // as files hydrate near the bottom, and "wait until scrollTop stops
+    // changing" chases a target that keeps moving on its own schedule and
+    // can declare a false settle mid-hydration (observed: afterEnd landing
+    // anywhere from ~400 to ~1200 across otherwise-identical runs, well
+    // short of a real bottom). Left on pressUntil's original wait
+    // condition, which only needs a single genuine jump past
+    // afterSecondPageDown to hold.
     expect(afterEnd).toBeGreaterThan(afterSecondPageDown);
 
     const afterHome = await pressUntilSettled("Home");
@@ -1032,8 +922,8 @@ test("keyboard input scrolls the diff viewport once it is focusable", async ({
     // for the position to stop changing, not for a single decrease), and a
     // fixed, small pixel threshold -- independent of any other poll's
     // result, and not scaled to a scrollHeight that this same fixture can
-    // still be growing via progressive loading -- keeps the assertion
-    // meaningful: it still fails if Home does nothing (stays at a
+    // still be shifting as its ~1,000 files finish hydrating -- keeps the
+    // assertion meaningful: it still fails if Home does nothing (stays at a
     // multi-hundred/thousand-pixel scroll position) or only moves a little
     // (one PageUp-sized step is itself already ~800px).
     expect(afterHome).toBeLessThan(300);
@@ -1197,7 +1087,9 @@ test("PR overview shows a blocked merge state without a duplicate alert", async 
     // does not carry that meaning (see ADR 0027, "Unknown is not failure").
     const partial = overview.locator("[data-reason-availability='partial']");
     await expect(partial).toContainText("Approval required by GitHub.");
-    await expect(partial).toContainText("Patchdesk could not confirm this rule");
+    await expect(partial).toContainText(
+      "Patchdesk could not confirm this rule",
+    );
     await expect(partial).toContainText("GitHub PR state");
     await expect(partial).not.toContainText("partial");
     const openOnGitHub = partial.getByRole("button", {
