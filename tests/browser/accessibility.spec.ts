@@ -431,6 +431,42 @@ test("the rail's Labels picker is fully keyboard-reachable and operable", async 
   await expect(docsCheckbox).toHaveAttribute("aria-checked", "true");
 });
 
+test("the rail's Assignees picker is fully keyboard-reachable and operable", async ({
+  page,
+}) => {
+  await page.goto(`${origin(renderer)}/#workbench-fixture`);
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  const manageAssignees = page.getByRole("button", {
+    name: "Manage assignees",
+  });
+  await manageAssignees.focus();
+  await expect(manageAssignees).toBeFocused();
+  await page.keyboard.press("Enter");
+  const collaboratorCheckbox = page.getByRole("checkbox", {
+    name: "fixture-collaborator",
+  });
+  await expect(collaboratorCheckbox).toBeVisible();
+  await collaboratorCheckbox.focus();
+  await expect(collaboratorCheckbox).toBeFocused();
+  expect(await collaboratorCheckbox.getAttribute("aria-checked")).toBe(
+    "false",
+  );
+  await page.keyboard.press("Space");
+  await expect(collaboratorCheckbox).toHaveAttribute("aria-checked", "true");
+});
+
+test("the Assignees empty-state self-assign shortcut is keyboard-reachable and operable", async ({
+  page,
+}) => {
+  await page.goto(`${origin(renderer)}/#workbench-empty-assignees-fixture`);
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  const assignSelf = page.getByRole("button", { name: "Assign yourself" });
+  await assignSelf.focus();
+  await expect(assignSelf).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("fixture-viewer")).toBeVisible();
+});
+
 async function serve(): Promise<Server> {
   const root = join(process.cwd(), "out/renderer");
   const server = createServer(async (request, response) => {

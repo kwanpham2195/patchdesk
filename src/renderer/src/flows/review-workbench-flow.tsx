@@ -33,6 +33,7 @@ import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
 } from "../components/review-workbench";
+import type { AssigneesSectionActions } from "../components/assignee-picker";
 import type { LabelPickerActions } from "../components/label-picker";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
@@ -50,12 +51,14 @@ import {
 } from "../components/ui/card";
 import { Spinner } from "../components/ui/spinner";
 import {
+  parseAssignableUserListResponse,
   parseCommitDiffResponse,
   parseDirectSummaryReviewResponse,
   parseInsightProviderCatalog,
   parsePendingReviewProjection,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
+  type AssignableUserListResponse,
   type CommitDiffResponse,
   type DirectSummaryReviewProjection,
   type PendingReviewProjection,
@@ -818,6 +821,95 @@ export function ReviewWorkbenchFlow({
     },
     [workbench, runDirectCommand],
   );
+  // Assignees are pull-request-level metadata, gated the same way as labels
+  // above (see `canWriteLabels`'s comment).
+  const canWriteAssignees = workbench.review.status === "open";
+  const fetchAssignableUsers = useCallback(
+    async (query?: string): Promise<AssignableUserListResponse | undefined> => {
+      const queryField =
+        query === undefined || query === ""
+          ? ""
+          : `&query=${encodeURIComponent(query)}`;
+      const value = await requestJson(
+        `/v1/reviews/assignees?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}${queryField}`,
+      );
+      return parseAssignableUserListResponse(value);
+    },
+    [workbench],
+  );
+  const addAssignees = useCallback(
+    async (
+      assignees: ReadonlyArray<{ readonly id: string; readonly login: string }>,
+    ): Promise<void> => {
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/assignees/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: { _tag: "AddAssignees", assignees },
+          },
+        }),
+      );
+      const receipt = parseAssigneeReceipt(value);
+      if (receipt?._tag === "AssigneesAdded") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "AssigneeChange", added: receipt.added, removed: [] },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
+  const removeAssignees = useCallback(
+    async (
+      assignees: ReadonlyArray<{ readonly id: string; readonly login: string }>,
+    ): Promise<void> => {
+      const value = await runDirectCommand(() =>
+        requestJson("/v1/reviews/assignees/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command: { _tag: "RemoveAssignees", assignees },
+          },
+        }),
+      );
+      const receipt = parseAssigneeReceipt(value);
+      if (receipt?._tag === "AssigneesRemoved") {
+        setRecentWrites((current) => [
+          ...current,
+          { _tag: "AssigneeChange", added: [], removed: receipt.removed },
+        ]);
+      }
+    },
+    [workbench, runDirectCommand],
+  );
+  // The authenticated account is resolved server-side (never from anything
+  // the renderer believes about who is signed in): the command carries no
+  // identity, only the `AssignSelf` tag, and the receipt's `added` logins
+  // are the server's own answer for who actually got assigned.
+  const assignSelf = useCallback(async (): Promise<ReadonlyArray<string>> => {
+    const value = await runDirectCommand(() =>
+      requestJson("/v1/reviews/assignees/command", {
+        method: "POST",
+        body: {
+          profileId: workbench.session.key.profileId,
+          reviewId: workbench.review.id,
+          command: { _tag: "AssignSelf" },
+        },
+      }),
+    );
+    const receipt = parseAssigneeReceipt(value);
+    if (receipt?._tag === "AssigneesAdded") {
+      setRecentWrites((current) => [
+        ...current,
+        { _tag: "AssigneeChange", added: receipt.added, removed: [] },
+      ]);
+      return receipt.added;
+    }
+    return [];
+  }, [workbench, runDirectCommand]);
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
     workbench.revision.freshness === "fresh" &&
@@ -1475,6 +1567,10 @@ export function ReviewWorkbenchFlow({
   const labelActions: LabelPickerActions | undefined = canWriteLabels
     ? { fetchLabels, addLabels, removeLabels }
     : undefined;
+  const assigneeActions: AssigneesSectionActions | undefined =
+    canWriteAssignees
+      ? { fetchAssignableUsers, addAssignees, removeAssignees, assignSelf }
+      : undefined;
 
   const workbenchActionsBase = {
     detectUpdates: runDetect,
@@ -1538,10 +1634,14 @@ export function ReviewWorkbenchFlow({
     labelActions === undefined
       ? workbenchActionsWithDirectSummaryPanel
       : { ...workbenchActionsWithDirectSummaryPanel, labels: labelActions };
+  const workbenchActionsWithAssignees =
+    assigneeActions === undefined
+      ? workbenchActionsWithLabels
+      : { ...workbenchActionsWithLabels, assignees: assigneeActions };
   const workbenchActions =
     conversationActions === undefined
-      ? workbenchActionsWithLabels
-      : { ...workbenchActionsWithLabels, ...conversationActions };
+      ? workbenchActionsWithAssignees
+      : { ...workbenchActionsWithAssignees, ...conversationActions };
 
   return (
     <>
@@ -2866,6 +2966,32 @@ function parseLabelReceipt(
   value: unknown,
 ): LabelReceipt | undefined {
   const parsed = v.safeParse(labelReceiptSchema, value);
+  return parsed.success ? parsed.output : undefined;
+}
+
+const assigneeReceiptSchema = v.variant("_tag", [
+  v.looseObject({
+    _tag: v.literal("AssigneesAdded"),
+    added: v.array(v.string()),
+  }),
+  v.looseObject({
+    _tag: v.literal("AssigneesRemoved"),
+    removed: v.array(v.string()),
+  }),
+]);
+
+type AssigneeReceipt =
+  | { readonly _tag: "AssigneesAdded"; readonly added: ReadonlyArray<string> }
+  | {
+      readonly _tag: "AssigneesRemoved";
+      readonly removed: ReadonlyArray<string>;
+    };
+
+function parseAssigneeReceipt(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the assignees command response; there is no earlier boundary to run it at.
+  value: unknown,
+): AssigneeReceipt | undefined {
+  const parsed = v.safeParse(assigneeReceiptSchema, value);
   return parsed.success ? parsed.output : undefined;
 }
 

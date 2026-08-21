@@ -340,7 +340,19 @@ function LabelPickerList({
                   disabled={disabled || busy}
                   onCheckedChange={() => onToggle(label, !attached)}
                 />
-                <LabelChip label={{ name: label.name, color: label.color }} />
+                <span className="flex min-w-0 flex-col">
+                  <LabelChip
+                    label={{ name: label.name, color: label.color }}
+                  />
+                  {label.description === undefined ? null : (
+                    <span
+                      data-slot="label-description"
+                      className="mt-0.5 truncate text-[10px] text-muted-foreground"
+                    >
+                      {label.description}
+                    </span>
+                  )}
+                </span>
               </label>
             </li>
           );

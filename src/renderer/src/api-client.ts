@@ -20,6 +20,7 @@ export type ApiFailureKind =
   | "review_write_in_progress"
   | "self_approval_not_allowed"
   | "rate_limited"
+  | "assignee_cap_exceeded"
   | "internal";
 
 export class PatchdeskApiError extends Error {
@@ -168,6 +169,7 @@ function errorCode(value: unknown): string | undefined {
 
 function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (code === "timeout" || status === 408 || status === 504) return "timeout";
+  if (code === "assignee_cap_exceeded") return "assignee_cap_exceeded";
   if (code?.includes("rate_limited") === true) return "rate_limited";
   if (code === "outcome_unknown") return "outcome_unknown";
   if (code === "review_write_in_progress") return "review_write_in_progress";
@@ -230,6 +232,8 @@ function safeMessage(kind: ApiFailureKind): string {
       return "You can’t approve your own pull request. Choose Comment or ask another reviewer to approve it.";
     case "rate_limited":
       return "GitHub rate-limited this request. Wait a moment, then try again.";
+    case "assignee_cap_exceeded":
+      return "GitHub limits a pull request to ten assignees.";
     case "internal":
       return "Patchdesk could not complete the request.";
   }

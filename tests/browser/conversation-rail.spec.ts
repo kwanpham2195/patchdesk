@@ -196,6 +196,218 @@ test.describe("pull request metadata rail", () => {
     await expect(
       rail.getByRole("button", { name: "Manage labels" }),
     ).toHaveCount(0);
+    // The Assignees section is read-only the same way: the assignee still
+    // renders, but neither the picker trigger nor the self-assign shortcut
+    // is offered.
+    await expect(rail.getByText("fixture-assignee")).toBeVisible();
+    await expect(
+      rail.getByRole("button", { name: "Manage assignees" }),
+    ).toHaveCount(0);
+    await expect(
+      rail.getByRole("button", { name: "Assign yourself" }),
+    ).toHaveCount(0);
+  });
+
+  test("renders an Assignees section above Labels, listing assignees with initials badges", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    const headings = rail.getByRole("heading", { level: 2 });
+    await expect(headings.nth(0)).toHaveText("Assignees");
+    await expect(headings.nth(1)).toHaveText("Labels");
+    const assigneeRow = rail.getByText("fixture-assignee");
+    await expect(assigneeRow).toBeVisible();
+    await expect(
+      rail.getByRole("button", { name: "Manage assignees" }),
+    ).toBeVisible();
+    // An initials badge (`Avatar` with no `dataUri`) renders next to the row.
+    await expect(
+      rail.locator('[data-slot="avatar"]', { hasText: "F" }),
+    ).toBeVisible();
+  });
+
+  test("states plainly when nobody is assigned, and offers a self-assign shortcut", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-empty-assignees-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await expect(rail.getByText("Nobody is assigned.")).toBeVisible();
+    const assignSelf = rail.getByRole("button", { name: "Assign yourself" });
+    await expect(assignSelf).toBeVisible();
+    await assignSelf.click();
+    await expect(rail.getByText("Nobody is assigned.")).toHaveCount(0);
+    await expect(rail.getByText("fixture-viewer")).toBeVisible();
+  });
+
+  test("the self-assign shortcut is absent when the assign permission is denied", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-assignees-denied-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await expect(rail.getByText("Nobody is assigned.")).toBeVisible();
+    await expect(
+      rail.getByRole("button", { name: "Assign yourself" }),
+    ).toHaveCount(0);
+  });
+
+  test("the self-assign shortcut is caveated when the assign permission is unknown", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-assignees-unknown-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await expect(
+      rail.getByRole("button", { name: "Assign yourself" }),
+    ).toBeVisible();
+    await expect(
+      rail.getByText(
+        "Patchdesk could not confirm you can manage assignees here — a change may be refused.",
+      ),
+    ).toBeVisible();
+  });
+
+  test("the Assignees picker opens, states the ten-assignee limit, filters by search, and toggles someone on", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage assignees" }).click();
+    await expect(
+      page.getByText("GitHub allows up to 10 assignees on a pull request."),
+    ).toBeVisible();
+    const assigneeCheckbox = page.getByRole("checkbox", {
+      name: "fixture-assignee",
+    });
+    const collaboratorCheckbox = page.getByRole("checkbox", {
+      name: "fixture-collaborator",
+    });
+    await expect(assigneeCheckbox).toBeVisible();
+    expect(await assigneeCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(await collaboratorCheckbox.getAttribute("aria-checked")).toBe(
+      "false",
+    );
+
+    await page
+      .getByRole("searchbox", { name: "Search assignable people" })
+      .fill("collab");
+    await expect(assigneeCheckbox).toHaveCount(0);
+    await expect(collaboratorCheckbox).toBeVisible();
+
+    await collaboratorCheckbox.click();
+    await expect(collaboratorCheckbox).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("a failed assignee write reverts and names the person", async ({
+    page,
+  }) => {
+    await page.goto(
+      `${origin(server)}/#workbench-assignees-write-failure-fixture`,
+    );
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage assignees" }).click();
+    const collaboratorCheckbox = page.getByRole("checkbox", {
+      name: "fixture-collaborator",
+    });
+    await collaboratorCheckbox.click();
+    await expect(collaboratorCheckbox).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await expect(
+      page.getByText('Patchdesk could not assign "fixture-collaborator".', {
+        exact: false,
+      }),
+    ).toBeVisible();
+  });
+
+  test("surfaces the ten-assignee limit when GitHub rejects a write for it", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-assignees-cap-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage assignees" }).click();
+    await page
+      .getByRole("checkbox", { name: "fixture-collaborator" })
+      .click();
+    await expect(
+      page.getByText("GitHub limits a pull request to ten assignees.", {
+        exact: false,
+      }),
+    ).toBeVisible();
+  });
+
+  test("reads a failed assignable-people fetch as a failure, not an empty list", async ({
+    page,
+  }) => {
+    await page.goto(
+      `${origin(server)}/#workbench-assignees-read-failure-fixture`,
+    );
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage assignees" }).click();
+    await expect(
+      page.getByText(
+        "Patchdesk could not load this repository's assignable people. Reopen this menu to retry.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole("checkbox")).toHaveCount(0);
+  });
+
+  test("renders a label's description in the picker, and nothing extra for a label without one", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+    await rail.getByRole("button", { name: "Manage labels" }).click();
+    await expect(page.getByText("Something isn't working")).toBeVisible();
+    // Exactly one label in the fixture catalog carries a description.
+    await expect(page.locator('[data-slot="label-description"]')).toHaveCount(
+      1,
+    );
   });
 });
 

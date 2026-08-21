@@ -28,7 +28,10 @@ import {
 } from "../components/ui/select";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parsePullRequestInput } from "../../../domain/pull-request";
+import { PatchdeskApiError } from "../api-client";
+import type { AssigneesSectionActions } from "../components/assignee-picker";
 import type {
+  AssignableUserListResponse,
   RepositoryLabelListResponse,
   WorkbenchResponse,
 } from "../renderer-contracts";
@@ -110,6 +113,62 @@ export function AppFixtureContent({
           pullRequest: { ...workbenchFixtureData.pullRequest, labels: [] },
         }}
         onNavigationStateChange={onNavigationStateChange}
+      />
+    );
+  if (hash === "#workbench-empty-assignees-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={{
+          ...workbenchFixtureData,
+          pullRequest: { ...workbenchFixtureData.pullRequest, assignees: [] },
+        }}
+        onNavigationStateChange={onNavigationStateChange}
+      />
+    );
+  if (hash === "#workbench-assignees-denied-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={{
+          ...workbenchFixtureData,
+          pullRequest: { ...workbenchFixtureData.pullRequest, assignees: [] },
+        }}
+        onNavigationStateChange={onNavigationStateChange}
+        assigneeActions={fixtureAssigneeActionsDenied}
+      />
+    );
+  if (hash === "#workbench-assignees-unknown-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={{
+          ...workbenchFixtureData,
+          pullRequest: { ...workbenchFixtureData.pullRequest, assignees: [] },
+        }}
+        onNavigationStateChange={onNavigationStateChange}
+        assigneeActions={fixtureAssigneeActionsUnknown}
+      />
+    );
+  if (hash === "#workbench-assignees-write-failure-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        assigneeActions={fixtureAssigneeActionsWriteFailure}
+      />
+    );
+  if (hash === "#workbench-assignees-cap-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        assigneeActions={fixtureAssigneeActionsCapExceeded}
+      />
+    );
+  if (hash === "#workbench-assignees-read-failure-fixture")
+    return (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        assigneeActions={fixtureAssigneeActionsReadFailure}
       />
     );
   if (hash === "#workbench-merged-fixture")
@@ -408,7 +467,10 @@ function WalkthroughFixture({
 const fixtureLabelCatalog: RepositoryLabelListResponse = {
   state: "ready",
   labels: [
-    { id: "LA_bug", name: "bug", color: "d73a4a" },
+    // Deliberately the only label with a `description`, so a browser test
+    // can prove the picker renders it for this row and renders nothing
+    // extra for the other two (#12's UI half).
+    { id: "LA_bug", name: "bug", color: "d73a4a", description: "Something isn't working" },
     { id: "LA_needs_review", name: "needs-review", color: "0075ca" },
     { id: "LA_documentation", name: "documentation", color: "0e8a16" },
   ],
@@ -416,11 +478,108 @@ const fixtureLabelCatalog: RepositoryLabelListResponse = {
   permission: "permitted",
 };
 
+// The repository's assignable people, as the Assignees picker's
+// `fetchAssignableUsers` reads it -- deliberately a superset of
+// `workbenchFixtureData.pullRequest.assignees` (one already-assigned person
+// plus two not-yet-assigned ones) so a browser test can open the picker,
+// search, and toggle someone who starts unchecked. `fetchAssignableUsers`
+// filters this list by `query` the same way the real, server-side filter
+// does, so the search/debounce wiring has something real to exercise.
+const fixtureAssignableUsers: NonNullable<AssignableUserListResponse["users"]> =
+  [
+    { id: "MDQ6VXNlcjEwMQ==", login: "fixture-assignee" },
+    { id: "MDQ6VXNlcjEwMg==", login: "fixture-collaborator" },
+    { id: "MDQ6VXNlcjEwMw==", login: "fixture-maintainer" },
+  ];
+
+async function fixtureFetchAssignableUsers(
+  query?: string,
+): Promise<AssignableUserListResponse> {
+  const users =
+    query === undefined || query === ""
+      ? fixtureAssignableUsers
+      : fixtureAssignableUsers.filter((user) => user.login.includes(query));
+  return {
+    state: "ready",
+    users,
+    totalCount: users.length,
+    permission: "permitted",
+  };
+}
+
+const fixtureAssigneeActions: AssigneesSectionActions = {
+  fetchAssignableUsers: fixtureFetchAssignableUsers,
+  addAssignees: async () => undefined,
+  removeAssignees: async () => undefined,
+  assignSelf: async () => ["fixture-viewer"],
+};
+
+const fixtureAssigneeActionsDenied: AssigneesSectionActions = {
+  ...fixtureAssigneeActions,
+  fetchAssignableUsers: async () => ({
+    state: "ready",
+    users: fixtureAssignableUsers,
+    totalCount: fixtureAssignableUsers.length,
+    permission: "denied",
+  }),
+};
+
+const fixtureAssigneeActionsUnknown: AssigneesSectionActions = {
+  ...fixtureAssigneeActions,
+  fetchAssignableUsers: async () => ({
+    state: "ready",
+    users: fixtureAssignableUsers,
+    totalCount: fixtureAssignableUsers.length,
+    permission: "unknown",
+  }),
+};
+
+const fixtureAssigneeActionsWriteFailure: AssigneesSectionActions = {
+  ...fixtureAssigneeActions,
+  addAssignees: async () => {
+    throw new PatchdeskApiError(
+      "unavailable",
+      503,
+      true,
+      "fixture-assignee-write",
+      "Patchdesk could not reach GitHub.",
+    );
+  },
+  removeAssignees: async () => {
+    throw new PatchdeskApiError(
+      "unavailable",
+      503,
+      true,
+      "fixture-assignee-write",
+      "Patchdesk could not reach GitHub.",
+    );
+  },
+};
+
+const fixtureAssigneeActionsCapExceeded: AssigneesSectionActions = {
+  ...fixtureAssigneeActions,
+  addAssignees: async () => {
+    throw new PatchdeskApiError(
+      "assignee_cap_exceeded",
+      400,
+      false,
+      "fixture-assignee-cap",
+      "GitHub limits a pull request to ten assignees.",
+    );
+  },
+};
+
+const fixtureAssigneeActionsReadFailure: AssigneesSectionActions = {
+  ...fixtureAssigneeActions,
+  fetchAssignableUsers: async () => ({ state: "github_read" }),
+};
+
 function CanonicalFixtureWorkbench({
   data,
   onNavigationStateChange,
   modelOverrides,
   mergeAction,
+  assigneeActions,
 }: {
   readonly data: typeof workbenchFixtureData;
   readonly onNavigationStateChange: (state: NavigationState) => void;
@@ -431,6 +590,7 @@ function CanonicalFixtureWorkbench({
     >
   >;
   readonly mergeAction?: PullRequestOverviewMerge;
+  readonly assigneeActions?: AssigneesSectionActions;
 }): React.JSX.Element {
   const model = canonicalWorkbenchModel(data);
   const merged =
@@ -453,6 +613,7 @@ function CanonicalFixtureWorkbench({
       addLabels: async () => undefined,
       removeLabels: async () => undefined,
     },
+    assignees: assigneeActions ?? fixtureAssigneeActions,
   };
   if (mergeAction !== undefined) actions.merge = mergeAction;
   return (
@@ -997,6 +1158,7 @@ export const workbenchFixtureData = {
       { name: "bug", color: "d73a4a" },
       { name: "needs-review", color: "0075ca" },
     ],
+    assignees: ["fixture-assignee"],
     updatedAt: "2026-07-17T00:00:00.000Z",
   },
   result: {

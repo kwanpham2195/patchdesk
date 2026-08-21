@@ -36,8 +36,19 @@ import {
 } from "../../../domain/ids";
 import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
+import type { AssigneesSectionActions } from "./assignee-picker";
 import type { LabelPickerActions } from "./label-picker";
 import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
+
+/** Mutable form of `PullRequestMetadataRail`'s props, so `ReviewWorkbench`
+ * can assign `labelActions`/`assigneeActions` only when present instead of a
+ * conditional empty-object spread (mirrors `MutableGeneralThreadOverrides`
+ * in `conversation.tsx`). */
+type MutablePullRequestMetadataRailProps = {
+  -readonly [K in keyof React.ComponentProps<
+    typeof PullRequestMetadataRail
+  >]: React.ComponentProps<typeof PullRequestMetadataRail>[K];
+};
 import type {
   CommitDiffResponse,
   DirectSummaryReviewProjection,
@@ -343,6 +354,7 @@ export type ReviewWorkbenchActions = {
   readonly editComment?: (commentId: string, body: string) => Promise<void>;
   readonly deleteComment?: (commentId: string) => Promise<void>;
   readonly labels?: LabelPickerActions;
+  readonly assignees?: AssigneesSectionActions;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
@@ -768,16 +780,19 @@ export function ReviewWorkbench({
   // `model.pullRequest`/`model.revision`/`terminal` -- `Conversation` only
   // ever renders what it's handed, which keeps the rail off the Diff and
   // Insights tabs by construction rather than by a conditional inside them.
+  const railProps: MutablePullRequestMetadataRailProps = {
+    labels: model.pullRequest?.labels ?? [],
+    assignees: model.pullRequest?.assignees ?? [],
+    freshness: model.revision.freshness,
+    refreshedAt: model.revision.refreshedAt,
+    terminal,
+  };
+  if (actions.labels !== undefined) railProps.labelActions = actions.labels;
+  if (actions.assignees !== undefined)
+    railProps.assigneeActions = actions.assignees;
   const conversationRail =
     model.pullRequest === undefined ? undefined : (
-      <PullRequestMetadataRail
-        labels={model.pullRequest.labels}
-        freshness={model.revision.freshness}
-        terminal={terminal}
-        {...(actions.labels === undefined
-          ? {}
-          : { labelActions: actions.labels })}
-      />
+      <PullRequestMetadataRail {...railProps} />
     );
 
   return (
