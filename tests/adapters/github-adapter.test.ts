@@ -14,7 +14,7 @@ import {
   createFetchedDiffRefs,
   FakeGitHubAdapter,
   GitHubAdapter,
-  pullRequestAssigneePermission,
+  pullRequestWritePermission,
   repositoryLabelPermission,
   type GitHubReadFailure,
 } from "../../src/adapters/github/github-adapter";
@@ -1377,7 +1377,7 @@ describe("repositoryLabelPermission", () => {
   });
 });
 
-describe("pullRequestAssigneePermission", () => {
+describe("pullRequestWritePermission", () => {
   const failure: GitHubReadFailure = {
     _tag: "GitHubReadFailed",
     operation: "get_repository_permission",
@@ -1385,7 +1385,7 @@ describe("pullRequestAssigneePermission", () => {
 
   it("reports permitted when evidence grants pull-request write, unlike label management which triage alone also grants", () => {
     expect(
-      pullRequestAssigneePermission(
+      pullRequestWritePermission(
         ok({
           account: "pmquan2cfw",
           permission: "write",
@@ -1398,7 +1398,7 @@ describe("pullRequestAssigneePermission", () => {
 
   it("reports denied for triage evidence, since triage can manage labels but cannot assign", () => {
     expect(
-      pullRequestAssigneePermission(
+      pullRequestWritePermission(
         ok({
           account: "pmquan2cfw",
           permission: "triage",
@@ -1410,11 +1410,11 @@ describe("pullRequestAssigneePermission", () => {
   });
 
   it("reports unknown when the evidence read failed", () => {
-    expect(pullRequestAssigneePermission(err(failure))).toBe("unknown");
+    expect(pullRequestWritePermission(err(failure))).toBe("unknown");
   });
 
   it("reports unknown when no evidence was fetched at all", () => {
-    expect(pullRequestAssigneePermission(undefined)).toBe("unknown");
+    expect(pullRequestWritePermission(undefined)).toBe("unknown");
   });
 });
 
@@ -1820,6 +1820,164 @@ describe("GitHubAdapter read boundary", () => {
     });
     expect(removeResult).toEqual({ _tag: "ok", value: undefined });
     expect(removeExecutor.requests[0]).toContain("assigneeIds[]=U_a");
+  });
+
+  it("fetches a pull request's reviewer state: requested reviewers, both review views, and suggestions", async () => {
+    const page = {
+      data: {
+        repository: {
+          pullRequest: {
+            reviewRequests: {
+              nodes: [
+                {
+                  requestedReviewer: {
+                    login: "octocat",
+                    name: "The Octocat",
+                    avatarUrl: "https://avatars.example/octocat.png",
+                  },
+                },
+                // A team reviewer: the `... on User` fragment does not
+                // match, so GitHub returns an empty object here, not null.
+                { requestedReviewer: {} },
+              ],
+            },
+            latestReviews: {
+              nodes: [
+                {
+                  author: { login: "hubot", avatarUrl: null },
+                  state: "PENDING",
+                  submittedAt: null,
+                  commit: null,
+                },
+              ],
+            },
+            reviews: {
+              nodes: [
+                {
+                  author: { login: "hubot", avatarUrl: null },
+                  state: "APPROVED",
+                  submittedAt: "2026-01-01T00:00:00Z",
+                  commit: { oid: "a".repeat(40) },
+                },
+                // A ghosted/deleted author is dropped, not merged under a
+                // shared placeholder login.
+                {
+                  author: null,
+                  state: "COMMENTED",
+                  submittedAt: "2026-01-01T00:00:00Z",
+                  commit: { oid: "a".repeat(40) },
+                },
+              ],
+            },
+            suggestedReviewers: [
+              {
+                isAuthor: false,
+                isCommenter: true,
+                reviewer: { login: "octocat", name: null, avatarUrl: null },
+              },
+            ],
+          },
+        },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      { _tag: "Exited", exitCode: 0, stdout: JSON.stringify(page), stderr: "" },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    const result = await adapter.getPullRequestReviewers({ profile, pr });
+
+    expect(result).toEqual({
+      _tag: "ok",
+      value: {
+        requested: [
+          {
+            login: "octocat",
+            name: "The Octocat",
+            avatarUrl: "https://avatars.example/octocat.png",
+          },
+        ],
+        latestReviews: [{ login: "hubot", state: "PENDING" }],
+        reviews: [
+          {
+            login: "hubot",
+            state: "APPROVED",
+            submittedAt: "2026-01-01T00:00:00.000Z",
+            commitOid: "a".repeat(40),
+          },
+        ],
+        suggested: [
+          {
+            isAuthor: false,
+            isCommenter: true,
+            reviewer: { login: "octocat" },
+          },
+        ],
+      },
+    });
+    expect(
+      executor.requests[0]?.some((argument) =>
+        argument.includes("PullRequestReviewers"),
+      ),
+    ).toBe(true);
+    expect(executor.requests[0]).toContain(`number=${pr.number}`);
+  });
+
+  it("sends requestReviews as an additive union:true mutation with repeated userIds[] flags", async () => {
+    const okResponse: CommandExecution = {
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ data: {} }),
+      stderr: "",
+    };
+    const executor = new FakeProcessExecutor([okResponse]);
+
+    const result = await testAdapter(
+      new CommandRunner(executor),
+    ).requestReviews({
+      profile,
+      pullRequestId: "PR_node",
+      userIds: ["U_a", "U_b"],
+    });
+
+    expect(result).toEqual({ _tag: "ok", value: undefined });
+    expect(executor.requests[0]).toContain("userIds[]=U_a");
+    expect(executor.requests[0]).toContain("userIds[]=U_b");
+    expect(executor.requests[0]).toContain("pullRequestId=PR_node");
+    expect(
+      executor.requests[0]?.some(
+        (argument) =>
+          argument.startsWith("query=") && argument.includes("union: true"),
+      ),
+    ).toBe(true);
+  });
+
+  it("removes requested reviewers via the subtractive DELETE endpoint, sending only the named logins as its body", async () => {
+    const okResponse: CommandExecution = {
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({}),
+      stderr: "",
+    };
+    const executor = new FakeProcessExecutor([okResponse]);
+
+    const result = await testAdapter(
+      new CommandRunner(executor),
+    ).removeRequestedReviewers({
+      profile,
+      pr,
+      logins: ["octocat"],
+    });
+
+    expect(result).toEqual({ _tag: "ok", value: undefined });
+    expect(executor.requests[0]).toContain("--method");
+    expect(executor.requests[0]).toContain("DELETE");
+    expect(executor.requests[0]).toContain(
+      `repos/${pr.owner}/${pr.repo}/pulls/${pr.number}/requested_reviewers`,
+    );
+    // The subtractive REST body carries exactly the named logins — never a
+    // recomputed "remaining reviewers" set.
+    expect(executor.stdin[0]).toBe(JSON.stringify({ reviewers: ["octocat"] }));
   });
 
   it("classifies a CommandRateLimited listMaintainerPullRequests failure as GitHubRateLimited", async () => {

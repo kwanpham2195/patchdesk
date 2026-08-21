@@ -318,13 +318,81 @@ export type AssignableUserListing = {
 };
 
 /**
- * Whether the authenticated account may assign people to this pull request.
- * A plain alias, not a duplicated union: assigning requires pull-request
- * write (unlike labeling, which `triage` can also do — see ADR "The
- * conversation rail owns pull request metadata writes"), but the state names
- * and fail-closed semantics are identical to `RepositoryLabelPermission`.
+ * Whether the authenticated account may assign people to, or request/remove
+ * reviewers on, this pull request. Both writes need the same GitHub
+ * capability (pull-request write), unlike labeling, which `triage` can also
+ * do — see ADR "The conversation rail owns pull request metadata writes" —
+ * so this one type now serves both `AssigneeService` and `ReviewerService`,
+ * not only assignees; the underlying adapter function that produces it is
+ * named for the shared capability (`pullRequestWritePermission` in
+ * `github-adapter.ts`). The type itself keeps its original name here: it is
+ * also imported directly by renderer components outside this change's
+ * scope, and a rename would break those imports without fixing anything a
+ * reader could not already infer from this comment. A plain alias, not a
+ * duplicated union — the state names and fail-closed semantics are
+ * identical to `RepositoryLabelPermission`.
  */
 export type PullRequestAssigneePermission = RepositoryLabelPermission;
+
+/**
+ * One of the states GitHub reports for a pull request review. `PENDING` is
+ * an unfinished draft — see ADR "Use GitHub pending reviews for Review
+ * drafting" (0014) — and is dropped before a Revision-bound review verdict
+ * is derived; see `deriveReviewVerdicts` in `src/domain/review-verdicts.ts`.
+ */
+export type GitHubReviewState =
+  | "PENDING"
+  | "COMMENTED"
+  | "APPROVED"
+  | "CHANGES_REQUESTED"
+  | "DISMISSED";
+
+/**
+ * One GitHub-reported review event for one pull request, submitted or still
+ * open. Read from both `latestReviews` and `reviews` — see
+ * `PullRequestReviewerListing` — and unioned by `deriveReviewVerdicts`.
+ */
+export type PullRequestReviewEntry = {
+  readonly login: string;
+  readonly avatarUrl?: string;
+  readonly state: GitHubReviewState;
+  /** Absent for a still-open `PENDING` review; present for every submitted state. */
+  readonly submittedAt?: IsoTimestamp;
+  /** The commit this review was submitted against. Absent when GitHub could not report one (e.g. a still-pending review, or a rare data anomaly); an absent oid is treated as outdated, never assumed current — see `deriveReviewVerdicts`. */
+  readonly commitOid?: GitSha;
+};
+
+/** A person GitHub has requested review from, whether or not they have submitted anything yet. */
+export type RequestedReviewer = {
+  readonly login: string;
+  readonly name?: string;
+  readonly avatarUrl?: string;
+};
+
+/**
+ * One of GitHub's own suggested reviewers for the pull request (recent
+ * committers and commenters on the changed files). GitHub's schema carries
+ * no human-readable reason string for a suggestion — `isAuthor`/`isCommenter`
+ * are the only signal; any explanatory copy is Patchdesk's own.
+ */
+export type SuggestedPullRequestReviewer = {
+  readonly isAuthor: boolean;
+  readonly isCommenter: boolean;
+  readonly reviewer: RequestedReviewer;
+};
+
+/**
+ * Everything read in one bounded, unpaginated request for populating the
+ * reviewer rail: who is requested, every submitted-or-pending review from
+ * both of GitHub's overlapping views, and GitHub's own suggestions. See
+ * `pullRequestReviewersQuery` in `github-graphql-queries.ts`.
+ */
+export type PullRequestReviewerListing = {
+  readonly requested: ReadonlyArray<RequestedReviewer>;
+  readonly latestReviews: ReadonlyArray<PullRequestReviewEntry>;
+  readonly reviews: ReadonlyArray<PullRequestReviewEntry>;
+  readonly suggested: ReadonlyArray<SuggestedPullRequestReviewer>;
+};
 
 export type PullRequestSummary = PullRequestSnapshot & {
   readonly ref: PullRequestRef;

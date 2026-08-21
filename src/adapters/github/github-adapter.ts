@@ -24,6 +24,7 @@ import type {
   PublishedReview,
   PullRequestAssigneePermission,
   PullRequestCommit,
+  PullRequestReviewerListing,
   PullRequestSummary,
   MergePolicySnapshot,
   RepositoryLabelListing,
@@ -72,9 +73,11 @@ import {
   maxReviewThreads,
   mergePolicyQuery,
   pendingReviewThreadsQuery,
+  pullRequestReviewersQuery,
   removeAssigneesFromAssignableMutation,
   removeLabelsFromLabelableMutation,
   repositoryLabelsQuery,
+  requestReviewsMutation,
   reviewCommentTargetQuery,
   reviewThreadTargetQuery,
   threadCommentsQuery,
@@ -98,6 +101,7 @@ import {
   publishedCommentSchema,
   publishedReviewSchema,
   pullRequestCommitSchema,
+  pullRequestReviewersResponseSchema,
   pullRequestSchema,
   repositoryFileSchema,
   repositoryLabelsResponseSchema,
@@ -129,6 +133,7 @@ import {
   parseOptionalPolicyResponse,
   parsePendingReview,
   parsePullRequest,
+  parsePullRequestReviewerListing,
   parseRepositoryLabel,
   parseRequiredContexts,
   parseReviewId,
@@ -172,6 +177,11 @@ export interface GitHubReader {
     readonly repo: PullRequestRef;
     readonly query?: string;
   }): Promise<Result<AssignableUserListing, GitHubReadFailure>>;
+  /** One bounded, unpaginated read of a pull request's reviewer state: who is requested, every submitted-or-pending review, and GitHub's own suggestions. See `pullRequestReviewersQuery`. */
+  getPullRequestReviewers(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<PullRequestReviewerListing, GitHubReadFailure>>;
   getPullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -372,6 +382,26 @@ export interface GitHubReviewWriter {
     readonly profile: WorkspaceProfileConfig;
     readonly assignableId: string;
     readonly assigneeIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>>;
+  /** Adds people to a pull request's reviewer set (GraphQL `requestReviews`, `union: true`) without disturbing anyone requested by someone else. */
+  requestReviews?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly userIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>>;
+  /**
+   * Removes named people from a pull request's requested-reviewer set via
+   * the subtractive REST endpoint. Deliberately not the GraphQL
+   * `requestReviews` mutation resent with the remaining set: that mutation
+   * *replaces* the whole reviewer set, so removing one person by resending
+   * everyone else would silently drop a request another maintainer added
+   * since the last refresh. This DELETE removes only the named logins — see
+   * ADR "The conversation rail owns pull request metadata writes".
+   */
+  removeRequestedReviewers?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly logins: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>>;
   updateThreadComment?(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -575,13 +605,19 @@ export function repositoryLabelPermission(
 
 /**
  * Projects optional repository-permission evidence into a three-state
- * assignee-write capability. Derived from `pullRequestsWrite`, not
+ * pull-request-write capability. Derived from `pullRequestsWrite`, not
  * `canManageLabels` — per ADR "The conversation rail owns pull request
- * metadata writes", assigning needs pull-request write, unlike labeling
- * which `triage` can also do. Missing or failed evidence yields `unknown`,
- * never a wrong extreme in either direction — see `PullRequestAssigneePermission`.
+ * metadata writes", assigning and requesting/removing reviewers both need
+ * pull-request write, unlike labeling which `triage` can also do. Missing
+ * or failed evidence yields `unknown`, never a wrong extreme in either
+ * direction — see `PullRequestAssigneePermission`, whose name predates this
+ * function covering reviewers too (kept as-is: renderer components outside
+ * this change's scope import that type name directly). Renamed from
+ * `pullRequestAssigneePermission` to `pullRequestWritePermission` because
+ * `AssigneeService` and `ReviewerService` both resolve their write
+ * permission through this one function now, not just assignees.
  */
-export function pullRequestAssigneePermission(
+export function pullRequestWritePermission(
   permission:
     | Result<RepositoryPermissionEvidence, GitHubReadFailure>
     | undefined,
@@ -625,6 +661,7 @@ export type GitHubReadOperation =
   | "list_maintainer_prs"
   | "list_repository_labels"
   | "list_assignable_users"
+  | "get_pull_request_reviewers"
   | "get_pr"
   | "get_merge_policy"
   | "get_merge_policy_evidence"
@@ -913,6 +950,47 @@ export class GitHubAdapter
       users: connection.nodes.map(parseAssignableUser),
       totalCount: connection.totalCount,
     });
+  }
+
+  async getPullRequestReviewers(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<PullRequestReviewerListing, GitHubReadFailure>> {
+    const host = input.profile.githubHost;
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${pullRequestReviewersQuery}`,
+        "-F",
+        `owner=${input.pr.owner}`,
+        "-F",
+        `name=${input.pr.repo}`,
+        "-F",
+        `number=${input.pr.number}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure(
+        "get_pull_request_reviewers",
+        response.error,
+        host,
+      );
+    const parsed = v.safeParse(
+      pullRequestReviewersResponseSchema,
+      response.value,
+    );
+    if (!parsed.success) return invalid("get_pull_request_reviewers");
+    return ok(
+      parsePullRequestReviewerListing(
+        parsed.output.data.repository.pullRequest,
+      ),
+    );
   }
 
   async getPullRequest(input: {
@@ -2724,6 +2802,65 @@ export class GitHubAdapter
           `assigneeIds[]=${assigneeId}`,
         ]),
       ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
+  async requestReviews(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly userIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${requestReviewsMutation}`,
+        "-F",
+        `pullRequestId=${input.pullRequestId}`,
+        ...input.userIds.flatMap((userId) => ["-F", `userIds[]=${userId}`]),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
+  /**
+   * Removes named people from a pull request's requested-reviewer set via
+   * the REST endpoint's own subtractive semantics (`DELETE
+   * .../requested_reviewers` with a `{ reviewers: [...] }` body removes only
+   * the named logins) — see the asymmetry explained on
+   * `GitHubReviewWriter.removeRequestedReviewers`. `--method DELETE` +
+   * `--input -` + `stdin: JSON.stringify(...)` copies `updateReviewComment`'s
+   * argv shape for a body-carrying non-GET request.
+   */
+  async removeRequestedReviewers(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly logins: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "--hostname",
+        input.profile.githubHost,
+        "--method",
+        "DELETE",
+        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/requested_reviewers`,
+        "--input",
+        "-",
+      ],
+      stdin: JSON.stringify({ reviewers: input.logins }),
       timeoutMs: commandTimeoutMs,
     });
     return response._tag === "err"

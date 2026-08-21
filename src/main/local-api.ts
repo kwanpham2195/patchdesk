@@ -73,6 +73,12 @@ import {
   type AssigneeListFailure,
   type AssigneeListOutcome,
 } from "../services/assignee-service";
+import {
+  ReviewerService,
+  type ReviewerCommand,
+  type ReviewerListFailure,
+  type ReviewerListOutcome,
+} from "../services/reviewer-service";
 import type { ReviewWriteExpectation } from "../services/review-write-gate";
 import {
   PendingReviewService,
@@ -250,6 +256,27 @@ const assigneeCommandSchema = strictObject({
     strictObject({
       _tag: picklist(["RemoveAssignees"] as const),
       assignees: pipe(array(assigneeRefSchema), minLength(1)),
+    }),
+    strictObject({
+      _tag: picklist(["AssignSelf"] as const),
+    }),
+  ]),
+});
+const reviewerRefSchema = strictObject({
+  id: pipe(string(), minLength(1)),
+  login: pipe(string(), minLength(1)),
+});
+const reviewerCommandSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  command: variant("_tag", [
+    strictObject({
+      _tag: picklist(["RequestReviewers"] as const),
+      reviewers: pipe(array(reviewerRefSchema), minLength(1)),
+    }),
+    strictObject({
+      _tag: picklist(["RemoveReviewers"] as const),
+      reviewers: pipe(array(reviewerRefSchema), minLength(1)),
     }),
   ]),
 });
@@ -524,6 +551,15 @@ export async function startLocalApiServer(
     recentWriteJournals,
   );
   const assigneeWrites = new AssigneeService(
+    reviewWriteGate,
+    github,
+    reviewOperations,
+    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
+    // instant, satisfying the branded IsoTimestamp contract this callback fills.
+    () => new Date().toISOString() as never,
+    recentWriteJournals,
+  );
+  const reviewerWrites = new ReviewerService(
     reviewWriteGate,
     github,
     reviewOperations,
@@ -857,6 +893,26 @@ export async function startLocalApiServer(
     return assigneeListResponse(
       context,
       await assigneeWrites.list({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        ...queryField,
+      }),
+    );
+  });
+  app.post("/v1/reviews/reviewers/command", async (context) =>
+    reviewerResponse(context, reviewerWrites, await jsonBody(context)),
+  );
+  app.get("/v1/reviews/reviewers", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    const reviewId = parseReviewId(context.req.query("reviewId"));
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const rawQuery = context.req.query("query");
+    const queryField =
+      rawQuery !== undefined && rawQuery.length > 0 ? { query: rawQuery } : {};
+    return reviewerListResponse(
+      context,
+      await reviewerWrites.list({
         profileId: profileId.value,
         reviewId: reviewId.value,
         ...queryField,
@@ -2135,6 +2191,84 @@ function assigneeListResponse(
       state: "ready",
       users: outcome.users,
       totalCount: outcome.totalCount,
+      permission: outcome.permission,
+    });
+  if (outcome._tag === "github_rate_limited") {
+    const resumeAtField =
+      outcome.resumeAt === undefined ? {} : { resumeAt: outcome.resumeAt };
+    return context.json({ state: "github_rate_limited", ...resumeAtField });
+  }
+  if (outcome._tag === "github_forbidden")
+    return context.json({
+      state: "github_forbidden",
+      forbiddenReason: outcome.reason,
+    });
+  return context.json({ state: outcome._tag });
+}
+
+async function reviewerResponse(
+  context: Context,
+  service: ReviewerService,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
+  body: unknown,
+): Promise<Response> {
+  const parsed = safeParse(reviewerCommandSchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  if (profileId._tag === "err" || reviewId._tag === "err")
+    return context.json({ error: "invalid_input" }, 400);
+  const command: ReviewerCommand = parsed.output.command;
+  const result = await service.execute({
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    command,
+  });
+  if (result._tag === "ok") return context.json(result.value);
+  const status =
+    result.error === "not_found"
+      ? 404
+      : result.error === "forbidden"
+        ? 403
+        : result.error === "permission_denied" ||
+            result.error === "review_write_in_progress"
+          ? 409
+          : result.error === "github_read_failed" ||
+              result.error === "github_write_failed" ||
+              result.error === "rate_limited"
+            ? 503
+            : // "invalid_input" is the only locally-detected rule violation
+              // left in this union (no reviewer cap exists to enforce), so
+              // it is the sole member of this last bucket.
+              400;
+  return context.json({ error: result.error }, status);
+}
+
+/**
+ * Shapes a reviewer listing the same way `assigneeListResponse` shapes an
+ * assignable-user listing: a GitHub read failure (auth/rate-limit/forbidden)
+ * is data in a 200 response, not an HTTP error, so its specific reason
+ * survives to the renderer. Only the review-resolution half — the review
+ * itself missing or refused — becomes an HTTP error, mirroring
+ * `reviewerResponse`'s write-path status mapping.
+ */
+function reviewerListResponse(
+  context: Context,
+  result: Result<ReviewerListOutcome, ReviewerListFailure>,
+): Response {
+  if (result._tag === "err")
+    return context.json(
+      { error: result.error },
+      result.error === "not_found" ? 404 : 409,
+    );
+  const outcome = result.value;
+  if (outcome._tag === "ready")
+    return context.json({
+      state: "ready",
+      reviewers: outcome.reviewers,
+      suggested: outcome.suggested,
+      candidates: outcome.candidates,
+      candidatesTotalCount: outcome.candidatesTotalCount,
       permission: outcome.permission,
     });
   if (outcome._tag === "github_rate_limited") {

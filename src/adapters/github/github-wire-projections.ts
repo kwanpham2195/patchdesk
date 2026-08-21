@@ -13,8 +13,12 @@ import type {
   GitHubMergePolicyEvidence,
   GitHubMergeStateStatus,
   MergePolicySnapshot,
+  PullRequestReviewEntry,
+  PullRequestReviewerListing,
   PullRequestSummary,
   RepositoryLabel,
+  RequestedReviewer,
+  SuggestedPullRequestReviewer,
 } from "../../domain/github-context";
 import {
   parseGitSha,
@@ -55,6 +59,7 @@ import {
   type MergePolicyPage,
   type mergePolicyResponseSchema,
   type pullRequestIdentitySchema,
+  type pullRequestReviewersResponseSchema,
   type pullRequestSchema,
   type repositoryLabelsResponseSchema,
   type requiredStatusChecksSchema,
@@ -143,6 +148,92 @@ export function parseAssignableUser(
     input.avatarUrl.length > 0
     ? { ...withName, avatarUrl: input.avatarUrl }
     : withName;
+}
+
+export function parsePullRequestReviewerListing(
+  input: v.InferOutput<
+    typeof pullRequestReviewersResponseSchema
+  >["data"]["repository"]["pullRequest"],
+): PullRequestReviewerListing {
+  return {
+    requested: parseRequestedReviewers(input.reviewRequests.nodes),
+    latestReviews: parsePullRequestReviewEntries(input.latestReviews.nodes),
+    reviews: parsePullRequestReviewEntries(input.reviews.nodes),
+    suggested: parseSuggestedReviewers(input.suggestedReviewers),
+  };
+}
+
+function parseRequestedReviewers(
+  nodes: v.InferOutput<
+    typeof pullRequestReviewersResponseSchema
+  >["data"]["repository"]["pullRequest"]["reviewRequests"]["nodes"],
+): ReadonlyArray<RequestedReviewer> {
+  // Mirrors `parseMaintainerPullRequest`'s own `reviewRequests` handling:
+  // a team or bot reviewer's `... on User` fragment does not match, so its
+  // `login` is absent on the wire rather than the whole node being `null`.
+  return nodes.flatMap((node) => {
+    const login = node.requestedReviewer?.login;
+    if (login === undefined || login.length === 0) return [];
+    let reviewer: RequestedReviewer = { login };
+    const name = node.requestedReviewer?.name ?? undefined;
+    if (name !== undefined && name.length > 0) reviewer = { ...reviewer, name };
+    const avatarUrl = node.requestedReviewer?.avatarUrl ?? undefined;
+    if (avatarUrl !== undefined && avatarUrl.length > 0)
+      reviewer = { ...reviewer, avatarUrl };
+    return [reviewer];
+  });
+}
+
+function parsePullRequestReviewEntries(
+  nodes: v.InferOutput<
+    typeof pullRequestReviewersResponseSchema
+  >["data"]["repository"]["pullRequest"]["latestReviews"]["nodes"],
+): ReadonlyArray<PullRequestReviewEntry> {
+  // A node with no author (a deleted/ghost account) is dropped rather than
+  // falling back to a shared "ghost" login the way `parseComment` does for
+  // comment authorship: a verdict keyed by a shared placeholder login would
+  // silently merge unrelated ghosted reviewers into one row. A node whose
+  // `submittedAt` is present but fails to parse is dropped the same way,
+  // rather than invalidating the whole read over one malformed instant.
+  return nodes.flatMap((node) => {
+    const login = node.author?.login;
+    if (login === undefined || login.length === 0) return [];
+    let entry: PullRequestReviewEntry = { login, state: node.state };
+    const avatarUrl = node.author?.avatarUrl ?? undefined;
+    if (avatarUrl !== undefined && avatarUrl.length > 0)
+      entry = { ...entry, avatarUrl };
+    if (node.submittedAt !== null && node.submittedAt !== undefined) {
+      const submittedAt = parseGitHubTimestamp(node.submittedAt);
+      if (submittedAt._tag === "err") return [];
+      entry = { ...entry, submittedAt: submittedAt.value };
+    }
+    const rawOid = node.commit?.oid;
+    if (rawOid !== undefined && rawOid.length > 0) {
+      const commitOid = parseGitSha(rawOid);
+      if (commitOid._tag === "ok")
+        entry = { ...entry, commitOid: commitOid.value };
+    }
+    return [entry];
+  });
+}
+
+function parseSuggestedReviewers(
+  nodes: v.InferOutput<
+    typeof pullRequestReviewersResponseSchema
+  >["data"]["repository"]["pullRequest"]["suggestedReviewers"],
+): ReadonlyArray<SuggestedPullRequestReviewer> {
+  return nodes.flatMap((node) => {
+    if (node.reviewer.login.length === 0) return [];
+    let reviewer: RequestedReviewer = { login: node.reviewer.login };
+    const name = node.reviewer.name ?? undefined;
+    if (name !== undefined && name.length > 0) reviewer = { ...reviewer, name };
+    const avatarUrl = node.reviewer.avatarUrl ?? undefined;
+    if (avatarUrl !== undefined && avatarUrl.length > 0)
+      reviewer = { ...reviewer, avatarUrl };
+    return [
+      { isAuthor: node.isAuthor, isCommenter: node.isCommenter, reviewer },
+    ];
+  });
 }
 
 export function parseMergeOutcome(

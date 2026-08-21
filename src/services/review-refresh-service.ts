@@ -91,6 +91,11 @@ export type RecentReviewWrite =
       readonly _tag: "AssigneeChange";
       readonly added: ReadonlyArray<string>;
       readonly removed: ReadonlyArray<string>;
+    }
+  | {
+      readonly _tag: "ReviewerChange";
+      readonly requested: ReadonlyArray<string>;
+      readonly removed: ReadonlyArray<string>;
     };
 
 export type DetectionResult = {
@@ -279,6 +284,11 @@ export class ReviewRefreshService {
           labelPair.represented,
           journal,
         );
+        const reviewerPair = withoutRecentReviewerChanges(
+          assigneePair.candidate,
+          assigneePair.represented,
+          journal,
+        );
         const candidateFeedback =
           publishedFeedbackAvailable && publishedFeedback.value !== undefined
             ? withoutJournaledFeedback(publishedFeedback.value, journal)
@@ -296,16 +306,19 @@ export class ReviewRefreshService {
         // optional fields for explicit refresh.
         const candidateForFingerprint = {
           ...candidate,
-          pullRequest: assigneePair.candidate,
+          pullRequest: reviewerPair.candidate,
           comments: commentPair.candidate,
         };
         const candidateFingerprintInput =
           candidateFeedback === undefined
             ? candidateForFingerprint
-            : { ...candidateForFingerprint, publishedFeedback: candidateFeedback };
+            : {
+                ...candidateForFingerprint,
+                publishedFeedback: candidateFeedback,
+              };
         const representedForFingerprint = {
           ...represented.value,
-          pullRequest: assigneePair.represented,
+          pullRequest: reviewerPair.represented,
           comments: commentPair.represented,
         };
         const representedFingerprintInput =
@@ -612,7 +625,8 @@ export class ReviewRefreshService {
             process: "main",
             level: "error",
             topic: "review-refresh",
-            message: "remote candidate save failed; reported to caller as storage",
+            message:
+              "remote candidate save failed; reported to caller as storage",
             profileId: input.profileId,
             meta: saveFailureMeta,
           });
@@ -1017,6 +1031,40 @@ function withoutRecentAssigneeChanges(
   };
 }
 
+function withoutRecentReviewerChanges(
+  candidate: PullRequestSummary,
+  represented: PullRequestSummary,
+  journal: ReadonlyArray<RecentReviewWrite>,
+): WithoutRecentLabelChangesResult {
+  // Mirrors withoutRecentAssigneeChanges: a reviewer request this session
+  // made or removed is not yet stably reflected on both sides, so the
+  // touched logins are symmetrically stripped from both sides'
+  // `requestedReviewers`, while any other reviewer-request change still
+  // reads as an update.
+  const touched = new Set<string>();
+  for (const entry of journal) {
+    if (entry._tag !== "ReviewerChange") continue;
+    for (const login of entry.requested) touched.add(login);
+    for (const login of entry.removed) touched.add(login);
+  }
+  if (touched.size === 0) return { candidate, represented };
+  const withoutTouchedReviewers = (
+    pullRequest: PullRequestSummary,
+  ): PullRequestSummary =>
+    pullRequest.requestedReviewers === undefined
+      ? pullRequest
+      : {
+          ...pullRequest,
+          requestedReviewers: pullRequest.requestedReviewers.filter(
+            (login) => !touched.has(login),
+          ),
+        };
+  return {
+    candidate: withoutTouchedReviewers(candidate),
+    represented: withoutTouchedReviewers(represented),
+  };
+}
+
 function withoutJournaledFeedback(
   feedback: GitHubPublishedFeedback,
   journal: ReadonlyArray<RecentReviewWrite>,
@@ -1154,6 +1202,10 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       // Mirrors LabelChange: two assignee writes are the same write only if
       // they touched the exact same logins.
       return `AssigneeChange:${[...entry.added].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
+    case "ReviewerChange":
+      // Mirrors AssigneeChange: two reviewer writes are the same write only
+      // if they touched the exact same logins.
+      return `ReviewerChange:${[...entry.requested].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
   }
 }
 

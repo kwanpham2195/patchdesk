@@ -504,6 +504,71 @@ export const assignableUsersResponseSchema = v.looseObject({
   }),
 });
 
+/** One `latestReviews`/`reviews` node: a review's author, state, submission time, and the commit it targeted. `commit` is nullable in GitHub's own schema (a rare data anomaly), so absence here is not treated as a parse failure. */
+const pullRequestReviewEntryWireSchema = v.looseObject({
+  author: v.nullish(
+    v.looseObject({
+      login: v.optional(v.string()),
+      avatarUrl: v.optional(v.nullable(v.string())),
+    }),
+  ),
+  state: v.picklist([
+    "PENDING",
+    "COMMENTED",
+    "APPROVED",
+    "CHANGES_REQUESTED",
+    "DISMISSED",
+  ]),
+  submittedAt: v.nullish(v.string()),
+  commit: v.nullish(v.looseObject({ oid: v.optional(v.string()) })),
+});
+
+const requestedReviewerWireSchema = v.looseObject({
+  login: v.optional(v.string()),
+  name: v.optional(v.nullable(v.string())),
+  avatarUrl: v.optional(v.nullable(v.string())),
+});
+
+export const pullRequestReviewersResponseSchema = v.looseObject({
+  data: v.looseObject({
+    repository: v.looseObject({
+      pullRequest: v.looseObject({
+        reviewRequests: v.looseObject({
+          nodes: v.array(
+            v.looseObject({
+              // `... on User` on the query side means a team/bot reviewer
+              // parses to `{}` here, not `null` — the wrapper stays
+              // `v.nullish` for the (nullable) union field itself, while the
+              // inner `login` staying optional is what lets that empty
+              // object parse successfully.
+              requestedReviewer: v.nullish(requestedReviewerWireSchema),
+            }),
+          ),
+        }),
+        latestReviews: v.looseObject({
+          nodes: v.array(pullRequestReviewEntryWireSchema),
+        }),
+        reviews: v.looseObject({
+          nodes: v.array(pullRequestReviewEntryWireSchema),
+        }),
+        suggestedReviewers: v.array(
+          v.looseObject({
+            isAuthor: v.boolean(),
+            isCommenter: v.boolean(),
+            // Always `User!` in GitHub's schema, never a union — no `... on
+            // User` fragment on the query side, so `login` is required here.
+            reviewer: v.looseObject({
+              login: v.string(),
+              name: v.optional(v.nullable(v.string())),
+              avatarUrl: v.optional(v.nullable(v.string())),
+            }),
+          }),
+        ),
+      }),
+    }),
+  }),
+});
+
 export const mergePolicyResponseSchema = v.looseObject({
   data: v.looseObject({
     repository: v.looseObject({

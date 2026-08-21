@@ -7,6 +7,7 @@ import type {
   GitHubPublishedFeedback,
   MergePolicySnapshot,
   PullRequestCommit,
+  PullRequestReviewerListing,
   PullRequestSummary,
   RepositoryLabelListing,
 } from "../../domain/github-context";
@@ -101,6 +102,16 @@ export class FakeGitHubAdapter
     return this.values.assignableUsers === undefined
       ? missing("list_assignable_users")
       : ok(this.values.assignableUsers);
+  }
+
+  async getPullRequestReviewers(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+  }): Promise<Result<PullRequestReviewerListing, GitHubReadFailure>> {
+    void input;
+    return this.values.pullRequestReviewers === undefined
+      ? missing("get_pull_request_reviewers")
+      : ok(this.values.pullRequestReviewers);
   }
 
   async getPullRequest(input: {
@@ -357,6 +368,36 @@ export class FakeGitHubAdapter
       : ok(undefined);
   }
 
+  async requestReviews(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly userIds: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.requestReviews === undefined
+      ? err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "request_reviews",
+        })
+      : ok(undefined);
+  }
+
+  async removeRequestedReviewers(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly logins: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.removeRequestedReviewers === undefined
+      ? err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "remove_requested_reviewers",
+        })
+      : ok(undefined);
+  }
+
   async updateThreadComment(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly commentId: string;
@@ -601,6 +642,7 @@ export type FakeGitHubAdapterValues = {
   readonly maintainerPullRequests: MaintainerPullRequestListing;
   readonly repositoryLabels: RepositoryLabelListing;
   readonly assignableUsers: AssignableUserListing;
+  readonly pullRequestReviewers: PullRequestReviewerListing;
   readonly pullRequest: PullRequestSummary;
   readonly mergePolicy: MergePolicySnapshot;
   readonly mergePolicyEvidence: GitHubMergePolicyEvidence;
@@ -660,4 +702,6 @@ export type FakeGitHubAdapterValues = {
   readonly deleteThreadComment?: Record<string, never>;
   readonly addAssigneesToAssignable?: Record<string, never>;
   readonly removeAssigneesFromAssignable?: Record<string, never>;
+  readonly requestReviews?: Record<string, never>;
+  readonly removeRequestedReviewers?: Record<string, never>;
 };

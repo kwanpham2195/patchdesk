@@ -46,10 +46,11 @@ export const addLabelsToLabelableMutation =
   "mutation($labelableId: ID!, $labelIds: [ID!]!) { addLabelsToLabelable(input: { labelableId: $labelableId, labelIds: $labelIds }) { clientMutationId } }";
 export const removeLabelsFromLabelableMutation =
   "mutation($labelableId: ID!, $labelIds: [ID!]!) { removeLabelsFromLabelable(input: { labelableId: $labelableId, labelIds: $labelIds }) { clientMutationId } }";
-// Mirrors repositoryLabelsQuery's unpaginated first:100 page. Unlike labels'
-// 100 cap, assignableUsers' own first-argument ceiling was not independently
-// confirmed live for this change; 100 is carried over on the same
-// assumption pending that confirmation. The GraphQL variable is named
+// Mirrors repositoryLabelsQuery's unpaginated first:100 page. 100 is the
+// connection's own ceiling, confirmed live: `first: 101` is rejected with
+// EXCESSIVE_PAGINATION ("exceeds the `first` limit of 100 records"), so
+// `totalCount` is what reveals a repository with more assignable people
+// than one page holds. The GraphQL variable is named
 // `$search`, not `$query`, even though it feeds the schema's `query:`
 // argument: `gh api graphql` reserves the literal key "query" (via `-f
 // query=...`) for the request's own GraphQL document text everywhere in
@@ -61,6 +62,27 @@ export const addAssigneesToAssignableMutation =
   "mutation($assignableId: ID!, $assigneeIds: [ID!]!) { addAssigneesToAssignable(input: { assignableId: $assignableId, assigneeIds: $assigneeIds }) { clientMutationId } }";
 export const removeAssigneesFromAssignableMutation =
   "mutation($assignableId: ID!, $assigneeIds: [ID!]!) { removeAssigneesFromAssignable(input: { assignableId: $assignableId, assigneeIds: $assigneeIds }) { clientMutationId } }";
+// A dedicated, unpaginated pull-request-scoped query for the reviewer rail —
+// deliberately not folded into mergePolicyQuery below, which also selects
+// one `pullRequest(number: $number)` but paginates `commits(last:1).
+// statusCheckRollup.contexts` for check-run reasons entirely unrelated to
+// reviewer state. Every connection here fits one bounded first:100 page (or,
+// for suggestedReviewers, is unpaginated in GitHub's own schema), so this
+// query never needs a second request the way mergePolicyQuery's check runs
+// sometimes do. `... on User` on `requestedReviewer` drops team and bot
+// reviewers, which are out of scope — mirrors maintainerInboxQuery's own
+// `reviewRequests` selection. `suggestedReviewers.reviewer` needs no such
+// fragment: GitHub's schema types it `User!` directly, never a union.
+export const pullRequestReviewersQuery =
+  "query PullRequestReviewers($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewRequests(first: 100) { nodes { requestedReviewer { ... on User { login name avatarUrl } } } } latestReviews(first: 100) { nodes { author { login avatarUrl } state submittedAt commit { oid } } } reviews(first: 100) { nodes { author { login avatarUrl } state submittedAt commit { oid } } } suggestedReviewers { isAuthor isCommenter reviewer { login name avatarUrl } } } } }";
+// `union: true` makes this additive: it adds `$userIds` to whoever is
+// already requested rather than replacing the set, so it never disturbs a
+// request another maintainer made since the last refresh. See ADR "The
+// conversation rail owns pull request metadata writes" for why removal
+// instead takes the separate, subtractive REST endpoint
+// (`GitHubAdapter.removeRequestedReviewers`) rather than this mutation.
+export const requestReviewsMutation =
+  "mutation($pullRequestId: ID!, $userIds: [ID!]!) { requestReviews(input: { pullRequestId: $pullRequestId, userIds: $userIds, union: true }) { clientMutationId } }";
 export const mergePolicyQuery =
   "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefOid baseRefName mergeable mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 export const maxMergePolicyPages = 3;

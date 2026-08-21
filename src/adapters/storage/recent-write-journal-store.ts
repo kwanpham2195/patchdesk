@@ -70,6 +70,12 @@ const entrySchema = v.variant("_tag", [
     removed: v.array(v.string()),
     writtenAt: v.string(),
   }),
+  v.strictObject({
+    _tag: v.literal("ReviewerChange"),
+    requested: v.array(v.string()),
+    removed: v.array(v.string()),
+    writtenAt: v.string(),
+  }),
 ]);
 const journalSchema = v.strictObject({
   schemaVersion: v.literal(1),
@@ -120,7 +126,8 @@ export class RecentWriteJournalStore {
     const nowMs = Date.now();
     const kept: Array<RecentReviewWrite> = [];
     for (const entry of existing.value) {
-      if (withinCeiling(entry.writtenAt, nowMs)) kept.push(stripWrittenAt(entry));
+      if (withinCeiling(entry.writtenAt, nowMs))
+        kept.push(stripWrittenAt(entry));
     }
     return ok(kept);
   }
@@ -227,10 +234,31 @@ function parseRecentWriteEntries(
         reviewId: entry.reviewId,
         writtenAt: writtenAt.value,
       });
-    } else {
+    } else if (entry._tag === "LabelChange") {
       entries.push({
         _tag: "LabelChange",
         added: entry.added,
+        removed: entry.removed,
+        writtenAt: writtenAt.value,
+      });
+    } else if (entry._tag === "AssigneeChange") {
+      // Pre-existing bug fixed here: this branch previously fell into the
+      // final `else` below and was stamped `_tag: "LabelChange"` on read,
+      // silently reclassifying every persisted assignee-change entry. Since
+      // `withoutRecentAssigneeChanges` and `containsRecentWrites` both key
+      // off `entry._tag === "AssigneeChange"`, a reloaded assignee write
+      // would never be recognized as one, and would instead have been read
+      // back as (and stripped like) a label change with the wrong names.
+      entries.push({
+        _tag: "AssigneeChange",
+        added: entry.added,
+        removed: entry.removed,
+        writtenAt: writtenAt.value,
+      });
+    } else {
+      entries.push({
+        _tag: "ReviewerChange",
+        requested: entry.requested,
         removed: entry.removed,
         writtenAt: writtenAt.value,
       });

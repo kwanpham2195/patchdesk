@@ -661,5 +661,9 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       // Mirrors LabelChange: two assignee writes are the same write only if
       // they touched the exact same logins.
       return `AssigneeChange:${[...entry.added].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
+    case "ReviewerChange":
+      // Mirrors AssigneeChange: two reviewer writes are the same write only
+      // if they touched the exact same logins.
+      return `ReviewerChange:${[...entry.requested].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
   }
 }

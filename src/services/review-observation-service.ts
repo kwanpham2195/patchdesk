@@ -168,7 +168,10 @@ export class ReviewObservationService {
     if (review.status._tag === "Terminal") {
       // Best effort: no further reconciliation will read the journal once a
       // review is terminal; a clear failure must not fail this observation.
-      await this.dependencies.recentWrites.clear(input.profileId, input.reviewId);
+      await this.dependencies.recentWrites.clear(
+        input.profileId,
+        input.reviewId,
+      );
       return ok({
         _tag: "Terminal",
         status: review.status.state,
@@ -198,7 +201,10 @@ export class ReviewObservationService {
       if (saved._tag === "err") return err({ reason: "storage" });
       // Best effort: no further reconciliation will read the journal once a
       // review is terminal; a clear failure must not fail this observation.
-      await this.dependencies.recentWrites.clear(input.profileId, input.reviewId);
+      await this.dependencies.recentWrites.clear(
+        input.profileId,
+        input.reviewId,
+      );
       return ok({ _tag: "Terminal", status: state, detectedAt });
     }
 
@@ -403,7 +409,10 @@ export class ReviewObservationService {
       nextSnapshotHash: savedCandidate.value.snapshotHash,
       createdAt: detectedAt,
     };
-    const journalWithPending: Omit<ReviewObservationJournal, "nextFindingReviewReceipts"> =
+    const journalWithPending: Omit<
+      ReviewObservationJournal,
+      "nextFindingReviewReceipts"
+    > =
       pending.pendingReview === undefined
         ? journalBase
         : { ...journalBase, nextPendingReview: pending.pendingReview };
@@ -868,6 +877,15 @@ function containsRecentWrites(
       return (
         write.added.every((login) => assigneeLogins.has(login)) &&
         write.removed.every((login) => !assigneeLogins.has(login))
+      );
+    }
+    if (write._tag === "ReviewerChange") {
+      const requestedLogins = new Set(
+        snapshot.pullRequest.requestedReviewers ?? [],
+      );
+      return (
+        write.requested.every((login) => requestedLogins.has(login)) &&
+        write.removed.every((login) => !requestedLogins.has(login))
       );
     }
     return (

@@ -1,4 +1,4 @@
-import { pullRequestAssigneePermission } from "../adapters/github/github-adapter";
+import { pullRequestWritePermission } from "../adapters/github/github-adapter";
 import type {
   GitHubReader,
   GitHubReviewWriter,
@@ -39,6 +39,13 @@ export type AssigneeCommand =
   | {
       readonly _tag: "RemoveAssignees";
       readonly assignees: ReadonlyArray<AssigneeRef>;
+    }
+  | {
+      // No `assignees` field: the service resolves who "self" is itself
+      // (`resolveAuthenticatedAccount`), rather than trusting a caller-
+      // supplied identity for a command that only ever means the current
+      // account.
+      readonly _tag: "AssignSelf";
     };
 
 export type AssigneeReceipt =
@@ -74,7 +81,7 @@ export type AssigneeListOutcome =
       /**
        * Whether this account can assign people to this pull request, computed
        * the same way `execute`'s write gate computes it (`getRepositoryPermission`
-       * evidence through `pullRequestAssigneePermission`). Carried on the read
+       * evidence through `pullRequestWritePermission`). Carried on the read
        * path so the picker can gate its controls on real evidence instead of
        * inferring permission from a rejected write.
        */
@@ -237,7 +244,34 @@ export class AssigneeService {
             account: account.value.account,
           })
         : undefined;
-    return pullRequestAssigneePermission(permissionEvidence);
+    return pullRequestWritePermission(permissionEvidence);
+  }
+
+  /**
+   * Resolves the authenticated account's own `AssigneeRef` for `AssignSelf`:
+   * `resolveAuthenticatedAccount` gives the login, but assignment needs the
+   * GraphQL node ID that only `listAssignableUsers` carries (mirrors why
+   * `AssignableUser.id` exists at all — see its doc comment). Searching by
+   * the login and requiring an exact match avoids assigning a lookalike
+   * account if GitHub's substring search returns more than one result.
+   */
+  private async resolveSelfAssignee(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+  ): Promise<Result<AssigneeRef, AssigneeWriteFailure>> {
+    const account = await this.github.resolveAuthenticatedAccount(profile);
+    if (account._tag === "err") return err("github_read_failed");
+    const listed = await this.github.listAssignableUsers({
+      profile,
+      repo: pr,
+      query: account.value.account,
+    });
+    if (listed._tag === "err") return err("github_read_failed");
+    const match = listed.value.users.find(
+      (user) => user.login === account.value.account,
+    );
+    if (match === undefined) return err("github_read_failed");
+    return ok({ id: match.id, login: match.login });
   }
 
   private async executeUnlocked(input: {
@@ -271,12 +305,28 @@ export class AssigneeService {
     const assignableId = pullRequest.value.nodeId;
     if (assignableId === undefined) return err("github_read_failed");
 
-    const assigneeIds = input.command.assignees.map((assignee) => assignee.id);
-    const assigneeLogins = input.command.assignees.map(
-      (assignee) => assignee.login,
-    );
+    // `AssignSelf` carries no `assignees` of its own: resolve the
+    // authenticated account's own `AssigneeRef` here, then fall through the
+    // same add path as `AddAssignees` below (cap check included — a
+    // self-assign is not exempt from the ten-assignee cap).
+    let assignees: ReadonlyArray<AssigneeRef>;
+    if (input.command._tag === "AssignSelf") {
+      const resolved = await this.resolveSelfAssignee(
+        current.value.profile,
+        pr,
+      );
+      if (resolved._tag === "err") return resolved;
+      assignees = [resolved.value];
+    } else {
+      assignees = input.command.assignees;
+    }
+    const assigneeIds = assignees.map((assignee) => assignee.id);
+    const assigneeLogins = assignees.map((assignee) => assignee.login);
 
-    if (input.command._tag === "AddAssignees") {
+    if (
+      input.command._tag === "AddAssignees" ||
+      input.command._tag === "AssignSelf"
+    ) {
       const resultantLogins = new Set(pullRequest.value.assignees ?? []);
       for (const login of assigneeLogins) resultantLogins.add(login);
       // Enforced before ever calling GitHub so a request that would exceed
@@ -347,6 +397,9 @@ function journalEntryFor(receipt: AssigneeReceipt): RecentReviewWrite {
 function validateLocalCommand(
   command: AssigneeCommand,
 ): Result<void, AssigneeWriteFailure> {
+  // `AssignSelf` carries no `assignees` to validate locally; its identity is
+  // resolved against GitHub itself in `resolveSelfAssignee`.
+  if (command._tag === "AssignSelf") return ok(undefined);
   if (command.assignees.length === 0) return err("invalid_input");
   if (
     command.assignees.some(

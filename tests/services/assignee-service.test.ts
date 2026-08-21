@@ -440,6 +440,163 @@ describe("AssigneeService", () => {
     });
   });
 
+  describe("AssignSelf", () => {
+    it("resolves the authenticated account and assigns it", async () => {
+      const gate = makeGate();
+      const addAssigneesToAssignable = vi.fn(async () => ok(undefined));
+      const resolveAuthenticatedAccount = vi.fn(async () =>
+        ok({ host: "github.com", account: "octocat" }),
+      );
+      const listAssignableUsers = vi.fn(async () =>
+        ok({
+          users: [
+            { id: "MDQ6VXNlcjE=", login: "octocat" },
+            { id: "MDQ6VXNlcjI=", login: "octocat-imposter" },
+          ],
+          totalCount: 2,
+        }),
+      );
+      const recentWrites = makeRecentWrites();
+      const service = new AssigneeService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({
+          addAssigneesToAssignable,
+          resolveAuthenticatedAccount,
+          listAssignableUsers,
+        }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        recentWrites,
+      );
+      const result = await service.execute({
+        profileId,
+        reviewId,
+        command: { _tag: "AssignSelf" },
+      });
+      expect(result).toEqual({
+        _tag: "ok",
+        value: { _tag: "AssigneesAdded", added: ["octocat"] },
+      });
+      // Searches by the resolved login and requires an exact match, not just
+      // GitHub's substring search's first result (`octocat-imposter` sorts
+      // before `octocat` was not assumed).
+      expect(listAssignableUsers).toHaveBeenCalledWith(
+        expect.objectContaining({ query: "octocat" }),
+      );
+      expect(addAssigneesToAssignable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assignableId: "PR_node",
+          assigneeIds: ["MDQ6VXNlcjE="],
+        }),
+      );
+      expect(recentWrites.append).toHaveBeenCalledWith(
+        profileId,
+        reviewId,
+        { _tag: "AssigneeChange", added: ["octocat"], removed: [] },
+        "2026-01-01T00:00:00.000Z",
+      );
+    });
+
+    it("refuses without 'permitted', the same as any other assignee write", async () => {
+      const gate = makeGate();
+      const addAssigneesToAssignable = vi.fn();
+      const getRepositoryPermission = vi.fn(async () =>
+        ok({
+          account: "octocat",
+          permission: "triage" as const,
+          pullRequestsWrite: false,
+          canManageLabels: true,
+        }),
+      );
+      const service = new AssigneeService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({
+          addAssigneesToAssignable,
+          getRepositoryPermission,
+        }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.execute({
+        profileId,
+        reviewId,
+        command: { _tag: "AssignSelf" },
+      });
+      expect(result).toEqual({ _tag: "err", error: "permission_denied" });
+      expect(addAssigneesToAssignable).not.toHaveBeenCalled();
+    });
+
+    it("fails cleanly, not silently, when the authenticated account cannot be resolved", async () => {
+      const gate = makeGate();
+      const addAssigneesToAssignable = vi.fn();
+      // `resolveAuthenticatedAccount` is called twice on this path — once by
+      // the permission gate, once by self-identity resolution — so it
+      // succeeds the first time (isolating this test to the second call
+      // failing) and fails the second, e.g. a token invalidated mid-write.
+      const resolveAuthenticatedAccount = vi
+        .fn()
+        .mockResolvedValueOnce(ok({ host: "github.com", account: "octocat" }))
+        .mockResolvedValueOnce({
+          _tag: "err" as const,
+          error: {
+            _tag: "GitHubAuthenticationFailed" as const,
+            operation: "auth_status" as const,
+          },
+        });
+      const service = new AssigneeService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({
+          addAssigneesToAssignable,
+          resolveAuthenticatedAccount,
+        }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.execute({
+        profileId,
+        reviewId,
+        command: { _tag: "AssignSelf" },
+      });
+      expect(result).toEqual({ _tag: "err", error: "github_read_failed" });
+      expect(addAssigneesToAssignable).not.toHaveBeenCalled();
+    });
+
+    it("fails cleanly, not silently, when the resolved account has no assignable node id", async () => {
+      const gate = makeGate();
+      const addAssigneesToAssignable = vi.fn();
+      const listAssignableUsers = vi.fn(async () =>
+        ok({ users: [], totalCount: 0 }),
+      );
+      const service = new AssigneeService(
+        gate,
+        // SAFETY: the mock only implements the Gateway methods this test
+        // exercises; the service never calls any method left unimplemented.
+        makeGateway({
+          addAssigneesToAssignable,
+          listAssignableUsers,
+        }) as never,
+        new ReviewOperationCoordinator(),
+        now,
+        makeRecentWrites(),
+      );
+      const result = await service.execute({
+        profileId,
+        reviewId,
+        command: { _tag: "AssignSelf" },
+      });
+      expect(result).toEqual({ _tag: "err", error: "github_read_failed" });
+      expect(addAssigneesToAssignable).not.toHaveBeenCalled();
+    });
+  });
+
   describe("list", () => {
     it("reaches the renderer with the assignable users intact", async () => {
       const gate = makeGate();

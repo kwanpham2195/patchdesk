@@ -353,6 +353,90 @@ export function parseAssignableUserListResponse(
   return parsed.success ? parsed.output : undefined;
 }
 
+// `GET /v1/reviews/reviewers` mirrors `assignableUserListResponseSchema`
+// exactly in structure and validation style; see its comment above. Each
+// reviewer row carries its Revision-bound review verdict (absent for a
+// requested-but-unanswered reviewer — see `ReviewerVerdictRow` in
+// `src/domain/review-verdicts.ts`) alongside the same fail-closed
+// permission discipline.
+const reviewerListResponseSchema = v.strictObject({
+  state: v.picklist([
+    "ready",
+    "github_auth",
+    "github_read",
+    "github_rate_limited",
+    "github_forbidden",
+  ]),
+  reviewers: v.optional(
+    v.array(
+      v.strictObject({
+        login: v.pipe(v.string(), v.minLength(1)),
+        name: v.optional(v.pipe(v.string(), v.minLength(1))),
+        avatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+        verdict: v.optional(
+          v.picklist([
+            "approved",
+            "changes_requested",
+            "commented",
+            "dismissed",
+          ]),
+        ),
+        outdated: v.boolean(),
+        submittedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+      }),
+    ),
+  ),
+  suggested: v.optional(
+    v.array(
+      v.strictObject({
+        isAuthor: v.boolean(),
+        isCommenter: v.boolean(),
+        reviewer: v.strictObject({
+          login: v.pipe(v.string(), v.minLength(1)),
+          name: v.optional(v.pipe(v.string(), v.minLength(1))),
+          avatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+        }),
+      }),
+    ),
+  ),
+  candidates: v.optional(
+    v.array(
+      v.strictObject({
+        id: v.pipe(v.string(), v.minLength(1)),
+        login: v.pipe(v.string(), v.minLength(1)),
+        name: v.optional(v.pipe(v.string(), v.minLength(1))),
+        avatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+      }),
+    ),
+  ),
+  // GitHub's exact candidate total; compare against `candidates.length` to
+  // detect truncation of the bounded page the local API returns.
+  candidatesTotalCount: v.optional(
+    v.pipe(v.number(), v.integer(), v.minValue(0)),
+  ),
+  // Only present on `state: "ready"` — the real, service-computed
+  // three-state reviewer-write permission (never inferred from a failed
+  // write). See `ReviewerListOutcome` in `src/services/reviewer-service.ts`.
+  permission: v.optional(v.picklist(["permitted", "denied", "unknown"])),
+  resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+  forbiddenReason: v.optional(
+    v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
+  ),
+});
+
+export type ReviewerListResponse = v.InferOutput<
+  typeof reviewerListResponseSchema
+>;
+
+/** Parses the local API's reviewer listing before the reviewer rail owns it. */
+export function parseReviewerListResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+  input: unknown,
+): ReviewerListResponse | undefined {
+  const parsed = v.safeParse(reviewerListResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
+
 // The main process projects a renderer-safe Session identity only. Patch,
 // worktree, and comparison artifact paths never cross this boundary; the strict
 // objects below reject any response that still carries them.
