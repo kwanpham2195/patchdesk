@@ -557,6 +557,12 @@ const fixtureLabelCatalog: RepositoryLabelListResponse = {
   permission: "permitted",
 };
 
+// A tiny, obviously-fake `data:` URI standing in for a resolved avatar --
+// never a real image, just enough for `Avatar` to take the `<img>` branch
+// instead of the initials-badge one. Mirrors the placeholder style
+// `conversation.ui.test.tsx` already uses for `authorAvatarDataUri`.
+const FIXTURE_AVATAR_DATA_URI = "data:image/png;base64,AAAA";
+
 // The repository's assignable people, as the Assignees picker's
 // `fetchAssignableUsers` reads it -- deliberately a superset of
 // `workbenchFixtureData.pullRequest.assignees` (one already-assigned person
@@ -564,9 +570,17 @@ const fixtureLabelCatalog: RepositoryLabelListResponse = {
 // search, and toggle someone who starts unchecked. `fetchAssignableUsers`
 // filters this list by `query` the same way the real, server-side filter
 // does, so the search/debounce wiring has something real to exercise.
+// `fixture-assignee` carries a resolved `avatarDataUri` and the other two do
+// not, so both `Avatar` branches (cached image, initials fallback) render
+// somewhere in this same list -- for the rail's own assignee row and for the
+// picker, which reads this exact list.
 const fixtureAssignableUsers: NonNullable<AssignableUserListResponse["users"]> =
   [
-    { id: "MDQ6VXNlcjEwMQ==", login: "fixture-assignee" },
+    {
+      id: "MDQ6VXNlcjEwMQ==",
+      login: "fixture-assignee",
+      avatarDataUri: FIXTURE_AVATAR_DATA_URI,
+    },
     { id: "MDQ6VXNlcjEwMg==", login: "fixture-collaborator" },
     { id: "MDQ6VXNlcjEwMw==", login: "fixture-maintainer" },
   ];
@@ -662,6 +676,9 @@ const fixtureAssigneeActionsReadFailure: AssigneesSectionActions = {
 // ("fixture-outdated-reviewer") -- so a single browser test can assert the
 // requested-pending state, a verdict badge, and the outdated marking
 // together.
+// `fixture-approved-reviewer` carries a resolved `avatarDataUri`; the other
+// two do not, so the Reviewers section renders both an `<img>` and an
+// initials badge in the same list.
 const fixtureReviewerRows: NonNullable<ReviewerListResponse["reviewers"]> = [
   { login: "fixture-reviewer", outdated: false },
   {
@@ -669,6 +686,7 @@ const fixtureReviewerRows: NonNullable<ReviewerListResponse["reviewers"]> = [
     verdict: "approved",
     outdated: false,
     submittedAt: "2026-07-16T00:00:00.000Z",
+    avatarDataUri: FIXTURE_AVATAR_DATA_URI,
   },
   {
     login: "fixture-outdated-reviewer",
@@ -687,7 +705,10 @@ const fixtureSuggestedReviewers: NonNullable<
   {
     isAuthor: true,
     isCommenter: false,
-    reviewer: { login: "fixture-suggested-reviewer" },
+    reviewer: {
+      login: "fixture-suggested-reviewer",
+      avatarDataUri: FIXTURE_AVATAR_DATA_URI,
+    },
   },
 ];
 
@@ -695,12 +716,20 @@ const fixtureSuggestedReviewers: NonNullable<
 // `fetchReviewers` reads it -- includes the already-requested reviewer (so
 // the picker can prove it starts checked), the suggested collaborator (so
 // the picker can prove it renders once, grouped above the rest), and one
-// not-yet-requested collaborator for toggling.
+// not-yet-requested collaborator for toggling. `fixture-suggested-reviewer`
+// carries a resolved `avatarDataUri` (it's the row the picker actually
+// renders an avatar from -- see `ReviewerCandidateRow`); the other two do
+// not, so the picker's suggested group and its plain candidate list each
+// exercise a different `Avatar` branch.
 const fixtureReviewerCandidates: NonNullable<
   ReviewerListResponse["candidates"]
 > = [
   { id: "MDQ6VXNlcjIwMQ==", login: "fixture-reviewer" },
-  { id: "MDQ6VXNlcjIwMg==", login: "fixture-suggested-reviewer" },
+  {
+    id: "MDQ6VXNlcjIwMg==",
+    login: "fixture-suggested-reviewer",
+    avatarDataUri: FIXTURE_AVATAR_DATA_URI,
+  },
   { id: "MDQ6VXNlcjIwMw==", login: "fixture-other-reviewer" },
 ];
 

@@ -218,7 +218,7 @@ test.describe("pull request metadata rail", () => {
     ).toHaveCount(0);
   });
 
-  test("renders Reviewers above Assignees above Labels, listing assignees with initials badges", async ({
+  test("renders Reviewers above Assignees above Labels, listing assignees", async ({
     page,
   }) => {
     await page.goto(`${origin(server)}/#workbench-fixture`);
@@ -239,10 +239,69 @@ test.describe("pull request metadata rail", () => {
     await expect(
       rail.getByRole("button", { name: "Manage assignees" }),
     ).toBeVisible();
-    // An initials badge (`Avatar` with no `dataUri`) renders next to the row.
+  });
+
+  // #21: reviewers, assignees, and picker candidates render real GitHub
+  // avatars, resolved main-process-side and handed to the renderer only as
+  // `data:` URIs (see `Avatar` in `ui/avatar.tsx`) -- never a remote
+  // `avatarUrl`, which the renderer's CSP would refuse to load anyway.
+  test("renders a cached avatar as an <img>, falls back to initials without one, and never points a rail element at a remote src", async ({
+    page,
+  }) => {
+    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
+    const rail = page.getByRole("complementary", {
+      name: "Pull request metadata",
+    });
+
+    // `fixture-assignee` (the rail's own assignee row) has a resolved
+    // avatar and renders an `<img>`, not an initials badge.
+    const assigneeRow = rail.getByRole("list", {
+      name: "Pull request assignees",
+    });
+    const assigneeItem = assigneeRow.locator("li", {
+      hasText: "fixture-assignee",
+    });
+    await expect(assigneeItem.locator('img[data-slot="avatar"]')).toHaveCount(
+      1,
+    );
+    await expect(assigneeItem.locator('span[data-slot="avatar"]')).toHaveCount(
+      0,
+    );
+
+    // `fixture-approved-reviewer` has a resolved avatar too; the
+    // requested-but-unanswered `fixture-reviewer` row does not, and falls
+    // back to its initials badge.
+    const reviewerList = rail.getByRole("list", {
+      name: "Pull request reviewers",
+    });
+    const approvedRow = reviewerList.locator("li", {
+      hasText: "fixture-approved-reviewer",
+    });
+    await expect(approvedRow.locator('img[data-slot="avatar"]')).toHaveCount(1);
+    const requestedRow = reviewerList.locator("li", {
+      hasText: "fixture-reviewer",
+      hasNotText: "fixture-approved-reviewer",
+    });
     await expect(
-      assigneeRow.locator('[data-slot="avatar"]', { hasText: "F" }),
+      requestedRow.locator('span[data-slot="avatar"]'),
     ).toBeVisible();
+    await expect(requestedRow.locator('img[data-slot="avatar"]')).toHaveCount(
+      0,
+    );
+
+    // Every avatar image in the rail is a `data:` URI; none ever carries a
+    // remote (http/https) `src` -- the renderer's CSP would refuse to load
+    // one anyway, but this proves the rail never even tries.
+    const avatarImages = rail.locator('img[data-slot="avatar"]');
+    const avatarCount = await avatarImages.count();
+    expect(avatarCount).toBeGreaterThan(0);
+    for (let index = 0; index < avatarCount; index += 1) {
+      const src = await avatarImages.nth(index).getAttribute("src");
+      expect(src).toMatch(/^data:/);
+    }
   });
 
   test("renders reviewer rows: a requested-but-unanswered row, a current verdict, and an outdated verdict marked as such without relying on colour alone", async ({

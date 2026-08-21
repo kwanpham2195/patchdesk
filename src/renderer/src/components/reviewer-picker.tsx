@@ -360,7 +360,11 @@ function ReviewerCandidateRow({
           disabled={disabled || busy}
           onCheckedChange={() => onToggle(candidate, !attached)}
         />
-        <Avatar name={candidate.login} className="size-5 text-[10px]" />
+        <Avatar
+          name={candidate.login}
+          dataUri={candidate.avatarDataUri}
+          className="size-5 text-[10px]"
+        />
         <span className="min-w-0 truncate">{candidate.login}</span>
       </label>
       {caption === undefined ? null : (

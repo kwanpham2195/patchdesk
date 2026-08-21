@@ -46,6 +46,8 @@ export type ReviewerVerdictRow = {
   readonly login: string;
   readonly name?: string;
   readonly avatarUrl?: string;
+  /** `data:` URI resolved from the on-disk avatar cache for `avatarUrl`; see `AssignableUser.avatarDataUri` in `github-context.ts` for the full contract. `deriveReviewVerdicts` never sets this (it is pure, no I/O) — only `ReviewerService.list` populates it on the rows this function returns. */
+  readonly avatarDataUri?: string;
   readonly verdict?: ReviewVerdictState;
   readonly outdated: boolean;
   readonly submittedAt?: IsoTimestamp;

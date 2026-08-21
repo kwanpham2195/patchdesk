@@ -1,9 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ReviewerService,
   type ReviewerCommand,
 } from "../../src/services/reviewer-service";
+import {
+  hashAvatarUrl,
+  writeAvatar,
+} from "../../src/adapters/storage/avatar-cache-store";
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -14,12 +22,32 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { ok, type Result } from "../../src/domain/result";
+import {
+  AvatarSyncService,
+  MAX_AVATARS_PER_SYNC,
+} from "../../src/services/avatar-sync-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
   throw new Error("fixture");
 };
+
+// Real temp `PatchdeskPaths`, mirroring `assignee-service.test.ts`: avatar
+// resolution reads real bytes off disk, so a mock store would not exercise
+// the real read path.
+const roots: string[] = [];
+afterEach(async () => {
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
+});
+async function avatarPaths(): Promise<PatchdeskPaths> {
+  const root = await mkdtemp(join(tmpdir(), "patchdesk-reviewer-avatar-"));
+  roots.push(root);
+  return PatchdeskPaths.forTest(root);
+}
+
 const profileId = must(parseWorkspaceProfileId("cfw"));
 const reviewId = must(
   parseReviewId("cfw__centraldigital__patchdesk__pr-42__review-abcdef123456"),
@@ -634,6 +662,173 @@ describe("ReviewerService", () => {
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({ _tag: "err", error: "not_found" });
       expect(getPullRequestReviewers).not.toHaveBeenCalled();
+    });
+
+    describe("avatars", () => {
+      const bytes = new Uint8Array([1, 2, 3, 4]);
+
+      it("resolves a cached avatar to a data URI, and leaves an uncached one absent from the outcome", async () => {
+        const store = await avatarPaths();
+        const cachedUrl = "https://avatars.githubusercontent.com/u/601?v=1";
+        const uncachedUrl = "https://avatars.githubusercontent.com/u/602?v=1";
+        await writeAvatar(store, profileId, hashAvatarUrl(cachedUrl), bytes);
+        const gate = makeGate();
+        const getPullRequestReviewers = vi.fn(async () =>
+          ok({
+            requested: [{ login: "cached-reviewer", avatarUrl: cachedUrl }],
+            latestReviews: [],
+            reviews: [],
+            suggested: [],
+          }),
+        );
+        const listAssignableUsers = vi.fn(async () =>
+          ok({
+            users: [
+              {
+                id: "U1",
+                login: "uncached-candidate",
+                avatarUrl: uncachedUrl,
+              },
+            ],
+            totalCount: 1,
+          }),
+        );
+        const warmAvatarUrls = vi.fn(async () => undefined);
+        const service = new ReviewerService(
+          gate,
+          // SAFETY: the mock only implements the Gateway methods this test
+          // exercises; the service never calls any method left unimplemented.
+          makeGateway({
+            getPullRequestReviewers,
+            listAssignableUsers,
+          }) as never,
+          new ReviewOperationCoordinator(),
+          now,
+          makeRecentWrites(),
+          { paths: store, sync: { warmAvatarUrls } },
+        );
+        const result = await service.list({ profileId, reviewId });
+        if (result._tag !== "ok" || result.value._tag !== "ready")
+          throw new Error("fixture");
+        const reviewerRow = result.value.reviewers.find(
+          (row) => row.login === "cached-reviewer",
+        );
+        const candidateRow = result.value.candidates.find(
+          (candidate) => candidate.login === "uncached-candidate",
+        );
+        expect(reviewerRow?.avatarDataUri).toMatch(/^data:/);
+        expect(candidateRow?.avatarDataUri).toBeUndefined();
+        expect(warmAvatarUrls).toHaveBeenCalledWith({
+          profileId,
+          avatarUrls: [cachedUrl, uncachedUrl],
+        });
+      });
+
+      it("never fails the read when the avatar dependency itself throws", async () => {
+        const store = await avatarPaths();
+        const gate = makeGate();
+        const getPullRequestReviewers = vi.fn(async () =>
+          ok({
+            requested: [
+              {
+                login: "some-reviewer",
+                avatarUrl: "https://avatars.githubusercontent.com/u/1?v=1",
+              },
+            ],
+            latestReviews: [],
+            reviews: [],
+            suggested: [],
+          }),
+        );
+        const warmAvatarUrls = vi.fn(async () => {
+          throw new Error("misbehaving dependency");
+        });
+        const service = new ReviewerService(
+          gate,
+          // SAFETY: the mock only implements the Gateway methods this test
+          // exercises; the service never calls any method left unimplemented.
+          makeGateway({ getPullRequestReviewers }) as never,
+          new ReviewOperationCoordinator(),
+          now,
+          makeRecentWrites(),
+          { paths: store, sync: { warmAvatarUrls } },
+        );
+        const result = await service.list({ profileId, reviewId });
+        if (result._tag !== "ok" || result.value._tag !== "ready")
+          throw new Error("fixture");
+        expect(result.value.reviewers).toEqual([
+          {
+            login: "some-reviewer",
+            avatarUrl: "https://avatars.githubusercontent.com/u/1?v=1",
+            outdated: false,
+          },
+        ]);
+      });
+
+      it("prioritises reviewer rows over picker candidates when the warm cap bites", async () => {
+        const store = await avatarPaths();
+        const gate = makeGate();
+        const getPullRequestReviewers = vi.fn(async () =>
+          ok({
+            requested: [
+              {
+                login: "priority-reviewer",
+                avatarUrl:
+                  "https://avatars.githubusercontent.com/u/priority?v=1",
+              },
+            ],
+            latestReviews: [],
+            reviews: [],
+            suggested: [],
+          }),
+        );
+        // `MAX_AVATARS_PER_SYNC` candidates -- one more URL than the cap
+        // can hold once the reviewer row's own URL is warmed first, so
+        // exactly one candidate is crowded out.
+        const candidates = Array.from(
+          { length: MAX_AVATARS_PER_SYNC },
+          (_, index) => ({
+            id: `U${index}`,
+            login: `candidate-${index}`,
+            avatarUrl: `https://avatars.githubusercontent.com/u/${index}?v=1`,
+          }),
+        );
+        const listAssignableUsers = vi.fn(async () =>
+          ok({ users: candidates, totalCount: candidates.length }),
+        );
+        const fetchAvatar = vi.fn(async () => ({ bytes }));
+        const sync = new AvatarSyncService({ paths: store, fetchAvatar });
+        const service = new ReviewerService(
+          gate,
+          // SAFETY: the mock only implements the Gateway methods this test
+          // exercises; the service never calls any method left unimplemented.
+          makeGateway({
+            getPullRequestReviewers,
+            listAssignableUsers,
+          }) as never,
+          new ReviewOperationCoordinator(),
+          now,
+          makeRecentWrites(),
+          { paths: store, sync },
+        );
+        const result = await service.list({ profileId, reviewId });
+        if (result._tag !== "ok" || result.value._tag !== "ready")
+          throw new Error("fixture");
+        const reviewerRow = result.value.reviewers.find(
+          (row) => row.login === "priority-reviewer",
+        );
+        expect(reviewerRow?.avatarDataUri).toMatch(/^data:/);
+        // The last candidate in the list is the one crowded out: the
+        // reviewer row's own URL took the one slot beyond
+        // `MAX_AVATARS_PER_SYNC - 1` remaining candidate slots.
+        const lastCandidate = candidates[candidates.length - 1];
+        if (lastCandidate === undefined) throw new Error("fixture");
+        const lastCandidateRow = result.value.candidates.find(
+          (candidate) => candidate.login === lastCandidate.login,
+        );
+        expect(lastCandidateRow?.avatarDataUri).toBeUndefined();
+        expect(fetchAvatar).toHaveBeenCalledTimes(MAX_AVATARS_PER_SYNC);
+      });
     });
   });
 });

@@ -309,6 +309,16 @@ export type AssignableUser = {
   readonly login: string;
   readonly name?: string;
   readonly avatarUrl?: string;
+  /**
+   * `data:` URI resolved from the on-disk avatar cache for `avatarUrl`.
+   * Only `AssigneeService.list`/`ReviewerService.list` populate this (never
+   * the storage or GitHub-adapter layers), mirroring `GitHubComment
+   * .authorAvatarDataUri` — it is undefined whenever there is no
+   * `avatarUrl`, the avatar was never synced, or the sync failed. The
+   * renderer's `img-src 'self' data:` CSP cannot load `avatarUrl` directly,
+   * so this is the only form an `<img>` may point at.
+   */
+  readonly avatarDataUri?: string;
 };
 
 export type AssignableUserListing = {
@@ -367,6 +377,8 @@ export type RequestedReviewer = {
   readonly login: string;
   readonly name?: string;
   readonly avatarUrl?: string;
+  /** `data:` URI resolved from the on-disk avatar cache for `avatarUrl`; see `AssignableUser.avatarDataUri` for the full contract. Only populated on `ReviewerService.list`'s output (`suggested[].reviewer`), never on the raw GitHub-adapter read this type also serves. */
+  readonly avatarDataUri?: string;
 };
 
 /**

@@ -5,6 +5,10 @@ import type {
   GitHubReadFailure,
 } from "../adapters/github/github-adapter";
 import type { ForbiddenReason } from "../adapters/github/command-runner";
+import {
+  resolveAvatarDataUris,
+  withAvatarDataUri,
+} from "../adapters/storage/avatar-cache-store";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
 import type {
@@ -20,6 +24,7 @@ import {
 } from "../domain/review-verdicts";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import type { AvatarRailDependencies } from "./avatar-sync-service";
 import type {
   ReviewWriteGate,
   ReviewWriteGateFailure,
@@ -136,6 +141,8 @@ export class ReviewerService {
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
     private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    /** Best-effort; see `AvatarRailDependencies`. Absent in tests/paths that never exercise avatar behaviour, in which case `list` returns every row with no `avatarDataUri`. */
+    private readonly avatars?: AvatarRailDependencies,
   ) {}
 
   async execute(input: {
@@ -224,14 +231,87 @@ export class ReviewerService {
     // failure takes priority when both fail.
     if (reviewers._tag === "err") return ok(mapReadFailure(reviewers.error));
     if (candidates._tag === "err") return ok(mapReadFailure(candidates.error));
+    const verdictRows = deriveReviewVerdicts(
+      reviewers.value,
+      representedHeadSha,
+    );
+    const resolved = await this.withResolvedAvatars(
+      input.profileId,
+      verdictRows,
+      reviewers.value.suggested,
+      candidates.value.users,
+    );
     return ok({
       _tag: "ready",
-      reviewers: deriveReviewVerdicts(reviewers.value, representedHeadSha),
-      suggested: reviewers.value.suggested,
-      candidates: candidates.value.users,
+      reviewers: resolved.reviewers,
+      suggested: resolved.suggested,
+      candidates: resolved.candidates,
       candidatesTotalCount: candidates.value.totalCount,
       permission,
     });
+  }
+
+  /**
+   * Attaches each reviewer row, suggested reviewer, and candidate's cached
+   * `avatarDataUri`, warming the cache for them first — mirrors
+   * `AssigneeService.withResolvedAvatars`, the honest, main-process
+   * equivalent of the workbench projection's `resolveAvatars` for a route
+   * that has no projection of its own. A missing `this.avatars` (no live
+   * `AvatarSyncService`/`PatchdeskPaths` wired) is the only early-return:
+   * every other failure is already absorbed by `AvatarSyncService
+   * .warmAvatarUrls` or `resolveAvatarDataUris`'s own per-URL fallback.
+   *
+   * `reviewers` (the rail's own verdict rows — who is requested, who has
+   * already weighed in) are warmed ahead of `candidates` (the picker's
+   * roster of everyone else assignable), so a cap-bounded warm never starves
+   * the rail's own Reviewers section for the sake of someone who only
+   * appears in the picker. `suggested` carries no avatar URL of its own
+   * (`SuggestedPullRequestReviewer.reviewer` is a `RequestedReviewer`, the
+   * same shape `candidates` rows use) and is resolved from the same
+   * `candidates`-tier warm, since GitHub's suggestions are themselves drawn
+   * from the candidate roster.
+   *
+   * The whole body below (past the early-return) is wrapped in a try/catch:
+   * an avatar is decorative, so nothing here may fail this read. Mirrors
+   * `AssigneeService.withResolvedAvatars`'s identical guard.
+   */
+  private async withResolvedAvatars(
+    profileId: WorkspaceProfileId,
+    reviewers: ReadonlyArray<ReviewerVerdictRow>,
+    suggested: ReadonlyArray<SuggestedPullRequestReviewer>,
+    candidates: ReadonlyArray<AssignableUser>,
+  ): Promise<{
+    readonly reviewers: ReadonlyArray<ReviewerVerdictRow>;
+    readonly suggested: ReadonlyArray<SuggestedPullRequestReviewer>;
+    readonly candidates: ReadonlyArray<AssignableUser>;
+  }> {
+    const avatars = this.avatars;
+    if (avatars === undefined) return { reviewers, suggested, candidates };
+    try {
+      const displayedUrls = reviewers.flatMap((row) =>
+        row.avatarUrl === undefined ? [] : [row.avatarUrl],
+      );
+      const candidateUrls = candidates.flatMap((user) =>
+        user.avatarUrl === undefined ? [] : [user.avatarUrl],
+      );
+      const avatarUrls = [...displayedUrls, ...candidateUrls];
+      await avatars.sync.warmAvatarUrls({ profileId, avatarUrls });
+      const resolved = await resolveAvatarDataUris(
+        avatars.paths,
+        profileId,
+        avatarUrls,
+      );
+      return {
+        reviewers: reviewers.map((row) => withAvatarDataUri(row, resolved)),
+        suggested: suggested.map((entry) => ({
+          ...entry,
+          reviewer: withAvatarDataUri(entry.reviewer, resolved),
+        })),
+        candidates: candidates.map((user) => withAvatarDataUri(user, resolved)),
+      };
+    } catch {
+      return { reviewers, suggested, candidates };
+    }
   }
 
   /**

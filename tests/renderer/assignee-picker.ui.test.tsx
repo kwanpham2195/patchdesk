@@ -9,10 +9,15 @@ import type { AssignableUserListResponse } from "../../src/renderer/src/renderer
 
 afterEach(() => cleanup());
 
+// A tiny, obviously-fake `data:` URI standing in for a resolved avatar --
+// enough for `Avatar` to take the `<img>` branch instead of the
+// initials-badge one.
+const FIXTURE_AVATAR_DATA_URI = "data:image/png;base64,AAAA";
+
 const assignableUsers: AssignableUserListResponse = {
   state: "ready",
   users: [
-    { id: "U_bug", login: "octocat" },
+    { id: "U_bug", login: "octocat", avatarDataUri: FIXTURE_AVATAR_DATA_URI },
     { id: "U_docs", login: "hubot" },
   ],
   totalCount: 2,
@@ -87,6 +92,27 @@ describe("AssigneePicker", () => {
     expect(hubotCheckbox.getAttribute("aria-checked")).toBe("false");
   });
 
+  it("renders a candidate's resolved avatar as an <img>, and initials for a candidate without one", async () => {
+    const user = userEvent.setup();
+    render(
+      <AssigneePicker attachedAssignees={[]} actions={actionsFixture()} />,
+    );
+    await openPicker(user);
+    const octocatCheckbox = await screen.findByRole("checkbox", {
+      name: "octocat",
+    });
+    const octocatRow = octocatCheckbox.closest("li");
+    expect(octocatRow).toBeTruthy();
+    const octocatAvatar = octocatRow?.querySelector('[data-slot="avatar"]');
+    expect(octocatAvatar?.tagName).toBe("IMG");
+    expect(octocatAvatar?.getAttribute("src")).toBe(FIXTURE_AVATAR_DATA_URI);
+
+    const hubotCheckbox = screen.getByRole("checkbox", { name: "hubot" });
+    const hubotRow = hubotCheckbox.closest("li");
+    const hubotAvatar = hubotRow?.querySelector('[data-slot="avatar"]');
+    expect(hubotAvatar?.tagName).toBe("SPAN");
+  });
+
   it("issues an add-assignees command with the toggled person's id and login", async () => {
     const user = userEvent.setup();
     const actions = actionsFixture();
@@ -135,20 +161,18 @@ describe("AssigneePicker", () => {
     });
     await user.click(hubotCheckbox);
     expect(
-      screen.getByRole("checkbox", { name: "hubot" }).getAttribute(
-        "aria-checked",
-      ),
+      screen
+        .getByRole("checkbox", { name: "hubot" })
+        .getAttribute("aria-checked"),
     ).toBe("true");
-    await waitFor(() =>
-      expect(actions.addAssignees).toHaveBeenCalledOnce(),
-    );
+    await waitFor(() => expect(actions.addAssignees).toHaveBeenCalledOnce());
     rerender(
       <AssigneePicker attachedAssignees={["hubot"]} actions={actions} />,
     );
     expect(
-      screen.getByRole("checkbox", { name: "hubot" }).getAttribute(
-        "aria-checked",
-      ),
+      screen
+        .getByRole("checkbox", { name: "hubot" })
+        .getAttribute("aria-checked"),
     ).toBe("true");
   });
 
@@ -167,9 +191,9 @@ describe("AssigneePicker", () => {
     await user.click(hubotCheckbox);
     await waitFor(() =>
       expect(
-        screen.getByRole("checkbox", { name: "hubot" }).getAttribute(
-          "aria-checked",
-        ),
+        screen
+          .getByRole("checkbox", { name: "hubot" })
+          .getAttribute("aria-checked"),
       ).toBe("false"),
     );
     expect(
@@ -354,9 +378,7 @@ describe("AssigneePicker", () => {
       },
     );
     const fetchAssignableUsers = vi
-      .fn<
-        (query?: string) => Promise<AssignableUserListResponse | undefined>
-      >()
+      .fn<(query?: string) => Promise<AssignableUserListResponse | undefined>>()
       .mockImplementationOnce(() => first)
       .mockImplementationOnce(async () => ({
         state: "ready",

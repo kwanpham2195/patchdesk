@@ -550,6 +550,15 @@ export async function startLocalApiServer(
     () => new Date().toISOString() as never,
     recentWriteJournals,
   );
+  // Shared with `reviewRefresh` below: one `AvatarSyncService` per profile
+  // process, not one per consumer, so every caller warms and reads the same
+  // on-disk cache.
+  const avatarSync = new AvatarSyncService({
+    paths,
+    fetchAvatar: configuration.fetchAvatar ?? createAvatarFetcher(),
+    log: logs,
+  });
+  const avatarRailDependencies = { paths, sync: avatarSync };
   const assigneeWrites = new AssigneeService(
     reviewWriteGate,
     github,
@@ -558,6 +567,7 @@ export async function startLocalApiServer(
     // instant, satisfying the branded IsoTimestamp contract this callback fills.
     () => new Date().toISOString() as never,
     recentWriteJournals,
+    avatarRailDependencies,
   );
   const reviewerWrites = new ReviewerService(
     reviewWriteGate,
@@ -567,6 +577,7 @@ export async function startLocalApiServer(
     // instant, satisfying the branded IsoTimestamp contract this callback fills.
     () => new Date().toISOString() as never,
     recentWriteJournals,
+    avatarRailDependencies,
   );
   const pendingReviewGateway = isGitHubPendingReviewGateway(github)
     ? github
@@ -619,11 +630,7 @@ export async function startLocalApiServer(
     pendingReview: pendingReviews,
     recentWrites: recentWriteJournals,
     log: logs,
-    avatars: new AvatarSyncService({
-      paths,
-      fetchAvatar: configuration.fetchAvatar ?? createAvatarFetcher(),
-      log: logs,
-    }),
+    avatars: avatarSync,
     project: ({
       profileId,
       sessionId,

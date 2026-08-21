@@ -324,6 +324,10 @@ const assignableUserListResponseSchema = v.strictObject({
         login: v.pipe(v.string(), v.minLength(1)),
         name: v.optional(v.pipe(v.string(), v.minLength(1))),
         avatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+        // `data:` URI resolved main-process-side from the avatar cache; the
+        // only form the renderer's `img-src 'self' data:` CSP allows an
+        // `<img>` to point at. See `AssignableUser.avatarDataUri`.
+        avatarDataUri: v.optional(v.pipe(v.string(), v.minLength(1))),
       }),
     ),
   ),
@@ -373,6 +377,9 @@ const reviewerListResponseSchema = v.strictObject({
         login: v.pipe(v.string(), v.minLength(1)),
         name: v.optional(v.pipe(v.string(), v.minLength(1))),
         avatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+        // `data:` URI resolved main-process-side from the avatar cache; see
+        // `assignableUserListResponseSchema.users.avatarDataUri` above.
+        avatarDataUri: v.optional(v.pipe(v.string(), v.minLength(1))),
         verdict: v.optional(
           v.picklist([
             "approved",
@@ -395,6 +402,7 @@ const reviewerListResponseSchema = v.strictObject({
           login: v.pipe(v.string(), v.minLength(1)),
           name: v.optional(v.pipe(v.string(), v.minLength(1))),
           avatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+          avatarDataUri: v.optional(v.pipe(v.string(), v.minLength(1))),
         }),
       }),
     ),
@@ -406,6 +414,7 @@ const reviewerListResponseSchema = v.strictObject({
         login: v.pipe(v.string(), v.minLength(1)),
         name: v.optional(v.pipe(v.string(), v.minLength(1))),
         avatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+        avatarDataUri: v.optional(v.pipe(v.string(), v.minLength(1))),
       }),
     ),
   ),

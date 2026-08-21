@@ -29,7 +29,9 @@ const nestedFetchCauseSchema = v.object({
  */
 function describeNestedCause(
   cause: unknown,
-): { readonly message: string; readonly code?: string | undefined } | undefined {
+):
+  | { readonly message: string; readonly code?: string | undefined }
+  | undefined {
   if (!(cause instanceof Error)) return undefined;
   const parsed = v.safeParse(nestedFetchCauseSchema, cause.cause);
   return parsed.success ? parsed.output : undefined;
@@ -53,6 +55,22 @@ export type AvatarSyncDependencies = {
 };
 
 /**
+ * The optional, best-effort avatar dependency shape `AssigneeService.list`
+ * and `ReviewerService.list` each take, mirroring `ReviewRefreshService
+ * .dependencies.avatars` (`Pick<AvatarSyncService, "syncCommentAuthors">`)
+ * but bundled with the `PatchdeskPaths` those two reads also need to resolve
+ * a warmed avatar back into a `data:` URI via `resolveAvatarDataUris`. Absent
+ * entirely when no live `AvatarSyncService`/`PatchdeskPaths` pair was wired
+ * (e.g. a test that never exercises avatar behaviour) — in that case both
+ * services skip warming and resolution outright, and every row simply has no
+ * `avatarDataUri`, falling back to the initials badge.
+ */
+export type AvatarRailDependencies = {
+  readonly paths: PatchdeskPaths;
+  readonly sync: Pick<AvatarSyncService, "warmAvatarUrls">;
+};
+
+/**
  * Per-sync cap on distinct avatars fetched. A PR conversation realistically
  * involves a handful of participants; this bounds the pathological case
  * (a thread with many distinct authors) so one sync can't fan out into an
@@ -73,14 +91,38 @@ export class AvatarSyncService {
     readonly profileId: WorkspaceProfileId;
     readonly snapshot: ReviewRemoteSnapshot;
   }): Promise<void> {
-    const urls = collectAvatarUrls(input.snapshot).slice(
-      0,
-      MAX_AVATARS_PER_SYNC,
-    );
+    await this.syncUrls(input.profileId, collectAvatarUrls(input.snapshot));
+  }
+
+  /**
+   * Warms the cache for an explicit, already-priority-ordered set of avatar
+   * URLs — the people a pull-request-metadata read (`AssigneeService.list`,
+   * `ReviewerService.list`) is about to render, rather than the comment
+   * authors `syncCommentAuthors` walks out of a snapshot. Same
+   * `MAX_AVATARS_PER_SYNC` bound and never-throws contract: callers should
+   * put their most important people first in `avatarUrls`, since anything
+   * past the cap is left unfetched until a later sync revisits it.
+   */
+  async warmAvatarUrls(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly avatarUrls: ReadonlyArray<string>;
+  }): Promise<void> {
+    await this.syncUrls(input.profileId, input.avatarUrls);
+  }
+
+  /**
+   * Shared fan-out for both public entry points: dedupes (first occurrence
+   * wins, preserving whatever priority order the caller already applied),
+   * caps at `MAX_AVATARS_PER_SYNC`, and syncs every surviving URL
+   * concurrently and best-effort.
+   */
+  private async syncUrls(
+    profileId: WorkspaceProfileId,
+    avatarUrls: ReadonlyArray<string>,
+  ): Promise<void> {
+    const urls = [...new Set(avatarUrls)].slice(0, MAX_AVATARS_PER_SYNC);
     if (urls.length === 0) return;
-    await Promise.allSettled(
-      urls.map((url) => this.syncOne(input.profileId, url)),
-    );
+    await Promise.allSettled(urls.map((url) => this.syncOne(profileId, url)));
   }
 
   private async syncOne(
@@ -115,7 +157,8 @@ export class AvatarSyncService {
       // top-level message is near-useless for undici `fetch` failures (it's
       // always "fetch failed"), so also surface the nested cause when present.
       const nestedCause = describeNestedCause(cause);
-      const causeMessage = cause instanceof Error ? cause.message : String(cause);
+      const causeMessage =
+        cause instanceof Error ? cause.message : String(cause);
       const meta =
         nestedCause === undefined
           ? { cause: causeMessage }
@@ -146,9 +189,12 @@ function collectAvatarUrls(
   snapshot: ReviewRemoteSnapshot,
 ): ReadonlyArray<string> {
   const urls = new Set<string>();
-  const addFrom = (comments: ReadonlyArray<{ readonly authorAvatarUrl?: string }>) => {
+  const addFrom = (
+    comments: ReadonlyArray<{ readonly authorAvatarUrl?: string }>,
+  ) => {
     for (const comment of comments) {
-      if (comment.authorAvatarUrl !== undefined) urls.add(comment.authorAvatarUrl);
+      if (comment.authorAvatarUrl !== undefined)
+        urls.add(comment.authorAvatarUrl);
     }
   };
   for (const thread of snapshot.comments.threads) addFrom(thread.comments);

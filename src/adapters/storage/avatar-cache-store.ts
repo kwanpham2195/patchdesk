@@ -82,7 +82,11 @@ export async function writeAvatar(
       await handle.close().catch(() => undefined);
     }
     await rm(temporaryPath, { force: true }).catch(() => undefined);
-    return err({ _tag: "AvatarCacheFailure", operation: "write", reason: "io" });
+    return err({
+      _tag: "AvatarCacheFailure",
+      operation: "write",
+      reason: "io",
+    });
   }
 }
 
@@ -108,6 +112,56 @@ export async function avatarDataUri(
   return ok(`data:${contentType};base64,${base64}`);
 }
 
+/**
+ * Resolves many avatar URLs to their cached `data:` URIs in one call, each
+ * distinct URL read from disk at most once — the same per-call memo
+ * `resolveAvatars` in `review-workbench-projection.ts` uses, shared here
+ * since `AssigneeService.list` and `ReviewerService.list` both need the
+ * identical resolve-many-urls-once behaviour. A URL with no cached bytes is
+ * simply absent from the returned map; callers fall back to the initials
+ * badge for it, never a broken image.
+ */
+export async function resolveAvatarDataUris(
+  paths: PatchdeskPaths,
+  profileId: WorkspaceProfileId,
+  avatarUrls: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, string>> {
+  const uniqueUrls = [...new Set(avatarUrls)];
+  const reads = await Promise.all(
+    uniqueUrls.map(async (avatarUrl) => {
+      const read = await avatarDataUri(
+        paths,
+        profileId,
+        hashAvatarUrl(avatarUrl),
+      );
+      return read._tag === "ok"
+        ? ([avatarUrl, read.value] as const)
+        : undefined;
+    }),
+  );
+  const resolved = new Map<string, string>();
+  for (const entry of reads) {
+    if (entry !== undefined) resolved.set(entry[0], entry[1]);
+  }
+  return resolved;
+}
+
+/**
+ * Attaches `item`'s resolved `data:` URI (from `resolveAvatarDataUris`'s
+ * output map) as `avatarDataUri`, or returns `item` unchanged when it has no
+ * `avatarUrl` or that URL was not in the resolved map. Shared by
+ * `AssigneeService.list` and `ReviewerService.list` so each of their several
+ * person-shaped rows (`AssignableUser`, `ReviewerVerdictRow`,
+ * `RequestedReviewer`) is attached the same way.
+ */
+export function withAvatarDataUri<
+  T extends { readonly avatarUrl?: string; readonly avatarDataUri?: string },
+>(item: T, resolved: ReadonlyMap<string, string>): T {
+  if (item.avatarUrl === undefined) return item;
+  const dataUri = resolved.get(item.avatarUrl);
+  return dataUri === undefined ? item : { ...item, avatarDataUri: dataUri };
+}
+
 /** Falls back to image/png (GitHub's own identicon format) for unrecognized bytes. */
 function sniffImageContentType(bytes: Uint8Array): string {
   if (
@@ -118,7 +172,12 @@ function sniffImageContentType(bytes: Uint8Array): string {
     bytes[3] === 0x47
   )
     return "image/png";
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  )
     return "image/jpeg";
   if (
     bytes.length >= 4 &&

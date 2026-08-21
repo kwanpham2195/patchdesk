@@ -380,7 +380,11 @@ function AssigneePickerList({
                   disabled={disabled || busy}
                   onCheckedChange={() => onToggle(user, !attached)}
                 />
-                <Avatar name={user.login} className="size-5 text-[10px]" />
+                <Avatar
+                  name={user.login}
+                  dataUri={user.avatarDataUri}
+                  className="size-5 text-[10px]"
+                />
                 {user.login}
               </label>
             </li>

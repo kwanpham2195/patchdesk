@@ -17,6 +17,7 @@ import { PatchdeskApiError } from "../api-client";
 import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
 import { freshnessCopy, type RevisionFreshness } from "../rail-freshness";
 import type {
+  AssignableUserListResponse,
   PendingReviewProjection,
   ReviewerListResponse,
 } from "../renderer-contracts";
@@ -155,6 +156,27 @@ function projectReviewerSectionReadState(
   return { _tag: response.state };
 }
 
+/**
+ * Projects `GET /v1/reviews/assignees`'s candidate list into a login-keyed
+ * lookup of resolved avatars, for `AssigneesSection` to match against the
+ * bare logins `model.pullRequest.assignees` carries — see that section's own
+ * doc comment for why the match happens by login rather than by a richer
+ * shape. A login with no `avatarDataUri` (never synced, sync failed, or not
+ * present in the candidate list at all) is simply absent from the map, and
+ * `Avatar` falls back to its initials badge.
+ */
+function avatarDataUriByLoginFrom(
+  response: AssignableUserListResponse | undefined,
+): ReadonlyMap<string, string> {
+  const users = response?.state === "ready" ? (response.users ?? []) : [];
+  const byLogin = new Map<string, string>();
+  for (const user of users) {
+    if (user.avatarDataUri !== undefined)
+      byLogin.set(user.login, user.avatarDataUri);
+  }
+  return byLogin;
+}
+
 /** Human copy for a submitted review verdict, matching the wording `conversation.tsx`'s `ReviewSummaryEntry` already uses for the same four states. */
 function reviewVerdictLabel(verdict: ReviewVerdictState): string {
   switch (verdict) {
@@ -205,6 +227,7 @@ function ReviewerListRow({
     <li className="flex items-center gap-2">
       <Avatar
         name={reviewer.name ?? reviewer.login}
+        dataUri={reviewer.avatarDataUri}
         className="size-5 text-[10px]"
       />
       <span className="min-w-0 flex-1 truncate text-xs">{reviewer.login}</span>
@@ -391,14 +414,20 @@ function ReviewersSection({
 }
 
 /**
- * The Assignees section: the pull request's current assignees (as an
- * initials-badge list) or, when nobody is assigned, a plain empty state plus
- * a one-click self-assign shortcut. Unlike `LabelPicker` (which fetches only
+ * The Assignees section: the pull request's current assignees (each
+ * rendered with their GitHub avatar when one resolved, otherwise an
+ * initials badge) or, when nobody is assigned, a plain empty state plus a
+ * one-click self-assign shortcut. Unlike `LabelPicker` (which fetches only
  * once its own popover opens), this section fetches the real
  * GitHub-evidenced assign permission itself, once on mount and again
  * whenever the workbench re-baselines (`refreshedAt` changes) — the
  * self-assign shortcut's visibility depends on that permission before the
- * picker is ever opened, and detection must never poll on its own.
+ * picker is ever opened, and detection must never poll on its own. That same
+ * fetch doubles as the source of each assignee's avatar: `assignees` itself
+ * is only bare logins (`model.pullRequest.assignees`), so this section
+ * matches each one against the candidate list's resolved `avatarDataUri` by
+ * login (`avatarDataUriByLoginFrom`) — a login absent from that list (or
+ * whose avatar never resolved) simply falls back to the initials badge.
  */
 function AssigneesSection({
   assignees,
@@ -415,10 +444,19 @@ function AssigneesSection({
 }): React.JSX.Element {
   const [permission, setPermission] =
     useState<PullRequestAssigneePermission>("unknown");
+  // The rail renders assignees as bare logins (`assignees` below), not the
+  // richer `AssignableUser` rows `fetchAssignableUsers` returns, so this
+  // matches each displayed login back to its resolved avatar by hand — the
+  // candidate list this same fetch already populates doubles as the source
+  // of avatar data for the rail's own assignee rows.
+  const [avatarDataUriByLogin, setAvatarDataUriByLogin] = useState<
+    ReadonlyMap<string, string>
+  >(() => new Map());
 
   useEffect(() => {
     if (actions === undefined) {
       setPermission("unknown");
+      setAvatarDataUriByLogin(new Map());
       return;
     }
     let cancelled = false;
@@ -431,9 +469,12 @@ function AssigneesSection({
             ? (response.permission ?? "unknown")
             : "unknown",
         );
+        setAvatarDataUriByLogin(avatarDataUriByLoginFrom(response));
       })
       .catch(() => {
-        if (!cancelled) setPermission("unknown");
+        if (cancelled) return;
+        setPermission("unknown");
+        setAvatarDataUriByLogin(new Map());
       });
     return () => {
       cancelled = true;
@@ -538,7 +579,11 @@ function AssigneesSection({
         >
           {visibleAssignees.map((login) => (
             <li key={login} className="flex items-center gap-2">
-              <Avatar name={login} className="size-5 text-[10px]" />
+              <Avatar
+                name={login}
+                dataUri={avatarDataUriByLogin.get(login)}
+                className="size-5 text-[10px]"
+              />
               <span className="truncate text-xs">{login}</span>
             </li>
           ))}

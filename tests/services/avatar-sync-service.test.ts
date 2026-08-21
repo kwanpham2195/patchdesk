@@ -197,4 +197,80 @@ describe("AvatarSyncService", () => {
 
     expect(fetchAvatar).toHaveBeenCalledTimes(MAX_AVATARS_PER_SYNC);
   });
+
+  describe("warmAvatarUrls", () => {
+    it("downloads and caches every URL in an explicit, already-prioritized set", async () => {
+      const store = await paths();
+      const fetchAvatar = vi.fn(async () => ({ bytes }));
+      const service = new AvatarSyncService({ paths: store, fetchAvatar });
+      const urls = [
+        "https://avatars.githubusercontent.com/u/10?v=1",
+        "https://avatars.githubusercontent.com/u/11?v=1",
+      ];
+
+      await service.warmAvatarUrls({ profileId, avatarUrls: urls });
+
+      expect(fetchAvatar).toHaveBeenCalledTimes(2);
+      for (const url of urls) {
+        expect(await hasAvatar(store, profileId, hashAvatarUrl(url))).toBe(
+          true,
+        );
+      }
+    });
+
+    it("caps the number fetched, keeping only the caller's priority-ordered prefix", async () => {
+      const store = await paths();
+      const fetchAvatar = vi.fn(async () => ({ bytes }));
+      const service = new AvatarSyncService({ paths: store, fetchAvatar });
+      const urls = Array.from(
+        { length: MAX_AVATARS_PER_SYNC + 5 },
+        (_, index) => `https://avatars.githubusercontent.com/u/${index}?v=2`,
+      );
+
+      await service.warmAvatarUrls({ profileId, avatarUrls: urls });
+
+      expect(fetchAvatar).toHaveBeenCalledTimes(MAX_AVATARS_PER_SYNC);
+      // The first URL in priority order was fetched...
+      const first = urls[0];
+      if (first === undefined) throw new Error("fixture");
+      expect(await hasAvatar(store, profileId, hashAvatarUrl(first))).toBe(
+        true,
+      );
+      // ...and the URLs past the cap were left unfetched.
+      const overflow = urls[urls.length - 1];
+      if (overflow === undefined) throw new Error("fixture");
+      expect(await hasAvatar(store, profileId, hashAvatarUrl(overflow))).toBe(
+        false,
+      );
+    });
+
+    it("dedupes a URL that appears more than once, fetching it only once", async () => {
+      const store = await paths();
+      const fetchAvatar = vi.fn(async () => ({ bytes }));
+      const service = new AvatarSyncService({ paths: store, fetchAvatar });
+      const url = "https://avatars.githubusercontent.com/u/20?v=1";
+
+      await service.warmAvatarUrls({
+        profileId,
+        avatarUrls: [url, url, url],
+      });
+
+      expect(fetchAvatar).toHaveBeenCalledTimes(1);
+    });
+
+    it("never fails when a fetch fails (non-fatal, same contract as syncCommentAuthors)", async () => {
+      const store = await paths();
+      const fetchAvatar = vi.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      });
+      const service = new AvatarSyncService({ paths: store, fetchAvatar });
+
+      await expect(
+        service.warmAvatarUrls({
+          profileId,
+          avatarUrls: ["https://avatars.githubusercontent.com/u/21?v=1"],
+        }),
+      ).resolves.toBeUndefined();
+    });
+  });
 });

@@ -9,13 +9,18 @@ import type { ReviewerListResponse } from "../../src/renderer/src/renderer-contr
 
 afterEach(() => cleanup());
 
+// A tiny, obviously-fake `data:` URI standing in for a resolved avatar --
+// enough for `Avatar` to take the `<img>` branch instead of the
+// initials-badge one.
+const FIXTURE_AVATAR_DATA_URI = "data:image/png;base64,AAAA";
+
 const reviewerCandidates: ReviewerListResponse = {
   state: "ready",
   suggested: [
     { isAuthor: true, isCommenter: false, reviewer: { login: "octocat" } },
   ],
   candidates: [
-    { id: "U_bug", login: "octocat" },
+    { id: "U_bug", login: "octocat", avatarDataUri: FIXTURE_AVATAR_DATA_URI },
     { id: "U_docs", login: "hubot" },
   ],
   candidatesTotalCount: 2,
@@ -88,6 +93,26 @@ describe("ReviewerPicker", () => {
       name: "Reviewer candidates",
     });
     expect(candidateGroup.textContent?.includes("hubot")).toBeTruthy();
+  });
+
+  it("renders a candidate's resolved avatar as an <img>, and initials for a candidate without one", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewerPicker attachedReviewers={[]} actions={actionsFixture()} />,
+    );
+    await openPicker(user);
+    const octocatCheckbox = await screen.findByRole("checkbox", {
+      name: "octocat",
+    });
+    const octocatRow = octocatCheckbox.closest("li");
+    const octocatAvatar = octocatRow?.querySelector('[data-slot="avatar"]');
+    expect(octocatAvatar?.tagName).toBe("IMG");
+    expect(octocatAvatar?.getAttribute("src")).toBe(FIXTURE_AVATAR_DATA_URI);
+
+    const hubotCheckbox = screen.getByRole("checkbox", { name: "hubot" });
+    const hubotRow = hubotCheckbox.closest("li");
+    const hubotAvatar = hubotRow?.querySelector('[data-slot="avatar"]');
+    expect(hubotAvatar?.tagName).toBe("SPAN");
   });
 
   it("renders currently requested reviewers as checked and other candidates as available", async () => {

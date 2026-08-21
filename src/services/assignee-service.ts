@@ -5,6 +5,10 @@ import type {
   GitHubReadFailure,
 } from "../adapters/github/github-adapter";
 import type { ForbiddenReason } from "../adapters/github/command-runner";
+import {
+  resolveAvatarDataUris,
+  withAvatarDataUri,
+} from "../adapters/storage/avatar-cache-store";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
 import type {
@@ -15,6 +19,7 @@ import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import type { AvatarRailDependencies } from "./avatar-sync-service";
 import type {
   ReviewWriteGate,
   ReviewWriteGateFailure,
@@ -135,6 +140,8 @@ export class AssigneeService {
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
     private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    /** Best-effort; see `AvatarRailDependencies`. Absent in tests/paths that never exercise avatar behaviour, in which case `list` returns every user with no `avatarDataUri`. */
+    private readonly avatars?: AvatarRailDependencies,
   ) {}
 
   async execute(input: {
@@ -209,16 +216,78 @@ export class AssigneeService {
       this.github.listAssignableUsers(listInput),
       this.resolvePermission(current.value.profile, pr),
     ]);
-    return ok(
-      listed._tag === "ok"
-        ? {
-            _tag: "ready",
-            users: listed.value.users,
-            totalCount: listed.value.totalCount,
-            permission,
-          }
-        : mapReadFailure(listed.error),
+    if (listed._tag !== "ok") return ok(mapReadFailure(listed.error));
+    const users = await this.withResolvedAvatars(
+      input.profileId,
+      current.value.profile,
+      pr,
+      listed.value.users,
     );
+    return ok({
+      _tag: "ready",
+      users,
+      totalCount: listed.value.totalCount,
+      permission,
+    });
+  }
+
+  /**
+   * Attaches each assignable user's cached `avatarDataUri`, warming the
+   * cache for them first — the honest, main-process equivalent of the
+   * projection's `resolveAvatars` for a route that has no workbench
+   * projection of its own (see `AvatarRailDependencies`/`avatars` above). A
+   * missing `this.avatars` (no live `AvatarSyncService`/`PatchdeskPaths`
+   * wired) is the only early-return: every other failure inside this method
+   * is already absorbed by `AvatarSyncService.warmAvatarUrls` or
+   * `resolveAvatarDataUris`'s own per-URL fallback, so `users` is returned
+   * unresolved rather than the whole read failing.
+   *
+   * Currently-assigned people are warmed ahead of the rest of the candidate
+   * list (`GET /v1/reviews/assignees` doubles as the assignee picker's
+   * candidate roster) so a cap-bounded warm never starves the rail's own
+   * Assignees section for the sake of someone who only appears in the
+   * picker. The returned `users` keep GitHub's original order — only the
+   * warm order is reprioritized.
+   *
+   * The whole body below is wrapped in a try/catch: an avatar is decorative,
+   * so nothing here may fail this read. `AvatarSyncService.warmAvatarUrls`
+   * and `resolveAvatarDataUris` already never throw on their own account;
+   * this is defense in depth against a misbehaving injected `avatars`
+   * dependency, mirroring `ReviewRefreshService`'s identical guard around
+   * `syncCommentAuthors`.
+   */
+  private async withResolvedAvatars(
+    profileId: WorkspaceProfileId,
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+    users: ReadonlyArray<AssignableUser>,
+  ): Promise<ReadonlyArray<AssignableUser>> {
+    const avatars = this.avatars;
+    if (avatars === undefined) return users;
+    try {
+      const pullRequest = await this.github.getPullRequest({ profile, pr });
+      const currentAssigneeLogins = new Set(
+        pullRequest._tag === "ok" ? (pullRequest.value.assignees ?? []) : [],
+      );
+      const prioritized = [...users].sort((a, b) => {
+        const aAssigned = currentAssigneeLogins.has(a.login);
+        const bAssigned = currentAssigneeLogins.has(b.login);
+        if (aAssigned === bAssigned) return 0;
+        return aAssigned ? -1 : 1;
+      });
+      const avatarUrls = prioritized.flatMap((user) =>
+        user.avatarUrl === undefined ? [] : [user.avatarUrl],
+      );
+      await avatars.sync.warmAvatarUrls({ profileId, avatarUrls });
+      const resolved = await resolveAvatarDataUris(
+        avatars.paths,
+        profileId,
+        avatarUrls,
+      );
+      return users.map((user) => withAvatarDataUri(user, resolved));
+    } catch {
+      return users;
+    }
   }
 
   /**
