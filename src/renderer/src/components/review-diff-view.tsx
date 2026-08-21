@@ -1361,6 +1361,21 @@ function ReviewDiffSurface({
   // correct behavior for "no container to measure", not a bug. Do not
   // change this fallback to a nonzero default: that would silently alter
   // selection on every unmounted-ref call instead of leaving it inert.
+  //
+  // Deliberately NOT switched to CodeView's `getHeight()`/`getScrollHeight()`
+  // cached accessors. `getHeight()` does match `clientHeight` exactly
+  // (measured 580px/580px and 507px/507px against the performance fixture,
+  // at two viewport widths). But `getScrollHeight()` measured 2,619,992 --
+  // 16px short of this element's real `scrollHeight`, 2,620,008. The 16px is
+  // `@pierre/diffs`'s own `DEFAULT_CODE_VIEW_LAYOUT.paddingTop` +
+  // `paddingBottom` (8px each): its internal `scrollHeight` field tracks only
+  // item layout, excluding that padding, while the DOM's `scrollHeight`
+  // includes it. The library's own `getMaxScrollTop()` accounts for this
+  // (`paddingTop + getScrollHeight() + paddingBottom - getHeight()`), which
+  // would reproduce the exact DOM value here, but it is declared `private`
+  // in `CodeView.d.ts` -- not part of the public contract, so depending on
+  // it is not safe. Kept the DOM reads rather than ship a 16px-short
+  // `contentHeight` into `maxScrollTop`.
   const readActiveFileViewport = useCallback(
     (scrollTop: number): ActiveFileViewport => {
       const viewportElement = viewerContainer.current;
@@ -1428,13 +1443,43 @@ function ReviewDiffSurface({
     // `items.length` is the equivalent "the file set changed" signal.
   }, [items.length, preferences.fileMode, updateActivePath]);
 
+  // CodeView fires `onScroll` once per scroll EVENT, and momentum scrolling
+  // dispatches events faster than the browser paints frames --
+  // `updateActivePath` reads CodeView's rendered-item geometry, so running
+  // it more than once per frame recomputes the same answer for no benefit.
+  // Coalesce to a single pending animation frame: if one is already
+  // scheduled, later events in that frame do nothing; otherwise schedule
+  // one and clear the ref when it runs. The frame reads the scroll position
+  // via `codeView.getScrollTop()` (CodeView's own dirty-flag-guarded cache,
+  // not the DOM) rather than closing over this call's `scrollTop`, so a
+  // frame that fires after several coalesced events still acts on the
+  // latest position instead of a stale first one.
+  //
+  // `notifyScroll` stays on every event, not just the coalesced frame: it
+  // resets a debounce timer that measures "has scrolling stopped", and that
+  // has to track the true event cadence to detect settling accurately, not
+  // the frame rate.
+  const pendingScrollFrame = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (pendingScrollFrame.current !== null) {
+        window.cancelAnimationFrame(pendingScrollFrame.current);
+        pendingScrollFrame.current = null;
+      }
+    },
+    [],
+  );
   const handleCodeViewScroll = useCallback(
     (
-      scrollTop: number,
+      _scrollTop: number,
       codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
     ): void => {
-      updateActivePath(scrollTop, codeView);
       notifyScroll();
+      if (pendingScrollFrame.current !== null) return;
+      pendingScrollFrame.current = window.requestAnimationFrame(() => {
+        pendingScrollFrame.current = null;
+        updateActivePath(codeView.getScrollTop(), codeView);
+      });
     },
     [notifyScroll, updateActivePath],
   );

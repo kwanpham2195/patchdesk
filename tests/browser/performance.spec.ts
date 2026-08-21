@@ -82,7 +82,17 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
     const selection = summarize(selectionDurations);
     expect(filter.worst).toBeLessThan(200);
     expect(selection.worst).toBeLessThan(200);
-    expect(maximumGap).toBeLessThan(1_000);
+    // Measured across seven runs on this machine after the slice-3
+    // worker-pool change (which took this phase from 621ms down to
+    // double digits): 114.2, 111.0, 84.1, 113.4, 113.7, 82.9, 111.7ms,
+    // clustering 82.9-114.2ms with no clear cold-vs-warm split. 1,000 was
+    // sized against a pre-worker-pool baseline and is now nearly 9x the
+    // worst observed. This phase (file-tree filtering plus selection
+    // clicks across 1,000 files) has more DOM-interaction variance than
+    // the scroll phase below, so 300 -- about 2.6x the 114.2ms worst --
+    // keeps meaningful headroom rather than matching the scroll phase's
+    // tighter ~2x margin.
+    expect(maximumGap).toBeLessThan(300);
 
     // Reset the sampler so the scroll phase below is judged on its own
     // cadence, not on the budget the filter/selection loop already spent.
@@ -182,22 +192,32 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
     });
     const scroll = summarize(scrollDurations);
     const scrollDistance = scrollStepPixels * scrollSteps;
-    // Measured across nine clean runs of this exact design, from the true
-    // top, at this same distance: 399.3ms, 384.5ms, 378.3ms, 386.4ms,
-    // 383.2ms, 387.8ms (six runs, one process) and 533.3ms, 392.3ms, 384.2ms
-    // (three runs, a separate process). Eight of the nine cluster
-    // 378.3-399.3ms; the ninth, 533.3ms, was the separate process's first
-    // run -- a cold start. CI is always a cold start, so the ceiling below
-    // is set against that number, not the warm cluster: 800 is roughly 1.5x
-    // the cold-start worst of 533.3ms, matching the style of the existing
-    // 1,000ms ceiling above (about 1.6x its ~621ms measurement). The two
-    // retries configured at the top of this file are part of why this
-    // ceiling is safe: a cold-start breach gets a warm retry.
+    // 800 dates back to a pre-worker-pool baseline (nine runs clustering
+    // 378.3-399.3ms with a 533.3ms cold-start outlier; see the git history
+    // of this comment for that data). Slice 3 moved syntax colouring off
+    // the main thread with a worker pool and dropped this phase to
+    // double digits. Slice 4 (this change) coalesces the scroll handler to
+    // one `updateActivePath` run per animation frame instead of one per
+    // scroll event, which did not move this number further -- the DOM
+    // reads `readActiveFileViewport` performs were kept rather than swapped
+    // for `@pierre/diffs`' cached accessors after those accessors proved to
+    // disagree with the DOM (`getScrollHeight()` measured 16px short of the
+    // real `scrollHeight`, `@pierre/diffs`'s own container padding). Seven
+    // runs of this exact design on this machine, including one deliberate
+    // cold run (a fresh `pnpm test:performance` invocation, not immediately
+    // following another): 34.1, 34.4, 33.9, 36.1, 41.5, 34.4, 33.8ms (cold).
+    // The cold run was not the outlier here -- all seven cluster
+    // 33.8-41.5ms. 100 is roughly 2.4x the worst observed (41.5ms), more
+    // headroom than the ~1.5x this ceiling used previously: at this small
+    // an absolute magnitude a few milliseconds of scheduler noise is a
+    // large relative swing, so the wider margin avoids a ceiling that only
+    // passes on a lucky run. The two retries configured at the top of this
+    // file are additional safety on top of that margin.
     // A shorter scroll near the fixture's initial (already-materialized)
     // bottom position measured only ~25ms -- this distance and starting
     // point are what make the phase sensitive to the work it exists to
     // catch.
-    expect(scrollMaximumGap).toBeLessThan(800);
+    expect(scrollMaximumGap).toBeLessThan(100);
 
     const machine = await page.evaluate(() => ({
       userAgent: navigator.userAgent,
