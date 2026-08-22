@@ -17,7 +17,6 @@ import {
   type CodeViewLineSelection,
   type DiffLineAnnotation,
   type FileDiffMetadata,
-  type Hunk,
   type LineDiffTypes,
 } from "@pierre/diffs";
 import {
@@ -75,23 +74,10 @@ import {
   type ActiveFileViewport,
 } from "@/review-diff-active-file";
 import { materializeAndScrollTo } from "@/review-diff-materialize-and-scroll";
-import {
-  adjacentCommentAnchor,
-  adjacentFilePath,
-  adjacentHunkAnchor,
-  buildCommentOrder,
-  commentNavAnnouncement,
-  focusCommentThreadCard,
-  shouldIgnoreReviewNavKey,
-  type CommentAnchor,
-  type HunkAnchor,
-  type ReviewNavDirection,
-} from "@/review-diff-keyboard-nav";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
 import { reviewContextControl } from "@/review-context-control";
 import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
-import { useLatestCommitted } from "@/hooks/use-latest-committed";
 import {
   selectPatch,
   useReviewDiffHydration,
@@ -99,6 +85,9 @@ import {
 } from "@/hooks/use-review-diff-hydration";
 import { useReviewDiffQaScrollDiagnostics } from "@/hooks/use-review-diff-qa-scroll-diagnostics";
 import { useScrollSettledValue } from "@/hooks/use-scroll-settled-value";
+import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigation";
+import { useReviewFileNavigation } from "@/hooks/use-review-file-navigation";
+import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
@@ -138,19 +127,6 @@ const TREE_ORDER_SORT_LIMIT = 256;
 // `lineDiffType = "word-alt"`). Named explicitly so the three render call
 // sites below share one value instead of three hand-copied literals.
 const DEFAULT_LINE_DIFF_TYPE: LineDiffTypes = "word-alt";
-
-/**
- * The line `[`/`]` scroll to for one hunk: its first addition-side line, or
- * (a pure-deletion hunk with no addition-side presence at all) its first
- * deletion-side line. Mirrors `toDiffLineAnnotation`'s new/old -> additions/
- * deletions mapping so a hunk's anchor lands on the same line-numbering
- * convention `CodeViewLineScrollTarget` and `DiffLineAnnotation` both use.
- */
-function hunkAnchor(filePath: string, hunk: Hunk): HunkAnchor {
-  return hunk.additionCount > 0
-    ? { filePath, lineNumber: hunk.additionStart, side: "additions" }
-    : { filePath, lineNumber: hunk.deletionStart, side: "deletions" };
-}
 
 /** The live CodeView instance handed to imperative-ref callers (scroll,
  * measurement, rendered-item queries). */
@@ -1405,326 +1381,34 @@ function ReviewDiffSurface({
     selectedPath,
   ]);
 
-  // `,`/`.` jump to the previous/next file. `items` and `onActiveFileChange`
-  // are read from this latest-committed snapshot instead of the effect's own
-  // dependency array so an unrelated re-render (a file hydrating, an
-  // annotation changing) never tears down the listener or cancels a jump
-  // already in flight -- only leaving "all files" mode or unmounting should
-  // do that.
-  const fileNavLatest = useLatestCommitted({
+  const fileNavBoundary = useReviewFileNavigation({
+    viewer,
+    activePathRef,
     items,
+    fileMode: preferences.fileMode,
     onActiveFileChange,
-  });
-  // Owns the in-flight keypress-triggered scroll, independent of
-  // `selectionScrollProgress` above. That progress ref's `completed` latch
-  // exists so an unrelated re-render doesn't re-fight where the user
-  // scrolled from a click-driven selection; an explicit keypress must move
-  // every time, so it gets its own token instead of sharing that latch.
-  const fileNavJump = useRef<{ token: number; cancel?: () => void }>({
-    token: 0,
-  });
-  // Where a `,`/`.` press considers itself to be, kept deliberately separate
-  // from `activePathRef`. A jump's `align: "start"` lands the viewport just
-  // under the target's sticky header -- short of that same item's own
-  // `getTopForItem` by however tall the header is -- so the scroll event the
-  // jump itself triggers makes `updateActivePath` recompute the *previous*
-  // file as active and overwrite `activePathRef` right after `onScrolled`
-  // sets it. Reading `activePathRef` back on the next press would then read
-  // that overwrite and jump again instead of recognizing arrival. This ref
-  // is never written by that scroll-driven recomputation, only by a
-  // keyboard jump itself, so repeated presses always advance from where the
-  // last press left off.
-  const fileNavCurrentPath = useRef<string | undefined>(undefined);
-  const [fileNavBoundary, setFileNavBoundary] = useState<string | undefined>(
-    undefined,
-  );
-  useEffect(() => {
-    // Only the primary, continuously-scrolling diff surface supports file
-    // jumps. Walkthrough and finding-evidence cards render with
-    // virtualized={false} and can mount several at once; "selected" file
-    // mode materializes only the one selected file, so an adjacent file's id
-    // would never resolve in `items`.
-    if (!virtualized || preferences.fileMode !== "all") return;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "." && event.key !== ",") return;
-      if (shouldIgnoreReviewNavKey(event)) return;
-      event.preventDefault();
-      const {
-        items: currentItems,
-        onActiveFileChange: currentOnActiveFileChange,
-      } = fileNavLatest.current;
-      const direction: ReviewNavDirection =
-        event.key === "." ? "next" : "previous";
-      // Nothing has jumped yet this session: fall back to the nearest file
-      // at the current scroll position, the same call `updateActivePath`
-      // makes, so the first press starts from where the user actually is
-      // rather than always from the first file in the diff.
-      if (fileNavCurrentPath.current === undefined) {
-        const codeView = viewer.current?.getInstance();
-        fileNavCurrentPath.current =
-          codeView === undefined
-            ? undefined
-            : resolveActiveFilePathAt(codeView.getScrollTop(), codeView);
-      }
-      const target = adjacentFilePath(
-        currentItems.map((item) => item.id),
-        fileNavCurrentPath.current,
-        direction,
-      );
-      if (target === undefined) {
-        setFileNavBoundary(
-          direction === "next"
-            ? "Already at the last file."
-            : "Already at the first file.",
-        );
-        return;
-      }
-      setFileNavBoundary(undefined);
-      // Set eagerly, not only in `onScrolled` below: a rapid second press
-      // before this jump's scroll resolves must still advance from this
-      // target, not re-derive the same "current" and repeat itself.
-      fileNavCurrentPath.current = target;
-      fileNavJump.current.cancel?.();
-      const token = fileNavJump.current.token + 1;
-      fileNavJump.current.token = token;
-      fileNavJump.current.cancel = materializeAndScrollTo({
-        viewer,
-        items: currentItems,
-        itemId: target,
-        isStale: () => fileNavJump.current.token !== token,
-        buildTarget: () => ({ type: "item", id: target, align: "start" }),
-        onScrolled: () => {
-          activePathRef.current = target;
-          currentOnActiveFileChange?.(target);
-        },
-      });
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      fileNavJump.current.cancel?.();
-    };
-  }, [
-    fileNavLatest,
-    preferences.fileMode,
     resolveActiveFilePathAt,
     virtualized,
-  ]);
-
-  // `[`/`]` jump to the previous/next hunk, across file boundaries once a
-  // file's hunks are exhausted. Shares `fileNavLatest`'s items/
-  // onActiveFileChange snapshot -- the same unrelated-re-render rationale
-  // documented above applies unchanged.
-  const hunkNavJump = useRef<{ token: number; cancel?: () => void }>({
-    token: 0,
   });
-  // Where a `[`/`]` press considers itself to be -- never read back from
-  // `activePathRef` or any other scroll-derived state, for the same reason
-  // `fileNavCurrentPath` isn't (see its comment above). A `type: "line"`
-  // jump's `align: "start"` subtracts the sticky header offset too
-  // (CodeView's `resolveAlignedScrollPosition` takes a `stickyOffset` for
-  // line/range targets that `type: "item"` targets don't get), so it can
-  // land short of the target line's true top -- most visibly when the
-  // target is the first hunk of a newly-entered file, where "short" means
-  // *above* that file's own top. `updateActivePath` would then recompute
-  // the *previous* file as active from that landing and overwrite
-  // `activePathRef` right after `onScrolled` sets it, exactly the trap
-  // `,`/`.` guards against. This ref is written only by a keyboard jump.
-  const hunkNavCurrentAnchor = useRef<HunkAnchor | undefined>(undefined);
-  const [hunkNavBoundary, setHunkNavBoundary] = useState<string | undefined>(
-    undefined,
-  );
-  useEffect(() => {
-    // Same surface restriction as the file-jump listener above: only the
-    // primary, continuously-scrolling all-files diff supports hunk jumps.
-    if (!virtualized || preferences.fileMode !== "all") return;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "[" && event.key !== "]") return;
-      if (shouldIgnoreReviewNavKey(event)) return;
-      event.preventDefault();
-      const {
-        items: currentItems,
-        onActiveFileChange: currentOnActiveFileChange,
-      } = fileNavLatest.current;
-      const direction: ReviewNavDirection =
-        event.key === "]" ? "next" : "previous";
-      // Rebuilt fresh every press, mirroring `currentItems.map((item) =>
-      // item.id)` above: cheap, and never goes stale the way a memoized
-      // order keyed on a ref's contents could.
-      const hunkOrder: HunkAnchor[] = currentItems.flatMap((item) =>
-        item.fileDiff.hunks.map((hunk) => hunkAnchor(item.id, hunk)),
-      );
-      // Nothing has jumped yet this session: seed from the file nearest the
-      // current scroll position (the same call `,`/`.` falls back to), then
-      // its first hunk. This is a file-granularity approximation of "nearest
-      // hunk" -- CodeView exposes `getTopForItem` per file item but no
-      // per-line equivalent (`getLineScrollPosition` is private), so a
-      // deeper scroll position within a multi-hunk file can still cost an
-      // extra press to reach the exact hunk the user was already at. Only
-      // the first press of a session pays that cost; every press after this
-      // one advances from `hunkNavCurrentAnchor`, not from scroll position.
-      if (hunkNavCurrentAnchor.current === undefined) {
-        const codeView = viewer.current?.getInstance();
-        const activePath =
-          codeView === undefined
-            ? undefined
-            : resolveActiveFilePathAt(codeView.getScrollTop(), codeView);
-        hunkNavCurrentAnchor.current =
-          activePath === undefined
-            ? undefined
-            : hunkOrder.find((anchor) => anchor.filePath === activePath);
-      }
-      const target = adjacentHunkAnchor(
-        hunkOrder,
-        hunkNavCurrentAnchor.current,
-        direction,
-      );
-      if (target === undefined) {
-        setHunkNavBoundary(
-          direction === "next"
-            ? "Already at the last hunk."
-            : "Already at the first hunk.",
-        );
-        return;
-      }
-      setHunkNavBoundary(undefined);
-      // Set eagerly, not only in `onScrolled` below: a rapid second press
-      // before this jump's scroll resolves must still advance from this
-      // target, not re-derive the same "current" and repeat itself.
-      hunkNavCurrentAnchor.current = target;
-      hunkNavJump.current.cancel?.();
-      const token = hunkNavJump.current.token + 1;
-      hunkNavJump.current.token = token;
-      hunkNavJump.current.cancel = materializeAndScrollTo({
-        viewer,
-        // The target's file, not the hunk, is what must exist in the viewer
-        // before a line inside it can be scrolled to.
-        items: currentItems,
-        itemId: target.filePath,
-        isStale: () => hunkNavJump.current.token !== token,
-        buildTarget: () => ({
-          type: "line",
-          id: target.filePath,
-          lineNumber: target.lineNumber,
-          side: target.side,
-          align: "start",
-        }),
-        onScrolled: () => {
-          activePathRef.current = target.filePath;
-          currentOnActiveFileChange?.(target.filePath);
-        },
-      });
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      hunkNavJump.current.cancel?.();
-    };
-  }, [
-    fileNavLatest,
-    preferences.fileMode,
+
+  const hunkNavBoundary = useReviewHunkNavigation({
+    viewer,
+    activePathRef,
+    items,
+    fileMode: preferences.fileMode,
+    onActiveFileChange,
     resolveActiveFilePathAt,
     virtualized,
-  ]);
-
-  // `{`/`}` jump to the previous/next unresolved comment thread, in document
-  // order (file order, then line order within each file -- the same order
-  // the diff and file tree already use). A resolved thread is finished work
-  // and is never a target: the point of this binding is "have I dealt with
-  // everything", not a tour of every thread ever opened. Shares
-  // `fileNavLatest`'s items/onActiveFileChange snapshot, same rationale as
-  // `[`/`]` above.
-  const commentNavJump = useRef<{ token: number; cancel?: () => void }>({
-    token: 0,
   });
-  // Where a `{`/`}` press considers itself to be -- never read back from
-  // `activePathRef` or any other scroll-derived state, for the same
-  // short-landing trap `hunkNavCurrentAnchor` guards against above (a
-  // `type: "line"` jump's `align: "start"` can land short of the target's
-  // true top, which would make `updateActivePath` recompute the wrong file
-  // as active and overwrite `activePathRef` right after `onScrolled` sets
-  // it). This ref is written only by a keyboard jump.
-  const commentNavCurrentAnchor = useRef<CommentAnchor | undefined>(undefined);
-  const [commentNavStatus, setCommentNavStatus] = useState<string | undefined>(
-    undefined,
-  );
-  useEffect(() => {
-    // Same surface restriction as the file- and hunk-jump listeners above.
-    if (!virtualized || preferences.fileMode !== "all") return;
-    // Guards the bounded post-scroll focus poll below against outliving
-    // this effect (a mode change or unmount while a poll is mid-flight);
-    // `commentNavJump.current.token` alone only detects a *newer* press,
-    // not the listener going away entirely.
-    let cancelled = false;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "{" && event.key !== "}") return;
-      if (shouldIgnoreReviewNavKey(event)) return;
-      event.preventDefault();
-      const {
-        items: currentItems,
-        onActiveFileChange: currentOnActiveFileChange,
-      } = fileNavLatest.current;
-      const direction: ReviewNavDirection =
-        event.key === "}" ? "next" : "previous";
-      // Rebuilt fresh every press, mirroring `hunkOrder` above: document
-      // order across the whole diff, unresolved comment threads only (see
-      // `buildCommentOrder`'s own doc comment for the exact rules and why a
-      // thread that never mapped into any visible file needs no special
-      // case here).
-      const commentOrder: CommentAnchor[] = buildCommentOrder(currentItems);
-      const target = adjacentCommentAnchor(
-        commentOrder,
-        commentNavCurrentAnchor.current,
-        direction,
-      );
-      setCommentNavStatus(
-        commentNavAnnouncement(commentOrder, target, direction),
-      );
-      if (target === undefined) return;
-      // Set eagerly, not only in `onScrolled` below: a rapid second press
-      // before this jump's scroll resolves must still advance from this
-      // target, not re-derive the same "current" and repeat itself.
-      commentNavCurrentAnchor.current = target;
-      commentNavJump.current.cancel?.();
-      const token = commentNavJump.current.token + 1;
-      commentNavJump.current.token = token;
-      commentNavJump.current.cancel = materializeAndScrollTo({
-        viewer,
-        // The target's file, not the thread, is what must exist in the
-        // viewer before a line inside it can be scrolled to.
-        items: currentItems,
-        itemId: target.filePath,
-        isStale: () => commentNavJump.current.token !== token,
-        buildTarget: () => ({
-          type: "line",
-          id: target.filePath,
-          lineNumber: target.lineNumber,
-          side: target.side,
-          align: "start",
-        }),
-        onScrolled: () => {
-          activePathRef.current = target.filePath;
-          currentOnActiveFileChange?.(target.filePath);
-          // Move focus to the thread's card, not just the viewport, so
-          // keyboard and screen-reader users land somewhere Tab continues
-          // usefully from. The card can render a frame after this scroll
-          // resolves (CodeView mounts its annotation portal once the
-          // target's own DOM node exists), so poll a bounded number of
-          // frames instead of assuming one is enough.
-          focusCommentThreadCard(
-            target.id,
-            () => cancelled || commentNavJump.current.token !== token,
-          );
-        },
-      });
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("keydown", onKeyDown);
-      commentNavJump.current.cancel?.();
-    };
-  }, [fileNavLatest, preferences.fileMode, virtualized]);
+
+  const commentNavStatus = useReviewCommentNavigation({
+    viewer,
+    activePathRef,
+    items,
+    fileMode: preferences.fileMode,
+    onActiveFileChange,
+    virtualized,
+  });
 
   const setAllCollapsed = (collapsed: boolean): void => {
     onCollapsedPathsChange(
