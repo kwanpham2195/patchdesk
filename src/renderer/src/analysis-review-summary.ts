@@ -1,4 +1,4 @@
-import type { ReviewResult } from "../domain/review-result";
+import type { ReviewResult } from "../../domain/review-result";
 
 export type AnalysisReviewBodyScope = {
   readonly baseShort: string;

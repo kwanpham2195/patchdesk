@@ -25,7 +25,7 @@ import type {
   ReviewWriteGateFailure,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import type { RecentReviewWrite } from "./review-refresh-service";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 
 /** GitHub's documented per-pull-request assignee limit; not independently reconfirmed against a live API call in this change. */
 const MAX_ASSIGNEES = 10;

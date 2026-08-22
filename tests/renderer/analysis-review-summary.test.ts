@@ -3,8 +3,19 @@ import { describe, expect, it } from "vitest";
 import {
   renderAnalysisReviewBody,
   renderAnalysisReviewSummary,
-} from "../../src/services/analysis-review-body";
+} from "../../src/renderer/src/analysis-review-summary";
+import { parseFindingId, parseRepoRelativePath } from "../../src/domain/ids";
 import type { ReviewResult } from "../../src/domain/review-result";
+import type { Result } from "../../src/domain/result";
+
+function requireParsed<T>(result: Result<T, unknown>): T {
+  if (result._tag === "err") throw new Error("invalid test fixture");
+  return result.value;
+}
+
+const findingP2 = requireParsed(parseFindingId("p2"));
+const findingP0 = requireParsed(parseFindingId("p0"));
+const fileB = requireParsed(parseRepoRelativePath("src/b.ts"));
 
 const result: ReviewResult = {
   changeSummary: "Adds `safe` parsing",
@@ -12,17 +23,17 @@ const result: ReviewResult = {
   summary: "The change needs review.",
   findings: [
     {
-      id: "p2" as never,
+      id: findingP2,
       severity: "P2",
       title: "Second",
       explanation: "Explain *this*.",
       confidence: "high",
       mappingStatus: "mapped",
-      file: "src/b.ts" as never,
+      file: fileB,
       lineStart: 4,
     },
     {
-      id: "p0" as never,
+      id: findingP0,
       severity: "P0",
       title: "First",
       explanation: "Fix [this].",

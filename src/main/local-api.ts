@@ -94,7 +94,7 @@ import {
   projectDirectSummaryReview,
 } from "../services/direct-summary-review-service";
 import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
-import type { RecentReviewWrite } from "../services/review-refresh-service";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 import {
   AvatarSyncService,
   type AvatarFetcher,

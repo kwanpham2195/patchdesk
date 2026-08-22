@@ -50,6 +50,7 @@ import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader"
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { AppLogService } from "./app-log-service";
 import type { AvatarSyncService } from "./avatar-sync-service";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 
 export type ReviewRefreshFailure = {
   readonly reason:
@@ -67,41 +68,6 @@ export type ReviewRefreshFailure = {
  * with these entries so the app's own writes never read as remote updates,
  * while external activity in the same thread still does.
  */
-export type RecentReviewWrite =
-  | {
-      readonly _tag: "Comment";
-      readonly commentId: string;
-      readonly reviewId?: string;
-    }
-  | {
-      readonly _tag: "ThreadState";
-      readonly threadId: GitHubThreadId;
-      readonly state: "open" | "resolved";
-    }
-  | {
-      readonly _tag: "PendingThread";
-      readonly threadId: GitHubThreadId;
-    }
-  | {
-      readonly _tag: "DirectSummaryReview";
-      readonly reviewId: string;
-    }
-  | {
-      readonly _tag: "LabelChange";
-      readonly added: ReadonlyArray<string>;
-      readonly removed: ReadonlyArray<string>;
-    }
-  | {
-      readonly _tag: "AssigneeChange";
-      readonly added: ReadonlyArray<string>;
-      readonly removed: ReadonlyArray<string>;
-    }
-  | {
-      readonly _tag: "ReviewerChange";
-      readonly requested: ReadonlyArray<string>;
-      readonly removed: ReadonlyArray<string>;
-    };
-
 export type DetectionResult = {
   readonly updatesAvailable: boolean;
   readonly detectedAt: IsoTimestamp;

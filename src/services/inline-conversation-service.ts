@@ -15,7 +15,7 @@ import type {
   ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import type { RecentReviewWrite } from "./review-refresh-service";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 import { err, ok, type Result } from "../domain/result";
 
 export type DirectConversationCommand =
@@ -349,7 +349,11 @@ function journalEntryFor(
       const threadId = parseGitHubThreadId(receipt.threadId);
       return threadId._tag === "err"
         ? undefined
-        : { _tag: "ThreadState", threadId: threadId.value, state: receipt.state };
+        : {
+            _tag: "ThreadState",
+            threadId: threadId.value,
+            state: receipt.state,
+          };
     }
     case "CommentEdited":
     case "CommentDeleted":

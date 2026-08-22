@@ -39,7 +39,7 @@ import type {
   ReviewWorkbenchProjection,
   WorkbenchProjectionFailure,
 } from "./review-workbench-projection";
-import type { RecentReviewWrite } from "./review-refresh-service";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 import type { PendingReviewService } from "./pending-review-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";

@@ -10,7 +10,7 @@ import {
   type WorkspaceProfileId,
 } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
-import type { RecentReviewWrite } from "../../services/review-refresh-service";
+import type { RecentReviewWrite } from "../../domain/recent-review-write";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
   readJsonFile,

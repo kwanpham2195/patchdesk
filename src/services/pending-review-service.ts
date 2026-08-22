@@ -44,7 +44,7 @@ import type {
   GitHubComments,
   GitHubPublishedFeedback,
 } from "../domain/github-context";
-import type { RecentReviewWrite } from "./review-refresh-service";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 
 export type StartPendingReviewInput = {
   readonly profileId: WorkspaceProfileId;

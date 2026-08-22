@@ -18,10 +18,8 @@ import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-j
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { StorageFailure } from "../adapters/storage/json-file";
-import type {
-  RecentReviewWrite,
-  ReviewRefreshService,
-} from "./review-refresh-service";
+import type { ReviewRefreshService } from "./review-refresh-service";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 import type { ReviewObservationService } from "./review-observation-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewCommitService } from "./review-commit-service";

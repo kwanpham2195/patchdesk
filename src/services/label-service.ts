@@ -1,9 +1,16 @@
 import { repositoryLabelPermission } from "../adapters/github/github-adapter";
-import type { GitHubReader, GitHubReviewWriter, GitHubReadFailure } from "../adapters/github/github-adapter";
+import type {
+  GitHubReader,
+  GitHubReviewWriter,
+  GitHubReadFailure,
+} from "../adapters/github/github-adapter";
 import type { ForbiddenReason } from "../adapters/github/command-runner";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
-import type { RepositoryLabel, RepositoryLabelPermission } from "../domain/github-context";
+import type {
+  RepositoryLabel,
+  RepositoryLabelPermission,
+} from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
@@ -13,7 +20,7 @@ import type {
   ReviewWriteGateFailure,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import type { RecentReviewWrite } from "./review-refresh-service";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 
 /** One label to add or remove; `name` travels alongside `id` purely so a confirmed write can journal a human-legible own-write fingerprint without a second lookup. */
 export type LabelRef = {
@@ -76,7 +83,10 @@ type Gateway = Pick<
   | "getRepositoryPermission"
   | "listRepositoryLabels"
 > &
-  Pick<GitHubReviewWriter, "addLabelsToLabelable" | "removeLabelsFromLabelable">;
+  Pick<
+    GitHubReviewWriter,
+    "addLabelsToLabelable" | "removeLabelsFromLabelable"
+  >;
 
 /**
  * Owns direct, GitHub-published label reads and assignment for one current
@@ -287,7 +297,8 @@ function mapReadFailure(failure: GitHubReadFailure): LabelListOutcome {
   }
   if (failure._tag === "GitHubForbidden")
     return { _tag: "github_forbidden", reason: failure.reason };
-  if (failure._tag === "GitHubAuthenticationFailed") return { _tag: "github_auth" };
+  if (failure._tag === "GitHubAuthenticationFailed")
+    return { _tag: "github_auth" };
   return { _tag: "github_read" };
 }
 

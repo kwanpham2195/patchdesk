@@ -36,10 +36,8 @@ import {
 import { err, ok, type Result } from "../../src/domain/result";
 import { parseStoredReviewSession } from "../../src/adapters/storage/review-session-store";
 import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
-import type {
-  RecentReviewWrite,
-  ReviewRefreshDependencies,
-} from "../../src/services/review-refresh-service";
+import type { ReviewRefreshDependencies } from "../../src/services/review-refresh-service";
+import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 

@@ -12,8 +12,8 @@ import {
   parseRepoRelativePath,
   type GitHubThreadId,
 } from "../../../domain/ids";
-import type { RecentReviewWrite } from "../../../services/review-refresh-service";
-import { renderAnalysisReviewSummary } from "../../../services/analysis-review-body";
+import type { RecentReviewWrite } from "../../../domain/recent-review-write";
+import { renderAnalysisReviewSummary } from "../analysis-review-summary";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import { AnalysisReader } from "../components/analysis-reader";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
