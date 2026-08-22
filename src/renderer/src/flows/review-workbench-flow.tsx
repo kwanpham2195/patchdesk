@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
-import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import {
-  parseGitHubHost,
-  parseGitHubOwner,
-  parseGitHubRepoName,
-  parsePullRequestNumber,
-  parseRepoRelativePath,
-} from "../../../domain/ids";
+import { parseUnifiedPatch } from "../../../domain/patch";
+import { parseRepoRelativePath } from "../../../domain/ids";
 import { renderAnalysisReviewSummary } from "../analysis-review-summary";
 import { requestJson } from "../api-client";
 import { AnalysisReader } from "../components/analysis-reader";
@@ -34,7 +28,6 @@ import type { AssigneesSectionActions } from "../components/assignee-picker";
 import type { LabelPickerActions } from "../components/label-picker";
 import type { ReviewerPickerActions } from "../components/reviewer-picker";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
-import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -55,16 +48,19 @@ import {
   type CommitDiffResponse,
   type WorkbenchResponse,
 } from "../renderer-contracts";
-import type { MergeReadiness } from "../../../domain/merge-readiness";
 import type { InsightFailureCategory } from "../../../domain/insight-record";
-import type { PullRequestRef } from "../../../domain/pull-request";
 
 import { useInsightRun } from "../hooks/use-insight-run";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
+import {
+  useAnalysisReviewActions,
+  type AnalysisFinding,
+} from "./use-analysis-review-actions";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
 import { usePendingReviewActions } from "./use-pending-review-actions";
 import { useReviewMetadataActions } from "./use-review-metadata-actions";
+import { useReviewMergeAction } from "./use-review-merge-action";
 import {
   useReviewObservation,
   type ReviewWorkbenchPatch,
@@ -76,28 +72,6 @@ const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
-
-function pullRequestExternalRef(
-  model: WorkbenchResponse,
-): PullRequestRef | undefined {
-  const host = parseGitHubHost(model.session.key.host);
-  const owner = parseGitHubOwner(model.session.key.owner);
-  const repo = parseGitHubRepoName(model.session.key.repo);
-  const number = parsePullRequestNumber(model.session.key.prNumber);
-  if (
-    host._tag === "err" ||
-    owner._tag === "err" ||
-    repo._tag === "err" ||
-    number._tag === "err"
-  )
-    return undefined;
-  return {
-    host: host.value,
-    owner: owner.value,
-    repo: repo.value,
-    number: number.value,
-  };
-}
 
 export type ReviewWorkbenchFlowProps = {
   readonly workbench: WorkbenchResponse;
@@ -213,200 +187,14 @@ export function ReviewWorkbenchFlow({
           },
         }
       : undefined;
-  const externalPullRequest = pullRequestExternalRef(workbench);
-  const mergeActionBase =
-    workbench.review.status === "open" &&
-    workbench.revision.freshness === "fresh" &&
-    workbench.revision.patchHash !== undefined
-      ? {
-          // SAFETY: the workbench projection's `mergeReadiness` is the wire
-          // serialization of a domain `MergeReadiness` value that only ever
-          // originates from `evaluateMergeReadiness`; the wire schema widens
-          // `blockers`/`warnings` to `string[]` for forward-compatible
-          // parsing, but the emitted values are always drawn from
-          // `MergeReadiness`'s literal unions.
-          readiness: workbench.mergeReadiness as MergeReadiness,
-          context: {
-            repo: `${workbench.session.key.owner}/${workbench.session.key.repo}`,
-            prNumber: workbench.session.key.prNumber,
-            title:
-              workbench.pullRequest?.title ??
-              `Pull request #${workbench.session.key.prNumber}`,
-            base: workbench.pullRequest?.baseBranch ?? "unknown",
-            head: workbench.pullRequest?.headBranch ?? "unknown",
-            headSha: workbench.revision.reviewedHeadSha,
-          },
-          methods: ["squash", "merge", "rebase"] as const,
-          onRecoverMerge: async () => {
-            const recovered = await requestJson("/v1/reviews/merge/recover", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-              },
-            });
-            const next = parseWorkbenchResponse(recovered);
-            if (next === undefined)
-              throw new Error("Invalid recovered Review projection");
-            replaceWorkbench(next);
-          },
-          onMerge: async (
-            method: "merge" | "squash" | "rebase",
-            warningCodes: ReadonlyArray<string>,
-          ) => {
-            await requestJson("/v1/reviews/merge", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-                sessionId: workbench.session.id,
-                expectedHeadSha: workbench.revision.reviewedHeadSha,
-                expectedBaseSha: workbench.pullRequest?.baseSha ?? "",
-                expectedPatchHash: workbench.revision.patchHash,
-                expectedRevision: workbench.revision.refreshedAt,
-                method,
-                acknowledgedWarnings: {
-                  revision: {
-                    headSha: workbench.revision.reviewedHeadSha,
-                    baseSha: workbench.pullRequest?.baseSha ?? "",
-                    patchHash: workbench.revision.patchHash,
-                  },
-                  warningCodes,
-                },
-              },
-            });
-            const refreshed = await requestJson("/v1/reviews/load", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-              },
-            });
-            const next = parseWorkbenchResponse(refreshed);
-            if (next === undefined)
-              throw new Error("Invalid terminal Review projection");
-            replaceWorkbench(next);
-            return {};
-          },
-        }
-      : undefined;
-  const mergeActionWithReasons =
-    mergeActionBase === undefined || workbench.mergeReasons === undefined
-      ? mergeActionBase
-      : { ...mergeActionBase, mergeReasons: workbench.mergeReasons };
-  const mergeAction: PullRequestOverviewMerge | undefined =
-    mergeActionWithReasons === undefined || externalPullRequest === undefined
-      ? mergeActionWithReasons
-      : { ...mergeActionWithReasons, pullRequest: externalPullRequest };
-  const addFindingToPendingReview = useCallback(
-    async (finding: AnalysisFinding): Promise<void> => {
-      const runId = workbench.insights.analysis.retained?.runId;
-      const patchHash = workbench.revision.patchHash;
-      const status =
-        workbench.analysisReviewActions?.findings[finding.id]?.state;
-      if (
-        runId === undefined ||
-        patchHash === undefined ||
-        status !== "actionable" ||
-        finding.mappingStatus !== "mapped" ||
-        finding.file === undefined ||
-        finding.lineStart === undefined ||
-        workbench.fullPatch === undefined
-      )
-        throw new Error(
-          "This Finding is not actionable on the current Review.",
-        );
-      const findingLocationBase = {
-        file: finding.file,
-        lineStart: finding.lineStart,
-      };
-      const findingLocationWithEnd =
-        finding.lineEnd === undefined
-          ? findingLocationBase
-          : { ...findingLocationBase, lineEnd: finding.lineEnd };
-      const findingLocation =
-        finding.diffSide === undefined
-          ? findingLocationWithEnd
-          : { ...findingLocationWithEnd, diffSide: finding.diffSide };
-      const mapped = mapFindingLocation(
-        parseUnifiedPatch(workbench.fullPatch),
-        findingLocation,
-      );
-      const path =
-        mapped.path === undefined
-          ? undefined
-          : parseRepoRelativePath(mapped.path);
-      if (
-        path?._tag !== "ok" ||
-        mapped.line === undefined ||
-        mapped.side === undefined
-      )
-        throw new Error(
-          "Patchdesk could not verify this Finding's diff anchor.",
-        );
-      const anchor = {
-        path: path.value,
-        startLine: mapped.startLine ?? mapped.line,
-        line: mapped.line,
-        side: mapped.side,
-      };
-      const expected = {
-        sessionId: workbench.session.id,
-        headSha: workbench.revision.reviewedHeadSha,
-        patchHash,
-      };
-      const pending = workbench.pendingReview;
-      const command =
-        pending?.state === "none"
-          ? {
-              _tag: "Start" as const,
-              expected,
-              anchor,
-              body: finding.suggestedComment ?? finding.explanation,
-              finding: {
-                analysisRunId: runId,
-                findingId: finding.id,
-                ...expected,
-              },
-            }
-          : pending?.state === "pending"
-            ? {
-                _tag: "AddThread" as const,
-                expected,
-                pendingReviewNodeId: pending.review.nodeId,
-                anchor,
-                body: finding.suggestedComment ?? finding.explanation,
-                finding: {
-                  analysisRunId: runId,
-                  findingId: finding.id,
-                  ...expected,
-                },
-              }
-            : undefined;
-      if (command === undefined)
-        throw new Error("Check GitHub again before changing this Finding.");
-      await requestJson("/v1/reviews/pending-review/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command,
-        },
-      });
-      const value = await requestJson("/v1/reviews/load", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-        },
-      });
-      const next = parseWorkbenchResponse(value);
-      if (next === undefined)
-        throw new Error("Invalid Review projection response");
-      replaceWorkbench(next);
-    },
-    [replaceWorkbench, workbench],
-  );
+  const { mergeAction } = useReviewMergeAction({
+    workbench,
+    onWorkbenchReplace: replaceWorkbench,
+  });
+  const { addFindingToPendingReview } = useAnalysisReviewActions({
+    workbench,
+    onWorkbenchReplace: replaceWorkbench,
+  });
 
   const conversationActions = canWriteDirectConversation
     ? { setThreadState, replyToThread, editComment, deleteComment }
@@ -536,9 +324,6 @@ export function ReviewWorkbenchFlow({
   );
 }
 
-type AnalysisFinding = NonNullable<
-  WorkbenchResponse["insights"]["analysis"]["retained"]
->["value"]["findings"][number];
 type InsightModelOption = {
   readonly id: string;
   readonly label: string;
