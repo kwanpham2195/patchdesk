@@ -24,7 +24,7 @@ type PierreCodeView<T> = NonNullable<
   ReturnType<CodeViewHandle<T>["getInstance"]>
 >;
 
-type ReviewDiffScrollState<T> = {
+export type ReviewDiffScrollState<T> = {
   readonly settledHydratedFiles: ReadonlyMap<string, FileDiffMetadata>;
   readonly activePathRef: { current: string | undefined };
   readonly viewerElement: HTMLDivElement | null;

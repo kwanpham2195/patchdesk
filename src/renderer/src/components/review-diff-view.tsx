@@ -9,10 +9,6 @@ import {
   type CSSProperties,
 } from "react";
 import {
-  getFiletypeFromFileName,
-  getThemes,
-  preloadHighlighter,
-  type CodeViewDiffItem,
   type CodeViewItem,
   type CodeViewLineSelection,
   type DiffLineAnnotation,
@@ -41,7 +37,6 @@ import {
   parseRepoRelativePath,
   type GitHubThreadId,
 } from "../../../domain/ids";
-import { toDiffLineAnnotation } from "../review-diff-annotations";
 import { PatchdeskApiError } from "../api-client";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
 import {
@@ -69,22 +64,13 @@ import {
   type DiffThemePreferences,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
-import { reviewDiffItemVersion } from "@/review-diff-item-version";
-import { compareTreePaths } from "@/review-diff-order";
-import { reviewContextControl } from "@/review-context-control";
 import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
-import {
-  selectPatch,
-  useReviewDiffHydration,
-  type ReviewDiffSourceSession,
-} from "@/hooks/use-review-diff-hydration";
+import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigation";
 import { useReviewFileNavigation } from "@/hooks/use-review-file-navigation";
 import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
-import {
-  useReviewDiffScrollState,
-  useReviewDiffSelectionScroll,
-} from "@/hooks/use-review-diff-scroll-state";
+import { useReviewDiffSelectionScroll } from "@/hooks/use-review-diff-scroll-state";
+import { useReviewDiffModel } from "@/hooks/use-review-diff-model";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
@@ -119,19 +105,10 @@ const WALKTHROUGH_DIFF_COLORS_CSS = `
   --diffs-bg-addition-emphasis-override: light-dark(rgb(46 160 67 / 0.28), rgb(46 160 67 / 0.22));
 }
 `;
-const TREE_ORDER_SORT_LIMIT = 256;
 // Matches @pierre/diffs' own default (DiffHunksRenderer destructures
 // `lineDiffType = "word-alt"`). Named explicitly so the three render call
 // sites below share one value instead of three hand-copied literals.
 const DEFAULT_LINE_DIFF_TYPE: LineDiffTypes = "word-alt";
-
-/** Mutable draft of `useReviewDiffHydration`'s input, built in statements so
- * each optional field is added only when it has a value. */
-type ReviewDiffHydrationInput = {
-  patch: string;
-  sourceSession?: ReviewDiffSourceSession;
-  selectedPath?: string;
-};
 
 export type SelectedDiffRange = {
   readonly start: number;
@@ -460,38 +437,6 @@ function ReviewDiffSurface({
       return changed ? next : current;
     });
   }, [annotations]);
-  // Walkthrough cards render one filtered hunk with virtualized={false}. Full
-  // source hydration would pair that partial patch with the entire file and
-  // make Pierre calculate impossible trailing context.
-  const hydrationSourceSession = virtualized ? sourceSession : undefined;
-  const hydrationInput: ReviewDiffHydrationInput = { patch };
-  if (selectedPath !== undefined) hydrationInput.selectedPath = selectedPath;
-  if (hydrationSourceSession !== undefined)
-    hydrationInput.sourceSession = hydrationSourceSession;
-  const {
-    hydratedFiles,
-    contextStatus,
-    rawFilePatches,
-    rawPatchesByPath,
-    hydrateFiles,
-  } = useReviewDiffHydration(hydrationInput);
-  const {
-    settledHydratedFiles,
-    activePathRef,
-    setViewerContainer,
-    resolveActiveFilePathAt,
-    handleCodeViewScroll,
-  } = useReviewDiffScrollState({
-    viewer,
-    hydratedFiles,
-    fileMode: preferences.fileMode,
-    itemCount: parsedFiles.length,
-    onActiveFileChange,
-  });
-  // `hydratedFiles` lands live for `hasExpandableRenderedFile` below, but
-  // must NOT reach CodeView's item list (the `files` and `items` memos)
-  // while a scroll is in flight -- see `useScrollSettledValue` for why a
-  // layout change mid-scroll can blank the viewport for a frame.
   useEffect(() => {
     const onAppearance = (event: Event): void => {
       // SAFETY: only `window.dispatchEvent(new CustomEvent("patchdesk:appearance", ...))`
@@ -516,36 +461,6 @@ function ReviewDiffSurface({
     window.addEventListener("patchdesk:diff-theme", onTheme);
     return () => window.removeEventListener("patchdesk:diff-theme", onTheme);
   }, []);
-  const selectedPatch = useMemo(
-    () => selectPatch(rawPatchesByPath, rawFilePatches, patch, selectedPath),
-    [patch, rawFilePatches, rawPatchesByPath, selectedPath],
-  );
-  const files = useMemo(() => {
-    // Reads the settled map, not the live one -- see the comment at the
-    // `useScrollSettledValue` call site above.
-    const hydrated = parsedFiles.map(
-      (file) => settledHydratedFiles.get(file.name) ?? file,
-    );
-    // Large generated diffs already arrive in source/tree order. Avoid a
-    // full re-sort whenever one of their files hydrates.
-    return parsedFiles.length > TREE_ORDER_SORT_LIMIT
-      ? hydrated
-      : hydrated.sort((left, right) => compareTreePaths(left.name, right.name));
-  }, [settledHydratedFiles, parsedFiles]);
-  const visibleFiles = useMemo(
-    () =>
-      preferences.fileMode === "selected" && selectedPath !== undefined
-        ? files.filter((file) => file.name === selectedPath)
-        : files,
-    [files, preferences.fileMode, selectedPath],
-  );
-  const selectedFile = useMemo(
-    () =>
-      selectedPath === undefined
-        ? undefined
-        : files.find((file) => file.name === selectedPath),
-    [files, selectedPath],
-  );
   const clearAuthoring = useCallback((): void => {
     setAuthoringSelection(null);
     viewer.current?.clearSelectedLines();
@@ -960,127 +875,35 @@ function ReviewDiffSurface({
     renderedAnnotations,
     resolvedThreads,
   ]);
-  const selectedAnnotations = useMemo(
-    () =>
-      displayedAnnotations.flatMap((annotation) =>
-        selectedPath === undefined || annotation.path === selectedPath
-          ? [toDiffLineAnnotation(annotation)]
-          : [],
-      ),
-    [displayedAnnotations, selectedPath],
-  );
-  const annotationKey = useMemo(
-    () =>
-      displayedAnnotations
-        .map((annotation) =>
-          [
-            annotation.id,
-            annotation.path,
-            annotation.start,
-            annotation.end,
-            annotation.side,
-            annotation.title,
-            annotation.explanation,
-            annotation.localComposer?.path ?? "",
-            annotation.localComposer?.startLine ?? "",
-            annotation.localComposer?.line ?? "",
-            // The composer's effective pending state and owner node must bump the
-            // controlled item version so a stale portal re-renders when none
-            // becomes pending, the owner review changes, or a command goes busy.
-            annotation.localComposer?.pendingReview === undefined
-              ? ""
-              : JSON.stringify([
-                  annotation.localComposer.pendingReview.state.state,
-                  annotation.localComposer.pendingReview.state.state ===
-                  "pending"
-                    ? annotation.localComposer.pendingReview.state.nodeId
-                    : "",
-                  annotation.localComposer.pendingReview.busy,
-                ]),
-            // Pending create cards are controlled items: their status and body must
-            // bump the version so the replacement slot re-renders.
-            annotation.pendingConversation === undefined
-              ? ""
-              : `${annotation.pendingConversation.status}\u0000${annotation.pendingConversation.body}`,
-            // Pending-review write cards are controlled items too: status, action,
-            // body, and the bounded failure message all bump the version.
-            annotation.pendingReviewWrite === undefined
-              ? ""
-              : `${annotation.pendingReviewWrite.status}\u0000${annotation.pendingReviewWrite.action}\u0000${annotation.pendingReviewWrite.body}\u0000${annotation.pendingReviewWrite.message ?? ""}`,
-            // Confirmed pending threads are controlled items: the owner node,
-            // thread id, and body must bump the version when the projection moves.
-            annotation.pendingReviewThread === undefined
-              ? ""
-              : `${annotation.pendingReviewThread.nodeId}\u0000${annotation.pendingReviewThread.threadId}\u0000${annotation.pendingReviewThread.body}`,
-            // Thread cards are controlled items too: resolve state, reconciled
-            // comments, and local mutation overrides must bump the version.
-            annotation.conversationThread === undefined
-              ? ""
-              : JSON.stringify([
-                  annotation.conversationThread.state,
-                  ...annotation.conversationThread.comments.map(
-                    (comment) =>
-                      `${comment.id}\u0000${comment.author}\u0000${comment.body}`,
-                  ),
-                ]),
-          ].join("\u0000"),
-        )
-        .join("\u0001"),
-    [displayedAnnotations],
-  );
-  const items = useMemo(
-    () =>
-      visibleFiles.map<CodeViewDiffItem<ReviewInlineAnnotation | undefined>>(
-        (file) => ({
-          id: file.name,
-          type: "diff",
-          fileDiff: file,
-          annotations: displayedAnnotations.flatMap((annotation) =>
-            annotation.path === file.name
-              ? [toDiffLineAnnotation(annotation)]
-              : [],
-          ),
-          collapsed: collapsedPaths.has(file.name),
-          // Pierre deliberately reuses a controlled item with the same ID and
-          // version. Hydration swaps partial raw-patch metadata for exact
-          // base/head metadata, and local annotations change rendered slots, so
-          // bump its version to let native hunk controls and annotation portals
-          // see the replacement.
-          version: reviewDiffItemVersion({
-            collapsed: collapsedPaths.has(file.name),
-            // Settled, not live: the version bump is itself a layout
-            // mutation to CodeView (see the `useScrollSettledValue` call
-            // site), so it must not fire mid-scroll either.
-            hydrated: settledHydratedFiles.has(file.name),
-            annotationKey,
-          }),
-        }),
-      ),
-    [
-      annotationKey,
-      collapsedPaths,
-      settledHydratedFiles,
-      displayedAnnotations,
-      visibleFiles,
-    ],
-  );
-  const selectedLines = useMemo(
-    () =>
-      selectedPath === undefined || selectedRange === undefined
-        ? null
-        : {
-            id: selectedPath,
-            range: {
-              start: selectedRange.start,
-              end: selectedRange.end,
-              side:
-                selectedRange.side === "new"
-                  ? ("additions" as const)
-                  : ("deletions" as const),
-            },
-          },
-    [selectedPath, selectedRange],
-  );
+  const {
+    contextControl,
+    contextStatus,
+    browserSupportsPierre,
+    selectedPatch,
+    files,
+    selectedFile,
+    selectedAnnotations,
+    items,
+    selectedLines,
+    activePathRef,
+    resolveActiveFilePathAt,
+    setViewerContainer,
+    handleCodeViewScroll,
+  } = useReviewDiffModel({
+    patch,
+    parsedFiles,
+    selectedPath,
+    selectedRange,
+    annotations: displayedAnnotations,
+    preferences: { fileMode: preferences.fileMode },
+    collapsedPaths,
+    expandUnchanged,
+    themePreferences,
+    sourceSession,
+    virtualized,
+    viewer,
+    onActiveFileChange,
+  });
   useReviewDiffSelectionScroll({
     viewer,
     items,
@@ -1093,31 +916,6 @@ function ReviewDiffSurface({
   // materialized while it is selected; the user's explicit option still
   // controls whether every other unchanged hunk stays expanded.
   const expandSelectedRange = selectedRange !== undefined;
-  const browserSupportsPierre =
-    globalThis.CSSStyleSheet !== undefined &&
-    "replaceSync" in CSSStyleSheet.prototype;
-  // Non-virtualized (walkthrough) cards tokenize on the main thread after a
-  // plain first paint. Preload their file languages and the active themes so
-  // the retained reader shows syntax colors on first paint instead of flashing
-  // uncolored text while each grammar loads.
-  useEffect(() => {
-    if (virtualized || !browserSupportsPierre) return;
-    const langs = Array.from(
-      new Set(
-        parsedFiles.flatMap((file) => {
-          const language = getFiletypeFromFileName(file.name);
-          return language === undefined || language === "text"
-            ? []
-            : [language];
-        }),
-      ),
-    );
-    if (langs.length === 0) return;
-    void preloadHighlighter({
-      langs,
-      themes: getThemes(themePreferences),
-    });
-  }, [browserSupportsPierre, parsedFiles, themePreferences, virtualized]);
   const viewerKey = preferences.fileMode;
   // Exactly what the `CodeView` element below keys on. Any change to it
   // tears `CodeView` down and remounts it, discarding its scroll position
@@ -1141,29 +939,6 @@ function ReviewDiffSurface({
   // caches `bb285c2`'s worker pool built no longer get discarded, just
   // because they changed a colour.
   const codeViewKey = viewerKey;
-  const sourceProfileId = hydrationSourceSession?.profileId;
-  const sourceSessionId = hydrationSourceSession?.sessionId;
-  // `items`'s identity changes on every hydration response -- each response
-  // bumps that item's `version`, which rebuilds the `items` useMemo above --
-  // so hydration keyed on `items` would refire on every response instead of
-  // once per actual change to the set of files. Key it on the file paths
-  // themselves, joined with the same NUL separator `annotationKey` uses so a
-  // path containing a space cannot collide with the separator.
-  const hydrationPathKey = useMemo(
-    () => items.map((item) => item.id).join("\u0000"),
-    [items],
-  );
-  // Rebuilt from the key, not captured from `items`, so this array's identity
-  // tracks the effect's own dependency exactly rather than the churning memo.
-  const hydrationPaths = useMemo(
-    () => (hydrationPathKey === "" ? [] : hydrationPathKey.split("\u0000")),
-    [hydrationPathKey],
-  );
-  // Every file hydrates up front now that CodeView receives the full item
-  // list at mount instead of a growing prefix.
-  useEffect(() => {
-    void hydrateFiles(hydrationPaths);
-  }, [hydrateFiles, hydrationPaths]);
 
   useEffect(() => {
     activePathRef.current = undefined;
@@ -1238,22 +1013,6 @@ function ReviewDiffSurface({
       themePreferences,
     ],
   );
-  const hasExpandableRenderedFile = useMemo(
-    () =>
-      items.some((item) => {
-        if (item.type !== "diff") return false;
-        const hydrated = hydratedFiles.get(item.id);
-        return hydrated !== undefined && !hydrated.isPartial;
-      }),
-    [hydratedFiles, items],
-  );
-  const contextControl = reviewContextControl({
-    hasSourceSession:
-      sourceProfileId !== undefined && sourceSessionId !== undefined,
-    status: contextStatus,
-    hasExpandableRenderedFile,
-    expanded: expandUnchanged,
-  });
   const renderFileChangeCounts = useCallback(
     (path: string) => {
       const stats = fileStatsByPath.get(path) ?? {
