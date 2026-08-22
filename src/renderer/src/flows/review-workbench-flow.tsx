@@ -1,5 +1,4 @@
 import { parseRepoRelativePath } from "../../../domain/ids";
-import { requestJson } from "../api-client";
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
@@ -9,13 +8,10 @@ import type { LabelPickerActions } from "../components/label-picker";
 import type { ReviewerPickerActions } from "../components/reviewer-picker";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
-import {
-  parseCommitDiffResponse,
-  type CommitDiffResponse,
-  type WorkbenchResponse,
-} from "../renderer-contracts";
+import type { WorkbenchResponse } from "../renderer-contracts";
 
 import { InsightsSlot } from "../components/review-insights-slot";
+import { loadReviewCommitDiff } from "./review-workbench-commit-diff";
 import { useAnalysisReviewActions } from "./use-analysis-review-actions";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
@@ -160,19 +156,12 @@ export function ReviewWorkbenchFlow({
   const workbenchActionsBase = {
     detectUpdates: runDetect,
     refresh,
-    loadCommitDiff: async (commitSha: string): Promise<CommitDiffResponse> => {
-      const value = await requestJson("/v1/reviews/commit-diff", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          commitSha,
-        },
-      });
-      const parsed = parseCommitDiffResponse(value);
-      if (parsed === undefined) throw new Error("Invalid commit diff response");
-      return parsed;
-    },
+    loadCommitDiff: (commitSha: string) =>
+      loadReviewCommitDiff(
+        workbench.session.key.profileId,
+        workbench.review.id,
+        commitSha,
+      ),
     reportNavigationState: onNavigationStateChange,
   };
   const workbenchActionsWithRefreshing =
