@@ -7,9 +7,11 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type RefObject,
 } from "react";
 import {
   type CodeViewItem,
+  type CodeViewLineSelection,
   type DiffLineAnnotation,
   type FileDiffMetadata,
   type LineDiffTypes,
@@ -31,6 +33,10 @@ import {
 } from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
+import type {
+  ReviewContextControl,
+  ReviewContextStatus,
+} from "@/review-context-control";
 import { type GitHubThreadId } from "../../../domain/ids";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
 import {
@@ -60,7 +66,10 @@ import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigatio
 import { useReviewFileNavigation } from "@/hooks/use-review-file-navigation";
 import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
 import { useReviewDiffSelectionScroll } from "@/hooks/use-review-diff-scroll-state";
-import { useReviewDiffModel } from "@/hooks/use-review-diff-model";
+import {
+  useReviewDiffModel,
+  type ReviewDiffModel,
+} from "@/hooks/use-review-diff-model";
 import { useReviewConversationOverlays } from "@/hooks/use-review-conversation-overlays";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -230,13 +239,129 @@ type ReviewDiffViewProps = {
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
 
-// Pre-existing giant component (over 1800 lines before this change, and this
-// change actually shrinks the file by ~350 lines via the ConversationThreadCard
-// extraction; `react-doctor --scope changed --base main` reports zero new
-// issues here). Splitting it is the renderer god-file refactor the project's
-// own plans explicitly defer to dedicated, separately-scoped work, not a fix
-// this small feature change should take on.
-// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
+function ReviewDiffToolbar({
+  virtualized,
+  preferences,
+  selectedPath,
+  onPreferencesChange,
+  contextControl,
+  contextStatus,
+  expandUnchanged,
+  onExpandUnchangedChange,
+  collapsedPaths,
+  files,
+  onSetAllCollapsed,
+}: {
+  readonly virtualized: boolean;
+  readonly preferences: Pick<
+    ReviewViewPreferences,
+    "fileMode" | "diffStyle" | "overflow"
+  >;
+  readonly selectedPath: string | undefined;
+  readonly onPreferencesChange: (
+    update: Partial<ReviewViewPreferences>,
+  ) => void;
+  readonly contextControl: ReviewContextControl;
+  readonly contextStatus: ReviewContextStatus;
+  readonly expandUnchanged: boolean;
+  readonly onExpandUnchangedChange: (expanded: boolean) => void;
+  readonly collapsedPaths: ReadonlySet<string>;
+  readonly files: ReadonlyArray<FileDiffMetadata>;
+  readonly onSetAllCollapsed: (collapsed: boolean) => void;
+}): React.JSX.Element {
+  return (
+    <div
+      data-review-diff-toolbar
+      className="z-20 flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-card/95 px-2 py-1 backdrop-blur"
+    >
+      <ButtonGroup
+        className={`items-center ${virtualized ? "flex" : "hidden"}`}
+      >
+        <Button
+          variant={preferences.fileMode === "all" ? "secondary" : "ghost"}
+          size="xs"
+          aria-pressed={preferences.fileMode === "all"}
+          onClick={() => onPreferencesChange({ fileMode: "all" })}
+        >
+          <Files /> All files
+        </Button>
+        <Button
+          variant={preferences.fileMode === "selected" ? "secondary" : "ghost"}
+          size="xs"
+          aria-pressed={preferences.fileMode === "selected"}
+          disabled={selectedPath === undefined}
+          onClick={() => onPreferencesChange({ fileMode: "selected" })}
+        >
+          <FileCode2 /> Selected
+        </Button>
+      </ButtonGroup>
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        <ButtonGroup>
+          <Button
+            variant={
+              preferences.diffStyle === "unified" ? "secondary" : "ghost"
+            }
+            size="xs"
+            aria-pressed={preferences.diffStyle === "unified"}
+            onClick={() => onPreferencesChange({ diffStyle: "unified" })}
+          >
+            <Rows3 /> Unified
+          </Button>
+          <Button
+            variant={preferences.diffStyle === "split" ? "secondary" : "ghost"}
+            size="xs"
+            aria-pressed={preferences.diffStyle === "split"}
+            onClick={() => onPreferencesChange({ diffStyle: "split" })}
+          >
+            <Columns2 /> Split
+          </Button>
+        </ButtonGroup>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() =>
+            onPreferencesChange({
+              overflow: preferences.overflow === "wrap" ? "scroll" : "wrap",
+            })
+          }
+        >
+          {preferences.overflow === "wrap" ? <MoveHorizontal /> : <WrapText />}
+          {preferences.overflow === "wrap" ? "Scroll" : "Wrap"}
+        </Button>
+        <Button
+          variant={expandUnchanged ? "secondary" : "ghost"}
+          size="xs"
+          aria-pressed={expandUnchanged}
+          aria-label={contextControl.description}
+          title={contextControl.description}
+          disabled={contextControl.disabled}
+          onClick={() => onExpandUnchangedChange(!expandUnchanged)}
+        >
+          {contextStatus === "loading" ? <Spinner /> : <ChevronsUpDown />}
+          {contextControl.label}
+        </Button>
+        <Button
+          className={virtualized ? undefined : "hidden"}
+          variant="ghost"
+          size="xs"
+          aria-pressed={
+            collapsedPaths.size === files.length && files.length > 0
+          }
+          onClick={() =>
+            onSetAllCollapsed(
+              !(collapsedPaths.size === files.length && files.length > 0),
+            )
+          }
+        >
+          {collapsedPaths.size === files.length && files.length > 0
+            ? "Show all"
+            : "Mark all viewed"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ReviewDiffSurface({
   patch,
   parsedFiles,
@@ -342,29 +467,6 @@ function ReviewDiffSurface({
   // materialized while it is selected; the user's explicit option still
   // controls whether every other unchanged hunk stays expanded.
   const expandSelectedRange = selectedRange !== undefined;
-  const viewerKey = preferences.fileMode;
-  // Exactly what the `CodeView` element below keys on. Any change to it
-  // tears `CodeView` down and remounts it, discarding its scroll position
-  // -- shared here so the restore effect and the JSX key agree on what
-  // counts as a rebuild.
-  //
-  // Theme (`themePreferences.light`/`.dark`) and `appearance` used to be
-  // part of this string too, on the theory that Pierre's `CodeView` needed
-  // a full remount to pick up a new theme. It doesn't: `theme` and
-  // `themeType` already reach it every render through `codeViewOptions`
-  // (below), the React wrapper forwards any options change straight to
-  // `instance.setOptions()`, and the library's own `File.render()` detects
-  // a changed `theme`/`themeType` and re-renders the themed output in
-  // place. "switching the diff appearance genuinely re-colours the
-  // rendered code" in `review-workbench.spec.ts` proves the options path
-  // alone repaints every token -- first against the old, three-part key
-  // (where it also happens to rebuild `CodeView`), then again after this
-  // key shrank to just `viewerKey`, where nothing rebuilds and the
-  // colours still change. Keeping theme/appearance out of the key means a
-  // reader mid-scroll no longer loses their place, and the highlight
-  // caches `bb285c2`'s worker pool built no longer get discarded, just
-  // because they changed a colour.
-  const codeViewKey = viewerKey;
 
   useEffect(() => {
     activePathRef.current = undefined;
@@ -399,20 +501,129 @@ function ReviewDiffSurface({
     virtualized,
   });
 
-  const setAllCollapsed = (collapsed: boolean): void => {
-    onCollapsedPathsChange(
-      collapsed ? new Set(files.map((file) => file.name)) : new Set(),
-    );
-  };
-  const toggleFile = useCallback(
-    (path: string): void => {
-      const next = new Set(collapsedPaths);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      onCollapsedPathsChange(next);
-    },
-    [collapsedPaths, onCollapsedPathsChange],
+  return (
+    <ReviewDiffRenderSite
+      patch={patch}
+      selectedPatch={selectedPatch}
+      selectedPath={selectedPath}
+      selectedRange={selectedRange}
+      preferences={preferences}
+      onPreferencesChange={onPreferencesChange}
+      contextControl={contextControl}
+      themePreferences={themePreferences}
+      appearance={appearance}
+      expandUnchanged={expandUnchanged}
+      expandSelectedRange={expandSelectedRange}
+      onExpandUnchangedChange={setExpandUnchanged}
+      collapsedPaths={collapsedPaths}
+      files={files}
+      fileStatsByPath={fileStatsByPath}
+      onCollapsedPathsChange={onCollapsedPathsChange}
+      decorateConversationThread={decorateConversationThread}
+      virtualized={virtualized}
+      browserSupportsPierre={browserSupportsPierre}
+      localCommentAuthoring={localCommentAuthoring}
+      localComposerAnnotation={localComposerAnnotation}
+      contextStatus={contextStatus}
+      fileNavBoundary={fileNavBoundary}
+      hunkNavBoundary={hunkNavBoundary}
+      commentNavStatus={commentNavStatus}
+      beginAccessibleAuthoring={beginAccessibleAuthoring}
+      selectedFile={selectedFile}
+      selectedAnnotations={selectedAnnotations}
+      selectedLines={selectedLines}
+      viewer={viewer}
+      items={items}
+      setViewerContainer={setViewerContainer}
+      handleCodeViewScroll={handleCodeViewScroll}
+      beginAuthoring={beginAuthoring}
+    />
   );
+}
+
+type ReviewDiffRenderSiteProps = {
+  readonly patch: string;
+  readonly selectedPatch: string;
+  readonly selectedPath: string | undefined;
+  readonly selectedRange: SelectedDiffRange | undefined;
+  readonly preferences: ReviewViewPreferences;
+  readonly onPreferencesChange: (
+    update: Partial<ReviewViewPreferences>,
+  ) => void;
+  readonly contextControl: ReviewContextControl;
+  readonly themePreferences: DiffThemePreferences;
+  readonly appearance: ResolvedAppearance;
+  readonly expandUnchanged: boolean;
+  readonly expandSelectedRange: boolean;
+  readonly onExpandUnchangedChange: (expanded: boolean) => void;
+  readonly collapsedPaths: ReadonlySet<string>;
+  readonly files: ReadonlyArray<FileDiffMetadata>;
+  readonly fileStatsByPath: ReadonlyMap<string, FileChangeStats>;
+  readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
+  readonly decorateConversationThread: (
+    thread: ConversationThreadCardData,
+  ) => ConversationThreadCardData;
+  readonly virtualized: boolean;
+  readonly browserSupportsPierre: boolean;
+  readonly localCommentAuthoring: LocalCommentAuthoring | undefined;
+  readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
+  readonly contextStatus: ReviewContextStatus;
+  readonly fileNavBoundary: string | undefined;
+  readonly hunkNavBoundary: string | undefined;
+  readonly commentNavStatus: string | undefined;
+  readonly beginAccessibleAuthoring: (
+    path: string,
+    line: number,
+    side: "additions" | "deletions",
+  ) => void;
+  readonly selectedFile: FileDiffMetadata | undefined;
+  readonly selectedAnnotations: ReviewDiffModel["selectedAnnotations"];
+  readonly selectedLines: ReviewDiffModel["selectedLines"];
+  readonly viewer: RefObject<CodeViewHandle<
+    ReviewInlineAnnotation | undefined
+  > | null>;
+  readonly items: ReviewDiffModel["items"];
+  readonly setViewerContainer: ReviewDiffModel["setViewerContainer"];
+  readonly handleCodeViewScroll: ReviewDiffModel["handleCodeViewScroll"];
+  readonly beginAuthoring: (selection: CodeViewLineSelection | null) => void;
+};
+
+function ReviewDiffRenderSite({
+  patch,
+  selectedPatch,
+  selectedPath,
+  selectedRange,
+  preferences,
+  onPreferencesChange,
+  contextControl,
+  themePreferences,
+  appearance,
+  expandUnchanged,
+  expandSelectedRange,
+  onExpandUnchangedChange,
+  collapsedPaths,
+  files,
+  fileStatsByPath,
+  onCollapsedPathsChange,
+  decorateConversationThread,
+  virtualized,
+  browserSupportsPierre,
+  localCommentAuthoring,
+  localComposerAnnotation,
+  contextStatus,
+  fileNavBoundary,
+  hunkNavBoundary,
+  commentNavStatus,
+  beginAccessibleAuthoring,
+  selectedFile,
+  selectedAnnotations,
+  selectedLines,
+  viewer,
+  items,
+  setViewerContainer,
+  handleCodeViewScroll,
+  beginAuthoring,
+}: ReviewDiffRenderSiteProps): React.JSX.Element {
   const codeViewOptions = useMemo(
     () => ({
       theme: diffThemeFor(themePreferences),
@@ -438,6 +649,21 @@ function ReviewDiffSurface({
       preferences.overflow,
       themePreferences,
     ],
+  );
+  const codeViewKey = preferences.fileMode;
+  const setAllCollapsed = (collapsed: boolean): void => {
+    onCollapsedPathsChange(
+      collapsed ? new Set(files.map((file) => file.name)) : new Set(),
+    );
+  };
+  const toggleFile = useCallback(
+    (path: string): void => {
+      const next = new Set(collapsedPaths);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      onCollapsedPathsChange(next);
+    },
+    [collapsedPaths, onCollapsedPathsChange],
   );
   const renderFileChangeCounts = useCallback(
     (path: string) => {
@@ -468,64 +694,8 @@ function ReviewDiffSurface({
     [collapsedPaths, renderFileChangeCounts, toggleFile],
   );
   const renderAnnotation = useCallback(
-    (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) => {
-      const finding = annotation.metadata;
-      if (finding === undefined) return null;
-      if (finding.localComposer !== undefined) {
-        return <InlineCommentComposer {...finding.localComposer} />;
-      }
-      if (finding.pendingConversation !== undefined) {
-        return <PendingConversationCard {...finding.pendingConversation} />;
-      }
-      if (finding.pendingReviewWrite !== undefined) {
-        return <PendingReviewWriteCard {...finding.pendingReviewWrite} />;
-      }
-      if (finding.pendingReviewThread !== undefined) {
-        return <PendingReviewThreadCard {...finding.pendingReviewThread} />;
-      }
-      if (finding.conversationThread !== undefined) {
-        return (
-          <ConversationThreadCard
-            thread={decorateConversationThread(finding.conversationThread)}
-            navAnchorId={finding.id}
-          />
-        );
-      }
-      if (finding.localComment !== undefined) {
-        return (
-          <LocalCommentThread
-            path={finding.path}
-            startLine={finding.start}
-            line={finding.end}
-            body={finding.localComment.body}
-          />
-        );
-      }
-      return (
-        <article
-          className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden whitespace-normal rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
-          data-review-inline-finding={finding.id}
-          aria-label={`${finding.severity} finding: ${finding.title}`}
-        >
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="text-xs font-semibold text-primary">
-              {finding.severity}
-            </span>
-            {/* Not a document heading: this is a label on a floating
-            annotation card, not a section of the page's outline, and the
-            enclosing article already carries the same text in its
-            aria-label. A real <h3> here skips straight from the page's
-            <h1> with no <h2> between them (axe: heading-order). */}
-            <span className="min-w-0 break-words font-medium">
-              {finding.title}
-            </span>
-          </div>
-          <p className="mt-1 break-words text-muted-foreground">
-            {finding.explanation}
-          </p>
-        </article>
-      );
-    },
+    (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) =>
+      renderReviewDiffAnnotation(annotation, decorateConversationThread),
     [decorateConversationThread],
   );
   const renderPatchHeader = useCallback(
@@ -543,159 +713,31 @@ function ReviewDiffSurface({
           }
         | undefined,
       item: { readonly id: string; readonly type: "diff" | "file" },
-    ) => {
-      if (localCommentAuthoring?.enabled !== true || item.type !== "diff")
-        return null;
-      const baseTitle = `Add comment on ${item.id}`;
-      return (
-        <button
-          type="button"
-          className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={baseTitle}
-          title={baseTitle}
-          onPointerEnter={(event) => {
-            const hovered = getHoveredLine();
-            if (hovered === undefined) return;
-            event.currentTarget.dataset.lineNumber = String(hovered.lineNumber);
-            event.currentTarget.dataset.lineSide = hovered.side;
-            event.currentTarget.title = `${baseTitle} line ${hovered.lineNumber}`;
-            event.currentTarget.setAttribute(
-              "aria-label",
-              `${baseTitle} line ${hovered.lineNumber}`,
-            );
-          }}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            const lineNumber = Number(event.currentTarget.dataset.lineNumber);
-            const side = event.currentTarget.dataset.lineSide;
-            if (
-              !Number.isInteger(lineNumber) ||
-              lineNumber < 1 ||
-              (side !== "additions" && side !== "deletions")
-            )
-              return;
-            const locationSide = side === "additions" ? "new" : "old";
-            if (
-              localCommentAuthoring.canAuthor?.({
-                path: item.id,
-                startLine: lineNumber,
-                line: lineNumber,
-                side: locationSide,
-              }) === false
-            )
-              return;
-            beginAuthoring({
-              id: item.id,
-              range: { start: lineNumber, end: lineNumber, side },
-            });
-          }}
-        >
-          +
-        </button>
-      );
-    },
+    ) =>
+      renderReviewDiffGutterUtility(
+        getHoveredLine,
+        item,
+        localCommentAuthoring,
+        beginAuthoring,
+      ),
     [beginAuthoring, localCommentAuthoring],
   );
 
   return (
     <>
-      <div
-        data-review-diff-toolbar
-        className="z-20 flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-card/95 px-2 py-1 backdrop-blur"
-      >
-        <ButtonGroup
-          className={`items-center ${virtualized ? "flex" : "hidden"}`}
-        >
-          <Button
-            variant={preferences.fileMode === "all" ? "secondary" : "ghost"}
-            size="xs"
-            aria-pressed={preferences.fileMode === "all"}
-            onClick={() => onPreferencesChange({ fileMode: "all" })}
-          >
-            <Files /> All files
-          </Button>
-          <Button
-            variant={
-              preferences.fileMode === "selected" ? "secondary" : "ghost"
-            }
-            size="xs"
-            aria-pressed={preferences.fileMode === "selected"}
-            disabled={selectedPath === undefined}
-            onClick={() => onPreferencesChange({ fileMode: "selected" })}
-          >
-            <FileCode2 /> Selected
-          </Button>
-        </ButtonGroup>
-        <div className="flex flex-wrap items-center justify-end gap-1">
-          <ButtonGroup>
-            <Button
-              variant={
-                preferences.diffStyle === "unified" ? "secondary" : "ghost"
-              }
-              size="xs"
-              aria-pressed={preferences.diffStyle === "unified"}
-              onClick={() => onPreferencesChange({ diffStyle: "unified" })}
-            >
-              <Rows3 /> Unified
-            </Button>
-            <Button
-              variant={
-                preferences.diffStyle === "split" ? "secondary" : "ghost"
-              }
-              size="xs"
-              aria-pressed={preferences.diffStyle === "split"}
-              onClick={() => onPreferencesChange({ diffStyle: "split" })}
-            >
-              <Columns2 /> Split
-            </Button>
-          </ButtonGroup>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() =>
-              onPreferencesChange({
-                overflow: preferences.overflow === "wrap" ? "scroll" : "wrap",
-              })
-            }
-          >
-            {preferences.overflow === "wrap" ? (
-              <MoveHorizontal />
-            ) : (
-              <WrapText />
-            )}
-            {preferences.overflow === "wrap" ? "Scroll" : "Wrap"}
-          </Button>
-          <Button
-            variant={expandUnchanged ? "secondary" : "ghost"}
-            size="xs"
-            aria-pressed={expandUnchanged}
-            aria-label={contextControl.description}
-            title={contextControl.description}
-            disabled={contextControl.disabled}
-            onClick={() => setExpandUnchanged((current) => !current)}
-          >
-            {contextStatus === "loading" ? <Spinner /> : <ChevronsUpDown />}
-            {contextControl.label}
-          </Button>
-          <Button
-            className={virtualized ? undefined : "hidden"}
-            variant="ghost"
-            size="xs"
-            aria-pressed={
-              collapsedPaths.size === files.length && files.length > 0
-            }
-            onClick={() =>
-              setAllCollapsed(
-                !(collapsedPaths.size === files.length && files.length > 0),
-              )
-            }
-          >
-            {collapsedPaths.size === files.length && files.length > 0
-              ? "Show all"
-              : "Mark all viewed"}
-          </Button>
-        </div>
-      </div>
+      <ReviewDiffToolbar
+        virtualized={virtualized}
+        preferences={preferences}
+        selectedPath={selectedPath}
+        onPreferencesChange={onPreferencesChange}
+        contextControl={contextControl}
+        contextStatus={contextStatus}
+        expandUnchanged={expandUnchanged}
+        onExpandUnchangedChange={onExpandUnchangedChange}
+        collapsedPaths={collapsedPaths}
+        files={files}
+        onSetAllCollapsed={setAllCollapsed}
+      />
       {!browserSupportsPierre &&
       localComposerAnnotation?.localComposer !== undefined ? (
         <InlineCommentComposer {...localComposerAnnotation.localComposer} />
@@ -832,6 +874,130 @@ function ReviewDiffSurface({
         </div>
       )}
     </>
+  );
+}
+
+function renderReviewDiffAnnotation(
+  annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>,
+  decorateConversationThread: (
+    thread: ConversationThreadCardData,
+  ) => ConversationThreadCardData,
+): React.JSX.Element | null {
+  const finding = annotation.metadata;
+  if (finding === undefined) return null;
+  if (finding.localComposer !== undefined) {
+    return <InlineCommentComposer {...finding.localComposer} />;
+  }
+  if (finding.pendingConversation !== undefined) {
+    return <PendingConversationCard {...finding.pendingConversation} />;
+  }
+  if (finding.pendingReviewWrite !== undefined) {
+    return <PendingReviewWriteCard {...finding.pendingReviewWrite} />;
+  }
+  if (finding.pendingReviewThread !== undefined) {
+    return <PendingReviewThreadCard {...finding.pendingReviewThread} />;
+  }
+  if (finding.conversationThread !== undefined) {
+    return (
+      <ConversationThreadCard
+        thread={decorateConversationThread(finding.conversationThread)}
+        navAnchorId={finding.id}
+      />
+    );
+  }
+  if (finding.localComment !== undefined) {
+    return (
+      <LocalCommentThread
+        path={finding.path}
+        startLine={finding.start}
+        line={finding.end}
+        body={finding.localComment.body}
+      />
+    );
+  }
+  return (
+    <article
+      className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden whitespace-normal rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
+      data-review-inline-finding={finding.id}
+      aria-label={`${finding.severity} finding: ${finding.title}`}
+    >
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="text-xs font-semibold text-primary">
+          {finding.severity}
+        </span>
+        {/* Not a document heading: this is a label on a floating
+        annotation card, not a section of the page's outline, and the
+        enclosing article already carries the same text in its
+        aria-label. A real <h3> here skips straight from the page's
+        <h1> with no <h2> between them (axe: heading-order). */}
+        <span className="min-w-0 break-words font-medium">{finding.title}</span>
+      </div>
+      <p className="mt-1 break-words text-muted-foreground">
+        {finding.explanation}
+      </p>
+    </article>
+  );
+}
+
+function renderReviewDiffGutterUtility(
+  getHoveredLine: () =>
+    | {
+        readonly lineNumber: number;
+        readonly side: "additions" | "deletions";
+      }
+    | undefined,
+  item: { readonly id: string; readonly type: "diff" | "file" },
+  localCommentAuthoring: LocalCommentAuthoring | undefined,
+  beginAuthoring: (selection: CodeViewLineSelection | null) => void,
+): React.JSX.Element | null {
+  if (localCommentAuthoring?.enabled !== true || item.type !== "diff")
+    return null;
+  const baseTitle = `Add comment on ${item.id}`;
+  return (
+    <button
+      type="button"
+      className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={baseTitle}
+      title={baseTitle}
+      onPointerEnter={(event) => {
+        const hovered = getHoveredLine();
+        if (hovered === undefined) return;
+        event.currentTarget.dataset.lineNumber = String(hovered.lineNumber);
+        event.currentTarget.dataset.lineSide = hovered.side;
+        event.currentTarget.title = `${baseTitle} line ${hovered.lineNumber}`;
+        event.currentTarget.setAttribute(
+          "aria-label",
+          `${baseTitle} line ${hovered.lineNumber}`,
+        );
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        const lineNumber = Number(event.currentTarget.dataset.lineNumber);
+        const side = event.currentTarget.dataset.lineSide;
+        if (
+          !Number.isInteger(lineNumber) ||
+          lineNumber < 1 ||
+          (side !== "additions" && side !== "deletions")
+        )
+          return;
+        const locationSide = side === "additions" ? "new" : "old";
+        if (
+          localCommentAuthoring.canAuthor?.({
+            path: item.id,
+            startLine: lineNumber,
+            line: lineNumber,
+            side: locationSide,
+          }) === false
+        )
+          return;
+        beginAuthoring({
+          id: item.id,
+          range: { start: lineNumber, end: lineNumber, side },
+        });
+      }}
+    >
+      +
+    </button>
   );
 }
 
