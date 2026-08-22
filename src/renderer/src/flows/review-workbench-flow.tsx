@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import * as v from "valibot";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
-  parseGitHubThreadId,
   parsePullRequestNumber,
   parseRepoRelativePath,
-  type GitHubThreadId,
 } from "../../../domain/ids";
 import { renderAnalysisReviewSummary } from "../analysis-review-summary";
-import { PatchdeskApiError, requestJson } from "../api-client";
+import { requestJson } from "../api-client";
 import { AnalysisReader } from "../components/analysis-reader";
 import { NarrativeWalkthrough } from "../components/narrative-walkthrough";
 import {
@@ -39,7 +36,6 @@ import type { ReviewerPickerActions } from "../components/reviewer-picker";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { PullRequestOverviewMerge } from "../components/pr-overview-sheet";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
-import type { PendingReviewComposerActions } from "../components/review-diff-view";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
@@ -53,14 +49,10 @@ import {
 import { Spinner } from "../components/ui/spinner";
 import {
   parseCommitDiffResponse,
-  parseDirectSummaryReviewResponse,
   parseInsightProviderCatalog,
   type InsightProviderCatalogModel,
-  parsePendingReviewProjection,
   parseWorkbenchResponse,
   type CommitDiffResponse,
-  type DirectSummaryReviewProjection,
-  type PendingReviewProjection,
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
@@ -70,6 +62,8 @@ import type { PullRequestRef } from "../../../domain/pull-request";
 import { useInsightRun } from "../hooks/use-insight-run";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
+import { useDirectSummaryActions } from "./use-direct-summary-actions";
+import { usePendingReviewActions } from "./use-pending-review-actions";
 import { useReviewMetadataActions } from "./use-review-metadata-actions";
 import {
   useReviewObservation,
@@ -82,106 +76,6 @@ const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
-
-/** Shallow envelope shape for a command response that may carry a pending-review projection; the nested field's own deep validation happens in `parsePendingReviewProjection`. */
-const pendingReviewEnvelopeSchema = v.looseObject({
-  pendingReview: v.optional(v.unknown()),
-});
-
-function boundedPendingReviewError(cause: unknown): string {
-  if (cause instanceof PatchdeskApiError) {
-    if (
-      cause.kind === "outcome_unknown" ||
-      cause.kind === "ambiguous_write" ||
-      cause.kind === "timeout"
-    )
-      return "GitHub could not confirm the submission. Check GitHub again before trying again.";
-    if (cause.kind === "pending_review")
-      return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
-    if (cause.kind === "stale_head")
-      return "The pull request changed. Refresh, then finish the review.";
-    if (cause.kind === "rejected" || cause.kind === "github_rejected")
-      return "GitHub rejected the submission.";
-    if (
-      cause.kind === "no_pending_review" ||
-      cause.kind === "pending_review_locked"
-    )
-      return "The pending review changed. Check GitHub again or refresh.";
-    if (cause.kind === "forbidden")
-      return "GitHub blocked this submission: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.";
-  }
-  return "Patchdesk could not finish this review. Check GitHub again or refresh.";
-}
-
-function boundedPendingReviewRecoveryError(cause: unknown): string {
-  if (cause instanceof PatchdeskApiError) {
-    if (cause.kind === "review_write_in_progress") {
-      return "Another Review operation is still finishing. Check GitHub again in a moment.";
-    }
-    if (
-      cause.kind === "timeout" ||
-      cause.kind === "unavailable" ||
-      cause.kind === "outcome_unknown"
-    ) {
-      return "Patchdesk could not check GitHub right now. Try again.";
-    }
-  }
-  return "Patchdesk could not reconcile this pending review. Try again or refresh.";
-}
-
-function boundedDirectSummaryError(cause: unknown): string {
-  if (cause instanceof PatchdeskApiError) {
-    if (
-      cause.kind === "outcome_unknown" ||
-      cause.kind === "ambiguous_write" ||
-      cause.kind === "timeout"
-    )
-      return "GitHub could not confirm the submission. Check GitHub again before trying again.";
-    if (cause.kind === "pending_review")
-      return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
-    if (cause.kind === "self_approval_not_allowed")
-      return "You can’t approve your own pull request. Choose Comment or ask another reviewer to approve it.";
-    if (cause.kind === "stale_head")
-      return "The pull request changed. Refresh before submitting a review summary.";
-    if (cause.kind === "rejected" || cause.kind === "github_rejected")
-      return "GitHub rejected the review summary.";
-    if (cause.kind === "forbidden")
-      return "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.";
-  }
-  return "Patchdesk could not submit this review summary. Check GitHub again or refresh.";
-}
-
-/**
- * A stable value signature for a direct-summary projection, used to detect
- * when the server-sent projection actually changes (as opposed to merely
- * re-rendering with the same value). Distinct from the projection's
- * `state` alone so that two "confirmed" or "recovery_required" projections
- * with different payloads are treated as different values.
- */
-function directSummarySignature(
-  projection: DirectSummaryReviewProjection,
-): string {
-  if (projection.state === "confirmed")
-    return `confirmed:${projection.receipt.reviewId}:${projection.receipt.event}`;
-  if (projection.state === "recovery_required")
-    return `recovery_required:${projection.resolution}`;
-  return "idle";
-}
-
-/**
- * The exact pending-review thread ids a projection confirms. Only ids that
- * parse as GitHub thread ids are journaled: detection matches real remote
- * threads, and an unparseable id would silently break the detector request.
- */
-function threadIdsOf(
-  projection: PendingReviewProjection | undefined,
-): ReadonlyArray<GitHubThreadId> {
-  if (projection === undefined || projection.state !== "pending") return [];
-  return projection.review.comments.flatMap((comment) => {
-    const parsed = parseGitHubThreadId(comment.threadId);
-    return parsed._tag === "ok" ? [parsed.value] : [];
-  });
-}
 
 function pullRequestExternalRef(
   model: WorkbenchResponse,
@@ -295,377 +189,19 @@ export function ReviewWorkbenchFlow({
     workbench.review.status === "open" &&
     workbench.revision.freshness === "fresh" &&
     workbench.revision.patchHash !== undefined;
-  // GitHub pending-review actions: the header action, composer split, Finish
-  // review modal, and explicit Check GitHub again recovery all own their
-  // requests here; the renderer never calls GitHub directly.
-  const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
-  const [finishDialogOpen, setFinishDialogOpen] = useState(false);
-  const [finishDialogInitialSummary, setFinishDialogInitialSummary] = useState<
-    string | undefined
-  >(undefined);
-  const [finishDialogError, setFinishDialogError] = useState<
-    string | undefined
-  >(undefined);
-  const applyPendingReviewProjection = useCallback(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this callback is itself the JSON I/O boundary parser shared by every command response that may carry a pending-review projection; there is no earlier boundary to run it at.
-    (value: unknown): PendingReviewProjection | undefined => {
-      const envelope = v.safeParse(pendingReviewEnvelopeSchema, value);
-      const projection = parsePendingReviewProjection(
-        envelope.success ? envelope.output.pendingReview : undefined,
-      );
-      if (projection !== undefined)
-        onWorkbenchPatch({ pendingReview: projection });
-      return projection;
-    },
-    [onWorkbenchPatch],
-  );
-  const runPendingReviewCommand = useCallback(
-    async (
-      command:
-        | {
-            readonly _tag: "Start" | "AddThread";
-            readonly pendingReviewNodeId?: string;
-            readonly anchor: {
-              readonly path: string;
-              readonly startLine: number;
-              readonly line: number;
-              readonly side: "new" | "old";
-            };
-            readonly body: string;
-          }
-        | {
-            readonly _tag: "Submit";
-            readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
-            readonly summaryBody: string;
-          }
-        | {
-            readonly _tag: "Discard";
-            readonly confirmation: true;
-          },
-    ): Promise<void> => {
-      const patchHash = workbench.revision.patchHash;
-      if (patchHash === undefined)
-        throw new Error("The current Diff cannot accept review comments.");
-      // The prior projection's thread ids are the baseline for journaling: only
-      // the exact ids this command adds (Start/AddThread) or confirms absent
-      // (Discard) may be excluded from detection.
-      const priorThreadIds =
-        command._tag === "Start" ||
-        command._tag === "AddThread" ||
-        command._tag === "Discard"
-          ? threadIdsOf(workbench.pendingReview)
-          : [];
-      setPendingReviewBusy(true);
-      try {
-        const expected = {
-          sessionId: workbench.session.id,
-          headSha: workbench.revision.reviewedHeadSha,
-          patchHash,
-        };
-        const requestCommand =
-          command._tag === "Discard"
-            ? {
-                _tag: "Discard" as const,
-                expected,
-                confirmation: command.confirmation,
-              }
-            : command._tag === "Submit"
-              ? {
-                  _tag: "Submit" as const,
-                  expected,
-                  event: command.event,
-                  summaryBody: command.summaryBody,
-                }
-              : command._tag === "AddThread"
-                ? {
-                    _tag: "AddThread" as const,
-                    expected,
-                    anchor: command.anchor,
-                    body: command.body,
-                    pendingReviewNodeId: command.pendingReviewNodeId,
-                  }
-                : {
-                    _tag: "Start" as const,
-                    expected,
-                    anchor: command.anchor,
-                    body: command.body,
-                  };
-        const value = await requestJson("/v1/reviews/pending-review/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: requestCommand,
-          },
-        });
-        const projection = applyPendingReviewProjection(value);
-        setFinishDialogError(undefined);
-        // Journal the exact pending-thread mutations so the detector never reads
-        // this window's own Start/AddThread/Discard as a remote update. Entries
-        // survive until an explicit refresh/reload replaces the represented
-        // snapshot; a Submit keeps them because the threads persist remotely.
-        if (command._tag === "Start" || command._tag === "AddThread") {
-          const priorThreadIdSet = new Set(priorThreadIds);
-          const added = threadIdsOf(projection).filter(
-            (id) => !priorThreadIdSet.has(id),
-          );
-          if (added.length > 0) {
-            appendRecentWrites(
-              added.map((threadId) => ({
-                _tag: "PendingThread" as const,
-                threadId,
-              })),
-            );
-          }
-        } else if (command._tag === "Discard" && projection?.state === "none") {
-          // Confirmed absence: the threads the prior projection owned are gone
-          // from the candidate snapshot, so they must be masked on both sides.
-          if (priorThreadIds.length > 0) {
-            appendRecentWrites(
-              priorThreadIds.map((threadId) => ({
-                _tag: "PendingThread" as const,
-                threadId,
-              })),
-            );
-          }
-        }
-      } catch (cause) {
-        if (
-          cause instanceof PatchdeskApiError &&
-          (cause.kind === "outcome_unknown" ||
-            cause.kind === "ambiguous_write" ||
-            cause.kind === "timeout")
-        ) {
-          const projected = applyPendingReviewProjection(cause.responseBody);
-          if (projected === undefined) {
-            const action =
-              command._tag === "Start"
-                ? "start"
-                : command._tag === "AddThread"
-                  ? "add_thread"
-                  : command._tag === "Submit"
-                    ? "submit"
-                    : "discard";
-            onWorkbenchPatch({
-              pendingReview: { state: "recovery_required", action },
-            });
-          }
-        }
-        throw cause;
-      } finally {
-        setPendingReviewBusy(false);
-      }
-    },
-    [
-      appendRecentWrites,
-      applyPendingReviewProjection,
+  const { pendingReviewComposer, pendingReview, openFinishDialogWithSummary } =
+    usePendingReviewActions({
+      workbench,
+      onWorkbenchReplace: replaceWorkbench,
       onWorkbenchPatch,
-      workbench,
-    ],
-  );
-  const checkGitHubAgain = useCallback(async (): Promise<void> => {
-    setPendingReviewBusy(true);
-    setFinishDialogError(undefined);
-    try {
-      const value = await requestJson("/v1/reviews/pending-review/recover", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-        },
-      });
-      const projection = applyPendingReviewProjection(value);
-      if (projection?.state === "recovery_required") {
-        setFinishDialogError(
-          "Patchdesk found the pending review, but it cannot identify the exact Finding comment. Inspect or discard the pending review on GitHub, then check again.",
-        );
-      } else {
-        const loaded = await requestJson("/v1/reviews/load", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-          },
-        });
-        const next = parseWorkbenchResponse(loaded);
-        if (next === undefined)
-          throw new Error("Invalid Review projection response");
-        replaceWorkbench(next);
-        setFinishDialogError(undefined);
-      }
-    } catch (cause) {
-      setFinishDialogError(boundedPendingReviewRecoveryError(cause));
-    } finally {
-      setPendingReviewBusy(false);
-    }
-  }, [applyPendingReviewProjection, replaceWorkbench, workbench]);
-  const [directSummaryBusy, setDirectSummaryBusy] = useState(false);
-  const [directSummaryError, setDirectSummaryError] = useState<
-    string | undefined
-  >(undefined);
-  // The result of a command the renderer just issued (submit/recover) must
-  // win over the server-sent projection until a genuinely newer projection
-  // value arrives. `directSummaryOverride` holds that command result;
-  // `observedDirectSummarySignature` tracks the last projection value seen
-  // so a render-time comparison (not a useEffect) can drop the override the
-  // moment the projection actually changes underneath it.
-  const [directSummaryOverride, setDirectSummaryOverride] = useState<
-    DirectSummaryReviewProjection | undefined
-  >(undefined);
-  const [observedDirectSummarySignature, setObservedDirectSummarySignature] =
-    useState<string | undefined>(undefined);
-  const projectedDirectSummary: DirectSummaryReviewProjection =
-    workbench.directSummary ?? { state: "idle" };
-  const projectedDirectSummarySignature = directSummarySignature(
-    projectedDirectSummary,
-  );
-  if (projectedDirectSummarySignature !== observedDirectSummarySignature) {
-    setObservedDirectSummarySignature(projectedDirectSummarySignature);
-    setDirectSummaryOverride(undefined);
-  }
-  const observedDirectSummaryRef = useRef<string | undefined>(undefined);
-  const visibleDirectSummaryState =
-    directSummaryOverride ?? projectedDirectSummary;
-  const observeDirectSummaryReceipt = useCallback(
-    (reviewId: string): void => {
-      if (observedDirectSummaryRef.current === reviewId) return;
-      observedDirectSummaryRef.current = reviewId;
-      void observeConfirmedDirectSummary(reviewId).catch(() => {
-        // This read-only observer never retries the GitHub write.
-      });
-    },
-    [observeConfirmedDirectSummary],
-  );
-  const submitDirectSummary = useCallback(
-    async (
-      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
-      body: string,
-    ): Promise<DirectSummaryReviewProjection> => {
-      const patchHash = workbench.revision.patchHash;
-      if (patchHash === undefined)
-        throw new Error("The current Diff cannot accept a review summary.");
-      setDirectSummaryBusy(true);
-      try {
-        const value = await runDirectCommand(() =>
-          requestJson("/v1/reviews/direct-summary/submit", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-              expected: {
-                sessionId: workbench.session.id,
-                headSha: workbench.revision.reviewedHeadSha,
-                patchHash,
-              },
-              event,
-              body,
-            },
-          }),
-        );
-        const result = parseDirectSummaryReviewResponse(value);
-        if (result === undefined)
-          throw new Error("Invalid direct summary review response");
-        setDirectSummaryOverride(result);
-        if (result.state === "confirmed") {
-          const write = {
-            _tag: "DirectSummaryReview" as const,
-            reviewId: result.receipt.reviewId,
-          };
-          appendRecentWrites(write);
-          observeDirectSummaryReceipt(result.receipt.reviewId);
-        }
-        setDirectSummaryError(undefined);
-        return result;
-      } catch (cause) {
-        // The renderer is the protocol boundary for API failures: retain only
-        // stable failure kinds and lock submission until explicit reconciliation.
-        if (
-          cause instanceof PatchdeskApiError &&
-          (cause.kind === "outcome_unknown" ||
-            cause.kind === "ambiguous_write" ||
-            cause.kind === "timeout")
-        )
-          setDirectSummaryOverride({
-            state: "recovery_required",
-            resolution: "check_required",
-          });
-        setDirectSummaryError(boundedDirectSummaryError(cause));
-        throw cause;
-      } finally {
-        setDirectSummaryBusy(false);
-      }
-    },
-    [
       appendRecentWrites,
-      observeDirectSummaryReceipt,
-      runDirectCommand,
-      workbench,
-    ],
-  );
-  const recoverDirectSummary =
-    useCallback(async (): Promise<DirectSummaryReviewProjection> => {
-      setDirectSummaryBusy(true);
-      try {
-        const value = await runDirectCommand(() =>
-          requestJson("/v1/reviews/direct-summary/recover", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-            },
-          }),
-        );
-        const result = parseDirectSummaryReviewResponse(value);
-        if (result === undefined)
-          throw new Error("Invalid direct summary recovery response");
-        setDirectSummaryOverride(result);
-        if (result.state === "confirmed") {
-          appendRecentWrites({
-            _tag: "DirectSummaryReview",
-            reviewId: result.receipt.reviewId,
-          });
-          observeDirectSummaryReceipt(result.receipt.reviewId);
-        }
-        setDirectSummaryError(undefined);
-        return result;
-      } catch (cause) {
-        // Reconciliation failures leave the state locked; only an explicit
-        // successful GitHub read may return it to the submit form.
-        setDirectSummaryError(boundedDirectSummaryError(cause));
-        throw cause;
-      } finally {
-        setDirectSummaryBusy(false);
-      }
-    }, [
-      appendRecentWrites,
-      observeDirectSummaryReceipt,
-      runDirectCommand,
-      workbench,
-    ]);
-  const pendingReviewComposer: PendingReviewComposerActions | undefined =
-    workbench.pendingReview === undefined
-      ? undefined
-      : {
-          state:
-            workbench.pendingReview.state === "pending"
-              ? {
-                  state: "pending" as const,
-                  nodeId: workbench.pendingReview.review.nodeId,
-                }
-              : { state: workbench.pendingReview.state },
-          busy: pendingReviewBusy,
-          onStartReview: async (anchor, body) => {
-            await runPendingReviewCommand({ _tag: "Start", anchor, body });
-          },
-          onAddReviewComment: async (nodeId, anchor, body) => {
-            await runPendingReviewCommand({
-              _tag: "AddThread",
-              pendingReviewNodeId: nodeId,
-              anchor,
-              body,
-            });
-          },
-        };
+    });
+  const { directSummary } = useDirectSummaryActions({
+    workbench,
+    runDirectCommand,
+    appendRecentWrites,
+    observeConfirmedDirectSummary,
+  });
   const localCommentAuthoring: LocalCommentAuthoring | undefined =
     canWriteDirectConversation
       ? {
@@ -872,86 +408,6 @@ export function ReviewWorkbenchFlow({
     [replaceWorkbench, workbench],
   );
 
-  const pendingReviewPanelBase = {
-    projection: workbench.pendingReview,
-    busy: pendingReviewBusy,
-    finishDialogOpen,
-    onOpenFinishDialog: () => {
-      setFinishDialogInitialSummary(undefined);
-      setFinishDialogOpen(true);
-    },
-    onCloseFinishDialog: () => {
-      setFinishDialogOpen(false);
-      setFinishDialogInitialSummary(undefined);
-    },
-    onSubmit: async (
-      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
-      summaryBody: string,
-    ): Promise<void> => {
-      try {
-        await runPendingReviewCommand({ _tag: "Submit", event, summaryBody });
-        setFinishDialogOpen(false);
-      } catch (cause) {
-        setFinishDialogError(boundedPendingReviewError(cause));
-      }
-    },
-    onDiscard: async (): Promise<void> => {
-      try {
-        await runPendingReviewCommand({ _tag: "Discard", confirmation: true });
-        setFinishDialogOpen(false);
-      } catch (cause) {
-        setFinishDialogError(boundedPendingReviewError(cause));
-      }
-    },
-    onCheckGitHubAgain: checkGitHubAgain,
-  };
-  const pendingReviewPanelWithSummary =
-    finishDialogInitialSummary === undefined
-      ? pendingReviewPanelBase
-      : { ...pendingReviewPanelBase, finishDialogInitialSummary };
-  const pendingReviewPanelWithRecoveryError =
-    finishDialogError === undefined
-      ? pendingReviewPanelWithSummary
-      : {
-          ...pendingReviewPanelWithSummary,
-          recoveryError: finishDialogError,
-          finishDialogError,
-        };
-  const pendingReviewPanel =
-    pendingReviewComposer === undefined
-      ? undefined
-      : pendingReviewPanelWithRecoveryError;
-
-  const directSummaryPanelBase = {
-    busy: directSummaryBusy,
-    state: visibleDirectSummaryState.state,
-    approvalCapability: workbench.directSummaryDecision ?? "unknown",
-    onSubmit: submitDirectSummary,
-    onRecover: recoverDirectSummary,
-  };
-  const directSummaryPanelWithReceipt =
-    visibleDirectSummaryState.state === "confirmed"
-      ? {
-          ...directSummaryPanelBase,
-          receipt: visibleDirectSummaryState.receipt,
-        }
-      : directSummaryPanelBase;
-  const directSummaryPanelWithRecovery =
-    visibleDirectSummaryState.state === "recovery_required"
-      ? {
-          ...directSummaryPanelWithReceipt,
-          recoveryResolution: visibleDirectSummaryState.resolution,
-        }
-      : directSummaryPanelWithReceipt;
-  const directSummaryPanelWithError =
-    directSummaryError === undefined
-      ? directSummaryPanelWithRecovery
-      : { ...directSummaryPanelWithRecovery, error: directSummaryError };
-  const directSummaryPanel =
-    workbench.pendingReview?.state === "none"
-      ? directSummaryPanelWithError
-      : undefined;
-
   const conversationActions = canWriteDirectConversation
     ? { setThreadState, replyToThread, editComment, deleteComment }
     : undefined;
@@ -1007,18 +463,18 @@ export function ReviewWorkbenchFlow({
           pendingReviewComposer,
         };
   const workbenchActionsWithPendingReviewPanel =
-    pendingReviewPanel === undefined
+    pendingReview === undefined
       ? workbenchActionsWithPendingReviewComposer
       : {
           ...workbenchActionsWithPendingReviewComposer,
-          pendingReview: pendingReviewPanel,
+          pendingReview,
         };
   const workbenchActionsWithDirectSummaryPanel =
-    directSummaryPanel === undefined
+    directSummary === undefined
       ? workbenchActionsWithPendingReviewPanel
       : {
           ...workbenchActionsWithPendingReviewPanel,
-          directSummary: directSummaryPanel,
+          directSummary,
         };
   const workbenchActionsWithLabels =
     labelActions === undefined
@@ -1058,10 +514,7 @@ export function ReviewWorkbenchFlow({
               onWorkbenchReplace={replaceWorkbench}
               onWorkbenchPatch={onWorkbenchPatch}
               onAddFinding={addFindingToPendingReview}
-              onFinishWithAnalysisSummary={(summary) => {
-                setFinishDialogInitialSummary(summary);
-                setFinishDialogOpen(true);
-              }}
+              onFinishWithAnalysisSummary={openFinishDialogWithSummary}
             />
           ),
           conversation: null,
