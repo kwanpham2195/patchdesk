@@ -819,6 +819,70 @@ test("file-tree search selects a file deep in a large patch and scrolls its head
   }
 });
 
+test("switching the diff theme rebuilds CodeView but keeps the reader on the same file", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#performance-fixture`);
+    const diff = page.getByRole("region", { name: "Review diff" });
+    const diffViewport = page.locator(".review-diff-viewport");
+    const path = "src/generated/file-0050.ts";
+
+    // As in "file-tree search selects a file deep in a large patch...",
+    // scroll to a file far enough down that it starts outside CodeView's
+    // rendered window.
+    await page.locator("[data-file-tree-search-input]").fill("file-0050");
+    const target = page.getByRole("treeitem", { name: "file-0050.ts" });
+    await expect(target).toBeVisible();
+    await target.click();
+    await expect(diff).toHaveAttribute("data-selected-path", path);
+
+    const header = page.locator(`[data-review-diff-file-header="${path}"]`);
+    await expect(header).toBeVisible({ timeout: 5_000 });
+    const landedOnFile = async (): Promise<boolean> => {
+      const [headerBox, viewportBox] = await Promise.all([
+        header.boundingBox(),
+        diffViewport.boundingBox(),
+      ]);
+      if (headerBox === null || viewportBox === null) return false;
+      // scrollTop alone would not prove file-0050's header actually reached
+      // the viewport: only a vertical overlap between the header's box and
+      // the viewport's visible box does.
+      return (
+        headerBox.y + headerBox.height > viewportBox.y &&
+        headerBox.y < viewportBox.y + viewportBox.height
+      );
+    };
+    expect(await landedOnFile()).toBe(true);
+
+    // Changing the light diff theme rewrites `themePreferences.light`, part
+    // of `CodeView`'s own React key alongside `fileMode` and `appearance` --
+    // this tears `CodeView` down and rebuilds it exactly as switching to
+    // "Selected" and back would, but without going through "selected" mode
+    // (which only ever shows one file and so would trivially restore to it
+    // regardless of this fix). A plain theme switch is the one rebuild
+    // trigger nothing else already happens to cover, which is what makes it
+    // prove this fix specifically rather than incidentally passing.
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("combobox", { name: "Light diff theme" }).click();
+    await page.getByRole("option", { name: "Pierre Light Soft" }).click();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
+
+    // The rebuilt `CodeView` starts scrolled to the top again; the fix
+    // restores file-0050's header back into view rather than leaving the
+    // reader there.
+    await expect(header).toBeVisible({ timeout: 5_000 });
+    await expect.poll(landedOnFile).toBe(true);
+  } finally {
+    await close(server);
+  }
+});
+
 test("keyboard input scrolls the diff viewport once it is focusable", async ({
   page,
 }) => {
