@@ -26,7 +26,7 @@ Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED — <reason>`, `REJECTED 
 | [007](007-relocate-executable-discovery.md)   | Move executable discovery into the adapter layer             | P3       | S      | 002        | DONE   |
 | [008](008-add-pr-ci.md)                       | Enforce the verified pull-request gates in CI                | P1       | M      | 001, 002   | IN PROGRESS |
 | [009](009-decompose-review-workbench-flow.md) | Decompose ReviewWorkbenchFlow by protocol responsibility     | P2       | L      | 001, 002   | DONE   |
-| [010](010-decompose-review-diff-surface.md)   | Decompose ReviewDiffSurface by state-machine concern         | P2       | L      | 001, 002   | TODO   |
+| [010](010-decompose-review-diff-surface.md)   | Decompose ReviewDiffSurface by state-machine concern         | P2       | L      | 001, 002   | BLOCKED — clean Electron restart unavailable |
 
 ## Dependency notes
 
