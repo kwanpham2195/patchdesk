@@ -19,7 +19,7 @@ The full automated gate before any handoff is:
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm test -- --run
+pnpm test:all
 pnpm build
 pnpm test:e2e
 ```

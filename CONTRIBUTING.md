@@ -56,6 +56,8 @@ pnpm typecheck
 pnpm test -- --run
 ```
 
+Use `pnpm test -- --run <file>` for focused root-suite development. The complete pre-push test gate is `pnpm test:all`; it runs the root suite and the separate `runtime/flue` suite.
+
 ## Making changes
 
 Branch from `main` using `<type>/<slug>` with types
@@ -87,7 +89,7 @@ per-file overrides in `.oxlintrc.json` with a boundary contract comment
 ## Verifying before pushing
 
 - `pnpm typecheck`
-- `pnpm test -- --run`
+- `pnpm test:all` (root suite and separate `runtime/flue` suite)
 - `pnpm lint:staged` (checks what you will commit)
 - For desktop or renderer changes: `pnpm build`, then the focused browser
   suite (`pnpm test:e2e` or `pnpm test:a11y`, `pnpm test:performance`).
