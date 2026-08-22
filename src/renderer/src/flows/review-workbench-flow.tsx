@@ -2,7 +2,6 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as v from "valibot";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import type { RawJsonValue } from "../../../domain/json";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -78,6 +77,12 @@ import type { PullRequestRef } from "../../../domain/pull-request";
 import { useInsightRun } from "../hooks/use-insight-run";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
+import {
+  parseAssigneeReceipt,
+  parseDirectConversationReceipt,
+  parseLabelReceipt,
+  parseReviewerReceipt,
+} from "./review-workbench-receipts";
 
 const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -2937,182 +2942,6 @@ function insightLiveStatus(analysis: string, walkthrough: string): string {
   return active.length === 0
     ? ""
     : `Analysis ${analysis}; Walkthrough ${walkthrough}`;
-}
-
-type DirectConversationReceipt =
-  | {
-      readonly _tag: "CommentCreated";
-      readonly commentId: string;
-      readonly reviewId?: string;
-      readonly threadId?: string;
-    }
-  | {
-      readonly _tag: "ReplyCreated";
-      readonly commentId: string;
-      readonly reviewId?: string;
-    }
-  | {
-      readonly _tag: "ThreadStateChanged";
-      readonly threadId: GitHubThreadId;
-      readonly state: "open" | "resolved";
-    }
-  | { readonly _tag: "CommentEdited"; readonly commentId: string }
-  | { readonly _tag: "CommentDeleted"; readonly commentId: string };
-
-/** Mutable builder shape for `DirectConversationReceipt`'s `CommentCreated` variant; frozen into the readonly contract on return. */
-type MutableCommentCreatedReceipt = {
-  _tag: "CommentCreated";
-  commentId: string;
-  reviewId?: string;
-  threadId?: string;
-};
-/** Mutable builder shape for `DirectConversationReceipt`'s `ReplyCreated` variant; frozen into the readonly contract on return. */
-type MutableReplyCreatedReceipt = {
-  _tag: "ReplyCreated";
-  commentId: string;
-  reviewId?: string;
-};
-
-const directConversationReceiptSchema = v.variant("_tag", [
-  v.looseObject({
-    _tag: v.literal("CommentCreated"),
-    commentId: v.pipe(v.string(), v.minLength(1)),
-    reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
-    threadId: v.optional(v.pipe(v.string(), v.minLength(1))),
-  }),
-  v.looseObject({
-    _tag: v.literal("ReplyCreated"),
-    commentId: v.pipe(v.string(), v.minLength(1)),
-    reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
-  }),
-  v.looseObject({
-    _tag: v.literal("ThreadStateChanged"),
-    threadId: v.string(),
-    state: v.picklist(["open", "resolved"]),
-  }),
-  v.looseObject({
-    _tag: v.literal("CommentEdited"),
-    commentId: v.pipe(v.string(), v.minLength(1)),
-  }),
-  v.looseObject({
-    _tag: v.literal("CommentDeleted"),
-    commentId: v.pipe(v.string(), v.minLength(1)),
-  }),
-]);
-
-function parseDirectConversationReceipt(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the direct-conversation command response; there is no earlier boundary to run it at.
-  value: unknown,
-): DirectConversationReceipt | undefined {
-  const parsed = v.safeParse(directConversationReceiptSchema, value);
-  if (!parsed.success) return undefined;
-  const output = parsed.output;
-  if (output._tag === "ThreadStateChanged") {
-    const threadId = parseGitHubThreadId(output.threadId);
-    return threadId._tag === "err"
-      ? undefined
-      : {
-          _tag: "ThreadStateChanged",
-          threadId: threadId.value,
-          state: output.state,
-        };
-  }
-  if (output._tag === "CommentEdited" || output._tag === "CommentDeleted")
-    return { _tag: output._tag, commentId: output.commentId };
-  if (output._tag === "ReplyCreated") {
-    const receipt: MutableReplyCreatedReceipt = {
-      _tag: "ReplyCreated",
-      commentId: output.commentId,
-    };
-    if (output.reviewId !== undefined) receipt.reviewId = output.reviewId;
-    return receipt;
-  }
-  const receipt: MutableCommentCreatedReceipt = {
-    _tag: "CommentCreated",
-    commentId: output.commentId,
-  };
-  if (output.reviewId !== undefined) receipt.reviewId = output.reviewId;
-  if (output.threadId !== undefined) receipt.threadId = output.threadId;
-  return receipt;
-}
-
-const labelReceiptSchema = v.variant("_tag", [
-  v.looseObject({
-    _tag: v.literal("LabelsAdded"),
-    added: v.array(v.string()),
-  }),
-  v.looseObject({
-    _tag: v.literal("LabelsRemoved"),
-    removed: v.array(v.string()),
-  }),
-]);
-
-type LabelReceipt =
-  | { readonly _tag: "LabelsAdded"; readonly added: ReadonlyArray<string> }
-  | {
-      readonly _tag: "LabelsRemoved";
-      readonly removed: ReadonlyArray<string>;
-    };
-
-function parseLabelReceipt(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the labels command response; there is no earlier boundary to run it at.
-  value: unknown,
-): LabelReceipt | undefined {
-  const parsed = v.safeParse(labelReceiptSchema, value);
-  return parsed.success ? parsed.output : undefined;
-}
-
-const assigneeReceiptSchema = v.variant("_tag", [
-  v.looseObject({
-    _tag: v.literal("AssigneesAdded"),
-    added: v.array(v.string()),
-  }),
-  v.looseObject({
-    _tag: v.literal("AssigneesRemoved"),
-    removed: v.array(v.string()),
-  }),
-]);
-
-type AssigneeReceipt =
-  | { readonly _tag: "AssigneesAdded"; readonly added: ReadonlyArray<string> }
-  | {
-      readonly _tag: "AssigneesRemoved";
-      readonly removed: ReadonlyArray<string>;
-    };
-
-function parseAssigneeReceipt(
-  value: RawJsonValue | undefined,
-): AssigneeReceipt | undefined {
-  const parsed = v.safeParse(assigneeReceiptSchema, value);
-  return parsed.success ? parsed.output : undefined;
-}
-
-const reviewerReceiptSchema = v.variant("_tag", [
-  v.looseObject({
-    _tag: v.literal("ReviewersRequested"),
-    requested: v.array(v.string()),
-  }),
-  v.looseObject({
-    _tag: v.literal("ReviewersRemoved"),
-    removed: v.array(v.string()),
-  }),
-]);
-
-type ReviewerReceipt =
-  | {
-      readonly _tag: "ReviewersRequested";
-      readonly requested: ReadonlyArray<string>;
-    }
-  | {
-      readonly _tag: "ReviewersRemoved";
-      readonly removed: ReadonlyArray<string>;
-    };
-
-function parseReviewerReceipt(
-  value: RawJsonValue | undefined,
-): ReviewerReceipt | undefined {
-  const parsed = v.safeParse(reviewerReceiptSchema, value);
-  return parsed.success ? parsed.output : undefined;
 }
 
 function insightStatusLabel(status: string): string {
