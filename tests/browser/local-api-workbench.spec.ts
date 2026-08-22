@@ -49,6 +49,7 @@ test("desktop bridge opens the canonical represented workbench without removed R
       github: new FakeGitHubAdapter({
         authenticatedAccount: { host: "github.com", account: "fixture" },
         listOpenPullRequests: [],
+        // SAFETY: This fake adapter fixture supplies the response shape exercised by the browser case; unrelated production fields are outside this test seam.
         pullRequest: summary() as never,
         comments: { threads: [] },
         checks: { overall: "passing", checks: [] },
@@ -100,6 +101,7 @@ test("desktop bridge permits current Review-id routes and denies deleted routes"
       capability: "cap",
       paths,
       github: new FakeGitHubAdapter({
+        // SAFETY: This fake adapter fixture supplies the response shape exercised by the browser case; unrelated production fields are outside this test seam.
         pullRequest: summary() as never,
         comments: { threads: [] },
         checks: { overall: "passing", checks: [] },
@@ -140,18 +142,16 @@ test("desktop bridge permits current Review-id routes and denies deleted routes"
     ).toBe(true);
     const removed = await page.evaluate(async (baseUrl) => {
       const request = async (path: string, method: "GET" | "POST") =>
-        (
-          await fetch(new URL(path, baseUrl), {
-            method,
-            headers: {
-              "X-Patchdesk-Capability": "cap",
-              ...(method === "POST"
-                ? { "Content-Type": "application/json" }
-                : {}),
-            },
-            ...(method === "POST" ? { body: "{}" } : {}),
-          })
-        ).status;
+        (() => {
+          const headers = new Headers({
+            "X-Patchdesk-Capability": "cap",
+          });
+          if (method === "POST")
+            headers.set("Content-Type", "application/json");
+          const requestInit: RequestInit = { method, headers };
+          if (method === "POST") requestInit.body = "{}";
+          return fetch(new URL(path, baseUrl), requestInit);
+        })().then((response) => response.status);
       return Promise.all([
         request("/v1/dashboard", "GET"),
         request("/v1/reviews", "GET"),
@@ -202,6 +202,7 @@ function summary() {
     headBranch: "feature",
     baseBranch: "main",
     headSha: "abcdef1234567890abcdef1234567890abcdef12",
+    baseSha: "1234567890abcdef1234567890abcdef12345678",
     isOpen: true,
     isDraft: false,
     reviewState: "none",
@@ -219,6 +220,7 @@ async function seedRepresentedReview(
   const repo = must(parseGitHubRepoName("patchdesk"));
   const number = must(parsePullRequestNumber(1));
   const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
+  const baseSha = must(parseGitSha("1234567890abcdef1234567890abcdef12345678"));
   await new ProfileStore(paths).save(
     must(
       parseWorkspaceProfileConfig({
@@ -240,6 +242,7 @@ async function seedRepresentedReview(
     repo,
     prNumber: number,
     headSha,
+    baseSha,
   });
   const patchPath = paths.patchFile(profileId, sessionId);
   await mkdir(dirname(patchPath), { recursive: true });
@@ -248,10 +251,19 @@ async function seedRepresentedReview(
     "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
   );
   const session = createReviewSession({
-    key: { profileId, host, owner, repo, prNumber: number, headSha },
-    pr: { headSha, isOpen: true, isDraft: false },
+    key: {
+      profileId,
+      host,
+      owner,
+      repo,
+      prNumber: number,
+      headSha,
+      baseSha,
+    },
+    pr: { headSha, baseSha, isOpen: true, isDraft: false },
     patchPath: must(parseAbsolutePath(patchPath)),
     worktree: { path: must(parseAbsolutePath("/tmp/worktree")), headSha },
+    // SAFETY: This fixed ISO timestamp is a valid test value for the branded timestamp field.
     createdAt: "2026-08-01T00:00:00.000Z" as never,
   });
   expect((await new ReviewSessionStore(paths).save(session))._tag).toBe("ok");
@@ -266,6 +278,7 @@ async function seedRepresentedReview(
     reviewId: review.id,
     snapshot: {
       schemaVersion: 1,
+      // SAFETY: This fake adapter fixture supplies the response shape exercised by the browser case; unrelated production fields are outside this test seam.
       pullRequest: summary() as never,
       comments: { threads: [], complete: true },
       conversation: { prDescription: "", entries: [], complete: true },
@@ -333,8 +346,9 @@ async function serveRenderer(): Promise<Server> {
 }
 function origin(server: Server): string {
   const address = server.address();
-  if (address === null || typeof address === "string")
-    throw new Error("missing address");
+  if (address === null) throw new Error("missing address");
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Node's server address union uses a string only for named sockets; this test binds an ephemeral TCP port above.
+  if (typeof address === "string") throw new Error("missing address");
   return `http://127.0.0.1:${address.port}`;
 }
 function close(server: Server): Promise<void> {

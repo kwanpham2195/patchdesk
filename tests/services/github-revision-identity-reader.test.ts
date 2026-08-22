@@ -69,9 +69,9 @@ function contentHashOf(text: string): ContentHash {
 /** Mutable draft of `createReviewSession`'s input, built in statements so
  * `canonicalPatchHash` is added only when a fixture supplies one. */
 type MutableCreateReviewSessionInput = {
-  -readonly [K in keyof Parameters<
+  -readonly [K in keyof Parameters<typeof createReviewSession>[0]]: Parameters<
     typeof createReviewSession
-  >[0]]: Parameters<typeof createReviewSession>[0][K];
+  >[0][K];
 };
 
 /** Mutable draft of a fixture `PullRequestSummary`, built in statements so
@@ -221,6 +221,7 @@ async function makeSession(
       repo: pr.repo,
       prNumber: pr.number,
       headSha,
+      baseSha,
     },
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
     patchPath: must(parseAbsolutePath(patchPath)),

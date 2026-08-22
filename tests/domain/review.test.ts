@@ -38,15 +38,18 @@ const identity: ReviewIdentity = {
 const firstSha = must(parseGitSha("1".repeat(40)));
 const secondSha = must(parseGitSha("2".repeat(40)));
 const baseSha = must(parseGitSha("b".repeat(40)));
+const otherBaseSha = must(parseGitSha("c".repeat(40)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const later = must(parseIsoTimestamp("2026-08-01T00:01:00.000Z"));
 const firstSessionId = createReviewSessionId({
   ...identity,
   headSha: firstSha,
+  baseSha,
 });
 const secondSessionId = createReviewSessionId({
   ...identity,
   headSha: secondSha,
+  baseSha,
 });
 const snapshotHash = must(parseContentHash("a".repeat(64)));
 
@@ -60,6 +63,25 @@ function review() {
 }
 
 describe("Review", () => {
+  it("builds deterministic IDs that distinguish same-head different-base revisions", () => {
+    const first = createReviewSessionId({
+      ...identity,
+      headSha: firstSha,
+      baseSha,
+    });
+    expect(first).toContain("__base-bbbbbbbb__");
+    expect(first).toBe(
+      createReviewSessionId({ ...identity, headSha: firstSha, baseSha }),
+    );
+    expect(first).not.toBe(
+      createReviewSessionId({
+        ...identity,
+        headSha: firstSha,
+        baseSha: otherBaseSha,
+      }),
+    );
+  });
+
   it("keeps one identity-derived ID across heads", () => {
     expect(createReviewId(identity)).toBe(createReviewId(identity));
     expect(review().id).toBe(createReviewId(identity));

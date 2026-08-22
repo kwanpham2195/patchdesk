@@ -9,7 +9,7 @@ import {
 } from "../../src/renderer/src/renderer-contracts";
 
 const sessionProjection = {
-  id: "github.com__centraldigital__patchdesk__pr-42__sha-22222222__abcdef123456",
+  id: "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",
   key: {
     profileId: "cfw",
     host: "github.com",
@@ -77,7 +77,10 @@ describe("parseRepositoryLabelListResponse", () => {
       state: "github_forbidden",
       forbiddenReason: "saml",
     });
-    expect(parsed).toEqual({ state: "github_forbidden", forbiddenReason: "saml" });
+    expect(parsed).toEqual({
+      state: "github_forbidden",
+      forbiddenReason: "saml",
+    });
   });
 
   it("surfaces a rate-limited read's resume time", () => {
@@ -92,7 +95,9 @@ describe("parseRepositoryLabelListResponse", () => {
   });
 
   it("rejects an unrecognized state and unknown fields", () => {
-    expect(parseRepositoryLabelListResponse({ state: "not_a_real_state" })).toBeUndefined();
+    expect(
+      parseRepositoryLabelListResponse({ state: "not_a_real_state" }),
+    ).toBeUndefined();
     expect(
       parseRepositoryLabelListResponse({
         state: "ready",

@@ -12,7 +12,7 @@ const operation = {
   profileId: "cfw",
   reviewId: "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
   sessionId:
-    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab",
+    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab",
   pr: {
     host: "github.com",
     owner: "centraldigital",

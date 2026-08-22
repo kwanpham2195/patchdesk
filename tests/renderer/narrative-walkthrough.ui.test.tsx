@@ -19,10 +19,14 @@ afterEach(() => {
 });
 
 const SNAPSHOT: NarrativeSnapshot = {
+  // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
   profileId: "cfw" as never,
   sessionId:
-    "github.com__centraldigital__patchdesk__pr-42__sha-22222222__abcdef123456" as never,
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+    "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456" as never,
+  // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
   headSha: "2222222222222222222222222222222222222222" as never,
+  // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
   patchHash: "0000000000000000000000000000000000000000" as never,
 };
 
@@ -46,6 +50,7 @@ function buildWalkthrough(): NarrativeWalkthroughModel {
             hunks: [
               {
                 id: "h1",
+                // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
                 path: "src/recovery/projection.ts" as never,
                 header: "@@ -42 +42 @@",
                 raw: "@@ -42 +42 @@\n-old\n+new",
@@ -70,6 +75,7 @@ function buildWalkthrough(): NarrativeWalkthroughModel {
             hunks: [
               {
                 id: "h2",
+                // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
                 path: "src/services/review-workbench-projection.ts" as never,
                 header: "@@ -18 +18 @@",
                 raw: "@@ -18 +18 @@\n-old\n+new",
@@ -90,6 +96,7 @@ function buildWalkthrough(): NarrativeWalkthroughModel {
       hunks: [
         {
           id: "h3",
+          // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
           path: "src/services/recovery/storage-management-service.ts" as never,
           header: "@@ -1 +1 @@",
           raw: "@@ -1 +1 @@\n-old\n+new",
@@ -100,6 +107,7 @@ function buildWalkthrough(): NarrativeWalkthroughModel {
         },
         {
           id: "h4",
+          // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
           path: "tests/browser/review-workbench.spec.ts" as never,
           header: "@@ -1 +1 @@",
           raw: "@@ -1 +1 @@\n-old\n+new",
@@ -253,6 +261,7 @@ describe("narrative walkthrough takeover", () => {
       <NarrativeWalkthrough
         walkthrough={{
           ...walkthrough,
+          // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
           chapters: [walkthrough.chapters[0] as never, { ...chapter, title }],
         }}
         currentSectionId="section-2"
@@ -290,6 +299,7 @@ describe("narrative walkthrough takeover", () => {
     expect(document.querySelector("[data-walkthrough-reader]")).toBe(reader);
 
     fireEvent.keyDown(
+      // SAFETY: The test query targets the element rendered by this case; this cast narrows the DOM API result before the next property access.
       document.querySelector("[data-walkthrough-takeover]") as HTMLElement,
       { key: "Escape" },
     );
@@ -415,6 +425,7 @@ describe("narrative walkthrough takeover", () => {
       />,
     );
     expect(
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       (
         screen.getByRole("button", {
           name: "Previous section",
@@ -426,6 +437,7 @@ describe("narrative walkthrough takeover", () => {
       screen.getByRole("heading", { name: "How reads stay read-only" }),
     ).toBeTruthy();
     expect(
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       (
         screen.getByRole("button", {
           name: "Next section",
@@ -433,6 +445,7 @@ describe("narrative walkthrough takeover", () => {
       ).disabled,
     ).toBe(true);
     expect(
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       (
         screen.getByRole("button", {
           name: "Previous section",
@@ -495,6 +508,7 @@ describe("narrative walkthrough takeover", () => {
     const reviewedChips = screen.getAllByLabelText("Reviewed");
     expect(reviewedChips.length).toBeGreaterThan(0);
     const markButton = screen.getByRole("button", { name: "Section reviewed" });
+    // SAFETY: The test query targets the element rendered by this case; this cast narrows the DOM API result before the next property access.
     expect((markButton as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(markButton);
     expect(onMarkSectionReviewed).not.toHaveBeenCalled();
@@ -528,6 +542,7 @@ describe("narrative walkthrough takeover", () => {
               hunks: [
                 {
                   id: "h2b",
+                  // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
                   path: "src/services/review-workbench-projection.ts" as never,
                   header: "@@ -22 +22 @@",
                   raw: "@@ -22 +22 @@\n-old\n+new",
@@ -589,6 +604,7 @@ describe("narrative walkthrough takeover", () => {
         actions={actions}
       />,
     );
+    // SAFETY: The test query targets the element rendered by this case; this cast narrows the DOM API result before the next property access.
     const takeover = container.querySelector(
       "[data-walkthrough-takeover]",
     ) as HTMLElement;
@@ -616,6 +632,7 @@ describe("narrative walkthrough takeover", () => {
         actions={buildActions()}
       />,
     );
+    // SAFETY: The test query targets the element rendered by this case; this cast narrows the DOM API result before the next property access.
     const takeover = container.querySelector(
       "[data-walkthrough-takeover]",
     ) as HTMLElement;

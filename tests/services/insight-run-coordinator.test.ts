@@ -35,6 +35,7 @@ const must = <T>(value: Result<T, unknown>): T => {
 };
 const profileId = must(parseWorkspaceProfileId("cfw"));
 const headSha = must(parseGitSha("a".repeat(40)));
+const baseSha = must(parseGitSha("b".repeat(40)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const analysisResult = {
   changeSummary: "Adds one guarded change.",
@@ -69,8 +70,9 @@ async function fixture(
       repo: must(parseGitHubRepoName("patchdesk")),
       prNumber: must(parsePullRequestNumber(42)),
       headSha,
+      baseSha,
     },
-    pr: { headSha, isDraft: false, isOpen: true },
+    pr: { headSha, baseSha, isDraft: false, isOpen: true },
     patchPath: must(
       // SAFETY: "placeholder" only needs to satisfy paths.patchFile's ReviewSessionId-branded
       // parameter type; this value is never read back — session.patchPath below is recomputed

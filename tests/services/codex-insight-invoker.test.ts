@@ -37,7 +37,7 @@ async function fixture(
   const profileId = "cfw" as never;
   // SAFETY: same as above — this fixture never exercises ReviewSessionId's own parser.
   const sessionId =
-    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__439aa21713b5" as never;
+    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__439aa21713b5" as never;
   const worktree = paths.worktreeDirectory(profileId, sessionId);
   const reviewInput = paths.preparedReviewInputFile(profileId, sessionId);
   const context = paths.preparedContextFile(profileId, sessionId);

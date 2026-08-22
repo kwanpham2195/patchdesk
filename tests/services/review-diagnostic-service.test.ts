@@ -7,9 +7,11 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { parseIsoTimestamp } from "../../src/domain/ids";
 import { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
 
+// SAFETY: This literal is a well-formed WorkspaceProfileId fixture.
 const profileId = "cfw" as never;
 const sessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-22222222__000000000000" as never;
+  // SAFETY: This literal is a well-formed head/base-aware ReviewSessionId fixture.
+  "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__000000000000" as never;
 const at = parseIsoTimestamp("2026-07-18T00:00:00.000Z");
 
 function must<T>(

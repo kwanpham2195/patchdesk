@@ -11,7 +11,7 @@ const currentRecord = {
       "insight-walkthrough-2-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
     revision: {
       sessionId:
-        "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca",
+        "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca",
       headSha: "a".repeat(40),
       patchHash: "b".repeat(64),
     },

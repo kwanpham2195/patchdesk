@@ -135,6 +135,7 @@ describe("local API current Review capability boundary", () => {
       repo,
       prNumber: number,
       headSha,
+      baseSha,
     });
     const patchPath = paths.patchFile(profileId, sessionId);
     await mkdir(dirname(patchPath), { recursive: true });
@@ -146,7 +147,15 @@ describe("local API current Review capability boundary", () => {
       (
         await new ReviewSessionStore(paths).save(
           createReviewSession({
-            key: { profileId, host, owner, repo, prNumber: number, headSha },
+            key: {
+              profileId,
+              host,
+              owner,
+              repo,
+              prNumber: number,
+              headSha,
+              baseSha,
+            },
             pr: { headSha, baseSha, isOpen: true, isDraft: false },
             patchPath: must(parseAbsolutePath(patchPath)),
             worktree: {

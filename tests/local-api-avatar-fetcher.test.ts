@@ -68,6 +68,7 @@ function summary() {
     headBranch: "feature",
     baseBranch: "main",
     headSha: "abcdef1234567890abcdef1234567890abcdef12",
+    baseSha: "1234567890abcdef1234567890abcdef12345678",
     isOpen: true,
     isDraft: false,
     reviewState: "none",
@@ -87,6 +88,7 @@ async function seedRepresentedReview(
   const repo = must(parseGitHubRepoName("patchdesk"));
   const number = must(parsePullRequestNumber(1));
   const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
+  const baseSha = must(parseGitSha("1234567890abcdef1234567890abcdef12345678"));
   await new ProfileStore(paths).save(
     must(
       parseWorkspaceProfileConfig({
@@ -108,6 +110,7 @@ async function seedRepresentedReview(
     repo,
     prNumber: number,
     headSha,
+    baseSha,
   });
   const patchPath = paths.patchFile(profileId, sessionId);
   await mkdir(dirname(patchPath), { recursive: true });
@@ -116,8 +119,16 @@ async function seedRepresentedReview(
     "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
   );
   const session = createReviewSession({
-    key: { profileId, host, owner, repo, prNumber: number, headSha },
-    pr: { headSha, isOpen: true, isDraft: false },
+    key: {
+      profileId,
+      host,
+      owner,
+      repo,
+      prNumber: number,
+      headSha,
+      baseSha,
+    },
+    pr: { headSha, baseSha, isOpen: true, isDraft: false },
     patchPath: must(parseAbsolutePath(patchPath)),
     worktree: { path: must(parseAbsolutePath("/tmp/worktree")), headSha },
     // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the

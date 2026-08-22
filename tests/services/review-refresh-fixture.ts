@@ -1,3 +1,4 @@
+import type { GitHubReader } from "../../src/adapters/github/github-adapter";
 import { ReviewRefreshService } from "../../src/services/review-refresh-service";
 import {
   hashSnapshot,
@@ -47,6 +48,7 @@ export type ReviewRefreshFixtureValues = {
   readonly profileId: WorkspaceProfileId;
   readonly profile: WorkspaceProfileConfig;
   readonly identity: ReviewIdentity;
+  readonly baseSha: GitSha;
   readonly headSha: GitSha;
   readonly at: IsoTimestamp;
   readonly sessionId: ReviewSessionId;
@@ -55,6 +57,7 @@ export type ReviewRefreshFixtureValues = {
   readonly review: Review;
 };
 
+type PullRequestResult = Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
 type SessionLoadResult = Awaited<
   ReturnType<ReviewRefreshDependencies["sessions"]["load"]>
 >;
@@ -104,6 +107,7 @@ export type ReviewRefreshFixtureOptions = {
   readonly session?: ReviewSession;
   readonly sessionLoad?: SessionLoadResult;
   readonly currentPullRequest?: PullRequestSummary;
+  readonly pullRequestResults?: ReadonlyArray<PullRequestResult>;
   readonly checksResult?: ChecksResult;
   readonly commentsResult?: CommentsResult;
   readonly commitsResult?: CommitsResult;
@@ -144,6 +148,7 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
     prNumber: must(parsePullRequestNumber(42)),
   } satisfies ReviewIdentity;
   const headSha = must(parseGitSha("1".repeat(40)));
+  const baseSha = must(parseGitSha("b".repeat(40)));
   const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
   const snapshot: ReviewRemoteSnapshot = {
     schemaVersion: 1,
@@ -155,6 +160,7 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
         number: identity.prNumber,
       },
       headSha,
+      baseSha,
       isDraft: false,
       isOpen: true,
       title: "Fixture",
@@ -212,6 +218,7 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
     profileId,
     profile,
     identity,
+    baseSha,
     headSha,
     at,
     sessionId: session.id,
@@ -228,10 +235,17 @@ export function createReviewRefreshSession(input: {
   readonly createdAt: IsoTimestamp;
   readonly headSha: GitSha;
 }): ReviewSession {
-  const key = { ...input.identity, headSha: input.headSha };
+  const baseSha = input.snapshot.pullRequest.baseSha;
+  if (baseSha === undefined) throw new Error("Fixture snapshot needs a base");
+  const key = { ...input.identity, headSha: input.headSha, baseSha };
   return createReviewSession({
     key,
-    pr: { ...input.snapshot.pullRequest, headSha: input.headSha },
+    pr: {
+      headSha: input.headSha,
+      baseSha,
+      isDraft: input.snapshot.pullRequest.isDraft,
+      isOpen: input.snapshot.pullRequest.isOpen,
+    },
     patchPath: must(parseAbsolutePath("/tmp/patchdesk-refresh.patch")),
     canonicalPatchHash: must(parseContentHash("a".repeat(64))),
     worktree: {
@@ -271,8 +285,14 @@ export function createReviewRefreshFixture(
     values,
     currentPullRequest,
   );
+  let pullRequestRead = 0;
+  const readPullRequest = async (): Promise<PullRequestResult> => {
+    const result = options.pullRequestResults?.[pullRequestRead];
+    pullRequestRead += 1;
+    return result ?? ok(currentPullRequest);
+  };
   const github: ReviewRefreshDependencies["github"] = {
-    getPullRequest: async () => ok(currentPullRequest),
+    getPullRequest: readPullRequest,
     getPullRequestChecks: async () =>
       options.checksResult ?? ok(values.snapshot.checks),
     getPullRequestComments: async () =>

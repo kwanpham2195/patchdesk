@@ -34,7 +34,7 @@ import {
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
 const reviewSessionSchema = v.strictObject({
-  schemaVersion: v.literal(5),
+  schemaVersion: v.literal(6),
   id: v.string(),
   key: v.strictObject({
     profileId: v.string(),
@@ -43,10 +43,11 @@ const reviewSessionSchema = v.strictObject({
     repo: v.string(),
     prNumber: v.number(),
     headSha: v.string(),
+    baseSha: v.string(),
   }),
   pr: v.strictObject({
     headSha: v.string(),
-    baseSha: v.optional(v.string()),
+    baseSha: v.string(),
     isDraft: v.boolean(),
     isOpen: v.boolean(),
   }),
@@ -234,11 +235,10 @@ async function mapConcurrent<T, R>(
 type MutableReviewSession = {
   -readonly [K in keyof ReviewSession]: ReviewSession[K];
 };
-/** Mutable draft of `ReviewSession["pr"]`, built in statements so the
- * optional `baseSha` is added only when it has a value. */
+/** Mutable draft of `ReviewSession["pr"]`. */
 type MutableSessionPr = {
   headSha: GitSha;
-  baseSha?: GitSha;
+  baseSha: GitSha;
   isDraft: boolean;
   isOpen: boolean;
 };
@@ -262,13 +262,11 @@ type MutableFindingReviewContext = {
 
 function buildSessionPr(
   headSha: GitSha,
-  baseSha: GitSha | undefined,
+  baseSha: GitSha,
   isDraft: boolean,
   isOpen: boolean,
 ): MutableSessionPr {
-  const pr: MutableSessionPr = { headSha, isDraft, isOpen };
-  if (baseSha !== undefined) pr.baseSha = baseSha;
-  return pr;
+  return { headSha, baseSha, isDraft, isOpen };
 }
 
 function buildSessionPrContext(raw: {
@@ -298,7 +296,7 @@ function buildFindingReviewContext(
   return context;
 }
 
-/** Parses one current schema-5 session and rejects all removed authority fields. */
+/** Parses one current schema-6 session and rejects all removed authority fields. */
 export function parseStoredReviewSession(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for stored sessions; there is no earlier boundary to run it at.
   input: unknown,
@@ -311,6 +309,7 @@ export function parseStoredReviewSession(
   const repo = parseGitHubRepoName(raw.output.key.repo);
   const prNumber = parsePullRequestNumber(raw.output.key.prNumber);
   const headSha = parseGitSha(raw.output.key.headSha);
+  const baseSha = parseGitSha(raw.output.key.baseSha);
   const id = parseReviewSessionId(raw.output.id);
   const patchPath = parseAbsolutePath(raw.output.patchPath);
   const canonicalPatchHash =
@@ -320,10 +319,7 @@ export function parseStoredReviewSession(
   const worktreePath = parseAbsolutePath(raw.output.worktree.path);
   const worktreeHeadSha = parseGitSha(raw.output.worktree.headSha);
   const prHeadSha = parseGitSha(raw.output.pr.headSha);
-  const prBaseSha =
-    raw.output.pr.baseSha === undefined
-      ? undefined
-      : parseGitSha(raw.output.pr.baseSha);
+  const prBaseSha = parseGitSha(raw.output.pr.baseSha);
   const createdAt = parseIsoTimestamp(raw.output.createdAt);
   const updatedAt = parseIsoTimestamp(raw.output.updatedAt);
   if (
@@ -333,13 +329,14 @@ export function parseStoredReviewSession(
     repo._tag === "err" ||
     prNumber._tag === "err" ||
     headSha._tag === "err" ||
+    baseSha._tag === "err" ||
     id._tag === "err" ||
     patchPath._tag === "err" ||
     (canonicalPatchHash !== undefined && canonicalPatchHash._tag === "err") ||
     worktreePath._tag === "err" ||
     worktreeHeadSha._tag === "err" ||
     prHeadSha._tag === "err" ||
-    (prBaseSha !== undefined && prBaseSha._tag === "err") ||
+    prBaseSha._tag === "err" ||
     createdAt._tag === "err" ||
     updatedAt._tag === "err"
   ) {
@@ -354,9 +351,11 @@ export function parseStoredReviewSession(
         repo: repo.value,
         prNumber: prNumber.value,
         headSha: headSha.value,
+        baseSha: baseSha.value,
       }) ||
     worktreeHeadSha.value !== headSha.value ||
-    prHeadSha.value !== headSha.value
+    prHeadSha.value !== headSha.value ||
+    prBaseSha.value !== baseSha.value
   ) {
     return invalidRead();
   }
@@ -406,7 +405,7 @@ export function parseStoredReviewSession(
       ? undefined
       : buildSessionPrContext(raw.output.prContext);
   const session: MutableReviewSession = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     id: id.value,
     key: {
       profileId: profileId.value,
@@ -415,10 +414,11 @@ export function parseStoredReviewSession(
       repo: repo.value,
       prNumber: prNumber.value,
       headSha: headSha.value,
+      baseSha: baseSha.value,
     },
     pr: buildSessionPr(
       prHeadSha.value,
-      prBaseSha === undefined ? undefined : prBaseSha.value,
+      prBaseSha.value,
       raw.output.pr.isDraft,
       raw.output.pr.isOpen,
     ),

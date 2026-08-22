@@ -50,7 +50,7 @@ function value<T>(result: Result<T, unknown>): T {
 const PROFILE_ID: WorkspaceProfileId = value(parseWorkspaceProfileId("design"));
 const SESSION_ID: ReviewSessionId = value(
   parseReviewSessionId(
-    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab",
+    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab",
   ),
 );
 const HEAD_SHA: GitSha = value(

@@ -21,6 +21,7 @@ const must = <T>(result: Result<T, unknown>): T =>
       })();
 const profileId = must(parseWorkspaceProfileId("cfw"));
 const headSha = must(parseGitSha("1".repeat(40)));
+const baseSha = must(parseGitSha("0".repeat(40)));
 const commitSha = must(parseGitSha("2".repeat(40)));
 const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const identity = {
@@ -30,7 +31,7 @@ const identity = {
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
 };
-const sessionId = createReviewSessionId({ ...identity, headSha });
+const sessionId = createReviewSessionId({ ...identity, headSha, baseSha });
 const review = {
   ...createReview({
     identity,
@@ -41,6 +42,7 @@ const review = {
   representedRemote: {
     headSha,
     pullRequestUpdatedAt: at,
+    // SAFETY: This literal is a well-formed 64-character content-hash fixture.
     snapshotHash: "a".repeat(64) as never,
     refreshedAt: at,
   },
@@ -80,9 +82,10 @@ const snapshot = {
 };
 const session = {
   id: sessionId,
-  key: { ...identity, headSha },
+  key: { ...identity, headSha, baseSha },
+  // SAFETY: This test path is an absolute filesystem-path fixture; no filesystem value crosses the production boundary from this cast.
   worktree: { path: "/tmp/patchdesk-worktree" as never, headSha },
-  pr: { headSha, isDraft: false, isOpen: true },
+  pr: { headSha, baseSha, isDraft: false, isOpen: true },
 };
 
 describe("ReviewCommitService", () => {
@@ -96,11 +99,13 @@ describe("ReviewCommitService", () => {
       },
       {
         async load() {
+          // SAFETY: This fake storage returns the complete snapshot fixture consumed by ReviewCommitService.
           return ok(snapshot as never);
         },
       },
       {
         async load() {
+          // SAFETY: This fake storage returns the complete session fixture consumed by ReviewCommitService.
           return ok(session as never);
         },
       },
@@ -147,11 +152,13 @@ describe("ReviewCommitService", () => {
       },
       {
         async load() {
+          // SAFETY: This fake storage returns the complete snapshot fixture consumed by ReviewCommitService.
           return ok(snapshot as never);
         },
       },
       {
         async load() {
+          // SAFETY: This fake storage returns the complete session fixture consumed by ReviewCommitService.
           return ok(session as never);
         },
       },

@@ -5,15 +5,18 @@ import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
 import { ok, err } from "../../src/domain/result";
 
+// SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
 const now = "2026-08-01T00:00:00.000Z" as never;
 const reviewId =
+  // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
   "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+// SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
 const operation = {
   operationId: "merge-1",
   profileId: "cfw",
   reviewId,
   sessionId:
-    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__439aa21713b5",
+    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__439aa21713b5",
   pr: {
     host: "github.com",
     owner: "centraldigital",
@@ -27,6 +30,7 @@ const operation = {
   state: { _tag: "OutcomeUnknown" },
 } as never;
 const reviewUpdatedAt = now;
+// SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
 const review = {
   id: reviewId,
   status: { _tag: "Open" },
@@ -37,10 +41,12 @@ function service(save = vi.fn(async () => ok(undefined))) {
   const remove = vi.fn(async () => ok(undefined));
   const reviews = { load: vi.fn(async () => ok(review)), save };
   const recovery = new ReviewRecoveryService(
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
       list: async () => ok([{ id: "cfw" }]),
       load: async () => ok({}),
     } as never,
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
       scanSessionEntries: async () => ok({ sessions: [], invalidEntries: [] }),
     } as never,
@@ -83,10 +89,12 @@ describe("ReviewRecoveryService", () => {
     const started: string[] = [];
     const complete: Array<() => void> = [];
     const recovery = new ReviewRecoveryService(
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         list: async () => ok([{ id: "cfw" }, { id: "other" }]),
         load: async () => ok({}),
       } as never,
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         scanSessionEntries: async (profileId: string) => {
           started.push(profileId);
@@ -95,6 +103,7 @@ describe("ReviewRecoveryService", () => {
         },
       } as never,
       () => now,
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         lifecycleGate: new ReviewLifecycleGate(),
         operationCoordinator: new ReviewOperationCoordinator(),
@@ -117,13 +126,14 @@ describe("ReviewRecoveryService", () => {
   });
 
   it("checks independent merge operations concurrently while retaining Review locks", async () => {
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const otherOperation = {
       operationId: "merge-2",
       profileId: "cfw",
       reviewId:
         "github.com__centraldigital__patchdesk__pr-43__review-bbbbbbbbbbbb",
       sessionId:
-        "github.com__centraldigital__patchdesk__pr-43__sha-bcdef123__439aa21713b5",
+        "github.com__centraldigital__patchdesk__pr-43__sha-bcdef123__base-00000000__439aa21713b5",
       pr: {
         host: "github.com",
         owner: "centraldigital",
@@ -139,15 +149,18 @@ describe("ReviewRecoveryService", () => {
     const started: string[] = [];
     const complete: Array<() => void> = [];
     const recovery = new ReviewRecoveryService(
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         list: async () => ok([{ id: "cfw" }]),
         load: async () => ok({}),
       } as never,
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         scanSessionEntries: async () =>
           ok({ sessions: [], invalidEntries: [] }),
       } as never,
       () => now,
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         operationCoordinator: new ReviewOperationCoordinator(),
         reviews: {
@@ -178,10 +191,12 @@ describe("ReviewRecoveryService", () => {
     const started: string[] = [];
     const complete: Array<() => void> = [];
     const recovery = new ReviewRecoveryService(
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         list: async () => ok([{ id: "cfw" }]),
         load: async () => ok({}),
       } as never,
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         scanSessionEntries: async () =>
           ok({
@@ -193,6 +208,7 @@ describe("ReviewRecoveryService", () => {
           }),
       } as never,
       () => now,
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       {
         artifacts: {
           quarantineInvalidEntry: async (
@@ -226,6 +242,7 @@ describe("ReviewRecoveryService", () => {
   });
 
   it("retains merge evidence when the terminal Review save fails", async () => {
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const value = service(vi.fn(async () => err({ reason: "io" } as never)));
     await expect(value.recovery.reconcile()).resolves.toEqual({
       recovered: 0,
@@ -238,10 +255,12 @@ describe("ReviewRecoveryService", () => {
 it("keeps an uncertain merge locked when GitHub still reports the pull request open", async () => {
   const value = service();
   const recovery = new ReviewRecoveryService(
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
       list: async () => ok([{ id: "cfw" }]),
       load: async () => ok({}),
     } as never,
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
       scanSessionEntries: async () => ok({ sessions: [], invalidEntries: [] }),
     } as never,
@@ -257,6 +276,7 @@ it("keeps an uncertain merge locked when GitHub still reports the pull request o
     },
   );
   await expect(
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     recovery.reconcileReview("cfw" as never, reviewId),
   ).resolves.toEqual({ recovered: 0, failed: 1 });
   expect(value.reviews.save).not.toHaveBeenCalled();
@@ -266,10 +286,12 @@ it("keeps an uncertain merge locked when GitHub still reports the pull request o
 it("terminalizes a confirmed closed-unmerged Review before removing the operation", async () => {
   const value = service();
   const recovery = new ReviewRecoveryService(
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
       list: async () => ok([{ id: "cfw" }]),
       load: async () => ok({}),
     } as never,
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
       scanSessionEntries: async () => ok({ sessions: [], invalidEntries: [] }),
     } as never,
@@ -285,6 +307,7 @@ it("terminalizes a confirmed closed-unmerged Review before removing the operatio
     },
   );
   await expect(
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     recovery.reconcileReview("cfw" as never, reviewId),
   ).resolves.toEqual({ recovered: 1, failed: 0 });
   expect(value.reviews.save).toHaveBeenCalledWith(

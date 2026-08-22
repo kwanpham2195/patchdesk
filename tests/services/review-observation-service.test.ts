@@ -106,7 +106,7 @@ async function fixture(
   const reviews = new ReviewStore(paths);
   const remote = new ReviewRemoteStore(paths);
   const session = createReviewSession({
-    key: { ...identity, headSha },
+    key: { ...identity, headSha, baseSha },
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
     patchPath: must(
       (await import("../../src/domain/ids")).parseAbsolutePath(
@@ -405,7 +405,9 @@ function countingGitHub(input: { readonly terminal: boolean }) {
  * onward — simulating a push landing in the gap between the first identity
  * read and the cheap second-check recheck.
  */
-function fakeGitHubChangedMidObservation(input: { readonly terminal: boolean }) {
+function fakeGitHubChangedMidObservation(input: {
+  readonly terminal: boolean;
+}) {
   const base = fakeGitHub(input);
   const counts = { getPullRequest: 0, getPullRequestDiff: 0 };
   return {
@@ -709,7 +711,10 @@ describe("ReviewObservationService", () => {
     const abortedDuringRead = {
       ...fakeGitHub({ terminal: false }),
       async getPullRequest() {
-        return err({ _tag: "GitHubReadFailed" as const, operation: "get_pr" as const });
+        return err({
+          _tag: "GitHubReadFailed" as const,
+          operation: "get_pr" as const,
+        });
       },
     };
     const observation = new ReviewObservationService({

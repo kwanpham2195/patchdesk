@@ -20,10 +20,10 @@ import type {
 
 /** Immutable local artifacts and current durable GitHub-write evidence for one pinned revision. */
 export type ReviewSession = {
-  readonly schemaVersion: 5;
+  readonly schemaVersion: 6;
   readonly id: ReviewSessionId;
   readonly key: ReviewSessionKey;
-  readonly pr: PullRequestSnapshot;
+  readonly pr: PullRequestSnapshot & { readonly baseSha: GitSha };
   readonly prContext?: {
     readonly title: string;
     readonly description?: string;
@@ -48,7 +48,17 @@ export type ReviewSessionKey = {
   readonly repo: GitHubRepoName;
   readonly prNumber: PullRequestNumber;
   readonly headSha: GitSha;
+  readonly baseSha: GitSha;
 };
+
+export type ReviewRevision = Pick<ReviewSessionKey, "headSha" | "baseSha">;
+
+export function sameReviewRevision(
+  left: ReviewRevision,
+  right: ReviewRevision,
+): boolean {
+  return left.headSha === right.headSha && left.baseSha === right.baseSha;
+}
 
 export type ReviewWorktreeRef = {
   readonly path: AbsolutePath;
@@ -64,7 +74,7 @@ type MutableReviewSession = {
 /** Constructs a deterministic session without filesystem or GitHub effects. */
 export function createReviewSession(input: {
   readonly key: ReviewSessionKey;
-  readonly pr: PullRequestSnapshot;
+  readonly pr: PullRequestSnapshot & { readonly baseSha: GitSha };
   readonly prContext?: ReviewSession["prContext"];
   readonly patchPath: AbsolutePath;
   readonly canonicalPatchHash?: ContentHash;
@@ -72,7 +82,7 @@ export function createReviewSession(input: {
   readonly createdAt: IsoTimestamp;
 }): ReviewSession {
   const session: MutableReviewSession = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     id: createReviewSessionId(input.key),
     key: input.key,
     pr: input.pr,

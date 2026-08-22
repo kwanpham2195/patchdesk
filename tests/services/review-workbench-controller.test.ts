@@ -8,14 +8,16 @@ import { ReviewOperationCoordinator } from "../../src/services/review-operation-
 
 // SAFETY: this literal is a well-formed WorkspaceProfileId slug.
 const profileId = "cfw" as never;
-// SAFETY: 40 lowercase hex characters is a well-formed GitSha.
+// SAFETY: 40 lowercase hex characters are well-formed GitShas.
 const headSha = "a".repeat(40) as never;
+// SAFETY: 40 lowercase hex characters are a well-formed GitSha fixture.
+const baseSha = "b".repeat(40) as never;
 // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
 // branded IsoTimestamp values this fixture's Review/session fields expect.
 const at = "2026-08-09T11:35:00.000Z" as never;
-// SAFETY: this literal matches the branded ReviewSessionId slug format.
+// SAFETY: this literal matches the branded head/base-aware ReviewSessionId slug format.
 const sessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca" as never;
+  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca" as never;
 // SAFETY: these literals are well-formed GitHubHost/GitHubOwner/
 // GitHubRepoName/PullRequestNumber values, matching their branded shapes.
 const identity = {
@@ -72,7 +74,9 @@ function fixture(
 ) {
   const preparation = {
     prepare: vi.fn(async () =>
-      ok({ session: { id: sessionId, key: { headSha }, createdAt: at } }),
+      ok({
+        session: { id: sessionId, key: { headSha, baseSha }, createdAt: at },
+      }),
     ),
   };
   const project = { loadRepresented: vi.fn(async () => ok(projection)) };
@@ -239,7 +243,11 @@ describe("ReviewWorkbenchController", () => {
     value.preparation.prepare.mockImplementation(async () => {
       sessionAvailable = true;
       return ok({
-        session: { id: sessionId, key: { headSha }, createdAt: at },
+        session: {
+          id: sessionId,
+          key: { headSha, baseSha },
+          createdAt: at,
+        },
         disposition: "prepared" as const,
       });
     });
@@ -265,6 +273,49 @@ describe("ReviewWorkbenchController", () => {
       reviewId,
     );
     expect(value.preparation.prepare).toHaveBeenCalledOnce();
+  });
+
+  it("quarantines a rejected schema-5 session and rebuilds a usable schema-6 Review", async () => {
+    const artifacts = {
+      quarantineIfPresent: vi.fn(async () =>
+        ok({ entryName: "session.schema-5.backup" }),
+      ),
+      quarantineReview: vi.fn(async () => ok({ entryName: "review.backup" })),
+    };
+    const sessions = {
+      load: vi.fn(async () =>
+        err({
+          _tag: "StorageFailure" as const,
+          operation: "read" as const,
+          reason: "invalid_stored_value" as const,
+        }),
+      ),
+    };
+    const value = fixture({ sessions, artifacts });
+
+    await expect(
+      value.controller.open({
+        profileId,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: projection });
+    expect(artifacts.quarantineIfPresent).toHaveBeenCalledWith(
+      profileId,
+      sessionId,
+    );
+    expect(artifacts.quarantineReview).toHaveBeenCalledWith(
+      profileId,
+      reviewId,
+    );
+    expect(value.preparation.prepare).toHaveBeenCalledOnce();
+    const prepared = await value.preparation.prepare.mock.results[0]?.value;
+    expect(prepared).toMatchObject({
+      _tag: "ok",
+      value: { session: { key: { headSha, baseSha } } },
+    });
   });
 
   it("quarantines a corrupt Review record and rebuilds the Review fresh", async () => {
@@ -411,7 +462,9 @@ describe("ReviewWorkbenchController", () => {
     // Exercises this file's own copy of recentWriteDedupeKey (duplicated
     // from review-refresh-service.ts): missing the LabelChange case here
     // would let an identical durable+requested pair through as two entries.
-    const observe = vi.fn(async () => ok({ _tag: "Reconciled", detectedAt: at }));
+    const observe = vi.fn(async () =>
+      ok({ _tag: "Reconciled", detectedAt: at }),
+    );
     const recentWrites = {
       load: vi.fn(async () =>
         ok([{ _tag: "LabelChange" as const, added: ["bug"], removed: [] }]),

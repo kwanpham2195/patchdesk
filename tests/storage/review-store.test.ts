@@ -38,6 +38,7 @@ const anotherRepo = must(parseGitHubRepoName("patchdesk-fork"));
 const prNumber = must(parsePullRequestNumber(42));
 const firstSha = must(parseGitSha("1".repeat(40)));
 const secondSha = must(parseGitSha("2".repeat(40)));
+const baseSha = must(parseGitSha("b".repeat(40)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const later = must(parseIsoTimestamp("2026-08-01T00:01:00.000Z"));
 const roots: string[] = [];
@@ -62,7 +63,7 @@ function makeReview(
   };
   return createReview({
     identity,
-    currentSessionId: createReviewSessionId({ ...identity, headSha }),
+    currentSessionId: createReviewSessionId({ ...identity, headSha, baseSha }),
     headSha,
     createdAt: now,
   });

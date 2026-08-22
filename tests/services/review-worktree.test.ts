@@ -68,7 +68,8 @@ describe("ReviewWorktreeService", () => {
       const prepared = await service.prepare({
         ...ids,
         sessionId:
-          "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never,
+          // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+          "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never,
         localPath: local,
       });
 
@@ -80,14 +81,14 @@ describe("ReviewWorktreeService", () => {
         git.calls.some(
           (argv) =>
             argv.slice(3).join(" ") ===
-            `fetch origin ${ids.baseSha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab/base --no-tags`,
+            `fetch origin ${ids.baseSha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/base --no-tags`,
         ),
       ).toBe(true);
       expect(
         git.calls.some(
           (argv) =>
             argv.slice(3).join(" ") ===
-            `fetch origin ${ids.sha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab/head --no-tags`,
+            `fetch origin ${ids.sha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/head --no-tags`,
         ),
       ).toBe(true);
       expect(git.calls.flat()).not.toContain("pull");
@@ -107,7 +108,8 @@ describe("ReviewWorktreeService", () => {
       ).prepare({
         ...ids,
         sessionId:
-          "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never,
+          // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+          "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never,
       });
       expect(prepared).toEqual({
         _tag: "ok",
@@ -129,7 +131,8 @@ describe("ReviewWorktreeService", () => {
         await service.cleanup({
           ...ids,
           sessionId:
-            "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never,
+            // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+            "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never,
           localPath: outside,
           targetPath: outside,
         }),
@@ -139,7 +142,8 @@ describe("ReviewWorktreeService", () => {
       });
       const target = paths.worktreeDirectory(
         ids.profileId,
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never,
+        // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never,
       );
       await mkdir(join(target, ".."), { recursive: true });
       await symlink(outside, target);
@@ -147,7 +151,8 @@ describe("ReviewWorktreeService", () => {
         await service.cleanup({
           ...ids,
           sessionId:
-            "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never,
+            // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+            "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never,
           localPath: outside,
           targetPath: target,
         }),
@@ -173,7 +178,8 @@ describe("ReviewWorktreeService", () => {
       const prepared = await service.prepare({
         ...ids,
         sessionId:
-          "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never,
+          // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+          "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never,
         localPath: local,
       });
       expect(prepared._tag).toBe("ok");
@@ -196,7 +202,8 @@ describe("ReviewWorktreeService", () => {
       const paths = PatchdeskPaths.forTest(root);
       const local = join(root, "repo");
       const sessionId =
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never;
+        // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
       const target = paths.worktreeDirectory(ids.profileId, sessionId);
       await mkdir(local);
       await mkdir(target, { recursive: true });

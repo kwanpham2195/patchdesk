@@ -111,7 +111,7 @@ function fake(responses: ReadonlyArray<FauxResponseStep>) {
 }
 
 const canonicalSessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__0123456789ab";
+  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__0123456789ab";
 
 describe("Flue 2 one-shot insight runtime", () => {
   it("uses start/init/dispatch/read and returns one strict data value without parsing prose", async () => {

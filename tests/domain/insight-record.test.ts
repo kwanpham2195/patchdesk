@@ -40,7 +40,7 @@ const reviewId = createReviewId({
 });
 const sessionId = must(
   parseReviewSessionId(
-    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__abcdef123456",
+    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__abcdef123456",
   ),
 );
 const headSha = must(parseGitSha("a".repeat(40)));
@@ -85,6 +85,7 @@ describe("InsightRecord", () => {
 
   it("preserves retained output while replacing, failing, or cancelling a run", () => {
     const retained = {
+      // SAFETY: This test-only run ID is an opaque fixture value for retained-output behavior.
       runId: "old" as never,
       revision: { sessionId, headSha, patchHash },
       generatedAt: now,

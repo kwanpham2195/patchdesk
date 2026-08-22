@@ -32,6 +32,10 @@ import type {
   ReviewSessionId,
   WorkspaceProfileId,
 } from "../domain/ids";
+import {
+  sameReviewRevision,
+  type ReviewRevision,
+} from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSessionPreparation } from "./review-session-preparation";
@@ -524,6 +528,9 @@ export class ReviewRefreshService {
           pr: pullRequest,
         });
         if (current._tag === "err") return err({ reason: "github_read" });
+        const currentRevision = reviewRevisionOf(current.value);
+        if (currentRevision === undefined)
+          return err({ reason: "github_read" });
         const [
           comments,
           commits,
@@ -583,7 +590,11 @@ export class ReviewRefreshService {
           pr: pullRequest,
         });
         if (verified._tag === "err") return err({ reason: "github_read" });
-        if (verified.value.headSha !== current.value.headSha)
+        const verifiedRevision = reviewRevisionOf(verified.value);
+        if (
+          verifiedRevision === undefined ||
+          !sameReviewRevision(verifiedRevision, currentRevision)
+        )
           return err({ reason: "head_changed" });
         const candidateBase = {
           schemaVersion: 1 as const,
@@ -645,7 +656,7 @@ export class ReviewRefreshService {
           // Decorative only; ignored.
         }
         let sessionId = review.currentSessionId;
-        if (current.value.headSha !== review.currentHeadSha) {
+        if (!sameReviewRevision(currentSession.value.key, currentRevision)) {
           const prepared = await this.dependencies.preparation.prepare({
             profileId: input.profileId,
             pullRequest,
@@ -655,7 +666,7 @@ export class ReviewRefreshService {
               prepared.error._tag,
               this.dependencies.log,
             );
-          if (prepared.value.session.key.headSha !== current.value.headSha)
+          if (!sameReviewRevision(prepared.value.session.key, currentRevision))
             return err({ reason: "head_changed" });
           const persisted = await this.dependencies.sessions.save(
             prepared.value.session,
@@ -788,6 +799,14 @@ export class ReviewRefreshService {
       operation,
     );
   }
+}
+
+function reviewRevisionOf(
+  input: Pick<PullRequestSummary, "headSha" | "baseSha">,
+): ReviewRevision | undefined {
+  return input.baseSha === undefined
+    ? undefined
+    : { headSha: input.headSha, baseSha: input.baseSha };
 }
 
 function fingerprintForDetection(

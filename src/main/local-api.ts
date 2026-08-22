@@ -80,6 +80,7 @@ import {
   type ReviewerListOutcome,
 } from "../services/reviewer-service";
 import type { ReviewWriteExpectation } from "../services/review-write-gate";
+import { mergePullRequest } from "../services/merge-service";
 import {
   PendingReviewService,
   projectPendingReview,
@@ -765,6 +766,7 @@ export async function startLocalApiServer(
           reviewWriteGate,
           reviews,
           reviewOperations,
+          mergePullRequest,
         );
   app.get("/v1/profiles", async (context) => {
     const result = await dashboard.listProfiles();

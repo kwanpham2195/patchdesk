@@ -48,13 +48,17 @@ const reviewRaw = {
 
 const startOperation: PendingReviewOperation = {
   _tag: "Start",
+  // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
   requestId: "pending-review-start-1" as never,
 };
 const addThreadOperation: PendingReviewOperation = {
   _tag: "AddThread",
+  // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
   requestId: "pending-review-add-1" as never,
+  // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
   reviewId: "PRR_kwDORJzsQM7e6QwJ" as never,
   anchor: {
+    // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
     path: "docs/docs.go" as never,
     startLine: 2908,
     line: 2908,
@@ -63,13 +67,17 @@ const addThreadOperation: PendingReviewOperation = {
 };
 const submitOperation: PendingReviewOperation = {
   _tag: "Submit",
+  // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
   requestId: "pending-review-submit-1" as never,
+  // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
   reviewId: "4891263665" as never,
   event: "COMMENT",
 };
 const discardOperation: PendingReviewOperation = {
   _tag: "Discard",
+  // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
   requestId: "pending-review-discard-1" as never,
+  // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
   reviewId: "4891263665" as never,
 };
 
@@ -109,6 +117,7 @@ describe("parsePendingReviewState", () => {
 
   it("rejects malformed identities, timestamps, and anchors", () => {
     expect(
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       parsePendingReviewState({ _tag: "None", extra: true } as never)._tag,
     ).toBe("err");
     expect(
@@ -186,9 +195,13 @@ describe("parsePendingReviewState", () => {
     if (parsed._tag === "ok") {
       expect(
         pendingReviewMatchesSession(parsed.value, {
+          // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           host: "github.com" as never,
+          // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           owner: "centraldigital" as never,
+          // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           repo: "patchdesk" as never,
+          // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           number: 80 as never,
         }),
       ).toBe(false);
@@ -218,6 +231,7 @@ describe("pending-review state transitions", () => {
     expect(
       canStartPendingReviewOperation(pending, {
         ...addThreadOperation,
+        // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
         reviewId: "PRR_other000000000" as never,
       }),
     ).toBe(false);
@@ -233,6 +247,7 @@ describe("pending-review state transitions", () => {
     const locked: PendingReviewState = {
       _tag: "OutcomeUnknown",
       operation: submitOperation,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       startedAt: "2026-08-09T11:35:00.000Z" as never,
     };
     expect(canStartPendingReviewOperation(locked, startOperation)).toBe(false);
@@ -245,6 +260,7 @@ describe("pending-review state transitions", () => {
     const begun = beginPendingReviewWrite(
       { _tag: "None" },
       startOperation,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       "2026-08-09T11:35:00.000Z" as never,
     );
     expect(begun).toMatchObject({
@@ -263,6 +279,7 @@ describe("pending-review state transitions", () => {
     const begun = beginPendingReviewWrite(
       { _tag: "Pending", review: review() },
       submitOperation,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       "2026-08-09T11:35:00.000Z" as never,
     );
     if (begun._tag !== "ok") throw new Error("fixture");
@@ -274,6 +291,7 @@ describe("pending-review state transitions", () => {
     const begun = beginPendingReviewWrite(
       { _tag: "Pending", review: review() },
       addThreadOperation,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       "2026-08-09T11:35:00.000Z" as never,
     );
     if (begun._tag !== "ok") throw new Error("fixture");
@@ -288,6 +306,7 @@ describe("pending-review state transitions", () => {
     const begun = beginPendingReviewWrite(
       { _tag: "None" },
       startOperation,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       "2026-08-09T11:35:00.000Z" as never,
     );
     if (begun._tag !== "ok") throw new Error("fixture");
@@ -302,11 +321,16 @@ describe("pending-review state transitions", () => {
 describe("unresolved Finding ownership", () => {
   it("round-trips a proven pending owner with one unresolved Finding", () => {
     const unresolvedFinding = {
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture" as never,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       findingId: "finding-1" as never,
       sessionId:
-        "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__0123456789ab" as never,
+        // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
+        "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       headSha: reviewRaw.headSha as never,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       patchHash: "a".repeat(64) as never,
     };
     expect(
@@ -329,6 +353,7 @@ describe("reconcilePendingReviewState", () => {
   const locked = (operation: PendingReviewOperation): PendingReviewState => ({
     _tag: "OutcomeUnknown",
     operation,
+    // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
     startedAt: "2026-08-09T11:35:00.000Z" as never,
   });
 
@@ -358,10 +383,15 @@ describe("reconcilePendingReviewState", () => {
     const findingStart: PendingReviewOperation = {
       ...startOperation,
       finding: {
+        // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
         analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture" as never,
+        // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
         findingId: "finding-1" as never,
+        // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
         sessionId: "session-a" as never,
+        // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
         headSha: "1".repeat(40) as never,
+        // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
         patchHash: "a".repeat(64) as never,
       },
     };
@@ -473,6 +503,7 @@ describe("adoptObservedPendingReview", () => {
       _tag: "OutcomeUnknown",
       review: review(),
       operation: addThreadOperation,
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       startedAt: "2026-08-09T11:35:00.000Z" as never,
     };
     expect(adoptObservedPendingReview(locked, { _tag: "None" })).toEqual(
@@ -487,7 +518,8 @@ describe("parseFindingReviewReceipts", () => {
     const threadId = owner.comments[0]?.threadId;
     if (threadId === undefined) throw new Error("fixture");
     const sessionId =
-      "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__0123456789ab" as never;
+      // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
+      "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never;
     const receipt = {
       analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture",
       findingId: "finding-1",
@@ -502,15 +534,18 @@ describe("parseFindingReviewReceipts", () => {
       expect(
         parseFindingReviewReceipts([receipt], {
           id: sessionId,
+          // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           headSha: reviewRaw.headSha as never,
           pendingReview: {
             _tag,
             review: owner,
             operation: {
               _tag: "Discard",
+              // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
               requestId: "pending-review-discard-1" as never,
               reviewId: owner.restId,
             },
+            // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
             startedAt: "2026-08-09T11:35:00.000Z" as never,
           },
         }),
@@ -532,7 +567,7 @@ describe("parseFindingReviewReceipts", () => {
             analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture",
             findingId: "finding-1",
             sessionId:
-              "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__0123456789ab",
+              "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab",
             headSha: reviewRaw.headSha,
             patchHash: "a".repeat(64),
             threadId,
@@ -541,7 +576,9 @@ describe("parseFindingReviewReceipts", () => {
           },
         ],
         {
-          id: "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__0123456789ab" as never,
+          // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
+          id: "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never,
+          // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           headSha: reviewRaw.headSha as never,
           pendingReview,
         },

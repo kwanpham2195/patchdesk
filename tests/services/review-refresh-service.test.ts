@@ -20,6 +20,7 @@ const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
   throw new Error("Invalid test fixture");
 };
+const changedBaseSha = must(parseGitSha("c".repeat(40)));
 describe("ReviewRefreshService", () => {
   it("rejects a refresh when the current session is missing before writing a candidate", async () => {
     const { service, calls } = createReviewRefreshFixture({
@@ -33,6 +34,98 @@ describe("ReviewRefreshService", () => {
       service.refresh({ profileId, reviewId: review.id }),
     ).resolves.toEqual({ _tag: "err", error: { reason: "not_found" } });
     expect(calls.savedCandidates).toHaveLength(0);
+  });
+
+  it("rejects a refresh when the first GitHub read has no base SHA", async () => {
+    const { baseSha: _baseSha, ...withoutBase } = snapshot.pullRequest;
+    const { service, calls } = createReviewRefreshFixture({
+      currentPullRequest: withoutBase,
+    });
+
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "github_read" } });
+    expect(calls.savedCandidates).toEqual([]);
+    expect(calls.savedReviews).toEqual([]);
+  });
+
+  it("keeps the current session when the immutable head/base pair is unchanged", async () => {
+    const { service, calls } = createReviewRefreshFixture();
+
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    expect(calls.preparations).toEqual([]);
+    expect(calls.savedSessions).toEqual([]);
+  });
+
+  it("prepares a distinct session when only the PR base changes", async () => {
+    const changedSnapshot = {
+      ...snapshot,
+      pullRequest: { ...snapshot.pullRequest, baseSha: changedBaseSha },
+    };
+    const preparedSession = createReviewRefreshSession({
+      identity,
+      snapshot: changedSnapshot,
+      createdAt: at,
+      headSha,
+    });
+    const { service, calls } = createReviewRefreshFixture({
+      session: {
+        ...createReviewRefreshFixtureValues().session,
+        pendingReview: { _tag: "None" },
+      },
+      currentPullRequest: changedSnapshot.pullRequest,
+      preparedSession,
+    });
+
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    expect(calls.preparations).toEqual(["prepare"]);
+    expect(calls.savedSessions).toHaveLength(1);
+    expect(calls.savedSessions[0]?.key.baseSha).toBe(changedBaseSha);
+    expect(calls.savedSessions[0]?.pendingReview).toBeUndefined();
+  });
+
+  it("rejects a base race between the first and final GitHub reads", async () => {
+    const changedSnapshot = {
+      ...snapshot,
+      pullRequest: { ...snapshot.pullRequest, baseSha: changedBaseSha },
+    };
+    const { service, calls } = createReviewRefreshFixture({
+      pullRequestResults: [
+        ok(snapshot.pullRequest),
+        ok(changedSnapshot.pullRequest),
+      ],
+    });
+
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "head_changed" } });
+    expect(calls.savedReviews).toEqual([]);
+    expect(calls.clearedRecentWrites).toEqual([]);
+  });
+
+  it("rejects a prepared session with the wrong base", async () => {
+    const changedSnapshot = {
+      ...snapshot,
+      pullRequest: { ...snapshot.pullRequest, baseSha: changedBaseSha },
+    };
+    const { service, calls } = createReviewRefreshFixture({
+      currentPullRequest: changedSnapshot.pullRequest,
+      preparedSession: createReviewRefreshSession({
+        identity,
+        snapshot,
+        createdAt: at,
+        headSha,
+      }),
+    });
+
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "head_changed" } });
+    expect(calls.savedReviews).toEqual([]);
   });
 
   it("rejects a refresh when the current session head no longer matches the Review", async () => {

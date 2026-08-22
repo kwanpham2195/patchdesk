@@ -48,6 +48,7 @@ async function fixture() {
     repo: must(parseGitHubRepoName("patchdesk")),
     prNumber: must(parsePullRequestNumber(42)),
     headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
+    baseSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
   });
   const sessionDirectory = paths.sessionDirectory(profileId, sessionId);
   const journalFile = join(sessionDirectory, "preparation.journal.json");
@@ -89,7 +90,15 @@ function persistedSession(subject: Awaited<ReturnType<typeof fixture>>) {
   const prNumber = must(parsePullRequestNumber(42));
   const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
   return createReviewSession({
-    key: { profileId: subject.profileId, host, owner, repo, prNumber, headSha },
+    key: {
+      profileId: subject.profileId,
+      host,
+      owner,
+      repo,
+      prNumber,
+      headSha,
+      baseSha: headSha,
+    },
     pr: {
       headSha,
       baseSha: headSha,
@@ -138,6 +147,7 @@ describe("ReviewPreparationJournal", () => {
       repo: must(repo),
       prNumber: must(prNumber),
       headSha: must(headSha),
+      baseSha: must(headSha),
     });
     const profile = must(profileId);
     const journal = await ReviewPreparationJournal.begin(

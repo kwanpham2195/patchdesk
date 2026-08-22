@@ -38,8 +38,8 @@ afterEach(async () => {
 });
 
 const current = {
-  schemaVersion: 5,
-  id: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__439aa21713b5",
+  schemaVersion: 6,
+  id: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__8492b7d8150b",
   key: {
     profileId: "cfw",
     host: "github.com",
@@ -47,6 +47,7 @@ const current = {
     repo: "patchdesk",
     prNumber: 42,
     headSha: "abcdef1234567890abcdef1234567890abcdef12",
+    baseSha: "1234567890abcdef1234567890abcdef12345678",
   },
   pr: {
     headSha: "abcdef1234567890abcdef1234567890abcdef12",
@@ -82,17 +83,28 @@ describe("ReviewSession storage", () => {
     expect(parseStoredReviewSession(receiptState)).toMatchObject({
       _tag: "ok",
       value: {
-        schemaVersion: 5,
+        schemaVersion: 6,
         pendingReview: { _tag: "None" },
         directSummaryReview: { _tag: "Confirmed" },
         createdAt: current.createdAt,
         updatedAt: current.updatedAt,
       },
     });
-    for (const schemaVersion of [2, 3, 4])
+    for (const schemaVersion of [2, 3, 4, 5])
       expect(
         parseStoredReviewSession({ ...current, schemaVersion }),
       ).toMatchObject({ _tag: "err" });
+  });
+
+  it("rejects a schema-5 session instead of migrating it", () => {
+    expect(parseStoredReviewSession({ ...current, schemaVersion: 5 })).toEqual({
+      _tag: "err",
+      error: {
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "invalid_stored_value",
+      },
+    });
   });
 
   it("rejects unknown current-schema fields instead of migrating removed state", () => {
@@ -110,9 +122,20 @@ describe("ReviewSession storage", () => {
     }
   });
 
+  it("rejects a key base that does not match the stored PR base", () => {
+    expect(
+      parseStoredReviewSession({
+        ...current,
+        pr: {
+          ...current.pr,
+          baseSha: "cccccccccccccccccccccccccccccccccccccccc",
+        },
+      }),
+    ).toMatchObject({ _tag: "err", error: { reason: "invalid_stored_value" } });
+  });
+
   it("round-trips a stored canonicalPatchHash", () => {
-    const canonicalPatchHash =
-      "625e3b6a" + "0".repeat(56);
+    const canonicalPatchHash = "625e3b6a" + "0".repeat(56);
     const parsed = parseStoredReviewSession({
       ...current,
       canonicalPatchHash,
@@ -153,6 +176,7 @@ describe("ReviewSession storage", () => {
       repo: must(parseGitHubRepoName("patchdesk")),
       prNumber: must(parsePullRequestNumber(42)),
       headSha: must(parseGitSha("a".repeat(40))),
+      baseSha: must(parseGitSha("b".repeat(40))),
     };
     const sessionId = createReviewSessionId(key);
     const canonicalPatchHash = must(
@@ -160,10 +184,13 @@ describe("ReviewSession storage", () => {
     );
     const session = createReviewSession({
       key,
-      pr: { headSha: key.headSha, isDraft: false, isOpen: true },
-      patchPath: must(
-        parseAbsolutePath(paths.patchFile(profileId, sessionId)),
-      ),
+      pr: {
+        headSha: key.headSha,
+        baseSha: key.baseSha,
+        isDraft: false,
+        isOpen: true,
+      },
+      patchPath: must(parseAbsolutePath(paths.patchFile(profileId, sessionId))),
       canonicalPatchHash,
       worktree: {
         path: must(

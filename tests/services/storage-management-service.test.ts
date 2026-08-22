@@ -4,7 +4,20 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import { createReviewSessionId, parseIsoTimestamp } from "../../src/domain/ids";
+import {
+  createReviewSessionId,
+  parseGitHubHost,
+  parseGitHubOwner,
+  parseGitHubRepoName,
+  parseIsoTimestamp,
+  parseGitSha,
+  parsePullRequestNumber,
+  parseWorkspaceProfileId,
+  type ReviewId,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
+} from "../../src/domain/ids";
+import type { InsightType } from "../../src/domain/insight-record";
 import type { ReviewSession } from "../../src/domain/review-session";
 import type { Result } from "../../src/domain/result";
 import { err, ok } from "../../src/domain/result";
@@ -12,32 +25,52 @@ import { ReviewPreparationJournal } from "../../src/services/review-preparation-
 import { StorageManagementService } from "../../src/services/storage-management-service";
 
 const roots: string[] = [];
-const profileId = "cfw" as never;
-const at = value(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
+const profileId = unwrap(parseWorkspaceProfileId("cfw"));
+const host = unwrap(parseGitHubHost("github.com"));
+const owner = unwrap(parseGitHubOwner("centraldigital"));
+const repo = unwrap(parseGitHubRepoName("patchdesk"));
+const prNumber = unwrap(parsePullRequestNumber(42));
+const headSha = unwrap(parseGitSha("a".repeat(40)));
+const baseSha = unwrap(parseGitSha("0".repeat(40)));
+const at = unwrap(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const sessionId = createReviewSessionId({
   profileId,
-  host: "github.com" as never,
-  owner: "centraldigital" as never,
-  repo: "patchdesk" as never,
-  prNumber: 42 as never,
-  headSha: "a".repeat(40) as never,
+  host,
+  owner,
+  repo,
+  prNumber,
+  headSha,
+  baseSha,
 });
-const session = {
+const session = reviewSessionFixture({
   id: sessionId,
   key: {
     profileId,
-    host: "github.com",
-    owner: "centraldigital",
-    repo: "patchdesk",
-    prNumber: 42,
-    headSha: "a".repeat(40),
+    host,
+    owner,
+    repo,
+    prNumber,
+    headSha,
+    baseSha,
   },
   updatedAt: at,
-} as unknown as ReviewSession;
+});
 
-function value<T>(result: Result<T, unknown>): T {
+function unwrap<T>(result: Result<T, unknown>): T {
   if (result._tag === "ok") return result.value;
   throw new Error("Invalid test fixture");
+}
+
+function reviewSessionFixture<T>(value: T): ReviewSession {
+  // SAFETY: these tests provide only the ReviewSession fields used by storage-management behavior.
+  return value as T & ReviewSession;
+}
+
+function storageDependencies<T>(
+  value: T,
+): ConstructorParameters<typeof StorageManagementService>[0] {
+  // SAFETY: the fixture implements every storage dependency exercised by this service test.
+  return value as T & ConstructorParameters<typeof StorageManagementService>[0];
 }
 
 afterEach(
@@ -50,7 +83,7 @@ afterEach(
 async function fixture(
   options: {
     readonly review?: unknown;
-    readonly reviewLoader?: (reviewId: string) => Result<unknown, unknown>;
+    readonly reviewLoader?: (reviewId: ReviewId) => Result<unknown, unknown>;
     readonly analysis?: unknown;
     readonly walkthrough?: unknown;
     readonly merge?: unknown;
@@ -71,16 +104,12 @@ async function fixture(
   const paths = PatchdeskPaths.forTest(root);
   const retained = {
     ...session,
-    ...(options.pending === undefined
-      ? {}
-      : { pendingReview: options.pending }),
-    ...(options.direct === undefined
-      ? {}
-      : { directSummaryReview: options.direct }),
+    pendingReview: options.pending,
+    directSummaryReview: options.direct,
   };
   let removeSessionErrors = options.removeSessionErrors ?? 0;
   const removeSession = vi.fn(
-    async (profile: unknown, sessionIdValue: unknown) => {
+    async (profile: WorkspaceProfileId, sessionIdValue: ReviewSessionId) => {
       void profile;
       void sessionIdValue;
       if (removeSessionErrors > 0) {
@@ -89,14 +118,14 @@ async function fixture(
           _tag: "StorageFailure",
           operation: "write",
           reason: "io",
-        } as never);
+        });
       }
       return ok(undefined);
     },
   );
   let removeQuarantinedErrors = options.removeQuarantinedErrors ?? 0;
   const removeQuarantined = vi.fn(
-    async (profile: unknown, entryNameValue: unknown) => {
+    async (profile: WorkspaceProfileId, entryNameValue: string) => {
       void profile;
       void entryNameValue;
       if (removeQuarantinedErrors > 0) {
@@ -105,12 +134,12 @@ async function fixture(
           _tag: "StorageFailure",
           operation: "write",
           reason: "io",
-        } as never);
+        });
       }
       return ok(undefined);
     },
   );
-  const service = new StorageManagementService({
+  const dependencies = {
     profiles: {
       async load() {
         return ok({ id: profileId });
@@ -128,28 +157,30 @@ async function fixture(
       },
     },
     reviews: {
-      async load(_profile: unknown, reviewId: unknown) {
+      async load(_profile: WorkspaceProfileId, reviewId: ReviewId) {
         if (options.reviewLoader !== undefined)
-          return options.reviewLoader(String(reviewId));
+          return options.reviewLoader(reviewId);
         return options.review === undefined
-          ? err({ reason: "not_found" } as never)
-          : ok(options.review as never);
+          ? err({ reason: "not_found" })
+          : ok(options.review);
       },
     },
     insights: {
-      async load(_profile: unknown, _review: unknown, type: string) {
+      async load(
+        _profile: WorkspaceProfileId,
+        _review: ReviewId,
+        type: InsightType,
+      ) {
         const value =
           type === "analysis" ? options.analysis : options.walkthrough;
-        return value === undefined
-          ? err({ reason: "not_found" } as never)
-          : ok(value as never);
+        return value === undefined ? err({ reason: "not_found" }) : ok(value);
       },
     },
     mergeOperations: {
       async load() {
         return options.merge === undefined
-          ? err({ reason: "not_found" } as never)
-          : ok(options.merge as never);
+          ? err({ reason: "not_found" })
+          : ok(options.merge);
       },
     },
     artifacts: {
@@ -159,10 +190,13 @@ async function fixture(
       async cacheBytes() {
         return ok(0);
       },
-      async removeSession(profile: unknown, session: unknown) {
+      async removeSession(
+        profile: WorkspaceProfileId,
+        session: ReviewSessionId,
+      ) {
         return await removeSession(profile, session);
       },
-      async removeQuarantined(profile: unknown, entryName: unknown) {
+      async removeQuarantined(profile: WorkspaceProfileId, entryName: string) {
         return await removeQuarantined(profile, entryName);
       },
       async cacheChildren() {
@@ -181,10 +215,11 @@ async function fixture(
     paths,
     git: {},
     now: () => at,
-    ...(options.diagnostics === undefined
-      ? {}
-      : { diagnostics: options.diagnostics }),
-  } as never);
+    diagnostics: options.diagnostics,
+  };
+  const service = new StorageManagementService(
+    storageDependencies(dependencies),
+  );
   return { service, removeSession, removeQuarantined, paths };
 }
 
@@ -274,10 +309,10 @@ describe("StorageManagementService", () => {
       currentSessionId: sessionId,
       status: { _tag: "Terminal", state: "merged" },
     };
-    const oldSession = {
+    const oldSession = reviewSessionFixture({
       ...session,
       updatedAt: "2026-07-01T00:00:00.000Z",
-    } as unknown as ReviewSession;
+    });
 
     it("removes a terminal session older than 14 days with its worktree", async () => {
       const value = await fixture({
@@ -337,10 +372,10 @@ describe("StorageManagementService", () => {
     it("keeps a session with a write in flight", async () => {
       const value = await fixture({
         sessions: [
-          {
+          reviewSessionFixture({
             ...oldSession,
             pendingReview: { _tag: "WriteInFlight" },
-          } as unknown as ReviewSession,
+          }),
         ],
       });
       await expect(
@@ -368,10 +403,10 @@ describe("StorageManagementService", () => {
     it("keeps a session exactly 14 days old", async () => {
       const value = await fixture({
         sessions: [
-          {
+          reviewSessionFixture({
             ...session,
             updatedAt: "2026-07-18T00:00:00.000Z",
-          } as unknown as ReviewSession,
+          }),
         ],
       });
       await expect(
@@ -398,7 +433,7 @@ describe("StorageManagementService", () => {
     it("continues past a running-state check failure", async () => {
       const value = await fixture({
         sessions: [oldSession],
-        reviewLoader: () => err({ reason: "io" } as never),
+        reviewLoader: () => err({ reason: "io" }),
       });
       await expect(
         value.service.sweepRetained(profileId, at),
@@ -455,25 +490,31 @@ describe("StorageManagementService", () => {
     it("keeps sweeping past per-item storage errors", async () => {
       const second = createReviewSessionId({
         profileId,
-        host: "github.com" as never,
-        owner: "centraldigital" as never,
-        repo: "patchdesk" as never,
-        prNumber: 43 as never,
-        headSha: "b".repeat(40) as never,
+        host,
+        owner,
+        repo,
+        prNumber: unwrap(parsePullRequestNumber(43)),
+        headSha: unwrap(parseGitSha("b".repeat(40))),
+        baseSha: unwrap(parseGitSha("c".repeat(40))),
       });
       const value = await fixture({
         removeSessionErrors: 1,
         sessions: [
           oldSession,
-          {
+          reviewSessionFixture({
             ...session,
             id: second,
-            key: { ...session.key, prNumber: 43, headSha: "b".repeat(40) },
+            key: {
+              ...session.key,
+              prNumber: 43,
+              headSha: "b".repeat(40),
+              baseSha: "c".repeat(40),
+            },
             updatedAt: "2026-07-01T00:00:00.000Z",
-          } as unknown as ReviewSession,
+          }),
         ],
         reviewLoader: () =>
-          ok({ status: { _tag: "Terminal", state: "merged" } } as never),
+          ok({ status: { _tag: "Terminal", state: "merged" } }),
       });
       await expect(
         value.service.sweepRetained(profileId, at),

@@ -52,7 +52,7 @@ const headSha = "a".repeat(40) as never;
 const at = "2026-08-09T11:35:00.000Z" as never;
 // SAFETY: a composite `host__owner__repo__pr-N__sha-...__hash` string already satisfies SessionId's runtime shape.
 const sessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca" as never;
+  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca" as never;
 const identity = {
   profileId,
   // SAFETY: a plain host string already satisfies GitHubHost's runtime shape.

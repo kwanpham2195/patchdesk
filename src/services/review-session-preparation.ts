@@ -22,6 +22,8 @@ import {
 import type { PullRequestRef } from "../domain/pull-request";
 import {
   createReviewSession,
+  sameReviewRevision,
+  type ReviewRevision,
   type ReviewSession,
 } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
@@ -70,25 +72,25 @@ export function normalizeReviewPatch(patch: string): string {
 /** Mutable draft of `ReviewWorktreeService.prepare`'s input, built in
  * statements so `localPath` is added only when present. */
 type MutableWorktreePrepareInput = {
-  -readonly [K in keyof Parameters<
-    ReviewWorktreeService["prepare"]
-  >[0]]: Parameters<ReviewWorktreeService["prepare"]>[0][K];
+  -readonly [
+    K in keyof Parameters<ReviewWorktreeService["prepare"]>[0]
+  ]: Parameters<ReviewWorktreeService["prepare"]>[0][K];
 };
 
 /** Mutable draft of a session's `prContext`, built in statements so
  * `description` is added only when present. */
 type MutablePrContext = {
-  -readonly [K in keyof NonNullable<
+  -readonly [K in keyof NonNullable<ReviewSession["prContext"]>]: NonNullable<
     ReviewSession["prContext"]
-  >]: NonNullable<ReviewSession["prContext"]>[K];
+  >[K];
 };
 
 /** Mutable draft of `createReviewSession`'s input, built in statements so
  * `canonicalPatchHash` is added only when present. */
 type MutableCreateReviewSessionInput = {
-  -readonly [K in keyof Parameters<
+  -readonly [K in keyof Parameters<typeof createReviewSession>[0]]: Parameters<
     typeof createReviewSession
-  >[0]]: Parameters<typeof createReviewSession>[0][K];
+  >[0][K];
 };
 
 /** Outcome of writing a session's on-disk artifacts: the canonical patch
@@ -142,13 +144,15 @@ export class ReviewSessionPreparation {
       pr: input.pullRequest,
     });
     if (current._tag === "err") return err({ _tag: "GitHubReadUnavailable" });
+    const revision = reviewRevisionOf(current.value);
+    if (revision === undefined) return err({ _tag: "PreparationUnavailable" });
     const sessionId = createReviewSessionId({
       profileId: input.profileId,
       host: input.pullRequest.host,
       owner: input.pullRequest.owner,
       repo: input.pullRequest.repo,
       prNumber: input.pullRequest.number,
-      headSha: current.value.headSha,
+      ...revision,
     });
     const run = (): Promise<
       Result<PreparedReviewSession, PrepareReviewSessionFailure>
@@ -157,12 +161,7 @@ export class ReviewSessionPreparation {
         input.profileId,
         sessionId,
         async () =>
-          await this.prepareCurrent(
-            input,
-            profile.value,
-            current.value.headSha,
-            sessionId,
-          ),
+          await this.prepareCurrent(input, profile.value, revision, sessionId),
       );
     return this.dependencies.lifecycleGate === undefined
       ? await run()
@@ -175,7 +174,7 @@ export class ReviewSessionPreparation {
   private async prepareCurrent(
     input: PrepareReviewSessionInput,
     profile: WorkspaceProfileConfig,
-    headSha: GitSha,
+    revision: ReviewRevision,
     sessionId: ReviewSessionId,
   ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
     const stored = await this.dependencies.sessions.load(
@@ -201,13 +200,19 @@ export class ReviewSessionPreparation {
     );
     if (started._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
-    return await this.commit(input, profile, headSha, sessionId, started.value);
+    return await this.commit(
+      input,
+      profile,
+      revision,
+      sessionId,
+      started.value,
+    );
   }
 
   private async commit(
     input: PrepareReviewSessionInput,
     profile: WorkspaceProfileConfig,
-    headSha: GitSha,
+    revision: ReviewRevision,
     sessionId: ReviewSessionId,
     journal: ReviewPreparationJournal,
   ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
@@ -217,10 +222,12 @@ export class ReviewSessionPreparation {
     });
     if (current._tag === "err")
       return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
-    if (current.value.headSha !== headSha)
+    const currentRevision = reviewRevisionOf(current.value);
+    if (
+      currentRevision === undefined ||
+      !sameReviewRevision(currentRevision, revision)
+    )
       return await this.abort(journal, { _tag: "HeadChanged" });
-    if (current.value.baseSha === undefined)
-      return await this.abort(journal, { _tag: "PreparationUnavailable" });
     const matchingRepo = profile.repos.find(
       (candidate) =>
         candidate.host === input.pullRequest.host &&
@@ -245,22 +252,21 @@ export class ReviewSessionPreparation {
       owner: input.pullRequest.owner,
       repo: input.pullRequest.repo,
       number: input.pullRequest.number,
-      baseSha: current.value.baseSha,
-      sha: headSha,
+      baseSha: revision.baseSha,
+      sha: revision.headSha,
       sessionId,
     };
     if (matchingRepo?.localPath !== undefined)
       worktreePrepareInput.localPath = matchingRepo.localPath;
-    const prepared = await this.dependencies.worktrees.prepare(
-      worktreePrepareInput,
-    );
+    const prepared =
+      await this.dependencies.worktrees.prepare(worktreePrepareInput);
     if (prepared._tag === "err")
       return await this.abort(journal, { _tag: "PreparationUnavailable" });
     const artifacts = await this.writeArtifacts({
       input,
       profile,
-      headSha,
-      baseSha: current.value.baseSha,
+      headSha: revision.headSha,
+      baseSha: revision.baseSha,
       sessionId,
       worktreePath,
       prepared: prepared.value,
@@ -273,7 +279,11 @@ export class ReviewSessionPreparation {
     });
     if (verified._tag === "err")
       return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
-    if (verified.value.headSha !== headSha)
+    const verifiedRevision = reviewRevisionOf(verified.value);
+    if (
+      verifiedRevision === undefined ||
+      !sameReviewRevision(verifiedRevision, revision)
+    )
       return await this.abort(journal, { _tag: "HeadChanged" });
     const patchPath = parseAbsolutePath(
       this.dependencies.paths.patchFile(input.profileId, sessionId),
@@ -299,17 +309,16 @@ export class ReviewSessionPreparation {
         owner: input.pullRequest.owner,
         repo: input.pullRequest.repo,
         prNumber: input.pullRequest.number,
-        headSha,
+        ...revision,
       },
       pr: {
-        headSha,
-        baseSha: current.value.baseSha,
+        ...revision,
         isDraft: current.value.isDraft,
         isOpen: current.value.isOpen,
       },
       prContext,
       patchPath: patchPath.value,
-      worktree: { path: parsedWorktreePath.value, headSha },
+      worktree: { path: parsedWorktreePath.value, headSha: revision.headSha },
       createdAt: this.dependencies.now(),
     };
     if (artifacts.value.canonicalPatchHash !== undefined)
@@ -412,7 +421,9 @@ export class ReviewSessionPreparation {
     // a PR must never become more fragile because of this proof (ADR 0026).
     let canonicalPatchHash: ContentHash | undefined;
     if (fetchedRefs === undefined) {
-      const parsed = parseContentHash(hashReviewArtifactContent(normalizedPatch));
+      const parsed = parseContentHash(
+        hashReviewArtifactContent(normalizedPatch),
+      );
       if (parsed._tag === "ok") canonicalPatchHash = parsed.value;
     } else if (canonical !== undefined && canonical._tag === "ok") {
       const parsed = parseContentHash(
@@ -505,6 +516,15 @@ export class ReviewSessionPreparation {
       if (this.locks.get(key) === current) this.locks.delete(key);
     }
   }
+}
+
+function reviewRevisionOf(input: {
+  readonly headSha: GitSha;
+  readonly baseSha?: GitSha;
+}): ReviewRevision | undefined {
+  return input.baseSha === undefined
+    ? undefined
+    : { headSha: input.headSha, baseSha: input.baseSha };
 }
 
 function changedFiles(diff: string): ReadonlyArray<string> {

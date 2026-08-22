@@ -18,9 +18,12 @@ describe("MergeOperationStore", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-merge-"));
     roots.push(root);
     const sessionId =
-      "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never;
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+      "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab" as never;
     const reviewId =
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const operation = {
       operationId: "merge-1",
       profileId: "cfw",
@@ -40,6 +43,7 @@ describe("MergeOperationStore", () => {
     } as never;
     const store = new MergeOperationStore(PatchdeskPaths.forTest(root));
     await expect(store.begin(operation)).resolves.toMatchObject({ _tag: "ok" });
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     await expect(store.load("cfw" as never, sessionId)).resolves.toMatchObject({
       _tag: "ok",
       value: { reviewId },
@@ -50,9 +54,12 @@ describe("MergeOperationStore", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-merge-"));
     roots.push(root);
     const sessionId =
-      "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never;
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+      "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab" as never;
     const reviewId =
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
       "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const operation = {
       operationId: "merge-1",
       profileId: "cfw",
@@ -74,6 +81,7 @@ describe("MergeOperationStore", () => {
     await expect(store.markOutcomeUnknown(operation)).resolves.toMatchObject({
       _tag: "ok",
     });
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const retry = {
       operationId: "merge-2",
       profileId: "cfw",
@@ -95,6 +103,7 @@ describe("MergeOperationStore", () => {
       _tag: "err",
       error: { _tag: "MergeOperationExists" },
     });
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     await expect(store.load("cfw" as never, sessionId)).resolves.toMatchObject({
       _tag: "ok",
       value: { operationId: "merge-1", state: { _tag: "OutcomeUnknown" } },

@@ -72,6 +72,7 @@ async function saveSession(input: {
     owner: must(parseGitHubOwner("centraldigital")),
     repo: must(parseGitHubRepoName("patchdesk")),
     prNumber: must(parsePullRequestNumber(input.number)),
+    baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
     headSha: must(
       parseGitSha(
         `${input.number.toString(16).padStart(2, "0")}${"a".repeat(38)}`,
@@ -79,6 +80,7 @@ async function saveSession(input: {
     ),
   };
   const storageId =
+    // SAFETY: This deterministic session ID is a well-formed fixture for the storage seam.
     `github.com__centraldigital__patchdesk__pr-${input.number}__sha-${input.number.toString(16).padStart(8, "0")}__0123456789ab` as never;
   const patchPath = must(
     parseAbsolutePath(input.paths.patchFile(key.profileId, storageId)),
@@ -216,9 +218,11 @@ describe("ReviewDiffSourceService", () => {
         repo: must(parseGitHubRepoName("patchdesk")),
         prNumber: must(parsePullRequestNumber(42)),
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
+        baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
       };
       const storageId =
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never;
+        // SAFETY: This deterministic session ID is a well-formed fixture for the storage seam.
+        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
       const patchPath = must(
         parseAbsolutePath(paths.patchFile(key.profileId, storageId)),
       );
@@ -357,9 +361,11 @@ describe("ReviewDiffSourceService", () => {
         repo: must(parseGitHubRepoName("patchdesk")),
         prNumber: must(parsePullRequestNumber(42)),
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
+        baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
       };
       const storageId =
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never;
+        // SAFETY: This deterministic session ID is a well-formed fixture for the storage seam.
+        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
       const patchPath = must(
         parseAbsolutePath(paths.patchFile(key.profileId, storageId)),
       );
@@ -438,9 +444,11 @@ describe("ReviewDiffSourceService", () => {
         repo: must(parseGitHubRepoName("patchdesk")),
         prNumber: must(parsePullRequestNumber(42)),
         headSha: must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
+        baseSha: must(parseGitSha("fedcba9876543210fedcba9876543210fedcba98")),
       };
       const sessionId =
-        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__0123456789ab" as never;
+        // SAFETY: This deterministic session ID is a well-formed fixture for the storage seam.
+        "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab" as never;
       const patchPath = must(
         parseAbsolutePath(paths.patchFile(key.profileId, sessionId)),
       );

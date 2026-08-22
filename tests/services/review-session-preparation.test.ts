@@ -41,6 +41,7 @@ const profileId = "cfw" as never;
 const headSha = value(parseGitSha("2".repeat(40)));
 const changedHeadSha = value(parseGitSha("3".repeat(40)));
 const baseSha = value(parseGitSha("1".repeat(40)));
+const changedBaseSha = value(parseGitSha("4".repeat(40)));
 const now = value(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 // SAFETY: these literals match their branded parsers' accepted formats
 // (a bare hostname, slug-shaped owner/repo names, and a positive integer).
@@ -79,6 +80,7 @@ function value<T>(result: Result<T, unknown>): T {
 type DiffInput = Parameters<GitHubReader["getPullRequestDiff"]>[0];
 
 type GithubReaderOptions = {
+  readonly bases?: ReadonlyArray<GitSha | undefined>;
   readonly onDiff?: () => Promise<void>;
   /** Chooses the returned diff text per call; defaults to always `patch`. */
   readonly diffFor?: (input: DiffInput) => string;
@@ -99,21 +101,23 @@ function github(
   let getPullRequest = 0;
   let diffs = 0;
   const diffCalls: DiffInput[] = [];
-  const summary = (head: GitSha) => ({
-    ref: pullRequest,
-    title: "Fixture review",
-    author: "fixture",
-    headBranch: "feature/review",
-    baseBranch: "sit",
-    headSha: head,
-    baseSha,
-    isDraft: false,
-    isOpen: true,
-    reviewState: "none" as const,
-    mergeability: "unknown" as const,
-    labels: [],
-    updatedAt: now,
-  });
+  const summary = (head: GitSha, base: GitSha | undefined) => {
+    const result = {
+      ref: pullRequest,
+      title: "Fixture review",
+      author: "fixture",
+      headBranch: "feature/review",
+      baseBranch: "sit",
+      headSha: head,
+      isDraft: false,
+      isOpen: true,
+      reviewState: "none" as const,
+      mergeability: "unknown" as const,
+      labels: [],
+      updatedAt: now,
+    };
+    return base === undefined ? result : { ...result, baseSha: base };
+  };
   return {
     counts: {
       get diffs() {
@@ -122,9 +126,14 @@ function github(
     },
     diffCalls,
     async getPullRequest() {
-      const head = heads[Math.min(getPullRequest, heads.length - 1)] ?? headSha;
+      const readIndex = getPullRequest;
+      const head = heads[Math.min(readIndex, heads.length - 1)] ?? headSha;
+      const base =
+        options.bases === undefined
+          ? baseSha
+          : options.bases[Math.min(readIndex, options.bases.length - 1)];
       getPullRequest += 1;
-      return ok(summary(head));
+      return ok(summary(head, base));
     },
     async getPullRequestComments() {
       return ok({ threads: [], complete: true });
@@ -176,6 +185,7 @@ function git(): GitReadExecutor & {
 async function setup(
   options: GithubReaderOptions & {
     readonly heads?: ReadonlyArray<GitSha>;
+    readonly bases?: ReadonlyArray<GitSha | undefined>;
     readonly localPath?: string;
   } = {},
 ) {
@@ -208,6 +218,7 @@ async function setup(
   await profiles.save(profile);
   const sessions = new ReviewSessionStore(paths);
   const readerOptions: MutableGithubReaderOptions = {};
+  if (options.bases !== undefined) readerOptions.bases = options.bases;
   if (options.onDiff !== undefined) readerOptions.onDiff = options.onDiff;
   if (options.diffFor !== undefined) readerOptions.diffFor = options.diffFor;
   if (options.diffResult !== undefined)
@@ -236,6 +247,24 @@ async function present(path: string): Promise<boolean> {
 }
 
 describe("ReviewSessionPreparation", () => {
+  it("rejects a first PR read without a base before creating an ID or journal", async () => {
+    const fixture = await setup({ bases: [undefined] });
+    const result = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "PreparationUnavailable" },
+    });
+    expect(fixture.reader.counts.diffs).toBe(0);
+    await expect(fixture.sessions.listSessions(profileId)).resolves.toEqual({
+      _tag: "ok",
+      value: [],
+    });
+  });
+
   it("prepares complete immutable patch, context, review-input, and debug artifacts", async () => {
     const fixture = await setup();
     const prepared = await fixture.preparation.prepare({
@@ -331,7 +360,15 @@ describe("ReviewSessionPreparation", () => {
       profileId,
       pullRequest,
     });
-    const sessionId = `github.com__centraldigital__patchdesk__pr-42__sha-${headSha.slice(0, 8)}`;
+    const sessionId = createReviewSessionId({
+      profileId,
+      host: pullRequest.host,
+      owner: pullRequest.owner,
+      repo: pullRequest.repo,
+      prNumber: pullRequest.number,
+      headSha,
+      baseSha,
+    });
 
     expect(result).toEqual({ _tag: "err", error: { _tag: "HeadChanged" } });
     // SAFETY: this literal is only used as a stable path segment for the
@@ -351,6 +388,36 @@ describe("ReviewSessionPreparation", () => {
     ).toBe(false);
   });
 
+  it("rejects a base race and cleans the preparation journal and artifacts", async () => {
+    const fixture = await setup({ bases: [baseSha, changedBaseSha] });
+    const result = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+    const sessionId = createReviewSessionId({
+      profileId,
+      host: pullRequest.host,
+      owner: pullRequest.owner,
+      repo: pullRequest.repo,
+      prNumber: pullRequest.number,
+      headSha,
+      baseSha,
+    });
+
+    expect(result).toEqual({ _tag: "err", error: { _tag: "HeadChanged" } });
+    expect(await present(fixture.paths.sessionFile(profileId, sessionId))).toBe(
+      false,
+    );
+    expect(
+      await present(
+        join(
+          fixture.paths.sessionDirectory(profileId, sessionId),
+          "preparation.journal.json",
+        ),
+      ),
+    ).toBe(false);
+  });
+
   it("quarantines an invalid current session before preparing the exact replacement", async () => {
     const fixture = await setup();
     const sessionId = createReviewSessionId({
@@ -360,6 +427,7 @@ describe("ReviewSessionPreparation", () => {
       repo: pullRequest.repo,
       prNumber: pullRequest.number,
       headSha,
+      baseSha,
     });
     await mkdir(fixture.paths.sessionDirectory(profileId, sessionId), {
       recursive: true,
@@ -394,7 +462,9 @@ describe("ReviewSessionPreparation", () => {
       value: { disposition: "prepared" },
     });
     if (prepared._tag === "err") return;
-    expect(prepared.value.session.canonicalPatchHash).toBe(contentHashOf(patch));
+    expect(prepared.value.session.canonicalPatchHash).toBe(
+      contentHashOf(patch),
+    );
   });
 
   it("stores the canonical hash from GitHub's compare rendering in worktree mode, never the local worktree rendering", async () => {

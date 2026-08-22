@@ -55,22 +55,22 @@ The canonical hash is persisted on the session record and compared
 stored-vs-fresh, exactly like `headSha` and `baseSha`. Identity is no
 longer re-derived from a local artifact.
 
-The field is added additively and optionally, with no `schemaVersion`
-bump; the session schema stays `v.literal(5)` in
-`src/adapters/storage/review-session-store.ts`. Bumping it would
-invalidate existing sessions, and per the ADR "Recover from invalid
-local data by rebuilding" an invalid session is moved aside and
-re-prepared — which destroys the `pendingReview` draft state stored on
-that record. Losing a maintainer's unsent draft comments to fix a
-false banner is not an acceptable trade.
+Session identity embeds the immutable head/base pair. The session schema
+is now `v.literal(6)` in `src/adapters/storage/review-session-store.ts`.
+This intentionally invalidates schema-5 sessions while Patchdesk is
+unsettled; the maintainer accepts loss of unsent local review state for
+this upgrade. Invalid records are quarantined and re-prepared through
+the existing recovery path. The Review must reopen successfully, but
+new revision preparation never copies pending-review, receipt, or
+direct-summary draft state.
 
 A session with no stored hash is compared on the SHA pair alone rather
 than reporting a change. This is sound because `headSha` and `baseSha`
 are still stored and content-addressed, so a genuine revision change
 is caught by the SHA pair whether or not a hash is present. Nothing is
-backfilled onto the session: identity naturally gains a hash when a
-new revision produces a new session, since session identity embeds
-the head SHA.
+backfilled onto the session: the canonical hash remains separate
+stored proof, while session identity embeds the full immutable
+head/base pair. A new revision always gets a new schema-6 session.
 
 ## Rejected alternatives
 

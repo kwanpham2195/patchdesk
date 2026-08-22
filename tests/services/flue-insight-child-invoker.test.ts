@@ -9,7 +9,7 @@ import {
 import { FlueInsightChildInvoker } from "../../src/services/flue-insight-child-invoker";
 
 const sessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__0123456789ab";
+  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__0123456789ab";
 const walkthrough = {
   citationVersion: 2,
   title: "Walkthrough",

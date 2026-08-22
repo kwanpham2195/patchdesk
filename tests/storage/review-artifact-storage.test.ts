@@ -9,11 +9,15 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { writeAtomicJson } from "../../src/adapters/storage/json-file";
 
 const roots: string[] = [];
+// SAFETY: This literal is a well-formed WorkspaceProfileId fixture.
 const profileId = "cfw" as never;
 const reviewId =
+  // SAFETY: This literal is a well-formed ReviewId fixture.
   "github.com__centraldigital__patchdesk__pr-42__review-6bc2fb3696aa" as never;
 const sessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca" as never;
+  // SAFETY: This literal is a well-formed head/base-aware ReviewSessionId fixture.
+  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca" as never;
+// SAFETY: This fixed ISO timestamp is a valid test value for the branded timestamp field.
 const at = "2026-08-14T00:00:00.000Z" as never;
 
 afterEach(async () => {

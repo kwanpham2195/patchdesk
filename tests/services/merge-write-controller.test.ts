@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../../src/services/merge-service", () => ({
-  mergePullRequest: vi.fn(),
-}));
-
 import {
   parseContentHash,
   parseGitSha,
@@ -14,7 +10,7 @@ import {
 } from "../../src/domain/ids";
 import { err, ok, type Result } from "../../src/domain/result";
 import { MergeWriteController } from "../../src/services/merge-write-controller";
-import { mergePullRequest } from "../../src/services/merge-service";
+import type { mergePullRequest } from "../../src/services/merge-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
 const profileId = value(parseWorkspaceProfileId("cfw"));
@@ -25,13 +21,13 @@ const reviewId = value(
 );
 const sessionId = value(
   parseReviewSessionId(
-    "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__b48f8e2e76ca",
+    "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca",
   ),
 );
 const headSha = value(parseGitSha("a".repeat(40)));
 const patchHash = value(parseContentHash("b".repeat(64)));
 const at = value(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
-const mockedMerge = vi.mocked(mergePullRequest);
+type MergeResult = Awaited<ReturnType<typeof mergePullRequest>>;
 
 function value<T>(result: Result<T, unknown>): T {
   if (result._tag === "ok") return result.value;
@@ -59,6 +55,7 @@ function fixture(
   options: {
     readonly fresh?: ReturnType<typeof ok> | ReturnType<typeof err>;
     readonly saveReview?: ReturnType<typeof ok> | ReturnType<typeof err>;
+    readonly merge?: MergeResult;
   } = {},
 ) {
   const operations = {
@@ -68,6 +65,7 @@ function fixture(
     reject: vi.fn(async () => ok(undefined)),
     removeAfterSessionReceipt: vi.fn(async () => ok(undefined)),
   };
+  // SAFETY: this fixture supplies the review fields consumed by the controller's terminal-state path.
   const review = {
     id: reviewId,
     updatedAt: at,
@@ -78,6 +76,7 @@ function fixture(
     load: vi.fn(async () => ok(review)),
     save: vi.fn(async () => options.saveReview ?? ok(undefined)),
   };
+  // SAFETY: this fixture supplies the session fields consumed by the controller's merge request.
   const session = {
     id: sessionId,
     key: {
@@ -97,16 +96,28 @@ function fixture(
     ),
   };
   const coordinator = new ReviewOperationCoordinator();
+  const merge = vi.fn(
+    async (
+      _input: Parameters<typeof mergePullRequest>[0],
+    ): Promise<MergeResult> =>
+      options.merge ?? err({ _tag: "GitHubMergeOutcomeUnknown" }),
+  );
+  // SAFETY: the fake GitHub gateway is unused because the injected merge executor owns the remote seam.
   const controller = new MergeWriteController(
+    // SAFETY: the merge controller test reaches only the injected merge executor, not the gateway shape.
     {} as never,
     ["squash"],
     () => at,
+    // SAFETY: these fakes implement the operation methods exercised by this controller test.
     operations as never,
+    // SAFETY: this fake returns the fresh session/review fixture above for the tested gate path.
     writeGate as never,
+    // SAFETY: this fake implements the review load/save methods exercised by the terminal path.
     reviews as never,
     coordinator,
+    merge,
   );
-  return { controller, operations, reviews, writeGate, coordinator };
+  return { controller, operations, reviews, writeGate, coordinator, merge };
 }
 
 describe("MergeWriteController", () => {
@@ -144,14 +155,13 @@ describe("MergeWriteController", () => {
       }),
     ).resolves.toEqual({ _tag: "err", error: { reason: "stale" } });
     expect(value.operations.begin).not.toHaveBeenCalled();
-    expect(mockedMerge).not.toHaveBeenCalled();
+    expect(value.merge).not.toHaveBeenCalled();
   });
 
   it("keeps uncertain remote outcomes durable and does not reject or replay them", async () => {
-    mockedMerge.mockResolvedValueOnce(
-      err({ _tag: "GitHubMergeOutcomeUnknown" }),
-    );
-    const value = fixture();
+    const value = fixture({
+      merge: err({ _tag: "GitHubMergeOutcomeUnknown" }),
+    });
     await expect(value.controller.merge(request())).resolves.toEqual({
       _tag: "err",
       error: { reason: "merge_outcome_unknown" },
@@ -163,10 +173,16 @@ describe("MergeWriteController", () => {
   });
 
   it("records finite rejection but retains no uncertain evidence", async () => {
-    mockedMerge.mockResolvedValueOnce(
-      err({ _tag: "MergeBlocked", readiness: {} } as never),
-    );
-    const value = fixture();
+    const value = fixture({
+      merge: err({
+        _tag: "MergeBlocked",
+        readiness: {
+          _tag: "Blocked",
+          blockers: ["merge_blocked"],
+          warnings: [],
+        },
+      }),
+    });
     await expect(value.controller.merge(request())).resolves.toEqual({
       _tag: "err",
       error: { reason: "merge_blocked" },
@@ -180,13 +196,12 @@ describe("MergeWriteController", () => {
   });
 
   it("saves a terminal Review before deleting confirmed merge evidence", async () => {
-    mockedMerge.mockResolvedValueOnce(
-      ok({
+    const value = fixture({
+      merge: ok({
         readiness: { _tag: "Ready", blockers: [], warnings: [] },
         mergeCommitSha: headSha,
       }),
-    );
-    const value = fixture();
+    });
     await expect(value.controller.merge(request())).resolves.toMatchObject({
       _tag: "ok",
       value: { review: { status: { _tag: "Terminal", state: "merged" } } },
@@ -199,10 +214,11 @@ describe("MergeWriteController", () => {
   });
 
   it("retains confirmed evidence if terminal Review persistence fails", async () => {
-    mockedMerge.mockResolvedValueOnce(
-      ok({ readiness: { _tag: "Ready", blockers: [], warnings: [] } }),
-    );
-    const value = fixture({ saveReview: err({ reason: "io" } as never) });
+    const value = fixture({
+      merge: ok({ readiness: { _tag: "Ready", blockers: [], warnings: [] } }),
+      // SAFETY: the controller maps this fixture-only storage error to merge_outcome_unknown.
+      saveReview: err({ reason: "io" } as never),
+    });
     await expect(value.controller.merge(request())).resolves.toEqual({
       _tag: "err",
       error: { reason: "merge_outcome_unknown" },

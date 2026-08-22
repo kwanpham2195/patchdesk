@@ -44,6 +44,7 @@ const key = {
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
   headSha: must(parseGitSha("1".repeat(40))),
+  baseSha: must(parseGitSha("0".repeat(40))),
 };
 const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const roots: string[] = [];
@@ -78,13 +79,20 @@ describe("ReviewWriteGate", () => {
     await profiles.save(profile);
     const session = createReviewSession({
       key,
-      pr: { headSha: key.headSha, isDraft: false, isOpen: true },
+      pr: {
+        headSha: key.headSha,
+        baseSha: key.baseSha,
+        isDraft: false,
+        isOpen: true,
+      },
       patchPath: must(
+        // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
         parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never)),
       ),
       worktree: {
         path: must(
           parseAbsolutePath(
+            // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
             paths.worktreeDirectory(profileId, "placeholder" as never),
           ),
         ),
@@ -170,6 +178,7 @@ describe("ReviewWriteGate", () => {
       freshness: { _tag: "Fresh" as const },
     };
     await reviews.save(review);
+    // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const gate = new ReviewWriteGate(profiles, reviews, sessions, remote, {
       load: async () => ok(undefined),
     } as never);
@@ -199,6 +208,7 @@ describe("ReviewWriteGate", () => {
           ...review.representedRemote,
           snapshotHash: mismatched.value.snapshotHash,
         },
+        // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
         updatedAt: "2026-08-01T00:00:00.001Z" as never,
       },
       review.updatedAt,
@@ -212,6 +222,7 @@ describe("ReviewWriteGate", () => {
       {
         ...mismatchedReview.value,
         representedRemote: review.representedRemote,
+        // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
         updatedAt: "2026-08-01T00:00:00.002Z" as never,
       },
       mismatchedReview.value.updatedAt,
