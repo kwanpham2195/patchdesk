@@ -11,7 +11,6 @@ import {
   parseRepoRelativePath,
   type GitHubThreadId,
 } from "../../../domain/ids";
-import type { RecentReviewWrite } from "../../../domain/recent-review-write";
 import { renderAnalysisReviewSummary } from "../analysis-review-summary";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import { AnalysisReader } from "../components/analysis-reader";
@@ -75,7 +74,6 @@ import type { InsightFailureCategory } from "../../../domain/insight-record";
 import type { PullRequestRef } from "../../../domain/pull-request";
 
 import { useInsightRun } from "../hooks/use-insight-run";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 import {
   parseAssigneeReceipt,
@@ -83,6 +81,12 @@ import {
   parseLabelReceipt,
   parseReviewerReceipt,
 } from "./review-workbench-receipts";
+import {
+  useReviewObservation,
+  type ReviewWorkbenchPatch,
+} from "./use-review-observation";
+
+export type { ReviewWorkbenchPatch } from "./use-review-observation";
 
 const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -211,13 +215,6 @@ function pullRequestExternalRef(
   };
 }
 
-export type ReviewWorkbenchPatch = Omit<
-  Partial<WorkbenchResponse>,
-  "insights"
-> & {
-  readonly insights?: Partial<WorkbenchResponse["insights"]>;
-};
-
 export type ReviewWorkbenchFlowProps = {
   readonly workbench: WorkbenchResponse;
   readonly initialSection?: "diff" | "checks";
@@ -257,315 +254,20 @@ export function ReviewWorkbenchFlow({
 }: ReviewWorkbenchFlowProps): React.JSX.Element {
   void initialSection;
   void onNavigate;
-  // Detector cadence: one initial check when an open Review becomes visible,
-  // then at most every 90 seconds while visible and idle, plus one debounced
-  // check after the app regains focus. Direct conversation receipts only
-  // append their typed journal; they never trigger or reset a detection pass.
-  const DETECT_INTERVAL_MS = 90_000;
-  const FOCUS_DETECT_DEBOUNCE_MS = 1_500;
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshError, setRefreshError] = useState(false);
-  // Typed comment/thread-state writes made by this window since the last
-  // projection replace. The detector excludes them so own writes never read as
-  // remote updates; cleared once a refresh/reload re-baselines the snapshot.
-  const [recentWrites, setRecentWrites] = useState<
-    ReadonlyArray<RecentReviewWrite>
-  >([]);
-  const replaceWorkbench = useCallback(
-    (next: WorkbenchResponse): void => {
-      setRecentWrites([]);
-      onWorkbenchReplace(next);
-    },
-    [onWorkbenchReplace],
-  );
-  const replaceWorkbenchRef = useLatestCommitted(replaceWorkbench);
-  // Freshness value the projection had before detection patched it stale, so a
-  // later cleared flag can restore writes instead of leaving them blocked.
-  const [detectedStaleFreshness, setDetectedStaleFreshness] = useState<
-    "fresh" | "not_refreshed" | "unavailable" | undefined
-  >(undefined);
-  // Latest values live in refs so scheduled detector work uses the current
-  // journal and projection without recreating the interval on every write.
-  const workbenchRef = useLatestCommitted(workbench);
-  const recentWritesRef = useLatestCommitted(recentWrites);
-  const detectedStaleFreshnessRef = useLatestCommitted(detectedStaleFreshness);
-  const refreshingRef = useLatestCommitted(refreshing);
-  const [initialSnapshotKey] = useState(() => snapshotKey(workbench));
-  const snapshotKeyRef = useRef(initialSnapshotKey);
-  const generationRef = useRef(0);
-  const detectInFlightRef = useRef(false);
-  // Direct commands may legitimately overlap; detection pauses only while the
-  // count is non-zero, so one completion cannot resume it mid-command.
-  const commandInFlightCountRef = useRef(0);
-  const focusTimerRef = useRef<number | undefined>(undefined);
-  // App passes onWorkbenchPatch as an inline function, so its identity changes
-  // on every parent render. Detector work must read the latest callback through
-  // a ref instead of depending on the prop, or any parent render would restart
-  // the scheduling effect and immediately send another request.
-  const onWorkbenchPatchRef = useLatestCommitted(onWorkbenchPatch);
-  // Synchronous count of explicit refreshes whose network request is still
-  // pending. Detection must not start while any refresh (toolbar or
-  // post-publication) is in flight; the toolbar-only React state cannot be the
-  // protocol guard because publication refresh never sets it.
-  const refreshInFlightCountRef = useRef(0);
-  // Unmount invalidates any detector request that is still awaiting the bridge.
-  // The generation check then rejects its late result without touching the
-  // callbacks owned by the closed workbench.
-  useEffect(() => {
-    return () => {
-      generationRef.current += 1;
-    };
-  }, []);
-  // Each replaced projection gets a new observation generation; a detector
-  // response that began under an older generation can never write stale
-  // freshness into the newly refreshed Review.
-  useEffect(() => {
-    const key = snapshotKey(workbench);
-    if (key !== snapshotKeyRef.current) {
-      snapshotKeyRef.current = key;
-      generationRef.current += 1;
-    }
-  }, [workbench]);
-  const runDetect = useCallback(async (): Promise<void> => {
-    const wb = workbenchRef.current;
-    if (wb.review.status !== "open") return;
-    if (document.visibilityState !== "visible") return;
-    if (
-      detectInFlightRef.current ||
-      commandInFlightCountRef.current > 0 ||
-      refreshInFlightCountRef.current > 0
-    )
-      return;
-    detectInFlightRef.current = true;
-    const generation = generationRef.current;
-    const key = snapshotKey(wb);
-    try {
-      const journal = recentWritesRef.current;
-      const detectUpdatesBody = {
-        profileId: wb.session.key.profileId,
-        reviewId: wb.review.id,
-      };
-      const value = await requestJson("/v1/reviews/detect-updates", {
-        method: "POST",
-        body:
-          journal.length === 0
-            ? detectUpdatesBody
-            : { ...detectUpdatesBody, recentWrites: journal },
-      });
-      // A detector that began before an explicit refresh replaced the
-      // projection must not reapply its result to the new snapshot.
-      const current = workbenchRef.current;
-      if (generationRef.current !== generation || snapshotKey(current) !== key)
-        return;
-      const observation = isReviewObservation(value);
-      if (observation !== undefined) {
-        if (observation._tag === "Reconciled") {
-          const next = parseWorkbenchResponse(observation.projection);
-          if (
-            next !== undefined &&
-            next.review.id === current.review.id &&
-            next.session.id === current.session.id &&
-            next.revision.reviewedHeadSha === current.revision.reviewedHeadSha
-          ) {
-            replaceWorkbenchRef.current(next);
-            setDetectedStaleFreshness(undefined);
-          }
-        } else if (observation._tag === "RevisionChanged") {
-          onWorkbenchPatchRef.current({
-            revision: { ...current.revision, freshness: "updates_available" },
-          });
-        } else if (observation._tag === "Unavailable") {
-          onWorkbenchPatchRef.current({
-            revision: { ...current.revision, freshness: "unavailable" },
-          });
-        } else if (observation._tag === "Terminal") {
-          onWorkbenchPatchRef.current({
-            review: { ...current.review, status: observation.status },
-          });
-        }
-        return;
-      }
-      if (isDetection(value) && value.updatesAvailable) {
-        // A stale value is written only on the transition into updates_available:
-        // re-writing the identical freshness on an already-stale projection is
-        // what turned an App render into another detector request.
-        if (current.revision.freshness !== "updates_available") {
-          if (detectedStaleFreshnessRef.current === undefined)
-            setDetectedStaleFreshness(current.revision.freshness);
-          onWorkbenchPatchRef.current({
-            revision: { ...current.revision, freshness: "updates_available" },
-          });
-        }
-      } else if (
-        isDetection(value) &&
-        !value.updatesAvailable &&
-        current.revision.freshness === "updates_available"
-      ) {
-        // Detection is authoritative: a cleared flag means the stale patch was
-        // a phantom (or the remote caught up), so restore writes.
-        onWorkbenchPatchRef.current({
-          revision: {
-            ...current.revision,
-            freshness: detectedStaleFreshnessRef.current ?? "fresh",
-          },
-        });
-        setDetectedStaleFreshness(undefined);
-      }
-    } catch {
-      // Detection is advisory and never replaces the represented snapshot.
-    } finally {
-      detectInFlightRef.current = false;
-    }
-  }, [
-    detectedStaleFreshnessRef,
-    onWorkbenchPatchRef,
-    recentWritesRef,
-    replaceWorkbenchRef,
-    workbenchRef,
-  ]);
-
-  useEffect(() => {
-    void runDetect();
-    if (workbench.review.status !== "open") return undefined;
-    const timer = window.setInterval(() => {
-      // If the interval fires first, the pending focus check is dropped so
-      // only one request runs; the in-flight guard covers the reverse order.
-      if (focusTimerRef.current !== undefined) {
-        window.clearTimeout(focusTimerRef.current);
-        focusTimerRef.current = undefined;
-      }
-      void runDetect();
-    }, DETECT_INTERVAL_MS);
-    // One shared debounced scheduler: an app return commonly emits both
-    // visibilitychange and focus, and the product contract is a single
-    // delayed observation, not one per browser event.
-    const scheduleFocusDetect = (): void => {
-      if (document.visibilityState !== "visible") return;
-      if (focusTimerRef.current !== undefined)
-        window.clearTimeout(focusTimerRef.current);
-      focusTimerRef.current = window.setTimeout(() => {
-        focusTimerRef.current = undefined;
-        void runDetect();
-      }, FOCUS_DETECT_DEBOUNCE_MS);
-    };
-    const onFocus = (): void => scheduleFocusDetect();
-    const onVisibility = (): void => scheduleFocusDetect();
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
-      if (focusTimerRef.current !== undefined)
-        window.clearTimeout(focusTimerRef.current);
-      focusTimerRef.current = undefined;
-    };
-  }, [runDetect, workbench.review.status]);
-
-  // Every explicit refresh invalidates in-flight detector work before the
-  // network request begins: a stale detector response must never reapply
-  // freshness into the newly replaced projection.
-  const requestRefresh = useCallback(async (): Promise<WorkbenchResponse> => {
-    const wb = workbenchRef.current;
-    generationRef.current += 1;
-    // Generation rejects detector responses that began before refresh; the
-    // in-flight count additionally stops NEW detector work for the whole
-    // network lifetime, including the post-publication path that never sets
-    // the toolbar refreshing state.
-    refreshInFlightCountRef.current += 1;
-    try {
-      const value = await requestJson("/v1/reviews/refresh", {
-        method: "POST",
-        body: {
-          profileId: wb.session.key.profileId,
-          reviewId: wb.review.id,
-        },
-      });
-      const parsed = parseWorkbenchResponse(value);
-      if (parsed === undefined)
-        throw new Error("Invalid Review refresh response");
-      setDetectedStaleFreshness(undefined);
-      replaceWorkbench(parsed);
-      return parsed;
-    } finally {
-      refreshInFlightCountRef.current -= 1;
-    }
-  }, [replaceWorkbench, workbenchRef]);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    const wb = workbenchRef.current;
-    if (wb.review.status !== "open" || refreshingRef.current) return;
-    setRefreshing(true);
-    setRefreshError(false);
-    try {
-      await requestRefresh();
-    } catch {
-      setRefreshError(true);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshingRef, requestRefresh, workbenchRef]);
-
-  const runDirectCommand = useCallback(
-    async <T,>(operation: () => Promise<T>): Promise<T> => {
-      commandInFlightCountRef.current += 1;
-      try {
-        return await operation();
-      } finally {
-        commandInFlightCountRef.current -= 1;
-      }
-    },
-    [],
-  );
-  const observeConfirmedDirectSummary = useCallback(
-    async (reviewId: string): Promise<void> => {
-      const current = workbenchRef.current;
-      const generation = generationRef.current + 1;
-      generationRef.current = generation;
-      const key = snapshotKey(current);
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/detect-updates", {
-          method: "POST",
-          body: {
-            profileId: current.session.key.profileId,
-            reviewId: current.review.id,
-            recentWrites: [{ _tag: "DirectSummaryReview", reviewId }],
-          },
-        }),
-      );
-      const latest = workbenchRef.current;
-      if (generationRef.current !== generation || snapshotKey(latest) !== key)
-        return;
-      const observation = isReviewObservation(value);
-      if (observation?._tag === "Reconciled") {
-        const next = parseWorkbenchResponse(observation.projection);
-        if (
-          next !== undefined &&
-          next.review.id === latest.review.id &&
-          next.session.id === latest.session.id &&
-          next.revision.reviewedHeadSha === latest.revision.reviewedHeadSha
-        ) {
-          replaceWorkbench(next);
-          setDetectedStaleFreshness(undefined);
-        }
-        return;
-      }
-      if (observation?._tag === "RevisionChanged") {
-        onWorkbenchPatchRef.current({
-          revision: { ...latest.revision, freshness: "updates_available" },
-        });
-      } else if (observation?._tag === "Unavailable") {
-        onWorkbenchPatchRef.current({
-          revision: { ...latest.revision, freshness: "unavailable" },
-        });
-      } else if (observation?._tag === "Terminal") {
-        onWorkbenchPatchRef.current({
-          review: { ...latest.review, status: observation.status },
-        });
-      }
-    },
-    [onWorkbenchPatchRef, replaceWorkbench, runDirectCommand, workbenchRef],
-  );
+  const {
+    refreshing,
+    refreshError,
+    runDetect,
+    refresh,
+    replaceWorkbench,
+    runDirectCommand,
+    observeConfirmedDirectSummary,
+    appendRecentWrites,
+  } = useReviewObservation({
+    workbench,
+    onWorkbenchReplace,
+    onWorkbenchPatch,
+  });
   const saveInlineComment = useCallback(
     async (
       input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
@@ -606,12 +308,11 @@ export function ReviewWorkbenchFlow({
           _tag: "Comment" as const,
           commentId: receipt.commentId,
         };
-        setRecentWrites((current) => [
-          ...current,
+        appendRecentWrites(
           receipt.reviewId === undefined
             ? commentWrite
             : { ...commentWrite, reviewId: receipt.reviewId },
-        ]);
+        );
         const created = { commentId: receipt.commentId };
         return receipt.threadId === undefined
           ? created
@@ -621,7 +322,7 @@ export function ReviewWorkbenchFlow({
       // confirm a local mutation or journal a write that never verified.
       return undefined;
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
 
   const setThreadState = useCallback(
@@ -653,13 +354,14 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseDirectConversationReceipt(value);
       if (receipt?._tag === "ThreadStateChanged") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "ThreadState", threadId: parsedThreadId.value, state },
-        ]);
+        appendRecentWrites({
+          _tag: "ThreadState",
+          threadId: parsedThreadId.value,
+          state,
+        });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
 
   const replyToThread = useCallback(
@@ -692,17 +394,16 @@ export function ReviewWorkbenchFlow({
           _tag: "Comment" as const,
           commentId: receipt.commentId,
         };
-        setRecentWrites((current) => [
-          ...current,
+        appendRecentWrites(
           receipt.reviewId === undefined
             ? commentWrite
             : { ...commentWrite, reviewId: receipt.reviewId },
-        ]);
+        );
         return receipt.commentId;
       }
       return undefined;
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
 
   const editComment = useCallback(
@@ -730,13 +431,10 @@ export function ReviewWorkbenchFlow({
         }),
       );
       if (parseDirectConversationReceipt(value)?._tag === "CommentEdited") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "Comment", commentId },
-        ]);
+        appendRecentWrites({ _tag: "Comment", commentId });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
 
   const deleteComment = useCallback(
@@ -764,13 +462,10 @@ export function ReviewWorkbenchFlow({
         }),
       );
       if (parseDirectConversationReceipt(value)?._tag === "CommentDeleted") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "Comment", commentId },
-        ]);
+        appendRecentWrites({ _tag: "Comment", commentId });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
   // Labels are pull-request-level metadata, not diff-anchored (see
   // `LabelService`'s own doc comment), so this gates on the Review still
@@ -801,13 +496,14 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseLabelReceipt(value);
       if (receipt?._tag === "LabelsAdded") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "LabelChange", added: receipt.added, removed: [] },
-        ]);
+        appendRecentWrites({
+          _tag: "LabelChange",
+          added: receipt.added,
+          removed: [],
+        });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
   const removeLabels = useCallback(
     async (
@@ -825,13 +521,14 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseLabelReceipt(value);
       if (receipt?._tag === "LabelsRemoved") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "LabelChange", added: [], removed: receipt.removed },
-        ]);
+        appendRecentWrites({
+          _tag: "LabelChange",
+          added: [],
+          removed: receipt.removed,
+        });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
   // Assignees are pull-request-level metadata, gated the same way as labels
   // above (see `canWriteLabels`'s comment).
@@ -865,13 +562,14 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseAssigneeReceipt(value);
       if (receipt?._tag === "AssigneesAdded") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "AssigneeChange", added: receipt.added, removed: [] },
-        ]);
+        appendRecentWrites({
+          _tag: "AssigneeChange",
+          added: receipt.added,
+          removed: [],
+        });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
   const removeAssignees = useCallback(
     async (
@@ -889,13 +587,14 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseAssigneeReceipt(value);
       if (receipt?._tag === "AssigneesRemoved") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "AssigneeChange", added: [], removed: receipt.removed },
-        ]);
+        appendRecentWrites({
+          _tag: "AssigneeChange",
+          added: [],
+          removed: receipt.removed,
+        });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
   // The authenticated account is resolved server-side (never from anything
   // the renderer believes about who is signed in): the command carries no
@@ -914,14 +613,15 @@ export function ReviewWorkbenchFlow({
     );
     const receipt = parseAssigneeReceipt(value);
     if (receipt?._tag === "AssigneesAdded") {
-      setRecentWrites((current) => [
-        ...current,
-        { _tag: "AssigneeChange", added: receipt.added, removed: [] },
-      ]);
+      appendRecentWrites({
+        _tag: "AssigneeChange",
+        added: receipt.added,
+        removed: [],
+      });
       return receipt.added;
     }
     return [];
-  }, [workbench, runDirectCommand]);
+  }, [appendRecentWrites, workbench, runDirectCommand]);
   // Reviewers are pull-request-level metadata, gated the same way as labels
   // and assignees above (see `canWriteLabels`'s comment).
   const canWriteReviewers = workbench.review.status === "open";
@@ -954,13 +654,14 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseReviewerReceipt(value);
       if (receipt?._tag === "ReviewersRequested") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "ReviewerChange", requested: receipt.requested, removed: [] },
-        ]);
+        appendRecentWrites({
+          _tag: "ReviewerChange",
+          requested: receipt.requested,
+          removed: [],
+        });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
   const removeReviewers = useCallback(
     async (
@@ -978,13 +679,14 @@ export function ReviewWorkbenchFlow({
       );
       const receipt = parseReviewerReceipt(value);
       if (receipt?._tag === "ReviewersRemoved") {
-        setRecentWrites((current) => [
-          ...current,
-          { _tag: "ReviewerChange", requested: [], removed: receipt.removed },
-        ]);
+        appendRecentWrites({
+          _tag: "ReviewerChange",
+          requested: [],
+          removed: receipt.removed,
+        });
       }
     },
-    [workbench, runDirectCommand],
+    [appendRecentWrites, workbench, runDirectCommand],
   );
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
@@ -1105,25 +807,23 @@ export function ReviewWorkbenchFlow({
             (id) => !priorThreadIdSet.has(id),
           );
           if (added.length > 0) {
-            setRecentWrites((current) => [
-              ...current,
-              ...added.map((threadId) => ({
+            appendRecentWrites(
+              added.map((threadId) => ({
                 _tag: "PendingThread" as const,
                 threadId,
               })),
-            ]);
+            );
           }
         } else if (command._tag === "Discard" && projection?.state === "none") {
           // Confirmed absence: the threads the prior projection owned are gone
           // from the candidate snapshot, so they must be masked on both sides.
           if (priorThreadIds.length > 0) {
-            setRecentWrites((current) => [
-              ...current,
-              ...priorThreadIds.map((threadId) => ({
+            appendRecentWrites(
+              priorThreadIds.map((threadId) => ({
                 _tag: "PendingThread" as const,
                 threadId,
               })),
-            ]);
+            );
           }
         }
       } catch (cause) {
@@ -1153,7 +853,12 @@ export function ReviewWorkbenchFlow({
         setPendingReviewBusy(false);
       }
     },
-    [applyPendingReviewProjection, onWorkbenchPatch, workbench],
+    [
+      appendRecentWrites,
+      applyPendingReviewProjection,
+      onWorkbenchPatch,
+      workbench,
+    ],
   );
   const checkGitHubAgain = useCallback(async (): Promise<void> => {
     setPendingReviewBusy(true);
@@ -1263,7 +968,7 @@ export function ReviewWorkbenchFlow({
             _tag: "DirectSummaryReview" as const,
             reviewId: result.receipt.reviewId,
           };
-          setRecentWrites((current) => [...current, write]);
+          appendRecentWrites(write);
           observeDirectSummaryReceipt(result.receipt.reviewId);
         }
         setDirectSummaryError(undefined);
@@ -1287,7 +992,12 @@ export function ReviewWorkbenchFlow({
         setDirectSummaryBusy(false);
       }
     },
-    [observeDirectSummaryReceipt, runDirectCommand, workbench],
+    [
+      appendRecentWrites,
+      observeDirectSummaryReceipt,
+      runDirectCommand,
+      workbench,
+    ],
   );
   const recoverDirectSummary =
     useCallback(async (): Promise<DirectSummaryReviewProjection> => {
@@ -1307,10 +1017,10 @@ export function ReviewWorkbenchFlow({
           throw new Error("Invalid direct summary recovery response");
         setDirectSummaryOverride(result);
         if (result.state === "confirmed") {
-          setRecentWrites((current) => [
-            ...current,
-            { _tag: "DirectSummaryReview", reviewId: result.receipt.reviewId },
-          ]);
+          appendRecentWrites({
+            _tag: "DirectSummaryReview",
+            reviewId: result.receipt.reviewId,
+          });
           observeDirectSummaryReceipt(result.receipt.reviewId);
         }
         setDirectSummaryError(undefined);
@@ -1323,7 +1033,12 @@ export function ReviewWorkbenchFlow({
       } finally {
         setDirectSummaryBusy(false);
       }
-    }, [observeDirectSummaryReceipt, runDirectCommand, workbench]);
+    }, [
+      appendRecentWrites,
+      observeDirectSummaryReceipt,
+      runDirectCommand,
+      workbench,
+    ]);
   const pendingReviewComposer: PendingReviewComposerActions | undefined =
     workbench.pendingReview === undefined
       ? undefined
@@ -2963,46 +2678,4 @@ function insightStatusLabel(status: string): string {
     default:
       return status;
   }
-}
-
-/** Stable identity of one represented Review projection; changes when an explicit refresh replaces it. */
-function snapshotKey(workbench: WorkbenchResponse): string {
-  return `${workbench.review.id}:${workbench.session.id}:${workbench.revision.reviewedHeadSha}:${workbench.revision.refreshedAt}`;
-}
-
-const detectionSchema = v.looseObject({ updatesAvailable: v.boolean() });
-
-function isDetection(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this predicate is itself the JSON I/O boundary parser for the detect-updates response; there is no earlier boundary to run it at.
-  value: unknown,
-): value is { readonly updatesAvailable: boolean } {
-  return v.safeParse(detectionSchema, value).success;
-}
-
-const reviewObservationSchema = v.variant("_tag", [
-  v.looseObject({ _tag: v.literal("Unchanged") }),
-  v.looseObject({ _tag: v.literal("RevisionChanged") }),
-  v.looseObject({ _tag: v.literal("Unavailable") }),
-  v.looseObject({
-    _tag: v.literal("Reconciled"),
-    projection: v.optional(v.unknown()),
-  }),
-  v.looseObject({
-    _tag: v.literal("Terminal"),
-    status: v.picklist(["merged", "closed"]),
-  }),
-]);
-
-function isReviewObservation(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the review-observation response; there is no earlier boundary to run it at.
-  value: unknown,
-):
-  | { readonly _tag: "Unchanged" }
-  | { readonly _tag: "Reconciled"; readonly projection?: unknown }
-  | { readonly _tag: "RevisionChanged" }
-  | { readonly _tag: "Unavailable" }
-  | { readonly _tag: "Terminal"; readonly status: "merged" | "closed" }
-  | undefined {
-  const parsed = v.safeParse(reviewObservationSchema, value);
-  return parsed.success ? parsed.output : undefined;
 }
