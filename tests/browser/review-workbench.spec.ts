@@ -819,7 +819,7 @@ test("file-tree search selects a file deep in a large patch and scrolls its head
   }
 });
 
-test("switching the diff theme rebuilds CodeView but keeps the reader on the same file", async ({
+test("switching the diff theme no longer rebuilds CodeView, and the reader stays on the same file", async ({
   page,
 }) => {
   const server = await serveRenderer();
@@ -857,14 +857,44 @@ test("switching the diff theme rebuilds CodeView but keeps the reader on the sam
     };
     expect(await landedOnFile()).toBe(true);
 
-    // Changing the light diff theme rewrites `themePreferences.light`, part
-    // of `CodeView`'s own React key alongside `fileMode` and `appearance` --
-    // this tears `CodeView` down and rebuilds it exactly as switching to
-    // "Selected" and back would, but without going through "selected" mode
-    // (which only ever shows one file and so would trivially restore to it
-    // regardless of this fix). A plain theme switch is the one rebuild
-    // trigger nothing else already happens to cover, which is what makes it
-    // prove this fix specifically rather than incidentally passing.
+    // Before slice 6, changing the light diff theme rewrote
+    // `themePreferences.light`, part of `CodeView`'s own React key alongside
+    // `fileMode` and `appearance` -- tearing `CodeView` down and rebuilding
+    // it, which discarded its scroll position. That is what
+    // `restoreFilePathRef`/the `useLayoutEffect` above it in
+    // `review-diff-view.tsx` exists to repair, and this test originally
+    // proved that repair by using a theme switch as its rebuild trigger
+    // deliberately (a `fileMode` round trip was ruled out at the time:
+    // "Selected" mode only ever shows one file, so returning from it
+    // restores trivially through `selectionScrollProgress` regardless of
+    // whether the repair effect does anything).
+    //
+    // Slice 6 moved `theme`/`themeType` off the key onto Pierre's own
+    // options path (`codeViewOptions`, forwarded through
+    // `instance.setOptions()`), so a theme switch no longer rebuilds
+    // `CodeView` at all -- confirmed by "switching the diff appearance
+    // genuinely re-colours the rendered code" below, which shows the same
+    // options path repaints every token whether or not a rebuild happens.
+    // With no rebuild, this test's outcome (the reader stays on
+    // file-0050) is now trivially true and no longer exercises
+    // `restoreFilePathRef` here.
+    //
+    // Checked whether a `fileMode` round trip ("All files" -> "Selected" ->
+    // "All files", the only trigger left in `codeViewKey` now that it is
+    // just `viewerKey`) could take over as the rebuild trigger instead: it
+    // cannot. With `restoreFilePathRef`'s restore temporarily disabled,
+    // that round trip still landed back on the selected file every time,
+    // because `selectionScrollProgress` -- the same pre-existing effect
+    // ruled out above -- re-scrolls to `selectedPath` on every `fileMode`
+    // change unconditionally, and "Selected" mode's toolbar button is
+    // disabled whenever nothing is selected, so a `fileMode` change with no
+    // `selectedPath` to fall back on is not reachable through the UI
+    // either. No reachable trigger distinguishes `restoreFilePathRef`
+    // working from it doing nothing, so this repo currently has no test
+    // that exercises it -- it is not deleted (`review-diff-view.tsx` is
+    // still in scope for future rebuild triggers that key might grow), but
+    // it should be treated as unreachable, not as covered, until one is
+    // added.
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
@@ -873,11 +903,77 @@ test("switching the diff theme rebuilds CodeView but keeps the reader on the sam
     await dialog.getByRole("button", { name: "Close" }).click();
     await expect(dialog).toBeHidden();
 
-    // The rebuilt `CodeView` starts scrolled to the top again; the fix
-    // restores file-0050's header back into view rather than leaving the
-    // reader there.
+    // No rebuild means no scroll reset to repair; file-0050's header simply
+    // never leaves the viewport.
     await expect(header).toBeVisible({ timeout: 5_000 });
     await expect.poll(landedOnFile).toBe(true);
+  } finally {
+    await close(server);
+  }
+});
+
+test("switching the diff appearance genuinely re-colours the rendered code", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await page.goto(`${origin(server)}/#performance-fixture`);
+    const diff = page.getByRole("region", { name: "Review diff" });
+    await expect(diff).toBeVisible();
+
+    // Pierre's `File` renderer bakes BOTH a light and a dark hex value onto
+    // every syntax token as `--diffs-token-light`/`--diffs-token-dark`
+    // inline custom properties (see `node_modules/@pierre/diffs/dist/style.js`:
+    // `[data-line] span { color: light-dark(var(--diffs-token-light, ...),
+    // var(--diffs-token-dark, ...)) }`), and lets the shadow host's
+    // `color-scheme` -- driven by `options.themeType` -- pick between them.
+    // Reading the browser's own resolved `color`, not either custom
+    // property or any attribute, is what proves the picked value actually
+    // changed on screen; a class or attribute could flip without the reader
+    // seeing a different colour. Each rendered file lives inside its own
+    // open shadow root (`<diffs-container>`), several of them nested under
+    // the virtualized viewport, so finding a token means piercing into
+    // whichever one has painted content so far.
+    const firstTokenColor = () =>
+      page.evaluate(() => {
+        const pierce = (root: Document | ShadowRoot): Element | null => {
+          const direct = root.querySelector(
+            '[data-line] span[style*="--diffs-token-light"]',
+          );
+          if (direct !== null) return direct;
+          for (const el of Array.from(root.querySelectorAll("*"))) {
+            if (el.shadowRoot != null) {
+              const found = pierce(el.shadowRoot);
+              if (found !== null) return found;
+            }
+          }
+          return null;
+        };
+        const span = pierce(document);
+        return span === null ? null : getComputedStyle(span).color;
+      });
+
+    await expect.poll(firstTokenColor, { timeout: 5_000 }).not.toBeNull();
+    const before = await firstTokenColor();
+
+    // `appearance` is no longer part of `codeViewKey` (see the comment on
+    // `codeViewKey` in `review-diff-view.tsx`), so this switch re-options
+    // Pierre's existing `CodeView` instance in place rather than rebuilding
+    // it -- this assertion is the proof that the options path alone still
+    // repaints every token.
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("combobox", { name: "Appearance" }).click();
+    await page.getByRole("option", { name: "Dark", exact: true }).click();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
+
+    // Give the re-optioned `CodeView` a moment to re-render and pick the
+    // dark half of each token's baked-in pair back up; poll rather than
+    // assert once.
+    await expect.poll(firstTokenColor, { timeout: 5_000 }).not.toBe(before);
   } finally {
     await close(server);
   }

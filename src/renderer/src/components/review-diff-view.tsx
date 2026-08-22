@@ -1321,11 +1321,28 @@ function ReviewDiffSurface({
     });
   }, [browserSupportsPierre, parsedFiles, themePreferences, virtualized]);
   const viewerKey = preferences.fileMode;
-  // Exactly what the `CodeView` element below keys on. Any change to any
-  // piece of this string tears `CodeView` down and remounts it, discarding
-  // its scroll position -- shared here so the restore effect and the JSX
-  // key agree on what counts as a rebuild.
-  const codeViewKey = `${viewerKey}-${themePreferences.light}-${themePreferences.dark}-${appearance}`;
+  // Exactly what the `CodeView` element below keys on. Any change to it
+  // tears `CodeView` down and remounts it, discarding its scroll position
+  // -- shared here so the restore effect and the JSX key agree on what
+  // counts as a rebuild.
+  //
+  // Theme (`themePreferences.light`/`.dark`) and `appearance` used to be
+  // part of this string too, on the theory that Pierre's `CodeView` needed
+  // a full remount to pick up a new theme. It doesn't: `theme` and
+  // `themeType` already reach it every render through `codeViewOptions`
+  // (below), the React wrapper forwards any options change straight to
+  // `instance.setOptions()`, and the library's own `File.render()` detects
+  // a changed `theme`/`themeType` and re-renders the themed output in
+  // place. "switching the diff appearance genuinely re-colours the
+  // rendered code" in `review-workbench.spec.ts` proves the options path
+  // alone repaints every token -- first against the old, three-part key
+  // (where it also happens to rebuild `CodeView`), then again after this
+  // key shrank to just `viewerKey`, where nothing rebuilds and the
+  // colours still change. Keeping theme/appearance out of the key means a
+  // reader mid-scroll no longer loses their place, and the highlight
+  // caches `bb285c2`'s worker pool built no longer get discarded, just
+  // because they changed a colour.
+  const codeViewKey = viewerKey;
   const sourceProfileId = hydrationSourceSession?.profileId;
   const sourceSessionId = hydrationSourceSession?.sessionId;
   // `items`'s identity changes on every hydration response -- each response
@@ -1355,18 +1372,16 @@ function ReviewDiffSurface({
   }, [items, preferences.fileMode]);
 
   // Restores the reader's place in the diff across a `CodeView` rebuild.
-  // `CodeView`'s key is `codeViewKey` above; any change to it -- fileMode,
-  // either theme, or appearance -- tears the element down and remounts it,
-  // which loses its scroll position (`ReviewDiffView` itself never
-  // unmounts, only `CodeView` does, which is what makes restoring possible
-  // without extra plumbing). Restoring is keyed on the whole of
-  // `codeViewKey`, not on `fileMode` alone: a theme or appearance switch
-  // rebuilds `CodeView` exactly the same way a file-mode switch does, and a
-  // reader who only changed their theme is just as entitled to land back
-  // where they were. This also means the fix already covers the case
-  // slice 6 may collapse away (theme/appearance leaving the key) -- if that
-  // lands, this effect keeps working unchanged, since it only cares that
-  // `codeViewKey` changed, not why.
+  // `CodeView`'s key is `codeViewKey` above; any change to it tears the
+  // element down and remounts it, which loses its scroll position
+  // (`ReviewDiffView` itself never unmounts, only `CodeView` does, which is
+  // what makes restoring possible without extra plumbing). Restoring is
+  // keyed on the whole of `codeViewKey`, deliberately not narrowed to
+  // `preferences.fileMode` even though that is all `codeViewKey` is made of
+  // today: this effect only cares that `codeViewKey` changed, not why, so
+  // it needed no edit when theme and appearance left the key above -- it
+  // would keep working unchanged even if another rebuild trigger joined the
+  // key later.
   //
   // Restore by file path, not by pixel offset: the rebuilt content can lay
   // out at a different height, so a remembered pixel offset could land
