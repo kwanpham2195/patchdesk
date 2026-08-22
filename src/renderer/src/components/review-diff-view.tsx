@@ -69,11 +69,6 @@ import {
   type DiffThemePreferences,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
-import {
-  activeFilePathAtScrollTop,
-  type ActiveFileViewport,
-} from "@/review-diff-active-file";
-import { materializeAndScrollTo } from "@/review-diff-materialize-and-scroll";
 import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
 import { reviewContextControl } from "@/review-context-control";
@@ -83,11 +78,13 @@ import {
   useReviewDiffHydration,
   type ReviewDiffSourceSession,
 } from "@/hooks/use-review-diff-hydration";
-import { useReviewDiffQaScrollDiagnostics } from "@/hooks/use-review-diff-qa-scroll-diagnostics";
-import { useScrollSettledValue } from "@/hooks/use-scroll-settled-value";
 import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigation";
 import { useReviewFileNavigation } from "@/hooks/use-review-file-navigation";
 import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
+import {
+  useReviewDiffScrollState,
+  useReviewDiffSelectionScroll,
+} from "@/hooks/use-review-diff-scroll-state";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
@@ -127,12 +124,6 @@ const TREE_ORDER_SORT_LIMIT = 256;
 // `lineDiffType = "word-alt"`). Named explicitly so the three render call
 // sites below share one value instead of three hand-copied literals.
 const DEFAULT_LINE_DIFF_TYPE: LineDiffTypes = "word-alt";
-
-/** The live CodeView instance handed to imperative-ref callers (scroll,
- * measurement, rendered-item queries). */
-type PierreCodeView<T = undefined> = NonNullable<
-  ReturnType<CodeViewHandle<T>["getInstance"]>
->;
 
 /** Mutable draft of `useReviewDiffHydration`'s input, built in statements so
  * each optional field is added only when it has a value. */
@@ -331,11 +322,6 @@ function ReviewDiffSurface({
     useState<DiffThemePreferences>(() => loadDiffThemePreferences());
   const viewer =
     useRef<CodeViewHandle<ReviewInlineAnnotation | undefined>>(null);
-  const activePathRef = useRef<string | undefined>(undefined);
-  const viewerContainer = useRef<HTMLDivElement>(null);
-  const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(
-    null,
-  );
   const [authoringSelection, setAuthoringSelection] =
     useState<CodeViewLineSelection | null>(null);
   /** Local-only create overlays; `published` carries the real GitHub comment id, `sending`/`failed` carry none. */
@@ -474,25 +460,6 @@ function ReviewDiffSurface({
       return changed ? next : current;
     });
   }, [annotations]);
-  const setViewerContainer = useCallback(
-    (node: HTMLDivElement | null): void => {
-      viewerContainer.current = node;
-      setViewerElement(node);
-      // CodeView's props don't include tabIndex/role/aria-label (it destructures
-      // a closed prop list, no DOM rest-spread), and its own setup() only
-      // defaults tabindex to -1 (script-focusable but not reachable by
-      // sequential Tab navigation). Apply real keyboard-focusability and an
-      // accessible name here so Up/Down/PageUp/PageDown/Home/End reach
-      // native scrolling, matching the AccessiblePatch fallback's
-      // role="region" convention below.
-      if (node !== null) {
-        node.tabIndex = 0;
-        node.setAttribute("role", "region");
-        node.setAttribute("aria-label", "Diff content");
-      }
-    },
-    [],
-  );
   // Walkthrough cards render one filtered hunk with virtualized={false}. Full
   // source hydration would pair that partial patch with the entire file and
   // make Pierre calculate impossible trailing context.
@@ -508,12 +475,23 @@ function ReviewDiffSurface({
     rawPatchesByPath,
     hydrateFiles,
   } = useReviewDiffHydration(hydrationInput);
+  const {
+    settledHydratedFiles,
+    activePathRef,
+    setViewerContainer,
+    resolveActiveFilePathAt,
+    handleCodeViewScroll,
+  } = useReviewDiffScrollState({
+    viewer,
+    hydratedFiles,
+    fileMode: preferences.fileMode,
+    itemCount: parsedFiles.length,
+    onActiveFileChange,
+  });
   // `hydratedFiles` lands live for `hasExpandableRenderedFile` below, but
   // must NOT reach CodeView's item list (the `files` and `items` memos)
   // while a scroll is in flight -- see `useScrollSettledValue` for why a
   // layout change mid-scroll can blank the viewport for a frame.
-  const { settledValue: settledHydratedFiles, notifyScroll } =
-    useScrollSettledValue(hydratedFiles);
   useEffect(() => {
     const onAppearance = (event: Event): void => {
       // SAFETY: only `window.dispatchEvent(new CustomEvent("patchdesk:appearance", ...))`
@@ -526,7 +504,6 @@ function ReviewDiffSurface({
     return () =>
       window.removeEventListener("patchdesk:appearance", onAppearance);
   }, []);
-  useReviewDiffQaScrollDiagnostics(viewerElement, viewer);
   useEffect(() => {
     const onTheme = (event: Event): void => {
       // SAFETY: only a `patchdesk:diff-theme` CustomEvent reaches this
@@ -1104,6 +1081,14 @@ function ReviewDiffSurface({
           },
     [selectedPath, selectedRange],
   );
+  useReviewDiffSelectionScroll({
+    viewer,
+    items,
+    selectedPath,
+    selectedLines,
+    diffStyle: preferences.diffStyle,
+    fileMode: preferences.fileMode,
+  });
   // A finding may land inside a collapsed unchanged hunk. Keep that evidence
   // materialized while it is selected; the user's explicit option still
   // controls whether every other unchanged hunk stays expanded.
@@ -1182,204 +1167,7 @@ function ReviewDiffSurface({
 
   useEffect(() => {
     activePathRef.current = undefined;
-  }, [items, preferences.fileMode]);
-
-  // Reads the scroll container's own clientHeight/scrollHeight for
-  // `activeFilePathAtScrollTop`'s viewport geometry (never
-  // `window.__INSTANCE`, an upstream debug leak in `@pierre/diffs`). When
-  // `viewerContainer.current` is null -- not yet mounted -- both fall back
-  // to 0, which makes `maxScrollTop` 0 too, so the "unreachable but
-  // visible" relaxation (`top > maxScrollTop && top < scrollTop +
-  // viewportHeight`) collapses to `top > 0 && top < scrollTop`, a strict
-  // subset of the ordinary `top <= scrollTop` rule. Eligibility therefore
-  // degrades to exactly the pre-fix top-of-viewport-only rule -- the
-  // correct behavior for "no container to measure", not a bug. Do not
-  // change this fallback to a nonzero default: that would silently alter
-  // selection on every unmounted-ref call instead of leaving it inert.
-  //
-  // Deliberately NOT switched to CodeView's `getHeight()`/`getScrollHeight()`
-  // cached accessors. `getHeight()` does match `clientHeight` exactly
-  // (measured 580px/580px and 507px/507px against the performance fixture,
-  // at two viewport widths). But `getScrollHeight()` measured 2,619,992 --
-  // 16px short of this element's real `scrollHeight`, 2,620,008. The 16px is
-  // `@pierre/diffs`'s own `DEFAULT_CODE_VIEW_LAYOUT.paddingTop` +
-  // `paddingBottom` (8px each): its internal `scrollHeight` field tracks only
-  // item layout, excluding that padding, while the DOM's `scrollHeight`
-  // includes it. The library's own `getMaxScrollTop()` accounts for this
-  // (`paddingTop + getScrollHeight() + paddingBottom - getHeight()`), which
-  // would reproduce the exact DOM value here, but it is declared `private`
-  // in `CodeView.d.ts` -- not part of the public contract, so depending on
-  // it is not safe. Kept the DOM reads rather than ship a 16px-short
-  // `contentHeight` into `maxScrollTop`.
-  const readActiveFileViewport = useCallback(
-    (scrollTop: number): ActiveFileViewport => {
-      const viewportElement = viewerContainer.current;
-      return {
-        scrollTop,
-        viewportHeight: viewportElement?.clientHeight ?? 0,
-        contentHeight: viewportElement?.scrollHeight ?? 0,
-      };
-    },
-    [viewerContainer],
-  );
-
-  // The one place that calls `activeFilePathAtScrollTop`. Every caller asks
-  // the same question -- "which file is the reader looking at right now" --
-  // so there is exactly one answer, shared by scroll tracking below and by
-  // both keyboard-jump listeners' first-press seed further down.
-  //
-  // Deliberately reads `codeView.getRenderedItems()`, never `items` (the
-  // full diff's item list, always handed to CodeView at mount).
-  // `getTopForItem` only returns a measured top for a file inside CodeView's
-  // rendered window; outside that window it falls back to an estimate that
-  // drifts whenever ANY item's layout is invalidated,
-  // regardless of where the reader has scrolled to (see the module
-  // contract in `review-diff-active-file.ts`). `getRenderedItems()` is the
-  // window CodeView has actually laid out and measured, and it always
-  // straddles the current viewport, so it is exactly the set of files this
-  // question can be answered about honestly.
-  const resolveActiveFilePathAt = useCallback(
-    (
-      scrollTop: number,
-      codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
-    ): string | undefined =>
-      activeFilePathAtScrollTop(
-        codeView.getRenderedItems(),
-        readActiveFileViewport(scrollTop),
-        (id) => codeView.getTopForItem(id),
-      ),
-    [readActiveFileViewport],
-  );
-
-  const updateActivePath = useCallback(
-    (
-      scrollTop: number,
-      codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
-    ): void => {
-      if (preferences.fileMode !== "all") return;
-      const path = resolveActiveFilePathAt(scrollTop, codeView);
-      if (path === undefined || path === activePathRef.current) return;
-      activePathRef.current = path;
-      onActiveFileChange?.(path);
-    },
-    [onActiveFileChange, preferences.fileMode, resolveActiveFilePathAt],
-  );
-
-  useEffect(() => {
-    if (preferences.fileMode !== "all") return;
-    const frame = window.requestAnimationFrame(() => {
-      const codeView = viewer.current?.getInstance();
-      if (codeView === undefined) return;
-      updateActivePath(codeView.getScrollTop(), codeView);
-    });
-    return () => window.cancelAnimationFrame(frame);
-    // This effect used to rerun as more files were progressively appended
-    // (`loadedCount` growing). Now the full list mounts at once, so
-    // `items.length` is the equivalent "the file set changed" signal.
-  }, [items.length, preferences.fileMode, updateActivePath]);
-
-  // CodeView fires `onScroll` once per scroll EVENT, and momentum scrolling
-  // dispatches events faster than the browser paints frames --
-  // `updateActivePath` reads CodeView's rendered-item geometry, so running
-  // it more than once per frame recomputes the same answer for no benefit.
-  // Coalesce to a single pending animation frame: if one is already
-  // scheduled, later events in that frame do nothing; otherwise schedule
-  // one and clear the ref when it runs. The frame reads the scroll position
-  // via `codeView.getScrollTop()` (CodeView's own dirty-flag-guarded cache,
-  // not the DOM) rather than closing over this call's `scrollTop`, so a
-  // frame that fires after several coalesced events still acts on the
-  // latest position instead of a stale first one.
-  //
-  // `notifyScroll` stays on every event, not just the coalesced frame: it
-  // resets a debounce timer that measures "has scrolling stopped", and that
-  // has to track the true event cadence to detect settling accurately, not
-  // the frame rate.
-  const pendingScrollFrame = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (pendingScrollFrame.current !== null) {
-        window.cancelAnimationFrame(pendingScrollFrame.current);
-        pendingScrollFrame.current = null;
-      }
-    },
-    [],
-  );
-  const handleCodeViewScroll = useCallback(
-    (
-      _scrollTop: number,
-      codeView: PierreCodeView<ReviewInlineAnnotation | undefined>,
-    ): void => {
-      notifyScroll();
-      if (pendingScrollFrame.current !== null) return;
-      pendingScrollFrame.current = window.requestAnimationFrame(() => {
-        pendingScrollFrame.current = null;
-        updateActivePath(codeView.getScrollTop(), codeView);
-      });
-    },
-    [notifyScroll, updateActivePath],
-  );
-
-  const selectionScrollKey = [
-    preferences.diffStyle,
-    preferences.fileMode,
-    selectedPath ?? "",
-    selectedLines?.id ?? "",
-    selectedLines?.range.start ?? "",
-    selectedLines?.range.end ?? "",
-    selectedLines?.range.side ?? "",
-  ].join(":");
-  // Tracks progress toward scrolling to the current selection across
-  // restarts of the effect below. Progressive hydration (a file finishing
-  // its fetch, a collapse toggle, a new annotation) changes `items` on its
-  // own schedule, unrelated to the user's selection, and `items` is a
-  // dependency of that effect. A restart must not forget an in-flight
-  // append-and-retry chain's progress, and must not mistake "the effect
-  // merely re-ran" for "this selection was already scrolled to."
-  const selectionScrollProgress = useRef<{
-    key: string;
-    completed: boolean;
-  }>({ key: "", completed: false });
-
-  useEffect(() => {
-    if (selectedPath === undefined) return;
-    if (selectionScrollProgress.current.key !== selectionScrollKey) {
-      selectionScrollProgress.current = {
-        key: selectionScrollKey,
-        completed: false,
-      };
-    }
-    // Already scrolled to this exact selection. A later, unrelated `items`
-    // change (hydration, collapse, annotations) restarting this effect must
-    // not re-fight wherever the user has scrolled to since.
-    if (selectionScrollProgress.current.completed) return;
-    return materializeAndScrollTo({
-      viewer,
-      items,
-      itemId: selectedPath,
-      isStale: () =>
-        selectionScrollProgress.current.key !== selectionScrollKey ||
-        selectionScrollProgress.current.completed,
-      buildTarget: () =>
-        selectedLines === null
-          ? { type: "item", id: selectedPath, align: "start" }
-          : {
-              type: "range",
-              id: selectedLines.id,
-              range: selectedLines.range,
-              align: "center",
-            },
-      onScrolled: () => {
-        selectionScrollProgress.current.completed = true;
-      },
-    });
-  }, [
-    items,
-    preferences.diffStyle,
-    preferences.fileMode,
-    selectionScrollKey,
-    selectedLines,
-    selectedPath,
-  ]);
+  }, [activePathRef, items, preferences.fileMode]);
 
   const fileNavBoundary = useReviewFileNavigation({
     viewer,
