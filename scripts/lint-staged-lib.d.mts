@@ -22,3 +22,8 @@ export type LintStagedOptions = {
 };
 
 export function lintStaged(options: LintStagedOptions): Promise<number>;
+export type CheckSourcePathsOptions = LintStagedOptions;
+export function checkSourcePaths(
+  paths: ReadonlyArray<string>,
+  options: CheckSourcePathsOptions,
+): Promise<number>;

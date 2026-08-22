@@ -1,0 +1,61 @@
+name: Pull request gates
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify pull request
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.8.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            runtime/flue/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium
+
+      - name: Check changed source quality
+        run: >-
+          pnpm lint:changed --
+          "${{ github.event.pull_request.base.sha }}"
+          "${{ github.event.pull_request.head.sha }}"
+
+      - name: Run typecheck
+        run: pnpm typecheck
+
+      - name: Run complete tests
+        run: pnpm test:all
+
+      - name: Check renderer bundle separation
+        run: pnpm test:bundle
+
+      - name: Run browser tests
+        run: pnpm test:e2e

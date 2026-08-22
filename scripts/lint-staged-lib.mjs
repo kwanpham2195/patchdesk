@@ -47,6 +47,10 @@ const SOURCE_EXTENSIONS = new Set([
  */
 
 /**
+ * @typedef {LintStagedOptions} CheckSourcePathsOptions
+ */
+
+/**
  * Check staged JavaScript and TypeScript files without changing the index or
  * working tree.
  *
@@ -66,7 +70,11 @@ export async function lintStaged({
     return 1;
   }
 
-  const files = await selectSourceFiles(discovered.stdout, cwd, fileExists);
+  const files = await selectSourceFiles(
+    splitNullDelimitedPaths(discovered.stdout),
+    cwd,
+    fileExists,
+  );
   if (files.length === 0) {
     output.stdout("lint-staged: no staged source files to check.\n");
     return 0;
@@ -106,6 +114,31 @@ export async function lintStaged({
   }
   if (guardFailed) return 1;
 
+  return checkSourcePaths(files, { cwd, run, fileExists, output });
+}
+
+/**
+ * Check explicit JavaScript and TypeScript paths without reading or changing
+ * the index or working tree.
+ *
+ * @param {ReadonlyArray<string>} paths
+ * @param {CheckSourcePathsOptions} options
+ * @returns {Promise<number>} A process-style exit code.
+ */
+export async function checkSourcePaths(
+  paths,
+  { cwd, run, fileExists = defaultFileExists, output },
+) {
+  const files = await selectSourceFiles(paths, cwd, fileExists);
+  if (files.length === 0) {
+    output.stdout("lint-staged: no source files to check.\n");
+    return 0;
+  }
+
+  return runSourceQualityChecks(files, { cwd, run, output });
+}
+
+async function runSourceQualityChecks(files, { cwd, run, output }) {
   const formatter = await execute(
     run,
     "oxfmt",
@@ -150,14 +183,18 @@ function discoveryArgs() {
   return ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"];
 }
 
-async function selectSourceFiles(stdout, cwd, fileExists) {
-  const candidates = stdout.split("\0").filter((path) => path.length > 0);
+async function selectSourceFiles(paths, cwd, fileExists) {
+  const candidates = paths.filter((path) => path.length > 0);
   const files = [];
   for (const path of candidates) {
     if (!SOURCE_EXTENSIONS.has(extensionOf(path))) continue;
     if (await fileExists(resolve(cwd, path))) files.push(path);
   }
   return files;
+}
+
+function splitNullDelimitedPaths(stdout) {
+  return stdout.split("\0").filter((path) => path.length > 0);
 }
 
 function extensionOf(path) {

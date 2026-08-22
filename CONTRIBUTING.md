@@ -98,7 +98,18 @@ per-file overrides in `.oxlintrc.json` with a boundary contract comment
 - For desktop or renderer changes: `pnpm build`, then the focused browser
   suite (`pnpm test:e2e` or `pnpm test:a11y`, `pnpm test:performance`).
 
-There is no CI yet. The local gates are the contract.
+Pull requests targeting `main` run the `Pull request gates` workflow on
+`macos-14`. It runs these named checks in order:
+
+- `pnpm lint:changed -- <base> <head>` for changed JavaScript and TypeScript
+  files only;
+- `pnpm typecheck`;
+- `pnpm test:all`, including the root suite and separate `runtime/flue` suite;
+- `pnpm test:bundle`; and
+- `pnpm test:e2e`.
+
+CI checks changed-file formatting and lint only while untouched repo-wide
+legacy findings remain. It does not run package smoke or release operations.
 
 ## Release package
 

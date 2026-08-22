@@ -10,6 +10,7 @@
   "scripts": {
     "lint": "oxlint --deny-warnings",
     "lint:staged": "node scripts/lint-staged.mjs",
+    "lint:changed": "node scripts/check-changed-source.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:root": "vitest --run",

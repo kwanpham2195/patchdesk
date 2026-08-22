@@ -1,0 +1,188 @@
+import { describe, expect, it } from "vitest";
+
+import { checkChangedSource } from "../../scripts/check-changed-source.mjs";
+
+type CommandCall = {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+  readonly cwd: string;
+};
+
+type CommandResult = {
+  readonly status: number | null;
+  readonly signal: string | null;
+  readonly stdout: string;
+  readonly stderr: string;
+};
+
+type HarnessOptions = {
+  readonly diffOutput?: string;
+  readonly existingPaths?: ReadonlySet<string>;
+  readonly toolResults?: ReadonlyMap<string, CommandResult>;
+  readonly diffResult?: CommandResult;
+};
+
+const cwd = "/fixture/project";
+
+const success = (stdout = ""): CommandResult => ({
+  status: 0,
+  signal: null,
+  stdout,
+  stderr: "",
+});
+
+const failure = (stderr: string, status = 1): CommandResult => ({
+  status,
+  signal: null,
+  stdout: "",
+  stderr,
+});
+
+function createHarness(options: HarnessOptions = {}) {
+  const calls: Array<CommandCall> = [];
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const existingPaths = options.existingPaths ?? new Set(["src/example.ts"]);
+  const toolResults = options.toolResults ?? new Map<string, CommandResult>();
+
+  const run = async (
+    command: string,
+    args: ReadonlyArray<string>,
+    commandCwd: string,
+  ): Promise<CommandResult> => {
+    calls.push({ command, args, cwd: commandCwd });
+    if (command === "git")
+      return (
+        options.diffResult ?? success(options.diffOutput ?? "src/example.ts\0")
+      );
+    return toolResults.get(command) ?? success();
+  };
+
+  return {
+    calls,
+    stdout,
+    stderr,
+    options: {
+      args: ["base-sha", "head-sha"],
+      cwd,
+      run,
+      fileExists: async (path: string) =>
+        existingPaths.has(path) ||
+        existingPaths.has(path.slice(cwd.length + 1)),
+      output: {
+        stdout: (text: string) => stdout.push(text),
+        stderr: (text: string) => stderr.push(text),
+      },
+    },
+  };
+}
+
+describe("checkChangedSource", () => {
+  it("returns cleanly when the merge-base diff has no source files", async () => {
+    const harness = createHarness({
+      diffOutput: "README.md\0",
+      existingPaths: new Set(),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.calls).toHaveLength(1);
+    expect(harness.calls[0]?.args).toEqual([
+      "diff",
+      "--name-only",
+      "--diff-filter=ACMR",
+      "-z",
+      "base-sha...head-sha",
+    ]);
+  });
+
+  it("checks renamed paths from the merge-base diff", async () => {
+    const harness = createHarness({
+      diffOutput: "src/renamed.ts\0",
+      existingPaths: new Set(["src/renamed.ts"]),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.calls[1]?.args.at(-1)).toBe("src/renamed.ts");
+  });
+
+  it("keeps paths with spaces as one formatter argument", async () => {
+    const path = "src/file with spaces.ts";
+    const harness = createHarness({
+      diffOutput: `${path}\0`,
+      existingPaths: new Set([path]),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.calls[1]?.args).toEqual([
+      "--check",
+      "--no-error-on-unmatched-pattern",
+      path,
+    ]);
+  });
+
+  it("stops when Oxfmt fails", async () => {
+    const harness = createHarness({
+      toolResults: new Map([["oxfmt", failure("format error")]]),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
+      "oxfmt",
+    ]);
+    expect(harness.stderr.join("")).toContain("format error");
+  });
+
+  it("stops when Oxlint fails", async () => {
+    const harness = createHarness({
+      toolResults: new Map([["oxlint", failure("lint error")]]),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
+      "oxfmt",
+      "oxlint",
+    ]);
+    expect(harness.stderr.join("")).toContain("lint error");
+  });
+
+  it("rejects missing or blank commit arguments before running commands", async () => {
+    const missing = createHarness();
+    const blank = createHarness();
+
+    await expect(
+      checkChangedSource({ ...missing.options, args: ["base-sha"] }),
+    ).resolves.toBe(2);
+    await expect(
+      checkChangedSource({ ...blank.options, args: [" ", "head-sha"] }),
+    ).resolves.toBe(2);
+    expect(missing.calls).toHaveLength(0);
+    expect(blank.calls).toHaveLength(0);
+    expect(missing.stderr.join("")).toContain("Usage:");
+  });
+
+  it("fails closed when Git rejects the commit range", async () => {
+    const harness = createHarness({
+      diffResult: failure("unknown revision", 128),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.calls).toHaveLength(1);
+    expect(harness.stderr.join("")).toContain("unknown revision");
+  });
+
+  it("does not inspect the index or issue mutation commands", async () => {
+    const harness = createHarness();
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(
+      harness.calls.some(
+        ({ command, args }) =>
+          command === "git" && (args[1] === "--cached" || args[0] === "add"),
+      ),
+    ).toBe(false);
+    expect(harness.calls[1]?.args).toContain("--check");
+    expect(harness.calls[2]?.args).not.toContain("--fix");
+  });
+});
