@@ -15,13 +15,13 @@ Before starting any task, make sure the dev log tails are live in herdr:
 
 Verification commands live in `CONTRIBUTING.md`. The mandatory complete test gate is `pnpm test:all`, which runs the root suite and the separate `runtime/flue` suite. Use `pnpm test -- --run <file>` for focused root tests. For desktop or renderer changes run the full gate in order (typecheck, tests, build, browser checks); package and smoke-test only when package-specific proof is requested.
 
-The pre-commit hook (`pnpm precommit`) runs a blocking React Doctor scan on staged files, then `pnpm lint:staged` (oxlint --fix over staged files). If it blocks, fix the reported finding; do not disable or retune rules to make the commit pass. Anti-slop rules are not auto-fixable: fix the file's findings, then re-stage. `doctor.config.json` ignores the vendored plugin and installed skills from the React Doctor scan.
+The pre-commit hook (`pnpm precommit`) runs `pnpm lint:staged` first, then a blocking React Doctor scan on staged files. The staged gate checks Oxfmt and Oxlint without changing the index or working tree, and rejects partially staged source files. If it blocks, run the reported formatter or linter fix command, review the result, and stage intended files explicitly. Do not disable or retune rules to make the commit pass. `doctor.config.json` ignores the vendored plugin and installed skills from the React Doctor scan.
 
 For live verification of the running app, use the `patchdesk-electron-tester` skill (agent-browser over CDP 9233) — never substitute a build, unit test, or static inspection for live app checks, and keep live checks read-only.
 
 ## Anti-slop migration
 
-Vendored at `tools/oxlint/anti-slop/` (15 rules; `@oxlint/plugins` devDep), enabled at "error" in `.oxlintrc.json`. Migration plan and rule-by-rule progress: `.agents/PLANS/2026-08-16-anti-slop-migration.md`. Reinstall/update from the bundled skill at `.agents/skills/install-anti-slop/` (upstream dmmulroy/anti-slop).
+Vendored at `tools/oxlint/anti-slop/` (15 rules; `@oxlint/plugins` devDep), enabled at "error" in `.oxlintrc.json`. The migration keeps untouched legacy findings out of focused gates. Reinstall/update from the bundled skill at `.agents/skills/install-anti-slop/` (upstream dmmulroy/anti-slop).
 
 Policy: fix findings honestly; never launder types to pass lint (no `as unknown` tricks, no faked SAFETY comments, no severity weakening). Genuine I/O boundaries keep `unknown` via targeted per-file overrides in `.oxlintrc.json` with a comment stating the boundary contract. Prefer `satisfies`, inference, and boundary parsing when resolving findings.
 

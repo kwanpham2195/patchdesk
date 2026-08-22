@@ -71,15 +71,19 @@ One logical unit per commit. Do not add AI or co-authored trailers.
 
 Commits run `pnpm precommit`:
 
-1. React Doctor scan on staged files (blocking).
-2. `pnpm lint:staged` — oxlint `--fix` over staged files only; blocks if
-   unfixable findings remain.
+1. `pnpm lint:staged` checks every staged JavaScript and TypeScript file with
+   Oxfmt, then Oxlint with denied warnings.
+2. React Doctor scans staged files and remains blocking.
 
-The anti-slop lint migration is in progress, so `pnpm lint` is red
-repo-wide (~1850 findings, tracked in `.agents/PLANS/2026-08-16-anti-slop-migration.md`).
-Only the files you stage are checked, so commits work as long as the staged
-files are clean. If a commit is blocked, fix the findings in the staged
-files (anti-slop rules are not auto-fixable), then `git add` them again.
+The staged gate is check-only. It rejects partially staged source files and
+never changes the index or working tree. If it blocks, run
+`pnpm exec oxfmt --write <files>` and
+`pnpm exec oxlint --fix --deny-warnings <files>`, review the changes, and
+stage the intended files explicitly.
+
+Repo-wide `pnpm lint` remains a diagnostic while untouched legacy findings are
+migrated. Every staged source file must be clean, but untouched findings do
+not block focused changes.
 
 Do not silence findings by weakening rules, adding casts, or faking
 `SAFETY:` comments. Genuine I/O boundaries keep `unknown` via targeted
