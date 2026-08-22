@@ -52,21 +52,15 @@ import {
 } from "../components/ui/card";
 import { Spinner } from "../components/ui/spinner";
 import {
-  parseAssignableUserListResponse,
   parseCommitDiffResponse,
   parseDirectSummaryReviewResponse,
   parseInsightProviderCatalog,
   type InsightProviderCatalogModel,
   parsePendingReviewProjection,
-  parseRepositoryLabelListResponse,
-  parseReviewerListResponse,
   parseWorkbenchResponse,
-  type AssignableUserListResponse,
   type CommitDiffResponse,
   type DirectSummaryReviewProjection,
   type PendingReviewProjection,
-  type RepositoryLabelListResponse,
-  type ReviewerListResponse,
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
@@ -75,12 +69,8 @@ import type { PullRequestRef } from "../../../domain/pull-request";
 
 import { useInsightRun } from "../hooks/use-insight-run";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
-import {
-  parseAssigneeReceipt,
-  parseDirectConversationReceipt,
-  parseLabelReceipt,
-  parseReviewerReceipt,
-} from "./review-workbench-receipts";
+import { useDirectConversationActions } from "./use-direct-conversation-actions";
+import { useReviewMetadataActions } from "./use-review-metadata-actions";
 import {
   useReviewObservation,
   type ReviewWorkbenchPatch,
@@ -268,426 +258,39 @@ export function ReviewWorkbenchFlow({
     onWorkbenchReplace,
     onWorkbenchPatch,
   });
-  const saveInlineComment = useCallback(
-    async (
-      input: Parameters<NonNullable<LocalCommentAuthoring["onSave"]>>[0],
-    ): Promise<{
-      readonly commentId: string;
-      readonly threadId?: string;
-    } | void> => {
-      const patchHash = workbench.revision.patchHash;
-      if (patchHash === undefined)
-        throw new Error("The current Diff cannot accept comments.");
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/inline-conversations/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: {
-              _tag: "CreateComment",
-              expected: {
-                sessionId: workbench.session.id,
-                headSha: workbench.revision.reviewedHeadSha,
-                patchHash,
-              },
-              anchor: {
-                path: input.path,
-                startLine: input.startLine,
-                line: input.line,
-                side: input.side,
-              },
-              body: input.body,
-            },
-          },
-        }),
-      );
-      const receipt = parseDirectConversationReceipt(value);
-      if (receipt?._tag === "CommentCreated") {
-        const commentWrite = {
-          _tag: "Comment" as const,
-          commentId: receipt.commentId,
-        };
-        appendRecentWrites(
-          receipt.reviewId === undefined
-            ? commentWrite
-            : { ...commentWrite, reviewId: receipt.reviewId },
-        );
-        const created = { commentId: receipt.commentId };
-        return receipt.threadId === undefined
-          ? created
-          : { ...created, threadId: receipt.threadId };
-      }
-      // A malformed success envelope is a bounded command failure: it must not
-      // confirm a local mutation or journal a write that never verified.
-      return undefined;
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-
-  const setThreadState = useCallback(
-    async (threadId: string, state: "open" | "resolved"): Promise<void> => {
-      const patchHash = workbench.revision.patchHash;
-      if (patchHash === undefined)
-        throw new Error("The current Diff cannot update this thread.");
-      const parsedThreadId = parseGitHubThreadId(threadId);
-      if (parsedThreadId._tag === "err")
-        throw new Error("The thread id is not valid for this Review.");
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/inline-conversations/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: {
-              _tag: "SetThreadState",
-              expected: {
-                sessionId: workbench.session.id,
-                headSha: workbench.revision.reviewedHeadSha,
-                patchHash,
-              },
-              threadId,
-              state,
-            },
-          },
-        }),
-      );
-      const receipt = parseDirectConversationReceipt(value);
-      if (receipt?._tag === "ThreadStateChanged") {
-        appendRecentWrites({
-          _tag: "ThreadState",
-          threadId: parsedThreadId.value,
-          state,
-        });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-
-  const replyToThread = useCallback(
-    async (threadId: string, body: string): Promise<string | void> => {
-      const patchHash = workbench.revision.patchHash;
-      if (patchHash === undefined)
-        throw new Error("The current Diff cannot accept replies.");
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/inline-conversations/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: {
-              _tag: "Reply",
-              expected: {
-                sessionId: workbench.session.id,
-                headSha: workbench.revision.reviewedHeadSha,
-                patchHash,
-              },
-              threadId,
-              body,
-            },
-          },
-        }),
-      );
-      const receipt = parseDirectConversationReceipt(value);
-      if (receipt?._tag === "ReplyCreated") {
-        const commentWrite = {
-          _tag: "Comment" as const,
-          commentId: receipt.commentId,
-        };
-        appendRecentWrites(
-          receipt.reviewId === undefined
-            ? commentWrite
-            : { ...commentWrite, reviewId: receipt.reviewId },
-        );
-        return receipt.commentId;
-      }
-      return undefined;
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-
-  const editComment = useCallback(
-    async (commentId: string, body: string): Promise<void> => {
-      const patchHash = workbench.revision.patchHash;
-      if (patchHash === undefined)
-        throw new Error("The current Diff cannot edit comments.");
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/inline-conversations/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: {
-              _tag: "EditComment",
-              expected: {
-                sessionId: workbench.session.id,
-                headSha: workbench.revision.reviewedHeadSha,
-                patchHash,
-              },
-              commentId,
-              body,
-            },
-          },
-        }),
-      );
-      if (parseDirectConversationReceipt(value)?._tag === "CommentEdited") {
-        appendRecentWrites({ _tag: "Comment", commentId });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-
-  const deleteComment = useCallback(
-    async (commentId: string): Promise<void> => {
-      const patchHash = workbench.revision.patchHash;
-      if (patchHash === undefined)
-        throw new Error("The current Diff cannot delete comments.");
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/inline-conversations/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: {
-              _tag: "DeleteComment",
-              expected: {
-                sessionId: workbench.session.id,
-                headSha: workbench.revision.reviewedHeadSha,
-                patchHash,
-              },
-              commentId,
-              confirmation: true,
-            },
-          },
-        }),
-      );
-      if (parseDirectConversationReceipt(value)?._tag === "CommentDeleted") {
-        appendRecentWrites({ _tag: "Comment", commentId });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-  // Labels are pull-request-level metadata, not diff-anchored (see
-  // `LabelService`'s own doc comment), so this gates on the Review still
-  // being open rather than `canWriteDirectConversation`'s stricter
-  // freshness/patchHash requirements.
+  const {
+    saveInlineComment,
+    setThreadState,
+    replyToThread,
+    editComment,
+    deleteComment,
+  } = useDirectConversationActions({
+    workbench,
+    runDirectCommand,
+    appendRecentWrites,
+  });
+  // Labels, assignees, and reviewers are pull-request-level metadata. Their
+  // eligibility remains a projection concern; the hook owns only their reads,
+  // writes, receipt parsing, and recent-write journal entries.
   const canWriteLabels = workbench.review.status === "open";
-  const fetchLabels = useCallback(async (): Promise<
-    RepositoryLabelListResponse | undefined
-  > => {
-    const value = await requestJson(
-      `/v1/reviews/labels?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}`,
-    );
-    return parseRepositoryLabelListResponse(value);
-  }, [workbench]);
-  const addLabels = useCallback(
-    async (
-      labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/labels/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "AddLabels", labels },
-          },
-        }),
-      );
-      const receipt = parseLabelReceipt(value);
-      if (receipt?._tag === "LabelsAdded") {
-        appendRecentWrites({
-          _tag: "LabelChange",
-          added: receipt.added,
-          removed: [],
-        });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-  const removeLabels = useCallback(
-    async (
-      labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/labels/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "RemoveLabels", labels },
-          },
-        }),
-      );
-      const receipt = parseLabelReceipt(value);
-      if (receipt?._tag === "LabelsRemoved") {
-        appendRecentWrites({
-          _tag: "LabelChange",
-          added: [],
-          removed: receipt.removed,
-        });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-  // Assignees are pull-request-level metadata, gated the same way as labels
-  // above (see `canWriteLabels`'s comment).
   const canWriteAssignees = workbench.review.status === "open";
-  const fetchAssignableUsers = useCallback(
-    async (query?: string): Promise<AssignableUserListResponse | undefined> => {
-      const queryField =
-        query === undefined || query === ""
-          ? ""
-          : `&query=${encodeURIComponent(query)}`;
-      const value = await requestJson(
-        `/v1/reviews/assignees?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}${queryField}`,
-      );
-      return parseAssignableUserListResponse(value);
-    },
-    [workbench],
-  );
-  const addAssignees = useCallback(
-    async (
-      assignees: ReadonlyArray<{ readonly id: string; readonly login: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/assignees/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "AddAssignees", assignees },
-          },
-        }),
-      );
-      const receipt = parseAssigneeReceipt(value);
-      if (receipt?._tag === "AssigneesAdded") {
-        appendRecentWrites({
-          _tag: "AssigneeChange",
-          added: receipt.added,
-          removed: [],
-        });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-  const removeAssignees = useCallback(
-    async (
-      assignees: ReadonlyArray<{ readonly id: string; readonly login: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/assignees/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "RemoveAssignees", assignees },
-          },
-        }),
-      );
-      const receipt = parseAssigneeReceipt(value);
-      if (receipt?._tag === "AssigneesRemoved") {
-        appendRecentWrites({
-          _tag: "AssigneeChange",
-          added: [],
-          removed: receipt.removed,
-        });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-  // The authenticated account is resolved server-side (never from anything
-  // the renderer believes about who is signed in): the command carries no
-  // identity, only the `AssignSelf` tag, and the receipt's `added` logins
-  // are the server's own answer for who actually got assigned.
-  const assignSelf = useCallback(async (): Promise<ReadonlyArray<string>> => {
-    const value = await runDirectCommand(() =>
-      requestJson("/v1/reviews/assignees/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command: { _tag: "AssignSelf" },
-        },
-      }),
-    );
-    const receipt = parseAssigneeReceipt(value);
-    if (receipt?._tag === "AssigneesAdded") {
-      appendRecentWrites({
-        _tag: "AssigneeChange",
-        added: receipt.added,
-        removed: [],
-      });
-      return receipt.added;
-    }
-    return [];
-  }, [appendRecentWrites, workbench, runDirectCommand]);
-  // Reviewers are pull-request-level metadata, gated the same way as labels
-  // and assignees above (see `canWriteLabels`'s comment).
   const canWriteReviewers = workbench.review.status === "open";
-  const fetchReviewers = useCallback(
-    async (query?: string): Promise<ReviewerListResponse | undefined> => {
-      const queryField =
-        query === undefined || query === ""
-          ? ""
-          : `&query=${encodeURIComponent(query)}`;
-      const value = await requestJson(
-        `/v1/reviews/reviewers?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}${queryField}`,
-      );
-      return parseReviewerListResponse(value);
-    },
-    [workbench],
-  );
-  const requestReviewers = useCallback(
-    async (
-      reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/reviewers/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "RequestReviewers", reviewers },
-          },
-        }),
-      );
-      const receipt = parseReviewerReceipt(value);
-      if (receipt?._tag === "ReviewersRequested") {
-        appendRecentWrites({
-          _tag: "ReviewerChange",
-          requested: receipt.requested,
-          removed: [],
-        });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
-  const removeReviewers = useCallback(
-    async (
-      reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/reviewers/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "RemoveReviewers", reviewers },
-          },
-        }),
-      );
-      const receipt = parseReviewerReceipt(value);
-      if (receipt?._tag === "ReviewersRemoved") {
-        appendRecentWrites({
-          _tag: "ReviewerChange",
-          requested: [],
-          removed: receipt.removed,
-        });
-      }
-    },
-    [appendRecentWrites, workbench, runDirectCommand],
-  );
+  const {
+    fetchLabels,
+    addLabels,
+    removeLabels,
+    fetchAssignableUsers,
+    addAssignees,
+    removeAssignees,
+    assignSelf,
+    fetchReviewers,
+    requestReviewers,
+    removeReviewers,
+  } = useReviewMetadataActions({
+    workbench,
+    runDirectCommand,
+    appendRecentWrites,
+  });
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
     workbench.revision.freshness === "fresh" &&
