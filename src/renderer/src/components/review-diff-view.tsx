@@ -10,7 +10,6 @@ import {
 } from "react";
 import {
   type CodeViewItem,
-  type CodeViewLineSelection,
   type DiffLineAnnotation,
   type FileDiffMetadata,
   type LineDiffTypes,
@@ -32,12 +31,7 @@ import {
 } from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
-import {
-  parseGitHubThreadId,
-  parseRepoRelativePath,
-  type GitHubThreadId,
-} from "../../../domain/ids";
-import { PatchdeskApiError } from "../api-client";
+import { type GitHubThreadId } from "../../../domain/ids";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
 import {
   ConversationThreadCard,
@@ -51,11 +45,7 @@ import {
   PendingReviewThreadCard,
   PendingReviewWriteCard,
 } from "./review-diff-authoring";
-import { composerErrorMessage } from "./review-diff-authoring-errors";
-import {
-  fingerprintPatchAnchor,
-  type ReviewAnchorFingerprint,
-} from "../../../domain/diff-anchor";
+import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import {
   diffThemeFor,
@@ -71,6 +61,7 @@ import { useReviewFileNavigation } from "@/hooks/use-review-file-navigation";
 import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
 import { useReviewDiffSelectionScroll } from "@/hooks/use-review-diff-scroll-state";
 import { useReviewDiffModel } from "@/hooks/use-review-diff-model";
+import { useReviewConversationOverlays } from "@/hooks/use-review-conversation-overlays";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
@@ -156,19 +147,6 @@ export type LocalComposerConfig = {
   readonly onSave: (body: string) => Promise<void>;
   readonly pendingReview?: PendingReviewComposerActions;
 };
-/** Mutable draft of `LocalComposerConfig`, built in statements so the
- * optional `pendingReview` is added only when it has a value. */
-type MutableLocalComposerConfig = {
-  -readonly [K in keyof LocalComposerConfig]: LocalComposerConfig[K];
-};
-/** Mutable draft of `ConversationThreadCardData`, built in statements so
- * each optional callback is added only when its action is wired. */
-type MutableConversationThreadCardData = {
-  -readonly [
-    K in keyof ConversationThreadCardData
-  ]: ConversationThreadCardData[K];
-};
-
 export type PendingReviewWriteConfig = {
   readonly localId: string;
   readonly status: "sending" | "failed";
@@ -177,12 +155,6 @@ export type PendingReviewWriteConfig = {
   readonly message?: string;
   readonly onDismiss: (localId: string) => void;
 };
-/** Mutable draft of `PendingReviewWriteConfig`, built in statements so the
- * optional `message` is added only when the status is `"failed"`. */
-type MutablePendingReviewWriteConfig = {
-  -readonly [K in keyof PendingReviewWriteConfig]: PendingReviewWriteConfig[K];
-};
-
 export type LocalCommentLocation = {
   readonly path: string;
   readonly startLine: number;
@@ -226,14 +198,6 @@ export type LocalCommentAuthoringSaveInput = {
   readonly fingerprint?: ReviewAnchorFingerprint;
   readonly body: string;
 };
-/** Mutable draft of `LocalCommentAuthoringSaveInput`, built in statements so
- * the optional `fingerprint` is added only when it has a value. */
-type MutableLocalCommentAuthoringSaveInput = {
-  -readonly [
-    K in keyof LocalCommentAuthoringSaveInput
-  ]: LocalCommentAuthoringSaveInput[K];
-};
-
 // Re-exported for callers (e.g. diff-workbench.tsx) that historically import
 // this type from the diff-view module; the type itself now lives with the
 // shared conversation thread card.
@@ -299,144 +263,6 @@ function ReviewDiffSurface({
     useState<DiffThemePreferences>(() => loadDiffThemePreferences());
   const viewer =
     useRef<CodeViewHandle<ReviewInlineAnnotation | undefined>>(null);
-  const [authoringSelection, setAuthoringSelection] =
-    useState<CodeViewLineSelection | null>(null);
-  /** Local-only create overlays; `published` carries the real GitHub comment id, `sending`/`failed` carry none. */
-  type CreatedThreadOverlay =
-    | {
-        readonly _tag: "sending";
-        readonly localId: string;
-        readonly path: string;
-        readonly start: number;
-        readonly end: number;
-        readonly side: "new" | "old";
-        readonly body: string;
-      }
-    | {
-        readonly _tag: "failed";
-        readonly localId: string;
-        readonly path: string;
-        readonly start: number;
-        readonly end: number;
-        readonly side: "new" | "old";
-        readonly body: string;
-      }
-    | {
-        readonly _tag: "published";
-        readonly localId: string;
-        readonly path: string;
-        readonly start: number;
-        readonly end: number;
-        readonly side: "new" | "old";
-        readonly body: string;
-        readonly commentId: string;
-        readonly threadId?: GitHubThreadId;
-      };
-  // Renderer-only feedback while a pending-review Start/Add command is in
-  // flight or confirmed failed. Never a GitHub identity: a sending card only
-  // shows progress, a failed card reports the bounded error, and neither
-  // offers a retry nor becomes an editable Review draft.
-  type PendingReviewWriteOverlay =
-    | {
-        readonly _tag: "sending";
-        readonly localId: string;
-        readonly action: "start" | "add";
-        readonly path: string;
-        readonly start: number;
-        readonly end: number;
-        readonly side: "new" | "old";
-        readonly body: string;
-      }
-    | {
-        readonly _tag: "failed";
-        readonly localId: string;
-        readonly action: "start" | "add";
-        readonly path: string;
-        readonly start: number;
-        readonly end: number;
-        readonly side: "new" | "old";
-        readonly body: string;
-        readonly message: string;
-      };
-  const [createdThreads, setCreatedThreads] = useState<
-    ReadonlyArray<CreatedThreadOverlay>
-  >([]);
-  const [pendingWriteOverlays, setPendingWriteOverlays] = useState<
-    ReadonlyArray<PendingReviewWriteOverlay>
-  >([]);
-  const localIdCounter = useRef(0);
-  const [editedBodies, setEditedBodies] = useState<ReadonlyMap<string, string>>(
-    () => new Map(),
-  );
-  const [deletedCommentIds, setDeletedCommentIds] = useState<
-    ReadonlySet<string>
-  >(() => new Set());
-  const [resolvedThreads, setResolvedThreads] = useState<
-    ReadonlyMap<string, "open" | "resolved">
-  >(() => new Map());
-  // Published writes are authoritative (the receipt is GitHub's 200) and the
-  // projection only changes on an explicit refresh or reload. Local mutation
-  // overrides keep the cards truthful until the projection catches up; each is
-  // dropped once the authoritative thread arrives with the same content.
-  useEffect(() => {
-    const threadIds = new Set<string>();
-    const commentIds = new Set<string>();
-    const commentBodies = new Map<string, string>();
-    const threadStates = new Map<string, string>();
-    for (const annotation of annotations) {
-      const thread = annotation.conversationThread;
-      if (thread === undefined) continue;
-      if (thread.target._tag === "thread") {
-        threadIds.add(thread.target.id);
-        threadStates.set(thread.target.id, thread.state);
-      }
-      for (const comment of thread.comments) {
-        commentIds.add(comment.id);
-        commentBodies.set(comment.id, comment.body);
-      }
-    }
-    setCreatedThreads((current) => {
-      const reconciled = current.filter((entry) => {
-        // A published overlay is superseded once the projection owns its real
-        // comment id; sending/failed overlays have no GitHub identity and stay.
-        return entry._tag !== "published" || !commentIds.has(entry.commentId);
-      });
-      return reconciled.length === current.length ? current : reconciled;
-    });
-    setEditedBodies((current) => {
-      let changed = false;
-      const next = new Map(current);
-      for (const [commentId, body] of next) {
-        if (commentBodies.get(commentId) === body) {
-          next.delete(commentId);
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-    setDeletedCommentIds((current) => {
-      let changed = false;
-      const next = new Set(current);
-      for (const commentId of next) {
-        if (!commentIds.has(commentId)) {
-          next.delete(commentId);
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-    setResolvedThreads((current) => {
-      let changed = false;
-      const next = new Map(current);
-      for (const [threadId, state] of next) {
-        if (threadStates.get(threadId) === state) {
-          next.delete(threadId);
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-  }, [annotations]);
   useEffect(() => {
     const onAppearance = (event: Event): void => {
       // SAFETY: only `window.dispatchEvent(new CustomEvent("patchdesk:appearance", ...))`
@@ -461,420 +287,20 @@ function ReviewDiffSurface({
     window.addEventListener("patchdesk:diff-theme", onTheme);
     return () => window.removeEventListener("patchdesk:diff-theme", onTheme);
   }, []);
-  const clearAuthoring = useCallback((): void => {
-    setAuthoringSelection(null);
-    viewer.current?.clearSelectedLines();
-  }, []);
-  const beginAccessibleAuthoring = useCallback(
-    (path: string, line: number, side: "additions" | "deletions"): void => {
-      if (localCommentAuthoring?.enabled !== true) return;
-      const location: LocalCommentLocation = {
-        path,
-        startLine: line,
-        line,
-        side: side === "additions" ? "new" : "old",
-      };
-      if (localCommentAuthoring.canAuthor?.(location) === false) return;
-      localCommentAuthoring.onSelectionChange?.(location);
-      setAuthoringSelection({
-        id: path,
-        range: { start: line, end: line, side },
-      });
-    },
-    [localCommentAuthoring],
-  );
-  const saveAuthoring = useCallback(
-    async (body: string): Promise<void> => {
-      if (
-        authoringSelection === null ||
-        localCommentAuthoring?.enabled !== true
-      )
-        return;
-      const side: "new" | "old" =
-        authoringSelection.range.side === "additions" ? "new" : "old";
-      const parsedPath = parseRepoRelativePath(authoringSelection.id);
-      const anchor =
-        parsedPath._tag === "ok"
-          ? {
-              path: parsedPath.value,
-              startLine: authoringSelection.range.start,
-              line: authoringSelection.range.end,
-              side,
-            }
-          : undefined;
-      if (anchor === undefined) return;
-      const fingerprint = fingerprintPatchAnchor(patch, anchor);
-      // A temporary local id never reaches a write command: the card is visible
-      // immediately as pending, then reconciled from a real receipt or the next
-      // represented snapshot. It is never a GitHub thread id.
-      const localId = `local-${Date.now().toString(36)}-${localIdCounter.current}`;
-      localIdCounter.current += 1;
-      setCreatedThreads((current) => [
-        ...current,
-        {
-          _tag: "sending",
-          localId,
-          path: anchor.path,
-          start: anchor.startLine,
-          end: anchor.line,
-          side: anchor.side,
-          body,
-        },
-      ]);
-      clearAuthoring();
-      try {
-        const saveInput: MutableLocalCommentAuthoringSaveInput = {
-          path: authoringSelection.id,
-          startLine: anchor.startLine,
-          line: anchor.line,
-          side,
-          body,
-        };
-        if (fingerprint !== undefined) saveInput.fingerprint = fingerprint;
-        const receipt = await localCommentAuthoring.onSave(saveInput);
-        // A read-back that failed or found no match must not fabricate a
-        // thread id: an unparseable or absent `receipt.threadId` leaves the
-        // card `comment_only`-equivalent (no `threadId` on the overlay),
-        // never a guessed identity.
-        const parsedThreadId =
-          receipt?.threadId === undefined
-            ? undefined
-            : parseGitHubThreadId(receipt.threadId);
-        const publishedBase = {
-          _tag: "published" as const,
-          localId,
-          path: anchor.path,
-          start: anchor.startLine,
-          end: anchor.line,
-          side: anchor.side,
-          body,
-        };
-        const nextEntry: CreatedThreadOverlay =
-          receipt !== undefined && receipt.commentId !== undefined
-            ? parsedThreadId?._tag === "ok"
-              ? {
-                  ...publishedBase,
-                  commentId: receipt.commentId,
-                  threadId: parsedThreadId.value,
-                }
-              : { ...publishedBase, commentId: receipt.commentId }
-            : {
-                _tag: "failed" as const,
-                localId,
-                path: anchor.path,
-                start: anchor.startLine,
-                end: anchor.line,
-                side: anchor.side,
-                body,
-              };
-        setCreatedThreads((current) =>
-          current.map((entry) =>
-            entry.localId === localId ? nextEntry : entry,
-          ),
-        );
-      } catch {
-        // A timeout or transport failure may have created the comment; the card
-        // must not offer a retry that could duplicate it. Refresh re-baselines.
-        setCreatedThreads((current) =>
-          current.map((entry) =>
-            entry.localId === localId
-              ? {
-                  _tag: "failed" as const,
-                  localId: entry.localId,
-                  path: entry.path,
-                  start: entry.start,
-                  end: entry.end,
-                  side: entry.side,
-                  body: entry.body,
-                }
-              : entry,
-          ),
-        );
-      }
-    },
-    [authoringSelection, clearAuthoring, localCommentAuthoring, patch],
-  );
-  const submitPendingWrite = useCallback(
-    async (
-      action: "start" | "add",
-      anchor: LocalCommentLocation,
-      body: string,
-      run: (anchor: LocalCommentLocation, body: string) => Promise<void>,
-    ): Promise<void> => {
-      const localId = `pending-write-${Date.now().toString(36)}-${localIdCounter.current}`;
-      localIdCounter.current += 1;
-      setPendingWriteOverlays((current) => [
-        ...current,
-        {
-          _tag: "sending",
-          localId,
-          action,
-          path: anchor.path,
-          start: anchor.startLine,
-          end: anchor.line,
-          side: anchor.side,
-          body,
-        },
-      ]);
-      // The composer closes immediately on submit, before the remote command
-      // resolves; only the transient card represents the write now. onCancel is
-      // not used because it may prompt about discarding text.
-      clearAuthoring();
-      try {
-        await run(anchor, body);
-        // The flow applied the confirmed pending projection on success; the
-        // authoritative pending card replaces this transient at the same anchor.
-        setPendingWriteOverlays((current) =>
-          current.filter((entry) => entry.localId !== localId),
-        );
-      } catch (cause) {
-        // An unknown outcome must not leave a card that claims anything was
-        // written: the unavailable/recovery state and Check GitHub again own
-        // reconciliation. A confirmed rejection keeps bounded failed feedback.
-        if (
-          cause instanceof PatchdeskApiError &&
-          cause.kind === "outcome_unknown"
-        ) {
-          setPendingWriteOverlays((current) =>
-            current.filter((entry) => entry.localId !== localId),
-          );
-          return;
-        }
-        setPendingWriteOverlays((current) =>
-          current.map((entry) =>
-            entry.localId === localId
-              ? {
-                  ...entry,
-                  _tag: "failed" as const,
-                  message: composerErrorMessage(cause),
-                }
-              : entry,
-          ),
-        );
-      }
-    },
-    [clearAuthoring],
-  );
-  const localComposerAnnotation = useMemo<
-    ReviewInlineAnnotation | undefined
-  >(() => {
-    if (authoringSelection === null || localCommentAuthoring?.enabled !== true)
-      return undefined;
-    // The pending actions are wrapped so a Start/Add submit gets the direct
-    // comment lifecycle: a transient renderer-only card and an unconditional
-    // composer close, both before the remote command is awaited.
-    const wrappedPendingReview: PendingReviewComposerActions | undefined =
-      pendingReviewComposer === undefined
-        ? undefined
-        : {
-            ...pendingReviewComposer,
-            onStartReview: (anchor, body) =>
-              submitPendingWrite(
-                "start",
-                anchor,
-                body,
-                pendingReviewComposer.onStartReview,
-              ),
-            onAddReviewComment: (nodeId, anchor, body) =>
-              submitPendingWrite("add", anchor, body, (a, b) =>
-                pendingReviewComposer.onAddReviewComment(nodeId, a, b),
-              ),
-          };
-    return {
-      id: `local-comment:${authoringSelection.id}:${authoringSelection.range.start}:${authoringSelection.range.end}:${authoringSelection.range.side}`,
-      path: authoringSelection.id,
-      start: authoringSelection.range.start,
-      end: authoringSelection.range.end,
-      side: authoringSelection.range.side === "additions" ? "new" : "old",
-      severity: "info",
-      title: "Local comment",
-      explanation: "",
-      localComposer: (() => {
-        const composer: MutableLocalComposerConfig = {
-          path: authoringSelection.id,
-          startLine: authoringSelection.range.start,
-          line: authoringSelection.range.end,
-          side: authoringSelection.range.side === "additions" ? "new" : "old",
-          onCancel: clearAuthoring,
-          onSave: saveAuthoring,
-        };
-        if (wrappedPendingReview !== undefined)
-          composer.pendingReview = wrappedPendingReview;
-        return composer;
-      })(),
-    };
-  }, [
-    authoringSelection,
-    clearAuthoring,
-    localCommentAuthoring?.enabled,
-    saveAuthoring,
-    pendingReviewComposer,
-    submitPendingWrite,
-  ]);
-  const optimisticAnnotations = useMemo<ReadonlyArray<ReviewInlineAnnotation>>(
-    () => [
-      ...createdThreads.map((entry: CreatedThreadOverlay) => {
-        // A sending/failed card has no GitHub identity at all: no thread id and
-        // no comment id, so no write command can ever target it. A published
-        // card uses its real comment id as the controlled item key; the
-        // authoritative thread replaces it after an explicit refresh.
-        if (entry._tag !== "published") {
-          return {
-            id: `conversation:pending:${entry.localId}`,
-            path: entry.path,
-            start: entry.start,
-            end: entry.end,
-            side: entry.side,
-            severity: "conversation",
-            title: "Conversation",
-            explanation: "",
-            pendingConversation: {
-              localId: entry.localId,
-              status: entry._tag,
-              body: entry.body,
-              onDismiss: (localId: string) =>
-                setCreatedThreads((current) =>
-                  current.filter((candidate) => candidate.localId !== localId),
-                ),
-            },
-          };
-        }
-        const conversationThread: MutableConversationThreadCardData = {
-          // A bounded, retried read-back inside `createInlineComment` may
-          // already have confirmed the published thread this comment landed
-          // in (see `confirmPublishedCommentThread`), upgrading Reply/Resolve
-          // in the same round trip; when it could not confirm one, the card
-          // stays comment-only and Edit/Delete remain reachable through the
-          // real viewer-authored comment id (never a synthetic thread id).
-          target:
-            entry.threadId === undefined
-              ? { _tag: "comment_only" as const, commentId: entry.commentId }
-              : { _tag: "thread" as const, id: entry.threadId },
-          state: "open" as const,
-          complete: true,
-          comments: [
-            {
-              id: entry.commentId,
-              author: "You",
-              body: entry.body,
-              createdAt: new Date().toISOString(),
-              viewerDidAuthor: true,
-            },
-          ],
-        };
-        if (conversationActions?.editComment !== undefined)
-          conversationThread.onEditComment = conversationActions.editComment;
-        if (conversationActions?.deleteComment !== undefined)
-          conversationThread.onDeleteComment =
-            conversationActions.deleteComment;
-        return {
-          id: `conversation:${entry.commentId}`,
-          path: entry.path,
-          start: entry.start,
-          end: entry.end,
-          side: entry.side,
-          severity: "conversation",
-          title: "Conversation",
-          explanation: "",
-          conversationThread,
-        };
-      }),
-      ...pendingWriteOverlays.map((entry: PendingReviewWriteOverlay) => {
-        const pendingReviewWrite: MutablePendingReviewWriteConfig = {
-          localId: entry.localId,
-          status: entry._tag,
-          action: entry.action,
-          body: entry.body,
-          onDismiss: (localId: string) =>
-            setPendingWriteOverlays((current) =>
-              current.filter((candidate) => candidate.localId !== localId),
-            ),
-        };
-        if (entry._tag === "failed") pendingReviewWrite.message = entry.message;
-        return {
-          id: `pending-write:${entry.localId}`,
-          path: entry.path,
-          start: entry.start,
-          end: entry.end,
-          side: entry.side,
-          severity: "conversation",
-          title: "Pending review write",
-          explanation: "",
-          pendingReviewWrite,
-        };
-      }),
-    ],
-    [conversationActions, createdThreads, pendingWriteOverlays],
-  );
-  const renderedAnnotations = useMemo(
-    () =>
-      localComposerAnnotation === undefined
-        ? [...annotations, ...optimisticAnnotations]
-        : [...annotations, ...optimisticAnnotations, localComposerAnnotation],
-    [annotations, localComposerAnnotation, optimisticAnnotations],
-  );
-  // Published mutations are applied on top of the projection until an explicit
-  // refresh or reload re-baselines it: edited bodies replace comment text,
-  // resolved threads flip their state, deleted comments (and emptied threads)
-  // disappear, and created entries already present in the projection are not
-  // duplicated.
-  const displayedAnnotations = useMemo(() => {
-    const projectionThreadIds = new Set<string>();
-    const projectionCommentIds = new Set<string>();
-    for (const annotation of annotations) {
-      const thread = annotation.conversationThread;
-      if (thread === undefined) continue;
-      if (thread.target._tag === "thread")
-        projectionThreadIds.add(thread.target.id);
-      for (const comment of thread.comments)
-        projectionCommentIds.add(comment.id);
-    }
-    const displayed: Array<ReviewInlineAnnotation> = [];
-    for (const annotation of renderedAnnotations) {
-      const thread = annotation.conversationThread;
-      if (thread === undefined) {
-        displayed.push(annotation);
-        continue;
-      }
-      // A created card is superseded by the authoritative thread with the
-      // same thread or comment id; the projection now owns it.
-      if (annotations.some((projection) => projection === annotation)) {
-        displayed.push(annotation);
-        continue;
-      }
-      const projectionTargetThreadId =
-        thread.target._tag === "thread" ? thread.target.id : undefined;
-      if (
-        projectionTargetThreadId !== undefined &&
-        projectionThreadIds.has(projectionTargetThreadId)
-      )
-        continue;
-      if (projectionCommentIds.has(thread.comments[0]?.id ?? "")) continue;
-      const targetThreadId =
-        thread.target._tag === "thread" ? thread.target.id : undefined;
-      const state =
-        targetThreadId === undefined
-          ? thread.state
-          : (resolvedThreads.get(targetThreadId) ?? thread.state);
-      const comments = thread.comments.flatMap((comment) => {
-        if (deletedCommentIds.has(comment.id)) return [];
-        const body = editedBodies.get(comment.id);
-        return [body === undefined ? comment : { ...comment, body }];
-      });
-      if (comments.length === 0) continue;
-      displayed.push({
-        ...annotation,
-        conversationThread: { ...thread, state, comments },
-      });
-    }
-    return displayed;
-  }, [
+  const {
+    displayedAnnotations,
+    localComposerAnnotation,
+    beginAccessibleAuthoring,
+    beginAuthoring,
+    decorateConversationThread,
+  } = useReviewConversationOverlays({
+    patch,
     annotations,
-    deletedCommentIds,
-    editedBodies,
-    renderedAnnotations,
-    resolvedThreads,
-  ]);
+    viewer,
+    localCommentAuthoring,
+    pendingReviewComposer,
+    conversationActions,
+  });
   const {
     contextControl,
     contextStatus,
@@ -1058,66 +484,9 @@ function ReviewDiffSurface({
         return <PendingReviewThreadCard {...finding.pendingReviewThread} />;
       }
       if (finding.conversationThread !== undefined) {
-        const thread = finding.conversationThread;
-        // Global Reply and state callbacks only ever attach to a canonical
-        // GitHub thread target; a comment-only card cannot inherit them.
-        const hasThreadTarget = thread.target._tag === "thread";
-        const setState = hasThreadTarget
-          ? (thread.onSetState ?? conversationActions?.setThreadState)
-          : undefined;
-        const reply = hasThreadTarget
-          ? (thread.onReply ?? conversationActions?.replyToThread)
-          : undefined;
-        const edit = thread.onEditComment ?? conversationActions?.editComment;
-        const remove =
-          thread.onDeleteComment ?? conversationActions?.deleteComment;
-        const cardThread: MutableConversationThreadCardData = { ...thread };
-        if (setState !== undefined) {
-          cardThread.onSetState = async (threadId, state) => {
-            await setState(threadId, state);
-            setResolvedThreads((current) => {
-              const next = new Map(current);
-              next.set(threadId, state);
-              return next;
-            });
-          };
-        }
-        if (reply !== undefined) cardThread.onReply = reply;
-        if (edit !== undefined) {
-          cardThread.onEditComment = async (commentId, body) => {
-            await edit(commentId, body);
-            setEditedBodies((current) => {
-              const next = new Map(current);
-              next.set(commentId, body);
-              return next;
-            });
-          };
-        }
-        if (remove !== undefined) {
-          cardThread.onDeleteComment = async (commentId) => {
-            await remove(commentId);
-            setDeletedCommentIds((current) => {
-              const next = new Set(current);
-              next.add(commentId);
-              return next;
-            });
-            setCreatedThreads((current) =>
-              current.some(
-                (entry) =>
-                  entry._tag === "published" && entry.commentId === commentId,
-              )
-                ? current.filter(
-                    (entry) =>
-                      entry._tag !== "published" ||
-                      entry.commentId !== commentId,
-                  )
-                : current,
-            );
-          };
-        }
         return (
           <ConversationThreadCard
-            thread={cardThread}
+            thread={decorateConversationThread(finding.conversationThread)}
             navAnchorId={finding.id}
           />
         );
@@ -1157,34 +526,13 @@ function ReviewDiffSurface({
         </article>
       );
     },
-    [conversationActions],
+    [decorateConversationThread],
   );
   const renderPatchHeader = useCallback(
     (file: FileDiffMetadata) => (
       <FileHeaderRow file={file} stats={renderFileChangeCounts(file.name)} />
     ),
     [renderFileChangeCounts],
-  );
-  const beginAuthoring = useCallback(
-    (selection: CodeViewLineSelection | null): void => {
-      if (localCommentAuthoring?.enabled !== true || selection === null) return;
-      const range = selection.range;
-      if (
-        (range.side !== "additions" && range.side !== "deletions") ||
-        (range.endSide !== undefined && range.endSide !== range.side)
-      )
-        return;
-      const location: LocalCommentLocation = {
-        path: selection.id,
-        startLine: range.start,
-        line: range.end,
-        side: range.side === "additions" ? "new" : "old",
-      };
-      if (localCommentAuthoring.canAuthor?.(location) === false) return;
-      localCommentAuthoring.onSelectionChange?.(location);
-      setAuthoringSelection(selection);
-    },
-    [localCommentAuthoring],
   );
   const renderGutterUtility = useCallback(
     (
