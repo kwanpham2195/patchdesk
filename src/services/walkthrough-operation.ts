@@ -91,6 +91,7 @@ export type InvalidWalkthroughOutput = {
 };
 
 export function parseWalkthroughOutput(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the walkthrough output's own I/O boundary; the very next statement runs `safeParse(walkthroughOutputSchema, input)` against it before anything else touches it.
   input: unknown,
 ): Result<WalkthroughOutput, InvalidWalkthroughOutput> {
   const parsed = v.safeParse(walkthroughOutputSchema, input);
@@ -100,9 +101,12 @@ export function parseWalkthroughOutput(
 }
 
 /** Reads fixed bounded artifacts and composes the only model-visible walkthrough prompt. */
-export async function prepareWalkthroughPrompt(
-  input: WalkthroughInput,
-): Promise<string> {
+export async function prepareWalkthroughPrompt(input: {
+  readonly profileId: string;
+  readonly sessionId: string;
+  readonly contextPath: string;
+  readonly patchPath: string;
+}): Promise<string> {
   const [context, patch] = await Promise.all([
     readRequiredArtifact(input.contextPath, MAX_WALKTHROUGH_CONTEXT_BYTES),
     readRequiredArtifact(input.patchPath, MAX_WALKTHROUGH_ARTIFACT_BYTES),

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import type { WebContents } from "electron";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDesktopMenuTemplate } from "../src/main/desktop-menu";
@@ -101,7 +100,7 @@ describe("desktop hardening", () => {
         }),
         webRequest: { onHeadersReceived: vi.fn() },
       },
-    } as unknown as WebContents;
+    };
 
     installWebContentsSecurity(
       webContents,
@@ -109,6 +108,11 @@ describe("desktop hardening", () => {
       openExternal,
     );
 
+    // SAFETY: installWebContentsSecurity above registers exactly one
+    // setWindowOpenHandler callback, shaped like GuardedWebContents's
+    // `(details: { readonly url: string }) => { readonly action: "deny" }`;
+    // the untyped `vi.fn()` mock erases that shape, so this recovers it to
+    // call the handler directly.
     const popup = setWindowOpenHandler.mock.calls[0]?.[0] as (details: {
       readonly url: string;
     }) => { readonly action: string };
@@ -118,16 +122,26 @@ describe("desktop hardening", () => {
     expect(popup({ url: "https://evil.example" })).toEqual({ action: "deny" });
 
     const navigationEvent = { preventDefault: vi.fn() };
+    // SAFETY: the `on` mock above stores installWebContentsSecurity's real
+    // "will-navigate" listener — a `(event, url: string) => void` per
+    // GuardedWebContents — under this key; the map's `never[]` rest type only
+    // exists so one Map can hold every event's listener signature, so casting
+    // these two real call arguments back to it here is safe.
     listeners.get("will-navigate")?.(
       navigationEvent as never,
       "https://github.com/org/repo" as never,
     );
     expect(navigationEvent.preventDefault).toHaveBeenCalledOnce();
     const redirectEvent = { preventDefault: vi.fn() };
+    // SAFETY: same invariant as "will-navigate" above; installWebContentsSecurity
+    // registers a `(event) => void` "will-redirect" listener under this key.
     listeners.get("will-redirect")?.(redirectEvent as never);
     expect(redirectEvent.preventDefault).toHaveBeenCalledOnce();
 
     const downloadEvent = { preventDefault: vi.fn() };
+    // SAFETY: same invariant as above; installWebContentsSecurity registers a
+    // `(event) => void` "will-download" listener on the session mock under
+    // this key.
     sessionListeners.get("will-download")?.(downloadEvent as never);
     expect(downloadEvent.preventDefault).toHaveBeenCalledOnce();
     expect(setPermissionCheckHandler).toHaveBeenCalledOnce();
@@ -153,7 +167,19 @@ describe("desktop hardening", () => {
     expect(contentSecurityPolicy(false)).toContain(
       "script-src 'self' 'unsafe-inline'",
     );
-    expect(contentSecurityPolicy(true)).toContain("script-src 'self';");
+    expect(contentSecurityPolicy(true)).toContain(
+      "script-src 'self' 'wasm-unsafe-eval';",
+    );
+  });
+
+  it("allows WebAssembly so the diff highlighter can start, without allowing eval", () => {
+    for (const packaged of [true, false]) {
+      const scriptSource = /script-src ([^;]+);/u.exec(
+        contentSecurityPolicy(packaged),
+      )?.[1];
+      expect(scriptSource).toContain("'wasm-unsafe-eval'");
+      expect(scriptSource).not.toContain("'unsafe-eval'");
+    }
   });
 
   it("restores window geometry onto an available display at a usable size", () => {
@@ -182,6 +208,9 @@ describe("desktop hardening", () => {
     const packagedRoot =
       "/Applications/Patchdesk.app/Contents/Resources/flue-runtime";
     const lock = "lockfileVersion: '6.0'\n";
+    // SAFETY: pi-ai-catalog.generated.ts's literal always carries a top-level
+    // `digest: string` field (see the file's last property), even though its
+    // export is deliberately typed `unknown`; this narrows just that field.
     const catalogDigest = (generatedPiAiCatalog as { readonly digest: string })
       .digest;
     const files = new Map<string, string>([

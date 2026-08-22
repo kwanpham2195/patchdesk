@@ -35,6 +35,7 @@ export function InsightRunDialog({
   onOpenChange,
   onProviderChange,
   onActivateCodex,
+  onRefreshCodexModels,
   onModelChange,
   onReasoningChange,
   onConfirm,
@@ -51,6 +52,7 @@ export function InsightRunDialog({
   readonly onOpenChange: (open: boolean) => void;
   readonly onProviderChange: (provider: InsightProvider) => void;
   readonly onActivateCodex: () => void;
+  readonly onRefreshCodexModels: () => void;
   readonly onModelChange: (model: string | null) => void;
   readonly onReasoningChange: (reasoning: InsightReasoning) => void;
   readonly onConfirm: () => void;
@@ -90,6 +92,8 @@ export function InsightRunDialog({
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
               value={provider}
               onChange={(event) =>
+                // SAFETY: the two <option> values below are the literal exhaustive
+                // members of InsightProvider, so the select can only emit one of them.
                 onProviderChange(event.target.value as InsightProvider)
               }
             >
@@ -111,6 +115,27 @@ export function InsightRunDialog({
               </Button>
               {codexActivationError ? (
                 <p className="text-destructive">
+                  Codex models are unavailable. Check external login and the app
+                  launch PATH.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {provider === "codex-cli-account" && models.length > 0 ? (
+            <div className="grid gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="justify-self-start"
+                disabled={codexActivationPending}
+                onClick={onRefreshCodexModels}
+              >
+                {codexActivationPending
+                  ? "Refreshing models…"
+                  : "Refresh models"}
+              </Button>
+              {codexActivationError ? (
+                <p className="text-sm text-destructive">
                   Codex models are unavailable. Check external login and the app
                   launch PATH.
                 </p>
@@ -141,6 +166,8 @@ export function InsightRunDialog({
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
               value={reasoning}
               onChange={(event) =>
+                // SAFETY: every <option> below is rendered from reasoningOptions, which is
+                // always sourced from InsightReasoning values, so the select can only emit one.
                 onReasoningChange(event.target.value as InsightReasoning)
               }
             >

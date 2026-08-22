@@ -662,6 +662,75 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(reasoning.value).toBe("high");
   });
 
+  it("selects the saved preference's Codex model after activation, not the first one", async () => {
+    // Regression for a bug where `activateCodex` always picked
+    // `codexModels[0]` and ignored a saved preference, unlike
+    // `changeProvider`'s precedence for the Pi provider above.
+    localStorage.setItem(
+      "patchdesk.insight-run.v1.analysis.profile",
+      JSON.stringify({
+        provider: "codex-cli-account",
+        model: "codex/preferred",
+        reasoning: "high",
+      }),
+    );
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      if (input.path === "/v1/insight-providers/codex/models")
+        return {
+          providers: [
+            {
+              id: "codex-cli-account",
+              label: "Codex CLI account",
+              available: true,
+              guidance: "Use the existing local Codex CLI login.",
+            },
+          ],
+          models: [
+            {
+              provider: "codex-cli-account",
+              id: "codex/first",
+              label: "Codex First",
+              reasoning: ["medium", "high"],
+              defaultReasoning: "medium",
+            },
+            {
+              provider: "codex-cli-account",
+              id: "codex/preferred",
+              label: "Codex Preferred",
+              reasoning: ["medium", "high"],
+              defaultReasoning: "medium",
+            },
+          ],
+        };
+      throw new Error(input.path);
+    });
+    mount(projection());
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Generate analysis" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Load Codex models" }),
+    );
+
+    const model = await screen.findByRole("combobox", {
+      name: "Insight model",
+    });
+    // SAFETY: `ModelCombobox` renders its trigger as a plain text input; the
+    // accessible-name query above only matches that element.
+    expect((model as HTMLInputElement).value).toBe("Codex Preferred");
+    // SAFETY: the reasoning field is a native `<select>`; the accessible-name
+    // query above only matches that element.
+    const reasoning = screen.getByRole("combobox", {
+      name: "Insight reasoning",
+    }) as HTMLSelectElement;
+    expect(reasoning.value).toBe("high");
+  });
+
   it("hides Add to review for a Finding whose location is not on the diff", async () => {
     bridge(async (input) => {
       if (input.path === "/v1/reviews/detect-updates")
@@ -704,9 +773,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       expect(navigation).toHaveBeenCalledWith("write_pending"),
     );
     release({ pendingReview: pending("pending") });
-    await waitFor(() =>
-      expect(navigation).toHaveBeenCalledWith("clear"),
-    );
+    await waitFor(() => expect(navigation).toHaveBeenCalledWith("clear"));
   });
 
   it("locks a Finding after its exact pending-review receipt is projected", async () => {
@@ -730,9 +797,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith(projected));
     const commandCall = request.mock.calls.find(
-      ([input]) =>
-        callPath(input) ===
-        "/v1/reviews/pending-review/command",
+      ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
     );
     expect(commandCall?.[0]).toMatchObject({
       body: {
@@ -753,9 +818,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     });
     expect(
       request.mock.calls.filter(
-        ([input]) =>
-          callPath(input) ===
-          "/v1/reviews/pending-review/command",
+        ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
       ),
     ).toHaveLength(1);
 
@@ -797,9 +860,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     );
     expect(
       request.mock.calls.some(
-        ([input]) =>
-          callPath(input) ===
-          "/v1/reviews/pending-review/command",
+        ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
       ),
     ).toBe(false);
   });
@@ -850,9 +911,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       await vi.advanceTimersByTimeAsync(500);
       expect(
         request.mock.calls.filter(
-          ([input]) =>
-            callPath(input) ===
-            "/v1/reviews/detect-updates",
+          ([input]) => callPath(input) === "/v1/reviews/detect-updates",
         ),
       ).toHaveLength(1);
     } finally {
@@ -929,9 +988,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       mount(projection());
       const detectCount = (): number =>
         request.mock.calls.filter(
-          ([input]) =>
-            callPath(input) ===
-            "/v1/reviews/detect-updates",
+          ([input]) => callPath(input) === "/v1/reviews/detect-updates",
         ).length;
       await vi.advanceTimersByTimeAsync(0);
       expect(detectCount()).toBe(1);

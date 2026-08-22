@@ -20,6 +20,7 @@ const baseProps = {
   codexActivationError: false,
   onProviderChange: vi.fn(),
   onActivateCodex: vi.fn(),
+  onRefreshCodexModels: vi.fn(),
   models,
   model: null,
   reasoning: "medium" as const,
@@ -50,6 +51,9 @@ describe("InsightRunDialog model picker", () => {
   it("disables an empty catalog without exposing provider configuration", () => {
     render(<InsightRunDialog {...baseProps} models={[]} />);
 
+    // SAFETY: Base UI's Combobox renders the role="combobox" node as a native
+    // <input> element (see ModelCombobox), so this query result is always an
+    // HTMLInputElement.
     const input = screen.getByRole("combobox", {
       name: "Insight model",
     }) as HTMLInputElement;
@@ -74,5 +78,43 @@ describe("InsightRunDialog model picker", () => {
     );
 
     expect(await screen.findByText("No models found.")).toBeTruthy();
+  });
+});
+
+describe("InsightRunDialog Codex model loading", () => {
+  it("offers Refresh models instead of Load Codex models once models are cached", () => {
+    render(
+      <InsightRunDialog
+        {...baseProps}
+        provider="codex-cli-account"
+        models={[{ id: "codex/gpt", label: "Codex GPT" }]}
+        model="codex/gpt"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Refresh models" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Load Codex models" }),
+    ).toBeNull();
+  });
+
+  it("still asks for the explicit first fetch when no Codex models are available", () => {
+    render(
+      <InsightRunDialog
+        {...baseProps}
+        provider="codex-cli-account"
+        models={[]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Load Codex models" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Refresh models" })).toBeNull();
+    expect(
+      screen.getByText(
+        "Codex models are loaded only after this explicit action.",
+      ),
+    ).toBeTruthy();
   });
 });

@@ -50,6 +50,7 @@ The safety statement in `README.md` describes the sandbox and write-authority mo
 - The loopback API requires its per-launch capability. GitHub writes require an explicit current UI action. Merge and Published feedback deletion or dismissal require explicit confirmation.
 - Provider support uses built-in environment API-key or ambient machine-credential providers, plus the Codex CLI account provider defined by the ADR "Use the local Codex CLI account"; exclude all other OAuth-only providers and Cloudflare Workers bindings from selectable catalogs. Codex may use verified sandboxed read-only inspection tools only in Patchdesk's immutable represented-review worktree; deny writes, file changes, network/permission escalation, and unverified requests. Keep availability checks main-process-only and redacted; never probe providers, read a full environment, execute custom-provider configuration, or expose/persist credential values. Flue 2 runs only as a Patchdesk-owned one-shot child with no sandbox, MCP, subagents, filesystem tools, or GitHub authority.
 - Cleanup may remove only non-running review sessions.
+- Codex app-server protocol reference: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md (cache it with `$librarian`; notes in `.agents/research/2026-08-22-codex-app-server-protocol.md`). Read a turn's answer from the `turn/completed` payload. `item/agentMessage/delta` is optional streaming that a client can switch off, so never rebuild a result from deltas alone.
 
 ## Memory
 
@@ -60,7 +61,7 @@ The safety statement in `README.md` describes the sandbox and write-authority mo
 - A completed task package is closed reference material. Do not add research,
   plans, or implementation artifacts to it; route follow-up work using the
   locations above.
-- For Pierre or Flue integration research, use `$librarian` for upstream sources.
+- For Pierre, Flue, or Codex app-server integration research, use `$librarian` for upstream sources.
 - Do not use broad Git cleanup commands such as `git clean` or `git reset --hard`.
 - Backward compatibility requires a user request.
 - Use `$patchdesk-review-lifecycle` for Review, refresh, Insight, draft, publication, recovery, retry, Walkthrough, or merge lifecycle changes.

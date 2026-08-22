@@ -6,10 +6,11 @@ import {
 import { realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 
+import * as v from "valibot";
+
 import { err, ok, type Result } from "../../domain/result";
 import type { InsightReasoning } from "../../domain/insight-provider";
 import type { RepresentedReviewWorktree } from "../../domain/represented-review-worktree";
-import { insightOutputGuidance } from "../../domain/insight-output-guidance";
 import type { InsightFailureCategory } from "../../domain/insight-record";
 
 const CLIENT_NAME = "patchdesk";
@@ -21,7 +22,14 @@ const MAX_MODELS = 512;
 const MAX_MODEL_BYTES = 4 * 1024 * 1024;
 const MAX_STREAM_BYTES = 8 * 1024 * 1024;
 const MAX_PROMPT_BYTES = 256 * 1024;
+export const MAX_WALKTHROUGH_PROMPT_BYTES = 3 * 1024 * 1024;
+/** Hard bound for one composed Analysis prompt; mirrors MAX_ANALYSIS_PROMPT_BYTES in model-review-runner.ts. */
+export const MAX_ANALYSIS_CODEX_PROMPT_BYTES = 6 * 1024 * 1024;
 const RUN_TIMEOUT_MS = 5 * 60_000;
+
+/** Shared unsafe-prompt guard: rejects path disclosure, credential leakage, and repository-rule leakage. */
+const UNSAFE_PROMPT_PATTERN =
+  /(?:^|\s)\/[^\s]+|[A-Za-z]:[\\/]|CODEX_HOME|projectReviewCriteria|rulePaths|repository rules|(?:api[_-]?key|access[_-]?token|password|secret|credential|authorization|token)\s*(?:[:=]|\bbearer\b)|-----BEGIN [A-Z ]*PRIVATE KEY-----/iu;
 
 const COMMAND_APPROVAL_METHOD = "item/commandExecution/requestApproval";
 const FILE_APPROVAL_METHOD = "item/fileChange/requestApproval";
@@ -56,11 +64,12 @@ export type CodexRunInput = {
   readonly model: string;
   readonly reasoning: InsightReasoning;
   readonly prompt: string;
+  readonly maxPromptBytes?: number;
+  readonly runTimeoutMs?: number;
 };
 
-type RpcMessage = Readonly<Record<string, unknown>>;
 type PendingRequest = {
-  readonly resolve: (value: RpcMessage) => void;
+  readonly resolve: (value: JsonObject) => void;
   readonly reject: (cause: RpcFailure) => void;
   readonly timer: ReturnType<typeof setTimeout>;
 };
@@ -83,6 +92,109 @@ type CodexProcessFactory = (
   args: ReadonlyArray<string>,
   options: SpawnOptions,
 ) => ChildProcess;
+
+/**
+ * One line of the Codex app-server's stdio protocol, either direction: a response, a
+ * server-to-client request, or a notification. `params`/`result`/`error` are left as `unknown`
+ * here and parsed into their method-specific shape at the point each is consumed, so one
+ * malformed field never invalidates the whole envelope.
+ */
+export const codexRpcMessageSchema = v.looseObject({
+  id: v.optional(v.union([v.string(), v.number()])),
+  method: v.optional(v.string()),
+  params: v.optional(v.unknown()),
+  result: v.optional(v.unknown()),
+  error: v.optional(v.unknown()),
+});
+export type CodexRpcMessage = v.InferOutput<typeof codexRpcMessageSchema>;
+
+/** The `id`+`method`+`params` and `id`+`result`/`error` shapes this client writes to the child. */
+type OutgoingRpcMessage =
+  | { readonly method: string; readonly params: unknown }
+  | { readonly id: string; readonly method: string; readonly params: unknown }
+  | { readonly id: string | number; readonly result: unknown }
+  | {
+      readonly id: string | number;
+      readonly error: { readonly code: number; readonly message: string };
+    };
+
+const rpcErrorSchema = v.looseObject({
+  code: v.optional(v.union([v.string(), v.number()])),
+  message: v.optional(v.string()),
+});
+
+/** Bare "is a plain object" gate for a field the wire protocol leaves as `unknown`. */
+const plainObjectSchema = v.looseObject({});
+
+/**
+ * A generic JSON value. Every RPC response's `result` is one of these before it is parsed into
+ * its own method-specific shape (thread/start, turn/start, model/list, ...); each caller runs
+ * its own schema over it rather than reading it as `unknown`.
+ */
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<JsonValue>
+  | { readonly [key: string]: JsonValue };
+const jsonValueSchema: v.GenericSchema<JsonValue> = v.lazy(() =>
+  v.union([
+    v.string(),
+    v.number(),
+    v.boolean(),
+    v.null_(),
+    v.array(jsonValueSchema),
+    v.record(v.string(), jsonValueSchema),
+  ]),
+);
+/** An RPC response's `result`, confirmed to be a plain object. */
+const jsonObjectSchema = v.record(v.string(), jsonValueSchema);
+type JsonObject = v.InferOutput<typeof jsonObjectSchema>;
+
+const threadStartResultSchema = v.looseObject({
+  thread: v.looseObject({ id: v.string() }),
+});
+const turnStartResultSchema = v.looseObject({
+  turn: v.looseObject({ id: v.string() }),
+});
+const modelListItemSchema = v.looseObject({
+  id: v.string(),
+  displayName: v.optional(v.string()),
+  hidden: v.optional(v.boolean()),
+  supportedReasoningEfforts: v.optional(
+    v.array(v.looseObject({ reasoningEffort: v.optional(v.string()) })),
+  ),
+  defaultReasoningEffort: v.optional(v.string()),
+});
+const modelListResultSchema = v.looseObject({
+  data: v.array(modelListItemSchema),
+  nextCursor: v.optional(v.nullable(v.string())),
+});
+type ModelListItem = v.InferOutput<typeof modelListItemSchema>;
+
+const turnItemSchema = v.looseObject({
+  type: v.optional(v.string()),
+  text: v.optional(v.string()),
+});
+const completedTurnSchema = v.looseObject({
+  status: v.optional(v.string()),
+  // A malformed `items` array must not sink `status`: the caller falls back to
+  // the streamed delta text when items can't be read, same as an absent field.
+  items: v.fallback(v.optional(v.array(turnItemSchema)), undefined),
+});
+type CompletedTurn = v.InferOutput<typeof completedTurnSchema>;
+const turnCompletedParamsSchema = v.looseObject({
+  turn: v.optional(completedTurnSchema),
+});
+const agentMessageDeltaParamsSchema = v.looseObject({
+  delta: v.optional(v.string()),
+});
+const commandApprovalParamsSchema = v.looseObject({
+  cwd: v.optional(v.string()),
+  command: v.optional(v.string()),
+});
+type CommandApprovalParams = v.InferOutput<typeof commandApprovalParamsSchema>;
 
 /** Creates the restricted environment inherited by the Codex child. */
 export function allowlistedCodexEnvironment(
@@ -115,44 +227,93 @@ export async function isPathInsideWorktree(
   );
 }
 
-/** Builds a sanitized Codex child prompt from explicit review facts. */
-export function buildCodexPrompt(input: {
-  readonly insightType: "analysis" | "walkthrough";
-  readonly pullRequestTitle?: string;
-  readonly pullRequestDescription?: string;
-  readonly reviewInput: string;
+/** The Analysis result contract Codex must return, kept faithful to modelReviewResultSchema. */
+const ANALYSIS_RESULT_CONTRACT = [
+  '{"changeSummary":string,"verdict":"approve"|"comment"|"request_changes","summary":string,',
+  ' "findings":[{"id":string,"severity":"P0"|"P1"|"P2"|"P3","title":string,"explanation":string,',
+  '   "confidence":"high"|"medium"|"low","file"?:string,"lineStart"?:number,"lineEnd"?:number,',
+  '   "diffSide"?:"new"|"old","suggestedComment"?:string,',
+  '   "category"?:"bug"|"security"|"test"|"performance"|"maintainability"|"docs",',
+  '   "affectedScenario"?:string,"whyItMatters"?:string,"suggestedChange"?:string}],',
+  ' "validationPlan":[string],"assumptions":[string],',
+  ' "coverage"?:"high"|"medium"|"low","overallConfidence"?:"high"|"medium"|"low",',
+  ' "unresolvedItems"?:[string],',
+  ' "callouts"?:[{"category":"migration"|"dependency"|"dependency_change"|"authentication"|"compatibility"|"destructive_operation"|"feature_flag"|"configuration","title":string,"detail":string,"path"?:string}]}',
+].join("\n");
+
+/**
+ * Builds a sanitized Codex child prompt for an Analysis. `analysisPrompt` carries the app-owned
+ * immutable patch and context artifacts, so the unsafe-content guard applies only to `policy`:
+ * applying it to the patch would reject ordinary code such as ` /**`.
+ */
+export function buildCodexAnalysisPrompt(input: {
+  readonly analysisPrompt: string;
   readonly policy: string;
 }): Result<string, "invalid_prompt"> {
-  const values = [
-    input.pullRequestTitle,
-    input.pullRequestDescription,
-    input.reviewInput,
-    input.policy,
-  ];
-  const unsafe =
-    /(?:^|\s)\/[^\s]+|[A-Za-z]:[\\/]|CODEX_HOME|projectReviewCriteria|rulePaths|repository rules|(?:api[_-]?key|access[_-]?token|password|secret|credential|authorization|token)\s*(?:[:=]|\bbearer\b)|-----BEGIN [A-Z ]*PRIVATE KEY-----/iu;
-  if (values.some((value) => value !== undefined && unsafe.test(value)))
-    return err("invalid_prompt");
+  if (UNSAFE_PROMPT_PATTERN.test(input.policy)) return err("invalid_prompt");
   const prompt = [
     "Patchdesk owns all Review lifecycle, Finding mapping, publication, and merge authority.",
-    `Insight type: ${input.insightType}`,
+    "Insight type: analysis",
     "The represented review worktree is immutable and read-only. Do not modify files, access credentials, use network, or request permission escalation.",
-    "Return exactly one JSON value satisfying the existing Patchdesk result contract. Do not wrap it in Markdown and do not return prose.",
-    insightOutputGuidance(input.insightType),
-    input.pullRequestTitle === undefined
-      ? undefined
-      : `Pull request title:\n${input.pullRequestTitle}`,
-    input.pullRequestDescription === undefined
-      ? undefined
-      : `Pull request description:\n${input.pullRequestDescription}`,
-    `Review evidence:\n${input.reviewInput}`,
+    "Return exactly one JSON object satisfying the result contract below. Do not wrap it in a Markdown code fence, and do not add any prose before or after it. Use no keys beyond those listed.",
+    ANALYSIS_RESULT_CONTRACT,
+    "The verdict must match the findings: use request_changes when any finding is P0 or P1, comment when there are findings but none are P0 or P1, and approve only when findings is empty. A mismatch fails the whole run.",
+    "Give each finding an id that matches ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ and is unique among the findings.",
+    "Give each finding's file a repo-relative path taken from the patch. Never use an absolute path or a path that contains '..'.",
+    "Use at most 50 findings. Use at most 20 validationPlan entries and at most 20 assumptions, each within 500 characters. Use at most 10 unresolvedItems, each within 280 characters. Use at most 12 callouts; each callouts entry is an object, never a string, with title within 120 characters and detail within 500 characters.",
+    "Give changeSummary, summary, and every finding's title and explanation a non-empty value.",
+    input.analysisPrompt,
     `Patchdesk policy:\n${input.policy}`,
-  ]
-    .filter((value): value is string => value !== undefined)
-    .join("\n\n");
-  if (Buffer.byteLength(prompt, "utf8") > MAX_PROMPT_BYTES)
+  ].join("\n\n");
+  if (Buffer.byteLength(prompt, "utf8") > MAX_ANALYSIS_CODEX_PROMPT_BYTES)
     return err("invalid_prompt");
   return ok(prompt);
+}
+
+/**
+ * Builds a sanitized Codex child prompt for a Walkthrough. `walkthroughPrompt` carries the
+ * app-owned immutable patch and context artifacts, so the unsafe-content guard applies only to
+ * `policy`: applying it to the patch would reject ordinary code such as ` /**`.
+ */
+export function buildCodexWalkthroughPrompt(input: {
+  readonly walkthroughPrompt: string;
+  readonly policy: string;
+}): Result<string, "invalid_prompt"> {
+  if (UNSAFE_PROMPT_PATTERN.test(input.policy)) return err("invalid_prompt");
+  const prompt = [
+    "Patchdesk owns all Review lifecycle, Finding mapping, publication, and merge authority.",
+    "Insight type: walkthrough",
+    "The represented review worktree is immutable and read-only. Do not modify files, access credentials, use network, or request permission escalation.",
+    "Return exactly one JSON object. Do not wrap it in a Markdown code fence, and do not add any prose before or after it.",
+    '{"citationVersion":2,"title":string,"focus":string,"chapters":[{"title":string,"sections":[{"title":string,"prose":string,"hunkIds":[string]}]}]}',
+    "Use no other keys. Use at most 12 chapters and at most 32 sections in total. Keep title within 200 characters, focus within 320, each chapter title within 80, each section title within 160, and each section prose within 320.",
+    "Every entry in hunkIds must be an alias from the supplied HUNK ALIAS MANIFEST, and each section's prose must contain the exact repo-relative path of every hunk it cites. A section whose citations fail this rule is discarded.",
+    input.walkthroughPrompt,
+    `Patchdesk policy:\n${input.policy}`,
+  ].join("\n\n");
+  if (Buffer.byteLength(prompt, "utf8") > MAX_WALKTHROUGH_PROMPT_BYTES)
+    return err("invalid_prompt");
+  return ok(prompt);
+}
+
+/** Parses a Codex turn's completed text, tolerating a fenced ```json (or ```) reply. */
+export function parseTurnJson(text: string): Result<unknown, "invalid_json"> {
+  const trimmed = text.trim();
+  const body = trimmed.startsWith("```") ? stripCodeFence(trimmed) : trimmed;
+  try {
+    // SAFETY: JSON.parse's declared return type is `any`; asserting it to `unknown` re-establishes
+    // the parsed-boundary contract instead of letting an implicit `any` leak into the caller.
+    return ok(JSON.parse(body) as unknown);
+  } catch {
+    return err("invalid_json");
+  }
+}
+
+function stripCodeFence(text: string): string {
+  const withoutOpening = text.replace(/^```[^\n]*\n?/, "");
+  return withoutOpening.endsWith("```")
+    ? withoutOpening.slice(0, -3).trim()
+    : withoutOpening.trim();
 }
 
 /** Main-process Codex app-server client. Every public operation owns one child and one thread. */
@@ -195,9 +356,13 @@ export class CodexAppServerClient {
           return err({ reason: "cancelled", phase: "model_list" });
         if (Date.now() >= deadline)
           return err({ reason: "timed_out", phase: "model_list" });
+        const params =
+          cursor === undefined
+            ? { includeHidden: false }
+            : { includeHidden: false, cursor };
         const response = await child.request(
           "model/list",
-          { includeHidden: false, ...(cursor === undefined ? {} : { cursor }) },
+          params,
           options.signal,
           deadline - Date.now(),
         );
@@ -209,20 +374,21 @@ export class CodexAppServerClient {
         bytes += Buffer.byteLength(JSON.stringify(response.value), "utf8");
         if (bytes > MAX_MODEL_BYTES)
           return err({ reason: "runtime_unavailable", phase: "model_list" });
-        const pageModels = parseModelPage(response.value);
+        const parsedResult = v.safeParse(modelListResultSchema, response.value);
+        if (!parsedResult.success)
+          return err({ reason: "invalid_result", phase: "model_list" });
+        const pageModels = parseModelPage(parsedResult.output.data);
         if (pageModels._tag === "err")
           return err({ reason: "invalid_result", phase: "model_list" });
         models.push(...pageModels.value);
         if (models.length > MAX_MODELS)
           return err({ reason: "runtime_unavailable", phase: "model_list" });
-        const nextCursor = parseNextCursor(response.value);
-        if (nextCursor._tag === "err")
-          return err({ reason: "invalid_result", phase: "model_list" });
-        if (nextCursor.value === undefined) break;
-        if (seenCursors.has(nextCursor.value))
+        const nextCursor = parsedResult.output.nextCursor ?? undefined;
+        if (nextCursor === undefined) break;
+        if (seenCursors.has(nextCursor))
           return err({ reason: "runtime_unavailable", phase: "model_list" });
-        seenCursors.add(nextCursor.value);
-        cursor = nextCursor.value;
+        seenCursors.add(nextCursor);
+        cursor = nextCursor;
         if (page === MAX_MODEL_PAGES - 1)
           return err({ reason: "runtime_unavailable", phase: "model_list" });
       }
@@ -239,7 +405,8 @@ export class CodexAppServerClient {
     input: CodexRunInput,
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<unknown, CodexAppServerFailure>> {
-    if (Buffer.byteLength(input.prompt, "utf8") > MAX_PROMPT_BYTES)
+    const maxPromptBytes = input.maxPromptBytes ?? MAX_PROMPT_BYTES;
+    if (Buffer.byteLength(input.prompt, "utf8") > maxPromptBytes)
       return err({ reason: "invalid_result", phase: "turn_start" });
     const child = new RpcChild(this.processFactory);
     const started = await child.start(
@@ -259,7 +426,7 @@ export class CodexAppServerClient {
     const timer = setTimeout(() => {
       child.cancel();
       resolveTimeout(err({ reason: "timed_out", phase: "turn" }));
-    }, this.runTimeoutMs);
+    }, input.runTimeoutMs ?? this.runTimeoutMs);
     try {
       return await Promise.race([
         timeout,
@@ -294,7 +461,10 @@ export class CodexAppServerClient {
         reason: classifyRpcFailure(thread.error),
         phase: "thread_start",
       });
-    const threadId = readObjectString(thread.value, "thread", "id");
+    const threadParsed = v.safeParse(threadStartResultSchema, thread.value);
+    const threadId = threadParsed.success
+      ? threadParsed.output.thread.id
+      : undefined;
     if (threadId === undefined)
       return err({ reason: "invalid_result", phase: "thread_start" });
     return await child.turn(
@@ -320,9 +490,13 @@ export class CodexAppServerClient {
         return err({ reason: "cancelled", phase: "model_list" });
       if (Date.now() >= deadline)
         return err({ reason: "timed_out", phase: "model_list" });
+      const params =
+        cursor === undefined
+          ? { includeHidden: false }
+          : { includeHidden: false, cursor };
       const response = await child.request(
         "model/list",
-        { includeHidden: false, ...(cursor === undefined ? {} : { cursor }) },
+        params,
         signal,
         deadline - Date.now(),
       );
@@ -334,20 +508,21 @@ export class CodexAppServerClient {
       bytes += Buffer.byteLength(JSON.stringify(response.value), "utf8");
       if (bytes > MAX_MODEL_BYTES)
         return err({ reason: "runtime_unavailable", phase: "model_list" });
-      const parsed = parseModelPage(response.value);
+      const parsedResult = v.safeParse(modelListResultSchema, response.value);
+      if (!parsedResult.success)
+        return err({ reason: "invalid_result", phase: "model_list" });
+      const parsed = parseModelPage(parsedResult.output.data);
       if (parsed._tag === "err")
         return err({ reason: "invalid_result", phase: "model_list" });
       models.push(...parsed.value);
       if (models.length > MAX_MODELS)
         return err({ reason: "runtime_unavailable", phase: "model_list" });
-      const next = parseNextCursor(response.value);
-      if (next._tag === "err")
-        return err({ reason: "invalid_result", phase: "model_list" });
-      if (next.value === undefined) return ok(models);
-      if (cursors.has(next.value))
+      const next = parsedResult.output.nextCursor ?? undefined;
+      if (next === undefined) return ok(models);
+      if (cursors.has(next))
         return err({ reason: "runtime_unavailable", phase: "model_list" });
-      cursors.add(next.value);
-      cursor = next.value;
+      cursors.add(next);
+      cursor = next;
     }
     return err({ reason: "runtime_unavailable", phase: "model_list" });
   }
@@ -355,7 +530,7 @@ export class CodexAppServerClient {
 
 class RpcChild {
   private readonly pending = new Map<string, PendingRequest>();
-  private readonly listeners = new Set<(message: RpcMessage) => void>();
+  private readonly listeners = new Set<(message: CodexRpcMessage) => void>();
   private child: ChildProcess | undefined;
   private buffer = "";
   private nextId = 0;
@@ -375,12 +550,16 @@ class RpcChild {
     if (signal?.aborted)
       return err({ reason: "cancelled", phase: "initialize" });
     try {
-      this.child = this.processFactory(executablePath, ["app-server"], {
+      const spawnOptions: SpawnOptions = {
         shell: false,
-        ...(cwd === undefined ? {} : { cwd }),
         stdio: ["pipe", "pipe", "pipe"],
         env: allowlistedCodexEnvironment(),
-      });
+      };
+      this.child = this.processFactory(
+        executablePath,
+        ["app-server"],
+        cwd === undefined ? spawnOptions : { ...spawnOptions, cwd },
+      );
       if (
         this.child.stdin === null ||
         this.child.stdout === null ||
@@ -421,12 +600,12 @@ class RpcChild {
     }
   }
 
-  async request(
+  async request<P>(
     method: string,
-    params: RpcMessage,
+    params: P,
     signal?: AbortSignal,
     timeoutMs = REQUEST_TIMEOUT_MS,
-  ): Promise<Result<RpcMessage, RpcFailure>> {
+  ): Promise<Result<JsonObject, RpcFailure>> {
     if (
       this.child?.stdin === null ||
       this.child?.stdin === undefined ||
@@ -445,7 +624,7 @@ class RpcChild {
         },
         Math.min(REQUEST_TIMEOUT_MS, Math.max(1, timeoutMs)),
       );
-      const resolve = (value: RpcMessage): void => {
+      const resolve = (value: JsonObject): void => {
         clearTimeout(timer);
         resolveResult(ok(value));
       };
@@ -484,30 +663,33 @@ class RpcChild {
         resolveTurn = resolve;
       },
     );
-    const onMessage = (message: RpcMessage): void => {
-      const method = readString(message, "method");
-      const params = readObject(message, "params");
-      if (method === undefined || params === undefined) return;
+    const onMessage = (message: CodexRpcMessage): void => {
+      const { method, params } = message;
+      if (method === undefined || !v.is(plainObjectSchema, params)) return;
       if (method === "item/agentMessage/delta") {
-        const delta = readString(params, "delta");
+        const deltaParsed = v.safeParse(agentMessageDeltaParamsSchema, params);
+        const delta = deltaParsed.success ? deltaParsed.output.delta : undefined;
         if (delta !== undefined) text += delta;
         if (Buffer.byteLength(text, "utf8") > MAX_STREAM_BYTES)
           resolveTurn(err({ reason: "invalid_result", phase: "turn" }));
         return;
       }
       if (method === "turn/completed") {
-        const turn = readObject(params, "turn");
-        const status =
-          turn === undefined ? undefined : readString(turn, "status");
-        if (status !== "completed") {
+        const turnParsed = v.safeParse(turnCompletedParamsSchema, params);
+        const turn = turnParsed.success ? turnParsed.output.turn : undefined;
+        if (turn?.status !== "completed") {
           resolveTurn(err({ reason: "execution_failed", phase: "turn" }));
           return;
         }
-        try {
-          resolveTurn(ok(JSON.parse(text.trim()) as unknown));
-        } catch {
-          resolveTurn(err({ reason: "invalid_result", phase: "turn" }));
-        }
+        // The completed turn carries the authoritative final message; the
+        // protocol does not guarantee that every message arrives as a delta.
+        const answer = finalAgentMessageText(turn) ?? text;
+        const parsed = parseTurnJson(answer);
+        resolveTurn(
+          parsed._tag === "ok"
+            ? ok(parsed.value)
+            : err({ reason: "invalid_result", phase: "turn" }),
+        );
         return;
       }
       if (method === "error")
@@ -534,7 +716,10 @@ class RpcChild {
           reason: classifyRpcFailure(started.error),
           phase: "turn_start",
         });
-      this.turnId = readObjectString(started.value, "turn", "id");
+      const startedParsed = v.safeParse(turnStartResultSchema, started.value);
+      this.turnId = startedParsed.success
+        ? startedParsed.output.turn.id
+        : undefined;
       if (this.turnId === undefined)
         return err({ reason: "invalid_result", phase: "turn_start" });
       return await finished;
@@ -568,12 +753,14 @@ class RpcChild {
     this.child = undefined;
   }
 
-  private listenersAdd(listener: (message: RpcMessage) => void): () => void {
+  private listenersAdd(
+    listener: (message: CodexRpcMessage) => void,
+  ): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  private send(message: RpcMessage): void {
+  private send(message: OutgoingRpcMessage): void {
     if (
       this.child?.stdin === null ||
       this.child?.stdin === undefined ||
@@ -584,7 +771,7 @@ class RpcChild {
   }
 
   private read(chunk: Buffer | string): void {
-    this.buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    this.buffer += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
     if (Buffer.byteLength(this.buffer, "utf8") > MAX_STREAM_BYTES) {
       this.failPending();
       return;
@@ -593,50 +780,51 @@ class RpcChild {
     this.buffer = lines.pop() ?? "";
     for (const line of lines) {
       if (line.trim().length === 0) continue;
+      let value: unknown;
       try {
-        const value: unknown = JSON.parse(line);
-        if (
-          typeof value === "object" &&
-          value !== null &&
-          !Array.isArray(value)
-        )
-          this.route(value as RpcMessage);
+        value = JSON.parse(line);
       } catch {
         this.failPending();
+        continue;
       }
+      const parsed = v.safeParse(codexRpcMessageSchema, value);
+      if (parsed.success) this.route(parsed.output);
     }
   }
 
-  private route(message: RpcMessage): void {
-    const id = readStringOrNumber(message, "id");
-    const method = readString(message, "method");
+  private route(message: CodexRpcMessage): void {
+    const { id, method } = message;
     if (id !== undefined && method === undefined) {
       const pending = this.pending.get(String(id));
       if (pending === undefined) return;
       this.pending.delete(String(id));
-      const error = readObject(message, "error");
-      if (error !== undefined)
-        pending.reject({
-          _tag: "rpc_error",
-          ...(readStringOrNumber(error, "code") === undefined
-            ? {}
-            : { code: readStringOrNumber(error, "code") }),
-          ...(readString(error, "message") === undefined
-            ? {}
-            : { message: readString(error, "message") }),
-        });
-      else {
-        const result = readObject(message, "result");
-        if (result === undefined) pending.reject("invalid_rpc_result");
+      const errorParsed = v.safeParse(rpcErrorSchema, message.error);
+      if (errorParsed.success) {
+        const { code, message: errorMessage } = errorParsed.output;
+        const base = { _tag: "rpc_error" as const };
+        const withCode = code === undefined ? base : { ...base, code };
+        const rpcError =
+          errorMessage === undefined
+            ? withCode
+            : { ...withCode, message: errorMessage };
+        pending.reject(rpcError);
+      } else {
+        const result = message.result;
+        if (result === undefined || !v.is(jsonObjectSchema, result))
+          pending.reject("invalid_rpc_result");
         else pending.resolve(result);
       }
       return;
     }
     if (id !== undefined && method !== undefined) {
+      const commandParamsParsed = v.safeParse(
+        commandApprovalParamsSchema,
+        message.params,
+      );
       const task = this.handleRequest(
         id,
         method,
-        readObject(message, "params") ?? {},
+        commandParamsParsed.success ? commandParamsParsed.output : undefined,
       ).catch(() => {
         this.send({ id, result: { decision: "decline" } });
       });
@@ -650,7 +838,7 @@ class RpcChild {
   private async handleRequest(
     id: string | number,
     method: string,
-    params: RpcMessage,
+    commandParams: CommandApprovalParams | undefined,
   ): Promise<void> {
     if (method === PERMISSIONS_APPROVAL_METHOD) {
       this.send({ id, result: { permissions: {}, scope: "turn" } });
@@ -661,8 +849,8 @@ class RpcChild {
       return;
     }
     if (method === COMMAND_APPROVAL_METHOD) {
-      const worktreePath = readString(params, "cwd");
-      const command = readString(params, "command");
+      const worktreePath = commandParams?.cwd;
+      const command = commandParams?.command;
       const allowed =
         worktreePath !== undefined &&
         command !== undefined &&
@@ -741,22 +929,19 @@ class RpcChild {
 }
 
 function parseModelPage(
-  input: RpcMessage,
+  data: ReadonlyArray<ModelListItem>,
 ): Result<ReadonlyArray<CodexModel>, "invalid_models"> {
-  const data = readArray(input, "data");
-  if (data === undefined) return err("invalid_models");
   const models: CodexModel[] = [];
   let bytes = 0;
   for (const item of data) {
-    const id = readString(item, "id");
-    if (id === undefined || id.length > 200) return err("invalid_models");
+    if (item.id.length > 200) return err("invalid_models");
     bytes += Buffer.byteLength(JSON.stringify(item), "utf8");
     if (bytes > MAX_MODEL_BYTES) return err("invalid_models");
     if (item.hidden === true) continue;
     const efforts: Array<InsightReasoning> =
-      readArray(item, "supportedReasoningEfforts")?.flatMap(
+      item.supportedReasoningEfforts?.flatMap(
         (effort): ReadonlyArray<InsightReasoning> => {
-          const value = readString(effort, "reasoningEffort");
+          const value = effort.reasoningEffort;
           if (value === "minimal") return ["minimal"];
           if (value === "low") return ["low"];
           if (value === "medium") return ["medium"];
@@ -766,7 +951,7 @@ function parseModelPage(
         },
       ) ?? [];
     if (efforts.length === 0) continue;
-    const defaultValue = readString(item, "defaultReasoningEffort");
+    const defaultValue = item.defaultReasoningEffort;
     const defaultReasoning =
       defaultValue === "minimal" ||
       defaultValue === "low" ||
@@ -775,65 +960,35 @@ function parseModelPage(
       defaultValue === "xhigh"
         ? defaultValue
         : undefined;
-    models.push({
-      id,
-      label: readString(item, "displayName") ?? id,
+    const model: CodexModel = {
+      id: item.id,
+      label: item.displayName ?? item.id,
       reasoning: [...new Set(efforts)],
-      ...(defaultReasoning === undefined ? {} : { defaultReasoning }),
-    });
+    };
+    models.push(
+      defaultReasoning === undefined ? model : { ...model, defaultReasoning },
+    );
   }
   return ok(models);
 }
 
-/** Parses Codex's optional pagination cursor; its app server sends null at the final page. */
-function parseNextCursor(
-  input: RpcMessage,
-): Result<string | undefined, "invalid_cursor"> {
-  const value = input.nextCursor;
-  if (value === undefined || value === null) return ok(undefined);
-  return typeof value === "string" ? ok(value) : err("invalid_cursor");
+/** Reads the authoritative final agent message from a completed turn payload. */
+function finalAgentMessageText(
+  turn: CompletedTurn | undefined,
+): string | undefined {
+  if (turn?.items === undefined) return undefined;
+  let answer: string | undefined;
+  for (const item of turn.items) {
+    if (item.type !== "agentMessage") continue;
+    if (
+      item.text !== undefined &&
+      Buffer.byteLength(item.text, "utf8") <= MAX_STREAM_BYTES
+    )
+      answer = item.text;
+  }
+  return answer;
 }
 
-function readObject(input: RpcMessage, key: string): RpcMessage | undefined {
-  const value = input[key];
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as RpcMessage)
-    : undefined;
-}
-function readArray(
-  input: RpcMessage,
-  key: string,
-): ReadonlyArray<RpcMessage> | undefined {
-  const value = input[key];
-  return Array.isArray(value) &&
-    value.every(
-      (item) =>
-        typeof item === "object" && item !== null && !Array.isArray(item),
-    )
-    ? (value as ReadonlyArray<RpcMessage>)
-    : undefined;
-}
-function readString(input: RpcMessage, key: string): string | undefined {
-  const value = input[key];
-  return typeof value === "string" ? value : undefined;
-}
-function readObjectString(
-  input: RpcMessage,
-  objectKey: string,
-  key: string,
-): string | undefined {
-  const object = readObject(input, objectKey);
-  return object === undefined ? undefined : readString(object, key);
-}
-function readStringOrNumber(
-  input: RpcMessage,
-  key: string,
-): string | number | undefined {
-  const value = input[key];
-  return typeof value === "string" || typeof value === "number"
-    ? value
-    : undefined;
-}
 function classifyThrownFailure(cause: unknown): InsightFailureCategory {
   if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
     return "runtime_unavailable";
@@ -844,7 +999,12 @@ function classifyRpcFailure(
 ): InsightFailureCategory | "cancelled" {
   if (cause === "cancelled") return "cancelled";
   if (cause === "timeout") return "timed_out";
-  if (typeof cause === "object") {
+  if (
+    cause !== "process_unavailable" &&
+    cause !== "process_failed" &&
+    cause !== "stopped" &&
+    cause !== "invalid_rpc_result"
+  ) {
     const detail = `${cause.code ?? ""} ${cause.message ?? ""}`.toLowerCase();
     if (detail.includes("login") || detail.includes("auth"))
       return "authentication_required";

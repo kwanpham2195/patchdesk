@@ -30,6 +30,7 @@ import {
   saveInsightRunPreference,
   type InsightRunPreference,
 } from "../insight-run-preferences";
+import { loadCodexModelCache, saveCodexModelCache } from "../codex-model-cache";
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
@@ -57,6 +58,7 @@ import {
   parseCommitDiffResponse,
   parseDirectSummaryReviewResponse,
   parseInsightProviderCatalog,
+  type InsightProviderCatalogModel,
   parsePendingReviewProjection,
   parseRepositoryLabelListResponse,
   parseReviewerListResponse,
@@ -1799,6 +1801,17 @@ function insightRunConfigurationReducer(
 ): InsightRunConfiguration {
   return { ...state, ...action.patch };
 }
+type CatalogModel = InsightProviderCatalogModel;
+/** Replaces every `codex-cli-account` entry in a model list, keeping the rest. */
+function mergeCodexModels(
+  models: ReadonlyArray<CatalogModel>,
+  codexModels: ReadonlyArray<CatalogModel>,
+): CatalogModel[] {
+  return [
+    ...models.filter((candidate) => candidate.provider !== "codex-cli-account"),
+    ...codexModels,
+  ];
+}
 // Pre-existing giant component (over 640 lines before this change, unrelated
 // to this plan's diff — see the disable comment on `ReviewWorkbenchFlow`
 // above for the same verification and rationale).
@@ -1917,8 +1930,16 @@ function InsightsSlot({
           piModels.some((candidate) => candidate.id === initialPreference.model)
             ? initialPreference.model
             : (piModels[0]?.id ?? null);
+        const cachedCodexModels = loadCodexModelCache(profileId);
+        const catalogWithCache =
+          cachedCodexModels === undefined
+            ? parsed
+            : {
+                ...parsed,
+                models: mergeCodexModels(parsed.models, cachedCodexModels),
+              };
         setConfiguration({
-          catalog: parsed,
+          catalog: catalogWithCache,
           models: piModels,
           model: selectedModel,
           catalogError: false,
@@ -1990,24 +2011,26 @@ function InsightsSlot({
                   ),
                   ...parsed.providers,
                 ],
-                models: [
-                  ...catalog.models.filter(
-                    (candidate) => candidate.provider !== "codex-cli-account",
-                  ),
-                  ...parsed.models,
-                ],
+                models: mergeCodexModels(catalog.models, parsed.models),
               };
         const codexModels = parsed.models.filter(
           (candidate) => candidate.provider === "codex-cli-account",
         );
+        saveCodexModelCache(profileId, codexModels);
+        const preference = preferencesRef.current[activePreferenceType];
+        const first = codexModels[0];
         setConfiguration({
           catalog: nextCatalog,
           models: codexModels,
-          model: codexModels[0]?.id ?? null,
+          model:
+            preference?.provider === "codex-cli-account" &&
+            codexModels.some((candidate) => candidate.id === preference.model)
+              ? preference.model
+              : (first?.id ?? null),
           reasoning:
-            codexModels[0]?.defaultReasoning ??
-            codexModels[0]?.reasoning[0] ??
-            "medium",
+            preference?.provider === "codex-cli-account"
+              ? preference.reasoning
+              : (first?.defaultReasoning ?? first?.reasoning[0] ?? "medium"),
         });
       })
       .catch(() => setConfiguration({ codexActivationError: true }))
@@ -2422,6 +2445,7 @@ function InsightsSlot({
           }}
           onProviderChange={changeProvider}
           onActivateCodex={activateCodex}
+          onRefreshCodexModels={activateCodex}
           onReasoningChange={(nextReasoning) =>
             setConfiguration({ reasoning: nextReasoning })
           }

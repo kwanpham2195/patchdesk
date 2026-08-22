@@ -1021,7 +1021,7 @@ export function parseModelCatalog(input: unknown): ModelCatalog | undefined {
   return parsed.success ? parsed.output : undefined;
 }
 
-const insightProviderModelSchema = v.strictObject({
+export const insightProviderModelSchema = v.strictObject({
   provider: v.picklist(["pi", "codex-cli-account"]),
   id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   label: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
@@ -1033,6 +1033,10 @@ const insightProviderModelSchema = v.strictObject({
     v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
   ),
 });
+
+export type InsightProviderCatalogModel = v.InferOutput<
+  typeof insightProviderModelSchema
+>;
 
 const insightProviderCatalogSchema = v.strictObject({
   providers: v.array(

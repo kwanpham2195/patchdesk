@@ -1,8 +1,6 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 
-import type { WalkthroughInput } from "./walkthrough-operation";
-
 const WALKTHROUGH_MIN_TIMEOUT_MS = 5 * 60_000;
 const WALKTHROUGH_TIMEOUT_STEP_MS = 60_000;
 const WALKTHROUGH_MAX_TIMEOUT_MS = 20 * 60_000;
@@ -40,7 +38,7 @@ export function walkthroughTimeoutMs(sizes: WalkthroughArtifactSizes): number {
 
 /** Reads bounded artifacts only to calculate the caller-owned child timeout. */
 export async function readWalkthroughArtifactSizes(
-  input: WalkthroughInput,
+  input: { readonly contextPath: string; readonly patchPath: string },
   signal?: AbortSignal,
 ): Promise<WalkthroughArtifactSizes> {
   const [patch, context] = await Promise.all([
@@ -88,10 +86,9 @@ function countUnifiedDiffHunks(
       }
     };
     signal?.addEventListener("abort", onAbort, { once: true });
-    stream.on("data", (chunk: string | Buffer) => {
-      for (const byte of typeof chunk === "string"
-        ? Buffer.from(chunk)
-        : chunk) {
+    stream.on("data", (chunk) => {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      for (const byte of bytes) {
         if (byte === 0x0a) {
           lineStart = true;
           markerPrefixLength = 0;

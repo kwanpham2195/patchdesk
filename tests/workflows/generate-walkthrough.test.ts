@@ -171,8 +171,6 @@ describe("walkthrough prompt preparation", () => {
         sessionId: "session-1",
         contextPath,
         patchPath,
-        model: "model-explicit",
-        reasoning: "high",
       });
       expect(prompt).toContain("ordered chapter rail");
       expect(prompt).toContain("continuous reading surface");
@@ -214,8 +212,6 @@ describe("walkthrough prompt preparation", () => {
           sessionId: "session-1",
           contextPath,
           patchPath,
-          model: "model-explicit",
-          reasoning: "high",
         }),
       ).rejects.toThrow("Walkthrough artifact exceeds the bounded input size");
     } finally {

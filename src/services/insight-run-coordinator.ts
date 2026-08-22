@@ -1,5 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import type { GitSha } from "../domain/ids";
+import type { RawJsonValue } from "../domain/json";
+import * as v from "valibot";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
@@ -41,7 +43,10 @@ import {
   parseModelReviewResult,
   parseReviewResult,
 } from "../domain/review-result";
-import { normalizeNarrativeWalkthrough } from "../domain/narrative-walkthrough";
+import {
+  normalizeNarrativeWalkthrough,
+  type NarrativeWalkthroughError,
+} from "../domain/narrative-walkthrough";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
@@ -74,7 +79,16 @@ export type InsightInvoker = {
   invoke(
     input: InsightInvocationInput,
     options: { readonly signal: AbortSignal },
-  ): Promise<Result<unknown, { readonly reason: string }>>;
+  ): Promise<
+    Result<
+      unknown,
+      {
+        readonly reason: string;
+        readonly phase?: string;
+        readonly stderr?: string;
+      }
+    >
+  >;
 };
 export type InsightRunResponse = {
   readonly runId: InsightRunId;
@@ -117,6 +131,11 @@ type Active = {
   readonly runId: InsightRunId;
   readonly controller: AbortController;
 };
+
+/** Bounded validateResult rejection reason, surfaced only in the diagnostic detail. */
+type ValidateResultReason =
+  | "invalid_result"
+  | NarrativeWalkthroughError["reason"];
 
 export class InsightRunCoordinator {
   private readonly active = new Map<string, Active>();
@@ -365,7 +384,10 @@ export class InsightRunCoordinator {
           ? "not_found"
           : "storage_unavailable",
       );
-    const retainedRecord = retained.value.retained;
+    // SAFETY: retained.value.retained is deserialized from this Insight record's JSON file by
+    // InsightStore, so it is JSON-grammar data even though InsightRecord<unknown> leaves its
+    // per-run shape unparsed until callers read fields off it.
+    const retainedRecord = retained.value.retained as RawJsonValue | undefined;
     const retainedRunId = parseInsightRunId(
       readObjectField(retainedRecord, "runId"),
     );
@@ -381,6 +403,7 @@ export class InsightRunCoordinator {
     const retainedPatch = parseContentHash(
       readObjectField(retainedRevision, "patchHash"),
     );
+    if (retainedRecord === undefined) return err("not_found");
     const retainedValue = parseReviewResult(readRetainedValue(retainedRecord));
     if (
       retainedSession._tag === "err" ||
@@ -409,13 +432,17 @@ export class InsightRunCoordinator {
       type: "analysis",
       now: timestamp.value,
       operation: (record) => {
+        // SAFETY: record.retained is deserialized from this Insight record's JSON file by
+        // InsightStore, so it is JSON-grammar data even though InsightRecord<unknown> leaves its
+        // per-run shape unparsed until callers read fields off it.
+        const retainedJson = record.retained as RawJsonValue | undefined;
         if (
           record.activeRun !== undefined ||
-          record.retained === undefined ||
-          !isRetainedRun(record.retained, input.runId)
+          retainedJson === undefined ||
+          !isRetainedRun(retainedJson, input.runId)
         )
           return err("not_available" as const);
-        const parsed = parseReviewResult(readRetainedValue(record.retained));
+        const parsed = parseReviewResult(readRetainedValue(retainedJson));
         if (
           parsed._tag === "err" ||
           !parsed.value.findings.some(
@@ -640,7 +667,15 @@ export class InsightRunCoordinator {
         type: input.type,
         status: record.value.activeRun.status,
       });
-    if (isRetainedRun(record.value.retained, input.runId)) {
+    // SAFETY: record.value.retained is deserialized from this Insight record's JSON file by
+    // InsightStore, so it is JSON-grammar data even though InsightRecord<unknown> leaves its
+    // per-run shape unparsed until callers read fields off it.
+    if (
+      isRetainedRun(
+        record.value.retained as RawJsonValue | undefined,
+        input.runId,
+      )
+    ) {
       return ok({ runId: input.runId, type: input.type, status: "completed" });
     }
     if (record.value.replacementFailure?.runId === input.runId)
@@ -765,9 +800,7 @@ export class InsightRunCoordinator {
             : undefined;
         // Attach a truncated stderr diagnostic when the walkthrough process provides one.
         const stderr =
-          invocation._tag === "err" &&
-          "stderr" in invocation.error &&
-          typeof invocation.error.stderr === "string"
+          invocation._tag === "err" && invocation.error.stderr !== undefined
             ? invocation.error.stderr.slice(0, 500)
             : undefined;
         await this.persistTerminal(
@@ -779,24 +812,44 @@ export class InsightRunCoordinator {
             failInsightRun(
               record,
               runId,
-              {
-                runId,
-                reason: cancelled ? "cancelled" : "failed",
-                ...(category === undefined ? {} : { category }),
-                retryable: true,
-                failedAt: timestamp.value,
-              },
+              category === undefined
+                ? {
+                    runId,
+                    reason: cancelled ? "cancelled" : "failed",
+                    retryable: true,
+                    failedAt: timestamp.value,
+                  }
+                : {
+                    runId,
+                    reason: cancelled ? "cancelled" : "failed",
+                    category,
+                    retryable: true,
+                    failedAt: timestamp.value,
+                  },
               timestamp.value,
             ),
           "invocation",
         );
         if (stderr !== undefined)
           await this.recordDiagnostic(input, type, `stderr:${stderr}`);
+        // Without the phase an invocation failure records no cause at all.
+        if (category !== undefined)
+          await this.recordDiagnostic(
+            input,
+            type,
+            `invocation_${category}${phaseLabel(
+              invocation._tag === "err" ? invocation.error.phase : undefined,
+            )}`,
+          );
         return;
       }
       const validated = await this.validateResult(
         type,
-        invocation.value,
+        // SAFETY: invocation.value is InsightInvoker.invoke's ok payload. Its only implementation
+        // (CodexInsightInvoker -> CodexAppServerClient.run) resolves it from `JSON.parse` of the
+        // provider's turn/completed RPC payload, so it is always JSON-grammar data even though the
+        // invoker interface leaves it `unknown`.
+        invocation.value as RawJsonValue,
         input,
         {
           sessionId: input.sessionId,
@@ -825,7 +878,11 @@ export class InsightRunCoordinator {
             ),
           "invalid_result",
         );
-        await this.recordDiagnostic(input, type, "invalid_result");
+        await this.recordDiagnostic(
+          input,
+          type,
+          `invalid_result_${validated.error}`,
+        );
         return;
       }
       await this.persistTerminal(
@@ -883,10 +940,10 @@ export class InsightRunCoordinator {
 
   private async validateResult(
     type: InsightType,
-    value: unknown,
+    value: RawJsonValue,
     input: InsightInvocationInput,
     revision: InsightRevision,
-  ): Promise<Result<unknown, "invalid_result">> {
+  ): Promise<Result<unknown, ValidateResultReason>> {
     const patch = await readFile(input.patchPath, "utf8").catch(
       () => undefined,
     );
@@ -895,38 +952,46 @@ export class InsightRunCoordinator {
       const model = parseModelReviewResult(value);
       if (model._tag === "err") return err("invalid_result");
       const files = parseUnifiedPatch(patch);
+      // parseReviewResult's parameter is `unknown`; its valibot schema uses `v.optional()` for
+      // every field below, which treats a present-but-undefined key identically to an absent one
+      // (verified: both parse to the same omitted-key output), so passing the value directly here
+      // cannot change the persisted shape that parseReviewResult itself reconstructs.
       const mapped = parseReviewResult({
         changeSummary: model.value.changeSummary,
         verdict: model.value.verdict,
         summary: model.value.summary,
         validationPlan: model.value.validationPlan,
         assumptions: model.value.assumptions,
-        ...(model.value.coverage === undefined
-          ? {}
-          : { coverage: model.value.coverage }),
-        ...(model.value.overallConfidence === undefined
-          ? {}
-          : { overallConfidence: model.value.overallConfidence }),
-        ...(model.value.unresolvedItems === undefined
-          ? {}
-          : { unresolvedItems: model.value.unresolvedItems }),
-        ...(model.value.callouts === undefined
-          ? {}
-          : { callouts: model.value.callouts }),
+        coverage: model.value.coverage,
+        overallConfidence: model.value.overallConfidence,
+        unresolvedItems: model.value.unresolvedItems,
+        callouts: model.value.callouts,
+        // An unmapped finding keeps the location the model reported, so each
+        // mapped field replaces the model's own value only when it exists.
         findings: model.value.findings.map((finding) => {
           const location = mapFindingLocation(files, finding);
-          return {
+          const withStatus = {
             ...finding,
             mappingStatus: location.mappingStatus,
-            ...(location.path === undefined ? {} : { file: location.path }),
-            ...(location.side === undefined ? {} : { diffSide: location.side }),
-            ...(location.line === undefined
-              ? {}
-              : { lineStart: location.startLine ?? location.line }),
-            ...(location.startLine === undefined
-              ? {}
-              : { lineEnd: location.line }),
           };
+          const withFile =
+            location.path === undefined
+              ? withStatus
+              : { ...withStatus, file: location.path };
+          const withSide =
+            location.side === undefined
+              ? withFile
+              : { ...withFile, diffSide: location.side };
+          const withStart =
+            location.line === undefined
+              ? withSide
+              : {
+                  ...withSide,
+                  lineStart: location.startLine ?? location.line,
+                };
+          return location.startLine === undefined
+            ? withStart
+            : { ...withStart, lineEnd: location.line };
         }),
       });
       return mapped._tag === "ok" ? mapped : err("invalid_result");
@@ -943,7 +1008,7 @@ export class InsightRunCoordinator {
         patchHash: revision.patchHash,
       },
     );
-    return normalized._tag === "ok" ? normalized : err("invalid_result");
+    return normalized._tag === "ok" ? normalized : err(normalized.error.reason);
   }
 
   private async persistTerminal(
@@ -1083,14 +1148,24 @@ export class InsightRunCoordinator {
     detail: string,
   ): Promise<void> {
     try {
-      await this.diagnostics?.record({
-        profileId,
-        ...(sessionId === undefined ? {} : { sessionId }),
-        category: "recovery",
-        phase: "insight-recovery-failed",
-        retryable: true,
-        detail,
-      });
+      await this.diagnostics?.record(
+        sessionId === undefined
+          ? {
+              profileId,
+              category: "recovery",
+              phase: "insight-recovery-failed",
+              retryable: true,
+              detail,
+            }
+          : {
+              profileId,
+              sessionId,
+              category: "recovery",
+              phase: "insight-recovery-failed",
+              retryable: true,
+              detail,
+            },
+      );
     } catch {
       // Diagnostics are best effort and never become an unhandled rejection.
     }
@@ -1118,11 +1193,16 @@ async function mapConcurrent<T, R>(
   return values;
 }
 
+/** Renders the invoker's bounded phase label; never provider text. */
+function phaseLabel(phase: string | undefined): string {
+  return phase !== undefined && /^[a-z_]{1,32}$/.test(phase) ? `_${phase}` : "";
+}
+
 function safeFailureDetail(): "unexpected_failure" {
   return "unexpected_failure";
 }
 
-function safeFailureCategory(value: unknown): InsightFailureCategory {
+function safeFailureCategory(value: string): InsightFailureCategory {
   switch (value) {
     case "authentication_required":
     case "rate_limited":
@@ -1137,25 +1217,30 @@ function safeFailureCategory(value: unknown): InsightFailureCategory {
   }
 }
 
-function currentWalkthroughOutput(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return value;
-  return { ...value, citationVersion: 2 };
+function currentWalkthroughOutput(value: RawJsonValue): RawJsonValue {
+  if (Array.isArray(value)) return value;
+  const record = v.safeParse(v.looseObject({}), value);
+  if (!record.success) return value;
+  // SAFETY: value is RawJsonValue and record.output holds the exact same own properties
+  // (valibot's looseObject passes unknown keys through unchanged), so each property is itself
+  // RawJsonValue by the JSON value grammar.
+  return { ...record.output, citationVersion: 2 } as RawJsonValue;
 }
 
-function isRetainedRun(value: unknown, runId: InsightRunId): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "runId" in value &&
-    value.runId === runId
-  );
+function isRetainedRun(
+  value: RawJsonValue | undefined,
+  runId: InsightRunId,
+): boolean {
+  const parsed = parseInsightRunId(readObjectField(value, "runId"));
+  return parsed._tag === "ok" && parsed.value === runId;
 }
 
-function readRetainedValue(value: unknown): unknown {
-  return typeof value === "object" && value !== null && "value" in value
-    ? value.value
-    : undefined;
+function readRetainedValue(value: RawJsonValue): RawJsonValue | undefined {
+  const field = readObjectField(value, "value");
+  if (field === undefined) return undefined;
+  // SAFETY: value is RawJsonValue, so any own property read off it is itself RawJsonValue by the
+  // JSON value grammar.
+  return field as RawJsonValue;
 }
 
 function currentIsoTimestamp(): IsoTimestamp {

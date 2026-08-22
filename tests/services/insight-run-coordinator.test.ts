@@ -72,11 +72,16 @@ async function fixture(
     },
     pr: { headSha, isDraft: false, isOpen: true },
     patchPath: must(
+      // SAFETY: "placeholder" only needs to satisfy paths.patchFile's ReviewSessionId-branded
+      // parameter type; this value is never read back — session.patchPath below is recomputed
+      // from the real seeded.id once it exists.
       parseAbsolutePath(paths.patchFile(profileId, "placeholder" as never)),
     ),
     worktree: {
       path: must(
         parseAbsolutePath(
+          // SAFETY: same as above — this placeholder session id is only a type-shape stand-in and
+          // is overwritten by session.worktree.path below.
           paths.worktreeDirectory(profileId, "placeholder" as never),
         ),
       ),
@@ -148,8 +153,13 @@ async function settled(
   for (let retry = 0; retry < 100; retry += 1) {
     const state = await coordinator.observe({
       profileId,
+      // SAFETY: every caller of settled() passes a reviewId/runId that a prior parseReviewId /
+      // coordinator.start() call in this same test already produced as a valid branded id; these
+      // casts just re-label an already-valid string for this test-only polling helper.
       reviewId: reviewId as never,
       type: "analysis",
+      // SAFETY: same as above — runId was already produced as a valid branded id earlier in this
+      // same test.
       runId: runId as never,
     });
     if (
@@ -310,6 +320,64 @@ describe("InsightRunCoordinator current lifecycle", () => {
     ).toMatchObject({
       _tag: "ok",
       value: { retained: { value: { summary: "Check the guard." } } },
+    });
+  });
+
+  it("keeps a finding's reported location when the patch cannot map it", async () => {
+    // An unmapped finding is the model's only record of where it looked, so
+    // mapping must never blank the file and lines it reported.
+    const value = await fixture({
+      async invoke() {
+        return ok({
+          ...analysisResult,
+          // `approve` is rejected alongside findings by the verdict rule.
+          verdict: "comment" as const,
+          findings: [
+            {
+              id: "finding-1",
+              title: "Unmapped location",
+              explanation: "The cited file is absent from this patch.",
+              severity: "P2" as const,
+              confidence: "medium" as const,
+              file: "src/absent-from-patch.ts",
+              lineStart: 12,
+              lineEnd: 14,
+              diffSide: "new" as const,
+            },
+          ],
+        });
+      },
+    });
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      model: "model",
+      reasoning: "medium",
+    });
+    if (started._tag === "err") throw new Error("expected run");
+    expect(
+      await settled(value.coordinator, value.review.id, started.value.runId),
+    ).toMatchObject({ status: "completed" });
+    expect(
+      await value.insights.load(profileId, value.review.id, "analysis"),
+    ).toMatchObject({
+      _tag: "ok",
+      value: {
+        retained: {
+          value: {
+            findings: [
+              {
+                mappingStatus: "unmapped",
+                file: "src/absent-from-patch.ts",
+                lineStart: 12,
+                lineEnd: 14,
+                diffSide: "new",
+              },
+            ],
+          },
+        },
+      },
     });
   });
 

@@ -98,9 +98,7 @@ const diagnostics = new ReviewDiagnosticService(
   {
     mirror: (event) => {
       const durationMsField =
-        event.durationMs === undefined
-          ? {}
-          : { durationMs: event.durationMs };
+        event.durationMs === undefined ? {} : { durationMs: event.durationMs };
       const meta = {
         category: event.category,
         retryable: event.retryable,
@@ -332,20 +330,9 @@ function createInsightCoordinator(
 async function walkthroughTimeout(input: {
   readonly patchPath: string;
   readonly contextPath: string;
-  readonly profileId: string;
-  readonly sessionId: string;
-  readonly model: string;
-  readonly reasoning: "low" | "medium" | "high" | "minimal" | "xhigh";
 }): Promise<number> {
-  const reasoning = input.reasoning;
-  if (reasoning === "minimal" || reasoning === "xhigh")
-    return walkthroughTimeoutMs({
-      patchBytes: 0,
-      contextBytes: 0,
-      hunkCount: 0,
-    });
   return walkthroughTimeoutMs(
-    await readWalkthroughArtifactSizes({ ...input, reasoning }).catch(() => ({
+    await readWalkthroughArtifactSizes(input).catch(() => ({
       patchBytes: 0,
       contextBytes: 0,
       hunkCount: 0,

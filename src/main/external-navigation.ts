@@ -1,9 +1,52 @@
-import type { Session, WebContents } from "electron";
+import type { WebContents } from "electron";
 
-const hardenedSessions = new WeakSet<Session>();
+/** A DOM-style event this module only ever cancels. */
+type PreventableEvent = {
+  readonly preventDefault: () => void;
+};
 
-/** Opens a URL in the operating system only after Patchdesk validates it. */
-export type ExternalUrlOpener = (url: string) => Promise<unknown>;
+/** The slice of `Electron.Session` this module hardens against remote content. */
+type HardenedSession = {
+  readonly webRequest: {
+    onHeadersReceived(
+      listener: (
+        details: { readonly responseHeaders?: Record<string, string | string[]> },
+        callback: (response: {
+          readonly responseHeaders?: Record<string, string | string[]>;
+        }) => void,
+      ) => void,
+    ): void;
+  };
+  setPermissionCheckHandler(handler: () => boolean): void;
+  setPermissionRequestHandler(
+    handler: (
+      requestingWebContents: WebContents | null,
+      permission: string,
+      callback: (granted: boolean) => void,
+    ) => void,
+  ): void;
+  on(event: "will-download", listener: (event: PreventableEvent) => void): void;
+};
+
+/** The slice of `Electron.WebContents` this module hardens against remote content. */
+export type GuardedWebContents = {
+  readonly session: HardenedSession;
+  setWindowOpenHandler(
+    handler: (details: { readonly url: string }) => {
+      readonly action: "deny";
+    },
+  ): void;
+  on(
+    event: "will-navigate",
+    listener: (event: PreventableEvent, url: string) => void,
+  ): void;
+  on(event: "will-redirect", listener: (event: PreventableEvent) => void): void;
+};
+
+const hardenedSessions = new WeakSet<HardenedSession>();
+
+/** Opens a URL in the operating system only after Patchdesk validates it. Its resolved value is never read by a caller. */
+export type ExternalUrlOpener = (url: string) => Promise<void>;
 
 /** Exact HTTPS hosts that product links are allowed to open outside Patchdesk. */
 export function normalizeExternalHosts(
@@ -54,7 +97,7 @@ export async function openAllowedExternalUrl(
 
 /** Keeps all remote content outside the privileged Patchdesk renderer. */
 export function installWebContentsSecurity(
-  webContents: WebContents,
+  webContents: GuardedWebContents,
   allowedHosts: ReadonlySet<string>,
   openExternal: ExternalUrlOpener,
   packaged = true,
@@ -100,9 +143,12 @@ export function contentSecurityPolicy(packaged: boolean): string {
   const developmentConnect = packaged
     ? ""
     : " http://localhost:5173 ws://localhost:5173";
+  // 'wasm-unsafe-eval' is required by the diff worker pool's WASM syntax
+  // highlighter. It permits WebAssembly compilation only, never JavaScript
+  // eval, so it does not widen the script surface.
   const scriptSource = packaged
-    ? "script-src 'self'"
-    : "script-src 'self' 'unsafe-inline'";
+    ? "script-src 'self' 'wasm-unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'";
   return [
     "default-src 'self'",
     "base-uri 'none'",
