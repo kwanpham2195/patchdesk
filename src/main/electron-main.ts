@@ -51,7 +51,7 @@ import { ReviewOperationCoordinator } from "../services/review-operation-coordin
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
-import { discoverPathOnlyExecutable } from "./executable-discovery";
+import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
 import { CodexInsightInvoker } from "../services/codex-insight-invoker";
 import { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import {

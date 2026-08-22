@@ -5,7 +5,7 @@ import * as v from "valibot";
 
 import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
 import { err, ok, type Result } from "../../domain/result";
-import { discoverExecutable } from "../../main/executable-discovery";
+import { discoverExecutable } from "../process/executable-discovery";
 
 const FORCE_KILL_AFTER_MS = 2_000;
 
@@ -373,7 +373,9 @@ function extractRestStatus(
   stdout: string,
   stderr: string,
 ): RestStatusSignal | undefined {
-  return extractRestStatusFromStdout(stdout) ?? extractRestStatusFromStderr(stderr);
+  return (
+    extractRestStatusFromStdout(stdout) ?? extractRestStatusFromStderr(stderr)
+  );
 }
 
 function extractRestStatusFromStdout(
@@ -416,7 +418,10 @@ function classifyRestStatus(
     case 403:
       return isRateLimitFailure(message)
         ? { _tag: "CommandRateLimited" }
-        : { _tag: "CommandForbidden", reason: classifyForbiddenReason(message) };
+        : {
+            _tag: "CommandForbidden",
+            reason: classifyForbiddenReason(message),
+          };
     case 404:
       return { _tag: "CommandNotFound" };
     case 405:
@@ -466,8 +471,7 @@ function extractGraphqlErrorSignal(
   const typeField = type === undefined ? {} : { type };
   const codeField = code === undefined ? {} : { code };
   const messageField = message === undefined ? {} : { message };
-  const samlFailureField =
-    samlFailure === undefined ? {} : { samlFailure };
+  const samlFailureField = samlFailure === undefined ? {} : { samlFailure };
   return { ...typeField, ...codeField, ...messageField, ...samlFailureField };
 }
 
@@ -537,7 +541,10 @@ function classifyByStderrPattern(stderr: string): CommandFailure | undefined {
   // 403 rate-limit response classifies as CommandRateLimited, not CommandForbidden.
   if (isRateLimitFailure(stderr)) return { _tag: "CommandRateLimited" };
   if (isForbiddenFailure(stderr)) {
-    return { _tag: "CommandForbidden", reason: classifyForbiddenReason(stderr) };
+    return {
+      _tag: "CommandForbidden",
+      reason: classifyForbiddenReason(stderr),
+    };
   }
   if (isRuntimeFailure(stderr)) return { _tag: "CommandRuntimeUnavailable" };
   return undefined;

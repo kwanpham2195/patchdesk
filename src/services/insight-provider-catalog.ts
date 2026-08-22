@@ -1,4 +1,4 @@
-import { discoverPathOnlyExecutable } from "../main/executable-discovery";
+import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
 import type {
   InsightProvider,
   InsightReasoning,
@@ -165,14 +165,20 @@ export class InsightProviderCatalog {
 }
 
 function codexModel(model: CodexModel): InsightProviderModel {
+  if (model.defaultReasoning === undefined) {
+    return {
+      provider: "codex-cli-account",
+      id: model.id,
+      label: model.label,
+      reasoning: model.reasoning,
+    };
+  }
   return {
     provider: "codex-cli-account",
     id: model.id,
     label: model.label,
     reasoning: model.reasoning,
-    ...(model.defaultReasoning === undefined
-      ? {}
-      : { defaultReasoning: model.defaultReasoning }),
+    defaultReasoning: model.defaultReasoning,
   };
 }
 
