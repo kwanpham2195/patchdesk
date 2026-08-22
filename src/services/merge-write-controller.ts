@@ -21,7 +21,7 @@ import {
 } from "../domain/merge-operation";
 import { markReviewTerminal } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
-import type { MergeMethod, mergePullRequest } from "./merge-service";
+import { mergePullRequest, type MergeMethod } from "./merge-service";
 import { readObjectField } from "./read-object-field";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewWriteGate } from "./review-write-gate";
@@ -40,7 +40,6 @@ export class MergeWriteController {
     private readonly writeGate: ReviewWriteGate,
     private readonly reviews: Pick<ReviewStore, "load" | "save">,
     private readonly writeCoordinator: ReviewOperationCoordinator,
-    private readonly mergePullRequestFn: typeof mergePullRequest,
   ) {}
 
   async merge(
@@ -139,7 +138,7 @@ export class MergeWriteController {
         (await this.operations.markOutcomeUnknown(unknown.value))._tag === "err"
       )
         return err({ reason: "storage_failed" });
-      const merged = await this.mergePullRequestFn({
+      const merged = await mergePullRequest({
         profile: profile.value,
         session: session.value,
         gateway: this.github,

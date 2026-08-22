@@ -22,7 +22,7 @@ Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED — <reason>`, `REJECTED 
 | [003](003-build-typed-refresh-fixtures.md)    | Replace repeated refresh dependency bags with typed fixtures | P1       | L      | 002        | DONE   |
 | [004](004-handle-base-only-revisions.md)      | Create a new immutable session when the PR base changes      | P1       | L      | 003        | DONE   |
 | [005](005-own-retention-scheduler.md)         | Stop retention scheduling with the Local API server          | P2       | M      | 001        | DONE   |
-| [006](006-remove-merge-module-mock.md)        | Test merge orchestration through the real merge service      | P2       | M      | 002        | TODO   |
+| [006](006-remove-merge-module-mock.md)        | Test merge orchestration through the real merge service      | P2       | M      | 002        | DONE   |
 | [007](007-relocate-executable-discovery.md)   | Move executable discovery into the adapter layer             | P3       | S      | 002        | TODO   |
 | [008](008-add-pr-ci.md)                       | Enforce the verified pull-request gates in CI                | P1       | M      | 001, 002   | TODO   |
 | [009](009-decompose-review-workbench-flow.md) | Decompose ReviewWorkbenchFlow by protocol responsibility     | P2       | L      | 001, 002   | TODO   |
