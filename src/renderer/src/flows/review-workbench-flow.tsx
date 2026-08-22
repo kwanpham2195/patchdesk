@@ -48,14 +48,6 @@ export type ReviewWorkbenchFlowProps = {
 };
 
 /** Owns loopback calls and replacement of the one canonical Review projection. */
-// Pre-existing giant component (over 1250 lines before this change; verified
-// via an isolated `--staged` scan of main's unmodified file, which still
-// flags it, and `react-doctor --scope changed` against this plan's full diff,
-// which reports zero new issues here). Splitting it is the renderer god-file
-// refactor the project's own plans explicitly defer to dedicated,
-// separately-scoped work (see the plans' "Findings Considered And Rejected"
-// notes on `review-workbench-flow.tsx`), not a fix this plan should take on.
-// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function ReviewWorkbenchFlow({
   workbench,
   initialSection,

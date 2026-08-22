@@ -37,7 +37,10 @@ import {
   type InsightProviderCatalogModel,
   type WorkbenchResponse,
 } from "../renderer-contracts";
-import { useInsightRun } from "../hooks/use-insight-run";
+import {
+  useInsightRun,
+  type InsightRunController,
+} from "../hooks/use-insight-run";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
@@ -86,6 +89,42 @@ function insightRunConfigurationReducer(
   return { ...state, ...action.patch };
 }
 type CatalogModel = InsightProviderCatalogModel;
+type InsightSelection = "overview" | "analysis" | "walkthrough";
+type InsightProjection =
+  | WorkbenchResponse["insights"]["analysis"]
+  | WorkbenchResponse["insights"]["walkthrough"];
+type InsightDocumentProps = {
+  readonly workbench: WorkbenchResponse;
+  readonly selectedInsight: InsightSelection;
+  readonly setSelectedInsight: React.Dispatch<
+    React.SetStateAction<InsightSelection>
+  >;
+  readonly walkthroughFocusActive: boolean;
+  readonly selectedProjection: InsightProjection | undefined;
+  readonly selectedRunning: InsightRunController | undefined;
+  readonly runEnabled: boolean;
+  readonly openRunDialog: (action: "run" | "retry" | "regenerate") => void;
+  readonly catalogError: boolean;
+  readonly hasAvailableProvider: boolean;
+  readonly provider: InsightProvider;
+  readonly models: ReadonlyArray<InsightModelOption>;
+  readonly retainedDescription: string | undefined;
+  readonly retainedReader: React.ReactNode;
+  readonly currentRevision: string;
+  readonly analysisRun: InsightRunController;
+  readonly walkthroughRun: InsightRunController;
+  readonly runDialogType: InsightRunDialogType | null;
+  readonly runDialogAction: "run" | "retry" | "regenerate";
+  readonly model: string | null;
+  readonly codexActivationPending: boolean;
+  readonly codexActivationError: boolean;
+  readonly reasoning: InsightReasoning;
+  readonly closeRunDialog: () => void;
+  readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
+  readonly changeProvider: (provider: InsightProvider) => void;
+  readonly activateCodex: () => void;
+  readonly confirmRun: () => void;
+};
 /** Replaces every `codex-cli-account` entry in a model list, keeping the rest. */
 function mergeCodexModels(
   models: ReadonlyArray<CatalogModel>,
@@ -96,79 +135,31 @@ function mergeCodexModels(
     ...codexModels,
   ];
 }
-// Pre-existing giant component (over 640 lines before this change, unrelated
-// to this plan's diff — see the disable comment on `ReviewWorkbenchFlow`
-// above for the same verification and rationale).
-// react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
-export function InsightsSlot({
-  workbench,
-  initialDetail,
-  onWorkbenchReplace,
-  onWorkbenchPatch,
-  onAddFinding,
-  onFinishWithAnalysisSummary,
-}: {
-  readonly workbench: WorkbenchResponse;
-  readonly initialDetail?: "analysis" | "walkthrough";
-  readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
-  readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
-  readonly onAddFinding: (finding: AnalysisFinding) => Promise<void>;
-  readonly onFinishWithAnalysisSummary: (summary: string) => void;
-}): React.JSX.Element {
+type InsightConfigurationController = {
+  readonly configuration: InsightRunConfiguration;
+  readonly preferencesRef: React.MutableRefObject<
+    Partial<Record<"analysis" | "walkthrough", InsightRunPreference>>
+  >;
+  readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
+  readonly changeProvider: (provider: InsightProvider) => void;
+  readonly activateCodex: () => void;
+};
+function useInsightConfiguration(input: {
+  readonly profileId: string;
+  readonly initialDetail: "analysis" | "walkthrough" | undefined;
+  readonly selectedInsight: InsightSelection;
+}): InsightConfigurationController {
+  const { profileId, initialDetail, selectedInsight } = input;
   const [configuration, updateConfiguration] = useReducer(
     insightRunConfigurationReducer,
     initialInsightRunConfiguration,
   );
-  const {
-    catalog,
-    provider,
-    models,
-    model,
-    reasoning,
-    runDialogType,
-    runDialogAction,
-    catalogError,
-    codexActivationPending,
-    codexActivationError,
-  } = configuration;
+  const { catalog, runDialogType } = configuration;
   const setConfiguration = (patch: Partial<InsightRunConfiguration>): void =>
     updateConfiguration({ type: "updated", patch });
   const preferencesRef = useRef<
     Partial<Record<"analysis" | "walkthrough", InsightRunPreference>>
   >({});
-  const [selectedInsight, setSelectedInsight] = useState<
-    "overview" | "analysis" | "walkthrough"
-  >(initialDetail ?? "analysis");
-  const [walkthroughFocused, setWalkthroughFocused] = useState(false);
-  const profileId = workbench.session.key.profileId;
-  const reviewId = workbench.review.id;
-  const onInsightPatch = useCallback(
-    (
-      type: "analysis" | "walkthrough",
-      projection:
-        | WorkbenchResponse["insights"]["analysis"]
-        | WorkbenchResponse["insights"]["walkthrough"],
-    ): void => {
-      onWorkbenchPatch({ insights: { [type]: projection } });
-    },
-    [onWorkbenchPatch],
-  );
-  const analysisRun = useInsightRun({
-    profileId,
-    reviewId,
-    type: "analysis",
-    activeRun: workbench.insights.analysis.activeRun,
-    onWorkbenchReplace,
-    onInsightPatch,
-  });
-  const walkthroughRun = useInsightRun({
-    profileId,
-    reviewId,
-    type: "walkthrough",
-    activeRun: workbench.insights.walkthrough.activeRun,
-    onWorkbenchReplace,
-    onInsightPatch,
-  });
 
   useEffect(() => {
     let active = true;
@@ -243,11 +234,6 @@ export function InsightsSlot({
     };
   }, [profileId, initialDetail]);
 
-  const hasAvailableProvider =
-    catalog?.providers.some((candidate) => candidate.available) ?? false;
-  const runEnabled =
-    !catalogError && hasAvailableProvider && workbench.review.status === "open";
-
   const activePreferenceType =
     runDialogType ??
     (selectedInsight === "walkthrough" ? "walkthrough" : "analysis");
@@ -320,99 +306,39 @@ export function InsightsSlot({
       .catch(() => setConfiguration({ codexActivationError: true }))
       .finally(() => setConfiguration({ codexActivationPending: false }));
   };
-  const reloadWorkbench = async (): Promise<void> => {
-    const value = await requestJson("/v1/reviews/load", {
-      method: "POST",
-      body: { profileId, reviewId },
-    });
-    const next = parseWorkbenchResponse(value);
-    if (next === undefined)
-      throw new Error("Invalid Review projection response");
-    onWorkbenchReplace(next);
+  return {
+    configuration,
+    preferencesRef,
+    setConfiguration,
+    changeProvider,
+    activateCodex,
   };
-  const dismissFinding = async (
+}
+type InsightReaderBuilderInput = {
+  readonly workbench: WorkbenchResponse;
+  readonly selectedInsight: InsightSelection;
+  readonly profileId: string;
+  readonly reviewId: string;
+  readonly onFinishWithAnalysisSummary: (summary: string) => void;
+  readonly addFinding: (finding: AnalysisFinding) => Promise<void>;
+  readonly dismissFinding: (
     finding: AnalysisFinding,
     reason: string,
-  ): Promise<void> => {
-    const runId = workbench.insights.analysis.retained?.runId;
-    if (runId === undefined) throw new Error("Analysis run is unavailable");
-    await requestJson(
-      `/v1/reviews/insights/analysis/findings/${encodeURIComponent(finding.id)}/dismiss`,
-      { method: "POST", body: { profileId, reviewId, runId, reason } },
-    );
-    await reloadWorkbench();
-  };
-  const addFinding = onAddFinding;
-  const selectedProjection =
-    selectedInsight === "analysis"
-      ? workbench.insights.analysis
-      : selectedInsight === "walkthrough"
-        ? workbench.insights.walkthrough
-        : undefined;
-  const selectedRunning =
-    selectedInsight === "analysis"
-      ? analysisRun
-      : selectedInsight === "walkthrough"
-        ? walkthroughRun
-        : undefined;
-  const selectedRetained = selectedProjection?.retained;
-  const selectedIsOutdated = selectedProjection?.status === "outdated";
-  const analysisFirstRunActive =
-    selectedInsight === "analysis" &&
-    selectedProjection?.status === "running" &&
-    selectedProjection.retained === undefined;
-  const runSelected = (onAccepted?: () => void): void => {
-    if (model === null || selectedInsight === "overview") return;
-    if (selectedInsight === "analysis") {
-      analysisRun.run(provider, model, reasoning, onAccepted);
-    } else {
-      walkthroughRun.run(provider, model, reasoning, onAccepted);
-    }
-  };
-  const openRunDialog = (action: "run" | "retry" | "regenerate"): void => {
-    if (selectedInsight === "overview" || catalogError) return;
-    const preference = preferencesRef.current[selectedInsight];
-    const nextModels =
-      catalog?.models.filter(
-        (candidate) => candidate.provider === (preference?.provider ?? "pi"),
-      ) ?? [];
-    setConfiguration({
-      provider: preference?.provider ?? "pi",
-      reasoning: preference?.reasoning ?? "medium",
-      models: nextModels,
-      model:
-        preference !== undefined &&
-        nextModels.some((candidate) => candidate.id === preference.model)
-          ? preference.model
-          : (nextModels[0]?.id ?? null),
-      runDialogType: selectedInsight,
-      runDialogAction: action,
-    });
-  };
-  const closeRunDialog = (): void => setConfiguration({ runDialogType: null });
-  const confirmRun = (): void => {
-    if (model === null || selectedInsight === "overview") return;
-    closeRunDialog();
-    runSelected(() => {
-      saveInsightRunPreference(profileId, selectedInsight, {
-        provider,
-        model,
-        reasoning,
-      });
-      preferencesRef.current = {
-        ...preferencesRef.current,
-        [selectedInsight]: { provider, model, reasoning },
-      };
-    });
-  };
-  const retainedDescription =
-    selectedInsight === "analysis"
-      ? workbench.insights.analysis.retained?.value.summary
-      : selectedInsight === "walkthrough"
-        ? workbench.insights.walkthrough.retained?.value.focus
-        : undefined;
-  const currentRevision =
-    workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
+  ) => Promise<void>;
+  readonly walkthroughFocused: boolean;
+  readonly setWalkthroughFocused: React.Dispatch<React.SetStateAction<boolean>>;
+};
+function buildInsightReaders({
+  workbench,
+  selectedInsight,
+  profileId,
+  reviewId,
+  onFinishWithAnalysisSummary,
+  addFinding,
+  dismissFinding,
+  walkthroughFocused,
+  setWalkthroughFocused,
+}: InsightReaderBuilderInput): React.ReactNode {
   const analysisSummaryScope = {
     baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7),
     headShort: workbench.session.key.headSha.slice(0, 7),
@@ -522,9 +448,254 @@ export function InsightsSlot({
         onFocusedChange={setWalkthroughFocused}
       />
     ) : null;
-  const retainedReader = retainedAnalysis ?? retainedWalkthrough;
+  return retainedAnalysis ?? retainedWalkthrough;
+}
+export function InsightsSlot({
+  workbench,
+  initialDetail,
+  onWorkbenchReplace,
+  onWorkbenchPatch,
+  onAddFinding,
+  onFinishWithAnalysisSummary,
+}: {
+  readonly workbench: WorkbenchResponse;
+  readonly initialDetail?: "analysis" | "walkthrough";
+  readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
+  readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
+  readonly onAddFinding: (finding: AnalysisFinding) => Promise<void>;
+  readonly onFinishWithAnalysisSummary: (summary: string) => void;
+}): React.JSX.Element {
+  const [selectedInsight, setSelectedInsight] = useState<
+    "overview" | "analysis" | "walkthrough"
+  >(initialDetail ?? "analysis");
+  const [walkthroughFocused, setWalkthroughFocused] = useState(false);
+  const profileId = workbench.session.key.profileId;
+  const reviewId = workbench.review.id;
+  const onInsightPatch = useCallback(
+    (
+      type: "analysis" | "walkthrough",
+      projection:
+        | WorkbenchResponse["insights"]["analysis"]
+        | WorkbenchResponse["insights"]["walkthrough"],
+    ): void => {
+      onWorkbenchPatch({ insights: { [type]: projection } });
+    },
+    [onWorkbenchPatch],
+  );
+  const analysisRun = useInsightRun({
+    profileId,
+    reviewId,
+    type: "analysis",
+    activeRun: workbench.insights.analysis.activeRun,
+    onWorkbenchReplace,
+    onInsightPatch,
+  });
+  const walkthroughRun = useInsightRun({
+    profileId,
+    reviewId,
+    type: "walkthrough",
+    activeRun: workbench.insights.walkthrough.activeRun,
+    onWorkbenchReplace,
+    onInsightPatch,
+  });
+
+  const {
+    configuration,
+    preferencesRef,
+    setConfiguration,
+    changeProvider,
+    activateCodex,
+  } = useInsightConfiguration({
+    profileId,
+    initialDetail,
+    selectedInsight,
+  });
+  const {
+    catalog,
+    provider,
+    models,
+    model,
+    reasoning,
+    runDialogType,
+    runDialogAction,
+    catalogError,
+    codexActivationPending,
+    codexActivationError,
+  } = configuration;
+  const hasAvailableProvider =
+    catalog?.providers.some((candidate) => candidate.available) ?? false;
+  const runEnabled =
+    !catalogError && hasAvailableProvider && workbench.review.status === "open";
+  const reloadWorkbench = async (): Promise<void> => {
+    const value = await requestJson("/v1/reviews/load", {
+      method: "POST",
+      body: { profileId, reviewId },
+    });
+    const next = parseWorkbenchResponse(value);
+    if (next === undefined)
+      throw new Error("Invalid Review projection response");
+    onWorkbenchReplace(next);
+  };
+  const dismissFinding = async (
+    finding: AnalysisFinding,
+    reason: string,
+  ): Promise<void> => {
+    const runId = workbench.insights.analysis.retained?.runId;
+    if (runId === undefined) throw new Error("Analysis run is unavailable");
+    await requestJson(
+      `/v1/reviews/insights/analysis/findings/${encodeURIComponent(finding.id)}/dismiss`,
+      { method: "POST", body: { profileId, reviewId, runId, reason } },
+    );
+    await reloadWorkbench();
+  };
+  const addFinding = onAddFinding;
+  const selectedProjection =
+    selectedInsight === "analysis"
+      ? workbench.insights.analysis
+      : selectedInsight === "walkthrough"
+        ? workbench.insights.walkthrough
+        : undefined;
+  const selectedRunning =
+    selectedInsight === "analysis"
+      ? analysisRun
+      : selectedInsight === "walkthrough"
+        ? walkthroughRun
+        : undefined;
+  const runSelected = (onAccepted?: () => void): void => {
+    if (model === null || selectedInsight === "overview") return;
+    if (selectedInsight === "analysis") {
+      analysisRun.run(provider, model, reasoning, onAccepted);
+    } else {
+      walkthroughRun.run(provider, model, reasoning, onAccepted);
+    }
+  };
+  const openRunDialog = (action: "run" | "retry" | "regenerate"): void => {
+    if (selectedInsight === "overview" || catalogError) return;
+    const preference = preferencesRef.current[selectedInsight];
+    const nextModels =
+      catalog?.models.filter(
+        (candidate) => candidate.provider === (preference?.provider ?? "pi"),
+      ) ?? [];
+    setConfiguration({
+      provider: preference?.provider ?? "pi",
+      reasoning: preference?.reasoning ?? "medium",
+      models: nextModels,
+      model:
+        preference !== undefined &&
+        nextModels.some((candidate) => candidate.id === preference.model)
+          ? preference.model
+          : (nextModels[0]?.id ?? null),
+      runDialogType: selectedInsight,
+      runDialogAction: action,
+    });
+  };
+  const closeRunDialog = (): void => setConfiguration({ runDialogType: null });
+  const confirmRun = (): void => {
+    if (model === null || selectedInsight === "overview") return;
+    closeRunDialog();
+    runSelected(() => {
+      saveInsightRunPreference(profileId, selectedInsight, {
+        provider,
+        model,
+        reasoning,
+      });
+      preferencesRef.current = {
+        ...preferencesRef.current,
+        [selectedInsight]: { provider, model, reasoning },
+      };
+    });
+  };
+  const retainedDescription =
+    selectedInsight === "analysis"
+      ? workbench.insights.analysis.retained?.value.summary
+      : selectedInsight === "walkthrough"
+        ? workbench.insights.walkthrough.retained?.value.focus
+        : undefined;
+  const currentRevision =
+    workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
+  const retainedReader = buildInsightReaders({
+    workbench,
+    selectedInsight,
+    profileId,
+    reviewId,
+    onFinishWithAnalysisSummary,
+    addFinding,
+    dismissFinding,
+    walkthroughFocused,
+    setWalkthroughFocused,
+  });
   const walkthroughFocusActive =
     selectedInsight === "walkthrough" && walkthroughFocused;
+  return (
+    <InsightDocument
+      workbench={workbench}
+      selectedInsight={selectedInsight}
+      setSelectedInsight={setSelectedInsight}
+      walkthroughFocusActive={walkthroughFocusActive}
+      selectedProjection={selectedProjection}
+      selectedRunning={selectedRunning}
+      runEnabled={runEnabled}
+      openRunDialog={openRunDialog}
+      catalogError={catalogError}
+      hasAvailableProvider={hasAvailableProvider}
+      provider={provider}
+      models={models}
+      retainedDescription={retainedDescription}
+      retainedReader={retainedReader}
+      currentRevision={currentRevision}
+      analysisRun={analysisRun}
+      walkthroughRun={walkthroughRun}
+      runDialogType={runDialogType}
+      runDialogAction={runDialogAction}
+      model={model}
+      codexActivationPending={codexActivationPending}
+      codexActivationError={codexActivationError}
+      reasoning={reasoning}
+      closeRunDialog={closeRunDialog}
+      setConfiguration={setConfiguration}
+      changeProvider={changeProvider}
+      activateCodex={activateCodex}
+      confirmRun={confirmRun}
+    />
+  );
+}
+
+function InsightDocument({
+  workbench,
+  selectedInsight,
+  setSelectedInsight,
+  walkthroughFocusActive,
+  selectedProjection,
+  selectedRunning,
+  runEnabled,
+  openRunDialog,
+  catalogError,
+  hasAvailableProvider,
+  provider,
+  models,
+  retainedDescription,
+  retainedReader,
+  currentRevision,
+  analysisRun,
+  walkthroughRun,
+  runDialogType,
+  runDialogAction,
+  model,
+  codexActivationPending,
+  codexActivationError,
+  reasoning,
+  closeRunDialog,
+  setConfiguration,
+  changeProvider,
+  activateCodex,
+  confirmRun,
+}: InsightDocumentProps): React.JSX.Element {
+  const selectedRetained = selectedProjection?.retained;
+  const selectedIsOutdated = selectedProjection?.status === "outdated";
+  const analysisFirstRunActive =
+    selectedInsight === "analysis" &&
+    selectedProjection?.status === "running" &&
+    selectedProjection.retained === undefined;
   return (
     <section
       aria-label="Review insights"
@@ -1066,9 +1237,6 @@ function InsightEmpty({
   );
 }
 
-type InsightProjection =
-  | WorkbenchResponse["insights"]["analysis"]
-  | WorkbenchResponse["insights"]["walkthrough"];
 function InsightCard({
   title,
   description,
