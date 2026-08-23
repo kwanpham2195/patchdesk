@@ -56,7 +56,11 @@ export async function checkChangedSource({
     return 2;
   }
 
-  const [base, head] = args;
+  const [baseRef, headRef] = args;
+  const base = await resolveCommitRef(baseRef, "base", { cwd, run, output });
+  if (base === undefined) return 1;
+  const head = await resolveCommitRef(headRef, "head", { cwd, run, output });
+  if (head === undefined) return 1;
   const result = await execute(run, "git", diffArgs(base, head), cwd, output);
   if (result === undefined) return 1;
   if (!hasExit(result, 0)) {
@@ -83,6 +87,28 @@ function diffArgs(base, head) {
     "-z",
     `${base}...${head}`,
   ];
+}
+
+async function resolveCommitRef(ref, name, { cwd, run, output }) {
+  const result = await execute(
+    run,
+    "git",
+    ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+    cwd,
+    output,
+  );
+  if (result === undefined) return undefined;
+  if (!hasExit(result, 0)) {
+    output.stderr(`git could not resolve the ${name} commit reference.\n`);
+    replay(result, output);
+    return undefined;
+  }
+  const resolved = result.stdout.trim();
+  if (!/^[0-9a-f]{40,64}$/.test(resolved)) {
+    output.stderr(`git returned an invalid ${name} commit reference.\n`);
+    return undefined;
+  }
+  return resolved;
 }
 
 async function execute(run, command, args, cwd, output) {

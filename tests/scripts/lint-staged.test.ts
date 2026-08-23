@@ -190,11 +190,17 @@ describe("lintStaged", () => {
     expect(harness.calls[2]?.args.at(-1)).toBe("src/renamed.ts");
   });
 
-  it("ignores deleted source paths that no longer exist", async () => {
-    const harness = createHarness({ existingPaths: new Set() });
+  it("rejects a staged source path deleted only from the working tree", async () => {
+    const harness = createHarness({
+      existingPaths: new Set(),
+      partiallyStagedPaths: new Set(["src/example.ts"]),
+    });
 
-    await expect(lintStaged(harness.options)).resolves.toBe(0);
-    expect(harness.calls).toHaveLength(1);
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.calls.map(({ command }) => command)).toEqual(["git", "git"]);
+    expect(harness.stderr.join("")).toContain(
+      "Cannot safely check partially staged source files.",
+    );
   });
 
   it("keeps a path containing spaces as one command argument", async () => {

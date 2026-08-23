@@ -23,6 +23,8 @@ type HarnessOptions = {
 };
 
 const cwd = "/fixture/project";
+const resolvedBase = "a".repeat(40);
+const resolvedHead = "b".repeat(40);
 
 const success = (stdout = ""): CommandResult => ({
   status: 0,
@@ -51,6 +53,15 @@ function createHarness(options: HarnessOptions = {}) {
     commandCwd: string,
   ): Promise<CommandResult> => {
     calls.push({ command, args, cwd: commandCwd });
+    if (command === "git" && args[0] === "rev-parse") {
+      if (args.includes("--output=/tmp/changed-source^{commit}"))
+        return failure("option-like commit reference", 128);
+      return success(
+        args.includes("base-sha^{commit}")
+          ? `${resolvedBase}\n`
+          : `${resolvedHead}\n`,
+      );
+    }
     if (command === "git")
       return (
         options.diffResult ?? success(options.diffOutput ?? "src/example.ts\0")
@@ -85,13 +96,13 @@ describe("checkChangedSource", () => {
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(0);
-    expect(harness.calls).toHaveLength(1);
-    expect(harness.calls[0]?.args).toEqual([
+    expect(harness.calls).toHaveLength(3);
+    expect(harness.calls[2]?.args).toEqual([
       "diff",
       "--name-only",
       "--diff-filter=ACMR",
       "-z",
-      "base-sha...head-sha",
+      `${resolvedBase}...${resolvedHead}`,
     ]);
   });
 
@@ -102,7 +113,7 @@ describe("checkChangedSource", () => {
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(0);
-    expect(harness.calls[1]?.args.at(-1)).toBe("src/renamed.ts");
+    expect(harness.calls[3]?.args.at(-1)).toBe("src/renamed.ts");
   });
 
   it("keeps paths with spaces as one formatter argument", async () => {
@@ -113,7 +124,7 @@ describe("checkChangedSource", () => {
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(0);
-    expect(harness.calls[1]?.args).toEqual([
+    expect(harness.calls[3]?.args).toEqual([
       "--check",
       "--no-error-on-unmatched-pattern",
       path,
@@ -128,6 +139,8 @@ describe("checkChangedSource", () => {
     await expect(checkChangedSource(harness.options)).resolves.toBe(1);
     expect(harness.calls.map(({ command }) => command)).toEqual([
       "git",
+      "git",
+      "git",
       "oxfmt",
     ]);
     expect(harness.stderr.join("")).toContain("format error");
@@ -140,6 +153,8 @@ describe("checkChangedSource", () => {
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(1);
     expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
+      "git",
       "git",
       "oxfmt",
       "oxlint",
@@ -162,13 +177,32 @@ describe("checkChangedSource", () => {
     expect(missing.stderr.join("")).toContain("Usage:");
   });
 
-  it("fails closed when Git rejects the commit range", async () => {
+  it("rejects an option-like commit argument before discovery", async () => {
+    const harness = createHarness();
+
+    await expect(
+      checkChangedSource({
+        ...harness.options,
+        args: ["--output=/tmp/changed-source", "head-sha"],
+      }),
+    ).resolves.toBe(1);
+    expect(harness.calls).toHaveLength(1);
+    expect(harness.calls[0]?.args).toEqual([
+      "rev-parse",
+      "--verify",
+      "--end-of-options",
+      "--output=/tmp/changed-source^{commit}",
+    ]);
+    expect(harness.stderr.join("")).toContain("option-like commit reference");
+  });
+
+  it("fails closed when Git rejects the resolved commit range", async () => {
     const harness = createHarness({
       diffResult: failure("unknown revision", 128),
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(1);
-    expect(harness.calls).toHaveLength(1);
+    expect(harness.calls).toHaveLength(3);
     expect(harness.stderr.join("")).toContain("unknown revision");
   });
 
@@ -182,7 +216,7 @@ describe("checkChangedSource", () => {
           command === "git" && (args[1] === "--cached" || args[0] === "add"),
       ),
     ).toBe(false);
-    expect(harness.calls[1]?.args).toContain("--check");
-    expect(harness.calls[2]?.args).not.toContain("--fix");
+    expect(harness.calls[3]?.args).toContain("--check");
+    expect(harness.calls[4]?.args).not.toContain("--fix");
   });
 });

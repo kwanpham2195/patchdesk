@@ -70,11 +70,7 @@ export async function lintStaged({
     return 1;
   }
 
-  const files = await selectSourceFiles(
-    splitNullDelimitedPaths(discovered.stdout),
-    cwd,
-    fileExists,
-  );
+  const files = selectSourcePaths(splitNullDelimitedPaths(discovered.stdout));
   if (files.length === 0) {
     output.stdout("lint-staged: no staged source files to check.\n");
     return 0;
@@ -184,13 +180,18 @@ function discoveryArgs() {
 }
 
 async function selectSourceFiles(paths, cwd, fileExists) {
-  const candidates = paths.filter((path) => path.length > 0);
+  const candidates = selectSourcePaths(paths);
   const files = [];
   for (const path of candidates) {
-    if (!SOURCE_EXTENSIONS.has(extensionOf(path))) continue;
     if (await fileExists(resolve(cwd, path))) files.push(path);
   }
   return files;
+}
+
+function selectSourcePaths(paths) {
+  return paths.filter(
+    (path) => path.length > 0 && SOURCE_EXTENSIONS.has(extensionOf(path)),
+  );
 }
 
 function splitNullDelimitedPaths(stdout) {
