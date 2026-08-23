@@ -12,6 +12,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -232,7 +233,14 @@ function SummaryReviewDialogContent({
               </label>
               <Select
                 value={event}
-                onValueChange={(value) => setEvent(value as Event)}
+                items={Object.entries(labels).map(([value, label]) => ({
+                  value,
+                  label,
+                }))}
+                onValueChange={(value) => {
+                  // SAFETY: The catalog contains only Event keys.
+                  setEvent(value as Event);
+                }}
               >
                 <SelectTrigger
                   id="summary-review-decision"
@@ -240,20 +248,27 @@ function SummaryReviewDialogContent({
                   className="w-48 min-w-0"
                 >
                   <SelectValue>
-                    {(value) => labels[(value ?? "COMMENT") as Event]}
+                    {(value) =>
+                      labels[
+                        // SAFETY: SelectValue receives a catalogued Event or null.
+                        (value ?? "COMMENT") as Event
+                      ]
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="COMMENT">Comment</SelectItem>
-                  <SelectItem
-                    value="APPROVE"
-                    disabled={approvalCapability === "blocked_author"}
-                  >
-                    Approve
-                  </SelectItem>
-                  <SelectItem value="REQUEST_CHANGES">
-                    Request changes
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="COMMENT">Comment</SelectItem>
+                    <SelectItem
+                      value="APPROVE"
+                      disabled={approvalCapability === "blocked_author"}
+                    >
+                      Approve
+                    </SelectItem>
+                    <SelectItem value="REQUEST_CHANGES">
+                      Request changes
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
               {approvalCapability !== "blocked_author" ? null : (

@@ -38,6 +38,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -239,11 +240,13 @@ export function WorkspaceProfileSection({
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {profiles.map((profile) => (
-                    <SelectItem key={profile.id} value={profile.id}>
-                      {profile.label}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {profiles.map((profile) => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
@@ -1159,11 +1162,13 @@ function AccountSelect({
           <SelectValue placeholder="Select an account" />
         </SelectTrigger>
         <SelectContent>
-          {accounts.map((account) => (
-            <SelectItem key={accountKey(account)} value={accountKey(account)}>
-              {`${account.login} · ${account.host}`}
-            </SelectItem>
-          ))}
+          <SelectGroup>
+            {accounts.map((account) => (
+              <SelectItem key={accountKey(account)} value={accountKey(account)}>
+                {`${account.login} · ${account.host}`}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
     </Field>

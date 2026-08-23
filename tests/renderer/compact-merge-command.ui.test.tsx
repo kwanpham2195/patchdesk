@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompactMergeCommand } from "../../src/renderer/src/components/compact-merge-command";
+
+afterEach(() => {
+  cleanup();
+});
 
 describe("compact merge command", () => {
   it("does not describe a GitHub policy block as a conflict", () => {
@@ -54,6 +58,8 @@ describe("compact merge command", () => {
           },
         ]}
         pullRequest={
+          // SAFETY: This fixture uses valid PullRequestRef fields; branded IDs
+          // are intentionally bypassed because this test does not exercise parsing.
           {
             host: "github.com",
             owner: "centraldigital",
@@ -106,10 +112,9 @@ describe("compact merge command", () => {
     expect(
       screen.getByText(/request changes, high severity finding/),
     ).toBeTruthy();
-    expect(
-      (screen.getByRole("button", { name: "Merge" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    const mergeButton = screen.getByRole("button", { name: "Merge" });
+    // SAFETY: The Merge role query returns the native button rendered by Button.
+    expect((mergeButton as HTMLButtonElement).disabled).toBe(true);
     await user.click(screen.getByRole("checkbox", { name: /I acknowledge:/ }));
     await user.click(screen.getByRole("button", { name: "Merge" }));
     expect(merge).toHaveBeenCalledWith("squash", [
@@ -117,6 +122,35 @@ describe("compact merge command", () => {
       "high_severity_finding",
     ]);
     expect(screen.getByText("Merged abcdef.")).toBeTruthy();
+  });
+
+  it("groups the catalogued merge methods without changing the choices", async () => {
+    const user = userEvent.setup();
+    render(
+      <CompactMergeCommand
+        readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
+        context={{
+          repo: "centraldigital/patchdesk",
+          prNumber: 42,
+          title: "Protect review writes",
+          base: "sit",
+          head: "feat/review",
+          headSha: "abcdef1234567890",
+        }}
+        methods={["squash", "merge"]}
+        onMerge={async () => ({})}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Merge method" }));
+
+    expect(document.querySelector('[data-slot="select-group"]')).toBeTruthy();
+    const choices = Array.from(
+      document.querySelectorAll('[data-slot="select-item"]'),
+      (item) => item.textContent,
+    );
+    expect(choices).toEqual(["squash", "merge"]);
+    await user.keyboard("{Escape}");
   });
 
   it("reports a non-cancellable merge until GitHub returns a final result", async () => {
@@ -143,10 +177,9 @@ describe("compact merge command", () => {
     );
     await user.click(screen.getByRole("button", { name: "Merge" }));
 
-    expect(
-      (screen.getByRole("button", { name: "Merging…" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    const mergingButton = screen.getByRole("button", { name: "Merging…" });
+    // SAFETY: The Merging role query returns the native button rendered by Button.
+    expect((mergingButton as HTMLButtonElement).disabled).toBe(true);
     resolveMerge?.({ mergeCommitSha: "abcdef" });
     expect(await screen.findByText("Merged abcdef.")).toBeTruthy();
   });

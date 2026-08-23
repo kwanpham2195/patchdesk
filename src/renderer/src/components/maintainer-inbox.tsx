@@ -78,6 +78,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -548,6 +549,12 @@ function InboxFiltersBar({
       ) : null}
       <Select
         value={sort}
+        items={[
+          { label: "Priority", value: "priority" },
+          { label: "Last updated", value: "updated" },
+          { label: "Repository", value: "repository" },
+          { label: "Change size", value: "size" },
+        ]}
         onValueChange={(value) => {
           const next = inboxSortFrom(value);
           if (next !== undefined) onSortChange(next);
@@ -561,18 +568,20 @@ function InboxFiltersBar({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="priority" className="text-xs">
-            Priority
-          </SelectItem>
-          <SelectItem value="updated" className="text-xs">
-            Last updated
-          </SelectItem>
-          <SelectItem value="repository" className="text-xs">
-            Repository
-          </SelectItem>
-          <SelectItem value="size" className="text-xs">
-            Change size
-          </SelectItem>
+          <SelectGroup>
+            <SelectItem value="priority" className="text-xs">
+              Priority
+            </SelectItem>
+            <SelectItem value="updated" className="text-xs">
+              Last updated
+            </SelectItem>
+            <SelectItem value="repository" className="text-xs">
+              Repository
+            </SelectItem>
+            <SelectItem value="size" className="text-xs">
+              Change size
+            </SelectItem>
+          </SelectGroup>
         </SelectContent>
       </Select>
       <span className="text-[11px] tabular-nums text-muted-foreground">

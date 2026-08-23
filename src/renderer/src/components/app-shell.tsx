@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -192,11 +193,13 @@ export function AppShell({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {profiles.map((profile) => (
-                  <SelectItem key={profile.id} value={profile.id}>
-                    {profile.label}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {profiles.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           ) : null}

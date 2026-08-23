@@ -12,6 +12,7 @@ import { ModelCombobox } from "../../components/model-combobox";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -104,6 +105,11 @@ export function WalkthroughFixtureControls({
               Reasoning
               <Select
                 value={reasoning}
+                items={[
+                  { label: "Low", value: "low" },
+                  { label: "Medium", value: "medium" },
+                  { label: "High", value: "high" },
+                ]}
                 onValueChange={actions.onReasoningChange}
               >
                 <SelectTrigger
@@ -113,9 +119,11 @@ export function WalkthroughFixtureControls({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </label>

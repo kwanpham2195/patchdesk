@@ -41,6 +41,7 @@ import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -456,6 +457,11 @@ function GeneralSection({
             Theme
             <Select
               value={appearance}
+              items={[
+                { label: "System", value: "system" },
+                { label: "Light", value: "light" },
+                { label: "Dark", value: "dark" },
+              ]}
               onValueChange={(value) => {
                 if (value === "system" || value === "light" || value === "dark")
                   onAppearanceChange(value);
@@ -465,9 +471,11 @@ function GeneralSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="system">System</SelectItem>
-                <SelectItem value="light">Light</SelectItem>
-                <SelectItem value="dark">Dark</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="system">System</SelectItem>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="dark">Dark</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </Label>
@@ -485,6 +493,10 @@ function GeneralSection({
             Light appearance
             <Select
               value={diffThemePreferences.light}
+              items={DIFF_LIGHT_THEMES.map((theme) => ({
+                label: theme.label,
+                value: theme.id,
+              }))}
               onValueChange={(value) => {
                 if (
                   value !== null &&
@@ -500,11 +512,13 @@ function GeneralSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DIFF_LIGHT_THEMES.map((theme) => (
-                  <SelectItem key={theme.id} value={theme.id}>
-                    {theme.label}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {DIFF_LIGHT_THEMES.map((theme) => (
+                    <SelectItem key={theme.id} value={theme.id}>
+                      {theme.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </Label>
@@ -512,6 +526,10 @@ function GeneralSection({
             Dark appearance
             <Select
               value={diffThemePreferences.dark}
+              items={DIFF_DARK_THEMES.map((theme) => ({
+                label: theme.label,
+                value: theme.id,
+              }))}
               onValueChange={(value) => {
                 if (
                   value !== null &&
@@ -524,11 +542,13 @@ function GeneralSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DIFF_DARK_THEMES.map((theme) => (
-                  <SelectItem key={theme.id} value={theme.id}>
-                    {theme.label}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {DIFF_DARK_THEMES.map((theme) => (
+                    <SelectItem key={theme.id} value={theme.id}>
+                      {theme.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </Label>
@@ -677,6 +697,13 @@ function ReviewPreferences({
             </FieldLabel>
             <Select
               value={preference.reasoning}
+              items={[
+                { label: "Minimal", value: "minimal" },
+                { label: "Low", value: "low" },
+                { label: "Medium", value: "medium" },
+                { label: "High", value: "high" },
+                { label: "Extra high", value: "xhigh" },
+              ]}
               onValueChange={(value) => {
                 if (
                   value === "minimal" ||
@@ -695,11 +722,13 @@ function ReviewPreferences({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="minimal">Minimal</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="xhigh">Extra high</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="minimal">Minimal</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="xhigh">Extra high</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </Field>

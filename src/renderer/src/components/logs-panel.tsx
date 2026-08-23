@@ -2,8 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 
 import { requestJson } from "../api-client";
+import type { RawJsonValue } from "../../../domain/json";
+import {
+  parseLogEntry,
+  type LogEntry,
+  type LogLevel,
+  type LogProcess,
+} from "../../../domain/log-entry";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
 import { cn } from "../lib/utils";
+import * as v from "valibot";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -15,27 +23,29 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 
-type LogLevel = "debug" | "info" | "warn" | "error";
-type LogProcess = "main" | "renderer";
-
-type LogEntry = {
-  readonly seq: number;
-  readonly at: string;
-  readonly process: LogProcess;
-  readonly level: LogLevel;
-  readonly topic: string;
-  readonly message: string;
-  readonly meta?: Readonly<Record<string, unknown>>;
-};
-
 const MAX_DISPLAYED = 1_000;
 const POLL_INTERVAL_MS = 2_000;
+
+const logsPayloadSchema = v.object({
+  entries: v.optional(v.array(v.unknown())),
+  nextAfter: v.optional(v.number()),
+});
+
+type LogsPayload = v.InferOutput<typeof logsPayloadSchema>;
+
+type LogStreamState = {
+  readonly requestId: number;
+  readonly entries: ReadonlyArray<LogEntry>;
+  readonly afterSeq?: number;
+  readonly error?: string;
+};
 
 const levelOptions: ReadonlyArray<{
   readonly value: "all" | LogLevel;
@@ -57,20 +67,11 @@ const processOptions: ReadonlyArray<{
   { value: "renderer", label: "Renderer" },
 ];
 
-function isLogEntry(value: unknown): value is LogEntry {
-  if (typeof value !== "object" || value === null) return false;
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.seq === "number" &&
-    typeof record.at === "string" &&
-    (record.process === "main" || record.process === "renderer") &&
-    (record.level === "debug" ||
-      record.level === "info" ||
-      record.level === "warn" ||
-      record.level === "error") &&
-    typeof record.topic === "string" &&
-    typeof record.message === "string"
-  );
+function parseLogsPayload(
+  value: RawJsonValue | undefined,
+): LogsPayload | undefined {
+  const parsed = v.safeParse(logsPayloadSchema, value);
+  return parsed.success ? parsed.output : undefined;
 }
 
 function levelClass(level: LogLevel): string {
@@ -88,12 +89,10 @@ function levelClass(level: LogLevel): string {
 
 /** Live tail of the unified main + renderer log stream. */
 export function LogsPanel(): React.JSX.Element {
-  const [stream, setStream] = useState<{
-    readonly requestId: number;
-    readonly entries: ReadonlyArray<LogEntry>;
-    readonly afterSeq?: number;
-    readonly error?: string;
-  }>({ requestId: 0, entries: [] });
+  const [stream, setStream] = useState<LogStreamState>({
+    requestId: 0,
+    entries: [],
+  });
   const [paused, setPaused] = useState(false);
   const [levelFilter, setLevelFilter] = useState<"all" | LogLevel>("all");
   const [processFilter, setProcessFilter] = useState<"all" | LogProcess>("all");
@@ -112,14 +111,11 @@ export function LogsPanel(): React.JSX.Element {
         after === undefined ? "limit=300" : `after=${after}&limit=500`;
       void requestJson(`/v1/logs?${query}`)
         .then((value) => {
-          if (cancelled || typeof value !== "object" || value === null) return;
-          const record = value as {
-            readonly entries?: unknown;
-            readonly nextAfter?: unknown;
-          };
-          const incoming = Array.isArray(record.entries)
-            ? record.entries.filter(isLogEntry)
-            : [];
+          const payload = parseLogsPayload(value);
+          if (cancelled || payload === undefined) return;
+          const incoming = (payload.entries ?? [])
+            .map(parseLogEntry)
+            .filter((entry): entry is LogEntry => entry !== undefined);
           // The cursor is the last delivered sequence (or the supplied cursor
           // when nothing arrived); it is sent back unchanged on the next poll.
           setStream((current) => {
@@ -128,12 +124,17 @@ export function LogsPanel(): React.JSX.Element {
               after === undefined
                 ? incoming
                 : [...current.entries, ...incoming];
-            const nextAfter =
-              typeof record.nextAfter === "number" ? record.nextAfter : after;
+            const nextAfter = payload.nextAfter ?? after;
+            if (nextAfter === undefined) {
+              return {
+                requestId,
+                entries: merged.slice(-MAX_DISPLAYED),
+              };
+            }
             return {
               requestId,
               entries: merged.slice(-MAX_DISPLAYED),
-              ...(nextAfter === undefined ? {} : { afterSeq: nextAfter }),
+              afterSeq: nextAfter,
             };
           });
         })
@@ -200,7 +201,10 @@ export function LogsPanel(): React.JSX.Element {
             value={levelFilter}
             items={levelOptions}
             onValueChange={(value) => {
-              if (value !== null) setLevelFilter(value as "all" | LogLevel);
+              if (value !== null) {
+                // SAFETY: The catalog contains only all or LogLevel values.
+                setLevelFilter(value as "all" | LogLevel);
+              }
             }}
           >
             <SelectTrigger
@@ -212,18 +216,23 @@ export function LogsPanel(): React.JSX.Element {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {levelOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                {levelOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
           <Select
             value={processFilter}
             items={processOptions}
             onValueChange={(value) => {
-              if (value !== null) setProcessFilter(value as "all" | LogProcess);
+              if (value !== null) {
+                // SAFETY: The catalog contains only all or LogProcess values.
+                setProcessFilter(value as "all" | LogProcess);
+              }
             }}
           >
             <SelectTrigger
@@ -235,11 +244,13 @@ export function LogsPanel(): React.JSX.Element {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {processOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                {processOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
         </div>

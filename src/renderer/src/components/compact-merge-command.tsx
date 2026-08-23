@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -182,17 +183,26 @@ export function CompactMergeCommand(props: {
           Merge method
           <Select
             value={method}
-            onValueChange={(value) => setMethod(value as MergeMethod)}
+            items={props.methods.map((candidate) => ({
+              label: candidate,
+              value: candidate,
+            }))}
+            onValueChange={(value) => {
+              // SAFETY: The catalog is built only from MergeMethod values.
+              setMethod(value as MergeMethod);
+            }}
           >
             <SelectTrigger id="merge-method">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {props.methods.map((candidate) => (
-                <SelectItem key={candidate} value={candidate}>
-                  {candidate}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                {props.methods.map((candidate) => (
+                  <SelectItem key={candidate} value={candidate}>
+                    {candidate}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
         </label>

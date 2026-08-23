@@ -12,6 +12,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -183,9 +184,14 @@ function FinishReviewDialogContent({
             </label>
             <Select
               value={event}
-              onValueChange={(value) =>
-                setEvent(value as "COMMENT" | "APPROVE" | "REQUEST_CHANGES")
-              }
+              items={Object.entries(DECISION_LABELS).map(([value, label]) => ({
+                value,
+                label,
+              }))}
+              onValueChange={(value) => {
+                // SAFETY: The catalog contains only the three review events.
+                setEvent(value as "COMMENT" | "APPROVE" | "REQUEST_CHANGES");
+              }}
             >
               <SelectTrigger
                 id="finish-review-decision"
@@ -195,15 +201,20 @@ function FinishReviewDialogContent({
                 <SelectValue>
                   {(value) =>
                     DECISION_LABELS[
+                      // SAFETY: SelectValue receives a catalogued decision or null.
                       (value ?? "COMMENT") as keyof typeof DECISION_LABELS
                     ]
                   }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="COMMENT">Comment</SelectItem>
-                <SelectItem value="APPROVE">Approve</SelectItem>
-                <SelectItem value="REQUEST_CHANGES">Request changes</SelectItem>
+                <SelectGroup>
+                  <SelectItem value="COMMENT">Comment</SelectItem>
+                  <SelectItem value="APPROVE">Approve</SelectItem>
+                  <SelectItem value="REQUEST_CHANGES">
+                    Request changes
+                  </SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
             <Badge variant="outline" data-finish-review-count>
