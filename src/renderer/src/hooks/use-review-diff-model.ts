@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getFiletypeFromFileName,
   getThemes,
@@ -43,6 +43,7 @@ export type ReviewDiffModel = {
   readonly contextControl: ReturnType<typeof reviewContextControl>;
   readonly contextStatus: ReviewContextStatus;
   readonly browserSupportsPierre: boolean;
+  readonly syntaxHighlightingStatus: "loading" | "ready" | "unavailable";
   readonly selectedPatch: string;
   readonly files: ReadonlyArray<FileDiffMetadata>;
   readonly visibleFiles: ReadonlyArray<FileDiffMetadata>;
@@ -62,6 +63,11 @@ export type ReviewDiffModel = {
   readonly handleCodeViewScroll: ReviewDiffScrollState<
     ReviewInlineAnnotation | undefined
   >["handleCodeViewScroll"];
+};
+
+type SyntaxHighlightingState = {
+  readonly requestKey: string | undefined;
+  readonly status: "loading" | "ready" | "unavailable";
 };
 
 /**
@@ -265,8 +271,8 @@ export function useReviewDiffModel({
   const browserSupportsPierre =
     globalThis.CSSStyleSheet !== undefined &&
     "replaceSync" in CSSStyleSheet.prototype;
-  useEffect(() => {
-    if (virtualized || !browserSupportsPierre) return;
+  const syntaxHighlightingRequest = useMemo(() => {
+    if (virtualized || !browserSupportsPierre) return undefined;
     const langs = Array.from(
       new Set(
         parsedFiles.flatMap((file) => {
@@ -277,12 +283,53 @@ export function useReviewDiffModel({
         }),
       ),
     );
-    if (langs.length === 0) return;
-    void preloadHighlighter({
+    if (langs.length === 0) return undefined;
+    const themes = getThemes(themePreferences);
+    return {
+      key: `${langs.join("\u0000")}\u0001${themes.join("\u0000")}`,
       langs,
-      themes: getThemes(themePreferences),
-    });
+      themes,
+    };
   }, [browserSupportsPierre, parsedFiles, themePreferences, virtualized]);
+  const [syntaxHighlightingState, setSyntaxHighlightingState] =
+    useState<SyntaxHighlightingState>(() => ({
+      requestKey: syntaxHighlightingRequest?.key,
+      status: syntaxHighlightingRequest === undefined ? "ready" : "loading",
+    }));
+  const syntaxHighlightingStatus =
+    syntaxHighlightingRequest === undefined
+      ? "ready"
+      : syntaxHighlightingState.requestKey === syntaxHighlightingRequest.key
+        ? syntaxHighlightingState.status
+        : "loading";
+  useEffect(() => {
+    if (syntaxHighlightingRequest === undefined) return;
+    let current = true;
+    const requestKey = syntaxHighlightingRequest.key;
+    setSyntaxHighlightingState({ requestKey, status: "loading" });
+    // Effects cannot await. This chain owns both success and failure, and only
+    // updates the state for the request that is still rendered.
+    void Promise.resolve()
+      .then(() =>
+        preloadHighlighter({
+          langs: syntaxHighlightingRequest.langs,
+          themes: syntaxHighlightingRequest.themes,
+        }),
+      )
+      .then(
+        () => {
+          if (current)
+            setSyntaxHighlightingState({ requestKey, status: "ready" });
+        },
+        () => {
+          if (current)
+            setSyntaxHighlightingState({ requestKey, status: "unavailable" });
+        },
+      );
+    return () => {
+      current = false;
+    };
+  }, [syntaxHighlightingRequest]);
 
   const hydrationPathKey = useMemo(
     () => items.map((item) => item.id).join("\u0000"),
@@ -318,6 +365,7 @@ export function useReviewDiffModel({
     contextControl,
     contextStatus,
     browserSupportsPierre,
+    syntaxHighlightingStatus,
     selectedPatch,
     files,
     visibleFiles,

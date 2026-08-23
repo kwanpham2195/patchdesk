@@ -73,6 +73,7 @@ import {
 import { useReviewConversationOverlays } from "@/hooks/use-review-conversation-overlays";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 
 registerPierreThemeLoaders();
@@ -430,6 +431,7 @@ function ReviewDiffSurface({
     contextControl,
     contextStatus,
     browserSupportsPierre,
+    syntaxHighlightingStatus,
     selectedPatch,
     files,
     selectedFile,
@@ -522,6 +524,7 @@ function ReviewDiffSurface({
       decorateConversationThread={decorateConversationThread}
       virtualized={virtualized}
       browserSupportsPierre={browserSupportsPierre}
+      syntaxHighlightingStatus={syntaxHighlightingStatus}
       localCommentAuthoring={localCommentAuthoring}
       localComposerAnnotation={localComposerAnnotation}
       contextStatus={contextStatus}
@@ -565,6 +568,7 @@ type ReviewDiffRenderSiteProps = {
   ) => ConversationThreadCardData;
   readonly virtualized: boolean;
   readonly browserSupportsPierre: boolean;
+  readonly syntaxHighlightingStatus: "loading" | "ready" | "unavailable";
   readonly localCommentAuthoring: LocalCommentAuthoring | undefined;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
   readonly contextStatus: ReviewContextStatus;
@@ -608,6 +612,7 @@ function ReviewDiffRenderSite({
   decorateConversationThread,
   virtualized,
   browserSupportsPierre,
+  syntaxHighlightingStatus,
   localCommentAuthoring,
   localComposerAnnotation,
   contextStatus,
@@ -698,12 +703,6 @@ function ReviewDiffRenderSite({
       renderReviewDiffAnnotation(annotation, decorateConversationThread),
     [decorateConversationThread],
   );
-  const renderPatchHeader = useCallback(
-    (file: FileDiffMetadata) => (
-      <FileHeaderRow file={file} stats={renderFileChangeCounts(file.name)} />
-    ),
-    [renderFileChangeCounts],
-  );
   const renderGutterUtility = useCallback(
     (
       getHoveredLine: () =>
@@ -791,69 +790,26 @@ function ReviewDiffRenderSite({
               })}
         />
       ) : !virtualized ? (
-        selectedFile === undefined ? (
-          <PatchDiff
-            patch={selectedPatch}
-            disableWorkerPool
-            className="visual-diff min-h-0 overflow-x-auto font-mono"
-            style={DIFF_CODE_METRICS}
-            options={{
-              theme: diffThemeFor(themePreferences),
-              themeType: appearance,
-              unsafeCSS: WALKTHROUGH_DIFF_COLORS_CSS,
-              disableBackground: false,
-              diffStyle: preferences.diffStyle,
-              overflow: preferences.overflow,
-              hunkSeparators: "line-info",
-              expandUnchanged: expandUnchanged || expandSelectedRange,
-              lineDiffType: DEFAULT_LINE_DIFF_TYPE,
-              diffIndicators: "bars",
-              lineHoverHighlight: "both",
-              enableGutterUtility: localCommentAuthoring?.enabled === true,
-            }}
-            lineAnnotations={selectedAnnotations}
-            selectedLines={selectedLines?.range ?? null}
-            renderAnnotation={renderAnnotation}
-            renderCustomHeader={renderPatchHeader}
-            renderGutterUtility={(getHoveredLine) =>
-              renderGutterUtility(getHoveredLine, {
-                id: selectedPath ?? "diff",
-                type: "diff",
-              })
-            }
-          />
-        ) : (
-          <FileDiff
-            fileDiff={selectedFile}
-            disableWorkerPool
-            className="visual-diff min-h-0 overflow-x-auto font-mono"
-            style={DIFF_CODE_METRICS}
-            options={{
-              theme: diffThemeFor(themePreferences),
-              themeType: appearance,
-              unsafeCSS: WALKTHROUGH_DIFF_COLORS_CSS,
-              disableBackground: false,
-              diffStyle: preferences.diffStyle,
-              overflow: preferences.overflow,
-              hunkSeparators: "line-info",
-              expandUnchanged: expandUnchanged || expandSelectedRange,
-              lineDiffType: DEFAULT_LINE_DIFF_TYPE,
-              diffIndicators: "bars",
-              lineHoverHighlight: "both",
-              enableGutterUtility: localCommentAuthoring?.enabled === true,
-            }}
-            lineAnnotations={selectedAnnotations}
-            selectedLines={selectedLines?.range ?? null}
-            renderAnnotation={renderAnnotation}
-            renderCustomHeader={renderPatchHeader}
-            renderGutterUtility={(getHoveredLine) =>
-              renderGutterUtility(getHoveredLine, {
-                id: selectedFile.name,
-                type: "diff",
-              })
-            }
-          />
-        )
+        <NonVirtualizedReviewDiff
+          patch={patch}
+          selectedPatch={selectedPatch}
+          selectedPath={selectedPath}
+          selectedRange={selectedRange}
+          preferences={preferences}
+          syntaxHighlightingStatus={syntaxHighlightingStatus}
+          localCommentAuthoring={localCommentAuthoring}
+          beginAccessibleAuthoring={beginAccessibleAuthoring}
+          selectedFile={selectedFile}
+          themePreferences={themePreferences}
+          appearance={appearance}
+          expandUnchanged={expandUnchanged}
+          expandSelectedRange={expandSelectedRange}
+          selectedAnnotations={selectedAnnotations}
+          selectedLines={selectedLines}
+          fileStatsByPath={fileStatsByPath}
+          decorateConversationThread={decorateConversationThread}
+          beginAuthoring={beginAuthoring}
+        />
       ) : (
         <div className="relative min-h-0 flex-1">
           <CodeView<ReviewInlineAnnotation | undefined>
@@ -874,6 +830,172 @@ function ReviewDiffRenderSite({
         </div>
       )}
     </>
+  );
+}
+
+type NonVirtualizedReviewDiffProps = Pick<
+  ReviewDiffRenderSiteProps,
+  | "patch"
+  | "selectedPatch"
+  | "selectedPath"
+  | "selectedRange"
+  | "preferences"
+  | "syntaxHighlightingStatus"
+  | "localCommentAuthoring"
+  | "beginAccessibleAuthoring"
+  | "selectedFile"
+  | "themePreferences"
+  | "appearance"
+  | "expandUnchanged"
+  | "expandSelectedRange"
+  | "selectedAnnotations"
+  | "selectedLines"
+  | "fileStatsByPath"
+  | "decorateConversationThread"
+  | "beginAuthoring"
+>;
+
+function NonVirtualizedReviewDiff({
+  patch,
+  selectedPatch,
+  selectedPath,
+  selectedRange,
+  preferences,
+  syntaxHighlightingStatus,
+  localCommentAuthoring,
+  beginAccessibleAuthoring,
+  selectedFile,
+  themePreferences,
+  appearance,
+  expandUnchanged,
+  expandSelectedRange,
+  selectedAnnotations,
+  selectedLines,
+  fileStatsByPath,
+  decorateConversationThread,
+  beginAuthoring,
+}: NonVirtualizedReviewDiffProps): React.JSX.Element {
+  const renderAnnotation = useCallback(
+    (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) =>
+      renderReviewDiffAnnotation(annotation, decorateConversationThread),
+    [decorateConversationThread],
+  );
+  const renderPatchHeader = useCallback(
+    (file: FileDiffMetadata) => {
+      const stats = fileStatsByPath.get(file.name) ?? {
+        path: file.name,
+        additions: 0,
+        deletions: 0,
+      };
+      return (
+        <FileHeaderRow file={file} stats={<FileChangeCounts stats={stats} />} />
+      );
+    },
+    [fileStatsByPath],
+  );
+  const renderGutterUtility = useCallback(
+    (
+      getHoveredLine: () =>
+        | {
+            readonly lineNumber: number;
+            readonly side: "additions" | "deletions";
+          }
+        | undefined,
+      item: { readonly id: string; readonly type: "diff" | "file" },
+    ) =>
+      renderReviewDiffGutterUtility(
+        getHoveredLine,
+        item,
+        localCommentAuthoring,
+        beginAuthoring,
+      ),
+    [beginAuthoring, localCommentAuthoring],
+  );
+  if (syntaxHighlightingStatus === "loading") {
+    return (
+      <div
+        className="flex min-h-48 items-center justify-center gap-2 p-3 text-sm text-muted-foreground"
+        role="status"
+        aria-label="Loading syntax highlighting"
+      >
+        <Spinner aria-hidden="true" />
+        Loading syntax highlighting…
+      </div>
+    );
+  }
+  if (syntaxHighlightingStatus === "unavailable") {
+    return (
+      <>
+        <Alert variant="destructive" className="m-3">
+          <AlertTitle>Syntax highlighting is unavailable.</AlertTitle>
+          <AlertDescription>
+            Restart Patchdesk and try again. The code is shown as plain text.
+          </AlertDescription>
+        </Alert>
+        <AccessiblePatch
+          patch={preferences.fileMode === "all" ? patch : selectedPatch}
+          virtualized={false}
+          {...(selectedRange === undefined ? {} : { selectedRange })}
+          {...(localCommentAuthoring === undefined
+            ? {}
+            : {
+                localCommentAuthoring,
+                onAuthorLine: beginAccessibleAuthoring,
+              })}
+        />
+      </>
+    );
+  }
+  const options = {
+    theme: diffThemeFor(themePreferences),
+    themeType: appearance,
+    unsafeCSS: WALKTHROUGH_DIFF_COLORS_CSS,
+    disableBackground: false,
+    diffStyle: preferences.diffStyle,
+    overflow: preferences.overflow,
+    hunkSeparators: "line-info" as const,
+    expandUnchanged: expandUnchanged || expandSelectedRange,
+    lineDiffType: DEFAULT_LINE_DIFF_TYPE,
+    diffIndicators: "bars" as const,
+    lineHoverHighlight: "both" as const,
+    enableGutterUtility: localCommentAuthoring?.enabled === true,
+  };
+  return selectedFile === undefined ? (
+    <PatchDiff
+      patch={selectedPatch}
+      disableWorkerPool
+      className="visual-diff min-h-0 overflow-x-auto font-mono"
+      style={DIFF_CODE_METRICS}
+      options={options}
+      lineAnnotations={selectedAnnotations}
+      selectedLines={selectedLines?.range ?? null}
+      renderAnnotation={renderAnnotation}
+      renderCustomHeader={renderPatchHeader}
+      renderGutterUtility={(getHoveredLine) =>
+        renderGutterUtility(getHoveredLine, {
+          id: selectedPath ?? "diff",
+          type: "diff",
+        })
+      }
+    />
+  ) : (
+    <FileDiff
+      fileDiff={selectedFile}
+      disableWorkerPool
+      className="visual-diff min-h-0 overflow-x-auto font-mono"
+      style={DIFF_CODE_METRICS}
+      options={options}
+      lineAnnotations={selectedAnnotations}
+      selectedLines={selectedLines?.range ?? null}
+      renderAnnotation={renderAnnotation}
+      renderCustomHeader={renderPatchHeader}
+      renderGutterUtility={(getHoveredLine) =>
+        renderGutterUtility(getHoveredLine, {
+          id: selectedFile.name,
+          type: "diff",
+        })
+      }
+    />
   );
 }
 

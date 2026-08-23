@@ -265,7 +265,7 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const authorButtons = screen.getAllByRole("button", {
+      const authorButtons = await screen.findAllByRole("button", {
         name: "Add comment on src/a.ts",
       });
       const commentButton = authorButtons.at(-1);
@@ -350,7 +350,7 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const authorButtons = screen.getAllByRole("button", {
+      const authorButtons = await screen.findAllByRole("button", {
         name: "Add comment on src/a.ts",
       });
       const commentButton = authorButtons.at(-1);
@@ -420,7 +420,7 @@ describe("review diff hydration", () => {
           virtualized={false}
         />,
       );
-      const authorButtons = screen.getAllByRole("button", {
+      const authorButtons = await screen.findAllByRole("button", {
         name: "Add comment on src/a.ts",
       });
       const commentButton = authorButtons.at(-1);
@@ -503,6 +503,116 @@ describe("review diff hydration", () => {
       }
     }
   });
+
+  it("waits for syntax highlighting before mounting a non-virtualized diff", async () => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    if (
+      styleSheet?.value !== undefined &&
+      styleSheet.value.prototype.replaceSync === undefined
+    ) {
+      styleSheet.value.prototype.replaceSync = () => undefined;
+    }
+    if (
+      window.CSSStyleSheet !== undefined &&
+      window.CSSStyleSheet.prototype.replaceSync === undefined
+    ) {
+      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+    }
+    try {
+      const { preloadHighlighter } = await import("@pierre/diffs");
+      const preload = vi.mocked(preloadHighlighter);
+      let finishPreload: (() => void) | undefined;
+      preload.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishPreload = resolve;
+          }),
+      );
+      const patch =
+        "diff --git a/src/main.go b/src/main.go\n--- a/src/main.go\n+++ b/src/main.go\n@@ -1 +1,2 @@\n package main\n+func main() {}\n";
+      const parsed = parseReviewDiff(patch);
+      render(
+        <ReviewDiffView
+          patch={patch}
+          parsedFiles={parsed.files}
+          fileStatsByPath={parsed.statsByPath}
+          selectedPath="src/main.go"
+          preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+          collapsedPaths={new Set()}
+          onPreferencesChange={() => undefined}
+          onCollapsedPathsChange={() => undefined}
+          virtualized={false}
+        />,
+      );
+
+      expect(
+        screen.getByRole("status", { name: "Loading syntax highlighting" }),
+      ).toBeTruthy();
+      await waitFor(() => expect(finishPreload).toBeDefined());
+      if (finishPreload === undefined) throw new Error("preload did not start");
+      finishPreload();
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("status", {
+            name: "Loading syntax highlighting",
+          }),
+        ).toBeNull(),
+      );
+    } finally {
+      if (styleSheet?.value !== undefined) {
+        delete styleSheet.value.prototype.replaceSync;
+      }
+    }
+  });
+
+  it("uses the plain text fallback when syntax highlighting is unavailable", async () => {
+    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
+    if (
+      styleSheet?.value !== undefined &&
+      styleSheet.value.prototype.replaceSync === undefined
+    ) {
+      styleSheet.value.prototype.replaceSync = () => undefined;
+    }
+    if (
+      window.CSSStyleSheet !== undefined &&
+      window.CSSStyleSheet.prototype.replaceSync === undefined
+    ) {
+      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+    }
+    try {
+      const { preloadHighlighter } = await import("@pierre/diffs");
+      vi.mocked(preloadHighlighter).mockRejectedValueOnce(
+        new Error("WASM is blocked"),
+      );
+      const patch =
+        "diff --git a/src/main.go b/src/main.go\n--- a/src/main.go\n+++ b/src/main.go\n@@ -1 +1,2 @@\n package main\n+func main() {}\n";
+      const parsed = parseReviewDiff(patch);
+      render(
+        <ReviewDiffView
+          patch={patch}
+          parsedFiles={parsed.files}
+          fileStatsByPath={parsed.statsByPath}
+          selectedPath="src/main.go"
+          preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+          collapsedPaths={new Set()}
+          onPreferencesChange={() => undefined}
+          onCollapsedPathsChange={() => undefined}
+          virtualized={false}
+        />,
+      );
+
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "Syntax highlighting is unavailable.",
+      );
+      expect(
+        screen.getByRole("region", { name: "Plain text diff" }),
+      ).toBeTruthy();
+    } finally {
+      if (styleSheet?.value !== undefined) {
+        delete styleSheet.value.prototype.replaceSync;
+      }
+    }
+  });
 });
 
 it("keeps Reply and Resolve off a published create card even when all global conversation actions are present", async () => {
@@ -555,7 +665,7 @@ it("keeps Reply and Resolve off a published create card even when all global con
         virtualized={false}
       />,
     );
-    const authorButtons = screen.getAllByRole("button", {
+    const authorButtons = await screen.findAllByRole("button", {
       name: "Add comment on src/a.ts",
     });
     const commentButton = authorButtons.at(-1);
