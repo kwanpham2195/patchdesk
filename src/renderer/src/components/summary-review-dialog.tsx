@@ -141,7 +141,7 @@ function SummaryReviewDialogContent({
           </DialogHeader>
         ) : null}
         {effectiveState === "confirmed" ? (
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             <p role="status" className="text-sm">
               Review summary{" "}
               {receipt?.reviewId === undefined ? "" : `#${receipt.reviewId} `}
@@ -164,7 +164,7 @@ function SummaryReviewDialogContent({
             </div>
           </div>
         ) : recovery !== undefined ? (
-          <Alert className="space-y-4 border-status-warning/30 bg-status-warning/10 p-4 text-status-warning">
+          <Alert className="gap-4 border-status-warning/30 bg-status-warning/10 p-4 text-status-warning">
             <AlertTitle>Review submission needs confirmation</AlertTitle>
             <AlertDescription className="text-status-warning">
               {recovery === "manual_resolution_required"
@@ -204,7 +204,7 @@ function SummaryReviewDialogContent({
             </div>
           </Alert>
         ) : (
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             <div>
               <label
                 className="text-sm font-medium"

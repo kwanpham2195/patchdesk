@@ -130,12 +130,12 @@ function FinishReviewDialogContent({
             sent only when you submit.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <section aria-label="Pending review comments">
             <h3 className="mb-2 text-sm font-medium">
               Pending comments · {projection.count}
             </h3>
-            <ul className="max-h-56 space-y-2 overflow-y-auto">
+            <ul className="flex max-h-56 flex-col gap-2 overflow-y-auto">
               {projection.review.comments.map((comment) => (
                 <li
                   key={comment.threadId}
@@ -222,7 +222,7 @@ function FinishReviewDialogContent({
             </Badge>
           </div>
           {submitError === undefined ? null : (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <p role="alert" className="text-sm text-destructive">
                 {submitError}
               </p>

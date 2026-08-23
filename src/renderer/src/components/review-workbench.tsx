@@ -855,7 +855,7 @@ export function ReviewWorkbench({
                     );
                 }}
               >
-                <ExternalLink /> Open on GitHub
+                <ExternalLink data-icon="inline-start" /> Open on GitHub
               </Button>
               <Button
                 variant="outline"
@@ -995,7 +995,12 @@ export function ReviewWorkbench({
                     navigatorVisible ? "with-navigator" : "collapsed-navigator"
                   }
                   style={navigatorVisible ? navigatorGridStyle : undefined}
-                  className={`grid h-full min-h-0 flex-1 ${navigatorVisible ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]" : "grid-cols-[2.75rem_minmax(0,1fr)]"}`}
+                  className={cn(
+                    "grid h-full min-h-0 flex-1",
+                    navigatorVisible
+                      ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]"
+                      : "grid-cols-[2.75rem_minmax(0,1fr)]",
+                  )}
                 >
                   {navigatorVisible ? (
                     <ReviewNavigator

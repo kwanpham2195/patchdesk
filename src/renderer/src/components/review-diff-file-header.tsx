@@ -10,6 +10,7 @@ import {
 import type { FileChangeStats } from "@/review-diff-data";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 export function FileChangeCounts({
   stats,
@@ -128,11 +129,17 @@ export function FileHeaderRow({
           onClick={toggle.onToggle}
         >
           <ChevronDown
-            className={`size-4 transition-transform ${toggle.collapsed ? "-rotate-90" : ""}`}
+            className={cn(
+              "size-4 transition-transform",
+              toggle.collapsed && "-rotate-90",
+            )}
           />
         </button>
       ) : null}
-      <Icon className={`size-4 shrink-0 ${iconClassName}`} aria-hidden="true" />
+      <Icon
+        className={cn("size-4 shrink-0", iconClassName)}
+        aria-hidden="true"
+      />
       <span className="min-w-0 truncate" title={title}>
         {dirPrefix.length > 0 ? (
           <span className="text-muted-foreground">{dirPrefix}</span>
@@ -159,7 +166,12 @@ export function FileHeaderRow({
               : `Mark file ${path} as viewed`
           }
           onClick={toggle.onToggle}
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors hover:border-primary/60 hover:text-foreground focus-visible:outline ${toggle.collapsed ? "border-primary/60 text-foreground" : "border-border/70 text-muted-foreground"}`}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors hover:border-primary/60 hover:text-foreground focus-visible:outline",
+            toggle.collapsed
+              ? "border-primary/60 text-foreground"
+              : "border-border/70 text-muted-foreground",
+          )}
         >
           <span className="inline-flex size-3.5 items-center justify-center rounded-[4px] border border-current">
             {toggle.collapsed ? <Check className="size-2.5" /> : null}
