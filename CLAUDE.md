@@ -14,8 +14,11 @@ Delegate:
   cleanups such as lint findings, refactors, and test updates.
 - Verification: typecheck, test suites, builds, and the commit gate.
 - Live testing: every `agent-browser` interaction against the running app
-  (CDP 9233) — snapshots, clicks, screenshots, console and network reads —
-  following `.agents/skills/patchdesk-electron-tester/SKILL.md`.
+  (CDP 9233) — snapshots, clicks, screenshots, console and network reads.
+  Read-only by default — no drafts, comments, publications, dismissals, or
+  merges unless the maintainer asks for that write.
+  Restart the app after a main-process change; the renderer hot-reloads but
+  the main process keeps the old code.
 
 Give each subagent the file paths, constraints, and verification commands it
 needs. Treat its report as a claim, not a result: review the diff, and send it
