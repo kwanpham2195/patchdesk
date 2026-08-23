@@ -1,4 +1,0 @@
-interface:
-  display_name: "Patchdesk Electron Tester"
-  short_description: "Verify Patchdesk dev or packaged Electron safely through CDP"
-  default_prompt: "Use $patchdesk-electron-tester to choose and verify the Patchdesk development or packaged Electron path."

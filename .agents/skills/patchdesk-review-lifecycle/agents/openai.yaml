@@ -1,4 +1,0 @@
-interface:
-  display_name: "Patchdesk Review Lifecycle"
-  short_description: "Build safe Review and Insight flows"
-  default_prompt: "Use $patchdesk-review-lifecycle to implement this Patchdesk Review lifecycle change."
