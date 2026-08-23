@@ -168,6 +168,72 @@ describe("ConversationThreadCard", () => {
     expect(deleteButtons.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("shows only the comment actions whose callbacks are supplied", () => {
+    const { rerender } = render(
+      <ConversationThreadCard thread={thread({ onEditComment: vi.fn() })} />,
+    );
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+
+    rerender(
+      <ConversationThreadCard thread={thread({ onDeleteComment: vi.fn() })} />,
+    );
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+  });
+
+  it("disables the edit textarea and prevents typing while saving", async () => {
+    const user = userEvent.setup();
+    let resolveEdit: (() => void) | undefined;
+    const onEditComment = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveEdit = resolve;
+        }),
+    );
+    render(<ConversationThreadCard thread={thread({ onEditComment })} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const editor = screen.getByRole("textbox", { name: "Edit comment" });
+    if (!(editor instanceof HTMLTextAreaElement))
+      throw new Error("Expected the edit control to be a textarea");
+    await user.clear(editor);
+    await user.type(editor, "Edited while waiting");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onEditComment).toHaveBeenCalledWith("c-1", "Edited while waiting");
+    expect(editor.disabled).toBe(true);
+    await user.type(editor, " blocked");
+    expect(editor.value).toBe("Edited while waiting");
+
+    resolveEdit?.();
+  });
+
+  it("disables the reply textarea and prevents typing while publishing", async () => {
+    const user = userEvent.setup();
+    let resolveReply: (() => void) | undefined;
+    const onReply = vi.fn(
+      () =>
+        new Promise<string | void>((resolve) => {
+          resolveReply = resolve;
+        }),
+    );
+    render(<ConversationThreadCard thread={thread({ onReply })} />);
+
+    const reply = screen.getByRole("textbox", { name: "Reply" });
+    if (!(reply instanceof HTMLTextAreaElement))
+      throw new Error("Expected the reply control to be a textarea");
+    await user.type(reply, "Reply while waiting");
+    await user.click(screen.getByRole("button", { name: "Reply" }));
+
+    expect(onReply).toHaveBeenCalledWith("thread-1", "Reply while waiting");
+    expect(reply.disabled).toBe(true);
+    await user.type(reply, " blocked");
+    expect(reply.value).toBe("Reply while waiting");
+
+    resolveReply?.();
+  });
+
   it("edits a viewer-authored reply through its row controls", async () => {
     const user = userEvent.setup();
     const onEditComment = vi.fn(async () => undefined);

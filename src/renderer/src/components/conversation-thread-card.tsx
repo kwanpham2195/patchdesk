@@ -79,9 +79,8 @@ function ConversationCommentRow({
   const [editBody, setEditBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-  const editable =
-    comment.viewerDidAuthor === true &&
-    (onEdit !== undefined || onDelete !== undefined);
+  const canEdit = comment.viewerDidAuthor === true && onEdit !== undefined;
+  const canDelete = comment.viewerDidAuthor === true && onDelete !== undefined;
   return (
     <div className="flex gap-3">
       <Avatar name={comment.author} dataUri={comment.authorAvatarDataUri} />
@@ -93,6 +92,7 @@ function ConversationCommentRow({
               aria-label="Edit comment"
               value={editBody}
               onChange={(event) => setEditBody(event.target.value)}
+              disabled={saving}
             />
             <div className="mt-2 flex gap-2">
               <Button
@@ -132,31 +132,35 @@ function ConversationCommentRow({
         ) : (
           <PullRequestDescriptionPreview markdown={comment.body} />
         )}
-        {editable && !editing ? (
+        {(canEdit || canDelete) && !editing ? (
           <div className="mt-1 flex gap-3">
-            <button
-              type="button"
-              className="text-xs font-medium text-sky-400 hover:underline"
-              onClick={() => {
-                setEditing(true);
-                setEditBody(comment.body);
-              }}
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              className="text-xs font-medium text-destructive hover:underline"
-              onClick={() => {
-                if (!window.confirm("Delete this published comment?")) return;
-                if (onDelete === undefined) return;
-                void onDelete(comment.id).catch(() =>
-                  setError("Patchdesk could not delete this comment."),
-                );
-              }}
-            >
-              Delete
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                className="text-xs font-medium text-sky-400 hover:underline"
+                onClick={() => {
+                  setEditing(true);
+                  setEditBody(comment.body);
+                }}
+              >
+                Edit
+              </button>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                className="text-xs font-medium text-destructive hover:underline"
+                onClick={() => {
+                  if (!window.confirm("Delete this published comment?")) return;
+                  if (onDelete === undefined) return;
+                  void onDelete(comment.id).catch(() =>
+                    setError("Patchdesk could not delete this comment."),
+                  );
+                }}
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         ) : null}
         {error === undefined ? null : (
@@ -368,6 +372,7 @@ export function ConversationThreadCard({
             value={replyBody}
             onChange={(event) => setReplyBody(event.target.value)}
             placeholder="Write a reply…"
+            disabled={replying}
           />
           <div className="mt-2 flex gap-2">
             <Button
