@@ -3,16 +3,16 @@
 Create the model and mount it in an element with a height:
 
 ```ts
-import { FileTree } from '@pierre/trees';
+import { FileTree } from "@pierre/trees";
 
-const mount = document.querySelector<HTMLElement>('#files');
-if (mount == null) throw new Error('Missing file tree mount');
+const mount = document.querySelector<HTMLElement>("#files");
+if (mount == null) throw new Error("Missing file tree mount");
 
-mount.style.height = '320px';
+mount.style.height = "320px";
 
 const tree = new FileTree({
-  paths: ['README.md', 'src/', 'src/index.ts'],
-  initialExpansion: 'open',
+  paths: ["README.md", "src/", "src/index.ts"],
+  initialExpansion: "open",
   search: true,
 });
 

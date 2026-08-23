@@ -25,22 +25,22 @@ Set `edit` on `File`, `FileDiff`, `MultiFileDiff`, or `PatchDiff`. Pass editor
 behavior through `editOptions`.
 
 ```tsx
-import type { FileContents, FileDiffOptions } from '@pierre/diffs';
-import { Editor, type EditorOptions } from '@pierre/diffs/edit';
-import { EditProvider, MultiFileDiff, Virtualizer } from '@pierre/diffs/react';
-import { useMemo, useRef, useState } from 'react';
+import type { FileContents, FileDiffOptions } from "@pierre/diffs";
+import { Editor, type EditorOptions } from "@pierre/diffs/edit";
+import { EditProvider, MultiFileDiff, Virtualizer } from "@pierre/diffs/react";
+import { useMemo, useRef, useState } from "react";
 
 const oldFile: FileContents = {
-  name: 'src/value.ts',
-  contents: 'export const value = 1;',
+  name: "src/value.ts",
+  contents: "export const value = 1;",
 };
 const initialNewFile: FileContents = {
-  name: 'src/value.ts',
-  contents: 'export const value = 2;',
+  name: "src/value.ts",
+  contents: "export const value = 2;",
 };
 const diffOptions: FileDiffOptions<undefined> = {
-  theme: { light: 'pierre-light', dark: 'pierre-dark' },
-  diffStyle: 'split',
+  theme: { light: "pierre-light", dark: "pierre-dark" },
+  diffStyle: "split",
 };
 
 function createEditor<LAnnotation>(options: EditorOptions<LAnnotation>) {
@@ -62,7 +62,7 @@ export function EditableDiff() {
         saveDraft(file);
       },
     }),
-    []
+    [],
   );
 
   function toggleEdit() {
@@ -73,7 +73,7 @@ export function EditableDiff() {
   return (
     <EditProvider createEditor={createEditor}>
       <button type="button" onClick={toggleEdit}>
-        {edit ? 'Finish edit' : 'Edit'}
+        {edit ? "Finish edit" : "Edit"}
       </button>
       <button
         type="button"
@@ -82,7 +82,7 @@ export function EditableDiff() {
       >
         Undo
       </button>
-      <Virtualizer style={{ maxHeight: 480, overflow: 'auto' }}>
+      <Virtualizer style={{ maxHeight: 480, overflow: "auto" }}>
         <MultiFileDiff
           oldFile={oldFile}
           newFile={newFile}

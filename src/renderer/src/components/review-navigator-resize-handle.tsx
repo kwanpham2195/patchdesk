@@ -83,8 +83,7 @@ export function ReviewNavigatorResizeHandle({
 
   const widthFromDrag = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const start = dragStart.current;
-    if (start === null || start.pointerId !== event.pointerId)
-      return undefined;
+    if (start === null || start.pointerId !== event.pointerId) return undefined;
     const deltaRem = (event.clientX - start.clientX) / rootFontSizePx();
     return clampWidth(start.widthRem + deltaRem);
   }, []);

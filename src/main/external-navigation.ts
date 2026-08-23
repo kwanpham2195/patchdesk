@@ -10,7 +10,9 @@ type HardenedSession = {
   readonly webRequest: {
     onHeadersReceived(
       listener: (
-        details: { readonly responseHeaders?: Record<string, string | string[]> },
+        details: {
+          readonly responseHeaders?: Record<string, string | string[]>;
+        },
         callback: (response: {
           readonly responseHeaders?: Record<string, string | string[]>;
         }) => void,

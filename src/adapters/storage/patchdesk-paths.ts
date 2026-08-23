@@ -124,7 +124,10 @@ export class PatchdeskPaths {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): string {
-    return join(this.reviewDirectory(profileId, reviewId), "recent-writes.json");
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "recent-writes.json",
+    );
   }
 
   reviewFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {

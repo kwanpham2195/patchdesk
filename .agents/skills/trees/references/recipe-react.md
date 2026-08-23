@@ -3,14 +3,14 @@
 Create the model once and pass it to the component:
 
 ```tsx
-'use client';
+"use client";
 
-import { FileTree, useFileTree } from '@pierre/trees/react';
+import { FileTree, useFileTree } from "@pierre/trees/react";
 
 export function ProjectFiles({ paths }: { paths: readonly string[] }) {
   const { model } = useFileTree({
     paths,
-    initialExpansion: 'open',
+    initialExpansion: "open",
     search: true,
   });
 

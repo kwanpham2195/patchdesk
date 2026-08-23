@@ -311,7 +311,9 @@ function ReviewSummaryEntry({
  * so each optional callback is added only when its action is wired, instead
  * of a conditional empty-object spread. */
 type MutableConversationThreadCardData = {
-  -readonly [K in keyof ConversationThreadCardData]: ConversationThreadCardData[K];
+  -readonly [
+    K in keyof ConversationThreadCardData
+  ]: ConversationThreadCardData[K];
 };
 
 /**

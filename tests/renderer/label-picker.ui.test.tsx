@@ -117,9 +117,9 @@ describe("LabelPicker", () => {
     await user.click(docsCheckbox);
     // Applied immediately, before the write's promise ever settles.
     expect(
-      screen.getByRole("checkbox", { name: "documentation" }).getAttribute(
-        "aria-checked",
-      ),
+      screen
+        .getByRole("checkbox", { name: "documentation" })
+        .getAttribute("aria-checked"),
     ).toBe("true");
     await waitFor(() => expect(actions.addLabels).toHaveBeenCalledOnce());
     // The authoritative prop now agrees; the optimistic override should
@@ -131,9 +131,9 @@ describe("LabelPicker", () => {
       />,
     );
     expect(
-      screen.getByRole("checkbox", { name: "documentation" }).getAttribute(
-        "aria-checked",
-      ),
+      screen
+        .getByRole("checkbox", { name: "documentation" })
+        .getAttribute("aria-checked"),
     ).toBe("true");
   });
 

@@ -3,8 +3,8 @@
 Convert one resolved Shiki or VS Code theme to host styles:
 
 ```tsx
-import { themeToTreeStyles } from '@pierre/trees';
-import { FileTree } from '@pierre/trees/react';
+import { themeToTreeStyles } from "@pierre/trees";
+import { FileTree } from "@pierre/trees/react";
 
 const treeStyle = {
   height: 320,

@@ -13,7 +13,7 @@ const tree = new FileTree({
   },
   dragAndDrop: {
     canDrop({ target }) {
-      return target.kind === 'directory';
+      return target.kind === "directory";
     },
     onDropComplete(event) {
       saveMove(event);

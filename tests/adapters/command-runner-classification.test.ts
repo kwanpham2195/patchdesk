@@ -25,7 +25,12 @@ import {
  * update a fixture without re-verifying the real `gh` output it represents.
  */
 
-const FIXTURES_DIR = join(import.meta.dirname, "..", "fixtures", "gh-command-failures");
+const FIXTURES_DIR = join(
+  import.meta.dirname,
+  "..",
+  "fixtures",
+  "gh-command-failures",
+);
 
 type Fixture = {
   readonly capturedWith: string;
@@ -115,7 +120,10 @@ describe("CommandRunner classifyExecution — forbidden reasons (plan 009)", () 
     const failure = await classify(
       loadFixture("graphql-forbidden-ip-allow-list.json"),
     );
-    expect(failure).toEqual({ _tag: "CommandForbidden", reason: "ip_allow_list" });
+    expect(failure).toEqual({
+      _tag: "CommandForbidden",
+      reason: "ip_allow_list",
+    });
   });
 
   it("classifies a saml_failure:true GraphQL response as CommandForbidden/saml regardless of message wording", async () => {
@@ -142,7 +150,10 @@ describe("CommandRunner classifyExecution — forbidden reasons (plan 009)", () 
     const failure = await classify(
       loadFixture("rest-forbidden-ip-allow-list.json"),
     );
-    expect(failure).toEqual({ _tag: "CommandForbidden", reason: "ip_allow_list" });
+    expect(failure).toEqual({
+      _tag: "CommandForbidden",
+      reason: "ip_allow_list",
+    });
   });
 });
 
@@ -240,7 +251,9 @@ describe("CommandRunner classifyExecution — structured signal precedence", () 
   });
 
   it("does not misclassify the non-gh flue-insight child's failure shape", async () => {
-    const failure = await classify(loadFixture("runtime-unavailable-regex.json"));
+    const failure = await classify(
+      loadFixture("runtime-unavailable-regex.json"),
+    );
     expect(failure).toEqual({ _tag: "CommandRuntimeUnavailable" });
   });
 });

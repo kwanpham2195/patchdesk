@@ -234,7 +234,9 @@ const mergePolicyEvidenceSchema = v.strictObject({
           v.strictObject({
             type: v.string(),
             name: v.optional(v.string()),
-            pullRequestParameters: v.optional(storedPullRequestParametersSchema),
+            pullRequestParameters: v.optional(
+              storedPullRequestParametersSchema,
+            ),
             requiredStatusCheckContexts: v.optional(v.array(v.string())),
           }),
         ),
@@ -455,9 +457,7 @@ export function parseReviewRemoteSnapshot(
       ? {}
       : { publishedFeedback: publishedFeedback.value };
   const mergePolicyField =
-    mergePolicy.value === undefined
-      ? {}
-      : { mergePolicy: mergePolicy.value };
+    mergePolicy.value === undefined ? {} : { mergePolicy: mergePolicy.value };
   const mergeEvidenceField =
     mergeEvidence.value === undefined
       ? {}
@@ -799,7 +799,8 @@ function parseConversation(
   const inline =
     input.inline === undefined ? ok(undefined) : parseComments(input.inline);
   if (inline._tag === "err") return invalidRead();
-  const inlineField = inline.value === undefined ? {} : { inline: inline.value };
+  const inlineField =
+    inline.value === undefined ? {} : { inline: inline.value };
   const completeField =
     input.complete === undefined ? {} : { complete: input.complete };
   const incompleteReasonField =
@@ -1034,10 +1035,10 @@ function parseMergeEvidence(
           state: "available" as const,
           value: {
             rules: input.policy.appliedRuleset.value.rules.map((rule) => {
-              const nameField = rule.name === undefined ? {} : { name: rule.name };
-              const storedPullRequestParameters = buildStoredPullRequestParameters(
-                rule.pullRequestParameters,
-              );
+              const nameField =
+                rule.name === undefined ? {} : { name: rule.name };
+              const storedPullRequestParameters =
+                buildStoredPullRequestParameters(rule.pullRequestParameters);
               const pullRequestParametersField =
                 storedPullRequestParameters === undefined
                   ? {}
@@ -1139,7 +1140,9 @@ function remoteSnapshotPath(
   );
 }
 
-function invalidRead(issuePath?: string): Result<never, ReviewRemoteStoreFailure> {
+function invalidRead(
+  issuePath?: string,
+): Result<never, ReviewRemoteStoreFailure> {
   const failure: ReviewRemoteStoreFailure = {
     _tag: "StorageFailure",
     operation: "read",

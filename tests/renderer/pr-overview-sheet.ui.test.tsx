@@ -13,7 +13,9 @@ afterEach(cleanup);
 
 type Readiness = CanonicalReviewOverview["mergeReadiness"];
 
-function fixturePullRequest(): NonNullable<CanonicalReviewOverview["pullRequest"]> {
+function fixturePullRequest(): NonNullable<
+  CanonicalReviewOverview["pullRequest"]
+> {
   const parsed = parsePullRequestInput(
     "https://github.com/centraldigital/patchdesk/pull/42",
   );
@@ -184,9 +186,9 @@ describe("pr overview sheet merge readiness", () => {
     );
     expect(screen.getByText("Approval required by GitHub.")).toBeTruthy();
     expect(screen.getByText("Required checks have not passed.")).toBeTruthy();
-    expect(
-      document.querySelectorAll("[data-reason-availability]").length,
-    ).toBe(2);
+    expect(document.querySelectorAll("[data-reason-availability]").length).toBe(
+      2,
+    );
   });
 
   it("header reads Unknown, not Blocked, when the only blocker is mergeability_unknown", () => {

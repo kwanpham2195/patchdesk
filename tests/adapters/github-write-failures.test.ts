@@ -31,7 +31,9 @@ describe("writeFailure — CommandForbidden", () => {
 
   it("gives each forbidden reason its own message, not one generic sentence reused for all four", () => {
     const messages = new Set(
-      reasons.map((reason) => writeFailure({ _tag: "CommandForbidden", reason }).message),
+      reasons.map(
+        (reason) => writeFailure({ _tag: "CommandForbidden", reason }).message,
+      ),
     );
     expect(messages.size).toBe(reasons.length);
   });

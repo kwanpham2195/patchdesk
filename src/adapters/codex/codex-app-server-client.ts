@@ -668,7 +668,9 @@ class RpcChild {
       if (method === undefined || !v.is(plainObjectSchema, params)) return;
       if (method === "item/agentMessage/delta") {
         const deltaParsed = v.safeParse(agentMessageDeltaParamsSchema, params);
-        const delta = deltaParsed.success ? deltaParsed.output.delta : undefined;
+        const delta = deltaParsed.success
+          ? deltaParsed.output.delta
+          : undefined;
         if (delta !== undefined) text += delta;
         if (Buffer.byteLength(text, "utf8") > MAX_STREAM_BYTES)
           resolveTurn(err({ reason: "invalid_result", phase: "turn" }));

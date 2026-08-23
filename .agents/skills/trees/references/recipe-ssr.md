@@ -3,13 +3,13 @@
 Create one payload and pass it to the React tree:
 
 ```tsx
-import { preloadFileTree } from '@pierre/trees/ssr';
-import { FileTree, useFileTree } from '@pierre/trees/react';
+import { preloadFileTree } from "@pierre/trees/ssr";
+import { FileTree, useFileTree } from "@pierre/trees/react";
 
 const options = {
-  id: 'project-files',
-  paths: ['README.md', 'src/', 'src/index.ts'],
-  initialExpansion: 'open' as const,
+  id: "project-files",
+  paths: ["README.md", "src/", "src/index.ts"],
+  initialExpansion: "open" as const,
   initialVisibleRowCount: 8,
 };
 

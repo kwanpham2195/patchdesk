@@ -395,7 +395,9 @@ describe("InlineConversationService", () => {
 
   it("never synthesizes a threadId when the create receipt did not confirm one", async () => {
     const gate = makeGate();
-    const createInlineComment = vi.fn(async () => ok({ commentId: "PRRC_new" }));
+    const createInlineComment = vi.fn(async () =>
+      ok({ commentId: "PRRC_new" }),
+    );
     const service = new InlineConversationService(
       gate,
       // SAFETY: the mock only implements the Gateway methods this test

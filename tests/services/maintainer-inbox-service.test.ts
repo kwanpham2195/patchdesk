@@ -183,7 +183,11 @@ describe("MaintainerInboxService forbidden reads (plan 009)", () => {
         id: "cfw",
         ghAccount: "fixture",
         repos: [
-          { host: "github.com", owner: "OmisePayments", repo: "dynamic-onboarding-service" },
+          {
+            host: "github.com",
+            owner: "OmisePayments",
+            repo: "dynamic-onboarding-service",
+          },
         ],
       } as never),
     ).resolves.toMatchObject({
@@ -204,9 +208,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
   const profile = {
     id: "cfw",
     ghAccount: "fixture",
-    repos: [
-      { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-    ],
+    repos: [{ host: "github.com", owner: "centraldigital", repo: "patchdesk" }],
   } as never;
 
   function serviceWithCache(cache: {

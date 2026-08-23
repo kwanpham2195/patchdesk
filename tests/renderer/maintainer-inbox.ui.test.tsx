@@ -248,7 +248,9 @@ describe("MaintainerInbox", () => {
     await user.click(
       screen.getByRole("button", { name: "Filter by repository" }),
     );
-    await user.click(await screen.findByRole("checkbox", { name: "acme/widgets" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "acme/widgets" }),
+    );
     expect(
       screen.getByRole("button", { name: "Filter by repository" }).textContent,
     ).toContain("acme/widgets");
@@ -272,9 +274,7 @@ describe("MaintainerInbox", () => {
     // — the two filters compose independently, exactly like labels do today.
     await user.click(screen.getByRole("button", { name: "Filter by label" }));
     expect(await screen.findByRole("checkbox", { name: "bug" })).toBeTruthy();
-    expect(
-      screen.getByRole("checkbox", { name: "enhancement" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "enhancement" })).toBeTruthy();
   });
 
   it("clears the repository filter via the popover's Clear affordance", async () => {
@@ -308,7 +308,9 @@ describe("MaintainerInbox", () => {
     await user.click(
       screen.getByRole("button", { name: "Filter by repository" }),
     );
-    await user.click(await screen.findByRole("checkbox", { name: "acme/widgets" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "acme/widgets" }),
+    );
     expect(screen.queryByText(/Other feature/)).toBeNull();
 
     // The popover is still open from the selection above — click Clear
@@ -352,7 +354,9 @@ describe("MaintainerInbox", () => {
     await user.click(
       screen.getByRole("button", { name: "Filter by repository" }),
     );
-    await user.click(await screen.findByRole("checkbox", { name: "acme/widgets" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "acme/widgets" }),
+    );
     expect(screen.queryByText(/Other feature/)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /save current view/i }));

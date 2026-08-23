@@ -27,8 +27,7 @@ export function escapeCssAttributeValue(value: string): string {
   for (const char of value) {
     const code = char.codePointAt(0) ?? 0;
     if (char === "\\" || char === '"') result += `\\${char}`;
-    else if (code <= 0x1f || code === 0x7f)
-      result += `\\${code.toString(16)} `;
+    else if (code <= 0x1f || code === 0x7f) result += `\\${code.toString(16)} `;
     else result += char;
   }
   return result;

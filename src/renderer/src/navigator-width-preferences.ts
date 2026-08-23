@@ -16,10 +16,9 @@ export const MIN_NAVIGATOR_WIDTH_REM = 14;
 export const MAX_NAVIGATOR_WIDTH_REM = 34;
 export const DEFAULT_NAVIGATOR_WIDTH_REM = 18;
 
-export const DEFAULT_NAVIGATOR_WIDTH_PREFERENCES: NavigatorWidthPreferences =
-  {
-    width: DEFAULT_NAVIGATOR_WIDTH_REM,
-  };
+export const DEFAULT_NAVIGATOR_WIDTH_PREFERENCES: NavigatorWidthPreferences = {
+  width: DEFAULT_NAVIGATOR_WIDTH_REM,
+};
 
 const storageKey = "patchdesk.review-navigator-width.v1";
 

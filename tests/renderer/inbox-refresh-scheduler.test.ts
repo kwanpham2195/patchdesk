@@ -79,7 +79,9 @@ describe("inbox refresh scheduler", () => {
     const reasons: Array<InboxRefreshReason> = [];
     const resumeAt = new Date(Date.now() + 90 * 60_000).toISOString();
     const outcomes: Array<
-      "success" | "failure" | { readonly kind: "rate_limited"; readonly resumeAt: string }
+      | "success"
+      | "failure"
+      | { readonly kind: "rate_limited"; readonly resumeAt: string }
     > = [{ kind: "rate_limited", resumeAt }, "failure"];
     const scheduler = new InboxRefreshScheduler(async (reason) => {
       reasons.push(reason);

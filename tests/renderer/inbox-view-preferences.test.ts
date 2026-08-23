@@ -122,7 +122,10 @@ describe("inbox view preferences", () => {
   });
 
   it("caps selectedRepos at 50 entries", () => {
-    const repos = Array.from({ length: 60 }, (_, index) => `owner/repo-${index}`);
+    const repos = Array.from(
+      { length: 60 },
+      (_, index) => `owner/repo-${index}`,
+    );
     store({ selectedRepos: repos });
     const loaded = loadInboxViewPreferences("profile-1");
     expect(loaded.selectedRepos).toHaveLength(50);

@@ -105,7 +105,9 @@ describe("Conversation", () => {
     );
     await user.click(screen.getByRole("button", { name: "Resolve" }));
     expect(setThreadState).toHaveBeenCalledWith("thread-1", "resolved");
-    expect(await screen.findByRole("button", { name: "Unresolve" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Unresolve" }),
+    ).toBeTruthy();
   });
 
   it("renders a general thread read-only when no conversation actions are passed", () => {
@@ -163,9 +165,7 @@ describe("Conversation", () => {
     expect(screen.getByText("Readable opening comment.")).toBeTruthy();
     // ...but the unreadable reply is dropped, and that drop is visible
     // rather than silent.
-    expect(
-      screen.queryByText("Reply with a bad timestamp."),
-    ).toBeNull();
+    expect(screen.queryByText("Reply with a bad timestamp.")).toBeNull();
     expect(screen.getByText("Some replies unavailable")).toBeTruthy();
   });
 

@@ -159,7 +159,8 @@ test("typing `.` in the comment composer inserts the character instead of naviga
     await expect(composer).toBeVisible();
     await expect(composer).toBeFocused();
 
-    const scrollTop = () => diffViewport.evaluate((viewport) => viewport.scrollTop);
+    const scrollTop = () =>
+      diffViewport.evaluate((viewport) => viewport.scrollTop);
     const before = await scrollTop();
 
     await page.keyboard.press(".");
@@ -263,7 +264,8 @@ test("typing `[` in the comment composer inserts the character instead of naviga
     await expect(composer).toBeVisible();
     await expect(composer).toBeFocused();
 
-    const scrollTop = () => diffViewport.evaluate((viewport) => viewport.scrollTop);
+    const scrollTop = () =>
+      diffViewport.evaluate((viewport) => viewport.scrollTop);
     const before = await scrollTop();
 
     await page.keyboard.press("[");
@@ -355,7 +357,8 @@ test("typing `{` in the comment composer inserts the character instead of naviga
     await expect(composer).toBeVisible();
     await expect(composer).toBeFocused();
 
-    const scrollTop = () => diffViewport.evaluate((viewport) => viewport.scrollTop);
+    const scrollTop = () =>
+      diffViewport.evaluate((viewport) => viewport.scrollTop);
     const before = await scrollTop();
 
     await page.keyboard.press("{");

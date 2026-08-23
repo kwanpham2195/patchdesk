@@ -44,9 +44,7 @@ describe("adjacentFilePath", () => {
   });
 
   it("stops rather than wrapping past the first file", () => {
-    expect(
-      adjacentFilePath(["a", "b", "c"], "a", "previous"),
-    ).toBeUndefined();
+    expect(adjacentFilePath(["a", "b", "c"], "a", "previous")).toBeUndefined();
   });
 
   it("treats an unresolved current file as just before the first file", () => {
@@ -57,9 +55,7 @@ describe("adjacentFilePath", () => {
   });
 
   it("treats a current file missing from order the same as unresolved", () => {
-    expect(adjacentFilePath(["a", "b", "c"], "not-in-order", "next")).toBe(
-      "a",
-    );
+    expect(adjacentFilePath(["a", "b", "c"], "not-in-order", "next")).toBe("a");
   });
 
   it("returns undefined for an empty order", () => {
@@ -107,9 +103,7 @@ describe("adjacentHunkAnchor", () => {
 
   it("treats an unresolved current hunk as just before the first hunk", () => {
     expect(adjacentHunkAnchor(order, undefined, "next")).toEqual(first);
-    expect(
-      adjacentHunkAnchor(order, undefined, "previous"),
-    ).toBeUndefined();
+    expect(adjacentHunkAnchor(order, undefined, "previous")).toBeUndefined();
   });
 
   it("treats a current hunk missing from order the same as unresolved", () => {
@@ -204,9 +198,7 @@ describe("adjacentCommentAnchor", () => {
 
   it("treats an unresolved current comment as just before the first comment", () => {
     expect(adjacentCommentAnchor(order, undefined, "next")).toEqual(first);
-    expect(
-      adjacentCommentAnchor(order, undefined, "previous"),
-    ).toBeUndefined();
+    expect(adjacentCommentAnchor(order, undefined, "previous")).toBeUndefined();
   });
 
   it("treats a current comment missing from order the same as unresolved -- e.g. it was just resolved or filtered out", () => {
@@ -407,9 +399,9 @@ describe("findCommentThreadCard", () => {
     card.dataset.reviewCommentThread = 'conversation:has"quote]and[bracket';
     document.body.append(card);
     try {
-      expect(
-        findCommentThreadCard('conversation:has"quote]and[bracket'),
-      ).toBe(card);
+      expect(findCommentThreadCard('conversation:has"quote]and[bracket')).toBe(
+        card,
+      );
     } finally {
       card.remove();
     }
@@ -462,7 +454,9 @@ describe("focusCommentThreadCard", () => {
     try {
       focusCommentThreadCard("conversation:late", () => false);
       await expect
-        .poll(() => document.activeElement?.getAttribute("data-review-comment-thread"))
+        .poll(() =>
+          document.activeElement?.getAttribute("data-review-comment-thread"),
+        )
         .toBe("conversation:late");
     } finally {
       container.remove();
@@ -478,9 +472,7 @@ describe("shouldIgnoreReviewNavKey", () => {
 
   it("ignores the key when a textarea is the target", () => {
     const textarea = document.createElement("textarea");
-    expect(shouldIgnoreReviewNavKey(keyEvent({ target: textarea }))).toBe(
-      true,
-    );
+    expect(shouldIgnoreReviewNavKey(keyEvent({ target: textarea }))).toBe(true);
   });
 
   // jsdom does not implement `HTMLElement.isContentEditable` (it stays
@@ -510,9 +502,7 @@ describe("shouldIgnoreReviewNavKey", () => {
     document.body.appendChild(dialog);
     button.focus();
     try {
-      expect(shouldIgnoreReviewNavKey(keyEvent({ target: button }))).toBe(
-        true,
-      );
+      expect(shouldIgnoreReviewNavKey(keyEvent({ target: button }))).toBe(true);
     } finally {
       dialog.remove();
     }
@@ -526,9 +516,7 @@ describe("shouldIgnoreReviewNavKey", () => {
     document.body.appendChild(alertDialog);
     button.focus();
     try {
-      expect(shouldIgnoreReviewNavKey(keyEvent({ target: button }))).toBe(
-        true,
-      );
+      expect(shouldIgnoreReviewNavKey(keyEvent({ target: button }))).toBe(true);
     } finally {
       alertDialog.remove();
     }

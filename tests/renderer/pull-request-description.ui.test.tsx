@@ -195,7 +195,9 @@ describe("PullRequestDescription", () => {
       await user.click(summary);
       const detailsElement = summary.parentElement;
       if (!(detailsElement instanceof HTMLDetailsElement)) {
-        throw new Error("expected the Mermaid summary's parent to be <details>");
+        throw new Error(
+          "expected the Mermaid summary's parent to be <details>",
+        );
       }
       expect(detailsElement.open).toBe(true);
       diagramButton.focus();

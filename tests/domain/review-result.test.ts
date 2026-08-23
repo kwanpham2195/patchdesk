@@ -4,10 +4,11 @@ import type * as v from "valibot";
 import type { modelReviewResultSchema } from "../../src/domain/review-result";
 import { parseModelReviewResult } from "../../src/domain/review-result";
 
-type ModelFindingInput =
-  v.InferOutput<typeof modelReviewResultSchema>["findings"][number];
+type ModelFindingInput = v.InferOutput<
+  typeof modelReviewResultSchema
+>["findings"][number];
 
-function validResult(findings: ReadonlyArray<ModelFindingInput>): unknown {
+function validResult(findings: ReadonlyArray<ModelFindingInput>) {
   return {
     changeSummary: "Fixture change summary.",
     verdict: "comment",

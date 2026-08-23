@@ -85,7 +85,7 @@ omit a person entirely while they hold an open pending review, and
 because Patchdesk's whole drafting model rests on GitHub pending
 reviews, that is the common path here rather than an edge case. The
 derivation unions `latestReviews` with `reviews`, keys by login, takes
-each person's most recent *submitted* verdict, and ignores `PENDING`
+each person's most recent _submitted_ verdict, and ignores `PENDING`
 outright. It is a pure function over the fetched reviewer data and the
 represented head, kept out of rendering so it can be tested on its own.
 

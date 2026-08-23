@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { LabelService, type LabelCommand } from "../../src/services/label-service";
+import {
+  LabelService,
+  type LabelCommand,
+} from "../../src/services/label-service";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -160,7 +163,11 @@ describe("LabelService", () => {
     const gate = makeGate();
     const addLabelsToLabelable = vi.fn(async () => ({
       _tag: "err" as const,
-      error: { _tag: "GitHubWriteFailure" as const, category: "unavailable" as const, message: "x" },
+      error: {
+        _tag: "GitHubWriteFailure" as const,
+        category: "unavailable" as const,
+        message: "x",
+      },
     }));
     const recentWrites = makeRecentWrites();
     const service = new LabelService(
@@ -339,7 +346,10 @@ describe("LabelService", () => {
       });
       expect(listRepositoryLabels).toHaveBeenCalledWith(
         expect.objectContaining({
-          repo: expect.objectContaining({ owner: "centraldigital", repo: "patchdesk" }),
+          repo: expect.objectContaining({
+            owner: "centraldigital",
+            repo: "patchdesk",
+          }),
         }),
       );
     });

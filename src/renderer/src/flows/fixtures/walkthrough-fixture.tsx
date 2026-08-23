@@ -2,7 +2,10 @@ import { useMemo, useRef, useState } from "react";
 import { CanonicalFixtureWorkbench } from "./canonical-fixture-workbench";
 import type { NavigationState } from "./navigation-state";
 import { WalkthroughFixtureControls } from "./walkthrough-fixture-controls";
-import { walkthroughFixturePatch, workbenchFixtureData } from "./workbench-fixture-data";
+import {
+  walkthroughFixturePatch,
+  workbenchFixtureData,
+} from "./workbench-fixture-data";
 
 export function WalkthroughFixture({
   onNavigationStateChange,

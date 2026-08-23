@@ -16,38 +16,38 @@ import {
   isDiffAnnotationCollection,
   type DiffLineAnnotation,
   type FileContents,
-} from '@pierre/diffs';
-import { Editor } from '@pierre/diffs/edit';
+} from "@pierre/diffs";
+import { Editor } from "@pierre/diffs/edit";
 
 interface ThreadMetadata {
   id: string;
 }
 
-const hostElement = document.querySelector<HTMLElement>('#diff');
-if (hostElement == null) throw new Error('Missing diff host');
+const hostElement = document.querySelector<HTMLElement>("#diff");
+if (hostElement == null) throw new Error("Missing diff host");
 const host: HTMLElement = hostElement;
 
 const oldFile: FileContents = {
-  name: 'src/value.ts',
-  contents: 'export const value = 1;',
+  name: "src/value.ts",
+  contents: "export const value = 1;",
 };
 let newFile: FileContents = {
-  name: 'src/value.ts',
-  contents: 'export const value = 2;',
+  name: "src/value.ts",
+  contents: "export const value = 2;",
 };
 let annotations: DiffLineAnnotation<ThreadMetadata>[] = [
   {
-    side: 'additions',
+    side: "additions",
     lineNumber: 1,
-    metadata: { id: 'value-review' },
+    metadata: { id: "value-review" },
   },
 ];
 
 const view = new FileDiff<ThreadMetadata>({
-  theme: { light: 'pierre-light', dark: 'pierre-dark' },
+  theme: { light: "pierre-light", dark: "pierre-dark" },
   renderAnnotation(annotation) {
-    const element = document.createElement('p');
-    element.textContent = 'Thread ' + annotation.metadata.id;
+    const element = document.createElement("p");
+    element.textContent = "Thread " + annotation.metadata.id;
     return element;
   },
 });
@@ -104,8 +104,8 @@ optional and the initial bundle must omit the editor.
 Pass a factory through `CodeViewOptions.createEditor`:
 
 ```ts
-import { CodeView } from '@pierre/diffs';
-import { Editor } from '@pierre/diffs/edit';
+import { CodeView } from "@pierre/diffs";
+import { Editor } from "@pierre/diffs/edit";
 
 export function mountEditableCodeView(root: HTMLElement) {
   const viewer = new CodeView({
@@ -117,7 +117,7 @@ export function mountEditableCodeView(root: HTMLElement) {
     },
     onItemEditComplete(item, file) {
       const current = viewer.getItem(item.id);
-      if (current?.type !== 'file') return;
+      if (current?.type !== "file") return;
 
       const version = (current.version ?? 0) + 1;
       viewer.updateItem({
@@ -126,7 +126,7 @@ export function mountEditableCodeView(root: HTMLElement) {
         version,
         file: {
           ...file,
-          cacheKey: current.id + ':v' + version,
+          cacheKey: current.id + ":v" + version,
         },
       });
     },
@@ -135,11 +135,11 @@ export function mountEditableCodeView(root: HTMLElement) {
   viewer.setup(root);
   viewer.setItems([
     {
-      id: 'file:src/value.ts',
-      type: 'file',
+      id: "file:src/value.ts",
+      type: "file",
       file: {
-        name: 'src/value.ts',
-        contents: 'export const value = 1;',
+        name: "src/value.ts",
+        contents: "export const value = 1;",
       },
       edit: true,
       version: 0,
