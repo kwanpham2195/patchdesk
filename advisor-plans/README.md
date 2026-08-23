@@ -13,19 +13,22 @@ Every executor must:
 
 Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED — <reason>`, `REJECTED — <reason>`.
 
+A plan file is deleted once its status reaches `DONE`. The row stays here as the
+record; the plan text stays in Git history. Only unfinished plans keep a file.
+
 ## Execution order and status
 
 | Plan                                          | Title                                                        | Priority | Effort | Depends on | Status |
 | --------------------------------------------- | ------------------------------------------------------------ | -------- | ------ | ---------- | ------ |
-| [001](001-run-complete-test-gate.md)          | Make the complete test gate run root and Flue runtime tests  | P1       | S      | —          | DONE   |
-| [002](002-enforce-safe-staged-quality.md)     | Enforce a safe touched-file formatting and lint ratchet      | P1       | M      | —          | DONE   |
-| [003](003-build-typed-refresh-fixtures.md)    | Replace repeated refresh dependency bags with typed fixtures | P1       | L      | 002        | DONE   |
-| [004](004-handle-base-only-revisions.md)      | Create a new immutable session when the PR base changes      | P1       | L      | 003        | DONE   |
-| [005](005-own-retention-scheduler.md)         | Stop retention scheduling with the Local API server          | P2       | M      | 001        | DONE   |
-| [006](006-remove-merge-module-mock.md)        | Test merge orchestration through the real merge service      | P2       | M      | 002        | DONE   |
-| [007](007-relocate-executable-discovery.md)   | Move executable discovery into the adapter layer             | P3       | S      | 002        | DONE   |
+| 001                                           | Make the complete test gate run root and Flue runtime tests  | P1       | S      | —          | DONE   |
+| 002                                           | Enforce a safe touched-file formatting and lint ratchet      | P1       | M      | —          | DONE   |
+| 003                                           | Replace repeated refresh dependency bags with typed fixtures | P1       | L      | 002        | DONE   |
+| 004                                           | Create a new immutable session when the PR base changes      | P1       | L      | 003        | DONE   |
+| 005                                           | Stop retention scheduling with the Local API server          | P2       | M      | 001        | DONE   |
+| 006                                           | Test merge orchestration through the real merge service      | P2       | M      | 002        | DONE   |
+| 007                                           | Move executable discovery into the adapter layer             | P3       | S      | 002        | DONE   |
 | [008](008-add-pr-ci.md)                       | Enforce the verified pull-request gates in CI                | P1       | M      | 001, 002   | IN PROGRESS |
-| [009](009-decompose-review-workbench-flow.md) | Decompose ReviewWorkbenchFlow by protocol responsibility     | P2       | L      | 001, 002   | DONE   |
+| 009                                           | Decompose ReviewWorkbenchFlow by protocol responsibility     | P2       | L      | 001, 002   | DONE   |
 | [010](010-decompose-review-diff-surface.md)   | Decompose ReviewDiffSurface by state-machine concern         | P2       | L      | 001, 002   | BLOCKED — clean Electron restart unavailable |
 
 ## Dependency notes
