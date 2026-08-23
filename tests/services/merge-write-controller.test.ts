@@ -42,6 +42,7 @@ type GatewayMergeResult = Awaited<
 >;
 type FreshResult = Awaited<ReturnType<ReviewWriteGate["requireFresh"]>>;
 type SaveResult = Awaited<ReturnType<ReviewStore["save"]>>;
+type TerminalWriteEffect = "review_saved" | "merge_receipt_removed";
 
 const values = createReviewRefreshFixtureValues();
 const profileId = values.profileId;
@@ -66,7 +67,7 @@ class RecordingMergeOperationStore extends MergeOperationStore {
     readonly sessionId: MergeOperation["sessionId"];
   }> = [];
 
-  constructor() {
+  constructor(private readonly terminalWriteEffects: TerminalWriteEffect[]) {
     super(PatchdeskPaths.forTest(unusedStoreRoot));
   }
 
@@ -105,6 +106,7 @@ class RecordingMergeOperationStore extends MergeOperationStore {
     Awaited<ReturnType<MergeOperationStore["removeAfterSessionReceipt"]>>
   > {
     this.removed.push({ profileId, sessionId });
+    this.terminalWriteEffects.push("merge_receipt_removed");
     return ok(undefined);
   }
 }
@@ -247,11 +249,13 @@ function fixture(
     currentSessionId: session.id,
     freshness: { _tag: "Fresh" },
   };
-  const operations = new RecordingMergeOperationStore();
+  const terminalWriteEffects: TerminalWriteEffect[] = [];
+  const operations = new RecordingMergeOperationStore(terminalWriteEffects);
   const loadReview = vi.fn(async () => ok(review));
-  const saveReview = vi.fn(
-    async (): Promise<SaveResult> => options.saveReview ?? ok(undefined),
-  );
+  const saveReview = vi.fn(async (): Promise<SaveResult> => {
+    terminalWriteEffects.push("review_saved");
+    return options.saveReview ?? ok(undefined);
+  });
   const reviews: Pick<ReviewStore, "load" | "save"> = {
     load: loadReview,
     save: saveReview,
@@ -296,6 +300,7 @@ function fixture(
     reviews,
     saveReview,
     session,
+    terminalWriteEffects,
     headSha: values.headSha,
     writeGate,
   };
@@ -385,6 +390,10 @@ describe("MergeWriteController", () => {
     });
     expect(current.operations.confirmed).toHaveLength(1);
     expect(current.operations.removed).toHaveLength(1);
+    expect(current.terminalWriteEffects).toEqual([
+      "review_saved",
+      "merge_receipt_removed",
+    ]);
     expect(current.gateway.mergeRequests[0]).toMatchObject({
       profile: current.profile,
       pr: {
