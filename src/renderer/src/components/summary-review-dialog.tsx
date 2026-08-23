@@ -164,14 +164,14 @@ function SummaryReviewDialogContent({
             </div>
           </div>
         ) : recovery !== undefined ? (
-          <Alert className="space-y-4 border-amber-500/50 bg-amber-500/10 p-4 text-amber-950 dark:text-amber-100">
+          <Alert className="space-y-4 border-status-warning/30 bg-status-warning/10 p-4 text-status-warning">
             <AlertTitle>Review submission needs confirmation</AlertTitle>
-            <AlertDescription className="text-amber-950 dark:text-amber-100">
+            <AlertDescription className="text-status-warning">
               {recovery === "manual_resolution_required"
                 ? "Patchdesk found ambiguous review evidence. Submit is paused until you resolve the outcome on GitHub."
                 : "Patchdesk did not receive confirmation from GitHub. Your review may already have been published. To avoid posting a duplicate review, submission is paused until GitHub is checked."}
             </AlertDescription>
-            <AlertDescription className="text-amber-950 dark:text-amber-100">
+            <AlertDescription className="text-status-warning">
               Checking either confirms the review, restores a safe submit state,
               or identifies manual resolution.
             </AlertDescription>

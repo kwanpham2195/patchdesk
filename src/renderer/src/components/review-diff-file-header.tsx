@@ -24,12 +24,8 @@ export function FileChangeCounts({
       data-deletions={stats.deletions}
       aria-label={`${stats.additions} additions, ${stats.deletions} deletions`}
     >
-      <span className="text-emerald-700 dark:text-emerald-400">
-        +{stats.additions}
-      </span>
-      <span className="text-rose-700 dark:text-rose-400">
-        -{stats.deletions}
-      </span>
+      <span className="text-status-success">+{stats.additions}</span>
+      <span className="text-destructive">-{stats.deletions}</span>
     </span>
   );
 }
@@ -44,23 +40,23 @@ function fileChangeTypeIcon(type: FileChangeType) {
     case "new":
       return {
         Icon: FilePlus2,
-        className: "text-emerald-600 dark:text-emerald-400",
+        className: "text-status-success",
       };
     case "deleted":
       return {
         Icon: FileMinus2,
-        className: "text-rose-600 dark:text-rose-400",
+        className: "text-destructive",
       };
     case "rename-pure":
     case "rename-changed":
       return {
         Icon: FileSymlink,
-        className: "text-sky-600 dark:text-sky-400",
+        className: "text-status-info",
       };
     case "change":
       return {
         Icon: FileCode2,
-        className: "text-muted-foreground dark:text-amber-300",
+        className: "text-muted-foreground",
       };
   }
 }

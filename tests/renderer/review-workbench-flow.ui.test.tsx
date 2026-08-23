@@ -766,12 +766,19 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     // SAFETY: `ModelCombobox` renders its trigger as a plain text input; the
     // accessible-name query above only matches that element.
     expect((model as HTMLInputElement).value).toBe("Settings model");
-    // SAFETY: the reasoning field is a native `<select>`; the accessible-name
-    // query above only matches that element.
     const reasoning = screen.getByRole("combobox", {
       name: "Insight reasoning",
-    }) as HTMLSelectElement;
-    expect(reasoning.value).toBe("high");
+    });
+    expect(reasoning).not.toBeInstanceOf(HTMLSelectElement);
+    expect(reasoning.getAttribute("data-slot")).toBe("select-trigger");
+    expect(reasoning.textContent).toContain("high");
+    reasoning.focus();
+    await user.keyboard("{Enter}");
+    expect(
+      screen
+        .getByRole("option", { name: "high" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("selects the saved preference's Codex model after activation, not the first one", async () => {
@@ -835,12 +842,19 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     // SAFETY: `ModelCombobox` renders its trigger as a plain text input; the
     // accessible-name query above only matches that element.
     expect((model as HTMLInputElement).value).toBe("Codex Preferred");
-    // SAFETY: the reasoning field is a native `<select>`; the accessible-name
-    // query above only matches that element.
     const reasoning = screen.getByRole("combobox", {
       name: "Insight reasoning",
-    }) as HTMLSelectElement;
-    expect(reasoning.value).toBe("high");
+    });
+    expect(reasoning).not.toBeInstanceOf(HTMLSelectElement);
+    expect(reasoning.getAttribute("data-slot")).toBe("select-trigger");
+    expect(reasoning.textContent).toContain("high");
+    reasoning.focus();
+    await user.keyboard("{Enter}");
+    expect(
+      screen
+        .getByRole("option", { name: "high" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("hides Add to review for a Finding whose location is not on the diff", async () => {

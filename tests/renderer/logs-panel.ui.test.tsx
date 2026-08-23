@@ -10,12 +10,32 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LogsPanel } from "../../src/renderer/src/components/logs-panel";
 
+type TestLogEntry = {
+  readonly schemaVersion: 1;
+  readonly seq: number;
+  readonly at: string;
+  readonly process: "main" | "renderer";
+  readonly level: "error" | "warn" | "info" | "debug";
+  readonly topic: string;
+  readonly message: string;
+};
+type LogsRequest = { readonly path: string };
+type DeferredResponseBody = {
+  readonly ok: true;
+  readonly body: unknown;
+  readonly correlationId: string;
+};
+type DeferredResponse = {
+  readonly promise: Promise<DeferredResponseBody>;
+  readonly resolve: (value: DeferredResponseBody) => void;
+};
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
-function entry(seq: number, message: string): Record<string, unknown> {
+function entry(seq: number, message: string) {
   return {
     schemaVersion: 1,
     seq,
@@ -24,39 +44,62 @@ function entry(seq: number, message: string): Record<string, unknown> {
     level: "info",
     topic: "test",
     message,
-  };
+  } satisfies TestLogEntry;
 }
 
-function deferredResponse(): {
-  readonly promise: Promise<{
-    readonly ok: true;
-    readonly body: unknown;
-    readonly correlationId: string;
-  }>;
-  readonly resolve: (value: {
-    readonly ok: true;
-    readonly body: unknown;
-    readonly correlationId: string;
-  }) => void;
-} {
-  let resolve!: (value: {
-    readonly ok: true;
-    readonly body: unknown;
-    readonly correlationId: string;
-  }) => void;
-  const promise = new Promise<{
-    readonly ok: true;
-    readonly body: unknown;
-    readonly correlationId: string;
-  }>((next) => {
+function deferredResponse(): DeferredResponse {
+  let resolve!: DeferredResponse["resolve"];
+  const promise = new Promise<DeferredResponseBody>((next) => {
     resolve = next;
   });
   return { promise, resolve };
 }
 
 describe("LogsPanel", () => {
+  it("uses semantic status tokens for each log level", async () => {
+    const request = vi.fn(async () => ({
+      ok: true as const,
+      body: {
+        entries: [
+          { ...entry(0, "message-error"), level: "error" },
+          { ...entry(1, "message-warn"), level: "warn" },
+          { ...entry(2, "message-info"), level: "info" },
+          { ...entry(3, "message-debug"), level: "debug" },
+        ],
+        nextAfter: 3,
+      },
+      correlationId: "logs",
+    }));
+    vi.stubGlobal("window", window);
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: { request },
+    });
+    vi.useFakeTimers();
+    try {
+      render(<LogsPanel />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("error", { exact: true }).className).toContain(
+        "text-destructive",
+      );
+      expect(screen.getByText("warn", { exact: true }).className).toContain(
+        "text-status-warning",
+      );
+      expect(screen.getByText("info", { exact: true }).className).toContain(
+        "text-status-info",
+      );
+      expect(screen.getByText("debug", { exact: true }).className).toContain(
+        "text-muted-foreground",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("tails the stream and resumes exactly once with the nextAfter cursor", async () => {
-    const request = vi.fn(async (input: { readonly path: string }) => {
+    const request = vi.fn(async (input: LogsRequest) => {
       if (input.path === "/v1/logs?limit=300")
         return {
           ok: true,
@@ -94,20 +137,13 @@ describe("LogsPanel", () => {
       });
       expect(screen.getByText("third")).toBeTruthy();
       const polls = request.mock.calls.filter((call) =>
-        ((call[0] as { readonly path?: string }).path ?? "").includes(
-          "/v1/logs",
-        ),
+        call[0].path.includes("/v1/logs"),
       );
       expect(polls.length).toBeGreaterThanOrEqual(2);
       const resumed = polls.find((call) =>
-        ((call[0] as { readonly path?: string }).path ?? "").startsWith(
-          "/v1/logs?after=",
-        ),
+        call[0].path.startsWith("/v1/logs?after="),
       );
-      const resumedPath =
-        resumed === undefined
-          ? undefined
-          : (resumed[0] as { readonly path?: string }).path;
+      const resumedPath = resumed === undefined ? undefined : resumed[0].path;
       expect(resumedPath).toBe("/v1/logs?after=1&limit=500");
       expect(screen.getAllByText("third")).toHaveLength(1);
     } finally {
@@ -116,7 +152,7 @@ describe("LogsPanel", () => {
   });
 
   it("pausing before the next interval prevents a new poll", async () => {
-    const request = vi.fn(async (input: { readonly path: string }) => {
+    const request = vi.fn(async (input: LogsRequest) => {
       if (input.path === "/v1/logs?limit=300")
         return {
           ok: true,
@@ -149,7 +185,7 @@ describe("LogsPanel", () => {
 
   it("commits an in-flight response while paused and resumes from its cursor once", async () => {
     const inFlight = deferredResponse();
-    const request = vi.fn(async (input: { readonly path: string }) => {
+    const request = vi.fn(async (input: LogsRequest) => {
       if (input.path === "/v1/logs?limit=300")
         return {
           ok: true,
@@ -187,23 +223,19 @@ describe("LogsPanel", () => {
         await vi.advanceTimersByTimeAsync(2_000);
       });
       expect(
-        request.mock.calls.filter(([input]) =>
-          (input as { readonly path: string }).path.includes("/v1/logs"),
-        ),
+        request.mock.calls.filter(([input]) => input.path.includes("/v1/logs")),
       ).toHaveLength(2);
       fireEvent.click(screen.getByRole("button", { name: "Resume log tail" }));
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2_000);
       });
       const polls = request.mock.calls.filter(([input]) =>
-        (input as { readonly path: string }).path.includes("/v1/logs"),
+        input.path.includes("/v1/logs"),
       );
       expect(polls).toHaveLength(3);
       const resumed = polls[2];
       if (resumed === undefined) throw new Error("missing resumed poll");
-      expect((resumed[0] as { readonly path: string }).path).toBe(
-        "/v1/logs?after=1&limit=500",
-      );
+      expect(resumed[0].path).toBe("/v1/logs?after=1&limit=500");
     } finally {
       vi.useRealTimers();
     }
@@ -236,7 +268,7 @@ describe("LogsPanel", () => {
   });
 
   it("keeps its prior cursor when a poll returns no entries", async () => {
-    const request = vi.fn(async (input: { readonly path: string }) => {
+    const request = vi.fn(async (input: LogsRequest) => {
       if (input.path === "/v1/logs?limit=300")
         return {
           ok: true,
@@ -266,16 +298,12 @@ describe("LogsPanel", () => {
       // duplicates or reset the stream.
       expect(screen.getAllByText("only")).toHaveLength(1);
       const polls = request.mock.calls.filter((call) =>
-        ((call[0] as { readonly path?: string }).path ?? "").includes(
-          "/v1/logs",
-        ),
+        call[0].path.includes("/v1/logs"),
       );
       expect(polls).toHaveLength(2);
       const secondPoll = polls[1];
       const secondPollPath =
-        secondPoll === undefined
-          ? undefined
-          : (secondPoll[0] as { readonly path?: string }).path;
+        secondPoll === undefined ? undefined : secondPoll[0].path;
       expect(secondPollPath).toBe("/v1/logs?after=0&limit=500");
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);

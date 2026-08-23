@@ -882,7 +882,7 @@ export function ReviewWorkbench({
           <PendingReviewNotice pendingReview={actions.pendingReview} />
           {model.localCheckout === undefined ? null : (
             <p
-              className="border-t border-amber-500/30 bg-amber-500/10 px-1 py-2 text-sm text-amber-700 dark:text-amber-300"
+              className="border-t border-status-warning/30 bg-status-warning/10 px-1 py-2 text-sm text-status-warning"
               data-review-local-checkout-warning
               role="status"
             >
@@ -900,7 +900,7 @@ export function ReviewWorkbench({
               refreshed {model.revision.refreshedAt}
               {hasUpdates ? (
                 <span
-                  className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400"
+                  className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-status-warning/50 bg-status-warning/10 px-2 py-0.5 font-medium text-status-warning"
                   role="status"
                   data-review-new-version-indicator
                 >
@@ -1368,7 +1368,7 @@ function PendingReviewNotice({
     <div
       role="status"
       data-review-pending-recovery
-      className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300"
+      className="rounded-md border border-status-warning/50 bg-status-warning/10 px-3 py-1.5 text-xs text-status-warning"
     >
       {recovery ? (
         <>
@@ -1384,7 +1384,7 @@ function PendingReviewNotice({
       )}{" "}
       <button
         type="button"
-        className="underline decoration-amber-600/60 underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100"
+        className="underline decoration-status-warning/60 underline-offset-2 hover:text-status-warning"
         disabled={pendingReview?.busy === true}
         onClick={() => void pendingReview?.onCheckGitHubAgain()}
       >
@@ -1419,11 +1419,11 @@ function formatRelativeTime(value: string): string {
 function checksPillColor(overall: string): string {
   switch (overall) {
     case "passing":
-      return "border-green-300 bg-green-50 text-green-800";
+      return "border-status-success/30 bg-status-success/10 text-status-success";
     case "failing":
-      return "border-red-300 bg-red-50 text-red-800";
+      return "border-destructive/30 bg-destructive/10 text-destructive";
     case "pending":
-      return "border-amber-300 bg-amber-50 text-amber-800";
+      return "border-status-warning/30 bg-status-warning/10 text-status-warning";
     default:
       return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
   }
@@ -1444,11 +1444,11 @@ function checksIcon(overall: string): React.JSX.Element {
 function mergePillColor(tag: string): string {
   switch (tag) {
     case "Ready":
-      return "border-green-300 bg-green-50 text-green-800";
+      return "border-status-success/30 bg-status-success/10 text-status-success";
     case "NeedsAcknowledgement":
-      return "border-amber-300 bg-amber-50 text-amber-800";
+      return "border-status-warning/30 bg-status-warning/10 text-status-warning";
     case "Blocked":
-      return "border-red-300 bg-red-50 text-red-800";
+      return "border-destructive/30 bg-destructive/10 text-destructive";
     default:
       return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
   }
