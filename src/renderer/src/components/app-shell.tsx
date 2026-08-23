@@ -14,6 +14,7 @@ import {
   primaryDestinations,
 } from "@/routes";
 import { BrandMark } from "@/components/brand-mark";
+import { BusyIndicator } from "@/components/busy-indicator";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -146,7 +147,7 @@ export function AppShell({
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <header className="app-titlebar">
+      <header className="app-titlebar relative">
         <div className="flex min-w-0 items-center gap-2">
           {destination.kind === "workbench" ? (
             <Button
@@ -241,6 +242,7 @@ export function AppShell({
             </TooltipContent>
           </Tooltip>
         </div>
+        <BusyIndicator />
       </header>
       <div className="app-frame min-h-0 flex-1">
         <main

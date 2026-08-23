@@ -242,6 +242,15 @@ body {
   -webkit-app-region: no-drag;
 }
 
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .app-frame {
   display: flex;
   --sidebar-width: 14.5rem;

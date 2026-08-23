@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { PatchdeskApiError, requestJson } from "../api-client";
+import { useBusy } from "../hooks/use-busy";
 import {
   parseEnvironmentCheckResponse,
   parseGitHubAccessCheckResponse,
@@ -80,6 +81,7 @@ export function InboxFlow({
   const [openedPr, setOpenedPr] = useState<string>();
   const [openError, setOpenError] = useState<string>();
   const dashboardProfileId = dashboard?.profile.id;
+  const { runBusy } = useBusy();
 
   type PrRef = {
     readonly host?: string;
@@ -96,39 +98,46 @@ export function InboxFlow({
     ): Promise<void> => {
       setOpenedPr(undefined);
       setOpenError(undefined);
-      try {
-        const value = await requestJson("/v1/reviews/open", {
-          method: "POST",
-          body: {
-            profileId,
-            host: pr.host ?? dashboard?.profile.githubHost ?? "github.com",
-            owner: pr.owner,
-            repo: pr.repo,
-            number: pr.number,
-          },
-        });
-        const parsed = parseWorkbenchResponse(value);
-        if (parsed === undefined)
-          throw new Error("Invalid workbench projection");
-        setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
-        onOpenWorkbench(parsed, initialSection);
-      } catch (cause: unknown) {
-        // Mirrors the dashboard's `github_auth` copy above, adapted from
-        // refreshing pull requests to opening one: the generic "auth" API
-        // message doesn't name the fix, and opening a Review is exactly
-        // where a missing profile credential first becomes user-visible.
-        const detail =
-          cause instanceof PatchdeskApiError && cause.kind === "auth"
-            ? "GitHub authentication is required to open this Review. Run gh auth login for the exact GitHub account entered in Settings -> Workspace."
-            : cause instanceof Error
-              ? cause.message
-              : String(cause);
-        setOpenError(
-          `Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`,
-        );
-      }
+      await runBusy(async () => {
+        try {
+          const value = await requestJson("/v1/reviews/open", {
+            method: "POST",
+            body: {
+              profileId,
+              host: pr.host ?? dashboard?.profile.githubHost ?? "github.com",
+              owner: pr.owner,
+              repo: pr.repo,
+              number: pr.number,
+            },
+          });
+          const parsed = parseWorkbenchResponse(value);
+          if (parsed === undefined)
+            throw new Error("Invalid workbench projection");
+          setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
+          onOpenWorkbench(parsed, initialSection);
+        } catch (cause: unknown) {
+          // Mirrors the dashboard's `github_auth` copy above, adapted from
+          // refreshing pull requests to opening one: the generic "auth" API
+          // message doesn't name the fix, and opening a Review is exactly
+          // where a missing profile credential first becomes user-visible.
+          const detail =
+            cause instanceof PatchdeskApiError && cause.kind === "auth"
+              ? "GitHub authentication is required to open this Review. Run gh auth login for the exact GitHub account entered in Settings -> Workspace."
+              : cause instanceof Error
+                ? cause.message
+                : String(cause);
+          setOpenError(
+            `Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`,
+          );
+        }
+      }, "Opening pull request…");
     },
-    [dashboard?.profile.githubHost, dashboard?.profile.id, onOpenWorkbench],
+    [
+      dashboard?.profile.githubHost,
+      dashboard?.profile.id,
+      onOpenWorkbench,
+      runBusy,
+    ],
   );
 
   const openStoredReview = useCallback(
@@ -138,34 +147,36 @@ export function InboxFlow({
       identity?: PrRef,
       isActive: () => boolean = () => true,
     ): Promise<void> => {
-      try {
-        const value = await requestJson("/v1/reviews/load", {
-          method: "POST",
-          body: { profileId, ...reference },
-        });
-        const parsed = parseWorkbenchResponse(value);
-        if (parsed === undefined) {
-          if (isActive())
-            setOpenError(
-              "Could not open the saved review. The review projection could not be validated; refresh the review and try again.",
-            );
-          return;
+      await runBusy(async () => {
+        try {
+          const value = await requestJson("/v1/reviews/load", {
+            method: "POST",
+            body: { profileId, ...reference },
+          });
+          const parsed = parseWorkbenchResponse(value);
+          if (parsed === undefined) {
+            if (isActive())
+              setOpenError(
+                "Could not open the saved review. The review projection could not be validated; refresh the review and try again.",
+              );
+            return;
+          }
+          if (!isActive()) return;
+          onOpenWorkbench(parsed);
+        } catch (cause: unknown) {
+          // The stored review cannot be loaded: its record is missing or its
+          // snapshot no longer parses. Opening by PR identity heals or recreates
+          // it, and returns the same projection for a healthy review.
+          if (identity !== undefined) {
+            await openPullRequest(identity);
+            return;
+          }
+          const detail = cause instanceof Error ? cause.message : String(cause);
+          setOpenError(`Could not open the saved review. ${detail}`);
         }
-        if (!isActive()) return;
-        onOpenWorkbench(parsed);
-      } catch (cause: unknown) {
-        // The stored review cannot be loaded: its record is missing or its
-        // snapshot no longer parses. Opening by PR identity heals or recreates
-        // it, and returns the same projection for a healthy review.
-        if (identity !== undefined) {
-          await openPullRequest(identity);
-          return;
-        }
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        setOpenError(`Could not open the saved review. ${detail}`);
-      }
+      }, "Loading review…");
     },
-    [onOpenWorkbench, openPullRequest],
+    [onOpenWorkbench, openPullRequest, runBusy],
   );
   const openStoredReviewById = useCallback(
     async (
