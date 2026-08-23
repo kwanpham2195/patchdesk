@@ -180,6 +180,10 @@ describe("ConversationThreadCard", () => {
     );
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+
+    rerender(<ConversationThreadCard thread={thread()} />);
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });
 
   it("disables the edit textarea and prevents typing while saving", async () => {
