@@ -99,7 +99,7 @@ It is the only place that knows about Electron.
 - `renderer-origin.ts` parses and verifies the renderer origin.
 - `desktop-close-guard.ts` protects an unsaved review draft and an in-flight GitHub write during close.
 - `external-navigation.ts` lets only user clicks open external HTTPS links, and only on allowlisted hosts.
-- `insight-runtime.ts`, `executable-discovery.ts`, `electron-paths.ts`, `window-state.ts`, and `desktop-menu.ts` hold small desktop concerns.
+- `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, and `desktop-menu.ts` hold small desktop concerns.
 
 **Architecture Invariant:** the renderer is sandboxed and has no Node.js access.
 The preload bridge is the only way out.
@@ -166,6 +166,7 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 - `storage/review-remote-store.ts` stores remote snapshots by content hash. A stored snapshot that does not match its hash fails the hash check and is never trusted.
 - `storage/review-artifact-storage.ts` stores artifacts and quarantines corrupt or unexpected files.
 - `storage/patchdesk-paths.ts` builds every app-owned path without doing I/O.
+- `process/executable-discovery.ts` finds executable files on PATH and macOS desktop paths as process I/O.
 - `pi/` holds the model catalogs: the generated catalog and the runtime catalog that the main process consults.
 - `codex/codex-app-server-client.ts` talks to the maintainer's local Codex CLI account (ADR "Use the local Codex CLI account") without reading or persisting its credentials.
 
