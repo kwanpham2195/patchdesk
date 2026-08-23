@@ -13,6 +13,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 export type InsightRunDialogType = "analysis" | "walkthrough";
 export type InsightModelOption = {
@@ -86,20 +94,32 @@ export function InsightRunDialog({
             htmlFor="insight-run-provider"
           >
             Provider
-            <select
-              id="insight-run-provider"
-              aria-label="Insight provider"
-              className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+            <Select
               value={provider}
-              onChange={(event) =>
-                // SAFETY: the two <option> values below are the literal exhaustive
-                // members of InsightProvider, so the select can only emit one of them.
-                onProviderChange(event.target.value as InsightProvider)
-              }
+              items={[
+                { label: "Pi", value: "pi" },
+                { label: "Codex CLI account", value: "codex-cli-account" },
+              ]}
+              onValueChange={(value) => {
+                if (value === "pi" || value === "codex-cli-account")
+                  onProviderChange(value);
+              }}
             >
-              <option value="pi">Pi</option>
-              <option value="codex-cli-account">Codex CLI account</option>
-            </select>
+              <SelectTrigger
+                id="insight-run-provider"
+                aria-label="Insight provider"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="pi">Pi</SelectItem>
+                  <SelectItem value="codex-cli-account">
+                    Codex CLI account
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </label>
           {provider === "codex-cli-account" && models.length === 0 ? (
             <div className="grid gap-2 rounded-lg border border-dashed p-3 text-sm">
@@ -160,23 +180,36 @@ export function InsightRunDialog({
             htmlFor="insight-run-reasoning"
           >
             Reasoning
-            <select
-              id="insight-run-reasoning"
-              aria-label="Insight reasoning"
-              className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+            <Select
               value={reasoning}
-              onChange={(event) =>
-                // SAFETY: every <option> below is rendered from reasoningOptions, which is
-                // always sourced from InsightReasoning values, so the select can only emit one.
-                onReasoningChange(event.target.value as InsightReasoning)
-              }
+              items={reasoningOptions.map((option) => ({
+                label: option,
+                value: option,
+              }))}
+              onValueChange={(value) => {
+                const nextReasoning = reasoningOptions.find(
+                  (option) => option === value,
+                );
+                if (nextReasoning !== undefined)
+                  onReasoningChange(nextReasoning);
+              }}
             >
-              {reasoningOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                id="insight-run-reasoning"
+                aria-label="Insight reasoning"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {reasoningOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </label>
           <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
             Confirmation: {provider === "pi" ? "Pi" : "Codex CLI account"} using{" "}

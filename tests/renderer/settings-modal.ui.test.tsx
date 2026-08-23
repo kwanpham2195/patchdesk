@@ -27,6 +27,32 @@ afterEach(() => {
 });
 
 describe("SettingsModal", () => {
+  it("uses Field composition for the General appearance controls", () => {
+    installDesktopApi();
+
+    renderModal();
+
+    expect(screen.getByText("Theme").getAttribute("data-slot")).toBe(
+      "field-label",
+    );
+    expect(screen.getByText("Light appearance").getAttribute("data-slot")).toBe(
+      "field-label",
+    );
+    expect(screen.getByText("Dark appearance").getAttribute("data-slot")).toBe(
+      "field-label",
+    );
+    expect(document.querySelectorAll('[data-slot="field-group"]').length).toBe(
+      2,
+    );
+    expect(screen.getByRole("combobox", { name: "Appearance" })).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Light diff theme" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Dark diff theme" }),
+    ).toBeTruthy();
+  });
+
   it("opens on General and exposes only the two local-data controls", async () => {
     const request = installDesktopApi();
     const user = userEvent.setup();

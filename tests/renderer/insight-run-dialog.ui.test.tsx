@@ -79,6 +79,41 @@ describe("InsightRunDialog model picker", () => {
 
     expect(await screen.findByText("No models found.")).toBeTruthy();
   });
+
+  it("uses Base Select controls for provider and reasoning choices", async () => {
+    const onProviderChange = vi.fn();
+    const onReasoningChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <InsightRunDialog
+        {...baseProps}
+        onProviderChange={onProviderChange}
+        onReasoningChange={onReasoningChange}
+        model="provider/model-0"
+      />,
+    );
+
+    const provider = screen.getByRole("combobox", {
+      name: "Insight provider",
+    });
+    const reasoning = screen.getByRole("combobox", {
+      name: "Insight reasoning",
+    });
+    expect(provider).not.toBeInstanceOf(HTMLSelectElement);
+    expect(provider.getAttribute("data-slot")).toBe("select-trigger");
+    expect(reasoning).not.toBeInstanceOf(HTMLSelectElement);
+    expect(reasoning.getAttribute("data-slot")).toBe("select-trigger");
+
+    await user.click(provider);
+    await user.click(
+      await screen.findByRole("option", { name: "Codex CLI account" }),
+    );
+    expect(onProviderChange).toHaveBeenCalledWith("codex-cli-account");
+
+    await user.click(reasoning);
+    await user.click(await screen.findByRole("option", { name: "high" }));
+    expect(onReasoningChange).toHaveBeenCalledWith("high");
+  });
 });
 
 describe("InsightRunDialog Codex model loading", () => {

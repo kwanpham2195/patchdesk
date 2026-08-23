@@ -36,7 +36,6 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
-import { Label } from "../components/ui/label";
 import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
@@ -453,32 +452,44 @@ function GeneralSection({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Label className="grid gap-1.5">
-            Theme
-            <Select
-              value={appearance}
-              items={[
-                { label: "System", value: "system" },
-                { label: "Light", value: "light" },
-                { label: "Dark", value: "dark" },
-              ]}
-              onValueChange={(value) => {
-                if (value === "system" || value === "light" || value === "dark")
-                  onAppearanceChange(value);
-              }}
-            >
-              <SelectTrigger className="h-12" aria-label="Appearance">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="system">System</SelectItem>
-                  <SelectItem value="light">Light</SelectItem>
-                  <SelectItem value="dark">Dark</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Label>
+          <FieldGroup>
+            <Field>
+              <FieldLabel className="text-sm font-medium" htmlFor="appearance">
+                Theme
+              </FieldLabel>
+              <Select
+                value={appearance}
+                items={[
+                  { label: "System", value: "system" },
+                  { label: "Light", value: "light" },
+                  { label: "Dark", value: "dark" },
+                ]}
+                onValueChange={(value) => {
+                  if (
+                    value === "system" ||
+                    value === "light" ||
+                    value === "dark"
+                  )
+                    onAppearanceChange(value);
+                }}
+              >
+                <SelectTrigger
+                  id="appearance"
+                  className="h-12"
+                  aria-label="Appearance"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="system">System</SelectItem>
+                    <SelectItem value="light">Light</SelectItem>
+                    <SelectItem value="dark">Dark</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
         </CardContent>
       </Card>
       <Card>
@@ -488,70 +499,90 @@ function GeneralSection({
             Choose the Pierre theme used for light and dark appearance.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Label className="grid gap-1.5">
-            Light appearance
-            <Select
-              value={diffThemePreferences.light}
-              items={DIFF_LIGHT_THEMES.map((theme) => ({
-                label: theme.label,
-                value: theme.id,
-              }))}
-              onValueChange={(value) => {
-                if (
-                  value !== null &&
-                  DIFF_LIGHT_THEMES.some((theme) => theme.id === value)
-                )
-                  onDiffThemeChange({
-                    ...diffThemePreferences,
-                    light: value,
-                  });
-              }}
-            >
-              <SelectTrigger className="h-12" aria-label="Light diff theme">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {DIFF_LIGHT_THEMES.map((theme) => (
-                    <SelectItem key={theme.id} value={theme.id}>
-                      {theme.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Label>
-          <Label className="grid gap-1.5">
-            Dark appearance
-            <Select
-              value={diffThemePreferences.dark}
-              items={DIFF_DARK_THEMES.map((theme) => ({
-                label: theme.label,
-                value: theme.id,
-              }))}
-              onValueChange={(value) => {
-                if (
-                  value !== null &&
-                  DIFF_DARK_THEMES.some((theme) => theme.id === value)
-                )
-                  onDiffThemeChange({ ...diffThemePreferences, dark: value });
-              }}
-            >
-              <SelectTrigger className="h-12" aria-label="Dark diff theme">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {DIFF_DARK_THEMES.map((theme) => (
-                    <SelectItem key={theme.id} value={theme.id}>
-                      {theme.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Label>
+        <CardContent>
+          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel
+                className="text-sm font-medium"
+                htmlFor="light-diff-theme"
+              >
+                Light appearance
+              </FieldLabel>
+              <Select
+                value={diffThemePreferences.light}
+                items={DIFF_LIGHT_THEMES.map((theme) => ({
+                  label: theme.label,
+                  value: theme.id,
+                }))}
+                onValueChange={(value) => {
+                  if (
+                    value !== null &&
+                    DIFF_LIGHT_THEMES.some((theme) => theme.id === value)
+                  )
+                    onDiffThemeChange({
+                      ...diffThemePreferences,
+                      light: value,
+                    });
+                }}
+              >
+                <SelectTrigger
+                  id="light-diff-theme"
+                  className="h-12"
+                  aria-label="Light diff theme"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {DIFF_LIGHT_THEMES.map((theme) => (
+                      <SelectItem key={theme.id} value={theme.id}>
+                        {theme.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel
+                className="text-sm font-medium"
+                htmlFor="dark-diff-theme"
+              >
+                Dark appearance
+              </FieldLabel>
+              <Select
+                value={diffThemePreferences.dark}
+                items={DIFF_DARK_THEMES.map((theme) => ({
+                  label: theme.label,
+                  value: theme.id,
+                }))}
+                onValueChange={(value) => {
+                  if (
+                    value !== null &&
+                    DIFF_DARK_THEMES.some((theme) => theme.id === value)
+                  )
+                    onDiffThemeChange({ ...diffThemePreferences, dark: value });
+                }}
+              >
+                <SelectTrigger
+                  id="dark-diff-theme"
+                  className="h-12"
+                  aria-label="Dark diff theme"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {DIFF_DARK_THEMES.map((theme) => (
+                      <SelectItem key={theme.id} value={theme.id}>
+                        {theme.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
         </CardContent>
       </Card>
     </div>
