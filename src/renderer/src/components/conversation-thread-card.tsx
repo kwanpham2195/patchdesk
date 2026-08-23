@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import type { GitHubThreadId } from "../../../domain/ids";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
@@ -79,6 +80,8 @@ function ConversationCommentRow({
   const [editBody, setEditBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  const editorId = `comment-editor-${useId()}`;
+  const errorId = `${editorId}-error`;
   const canEdit = comment.viewerDidAuthor === true && onEdit !== undefined;
   const canDelete = comment.viewerDidAuthor === true && onDelete !== undefined;
   return (
@@ -88,12 +91,23 @@ function ConversationCommentRow({
         <p className="font-semibold">{comment.author}</p>
         {editing ? (
           <div className="mt-1">
-            <Textarea
-              aria-label="Edit comment"
-              value={editBody}
-              onChange={(event) => setEditBody(event.target.value)}
-              disabled={saving}
-            />
+            <Field
+              data-invalid={error !== undefined || undefined}
+              data-disabled={saving || undefined}
+            >
+              <FieldLabel className="sr-only" htmlFor={editorId}>
+                Edit comment
+              </FieldLabel>
+              <Textarea
+                id={editorId}
+                aria-invalid={error !== undefined || undefined}
+                aria-describedby={error === undefined ? undefined : errorId}
+                value={editBody}
+                onChange={(event) => setEditBody(event.target.value)}
+                disabled={saving}
+              />
+              <FieldError id={errorId}>{error}</FieldError>
+            </Field>
             <div className="mt-2 flex gap-2">
               <Button
                 size="sm"
@@ -132,6 +146,11 @@ function ConversationCommentRow({
         ) : (
           <PullRequestDescriptionPreview markdown={comment.body} />
         )}
+        {error !== undefined && !editing ? (
+          <p role="alert" className="mt-1 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
         {(canEdit || canDelete) && !editing ? (
           <div className="mt-1 flex gap-3">
             {canEdit ? (
@@ -163,11 +182,6 @@ function ConversationCommentRow({
             ) : null}
           </div>
         ) : null}
-        {error === undefined ? null : (
-          <p role="alert" className="mt-1 text-sm text-destructive">
-            {error}
-          </p>
-        )}
       </div>
     </div>
   );
@@ -189,6 +203,9 @@ export function ConversationThreadCard({
   const [replyBody, setReplyBody] = useState("");
   const [replying, setReplying] = useState(false);
   const [error, setError] = useState<string>();
+  const [replyError, setReplyError] = useState<string>();
+  const replyEditorId = `thread-reply-${useId()}`;
+  const replyErrorId = `${replyEditorId}-error`;
   const [optimisticReplies, setOptimisticReplies] = useState<
     ReadonlyArray<{
       readonly id: string;
@@ -367,13 +384,26 @@ export function ConversationThreadCard({
       )}
       {thread.onReply === undefined ? null : (
         <div className="mt-4 border-t pt-3">
-          <Textarea
-            aria-label="Reply"
-            value={replyBody}
-            onChange={(event) => setReplyBody(event.target.value)}
-            placeholder="Write a reply…"
-            disabled={replying}
-          />
+          <Field
+            data-invalid={replyError !== undefined || undefined}
+            data-disabled={replying || undefined}
+          >
+            <FieldLabel className="sr-only" htmlFor={replyEditorId}>
+              Reply
+            </FieldLabel>
+            <Textarea
+              id={replyEditorId}
+              aria-invalid={replyError !== undefined || undefined}
+              aria-describedby={
+                replyError === undefined ? undefined : replyErrorId
+              }
+              value={replyBody}
+              onChange={(event) => setReplyBody(event.target.value)}
+              placeholder="Write a reply…"
+              disabled={replying}
+            />
+            <FieldError id={replyErrorId}>{replyError}</FieldError>
+          </Field>
           <div className="mt-2 flex gap-2">
             <Button
               size="sm"
@@ -381,6 +411,7 @@ export function ConversationThreadCard({
                 if (replyBody.trim().length === 0 || replying) return;
                 setReplying(true);
                 setError(undefined);
+                setReplyError(undefined);
                 try {
                   const action = thread.onReply;
                   if (action === undefined || threadId === undefined) return;
@@ -397,7 +428,7 @@ export function ConversationThreadCard({
                     ]);
                   }
                 } catch {
-                  setError("Patchdesk could not publish this reply.");
+                  setReplyError("Patchdesk could not publish this reply.");
                 } finally {
                   setReplying(false);
                 }

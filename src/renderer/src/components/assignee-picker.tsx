@@ -9,6 +9,13 @@ import type { AssignableUserListResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "./ui/field";
 import { Input } from "./ui/input";
 import {
   Popover,
@@ -252,22 +259,29 @@ export function AssigneePicker({
             {writeError}
           </p>
         )}
-        <Input
-          type="search"
-          placeholder="Search people…"
-          aria-label="Search assignable people"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <AssigneePickerList
-          readState={readState}
-          attachedLogins={attachedLogins}
-          pendingAdds={pendingAdds}
-          pendingRemoves={pendingRemoves}
-          busyLogins={busyLogins}
-          disabled={permission === "denied"}
-          onToggle={toggle}
-        />
+        <FieldGroup>
+          <Field>
+            <FieldLabel className="sr-only" htmlFor="assignee-search">
+              Search assignable people
+            </FieldLabel>
+            <Input
+              id="assignee-search"
+              type="search"
+              placeholder="Search people…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </Field>
+          <AssigneePickerList
+            readState={readState}
+            attachedLogins={attachedLogins}
+            pendingAdds={pendingAdds}
+            pendingRemoves={pendingRemoves}
+            busyLogins={busyLogins}
+            disabled={permission === "denied"}
+            onToggle={toggle}
+          />
+        </FieldGroup>
       </PopoverContent>
     </Popover>
   );
@@ -356,38 +370,49 @@ function AssigneePickerList({
   if (readState.users.length === 0)
     return <p className="text-xs text-muted-foreground">No matching people.</p>;
   return (
-    <div className="max-h-64 overflow-y-auto">
-      <ul className="flex flex-col gap-0.5" aria-label="Assignable people">
-        {readState.users.map((user) => {
-          const attached =
-            pendingAdds.has(user.login) ||
-            (attachedLogins.has(user.login) && !pendingRemoves.has(user.login));
-          const busy = busyLogins.has(user.login);
-          return (
-            <li key={user.id}>
-              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-muted/50">
-                <Checkbox
-                  checked={attached}
-                  disabled={disabled || busy}
-                  onCheckedChange={() => onToggle(user, !attached)}
-                />
-                <Avatar
-                  name={user.login}
-                  dataUri={user.avatarDataUri}
-                  className="size-5 text-[10px]"
-                />
-                {user.login}
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+    <FieldSet data-disabled={disabled || undefined}>
+      <FieldLegend variant="label">Assignable people</FieldLegend>
+      <FieldGroup className="max-h-64 gap-0.5 overflow-y-auto">
+        <ul aria-label="Assignable people">
+          {readState.users.map((user) => {
+            const attached =
+              pendingAdds.has(user.login) ||
+              (attachedLogins.has(user.login) &&
+                !pendingRemoves.has(user.login));
+            const busy = busyLogins.has(user.login);
+            const controlId = `assignee-${user.id}`;
+            return (
+              <li key={user.id}>
+                <Field
+                  orientation="horizontal"
+                  data-disabled={disabled || busy || undefined}
+                >
+                  <Checkbox
+                    id={controlId}
+                    checked={attached}
+                    disabled={disabled || busy}
+                    onCheckedChange={() => onToggle(user, !attached)}
+                  />
+                  <FieldLabel htmlFor={controlId} className="font-normal">
+                    <Avatar
+                      name={user.login}
+                      dataUri={user.avatarDataUri}
+                      className="size-5 text-[10px]"
+                    />
+                    {user.login}
+                  </FieldLabel>
+                </Field>
+              </li>
+            );
+          })}
+        </ul>
+      </FieldGroup>
       {readState.totalCount > readState.users.length ? (
         <p className="mt-1 text-xs text-muted-foreground">
           Showing {readState.users.length} of {readState.totalCount} people.
           Some assignable people aren&apos;t shown.
         </p>
       ) : null}
-    </div>
+    </FieldSet>
   );
 }

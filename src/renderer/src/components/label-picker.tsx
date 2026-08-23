@@ -12,6 +12,13 @@ import { LabelChip } from "./label-chip";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "./ui/field";
+import {
   Popover,
   PopoverContent,
   PopoverHeader,
@@ -316,25 +323,40 @@ function LabelPickerList({
       </p>
     );
   return (
-    <div className="max-h-64 overflow-y-auto">
-      <ul className="flex flex-col gap-0.5" aria-label="Repository labels">
+    <FieldSet data-disabled={disabled || undefined}>
+      <FieldLegend variant="label">Repository labels</FieldLegend>
+      <FieldGroup className="max-h-64 gap-0.5 overflow-y-auto">
         {readState.labels.map((label) => {
           const attached =
             pendingAdds.has(label.name) ||
             (attachedNames.has(label.name) && !pendingRemoves.has(label.name));
           const busy = busyNames.has(label.name);
+          const controlId = `label-${label.id}`;
+          const descriptionId =
+            label.description === undefined
+              ? undefined
+              : `${controlId}-description`;
           return (
-            <li key={label.id}>
-              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-muted/50">
-                <Checkbox
-                  checked={attached}
-                  disabled={disabled || busy}
-                  onCheckedChange={() => onToggle(label, !attached)}
-                />
+            <Field
+              key={label.id}
+              orientation="horizontal"
+              data-disabled={disabled || busy || undefined}
+            >
+              <Checkbox
+                id={controlId}
+                checked={attached}
+                disabled={disabled || busy}
+                {...(descriptionId === undefined
+                  ? {}
+                  : { "aria-describedby": descriptionId })}
+                onCheckedChange={() => onToggle(label, !attached)}
+              />
+              <FieldLabel htmlFor={controlId} className="font-normal">
                 <span className="flex min-w-0 flex-col">
                   <LabelChip label={{ name: label.name, color: label.color }} />
                   {label.description === undefined ? null : (
                     <span
+                      id={descriptionId}
                       data-slot="label-description"
                       className="mt-0.5 truncate text-[10px] text-muted-foreground"
                     >
@@ -342,18 +364,18 @@ function LabelPickerList({
                     </span>
                   )}
                 </span>
-              </label>
-            </li>
+              </FieldLabel>
+            </Field>
           );
         })}
-      </ul>
+      </FieldGroup>
       {readState.totalCount > readState.labels.length ? (
         <p className="mt-1 text-xs text-muted-foreground">
           Showing {readState.labels.length} of {readState.totalCount} labels.
           Some repository labels aren&apos;t shown.
         </p>
       ) : null}
-    </div>
+    </FieldSet>
   );
 }
 

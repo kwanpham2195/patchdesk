@@ -9,6 +9,13 @@ import type { ReviewerListResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "./ui/field";
 import { Input } from "./ui/input";
 import {
   Popover,
@@ -260,22 +267,29 @@ export function ReviewerPicker({
             {writeError}
           </p>
         )}
-        <Input
-          type="search"
-          placeholder="Search people…"
-          aria-label="Search reviewer candidates"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <ReviewerPickerList
-          readState={readState}
-          attachedLogins={attachedLogins}
-          pendingRequests={pendingRequests}
-          pendingRemovals={pendingRemovals}
-          busyLogins={busyLogins}
-          disabled={permission === "denied"}
-          onToggle={toggle}
-        />
+        <FieldGroup>
+          <Field>
+            <FieldLabel className="sr-only" htmlFor="reviewer-search">
+              Search reviewer candidates
+            </FieldLabel>
+            <Input
+              id="reviewer-search"
+              type="search"
+              placeholder="Search people…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </Field>
+          <ReviewerPickerList
+            readState={readState}
+            attachedLogins={attachedLogins}
+            pendingRequests={pendingRequests}
+            pendingRemovals={pendingRemovals}
+            busyLogins={busyLogins}
+            disabled={permission === "denied"}
+            onToggle={toggle}
+          />
+        </FieldGroup>
       </PopoverContent>
     </Popover>
   );
@@ -337,29 +351,37 @@ function ReviewerCandidateRow({
     (attachedLogins.has(candidate.login) &&
       !pendingRemovals.has(candidate.login));
   const busy = busyLogins.has(candidate.login);
+  const controlId = `reviewer-${candidate.id}`;
+  const captionId = caption === undefined ? undefined : `${controlId}-caption`;
   return (
-    <li className="flex flex-col">
-      {/* The caption renders as a sibling below the `<label>`, not inside
-          it: Base UI's `Checkbox` auto-wires an `aria-labelledby` pointing
-          at its wrapping `<label>`'s full text content, which would fold a
-          suggestion's caption into the checkbox's own accessible name.
-          Keeping the caption outside the label keeps that name exactly the
-          login. */}
-      <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-muted/50">
+    <li>
+      <Field
+        orientation="horizontal"
+        data-disabled={disabled || busy || undefined}
+      >
         <Checkbox
+          id={controlId}
           checked={attached}
           disabled={disabled || busy}
+          {...(captionId === undefined
+            ? {}
+            : { "aria-describedby": captionId })}
           onCheckedChange={() => onToggle(candidate, !attached)}
         />
-        <Avatar
-          name={candidate.login}
-          dataUri={candidate.avatarDataUri}
-          className="size-5 text-[10px]"
-        />
-        <span className="min-w-0 truncate">{candidate.login}</span>
-      </label>
+        <FieldLabel htmlFor={controlId} className="font-normal">
+          <Avatar
+            name={candidate.login}
+            dataUri={candidate.avatarDataUri}
+            className="size-5 text-[10px]"
+          />
+          <span className="min-w-0 truncate">{candidate.login}</span>
+        </FieldLabel>
+      </Field>
       {caption === undefined ? null : (
-        <span className="truncate pl-9 text-[10px] text-muted-foreground">
+        <span
+          id={captionId}
+          className="truncate pl-9 text-[10px] text-muted-foreground"
+        >
           {caption}
         </span>
       )}
@@ -441,52 +463,59 @@ function ReviewerPickerList({
     return <p className="text-xs text-muted-foreground">No matching people.</p>;
 
   return (
-    <div className="max-h-64 overflow-y-auto">
-      {suggestedRows.length === 0 ? null : (
-        <div role="group" aria-label="Suggested reviewers" className="mb-1.5">
-          <p className="px-1 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Suggested
+    <FieldSet data-disabled={disabled || undefined}>
+      <FieldLegend variant="label">Reviewer candidates</FieldLegend>
+      <div className="max-h-64 overflow-y-auto">
+        {suggestedRows.length === 0 ? null : (
+          <div role="group" aria-label="Suggested reviewers" className="mb-1.5">
+            <p className="px-1 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              Suggested
+            </p>
+            <FieldGroup className="gap-0.5">
+              <ul>
+                {suggestedRows.map(({ suggestion, candidate }) => (
+                  <ReviewerCandidateRow
+                    key={candidate.id}
+                    candidate={candidate}
+                    caption={suggestionCopy(suggestion)}
+                    attachedLogins={attachedLogins}
+                    pendingRequests={pendingRequests}
+                    pendingRemovals={pendingRemovals}
+                    busyLogins={busyLogins}
+                    disabled={disabled}
+                    onToggle={onToggle}
+                  />
+                ))}
+              </ul>
+            </FieldGroup>
+          </div>
+        )}
+        {remainingCandidates.length === 0 ? null : (
+          <FieldGroup className="gap-0.5">
+            <ul aria-label="Reviewer candidates">
+              {remainingCandidates.map((candidate) => (
+                <ReviewerCandidateRow
+                  key={candidate.id}
+                  candidate={candidate}
+                  attachedLogins={attachedLogins}
+                  pendingRequests={pendingRequests}
+                  pendingRemovals={pendingRemovals}
+                  busyLogins={busyLogins}
+                  disabled={disabled}
+                  onToggle={onToggle}
+                />
+              ))}
+            </ul>
+          </FieldGroup>
+        )}
+        {readState.candidatesTotalCount > readState.candidates.length ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Showing {readState.candidates.length} of{" "}
+            {readState.candidatesTotalCount} candidates. Some repository
+            collaborators aren&apos;t shown.
           </p>
-          <ul className="flex flex-col gap-0.5">
-            {suggestedRows.map(({ suggestion, candidate }) => (
-              <ReviewerCandidateRow
-                key={candidate.id}
-                candidate={candidate}
-                caption={suggestionCopy(suggestion)}
-                attachedLogins={attachedLogins}
-                pendingRequests={pendingRequests}
-                pendingRemovals={pendingRemovals}
-                busyLogins={busyLogins}
-                disabled={disabled}
-                onToggle={onToggle}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
-      {remainingCandidates.length === 0 ? null : (
-        <ul className="flex flex-col gap-0.5" aria-label="Reviewer candidates">
-          {remainingCandidates.map((candidate) => (
-            <ReviewerCandidateRow
-              key={candidate.id}
-              candidate={candidate}
-              attachedLogins={attachedLogins}
-              pendingRequests={pendingRequests}
-              pendingRemovals={pendingRemovals}
-              busyLogins={busyLogins}
-              disabled={disabled}
-              onToggle={onToggle}
-            />
-          ))}
-        </ul>
-      )}
-      {readState.candidatesTotalCount > readState.candidates.length ? (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Showing {readState.candidates.length} of{" "}
-          {readState.candidatesTotalCount} candidates. Some repository
-          collaborators aren&apos;t shown.
-        </p>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
+    </FieldSet>
   );
 }

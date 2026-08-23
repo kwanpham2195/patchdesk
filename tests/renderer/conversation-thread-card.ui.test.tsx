@@ -207,10 +207,37 @@ describe("ConversationThreadCard", () => {
 
     expect(onEditComment).toHaveBeenCalledWith("c-1", "Edited while waiting");
     expect(editor.disabled).toBe(true);
+    expect(
+      editor.closest('[data-slot="field"]')?.getAttribute("data-disabled"),
+    ).toBe("true");
     await user.type(editor, " blocked");
     expect(editor.value).toBe("Edited while waiting");
 
     resolveEdit?.();
+  });
+
+  it("associates edit errors with the editor control", async () => {
+    const user = userEvent.setup();
+    const onEditComment = vi.fn(async () => {
+      throw new Error("edit failed");
+    });
+    render(<ConversationThreadCard thread={thread({ onEditComment })} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const editor = screen.getByRole("textbox", { name: "Edit comment" });
+    await user.clear(editor);
+    await user.type(editor, "Edited comment");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const error = await screen.findByRole("alert");
+    const describedBy = editor.getAttribute("aria-describedby");
+    if (describedBy === null)
+      throw new Error("Expected the editor to describe its error");
+    expect(editor.getAttribute("aria-invalid")).toBe("true");
+    expect(error.id).toBe(describedBy);
+    expect(
+      editor.closest('[data-slot="field"]')?.getAttribute("data-invalid"),
+    ).toBe("true");
   });
 
   it("disables the reply textarea and prevents typing while publishing", async () => {
@@ -232,6 +259,9 @@ describe("ConversationThreadCard", () => {
 
     expect(onReply).toHaveBeenCalledWith("thread-1", "Reply while waiting");
     expect(reply.disabled).toBe(true);
+    expect(
+      reply.closest('[data-slot="field"]')?.getAttribute("data-disabled"),
+    ).toBe("true");
     await user.type(reply, " blocked");
     expect(reply.value).toBe("Reply while waiting");
 

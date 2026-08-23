@@ -35,7 +35,13 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../components/ui/field";
 import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
@@ -498,89 +504,97 @@ function GeneralSection({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <FieldGroup className="grid gap-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel
-                className="text-sm font-medium"
-                htmlFor="light-diff-theme"
-              >
-                Light appearance
-              </FieldLabel>
-              <Select
-                value={diffThemePreferences.light}
-                items={DIFF_LIGHT_THEMES.map((theme) => ({
-                  label: theme.label,
-                  value: theme.id,
-                }))}
-                onValueChange={(value) => {
-                  if (
-                    value !== null &&
-                    DIFF_LIGHT_THEMES.some((theme) => theme.id === value)
-                  )
-                    onDiffThemeChange({
-                      ...diffThemePreferences,
-                      light: value,
-                    });
-                }}
-              >
-                <SelectTrigger
-                  id="light-diff-theme"
-                  className="h-12"
-                  aria-label="Light diff theme"
+          <FieldSet>
+            <FieldLegend variant="label" className="sr-only">
+              Diff theme
+            </FieldLegend>
+            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel
+                  className="text-sm font-medium"
+                  htmlFor="light-diff-theme"
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {DIFF_LIGHT_THEMES.map((theme) => (
-                      <SelectItem key={theme.id} value={theme.id}>
-                        {theme.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel
-                className="text-sm font-medium"
-                htmlFor="dark-diff-theme"
-              >
-                Dark appearance
-              </FieldLabel>
-              <Select
-                value={diffThemePreferences.dark}
-                items={DIFF_DARK_THEMES.map((theme) => ({
-                  label: theme.label,
-                  value: theme.id,
-                }))}
-                onValueChange={(value) => {
-                  if (
-                    value !== null &&
-                    DIFF_DARK_THEMES.some((theme) => theme.id === value)
-                  )
-                    onDiffThemeChange({ ...diffThemePreferences, dark: value });
-                }}
-              >
-                <SelectTrigger
-                  id="dark-diff-theme"
-                  className="h-12"
-                  aria-label="Dark diff theme"
+                  Light appearance
+                </FieldLabel>
+                <Select
+                  value={diffThemePreferences.light}
+                  items={DIFF_LIGHT_THEMES.map((theme) => ({
+                    label: theme.label,
+                    value: theme.id,
+                  }))}
+                  onValueChange={(value) => {
+                    if (
+                      value !== null &&
+                      DIFF_LIGHT_THEMES.some((theme) => theme.id === value)
+                    )
+                      onDiffThemeChange({
+                        ...diffThemePreferences,
+                        light: value,
+                      });
+                  }}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {DIFF_DARK_THEMES.map((theme) => (
-                      <SelectItem key={theme.id} value={theme.id}>
-                        {theme.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-          </FieldGroup>
+                  <SelectTrigger
+                    id="light-diff-theme"
+                    className="h-12"
+                    aria-label="Light diff theme"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {DIFF_LIGHT_THEMES.map((theme) => (
+                        <SelectItem key={theme.id} value={theme.id}>
+                          {theme.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel
+                  className="text-sm font-medium"
+                  htmlFor="dark-diff-theme"
+                >
+                  Dark appearance
+                </FieldLabel>
+                <Select
+                  value={diffThemePreferences.dark}
+                  items={DIFF_DARK_THEMES.map((theme) => ({
+                    label: theme.label,
+                    value: theme.id,
+                  }))}
+                  onValueChange={(value) => {
+                    if (
+                      value !== null &&
+                      DIFF_DARK_THEMES.some((theme) => theme.id === value)
+                    )
+                      onDiffThemeChange({
+                        ...diffThemePreferences,
+                        dark: value,
+                      });
+                  }}
+                >
+                  <SelectTrigger
+                    id="dark-diff-theme"
+                    className="h-12"
+                    aria-label="Dark diff theme"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {DIFF_DARK_THEMES.map((theme) => (
+                        <SelectItem key={theme.id} value={theme.id}>
+                          {theme.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </FieldGroup>
+          </FieldSet>
         </CardContent>
       </Card>
     </div>
@@ -701,67 +715,72 @@ function ReviewPreferences({
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="default-model">Default model</FieldLabel>
-            <ModelCombobox
-              id="default-model"
-              ariaLabel="Default model"
-              options={models}
-              value={preference.model}
-              disabled={catalogUnavailable}
-              placeholder="No enabled model available"
-              onValueChange={(value) => {
-                if (
-                  value !== null &&
-                  models.some((model) => model.id === value)
-                )
-                  update({ ...preference, model: value });
-              }}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="default-reasoning">
-              Default reasoning
-            </FieldLabel>
-            <Select
-              value={preference.reasoning}
-              items={[
-                { label: "Minimal", value: "minimal" },
-                { label: "Low", value: "low" },
-                { label: "Medium", value: "medium" },
-                { label: "High", value: "high" },
-                { label: "Extra high", value: "xhigh" },
-              ]}
-              onValueChange={(value) => {
-                if (
-                  value === "minimal" ||
-                  value === "low" ||
-                  value === "medium" ||
-                  value === "high" ||
-                  value === "xhigh"
-                )
-                  update({ ...preference, reasoning: value });
-              }}
-            >
-              <SelectTrigger
-                id="default-reasoning"
-                aria-label="Default reasoning"
+        <FieldSet>
+          <FieldLegend variant="label" className="sr-only">
+            Review defaults
+          </FieldLegend>
+          <FieldGroup>
+            <Field data-disabled={catalogUnavailable || undefined}>
+              <FieldLabel htmlFor="default-model">Default model</FieldLabel>
+              <ModelCombobox
+                id="default-model"
+                ariaLabel="Default model"
+                options={models}
+                value={preference.model}
+                disabled={catalogUnavailable}
+                placeholder="No enabled model available"
+                onValueChange={(value) => {
+                  if (
+                    value !== null &&
+                    models.some((model) => model.id === value)
+                  )
+                    update({ ...preference, model: value });
+                }}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="default-reasoning">
+                Default reasoning
+              </FieldLabel>
+              <Select
+                value={preference.reasoning}
+                items={[
+                  { label: "Minimal", value: "minimal" },
+                  { label: "Low", value: "low" },
+                  { label: "Medium", value: "medium" },
+                  { label: "High", value: "high" },
+                  { label: "Extra high", value: "xhigh" },
+                ]}
+                onValueChange={(value) => {
+                  if (
+                    value === "minimal" ||
+                    value === "low" ||
+                    value === "medium" ||
+                    value === "high" ||
+                    value === "xhigh"
+                  )
+                    update({ ...preference, reasoning: value });
+                }}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="minimal">Minimal</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="xhigh">Extra high</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-        </FieldGroup>
+                <SelectTrigger
+                  id="default-reasoning"
+                  aria-label="Default reasoning"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="minimal">Minimal</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="xhigh">Extra high</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
+        </FieldSet>
         {catalogUnavailable ||
         (models.length === 0 && codexAvailable !== true) ? (
           <Alert>

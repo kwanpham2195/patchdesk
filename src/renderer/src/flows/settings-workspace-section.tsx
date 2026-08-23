@@ -28,7 +28,13 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import {
   Tooltip,
@@ -268,7 +274,10 @@ export function WorkspaceProfileSection({
               ) : null}
             </div>
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
-              <Field className="sm:col-span-2">
+              <Field
+                className="sm:col-span-2"
+                data-disabled={!creatingProfile || undefined}
+              >
                 <FieldLabel htmlFor="profile-id">Profile ID</FieldLabel>
                 <Input
                   id="profile-id"
@@ -1277,8 +1286,8 @@ function ProfileListEditor({
 }): React.JSX.Element {
   const singular = label.slice(0, -1).toLowerCase();
   return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="text-sm font-medium">{label}</legend>
+    <FieldSet className="gap-2">
+      <FieldLegend variant="label">{label}</FieldLegend>
       <div className="flex flex-col gap-2 rounded-lg border p-2">
         {entries.map((entry, index) => (
           <div key={entry.id} className="flex flex-col gap-1.5">
@@ -1335,6 +1344,6 @@ function ProfileListEditor({
         <Plus data-icon="inline-start" />
         {`Add ${singular}`}
       </Button>
-    </fieldset>
+    </FieldSet>
   );
 }
