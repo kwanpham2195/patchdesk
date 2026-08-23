@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { cn } from "@/lib/utils";
 
 export type AvatarProps = {
@@ -22,11 +24,35 @@ export type AvatarProps = {
 function Avatar({ name, dataUri, className }: AvatarProps) {
   if (dataUri !== undefined) {
     return (
+      <AvatarImage
+        key={dataUri}
+        name={name}
+        dataUri={dataUri}
+        className={className}
+      />
+    );
+  }
+  return <AvatarFallback name={name} className={className} />;
+}
+
+function AvatarImage({
+  name,
+  dataUri,
+  className,
+}: {
+  readonly name: string;
+  readonly dataUri: string;
+  readonly className: string | undefined;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!failed) {
+    return (
       <img
         src={dataUri}
         alt=""
         aria-hidden="true"
         data-slot="avatar"
+        onError={() => setFailed(true)}
         className={cn(
           "size-9 shrink-0 rounded-full border object-cover",
           className,
@@ -34,6 +60,16 @@ function Avatar({ name, dataUri, className }: AvatarProps) {
       />
     );
   }
+  return <AvatarFallback name={name} className={className} />;
+}
+
+function AvatarFallback({
+  name,
+  className,
+}: {
+  readonly name: string;
+  readonly className: string | undefined;
+}) {
   return (
     <span
       aria-hidden="true"

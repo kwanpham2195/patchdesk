@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -266,5 +266,37 @@ describe("ConversationThreadCard", () => {
     expect(withoutAvatar?.tagName).toBe("SPAN");
     expect(withoutAvatar?.textContent).toBe("N");
     expect(withoutAvatar?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("falls back to initials for a failed cached image and retries after the data URI changes", () => {
+    const dataUri = "data:image/png;base64,AAAA";
+    const baseComment = {
+      id: "c-1",
+      author: "reviewer",
+      body: "Check this line.",
+      createdAt: "2026-08-01T00:00:00.000Z",
+    };
+    const avatarComment = { ...baseComment, authorAvatarDataUri: dataUri };
+    const renderCard = (comment: typeof baseComment | typeof avatarComment) => (
+      <ConversationThreadCard thread={thread({ comments: [comment] })} />
+    );
+    const { container, rerender } = render(renderCard(avatarComment));
+    const image = container.querySelector('img[data-slot="avatar"]');
+    if (image === null) throw new Error("Expected a cached avatar image");
+
+    fireEvent.error(image);
+
+    const fallback = container.querySelector('[data-slot="avatar"]');
+    expect(fallback?.tagName).toBe("SPAN");
+    expect(fallback?.textContent).toBe("R");
+    expect(fallback?.getAttribute("aria-hidden")).toBe("true");
+
+    rerender(renderCard(avatarComment));
+    expect(container.querySelector('img[data-slot="avatar"]')).toBeNull();
+
+    rerender(renderCard(baseComment));
+    rerender(renderCard(avatarComment));
+    const retriedImage = container.querySelector('img[data-slot="avatar"]');
+    expect(retriedImage?.getAttribute("src")).toBe(dataUri);
   });
 });
