@@ -57,6 +57,7 @@ export type ReviewRefreshFailure = {
     | "invalid_input"
     | "not_found"
     | "github_read"
+    | "github_auth"
     | "storage"
     | "head_changed"
     | "terminal";
@@ -622,6 +623,7 @@ export class ReviewRefreshService {
           // Decorative only; ignored.
         }
         let sessionId = review.currentSessionId;
+        let selectedSession = currentSession.value;
         if (!sameReviewRevision(currentSession.value.key, currentRevision)) {
           const prepared = await this.dependencies.preparation.prepare({
             profileId: input.profileId,
@@ -639,6 +641,7 @@ export class ReviewRefreshService {
           );
           if (persisted._tag === "err") return err({ reason: "storage" });
           sessionId = prepared.value.session.id;
+          selectedSession = prepared.value.session;
         }
         const representedRemote = {
           headSha: current.value.headSha,
@@ -698,7 +701,7 @@ export class ReviewRefreshService {
           state:
             reconciled._tag === "ok"
               ? reconciled.value.state
-              : (currentSession.value.pendingReview ?? noPendingReview),
+              : (selectedSession.pendingReview ?? noPendingReview),
           unavailable: reconciled._tag !== "ok" || reconciled.value.unavailable,
         };
         const projected = await this.dependencies.project({
@@ -1214,7 +1217,9 @@ function mapPreparationFailure(
         ? "not_found"
         : tag === "GitHubReadUnavailable"
           ? "github_read"
-          : "storage";
+          : tag === "GitHubAuthenticationFailed"
+            ? "github_auth"
+            : "storage";
   // This is a default fallthrough: any preparation failure tag not named
   // above (currently ProfileUnavailable, SessionStorageUnavailable,
   // PreparationUnavailable, PreparationCleanupUnavailable) becomes "storage".

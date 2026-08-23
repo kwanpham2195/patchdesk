@@ -37,9 +37,19 @@ import { err, ok, type Result } from "../../src/domain/result";
 import { parseStoredReviewSession } from "../../src/adapters/storage/review-session-store";
 import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import type { ReviewRefreshDependencies } from "../../src/services/review-refresh-service";
+import type { PrepareReviewSessionFailure } from "../../src/services/review-session-preparation";
 import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+
+type PendingReviewReconcileResult = Awaited<
+  ReturnType<
+    ReviewRefreshDependencies["pendingReview"]["reconcileWithinReviewLock"]
+  >
+>;
+type ProjectionInput = Parameters<
+  NonNullable<ReviewRefreshDependencies["project"]>
+>[0];
 
 /** Parsed values shared by every ReviewRefreshService scenario. */
 export type ReviewRefreshFixtureValues = {
@@ -115,6 +125,9 @@ export type ReviewRefreshFixtureOptions = {
   readonly mergeOutcomeResult?: MergeOutcomeResult;
   readonly publishedFeedbackResult?: PublishedFeedbackResult;
   readonly preparedSession?: ReviewSession;
+  /** Forces `preparation.prepare` to fail instead of returning a session. */
+  readonly preparationFailure?: PrepareReviewSessionFailure;
+  readonly pendingReviewReconcileResult?: PendingReviewReconcileResult;
   readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   readonly projectionOutcome?: "success" | "failure";
   readonly avatarSyncFailure?: boolean;
@@ -128,6 +141,7 @@ export type ReviewRefreshFixtureCalls = {
   readonly savedSessions: Array<ReviewSession>;
   readonly preparations: Array<"prepare">;
   readonly projections: Array<"project">;
+  readonly projectionInputs: Array<ProjectionInput>;
   readonly avatarSyncs: Array<"syncCommentAuthors">;
   readonly clearedRecentWrites: Array<{
     readonly profileId: WorkspaceProfileId;
@@ -273,6 +287,7 @@ export function createReviewRefreshFixture(
     savedSessions: [],
     preparations: [],
     projections: [],
+    projectionInputs: [],
     avatarSyncs: [],
     clearedRecentWrites: [],
   };
@@ -338,6 +353,8 @@ export function createReviewRefreshFixture(
     preparation: {
       prepare: async () => {
         calls.preparations.push("prepare");
+        if (options.preparationFailure !== undefined)
+          return err(options.preparationFailure);
         return ok({
           session: options.preparedSession ?? session,
           disposition: "prepared" as const,
@@ -346,6 +363,7 @@ export function createReviewRefreshFixture(
     },
     pendingReview: {
       reconcileWithinReviewLock: async () =>
+        options.pendingReviewReconcileResult ??
         ok({ session, state: { _tag: "None" } as const, unavailable: false }),
     },
     operationCoordinator: new ReviewOperationCoordinator(),
@@ -367,8 +385,9 @@ export function createReviewRefreshFixture(
       },
     };
   if (options.projectionOutcome !== undefined)
-    dependencies.project = async () => {
+    dependencies.project = async (input) => {
       calls.projections.push("project");
+      calls.projectionInputs.push(input);
       return options.projectionOutcome === "success"
         ? ok(projection)
         : err({ _tag: "SessionStorageUnavailable" });

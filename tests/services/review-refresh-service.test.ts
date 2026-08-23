@@ -10,6 +10,7 @@ import {
   parseGitSha,
   parseGitHubThreadId,
   parseIsoTimestamp,
+  parsePendingReviewRequestId,
   parseRepoRelativePath,
 } from "../../src/domain/ids";
 import { err, ok, type Result } from "../../src/domain/result";
@@ -86,6 +87,62 @@ describe("ReviewRefreshService", () => {
     expect(calls.savedSessions).toHaveLength(1);
     expect(calls.savedSessions[0]?.key.baseSha).toBe(changedBaseSha);
     expect(calls.savedSessions[0]?.pendingReview).toBeUndefined();
+  });
+
+  it("maps a preparation authentication failure onto the github_auth reason", async () => {
+    const changedSnapshot = {
+      ...snapshot,
+      pullRequest: { ...snapshot.pullRequest, baseSha: changedBaseSha },
+    };
+    const { service, calls } = createReviewRefreshFixture({
+      currentPullRequest: changedSnapshot.pullRequest,
+      preparationFailure: { _tag: "GitHubAuthenticationFailed" },
+    });
+
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "github_auth" } });
+    expect(calls.preparations).toEqual(["prepare"]);
+    expect(calls.savedSessions).toEqual([]);
+  });
+
+  it("does not project old pending-review state after a base-only replacement", async () => {
+    const changedSnapshot = {
+      ...snapshot,
+      pullRequest: { ...snapshot.pullRequest, baseSha: changedBaseSha },
+    };
+    const oldPendingReview = {
+      _tag: "WriteInFlight" as const,
+      operation: {
+        _tag: "Start" as const,
+        requestId: must(parsePendingReviewRequestId("pending-review-refresh")),
+      },
+      startedAt: at,
+    };
+    const preparedSession = createReviewRefreshSession({
+      identity,
+      snapshot: changedSnapshot,
+      createdAt: at,
+      headSha,
+    });
+    const { service, calls } = createReviewRefreshFixture({
+      session: {
+        ...createReviewRefreshFixtureValues().session,
+        pendingReview: oldPendingReview,
+      },
+      currentPullRequest: changedSnapshot.pullRequest,
+      preparedSession,
+      pendingReviewReconcileResult: err("unavailable"),
+      projectionOutcome: "success",
+    });
+
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    expect(calls.projectionInputs[0]?.pendingReview).toEqual({
+      state: { _tag: "None" },
+      unavailable: true,
+    });
   });
 
   it("rejects a base race between the first and final GitHub reads", async () => {
