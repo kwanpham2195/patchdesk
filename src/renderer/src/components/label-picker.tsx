@@ -13,6 +13,7 @@ import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
   Field,
+  FieldContent,
   FieldGroup,
   FieldLabel,
   FieldLegend,
@@ -326,48 +327,54 @@ function LabelPickerList({
     <FieldSet data-disabled={disabled || undefined}>
       <FieldLegend variant="label">Repository labels</FieldLegend>
       <FieldGroup className="max-h-64 gap-0.5 overflow-y-auto">
-        {readState.labels.map((label) => {
-          const attached =
-            pendingAdds.has(label.name) ||
-            (attachedNames.has(label.name) && !pendingRemoves.has(label.name));
-          const busy = busyNames.has(label.name);
-          const controlId = `label-${label.id}`;
-          const descriptionId =
-            label.description === undefined
-              ? undefined
-              : `${controlId}-description`;
-          return (
-            <Field
-              key={label.id}
-              orientation="horizontal"
-              data-disabled={disabled || busy || undefined}
-            >
-              <Checkbox
-                id={controlId}
-                checked={attached}
-                disabled={disabled || busy}
-                {...(descriptionId === undefined
-                  ? {}
-                  : { "aria-describedby": descriptionId })}
-                onCheckedChange={() => onToggle(label, !attached)}
-              />
-              <FieldLabel htmlFor={controlId} className="font-normal">
-                <span className="flex min-w-0 flex-col">
-                  <LabelChip label={{ name: label.name, color: label.color }} />
-                  {label.description === undefined ? null : (
-                    <span
-                      id={descriptionId}
-                      data-slot="label-description"
-                      className="mt-0.5 truncate text-[10px] text-muted-foreground"
-                    >
-                      {label.description}
-                    </span>
-                  )}
-                </span>
-              </FieldLabel>
-            </Field>
-          );
-        })}
+        <ul aria-label="Repository labels">
+          {readState.labels.map((label) => {
+            const attached =
+              pendingAdds.has(label.name) ||
+              (attachedNames.has(label.name) &&
+                !pendingRemoves.has(label.name));
+            const busy = busyNames.has(label.name);
+            const controlId = `label-${label.id}`;
+            const descriptionId =
+              label.description === undefined
+                ? undefined
+                : `${controlId}-description`;
+            return (
+              <li key={label.id}>
+                <Field
+                  orientation="horizontal"
+                  data-disabled={disabled || busy || undefined}
+                >
+                  <Checkbox
+                    id={controlId}
+                    checked={attached}
+                    disabled={disabled || busy}
+                    {...(descriptionId === undefined
+                      ? {}
+                      : { "aria-describedby": descriptionId })}
+                    onCheckedChange={() => onToggle(label, !attached)}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor={controlId} className="font-normal">
+                      <LabelChip
+                        label={{ name: label.name, color: label.color }}
+                      />
+                    </FieldLabel>
+                    {label.description === undefined ? null : (
+                      <span
+                        id={descriptionId}
+                        data-slot="label-description"
+                        className="mt-0.5 truncate text-[10px] text-muted-foreground"
+                      >
+                        {label.description}
+                      </span>
+                    )}
+                  </FieldContent>
+                </Field>
+              </li>
+            );
+          })}
+        </ul>
       </FieldGroup>
       {readState.totalCount > readState.labels.length ? (
         <p className="mt-1 text-xs text-muted-foreground">
