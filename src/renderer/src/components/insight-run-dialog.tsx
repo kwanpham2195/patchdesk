@@ -5,6 +5,7 @@ import type {
 
 import { ModelCombobox } from "./model-combobox";
 import { Button } from "./ui/button";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -134,10 +135,12 @@ export function InsightRunDialog({
                   : "Load Codex models"}
               </Button>
               {codexActivationError ? (
-                <p className="text-destructive">
-                  Codex models are unavailable. Check external login and the app
-                  launch PATH.
-                </p>
+                <Alert variant="destructive">
+                  <AlertTitle>Codex models are unavailable.</AlertTitle>
+                  <AlertDescription>
+                    Check external login and the app launch PATH.
+                  </AlertDescription>
+                </Alert>
               ) : null}
             </div>
           ) : null}
@@ -155,10 +158,12 @@ export function InsightRunDialog({
                   : "Refresh models"}
               </Button>
               {codexActivationError ? (
-                <p className="text-sm text-destructive">
-                  Codex models are unavailable. Check external login and the app
-                  launch PATH.
-                </p>
+                <Alert variant="destructive">
+                  <AlertTitle>Codex models are unavailable.</AlertTitle>
+                  <AlertDescription>
+                    Check external login and the app launch PATH.
+                  </AlertDescription>
+                </Alert>
               ) : null}
             </div>
           ) : null}

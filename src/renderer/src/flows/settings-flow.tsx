@@ -349,7 +349,7 @@ function DataSection({
           {cleanup.error === undefined ? null : (
             <Alert variant="destructive">
               <AlertTitle>Cleanup failed</AlertTitle>
-              <AlertDescription role="alert">{cleanup.error}</AlertDescription>
+              <AlertDescription>{cleanup.error}</AlertDescription>
             </Alert>
           )}
         </CardContent>
@@ -375,9 +375,7 @@ function DataSection({
           {activityLoadState.message === undefined ? null : (
             <Alert variant="destructive">
               <AlertTitle>Activity unavailable</AlertTitle>
-              <AlertDescription role="alert">
-                {activityLoadState.message}
-              </AlertDescription>
+              <AlertDescription>{activityLoadState.message}</AlertDescription>
             </Alert>
           )}
           {activity === undefined ? null : activity.length === 0 ? (

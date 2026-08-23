@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { DirectSummaryReviewProjection } from "../renderer-contracts";
 import { Button } from "./ui/button";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -163,25 +164,22 @@ function SummaryReviewDialogContent({
             </div>
           </div>
         ) : recovery !== undefined ? (
-          <div className="space-y-4 rounded-md border border-amber-500/50 bg-amber-500/10 p-4 text-amber-950 dark:text-amber-100">
-            <div className="space-y-1">
-              <h2 className="font-semibold">
-                Review submission needs confirmation
-              </h2>
-              <p role="alert" className="text-sm">
-                {recovery === "manual_resolution_required"
-                  ? "Patchdesk found ambiguous review evidence. Submit is paused until you resolve the outcome on GitHub."
-                  : "Patchdesk did not receive confirmation from GitHub. Your review may already have been published. To avoid posting a duplicate review, submission is paused until GitHub is checked."}
-              </p>
-              <p className="text-sm">
-                Checking either confirms the review, restores a safe submit
-                state, or identifies manual resolution.
-              </p>
-            </div>
+          <Alert className="space-y-4 border-amber-500/50 bg-amber-500/10 p-4 text-amber-950 dark:text-amber-100">
+            <AlertTitle>Review submission needs confirmation</AlertTitle>
+            <AlertDescription className="text-amber-950 dark:text-amber-100">
+              {recovery === "manual_resolution_required"
+                ? "Patchdesk found ambiguous review evidence. Submit is paused until you resolve the outcome on GitHub."
+                : "Patchdesk did not receive confirmation from GitHub. Your review may already have been published. To avoid posting a duplicate review, submission is paused until GitHub is checked."}
+            </AlertDescription>
+            <AlertDescription className="text-amber-950 dark:text-amber-100">
+              Checking either confirms the review, restores a safe submit state,
+              or identifies manual resolution.
+            </AlertDescription>
             {localError === undefined ? null : (
-              <p role="alert" className="text-sm">
-                {localError}
-              </p>
+              <Alert variant="destructive">
+                <AlertTitle>Recovery check failed</AlertTitle>
+                <AlertDescription>{localError}</AlertDescription>
+              </Alert>
             )}
             <div className="flex flex-wrap justify-end gap-2">
               <Button
@@ -204,7 +202,7 @@ function SummaryReviewDialogContent({
                 {recovering ? "Checking GitHub…" : "Check GitHub status"}
               </Button>
             </div>
-          </div>
+          </Alert>
         ) : (
           <div className="space-y-4">
             <div>
@@ -279,9 +277,10 @@ function SummaryReviewDialogContent({
               )}
             </div>
             {localError === undefined && error === undefined ? null : (
-              <p role="alert" className="text-sm text-destructive">
-                {error ?? localError}
-              </p>
+              <Alert variant="destructive">
+                <AlertTitle>Review submission failed</AlertTitle>
+                <AlertDescription>{error ?? localError}</AlertDescription>
+              </Alert>
             )}
             <div className="flex flex-wrap justify-end gap-2">
               <Button

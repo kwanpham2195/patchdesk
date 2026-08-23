@@ -157,7 +157,7 @@ export function WatchlistToggleStatus({
     return (
       <Alert variant="destructive">
         <AlertTitle>Watchlist action failed</AlertTitle>
-        <AlertDescription role="alert">{error}</AlertDescription>
+        <AlertDescription>{error}</AlertDescription>
       </Alert>
     );
   }

@@ -300,9 +300,10 @@ export function WorkspaceProfileSection({
             </FieldGroup>
           </FieldGroup>
           {profileError === undefined ? null : (
-            <p role="alert" className="text-sm text-destructive">
-              {profileError}
-            </p>
+            <Alert variant="destructive">
+              <AlertTitle>Profile update failed</AlertTitle>
+              <AlertDescription>{profileError}</AlertDescription>
+            </Alert>
           )}
         </CardContent>
       </Card>
@@ -848,9 +849,12 @@ function WorkspaceRootDiscoveryStatus({
   }
   if (status.kind === "error") {
     return (
-      <p role="alert" className="text-xs text-destructive">
-        Could not scan this folder for repositories.
-      </p>
+      <Alert variant="destructive">
+        <AlertTitle>Repository scan failed</AlertTitle>
+        <AlertDescription>
+          Could not scan this folder for repositories.
+        </AlertDescription>
+      </Alert>
     );
   }
   if (status.total === 0) {
@@ -1051,19 +1055,26 @@ function ReviewingAsPanel({
           Checking GitHub authentication…
         </p>
       ) : view.kind === "error" ? (
-        <p role="alert" className="text-sm text-destructive">
-          Could not check GitHub authentication.
-        </p>
+        <Alert variant="destructive">
+          <AlertTitle>GitHub authentication unavailable</AlertTitle>
+          <AlertDescription>
+            Could not check GitHub authentication.
+          </AlertDescription>
+        </Alert>
       ) : view.kind === "failed" ? (
-        <p role="alert" className="text-sm text-destructive">
-          {view.env.gh !== "ready" ? (
-            "GitHub CLI (gh) is not installed. Install the GitHub CLI, then re-check."
-          ) : (
-            <>
-              Not authenticated. Run <code>gh auth login</code>, then re-check.
-            </>
-          )}
-        </p>
+        <Alert variant="destructive">
+          <AlertTitle>GitHub authentication required</AlertTitle>
+          <AlertDescription>
+            {view.env.gh !== "ready" ? (
+              "GitHub CLI (gh) is not installed. Install the GitHub CLI, then re-check."
+            ) : (
+              <>
+                Not authenticated. Run <code>gh auth login</code>, then
+                re-check.
+              </>
+            )}
+          </AlertDescription>
+        </Alert>
       ) : view.kind === "single" ? (
         <div className="flex flex-col gap-3">
           <p className="text-sm">
@@ -1091,7 +1102,7 @@ function ReviewingAsPanel({
       {configuredAccountUnauthenticated ? (
         <Alert variant="destructive">
           <AlertTitle>Configured account not authenticated</AlertTitle>
-          <AlertDescription role="alert">
+          <AlertDescription>
             This profile is set to review as{" "}
             <strong>{profileDraft.ghAccount}</strong> on{" "}
             <em>{profileDraft.githubHost}</em>, but the GitHub CLI does not

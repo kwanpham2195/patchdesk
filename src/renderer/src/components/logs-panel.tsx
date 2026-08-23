@@ -257,7 +257,7 @@ export function LogsPanel(): React.JSX.Element {
         {stream.error === undefined ? null : (
           <Alert variant="destructive">
             <AlertTitle>Logs unavailable</AlertTitle>
-            <AlertDescription role="alert">{stream.error}</AlertDescription>
+            <AlertDescription>{stream.error}</AlertDescription>
           </Alert>
         )}
         <div
