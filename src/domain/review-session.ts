@@ -18,6 +18,10 @@ import type {
   PendingReviewState,
 } from "./pending-review";
 
+export type ReviewLocalCheckoutWarning =
+  | "missing_local_path"
+  | "local_checkout_unavailable";
+
 /** Immutable local artifacts and current durable GitHub-write evidence for one pinned revision. */
 export type ReviewSession = {
   readonly schemaVersion: 6;
@@ -33,6 +37,7 @@ export type ReviewSession = {
   };
   readonly patchPath: AbsolutePath;
   readonly canonicalPatchHash?: ContentHash;
+  readonly localCheckoutWarning?: ReviewLocalCheckoutWarning;
   readonly worktree: ReviewWorktreeRef;
   readonly pendingReview?: PendingReviewState;
   readonly findingReviewReceipts?: ReadonlyArray<FindingReviewReceipt>;
@@ -78,6 +83,7 @@ export function createReviewSession(input: {
   readonly prContext?: ReviewSession["prContext"];
   readonly patchPath: AbsolutePath;
   readonly canonicalPatchHash?: ContentHash;
+  readonly localCheckoutWarning?: ReviewLocalCheckoutWarning;
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
 }): ReviewSession {
@@ -94,5 +100,7 @@ export function createReviewSession(input: {
   if (input.prContext !== undefined) session.prContext = input.prContext;
   if (input.canonicalPatchHash !== undefined)
     session.canonicalPatchHash = input.canonicalPatchHash;
+  if (input.localCheckoutWarning !== undefined)
+    session.localCheckoutWarning = input.localCheckoutWarning;
   return session;
 }

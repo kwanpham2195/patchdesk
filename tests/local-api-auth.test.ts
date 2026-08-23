@@ -20,9 +20,11 @@ import {
 import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
 import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
 import {
+  createReadOnlyGitExecutor,
   startLocalApiServer,
   type LocalApiServer,
 } from "../src/main/local-api";
+import type { CommandRequest } from "../src/adapters/github/command-runner";
 import { ok } from "../src/domain/result";
 import { StorageManagementService } from "../src/services/storage-management-service";
 import { ReviewWorkbenchController } from "../src/services/review-workbench-controller";
@@ -49,7 +51,10 @@ afterEach(async () => {
 type LocalApiServerConfiguration = Parameters<typeof startLocalApiServer>[0];
 
 async function start(
-  options: Pick<LocalApiServerConfiguration, "readOnlyGit"> = {},
+  options: Pick<
+    LocalApiServerConfiguration,
+    "readOnlyGit" | "resolveGitHubCli"
+  > = {},
 ): Promise<LocalApiServer> {
   root = await mkdtemp(join(tmpdir(), "patchdesk-api-auth-"));
   const value = await startLocalApiServer({
@@ -90,6 +95,53 @@ async function post(
 }
 
 describe("local API current Review capability boundary", () => {
+  it("starts with a configured resolveGitHubCli seam, and without one falls back to real discovery", async () => {
+    // ReviewWorktreeService's gh-path resolver is threaded through
+    // composition (see `startLocalApiServer`'s `resolveGitHubCli` ??
+    // `discoverExecutable("gh")` default): both forms must construct the
+    // server without throwing. The managed-fetch credential helper's use of
+    // the resolved absolute path is covered directly, without spawning a
+    // real HTTP server, in `tests/services/review-worktree.test.ts`.
+    await expect(
+      start({ resolveGitHubCli: async () => "/opt/homebrew/bin/gh" }),
+    ).resolves.toBeDefined();
+    await server?.stop();
+    server = undefined;
+    const firstRoot = root;
+    root = undefined;
+    await expect(start()).resolves.toBeDefined();
+    if (firstRoot !== undefined)
+      await rm(firstRoot, { recursive: true, force: true });
+  });
+
+  it("forwards managed-fetch environments and keeps the longer timeout fetch-only", async () => {
+    const requests: CommandRequest[] = [];
+    const git = createReadOnlyGitExecutor({
+      async runText(request) {
+        requests.push(request);
+        return ok("");
+      },
+    });
+
+    await git.run(["git", "-C", "/repo", "status"]);
+    await git.run(
+      ["git", "-C", "/repo", "fetch", "origin", "sha:refs/review/head"],
+      { GH_TOKEN: "profile-token", GIT_TERMINAL_PROMPT: "0" },
+    );
+
+    expect(requests).toEqual([
+      {
+        argv: ["git", "-C", "/repo", "status"],
+        timeoutMs: 15_000,
+      },
+      {
+        argv: ["git", "-C", "/repo", "fetch", "origin", "sha:refs/review/head"],
+        timeoutMs: 120_000,
+        environment: { GH_TOKEN: "profile-token", GIT_TERMINAL_PROMPT: "0" },
+      },
+    ]);
+  });
+
   it("serves the current Review diff-file hydration contract", async () => {
     const api = await start({
       readOnlyGit: {

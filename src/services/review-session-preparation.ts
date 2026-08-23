@@ -32,11 +32,12 @@ import type { ReviewContextService } from "./review-context-service";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
-import { ReviewPreparationJournal } from "./review-preparation-journal";
+import { exists, ReviewPreparationJournal } from "./review-preparation-journal";
 import type {
   ManagedWorktree,
   MetadataOnlyReview,
   ReviewWorktreeService,
+  WorktreeFailure,
 } from "./review-worktree-service";
 
 /** A refined command to prepare one complete immutable Review session. */
@@ -57,7 +58,11 @@ export type PrepareReviewSessionFailure =
   | { readonly _tag: "HeadChanged" }
   | { readonly _tag: "SessionStorageUnavailable" }
   | { readonly _tag: "PreparationUnavailable" }
-  | { readonly _tag: "PreparationCleanupUnavailable" };
+  | { readonly _tag: "PreparationCleanupUnavailable" }
+  // A GitHub-authenticated read has already succeeded by this point, so a
+  // credential or `gh` failure while preparing the local checkout is a real
+  // authentication problem, not a reason to fall back silently.
+  | { readonly _tag: "GitHubAuthenticationFailed" };
 
 /**
  * A worktree-mode session may store the local git rendering of the patch on
@@ -248,6 +253,7 @@ export class ReviewSessionPreparation {
     }
     const worktreePrepareInput: MutableWorktreePrepareInput = {
       profileId: input.profileId,
+      profile,
       host: input.pullRequest.host,
       owner: input.pullRequest.owner,
       repo: input.pullRequest.repo,
@@ -260,8 +266,22 @@ export class ReviewSessionPreparation {
       worktreePrepareInput.localPath = matchingRepo.localPath;
     const prepared =
       await this.dependencies.worktrees.prepare(worktreePrepareInput);
+    // Clear the journal's advance worktree record whenever no worktree
+    // actually exists on disk yet — an `ok` metadata-only result, or
+    // `prepare` failing before (or, for a marker-write failure, cleaning up
+    // after) ever creating one. This must run before any `abort` call below,
+    // because a storage fault that takes the cache root with it also makes
+    // `validatedDeletionSet` reject the recorded path, which would report
+    // `PreparationCleanupUnavailable` in place of this call's real failure.
+    // A path that DOES exist (a real "worktree" mode result) is left
+    // recorded so a later failure can still clean it up.
+    if (!(await exists(worktreePath))) {
+      const cleared = await journal.clearWorktree();
+      if (cleared._tag === "err")
+        return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
+    }
     if (prepared._tag === "err")
-      return await this.abort(journal, { _tag: "PreparationUnavailable" });
+      return await this.abort(journal, mapWorktreeFailure(prepared.error));
     const artifacts = await this.writeArtifacts({
       input,
       profile,
@@ -321,6 +341,8 @@ export class ReviewSessionPreparation {
       worktree: { path: parsedWorktreePath.value, headSha: revision.headSha },
       createdAt: this.dependencies.now(),
     };
+    if (prepared.value.mode === "metadata_only")
+      sessionInput.localCheckoutWarning = prepared.value.warning;
     if (artifacts.value.canonicalPatchHash !== undefined)
       sessionInput.canonicalPatchHash = artifacts.value.canonicalPatchHash;
     const session = createReviewSession(sessionInput);
@@ -515,6 +537,24 @@ export class ReviewSessionPreparation {
       release?.();
       if (this.locks.get(key) === current) this.locks.delete(key);
     }
+  }
+}
+
+/**
+ * Reuses the existing storage tag rather than adding a parallel one:
+ * `SessionStorageUnavailable` already means "preparation failed for a local
+ * storage reason" everywhere else in this module.
+ */
+function mapWorktreeFailure(
+  failure: WorktreeFailure,
+): PrepareReviewSessionFailure {
+  switch (failure._tag) {
+    case "GitHubAuthenticationFailed":
+      return { _tag: "GitHubAuthenticationFailed" };
+    case "WorktreeStorageUnavailable":
+      return { _tag: "SessionStorageUnavailable" };
+    case "GitWorktreeFailed":
+      return { _tag: "PreparationUnavailable" };
   }
 }
 

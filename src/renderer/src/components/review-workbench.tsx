@@ -880,6 +880,15 @@ export function ReviewWorkbench({
             </div>
           </div>
           <PendingReviewNotice pendingReview={actions.pendingReview} />
+          {model.localCheckout === undefined ? null : (
+            <p
+              className="border-t border-amber-500/30 bg-amber-500/10 px-1 py-2 text-sm text-amber-700 dark:text-amber-300"
+              data-review-local-checkout-warning
+              role="status"
+            >
+              {model.localCheckout.message}
+            </p>
+          )}
           <div className="flex items-center gap-1">
             <p
               className="text-xs text-muted-foreground"

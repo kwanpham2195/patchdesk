@@ -62,6 +62,9 @@ const reviewSessionSchema = v.strictObject({
   ),
   patchPath: v.string(),
   canonicalPatchHash: v.optional(v.string()),
+  localCheckoutWarning: v.optional(
+    v.picklist(["missing_local_path", "local_checkout_unavailable"]),
+  ),
   worktree: v.strictObject({ path: v.string(), headSha: v.string() }),
   pendingReview: v.optional(v.unknown()),
   findingReviewReceipts: v.optional(v.unknown()),
@@ -430,6 +433,8 @@ export function parseStoredReviewSession(
   if (prContext !== undefined) session.prContext = prContext;
   if (canonicalPatchHash !== undefined)
     session.canonicalPatchHash = canonicalPatchHash.value;
+  if (raw.output.localCheckoutWarning !== undefined)
+    session.localCheckoutWarning = raw.output.localCheckoutWarning;
   if (pendingReview.value !== undefined)
     session.pendingReview = pendingReview.value;
   if (findingReviewReceipts.value !== undefined)

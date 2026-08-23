@@ -33,7 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { requestJson } from "../api-client";
+import { PatchdeskApiError, requestJson } from "../api-client";
 import {
   parseEnvironmentCheckResponse,
   parseGitHubAccessCheckResponse,
@@ -113,7 +113,16 @@ export function InboxFlow({
         setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
         onOpenWorkbench(parsed, initialSection);
       } catch (cause: unknown) {
-        const detail = cause instanceof Error ? cause.message : String(cause);
+        // Mirrors the dashboard's `github_auth` copy above, adapted from
+        // refreshing pull requests to opening one: the generic "auth" API
+        // message doesn't name the fix, and opening a Review is exactly
+        // where a missing profile credential first becomes user-visible.
+        const detail =
+          cause instanceof PatchdeskApiError && cause.kind === "auth"
+            ? "GitHub authentication is required to open this Review. Run gh auth login for the exact GitHub account entered in Settings -> Workspace."
+            : cause instanceof Error
+              ? cause.message
+              : String(cause);
         setOpenError(
           `Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`,
         );

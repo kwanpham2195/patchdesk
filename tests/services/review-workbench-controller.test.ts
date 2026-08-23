@@ -191,6 +191,33 @@ describe("ReviewWorkbenchController", () => {
     expect(value.preparation.prepare).not.toHaveBeenCalled();
   });
 
+  it("maps a preparation authentication failure onto the github_auth reason when opening a fresh Review", async () => {
+    const value = fixture({
+      reviews: {
+        load: vi.fn(async () => err({ reason: "not_found" })),
+        save: vi.fn(async () => ok(undefined)),
+      },
+    });
+    value.preparation.prepare.mockImplementation(
+      async () =>
+        // SAFETY: the fixture's initial `vi.fn(async () => ok({...}))` fixes
+        // this mock's inferred error type to `never`; this override only
+        // ever returns `err`, so the cast is exhaustively true at every call.
+        err({ _tag: "GitHubAuthenticationFailed" }) as never,
+    );
+
+    await expect(
+      value.controller.open({
+        profileId,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "github_auth" } });
+    expect(value.lifecycle.reviews.save).not.toHaveBeenCalled();
+  });
+
   it("starts fresh automatically when an upgrade left the current session unavailable", async () => {
     let storedReview = review;
     let sessionAvailable = false;
@@ -275,33 +302,80 @@ describe("ReviewWorkbenchController", () => {
     expect(value.preparation.prepare).toHaveBeenCalledOnce();
   });
 
-  it("quarantines a rejected schema-5 session and rebuilds a usable schema-6 Review", async () => {
+  it("quarantines a rejected schema-5 session, saves schema 6, and reopens it", async () => {
+    const replacementSession = {
+      schemaVersion: 6 as const,
+      id: sessionId,
+      key: { ...identity, headSha, baseSha },
+      createdAt: at,
+    };
+    const representedRemote = review.representedRemote;
+    if (representedRemote === undefined)
+      throw new Error("Test fixture requires a represented snapshot");
+    const savedSessions = new Map<string, typeof replacementSession>();
+    let schemaFivePresent = true;
+    let storedReview = review;
     const artifacts = {
-      quarantineIfPresent: vi.fn(async () =>
-        ok({ entryName: "session.schema-5.backup" }),
-      ),
+      quarantineIfPresent: vi.fn(async () => {
+        schemaFivePresent = false;
+        return ok({ entryName: "session.schema-5.backup" });
+      }),
       quarantineReview: vi.fn(async () => ok({ entryName: "review.backup" })),
     };
     const sessions = {
-      load: vi.fn(async () =>
-        err({
-          _tag: "StorageFailure" as const,
-          operation: "read" as const,
-          reason: "invalid_stored_value" as const,
-        }),
-      ),
-    };
-    const value = fixture({ sessions, artifacts });
-
-    await expect(
-      value.controller.open({
-        profileId,
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        number: 42,
+      load: vi.fn(async (_profileId: string, requestedSessionId: string) => {
+        if (requestedSessionId === sessionId && schemaFivePresent)
+          return err({
+            _tag: "StorageFailure" as const,
+            operation: "read" as const,
+            reason: "invalid_stored_value" as const,
+          });
+        const saved = savedSessions.get(requestedSessionId);
+        return saved === undefined
+          ? err({
+              _tag: "StorageFailure" as const,
+              operation: "read" as const,
+              reason: "not_found" as const,
+            })
+          : ok(saved);
       }),
-    ).resolves.toEqual({ _tag: "ok", value: projection });
+    };
+    const reviews = {
+      load: vi.fn(async () => ok(storedReview)),
+      save: vi.fn(async (saved) => {
+        storedReview = saved;
+        return ok(undefined);
+      }),
+    };
+    const refresh = {
+      refresh: vi.fn(async () => {
+        storedReview = {
+          ...storedReview,
+          representedRemote,
+        };
+        return ok(projection);
+      }),
+    };
+    const value = fixture({ sessions, artifacts, reviews, refresh });
+    value.preparation.prepare.mockImplementation(async () => {
+      savedSessions.set(replacementSession.id, replacementSession);
+      return ok({
+        session: replacementSession,
+        disposition: "prepared" as const,
+      });
+    });
+    const input = {
+      profileId,
+      host: "github.com",
+      owner: "centraldigital",
+      repo: "patchdesk",
+      number: 42,
+    };
+
+    await expect(value.controller.open(input)).resolves.toEqual({
+      _tag: "ok",
+      value: projection,
+    });
     expect(artifacts.quarantineIfPresent).toHaveBeenCalledWith(
       profileId,
       sessionId,
@@ -310,12 +384,16 @@ describe("ReviewWorkbenchController", () => {
       profileId,
       reviewId,
     );
-    expect(value.preparation.prepare).toHaveBeenCalledOnce();
-    const prepared = await value.preparation.prepare.mock.results[0]?.value;
-    expect(prepared).toMatchObject({
-      _tag: "ok",
-      value: { session: { key: { headSha, baseSha } } },
+    expect(savedSessions.get(storedReview.currentSessionId)).toMatchObject({
+      schemaVersion: 6,
+      key: { headSha, baseSha },
     });
+
+    await expect(value.controller.open(input)).resolves.toEqual({
+      _tag: "ok",
+      value: projection,
+    });
+    expect(value.preparation.prepare).toHaveBeenCalledOnce();
   });
 
   it("quarantines a corrupt Review record and rebuilds the Review fresh", async () => {

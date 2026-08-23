@@ -17,6 +17,7 @@ import {
   resolve,
   sep,
 } from "node:path";
+import * as v from "valibot";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
@@ -59,6 +60,12 @@ type ValidatedDeletionSet = {
   readonly worktree?: JournalWorktree;
 };
 
+/** Mutable draft of `ValidatedDeletionSet`, built in statements so the
+ * optional `worktree` field is added only when present. */
+type MutableValidatedDeletionSet = {
+  -readonly [K in keyof ValidatedDeletionSet]: ValidatedDeletionSet[K];
+};
+
 /**
  * Durable record of one in-flight Session preparation. It stays in the main
  * process: it is never projected to the renderer and never logged. The
@@ -74,6 +81,61 @@ type JournalContent = {
   readonly targets: ReadonlyArray<string>;
   readonly worktree?: JournalWorktree;
 };
+
+/**
+ * `preparation.journal.json` is a durable record Patchdesk fully owns on
+ * both the write and read side, so per ADR 0022 structural drift fails the
+ * whole read closed. `v.looseObject` (rather than `v.strictObject`) matches
+ * this file's existing tolerance for unrecognized fields on real journals
+ * already on disk: an unknown field never invalidated the journal before
+ * this schema existed, and it still doesn't now, though only the fields
+ * named below ever survive into a parsed `JournalContent`.
+ */
+const journalWorktreeSchema = v.looseObject({
+  path: v.string(),
+  repositoryPath: v.string(),
+});
+
+const journalContentSchema = v.looseObject({
+  schemaVersion: v.literal(1),
+  profileId: v.string(),
+  sessionId: v.string(),
+  state: v.picklist(["preparing", "committing"]),
+  stagingRoot: v.string(),
+  targets: v.array(v.string()),
+  worktree: v.optional(journalWorktreeSchema),
+});
+
+/** Mutable draft of `JournalContent`, built in statements so the optional
+ * `worktree` field is added only when present. */
+type MutableJournalContent = {
+  -readonly [K in keyof JournalContent]: JournalContent[K];
+};
+
+function toJournalWorktree(
+  worktree: v.InferOutput<typeof journalWorktreeSchema> | undefined,
+): JournalWorktree | undefined {
+  return worktree === undefined
+    ? undefined
+    : { path: worktree.path, repositoryPath: worktree.repositoryPath };
+}
+
+/** Project a schema-validated journal payload onto the narrower `JournalContent` shape. */
+function toJournalContent(
+  parsed: v.InferOutput<typeof journalContentSchema>,
+): JournalContent {
+  const worktree = toJournalWorktree(parsed.worktree);
+  const content: MutableJournalContent = {
+    schemaVersion: 1,
+    profileId: parsed.profileId,
+    sessionId: parsed.sessionId,
+    state: parsed.state,
+    stagingRoot: parsed.stagingRoot,
+    targets: parsed.targets,
+  };
+  if (worktree !== undefined) content.worktree = worktree;
+  return content;
+}
 
 /**
  * Tracks artifact paths created while preparing an immutable Session so a
@@ -117,10 +179,17 @@ export class ReviewPreparationJournal {
   }
 
   get profileId(): WorkspaceProfileId {
+    // SAFETY: `this.content.profileId` is set once, here in `begin()`, directly
+    // from its typed `profileId: WorkspaceProfileId` parameter, and never
+    // reassigned afterward. `recover()` builds journals from unvalidated file
+    // content with plain-string ids, but those instances stay private to
+    // `recoverOne` and never reach a caller of this getter.
     return this.content.profileId as WorkspaceProfileId;
   }
 
   get sessionId(): ReviewSessionId {
+    // SAFETY: mirrors `profileId` above — set once in `begin()` from a typed
+    // `sessionId: ReviewSessionId` parameter and never reassigned.
     return this.content.sessionId as ReviewSessionId;
   }
 
@@ -147,7 +216,10 @@ export class ReviewPreparationJournal {
         ? ok(undefined)
         : err({ _tag: "PreparationJournalFailed" });
     }
-    const content = parseJournal(stored.value);
+    const parsed = v.safeParse(journalContentSchema, stored.value);
+    const content = parsed.success
+      ? toJournalContent(parsed.output)
+      : undefined;
     if (content === undefined) {
       await recordJournalDiagnostic(
         diagnostics,
@@ -195,6 +267,30 @@ export class ReviewPreparationJournal {
   }
 
   /**
+   * Remove a pre-recorded worktree when preparation never created one on
+   * disk (a metadata-only outcome, or an authentication/storage failure
+   * reached before `git worktree add` ran).
+   *
+   * A merely absent worktree path does not need this: `validatedDeletionSet`
+   * checks it with `isSafeOwnedPath` without `requirePath`, and resolves
+   * through the nearest existing parent, so a missing directory still
+   * validates. What this protects is the narrower case where the cache root
+   * itself is gone or unreadable — the same storage fault that makes
+   * `mkdir` fail. There `realpath` on the root fails, validation returns
+   * undefined, and `complete`/`cleanup` would strand this journal forever
+   * and report `PreparationCleanupUnavailable` in place of the real failure.
+   *
+   * The caller must confirm the worktree really is absent from disk first —
+   * this never removes the record of a worktree that was actually created,
+   * because that record is the only way to find it again.
+   */
+  async clearWorktree(): Promise<Result<void, PreparationJournalFailure>> {
+    const { worktree: _worktree, ...contentWithoutWorktree } = this.content;
+    this.content = contentWithoutWorktree;
+    return this.write();
+  }
+
+  /**
    * Mark that every final artifact exists and the Session save may begin. A
    * committing journal tells recovery the persisted Session keeps its artifacts.
    */
@@ -226,6 +322,7 @@ export class ReviewPreparationJournal {
       return err({ _tag: "PreparationCleanupFailed" });
     let failed = false;
     for (const target of [...deletion.targets].reverse()) {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- reverse dependency order is the point of this sweep; a parallel one could remove a container before the artifact inside it and lose the per-target failure signal that keeps this journal for retry
       await rm(target, { recursive: true, force: true }).catch(() => {
         failed = true;
       });
@@ -278,7 +375,10 @@ export class ReviewPreparationJournal {
         );
         return { recovered: 0, failed: 1 };
       }
-      const content = parseJournal(stored.value);
+      const parsed = v.safeParse(journalContentSchema, stored.value);
+      const content = parsed.success
+        ? toJournalContent(parsed.output)
+        : undefined;
       if (content === undefined) {
         await recordRecoveredJournalDiagnostic(
           diagnostics,
@@ -430,16 +530,16 @@ export class ReviewPreparationJournal {
     ) {
       return undefined;
     }
-    return {
+    const deletion: MutableValidatedDeletionSet = {
       profileId: profileId.value,
       sessionId: sessionId.value,
       journalFile: expectedJournalFile,
       stagingRoot: expectedStagingRoot,
       targets: this.content.targets,
-      ...(this.content.worktree === undefined
-        ? {}
-        : { worktree: this.content.worktree }),
     };
+    if (this.content.worktree !== undefined)
+      deletion.worktree = this.content.worktree;
+    return deletion;
   }
 }
 
@@ -567,34 +667,9 @@ function groupJournalPaths(
   return [...groups.values()];
 }
 
-function parseJournal(input: unknown): JournalContent | undefined {
-  if (typeof input !== "object" || input === null) return undefined;
-  const raw = input as Record<string, unknown>;
-  if (
-    raw.schemaVersion !== 1 ||
-    typeof raw.profileId !== "string" ||
-    typeof raw.sessionId !== "string" ||
-    (raw.state !== "preparing" && raw.state !== "committing") ||
-    typeof raw.stagingRoot !== "string" ||
-    !Array.isArray(raw.targets) ||
-    raw.targets.some((target) => typeof target !== "string")
-  ) {
-    return undefined;
-  }
-  const worktree = parseJournalWorktree(raw.worktree);
-  if (raw.worktree !== undefined && worktree === undefined) return undefined;
-  return {
-    schemaVersion: 1,
-    profileId: raw.profileId,
-    sessionId: raw.sessionId,
-    state: raw.state,
-    stagingRoot: raw.stagingRoot,
-    targets: raw.targets as ReadonlyArray<string>,
-    ...(worktree === undefined ? {} : { worktree }),
-  };
-}
-
-async function exists(path: string): Promise<boolean> {
+/** Exported so `ReviewSessionPreparation` can check before deciding whether
+ * `clearWorktree` is safe to call for a metadata-only outcome. */
+export async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
@@ -644,12 +719,4 @@ function isContainedPath(root: string, path: string): boolean {
       !relation.startsWith(`..${sep}`) &&
       !isAbsolute(relation))
   );
-}
-
-function parseJournalWorktree(input: unknown): JournalWorktree | undefined {
-  if (typeof input !== "object" || input === null) return undefined;
-  const raw = input as Record<string, unknown>;
-  return typeof raw.path === "string" && typeof raw.repositoryPath === "string"
-    ? { path: raw.path, repositoryPath: raw.repositoryPath }
-    : undefined;
 }

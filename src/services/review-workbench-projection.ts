@@ -107,6 +107,10 @@ export type ReviewWorkbenchProjection = {
     readonly status: "open" | "merged" | "closed";
   };
   readonly session: WorkbenchSessionProjection;
+  readonly localCheckout?: {
+    readonly state: "metadata_only";
+    readonly message: string;
+  };
   readonly revision: {
     readonly reviewedHeadSha: GitSha;
     readonly patchHash?: ContentHash;
@@ -480,6 +484,10 @@ export class ReviewWorkbenchProjectionService {
       mergeReadiness,
       mergeReasons,
     };
+    const localCheckout = projectLocalCheckoutWarning(
+      session.localCheckoutWarning,
+    );
+    if (localCheckout !== undefined) projection.localCheckout = localCheckout;
     if (fullPatch !== undefined) projection.fullPatch = fullPatch;
     if (pullRequest !== undefined) projection.pullRequest = pullRequest;
     return ok(projection);
@@ -823,6 +831,19 @@ function projectSession(session: ReviewSession): WorkbenchSessionProjection {
       prNumber: session.key.prNumber,
       headSha: session.key.headSha,
     },
+  };
+}
+
+function projectLocalCheckoutWarning(
+  warning: ReviewSession["localCheckoutWarning"],
+): ReviewWorkbenchProjection["localCheckout"] {
+  if (warning === undefined) return undefined;
+  return {
+    state: "metadata_only",
+    message:
+      warning === "missing_local_path"
+        ? "No local checkout is configured. This Review uses the GitHub snapshot; local file expansion and commit inspection are unavailable."
+        : "The local checkout could not be prepared. This Review uses the GitHub snapshot; local file expansion and commit inspection are unavailable.",
   };
 }
 

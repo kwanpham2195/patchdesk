@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -78,6 +78,11 @@ function value<T>(result: Result<T, unknown>): T {
 }
 
 type DiffInput = Parameters<GitHubReader["getPullRequestDiff"]>[0];
+
+type GitFailureOptions = {
+  readonly failFetchNumber?: number;
+  readonly failWorktreeAdd?: boolean;
+};
 
 type GithubReaderOptions = {
   readonly bases?: ReadonlyArray<GitSha | undefined>;
@@ -160,22 +165,27 @@ function github(
   };
 }
 
-function git(): GitReadExecutor & {
+function git(options: GitFailureOptions = {}): GitReadExecutor & {
   readonly calls: ReadonlyArray<ReadonlyArray<string>>;
 } {
   const calls: ReadonlyArray<string>[] = [];
+  let fetchCount = 0;
   return {
     calls,
     async run(argv) {
       calls.push(argv);
       if (argv.includes("--show-toplevel"))
         return ok({ stdout: "/fixture/repository\n" });
-      if (
-        argv.includes("status") ||
-        argv.includes("fetch") ||
-        argv.includes("worktree")
-      )
+      if (options.failWorktreeAdd === true && argv.includes("add"))
+        return err({ _tag: "GitReadFailed" });
+      if (argv.includes("status") || argv.includes("worktree"))
         return ok({ stdout: "" });
+      if (argv.includes("fetch")) {
+        fetchCount += 1;
+        if (fetchCount === options.failFetchNumber)
+          return err({ _tag: "GitReadFailed" });
+        return ok({ stdout: "" });
+      }
       if (argv.includes("rev-parse")) return ok({ stdout: `${baseSha}\n` });
       return err({ _tag: "GitReadFailed" });
     },
@@ -187,6 +197,9 @@ async function setup(
     readonly heads?: ReadonlyArray<GitSha>;
     readonly bases?: ReadonlyArray<GitSha | undefined>;
     readonly localPath?: string;
+    readonly gitFailure?: GitFailureOptions;
+    readonly credentialFailure?: boolean;
+    readonly ghUnresolvable?: boolean;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-preparation-"));
@@ -230,7 +243,18 @@ async function setup(
     github: reader,
     paths,
     now: () => now,
-    worktrees: new ReviewWorktreeService(paths, git()),
+    worktrees: new ReviewWorktreeService(
+      paths,
+      git(options.gitFailure),
+      {
+        environmentFor: async () =>
+          options.credentialFailure === true
+            ? err({ _tag: "CommandAuthenticationRequired" })
+            : ok({ GH_TOKEN: "profile-token" }),
+        forget: () => undefined,
+      },
+      async () => (options.ghUnresolvable === true ? undefined : "/usr/bin/gh"),
+    ),
     context: new ReviewContextService(),
     artifacts: new ReviewArtifactStorage(paths, () => now),
   });
@@ -308,6 +332,151 @@ describe("ReviewSessionPreparation", () => {
       ),
     ).toBe(false);
     expect(session.pr.baseSha).toBe(baseSha);
+  });
+
+  it("saves a metadata-only session when the managed head fetch fails", async () => {
+    const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
+    roots.push(localRepo);
+    const fixture = await setup({
+      localPath: localRepo,
+      gitFailure: { failFetchNumber: 2 },
+    });
+
+    const prepared = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(prepared).toMatchObject({
+      _tag: "ok",
+      value: {
+        disposition: "prepared",
+        session: { localCheckoutWarning: "local_checkout_unavailable" },
+      },
+    });
+    if (prepared._tag === "err") return;
+    expect(
+      fixture.reader.diffCalls.every(
+        (input) =>
+          input.fetchedRefs === undefined && input.snapshot !== undefined,
+      ),
+    ).toBe(true);
+    await expect(
+      fixture.sessions.load(profileId, prepared.value.session.id),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { localCheckoutWarning: "local_checkout_unavailable" },
+    });
+    expect(
+      await present(
+        join(
+          fixture.paths.sessionDirectory(profileId, prepared.value.session.id),
+          "preparation.journal.json",
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("saves a metadata-only session when worktree creation fails", async () => {
+    const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
+    roots.push(localRepo);
+    const fixture = await setup({
+      localPath: localRepo,
+      gitFailure: { failWorktreeAdd: true },
+    });
+
+    const prepared = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(prepared).toMatchObject({
+      _tag: "ok",
+      value: {
+        disposition: "prepared",
+        session: { localCheckoutWarning: "local_checkout_unavailable" },
+      },
+    });
+    if (prepared._tag === "err") return;
+    expect(fixture.reader.diffCalls[0]).toMatchObject({
+      snapshot: { baseSha, headSha },
+    });
+    expect(fixture.reader.diffCalls[0]?.fetchedRefs).toBeUndefined();
+  });
+
+  it("fails closed as an authentication failure when the profile credential is unavailable, rather than falling back to metadata-only", async () => {
+    const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
+    roots.push(localRepo);
+    const fixture = await setup({
+      localPath: localRepo,
+      credentialFailure: true,
+    });
+
+    const result = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubAuthenticationFailed" },
+    });
+  });
+
+  it("fails closed as an authentication failure when gh cannot be resolved", async () => {
+    const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
+    roots.push(localRepo);
+    const fixture = await setup({
+      localPath: localRepo,
+      ghUnresolvable: true,
+    });
+
+    const result = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "GitHubAuthenticationFailed" },
+    });
+  });
+
+  it("maps a worktree storage failure onto the existing SessionStorageUnavailable tag, and removes the created worktree", async () => {
+    const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
+    roots.push(localRepo);
+    const fixture = await setup({ localPath: localRepo });
+    const worktreeSessionId = createReviewSessionId({
+      profileId,
+      host: pullRequest.host,
+      owner: pullRequest.owner,
+      repo: pullRequest.repo,
+      prNumber: pullRequest.number,
+      headSha,
+      baseSha,
+    });
+    const worktreePath = fixture.paths.worktreeDirectory(
+      profileId,
+      worktreeSessionId,
+    );
+    // A regular file already at the worktree path makes the in-branch
+    // `mkdir(path, { recursive: true })` throw exactly like a real storage
+    // failure, without depending on filesystem permissions.
+    await mkdir(dirname(worktreePath), { recursive: true });
+    await writeFile(worktreePath, "not a directory", "utf8");
+
+    const result = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "SessionStorageUnavailable" },
+    });
+    await expect(access(worktreePath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("resumes the deterministic prepared session without rewriting the patch", async () => {

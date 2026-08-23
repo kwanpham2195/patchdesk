@@ -39,11 +39,17 @@ import {
 } from "../services/storage-management-service";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import {
+  GitHubCliCredentials,
+  type GitHubCredentials,
+} from "../adapters/github/github-credentials";
+import {
   CommandRunner,
+  type CommandRequest,
   runWithRequestAbortSignal,
 } from "../adapters/github/command-runner";
 import { listAuthenticatedGitHubAccounts } from "../adapters/github/github-auth-accounts";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
+import { discoverExecutable } from "../adapters/process/executable-discovery";
 import type {
   GitHubDirectSummaryGateway,
   GitHubMergeWriter,
@@ -335,6 +341,15 @@ export type LocalApiConfiguration = {
   readonly trash?: TrashMover;
   /** Test-only read-only git seam used by storage cache clear. */
   readonly readOnlyGit?: GitReadExecutor;
+  /** Test-only profile credential seam; production resolves the configured gh account. */
+  readonly githubCredentials?: GitHubCredentials;
+  /**
+   * Test-only `gh` executable resolver seam. Production discovers `gh` fresh
+   * on every managed fetch (via `discoverExecutable`, which adds the macOS
+   * Desktop PATH fallback) so a credential helper Git spawns through
+   * `/bin/sh` can find it even when Electron was launched from Finder.
+   */
+  readonly resolveGitHubCli?: () => Promise<string | undefined>;
   /** Composition-root lifecycle gate shared by every durable review mutation. */
   readonly lifecycleGate?: ReviewLifecycleGate;
   /** Composition-root coordinator shared by all Review-scoped mutations. */
@@ -366,6 +381,33 @@ export type LocalApiServer = {
   readonly url: URL;
   stop(): Promise<void>;
 };
+
+const defaultGitReadTimeoutMs = 15_000;
+const managedFetchTimeoutMs = 120_000;
+
+/** Creates the main-process Git seam with profile environments and a longer managed-fetch timeout. */
+export function createReadOnlyGitExecutor(
+  commands: Pick<CommandRunner, "runText">,
+): GitReadExecutor {
+  return {
+    async run(
+      argv: ReadonlyArray<string>,
+      environment?: Readonly<Record<string, string>>,
+    ) {
+      let request: CommandRequest = {
+        argv,
+        timeoutMs: argv.includes("fetch")
+          ? managedFetchTimeoutMs
+          : defaultGitReadTimeoutMs,
+      };
+      if (environment !== undefined) request = { ...request, environment };
+      const output = await commands.runText(request);
+      return output._tag === "ok"
+        ? ok({ stdout: output.value })
+        : err({ _tag: "GitReadFailed" as const });
+    },
+  };
+}
 
 /** Starts the Hono API on a random loopback port with capability and origin checks. */
 export async function startLocalApiServer(
@@ -399,15 +441,13 @@ export async function startLocalApiServer(
       meta: { stderr },
     });
   });
-  const github = configuration.github ?? new GitHubAdapter(commands);
-  const readOnlyGit = {
-    async run(argv: ReadonlyArray<string>) {
-      const output = await commands.runText({ argv, timeoutMs: 15_000 });
-      return output._tag === "ok"
-        ? ok({ stdout: output.value })
-        : err({ _tag: "GitReadFailed" as const });
-    },
-  };
+  const credentials =
+    configuration.githubCredentials ?? new GitHubCliCredentials(commands);
+  const github =
+    configuration.github ?? new GitHubAdapter(commands, credentials);
+  const readOnlyGit = createReadOnlyGitExecutor(commands);
+  const resolveGitHubCli =
+    configuration.resolveGitHubCli ?? (() => discoverExecutable("gh"));
   const diagnostics =
     configuration.diagnostics ??
     new ReviewDiagnosticService(paths, () => new Date().toISOString());
@@ -474,7 +514,12 @@ export async function startLocalApiServer(
   );
   await ReviewPreparationJournal.recover(
     paths,
-    new ReviewWorktreeService(paths, readOnlyGit),
+    new ReviewWorktreeService(
+      paths,
+      readOnlyGit,
+      credentials,
+      resolveGitHubCli,
+    ),
     sessions,
     lifecycleGate,
     diagnostics,
@@ -516,7 +561,12 @@ export async function startLocalApiServer(
     // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
     // instant, satisfying the branded IsoTimestamp contract this callback fills.
     now: () => new Date().toISOString() as never,
-    worktrees: new ReviewWorktreeService(paths, readOnlyGit),
+    worktrees: new ReviewWorktreeService(
+      paths,
+      readOnlyGit,
+      credentials,
+      resolveGitHubCli,
+    ),
     context: new ReviewContextService(),
     artifacts: new ReviewArtifactStorage(
       paths,

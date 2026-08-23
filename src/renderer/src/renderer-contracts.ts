@@ -884,6 +884,12 @@ const workbenchProjectionSchema = v.strictObject({
     status: v.picklist(["open", "merged", "closed"]),
   }),
   session: workbenchSessionSchema,
+  localCheckout: v.optional(
+    v.strictObject({
+      state: v.literal("metadata_only"),
+      message: v.string(),
+    }),
+  ),
   revision: v.strictObject({
     reviewedHeadSha: v.pipe(v.string(), v.minLength(7)),
     patchHash: v.optional(v.pipe(v.string(), v.minLength(64))),

@@ -56,9 +56,12 @@ async function fixture() {
 }
 
 function worktrees(paths: PatchdeskPaths): ReviewWorktreeService {
-  return new ReviewWorktreeService(paths, {
-    run: async () => ok({ stdout: "" }),
-  });
+  return new ReviewWorktreeService(
+    paths,
+    { run: async () => ok({ stdout: "" }) },
+    { environmentFor: async () => ok({}), forget: () => undefined },
+    async () => "/usr/local/bin/gh",
+  );
 }
 
 async function writePersistedJournal(
@@ -166,6 +169,39 @@ describe("ReviewPreparationJournal", () => {
     await expect(
       ReviewPreparationJournal.activeFor(paths, profile, sessionId),
     ).resolves.toEqual({ _tag: "ok", value: undefined });
+  });
+
+  it("completes and removes the journal after a metadata-only preparation clears its never-created worktree", async () => {
+    const subject = await fixture();
+    const journal = must(
+      await ReviewPreparationJournal.begin(
+        subject.paths,
+        subject.profileId,
+        subject.sessionId,
+      ),
+    );
+    // Mirrors `ReviewSessionPreparation`: it records the worktree it expects
+    // to create before calling `prepare`, then clears the record when
+    // `prepare` returns metadata-only without ever creating one. Without
+    // clearing it, `complete` would find the recorded path doesn't resolve
+    // and leave the journal behind (see `validatedDeletionSet`).
+    expect(
+      (
+        await journal.recordWorktree({
+          path: subject.paths.worktreeDirectory(
+            subject.profileId,
+            subject.sessionId,
+          ),
+          repositoryPath: join(subject.root, "repo"),
+        })
+      )._tag,
+    ).toBe("ok");
+    expect((await journal.clearWorktree())._tag).toBe("ok");
+
+    await journal.complete();
+    await journal.complete();
+
+    await expect(access(subject.journalFile)).rejects.toThrow();
   });
 
   it("preserves an outside sentinel when a persisted target is absolute", async () => {

@@ -67,7 +67,9 @@ const identity = {
 const reviewId = createReviewId(identity);
 // SAFETY: a 64-char hex string already satisfies ContentHash's runtime shape.
 const hash = "b".repeat(64) as never;
-function session() {
+function session(
+  localCheckoutWarning?: "missing_local_path" | "local_checkout_unavailable",
+) {
   // SAFETY: this whole fixture is cast `as never` because it stands in for a
   // full, internal `ReviewSession` record the service under test never
   // re-validates (it is handed back verbatim by the mocked `sessions.load`);
@@ -115,6 +117,7 @@ function session() {
     createdAt: at,
     updatedAt: at,
     // SAFETY: see the file-level note above `function session()`.
+    localCheckoutWarning,
   } as never;
 }
 // SAFETY: this whole fixture is cast `as never` because it stands in for a
@@ -194,9 +197,14 @@ function review(
     ...overrides,
   } as never;
 }
-function fixture(stable = review()) {
+function fixture(
+  stable = review(),
+  localCheckoutWarning?: "missing_local_path" | "local_checkout_unavailable",
+) {
   const profiles = { load: vi.fn(async () => ok({ ghAccount: "fixture" })) };
-  const sessions = { load: vi.fn(async () => ok(session())) };
+  const sessions = {
+    load: vi.fn(async () => ok(session(localCheckoutWarning))),
+  };
   const reviews = { load: vi.fn(async () => ok(stable)) };
   const insights = {
     loadTyped: vi.fn(async () => err({ reason: "not_found" })),
@@ -251,6 +259,29 @@ describe("ReviewWorkbenchProjectionService", () => {
     expect(value.profiles.load).toHaveBeenCalledOnce();
     expect(value.sessions.load).toHaveBeenCalledOnce();
     expect(value.reviews.load).toHaveBeenCalledOnce();
+  });
+
+  it("projects the local checkout failure as a clear metadata-only Review warning", async () => {
+    const value = fixture(undefined, "local_checkout_unavailable");
+
+    await expect(
+      value.service.loadRepresented({
+        profileId,
+        sessionId,
+        snapshot,
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        localCheckout: {
+          state: "metadata_only",
+          message:
+            "The local checkout could not be prepared. This Review uses the GitHub snapshot; local file expansion and commit inspection are unavailable.",
+        },
+      },
+    });
   });
 
   it("carries real {name,color} labels through to the renderer-facing pull request shape", async () => {

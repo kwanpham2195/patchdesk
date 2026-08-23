@@ -41,6 +41,7 @@ export type ReviewWorkbenchFailure = {
     | "invalid_input"
     | "not_found"
     | "github_read"
+    | "github_auth"
     | "head_changed"
     | "storage"
     | "terminal"
@@ -578,6 +579,8 @@ function mapPreparationFailure(
         return { reason: "not_found" };
       case "GitHubReadUnavailable":
         return { reason: "github_read" };
+      case "GitHubAuthenticationFailed":
+        return { reason: "github_auth" };
       case "HeadChanged":
         return { reason: "head_changed" };
       case "ProfileUnavailable":
