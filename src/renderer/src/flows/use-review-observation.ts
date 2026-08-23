@@ -69,6 +69,7 @@ export function useReviewObservation({
   const generationRef = useRef(0);
   const detectInFlightRef = useRef(false);
   const commandInFlightCountRef = useRef(0);
+  const directCommandGenerationRef = useRef(0);
   const focusTimerRef = useRef<number | undefined>(undefined);
   const onWorkbenchPatchRef = useLatestCommitted(onWorkbenchPatch);
   const refreshInFlightCountRef = useRef(0);
@@ -109,6 +110,7 @@ export function useReviewObservation({
       return;
     detectInFlightRef.current = true;
     const generation = generationRef.current;
+    const directCommandGeneration = directCommandGenerationRef.current;
     const key = snapshotKey(wb);
     try {
       const journal = recentWritesRef.current;
@@ -124,7 +126,11 @@ export function useReviewObservation({
             : { ...detectUpdatesBody, recentWrites: journal },
       });
       const current = workbenchRef.current;
-      if (generationRef.current !== generation || snapshotKey(current) !== key)
+      if (
+        generationRef.current !== generation ||
+        directCommandGenerationRef.current !== directCommandGeneration ||
+        snapshotKey(current) !== key
+      )
         return;
       const observation = isReviewObservation(value);
       if (observation !== undefined) {
@@ -260,6 +266,7 @@ export function useReviewObservation({
 
   const runDirectCommand = useCallback(
     async <T>(operation: () => Promise<T>): Promise<T> => {
+      directCommandGenerationRef.current += 1;
       commandInFlightCountRef.current += 1;
       try {
         return await operation();

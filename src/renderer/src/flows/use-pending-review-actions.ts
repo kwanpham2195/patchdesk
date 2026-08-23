@@ -21,6 +21,8 @@ type AppendRecentWrites = (
   entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>,
 ) => void;
 
+type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
+
 type PendingReviewCommand =
   | {
       readonly _tag: "Start" | "AddThread";
@@ -64,6 +66,7 @@ export type PendingReviewActionsInput = {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
+  readonly runDirectCommand: RunDirectCommand;
   readonly appendRecentWrites: AppendRecentWrites;
 };
 
@@ -124,11 +127,21 @@ function threadIdsOf(
   });
 }
 
+function recoveryActionOf(
+  command: PendingReviewCommand,
+): "start" | "add_thread" | "submit" | "discard" {
+  if (command._tag === "Start") return "start";
+  if (command._tag === "AddThread") return "add_thread";
+  if (command._tag === "Submit") return "submit";
+  return "discard";
+}
+
 /** Owns pending-review commands, recovery, dialog state, and thread journaling. */
 export function usePendingReviewActions({
   workbench,
   onWorkbenchReplace,
   onWorkbenchPatch,
+  runDirectCommand,
   appendRecentWrites,
 }: PendingReviewActionsInput): PendingReviewActionsResult {
   const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
@@ -165,6 +178,8 @@ export function usePendingReviewActions({
         command._tag === "Discard"
           ? threadIdsOf(workbench.pendingReview)
           : [];
+      const recoveryAction = recoveryActionOf(command);
+      let recoveryRequired = false;
       setPendingReviewBusy(true);
       try {
         const expected = {
@@ -200,15 +215,33 @@ export function usePendingReviewActions({
                     anchor: command.anchor,
                     body: command.body,
                   };
-        const value = await requestJson("/v1/reviews/pending-review/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: requestCommand,
-          },
-        });
+        const value = await runDirectCommand(() =>
+          requestJson("/v1/reviews/pending-review/command", {
+            method: "POST",
+            body: {
+              profileId: workbench.session.key.profileId,
+              reviewId: workbench.review.id,
+              command: requestCommand,
+            },
+          }),
+        );
         const projection = applyPendingReviewProjection(value);
+        if (projection === undefined) {
+          recoveryRequired = true;
+          onWorkbenchPatch({
+            pendingReview: {
+              state: "recovery_required",
+              action: recoveryAction,
+            },
+          });
+          throw new PatchdeskApiError(
+            "outcome_unknown",
+            200,
+            false,
+            "invalid-pending-review-projection",
+            "GitHub could not confirm this write. Check GitHub again before trying again.",
+          );
+        }
         setFinishDialogError(undefined);
         if (command._tag === "Start" || command._tag === "AddThread") {
           const priorThreadIdSet = new Set(priorThreadIds);
@@ -241,17 +274,12 @@ export function usePendingReviewActions({
             cause.kind === "timeout")
         ) {
           const projected = applyPendingReviewProjection(cause.responseBody);
-          if (projected === undefined) {
-            const action =
-              command._tag === "Start"
-                ? "start"
-                : command._tag === "AddThread"
-                  ? "add_thread"
-                  : command._tag === "Submit"
-                    ? "submit"
-                    : "discard";
+          if (projected === undefined && !recoveryRequired) {
             onWorkbenchPatch({
-              pendingReview: { state: "recovery_required", action },
+              pendingReview: {
+                state: "recovery_required",
+                action: recoveryAction,
+              },
             });
           }
         }
@@ -264,6 +292,7 @@ export function usePendingReviewActions({
       appendRecentWrites,
       applyPendingReviewProjection,
       onWorkbenchPatch,
+      runDirectCommand,
       workbench,
     ],
   );

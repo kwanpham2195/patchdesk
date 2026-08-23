@@ -112,6 +112,7 @@ export function ReviewWorkbenchFlow({
       workbench,
       onWorkbenchReplace: replaceWorkbench,
       onWorkbenchPatch,
+      runDirectCommand,
       appendRecentWrites,
     });
   const { directSummary } = useDirectSummaryActions({

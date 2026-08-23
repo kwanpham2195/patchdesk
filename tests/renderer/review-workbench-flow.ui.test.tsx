@@ -280,7 +280,7 @@ async function openAddedLineComposer(
 
 function pending(
   state: "none" | "pending" | "unavailable" | "recovery_required" = "pending",
-) {
+): NonNullable<WorkbenchResponse["pendingReview"]> {
   if (state === "none") return { state };
   if (state === "unavailable") return { state, action: "refresh" };
   if (state === "recovery_required") return { state, action: "start" };
@@ -332,6 +332,29 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(conversation.getAttribute("aria-pressed")).toBe("true");
     expect(diff.getAttribute("aria-pressed")).toBe("false");
     expect(insights.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("shows why the Review is metadata-only when local checkout preparation fails", () => {
+    bridge(async (input) =>
+      input.path === "/v1/reviews/detect-updates"
+        ? { updatesAvailable: false }
+        : Promise.reject(new Error(input.path)),
+    );
+    const metadataOnly = projection({
+      localCheckout: {
+        state: "metadata_only",
+        message:
+          "The local checkout could not be prepared. This Review uses the GitHub snapshot; local file expansion and commit inspection are unavailable.",
+      },
+    });
+    mount(metadataOnly);
+    expect(
+      screen
+        .getByText(
+          "The local checkout could not be prepared. This Review uses the GitHub snapshot; local file expansion and commit inspection are unavailable.",
+        )
+        .getAttribute("data-review-local-checkout-warning"),
+    ).toBe("true");
   });
 
   it("renders real GitHub label chips in the Conversation rail's Labels section when the pull request carries labels", async () => {
@@ -606,6 +629,95 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       ),
     );
     expect(patch).toHaveBeenCalledWith({ pendingReview: nextPending });
+  });
+
+  it.each([
+    ["Start", "none", "Start a review"],
+    ["AddThread", "pending", "Add review comment"],
+  ] as const)(
+    "does not apply a detection result that started before pending-review %s",
+    async (_command, pendingState, buttonName) => {
+      vi.useFakeTimers();
+      try {
+        let resolveDetection: DeferredResolve = () => undefined;
+        const detection = new Promise((resolve) => {
+          resolveDetection = resolve;
+        });
+        const initial = projection({ pendingReview: pending(pendingState) });
+        const currentPullRequest = initial.pullRequest;
+        if (currentPullRequest === undefined) throw new Error("fixture");
+        const stale = projection({
+          pullRequest: { ...currentPullRequest, title: "Stale title" },
+        });
+        const request = bridge(async (input) => {
+          if (input.path === "/v1/reviews/detect-updates") return detection;
+          if (input.path === "/v1/reviews/pending-review/command")
+            return { pendingReview: pending("pending") };
+          throw new Error(input.path);
+        });
+        const { replace } = mount(initial);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(
+          request.mock.calls.filter(
+            ([input]) => callPath(input) === "/v1/reviews/detect-updates",
+          ),
+        ).toHaveLength(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+        const add = screen
+          .getAllByRole("button", { name: "Add comment on src/a.ts" })
+          .at(-1);
+        if (add === undefined) throw new Error("missing comment action");
+        fireEvent.click(add);
+        fireEvent.change(
+          screen.getByRole("textbox", { name: "Inline comment" }),
+          { target: { value: "Current comment" } },
+        );
+        fireEvent.click(
+          within(
+            screen.getByRole("region", { name: "Inline comment composer" }),
+          ).getByRole("button", { name: buttonName }),
+        );
+        await vi.advanceTimersByTimeAsync(0);
+
+        resolveDetection({ _tag: "Reconciled", projection: stale });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(replace).not.toHaveBeenCalledWith(stale);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("requires pending-review recovery after a malformed successful command response", async () => {
+    const request = bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/pending-review/command")
+        return { pendingReview: {} };
+      throw new Error(input.path);
+    });
+    const { patch } = mount(projection({ pendingReview: pending("none") }));
+    const user = userEvent.setup();
+    const composer = await openAddedLineComposer(user);
+    await user.type(
+      within(composer).getByRole("textbox", { name: "Inline comment" }),
+      "Cannot confirm this command",
+    );
+    await user.click(
+      within(composer).getByRole("button", { name: "Start a review" }),
+    );
+
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith({
+        pendingReview: { state: "recovery_required", action: "start" },
+      }),
+    );
+    expect(
+      request.mock.calls.filter(
+        ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
+      ),
+    ).toHaveLength(1);
   });
 
   it("opens the Analysis run dialog with the default set in Settings", async () => {
@@ -974,6 +1086,53 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       vi.useRealTimers();
     }
   });
+  it("does not apply a detection result that started before a direct comment", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveDetection: DeferredResolve = () => undefined;
+      const detection = new Promise((resolve) => {
+        resolveDetection = resolve;
+      });
+      const currentPullRequest = projection().pullRequest;
+      if (currentPullRequest === undefined) throw new Error("fixture");
+      const stale = projection({
+        pullRequest: { ...currentPullRequest, title: "Stale title" },
+      });
+      const request = bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates") return detection;
+        if (input.path === "/v1/reviews/inline-conversations/command")
+          return { _tag: "CommentCreated", commentId: "comment-1" };
+        throw new Error(input.path);
+      });
+      const { replace } = mount(projection());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        request.mock.calls.filter(
+          ([input]) => callPath(input) === "/v1/reviews/detect-updates",
+        ),
+      ).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+      const add = screen
+        .getAllByRole("button", { name: "Add comment on src/a.ts" })
+        .at(-1);
+      if (add === undefined) throw new Error("missing comment action");
+      fireEvent.click(add);
+      fireEvent.change(
+        screen.getByRole("textbox", { name: "Inline comment" }),
+        { target: { value: "Current comment" } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      resolveDetection({ _tag: "Reconciled", projection: stale });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(replace).not.toHaveBeenCalledWith(stale);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("pauses detection until all overlapping direct commands complete", async () => {
     vi.useFakeTimers();
     try {
