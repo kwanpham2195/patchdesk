@@ -51,6 +51,37 @@ describe("Conversation", () => {
     expect(screen.queryByText("No conversation yet.")).toBeNull();
   });
 
+  it("uses shared Markdown hierarchy for the PR description and timeline entries", () => {
+    render(
+      <Conversation
+        conversation={{
+          prDescription:
+            "# Pull request heading\n\n- [x] Completed description task",
+          entries: [
+            {
+              _tag: "IssueComment",
+              comment: {
+                id: "ic-markdown",
+                author: "reviewer",
+                body: "## Timeline heading\n\n- [ ] Incomplete timeline task",
+                createdAt: "2026-08-01T00:00:00.000Z",
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Pull request heading" }).className,
+    ).toContain("text-xl");
+    expect(
+      screen.getByRole("heading", { name: "Timeline heading" }).className,
+    ).toContain("text-lg");
+    expect(screen.getByLabelText("Completed task")).toBeTruthy();
+    expect(screen.getByLabelText("Incomplete task")).toBeTruthy();
+  });
+
   it("renders Reply, Resolve, Edit, and Delete controls for a general thread when actions are wired", () => {
     render(
       <Conversation

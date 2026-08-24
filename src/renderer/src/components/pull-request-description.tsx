@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useId, useRef, useState } from "react";
-import { Marked, type Token, type Tokens, type TokensList } from "marked";
+import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { Mermaid } from "mermaid";
 import * as v from "valibot";
+import type { Tokens } from "marked";
 
 import { useLightbox } from "../use-lightbox";
 
@@ -22,7 +22,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -34,18 +33,12 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  MarkdownContent,
+  type MarkdownContentPolicy,
+} from "./markdown-content";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-const marked = new Marked({ gfm: true, breaks: false });
 const collapsedDescriptionHeight = 288;
 let mermaidPromise: Promise<Mermaid> | undefined;
 
@@ -150,235 +143,42 @@ export function PullRequestDescriptionPreview({
   readonly pullRequest?: PullRequestRef;
 }): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-3 text-sm leading-6">
-      {renderBlocks(lexSafely(markdown), pullRequest)}
-    </div>
+    <MarkdownContent
+      markdown={markdown}
+      policy={githubMarkdownPolicy(pullRequest)}
+    />
   );
 }
 
-function lexSafely(markdown: string): TokensList {
-  try {
-    return marked.lexer(markdown);
-  } catch {
-    // SAFETY: `TokensList` is `Token[] & { links: Links }`. The array literal
-    // below is a single well-formed paragraph token (all fields `marked`
-    // itself would set), and `Object.assign` attaches the required `links`
-    // map onto that same array, so the assembled value structurally matches
-    // `TokensList` even though `Object.assign`'s overloads can't express it.
-    return Object.assign(
-      [
-        {
-          type: "paragraph",
-          raw: markdown,
-          text: markdown,
-          tokens: [{ type: "text", raw: markdown, text: markdown }],
-        },
-      ],
-      { links: {} },
-    ) as TokensList;
-  }
-}
-
-function renderBlocks(
-  tokens: ReadonlyArray<Token>,
+function githubMarkdownPolicy(
   pullRequest: PullRequestRef | undefined,
-): ReadonlyArray<React.ReactNode> {
-  return tokens.map((token, index) => {
-    const key = tokenKey(token, index);
-    switch (token.type) {
-      case "space":
-        return null;
-      case "heading": {
-        // SAFETY: `Math.min(Math.max(token.depth, 1), 6)` clamps the depth to
-        // the integers 1..6, so this template string is always exactly one
-        // of "h1".."h6", each a valid intrinsic element tag.
-        const Tag =
-          `h${Math.min(Math.max(token.depth, 1), 6)}` as keyof React.JSX.IntrinsicElements;
-        return (
-          <Tag key={key} className="font-semibold tracking-tight">
-            {renderInline(tokensOf(token), pullRequest)}
-          </Tag>
-        );
-      }
-      case "paragraph":
-        return (
-          <p key={key} className="whitespace-pre-wrap break-words">
-            {renderInline(tokensOf(token), pullRequest)}
-          </p>
-        );
-      case "text":
-        return (
-          <Fragment key={key}>
-            {renderInline(tokensOf(token), pullRequest)}
-          </Fragment>
-        );
-      case "blockquote":
-        return (
-          <blockquote
-            key={key}
-            className="border-l-2 pl-3 text-muted-foreground"
-          >
-            {renderBlocks(tokensOf(token), pullRequest)}
-          </blockquote>
-        );
-      case "code":
-        return token.lang?.toLowerCase() === "mermaid" ? (
-          <MermaidDiagram key={key} source={token.text} />
-        ) : (
-          <pre
-            key={key}
-            className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3"
-          >
-            <code>{token.text}</code>
-          </pre>
-        );
-      case "list": {
-        const List = token.ordered ? "ol" : "ul";
-        return (
-          <List
-            key={key}
-            className={token.ordered ? "list-decimal pl-5" : "list-disc pl-5"}
-          >
-            {token.items.map((item: Tokens.ListItem, itemIndex: number) => (
-              <li key={`${key}-${itemIndex}`} className="pl-1">
-                {item.task === true ? (
-                  <Checkbox
-                    checked={item.checked ?? false}
-                    disabled
-                    aria-label={
-                      item.checked ? "Completed task" : "Incomplete task"
-                    }
-                  />
-                ) : null}
-                {renderBlocks(tokensOf(item), pullRequest)}
-              </li>
-            ))}
-          </List>
-        );
-      }
-      case "hr":
-        return <Separator key={key} />;
-      case "table":
-        return (
-          <Table key={key}>
-            <TableHeader>
-              <TableRow>
-                {token.header.map(
-                  (cell: Tokens.TableCell, cellIndex: number) => (
-                    <TableHead key={`${key}-h-${cellIndex}`}>
-                      {renderInline(cell.tokens ?? [], pullRequest)}
-                    </TableHead>
-                  ),
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {token.rows.map((row: Tokens.TableCell[], rowIndex: number) => (
-                <TableRow key={`${key}-r-${rowIndex}`}>
-                  {row.map((cell: Tokens.TableCell, cellIndex: number) => (
-                    <TableCell key={`${key}-${rowIndex}-${cellIndex}`}>
-                      {renderInline(cell.tokens ?? [], pullRequest)}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        );
-      case "html":
-        return (
-          <HtmlContent key={key} html={token.text} pullRequest={pullRequest} />
-        );
-      case "image":
-        return renderMarkdownImage(token, pullRequest, key);
-      default:
-        return null;
-    }
-  });
+): MarkdownContentPolicy {
+  return {
+    renderLink: ({ href, children, key }) => {
+      if (resolvePullRequestExternalUrl(href, pullRequest) === undefined)
+        return <span key={key}>{children}</span>;
+      return (
+        <Button
+          key={key}
+          variant="link"
+          size="xs"
+          onClick={() => void openPullRequestExternalUrl(href, pullRequest)}
+        >
+          {children}
+        </Button>
+      );
+    },
+    renderImage: ({ token, key }) =>
+      renderMarkdownImage(token, pullRequest, key),
+    renderHtml: ({ html, key }) => (
+      <HtmlContent key={key} html={html} pullRequest={pullRequest} />
+    ),
+    renderMermaid: ({ source, key }) => (
+      <MermaidDiagram key={key} source={source} />
+    ),
+  };
 }
 
-function renderInline(
-  tokens: ReadonlyArray<Token>,
-  pullRequest: PullRequestRef | undefined,
-): ReadonlyArray<React.ReactNode> {
-  return tokens.map((token, index) => {
-    const key = tokenKey(token, index);
-    switch (token.type) {
-      case "text":
-      case "escape":
-        return token.text;
-      case "codespan":
-        return (
-          <code key={key} className="rounded bg-muted px-1 py-0.5 text-xs">
-            {token.text}
-          </code>
-        );
-      case "strong":
-        return (
-          <strong key={key}>
-            {renderInline(tokensOf(token), pullRequest)}
-          </strong>
-        );
-      case "em":
-        return <em key={key}>{renderInline(tokensOf(token), pullRequest)}</em>;
-      case "del":
-        return (
-          <del key={key}>{renderInline(tokensOf(token), pullRequest)}</del>
-        );
-      case "br":
-        return <br key={key} />;
-      case "link": {
-        if (
-          resolvePullRequestExternalUrl(token.href, pullRequest) === undefined
-        )
-          return (
-            <span key={key}>{renderInline(tokensOf(token), pullRequest)}</span>
-          );
-        return (
-          <Button
-            key={key}
-            variant="link"
-            size="xs"
-            onClick={() =>
-              void openPullRequestExternalUrl(token.href, pullRequest)
-            }
-          >
-            {renderInline(tokensOf(token), pullRequest)}
-          </Button>
-        );
-      }
-      case "image":
-        return renderMarkdownImage(token, pullRequest, key);
-      case "html":
-        return (
-          <HtmlContent key={key} html={token.text} pullRequest={pullRequest} />
-        );
-      default:
-        return null;
-    }
-  });
-}
-
-/** Provides React with a stable per-position key for a Markdown token. Keyed
- * by position rather than content so repeated identical nodes (two links,
- * two matching code spans, …) don't collide and cause React to misapply
- * reconciliation across siblings. */
-function tokenKey(token: Token, index: number): string {
-  return `${index}-${token.type}`;
-}
-
-function tokensOf(token: Token): ReadonlyArray<Token> {
-  return "tokens" in token && Array.isArray(token.tokens)
-    ? token.tokens
-    : [token];
-}
-
-// `renderMarkdownImage` receives `Tokens.Image | Tokens.Generic`: real
-// `marked.lexer()` output always satisfies `Tokens.Image` (href/text typed as
-// `string`), but `Tokens.Generic` widens the union to `[index: string]: any`
-// for custom extension tokens, so the type system can't guarantee `href`/
-// `text` are strings. Parse the token at this boundary instead of narrowing
-// its shape by hand.
 const markdownImageTokenSchema = v.object({
   href: v.string(),
   text: v.string(),

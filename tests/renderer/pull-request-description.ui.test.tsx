@@ -108,6 +108,38 @@ describe("PullRequestDescription", () => {
     ).toBeTruthy();
   });
 
+  it("uses shared heading hierarchy and marker-free task states", () => {
+    const { container } = render(
+      <PullRequestDescriptionPreview
+        markdown={[
+          "# Primary heading",
+          "## Secondary heading",
+          "",
+          "- Ordinary item",
+          "- [x] Completed task",
+          "- [ ] Incomplete task",
+        ].join("\n")}
+        pullRequest={pullRequest}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Primary heading" }).className,
+    ).toContain("text-xl");
+    expect(
+      screen.getByRole("heading", { name: "Secondary heading" }).className,
+    ).toContain("text-lg");
+    expect(
+      screen.getByText("Ordinary item").closest("li")?.className,
+    ).toContain("marker:text-primary");
+    expect(screen.getByLabelText("Completed task").tagName).toBe("SPAN");
+    expect(screen.getByLabelText("Incomplete task").tagName).toBe("SPAN");
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(screen.getByText("Completed task").className).toContain(
+      "line-through",
+    );
+  });
+
   it("keys repeated inline nodes by position so React does not warn about duplicate keys", () => {
     const consoleError = vi
       .spyOn(console, "error")

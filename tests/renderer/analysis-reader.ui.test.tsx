@@ -101,6 +101,24 @@ describe("AnalysisReader", () => {
     ).toBeTruthy();
   });
 
+  it("uses shared Markdown hierarchy and task states for analysis prose", () => {
+    render(
+      <AnalysisReader
+        result={{
+          ...result,
+          summary:
+            "# Analysis heading\n\n- [x] Completed analysis task\n- [ ] Incomplete analysis task",
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Analysis heading" }).className,
+    ).toContain("text-xl");
+    expect(screen.getByLabelText("Completed task")).toBeTruthy();
+    expect(screen.getByLabelText("Incomplete task")).toBeTruthy();
+  });
+
   it("sends the original suggested comment only after the explicit Add to review action", async () => {
     const user = userEvent.setup();
     const onAddFinding = vi.fn(async () => undefined);

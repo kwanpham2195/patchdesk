@@ -31,6 +31,37 @@ describe("GeneratedMarkdown", () => {
     );
   });
 
+  it("uses shared heading hierarchy and marker-free task states", () => {
+    const { container } = render(
+      <GeneratedMarkdown
+        markdown={[
+          "# Primary heading",
+          "## Secondary heading",
+          "",
+          "- Ordinary item",
+          "- [x] Completed task",
+          "- [ ] Incomplete task",
+        ].join("\n")}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Primary heading" }).className,
+    ).toContain("text-xl");
+    expect(
+      screen.getByRole("heading", { name: "Secondary heading" }).className,
+    ).toContain("text-lg");
+    expect(
+      screen.getByText("Ordinary item").closest("li")?.className,
+    ).toContain("marker:text-primary");
+    expect(screen.getByLabelText("Completed task").tagName).toBe("SPAN");
+    expect(screen.getByLabelText("Incomplete task").tagName).toBe("SPAN");
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(screen.getByText("Completed task").className).toContain(
+      "line-through",
+    );
+  });
+
   it("renders repeated identical tokens without duplicate-key warnings", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { container } = render(
