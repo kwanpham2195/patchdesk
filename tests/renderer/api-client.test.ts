@@ -76,6 +76,37 @@ describe("renderer API boundary", () => {
     expect(thrown.message).not.toMatch(/try again|retry the/i);
   });
 
+  it("classifies a locked merge as its own 'merge_in_progress' kind", async () => {
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async () => ({
+          ok: false,
+          status: 409,
+          body: { error: "merge_in_progress" },
+          correlationId: "corr-merge-in-progress",
+        }),
+        openExternalHttps: async () => false,
+        onNavigate: () => () => undefined,
+        qaScrollDiagnosticsEnabled: false,
+      },
+    });
+
+    let thrown: unknown;
+    try {
+      await requestJson("/v1/reviews/merge", { method: "POST" });
+    } catch (cause: unknown) {
+      thrown = cause;
+    }
+
+    expect(thrown).toBeInstanceOf(PatchdeskApiError);
+    if (!(thrown instanceof PatchdeskApiError)) return;
+    expect(thrown.kind).toBe("merge_in_progress");
+    expect(thrown.message).toBe(
+      "Another action is still finishing. The merge was not submitted. Wait a moment, then try again.",
+    );
+  });
+
   it("classifies a rejected assignee write as its own 'assignee_cap_exceeded' kind, stating the limit is ten", async () => {
     Object.defineProperty(window, "patchdesk", {
       configurable: true,

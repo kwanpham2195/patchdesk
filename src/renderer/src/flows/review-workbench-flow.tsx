@@ -63,7 +63,7 @@ export function ReviewWorkbenchFlow({
     refresh,
     replaceWorkbench,
     runDirectCommand,
-    observeConfirmedDirectSummary,
+    observeConfirmedReviewWrite,
     appendRecentWrites,
   } = useReviewObservation({
     workbench,
@@ -114,12 +114,14 @@ export function ReviewWorkbenchFlow({
       onWorkbenchPatch,
       runDirectCommand,
       appendRecentWrites,
+      observeConfirmedReviewWrite,
     });
   const { directSummary } = useDirectSummaryActions({
     workbench,
     runDirectCommand,
     appendRecentWrites,
-    observeConfirmedDirectSummary,
+    observeConfirmedDirectSummary: (reviewId) =>
+      observeConfirmedReviewWrite([{ _tag: "DirectSummaryReview", reviewId }]),
   });
   const localCommentAuthoring: LocalCommentAuthoring | undefined =
     canWriteDirectConversation
@@ -135,10 +137,12 @@ export function ReviewWorkbenchFlow({
   const { mergeAction } = useReviewMergeAction({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
+    runDirectCommand,
   });
   const { addFindingToPendingReview } = useAnalysisReviewActions({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
+    runDirectCommand,
   });
 
   const conversationActions = canWriteDirectConversation

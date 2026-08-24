@@ -13,6 +13,8 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 
+type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
+
 function pullRequestExternalRef(
   model: WorkbenchResponse,
 ): PullRequestRef | undefined {
@@ -38,6 +40,7 @@ function pullRequestExternalRef(
 export type ReviewMergeActionInput = {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
+  readonly runDirectCommand: RunDirectCommand;
 };
 
 export type ReviewMergeActionResult = {
@@ -48,6 +51,7 @@ export type ReviewMergeActionResult = {
 export function useReviewMergeAction({
   workbench,
   onWorkbenchReplace,
+  runDirectCommand,
 }: ReviewMergeActionInput): ReviewMergeActionResult {
   const externalPullRequest = pullRequestExternalRef(workbench);
   const mergeActionBase =
@@ -90,27 +94,29 @@ export function useReviewMergeAction({
             method: "merge" | "squash" | "rebase",
             warningCodes: ReadonlyArray<string>,
           ) => {
-            await requestJson("/v1/reviews/merge", {
-              method: "POST",
-              body: {
-                profileId: workbench.session.key.profileId,
-                reviewId: workbench.review.id,
-                sessionId: workbench.session.id,
-                expectedHeadSha: workbench.revision.reviewedHeadSha,
-                expectedBaseSha: workbench.pullRequest?.baseSha ?? "",
-                expectedPatchHash: workbench.revision.patchHash,
-                expectedRevision: workbench.revision.refreshedAt,
-                method,
-                acknowledgedWarnings: {
-                  revision: {
-                    headSha: workbench.revision.reviewedHeadSha,
-                    baseSha: workbench.pullRequest?.baseSha ?? "",
-                    patchHash: workbench.revision.patchHash,
+            await runDirectCommand(() =>
+              requestJson("/v1/reviews/merge", {
+                method: "POST",
+                body: {
+                  profileId: workbench.session.key.profileId,
+                  reviewId: workbench.review.id,
+                  sessionId: workbench.session.id,
+                  expectedHeadSha: workbench.revision.reviewedHeadSha,
+                  expectedBaseSha: workbench.pullRequest?.baseSha ?? "",
+                  expectedPatchHash: workbench.revision.patchHash,
+                  expectedRevision: workbench.revision.refreshedAt,
+                  method,
+                  acknowledgedWarnings: {
+                    revision: {
+                      headSha: workbench.revision.reviewedHeadSha,
+                      baseSha: workbench.pullRequest?.baseSha ?? "",
+                      patchHash: workbench.revision.patchHash,
+                    },
+                    warningCodes,
                   },
-                  warningCodes,
                 },
-              },
-            });
+              }),
+            );
             const refreshed = await requestJson("/v1/reviews/load", {
               method: "POST",
               body: {

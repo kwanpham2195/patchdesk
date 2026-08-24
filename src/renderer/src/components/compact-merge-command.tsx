@@ -8,6 +8,7 @@ import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
 } from "../external-links";
+import { PatchdeskApiError } from "../api-client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -66,9 +67,11 @@ export function CompactMergeCommand(props: {
         acknowledged ? props.readiness.warnings : [],
       );
       setMerged(result.mergeCommitSha ?? "pull request");
-    } catch {
+    } catch (cause) {
       setError(
-        "GitHub did not confirm the merge. Restart Patchdesk to run recovery before you try again.",
+        cause instanceof PatchdeskApiError && cause.kind === "merge_in_progress"
+          ? cause.message
+          : "GitHub did not confirm the merge. Restart Patchdesk to run recovery before you try again.",
       );
     } finally {
       setPending(false);

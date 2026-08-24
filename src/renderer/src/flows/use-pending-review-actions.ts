@@ -68,6 +68,7 @@ export type PendingReviewActionsInput = {
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
   readonly runDirectCommand: RunDirectCommand;
   readonly appendRecentWrites: AppendRecentWrites;
+  readonly observeConfirmedReviewWrite: () => Promise<void>;
 };
 
 export type PendingReviewActionsResult = {
@@ -84,6 +85,8 @@ function boundedPendingReviewError(cause: unknown): string {
       cause.kind === "timeout"
     )
       return "GitHub could not confirm the submission. Check GitHub again before trying again.";
+    if (cause.kind === "review_write_in_progress")
+      return "Another action is still finishing. Your review was not submitted. Wait a moment, then submit again.";
     if (cause.kind === "pending_review")
       return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
     if (cause.kind === "stale_head")
@@ -104,7 +107,7 @@ function boundedPendingReviewError(cause: unknown): string {
 function boundedPendingReviewRecoveryError(cause: unknown): string {
   if (cause instanceof PatchdeskApiError) {
     if (cause.kind === "review_write_in_progress") {
-      return "Another Review operation is still finishing. Check GitHub again in a moment.";
+      return "Another action is still finishing. Wait a moment, then check GitHub again.";
     }
     if (
       cause.kind === "timeout" ||
@@ -143,6 +146,7 @@ export function usePendingReviewActions({
   onWorkbenchPatch,
   runDirectCommand,
   appendRecentWrites,
+  observeConfirmedReviewWrite,
 }: PendingReviewActionsInput): PendingReviewActionsResult {
   const [pendingReviewBusy, setPendingReviewBusy] = useState(false);
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
@@ -243,7 +247,11 @@ export function usePendingReviewActions({
           );
         }
         setFinishDialogError(undefined);
-        if (command._tag === "Start" || command._tag === "AddThread") {
+        if (command._tag === "Submit" && projection.state === "none") {
+          void observeConfirmedReviewWrite().catch(() => {
+            // This read-only observer never retries the confirmed GitHub write.
+          });
+        } else if (command._tag === "Start" || command._tag === "AddThread") {
           const priorThreadIdSet = new Set(priorThreadIds);
           const added = threadIdsOf(projection).filter(
             (id) => !priorThreadIdSet.has(id),
@@ -292,6 +300,7 @@ export function usePendingReviewActions({
       appendRecentWrites,
       applyPendingReviewProjection,
       onWorkbenchPatch,
+      observeConfirmedReviewWrite,
       runDirectCommand,
       workbench,
     ],

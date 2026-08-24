@@ -19,6 +19,7 @@ export type ApiFailureKind =
   | "no_pending_review"
   | "pending_review_locked"
   | "review_write_in_progress"
+  | "merge_in_progress"
   | "self_approval_not_allowed"
   | "rate_limited"
   | "assignee_cap_exceeded"
@@ -176,6 +177,7 @@ function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (code?.includes("rate_limited") === true) return "rate_limited";
   if (code === "outcome_unknown") return "outcome_unknown";
   if (code === "review_write_in_progress") return "review_write_in_progress";
+  if (code === "merge_in_progress") return "merge_in_progress";
   if (code === "self_approval_not_allowed") return "self_approval_not_allowed";
   if (code?.includes("revision") === true || code === "conflict")
     return "revision_conflict";
@@ -230,7 +232,9 @@ function safeMessage(kind: ApiFailureKind): string {
     case "pending_review_locked":
       return "The pending review write is still being reconciled. Check GitHub again.";
     case "review_write_in_progress":
-      return "Another Review operation is still finishing. Try again in a moment.";
+      return "Another action is still finishing. Your review was not submitted. Wait a moment, then submit again.";
+    case "merge_in_progress":
+      return "Another action is still finishing. The merge was not submitted. Wait a moment, then try again.";
     case "self_approval_not_allowed":
       return "You can’t approve your own pull request. Choose Comment or ask another reviewer to approve it.";
     case "rate_limited":

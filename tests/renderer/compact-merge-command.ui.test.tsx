@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompactMergeCommand } from "../../src/renderer/src/components/compact-merge-command";
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 
 afterEach(() => {
   cleanup();
@@ -179,6 +180,40 @@ describe("compact merge command", () => {
     expect(
       mergeAction.contains(screen.getByRole("button", { name: "Merge" })),
     ).toBe(true);
+  });
+
+  it("explains that an in-progress action stopped the merge before GitHub received it", async () => {
+    const user = userEvent.setup();
+    render(
+      <CompactMergeCommand
+        readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
+        context={{
+          repo: "centraldigital/patchdesk",
+          prNumber: 42,
+          title: "Protect review writes",
+          base: "sit",
+          head: "feat/review",
+          headSha: "abcdef1234567890",
+        }}
+        methods={["squash"]}
+        onMerge={async () => {
+          throw new PatchdeskApiError(
+            "merge_in_progress",
+            409,
+            false,
+            "corr-merge-in-progress",
+            "Another action is still finishing. The merge was not submitted. Wait a moment, then try again.",
+          );
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Merge" }));
+    expect(
+      await screen.findByText(
+        "Another action is still finishing. The merge was not submitted. Wait a moment, then try again.",
+      ),
+    ).toBeTruthy();
   });
 
   it("reports a non-cancellable merge until GitHub returns a final result", async () => {

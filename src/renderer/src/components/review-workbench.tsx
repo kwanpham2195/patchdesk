@@ -83,13 +83,6 @@ import { CompactMergeCommand } from "./compact-merge-command";
 import { FinishReviewDialog } from "./finish-review-dialog";
 import { SummaryReviewDialog } from "./summary-review-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
-import {
   ReviewNavigator,
   type ReviewNavigatorSection,
 } from "./review-navigator";
@@ -873,9 +866,6 @@ export function ReviewWorkbench({
               {actions.pendingReview === undefined || terminal ? null : (
                 <PendingReviewHeaderAction
                   pendingReview={actions.pendingReview}
-                  onNavigateToDiff={() =>
-                    commitWorkbenchPosition({ activeTab: "diff", section })
-                  }
                   onOpenSummary={() => setSummaryDialogOpen(true)}
                   summaryAvailable={
                     actions.directSummary !== undefined &&
@@ -1420,62 +1410,25 @@ export function ReviewWorkbench({
 
 function PendingReviewHeaderAction({
   pendingReview,
-  onNavigateToDiff,
   onOpenSummary,
   summaryAvailable,
 }: {
   readonly pendingReview: NonNullable<ReviewWorkbenchActions["pendingReview"]>;
-  readonly onNavigateToDiff: () => void;
   readonly onOpenSummary: () => void;
   readonly summaryAvailable: boolean;
 }): React.JSX.Element | null {
-  const [startChoiceOpen, setStartChoiceOpen] = useState(false);
   const projection = pendingReview.projection;
   if (projection === undefined || projection.state === "none") {
-    // Start a review directs the maintainer to select a valid inline Diff
-    // range; it never creates an empty remote review (unproven path).
     return (
-      <>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setStartChoiceOpen(true)}
-          data-review-header-start
-        >
-          Start a review
-        </Button>
-        <Dialog open={startChoiceOpen} onOpenChange={setStartChoiceOpen}>
-          <DialogContent aria-label="Start review">
-            <DialogHeader>
-              <DialogTitle>Start review</DialogTitle>
-              <DialogDescription>
-                Choose how to start. Inline comments begin a GitHub pending
-                review only after you select a changed line.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setStartChoiceOpen(false);
-                  onNavigateToDiff();
-                }}
-              >
-                Add inline comment
-              </Button>
-              <Button
-                onClick={() => {
-                  setStartChoiceOpen(false);
-                  onOpenSummary();
-                }}
-                disabled={!summaryAvailable}
-              >
-                Write review summary
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onOpenSummary}
+        disabled={!summaryAvailable}
+        data-review-header-start
+      >
+        Start a review
+      </Button>
     );
   }
   if (projection.state === "pending") {

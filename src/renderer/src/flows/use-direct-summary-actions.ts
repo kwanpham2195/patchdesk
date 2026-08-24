@@ -53,6 +53,8 @@ function boundedDirectSummaryError(cause: unknown): string {
       cause.kind === "timeout"
     )
       return "GitHub could not confirm the submission. Check GitHub again before trying again.";
+    if (cause.kind === "review_write_in_progress")
+      return "Another action is still finishing. Your review was not submitted. Wait a moment, then submit again.";
     if (cause.kind === "pending_review")
       return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
     if (cause.kind === "self_approval_not_allowed")

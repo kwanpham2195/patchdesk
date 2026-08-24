@@ -8,6 +8,8 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 
+type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
+
 export type AnalysisFinding = NonNullable<
   WorkbenchResponse["insights"]["analysis"]["retained"]
 >["value"]["findings"][number];
@@ -15,6 +17,7 @@ export type AnalysisFinding = NonNullable<
 export type AnalysisReviewActionsInput = {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
+  readonly runDirectCommand: RunDirectCommand;
 };
 
 export type AnalysisReviewActionsResult = {
@@ -27,6 +30,7 @@ export type AnalysisReviewActionsResult = {
 export function useAnalysisReviewActions({
   workbench,
   onWorkbenchReplace,
+  runDirectCommand,
 }: AnalysisReviewActionsInput): AnalysisReviewActionsResult {
   const addFindingToPendingReview = useCallback(
     async (finding: AnalysisFinding): Promise<void> => {
@@ -115,14 +119,16 @@ export function useAnalysisReviewActions({
             : undefined;
       if (command === undefined)
         throw new Error("Check GitHub again before changing this Finding.");
-      await requestJson("/v1/reviews/pending-review/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command,
-        },
-      });
+      await runDirectCommand(() =>
+        requestJson("/v1/reviews/pending-review/command", {
+          method: "POST",
+          body: {
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+            command,
+          },
+        }),
+      );
       const value = await requestJson("/v1/reviews/load", {
         method: "POST",
         body: {
@@ -135,7 +141,7 @@ export function useAnalysisReviewActions({
         throw new Error("Invalid Review projection response");
       onWorkbenchReplace(next);
     },
-    [onWorkbenchReplace, workbench],
+    [onWorkbenchReplace, runDirectCommand, workbench],
   );
 
   return { addFindingToPendingReview };

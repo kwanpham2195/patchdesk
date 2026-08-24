@@ -29,7 +29,9 @@ export type ReviewObservationResult = {
   readonly refresh: () => Promise<void>;
   readonly replaceWorkbench: (workbench: WorkbenchResponse) => void;
   readonly runDirectCommand: <T>(operation: () => Promise<T>) => Promise<T>;
-  readonly observeConfirmedDirectSummary: (reviewId: string) => Promise<void>;
+  readonly observeConfirmedReviewWrite: (
+    recentWrites?: ReadonlyArray<RecentReviewWrite>,
+  ) => Promise<void>;
   readonly appendRecentWrites: (
     entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>,
   ) => void;
@@ -68,6 +70,7 @@ export function useReviewObservation({
   const snapshotKeyRef = useRef(initialSnapshotKey);
   const generationRef = useRef(0);
   const detectInFlightRef = useRef(false);
+  const detectCompletionRef = useRef<Promise<void> | undefined>(undefined);
   const commandInFlightCountRef = useRef(0);
   const directCommandGenerationRef = useRef(0);
   const focusTimerRef = useRef<number | undefined>(undefined);
@@ -109,6 +112,11 @@ export function useReviewObservation({
     )
       return;
     detectInFlightRef.current = true;
+    let resolveDetectCompletion!: () => void;
+    const detectCompletion = new Promise<void>((resolve) => {
+      resolveDetectCompletion = resolve;
+    });
+    detectCompletionRef.current = detectCompletion;
     const generation = generationRef.current;
     const directCommandGeneration = directCommandGenerationRef.current;
     const key = snapshotKey(wb);
@@ -185,6 +193,9 @@ export function useReviewObservation({
       // Detection is advisory and never replaces the represented snapshot.
     } finally {
       detectInFlightRef.current = false;
+      resolveDetectCompletion();
+      if (detectCompletionRef.current === detectCompletion)
+        detectCompletionRef.current = undefined;
     }
   }, [
     detectedStaleFreshnessRef,
@@ -269,6 +280,7 @@ export function useReviewObservation({
       directCommandGenerationRef.current += 1;
       commandInFlightCountRef.current += 1;
       try {
+        await detectCompletionRef.current;
         return await operation();
       } finally {
         commandInFlightCountRef.current -= 1;
@@ -277,20 +289,23 @@ export function useReviewObservation({
     [],
   );
 
-  const observeConfirmedDirectSummary = useCallback(
-    async (reviewId: string): Promise<void> => {
+  const observeConfirmedReviewWrite = useCallback(
+    async (recentWrites?: ReadonlyArray<RecentReviewWrite>): Promise<void> => {
       const current = workbenchRef.current;
       const generation = generationRef.current + 1;
       generationRef.current = generation;
       const key = snapshotKey(current);
+      const detectUpdatesBody = {
+        profileId: current.session.key.profileId,
+        reviewId: current.review.id,
+      };
       const value = await runDirectCommand(() =>
         requestJson("/v1/reviews/detect-updates", {
           method: "POST",
-          body: {
-            profileId: current.session.key.profileId,
-            reviewId: current.review.id,
-            recentWrites: [{ _tag: "DirectSummaryReview", reviewId }],
-          },
+          body:
+            recentWrites === undefined
+              ? detectUpdatesBody
+              : { ...detectUpdatesBody, recentWrites },
         }),
       );
       const latest = workbenchRef.current;
@@ -334,7 +349,7 @@ export function useReviewObservation({
     refresh,
     replaceWorkbench,
     runDirectCommand,
-    observeConfirmedDirectSummary,
+    observeConfirmedReviewWrite,
     appendRecentWrites,
   };
 }

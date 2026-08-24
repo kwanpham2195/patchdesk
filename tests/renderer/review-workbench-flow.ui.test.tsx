@@ -414,10 +414,208 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     );
   });
 
+  it("reconciles merge readiness after approving a pending review", async () => {
+    let detectCalls = 0;
+    // SAFETY: `pending("pending")` returns a wider fixture shape than the
+    // strict `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
+    const initial = projection({ pendingReview: pending("pending") as never });
+    // SAFETY: `pending("none")` returns a wider fixture shape than the
+    // strict `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
+    const reconciled = projection({
+      pendingReview: pending("none") as never,
+      mergeReadiness: {
+        _tag: "Ready",
+        blockers: [],
+        warnings: [],
+      },
+    });
+    const request = bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates") {
+        detectCalls += 1;
+        return detectCalls === 1
+          ? { updatesAvailable: false }
+          : { _tag: "Reconciled", projection: reconciled };
+      }
+      if (input.path === "/v1/reviews/pending-review/command")
+        return { pendingReview: pending("none") };
+      throw new Error(input.path);
+    });
+    const { replace } = mount(initial);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Finish review/ }));
+    await user.click(screen.getByRole("combobox", { name: "Review decision" }));
+    await user.click(await screen.findByRole("option", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Submit review" }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(reconciled));
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v1/reviews/pending-review/command",
+        body: expect.objectContaining({
+          command: expect.objectContaining({
+            _tag: "Submit",
+            event: "APPROVE",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("opens the review-summary dialog directly from Start a review", async () => {
+    bridge(async (input) =>
+      input.path === "/v1/reviews/detect-updates"
+        ? { updatesAvailable: false }
+        : Promise.reject(new Error(input.path)),
+    );
+    // SAFETY: `pending("none")` returns a wider fixture shape than the
+    // strict `pendingReview` union; this is test fixture data, not a
+    // runtime-decoded value.
+    mount(projection({ pendingReview: pending("none") as never }));
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Start a review" }));
+
+    expect(
+      screen.getByRole("textbox", { name: "Review summary" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Add inline comment" }),
+    ).toBeNull();
+  });
+
+  it("waits for active detection before submitting a review summary", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveDetection: DeferredResolve = () => undefined;
+      const detection = new Promise<unknown>((resolve) => {
+        resolveDetection = resolve;
+      });
+      const request = bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates") return detection;
+        if (input.path === "/v1/reviews/direct-summary/submit")
+          return {
+            directSummary: {
+              state: "confirmed",
+              receipt: { reviewId: "9002", event: "COMMENT" },
+            },
+          };
+        throw new Error(input.path);
+      });
+      // SAFETY: `pending("none")` returns a wider fixture shape than the
+      // strict `pendingReview` union; this is test fixture data, not a
+      // runtime-decoded value.
+      mount(projection({ pendingReview: pending("none") as never }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      fireEvent.click(screen.getByRole("button", { name: "Start a review" }));
+      fireEvent.change(
+        screen.getByRole("textbox", { name: "Review summary" }),
+        { target: { value: "Current review" } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(
+        request.mock.calls.filter(
+          ([input]) => callPath(input) === "/v1/reviews/direct-summary/submit",
+        ),
+      ).toHaveLength(0);
+
+      resolveDetection({ updatesAvailable: false });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        request.mock.calls.filter(
+          ([input]) => callPath(input) === "/v1/reviews/direct-summary/submit",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for active detection before merging", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveDetection: DeferredResolve = () => undefined;
+      const detection = new Promise<unknown>((resolve) => {
+        resolveDetection = resolve;
+      });
+      const request = bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates") return detection;
+        if (input.path === "/v1/reviews/merge") return undefined;
+        if (input.path === "/v1/reviews/load")
+          return projection({ review: { id: "review-42", status: "merged" } });
+        throw new Error(input.path);
+      });
+      mount(projection());
+      await vi.advanceTimersByTimeAsync(0);
+
+      fireEvent.click(screen.getByRole("button", { name: "Merge" }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        request.mock.calls.filter(
+          ([input]) => callPath(input) === "/v1/reviews/merge",
+        ),
+      ).toHaveLength(0);
+
+      resolveDetection({ updatesAvailable: false });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        request.mock.calls.filter(
+          ([input]) => callPath(input) === "/v1/reviews/merge",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for active detection before adding an Analysis Finding to review", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveDetection: DeferredResolve = () => undefined;
+      const detection = new Promise<unknown>((resolve) => {
+        resolveDetection = resolve;
+      });
+      const request = bridge(async (input) => {
+        if (input.path === "/v1/reviews/detect-updates") return detection;
+        if (input.path === "/v1/reviews/pending-review/command") return {};
+        if (input.path === "/v1/reviews/load")
+          return withAnalysis("pending_review");
+        throw new Error(input.path);
+      });
+      mount(withAnalysis("actionable"));
+      await vi.advanceTimersByTimeAsync(0);
+
+      fireEvent.click(screen.getByRole("button", { name: "Insights" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add to review" }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        request.mock.calls.filter(
+          ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
+        ),
+      ).toHaveLength(0);
+
+      resolveDetection({ updatesAvailable: false });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        request.mock.calls.filter(
+          ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each(["Reconciled", "RevisionChanged", "Unavailable", "Terminal"])(
     "does not apply a stale direct-summary %s observation after Refresh",
     async (outcome) => {
       let observe!: DeferredResolve;
+      let detectCalls = 0;
       const deferred = new Promise((resolve) => {
         observe = resolve;
       });
@@ -429,7 +627,10 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         },
       });
       const request = bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates") return deferred;
+        if (input.path === "/v1/reviews/detect-updates") {
+          detectCalls += 1;
+          return detectCalls === 1 ? { updatesAvailable: false } : deferred;
+        }
         if (input.path === "/v1/reviews/direct-summary/submit")
           return {
             directSummary: {
@@ -448,9 +649,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       );
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: "Start a review" }));
-      await user.click(
-        screen.getByRole("button", { name: "Write review summary" }),
-      );
       await user.type(
         screen.getByRole("textbox", { name: "Review summary" }),
         "Confirmed body",
@@ -492,11 +690,15 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
 
   it("keeps a confirmed direct-summary receipt visible before deferred observation", async () => {
     let observe!: DeferredResolve;
+    let detectCalls = 0;
     const request = bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates")
+      if (input.path === "/v1/reviews/detect-updates") {
+        detectCalls += 1;
+        if (detectCalls === 1) return { updatesAvailable: false };
         return new Promise((resolve) => {
           observe = resolve;
         });
+      }
       if (input.path === "/v1/reviews/direct-summary/submit")
         return {
           directSummary: {
@@ -512,9 +714,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(projection({ pendingReview: pending("none") as never }));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Start a review" }));
-    await user.click(
-      screen.getByRole("button", { name: "Write review summary" }),
-    );
     await user.type(
       screen.getByRole("textbox", { name: "Review summary" }),
       "Body",
@@ -539,12 +738,16 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   });
 
   it("advances the summary dialog to its confirmation panel after a confirmed submit, even though the projection always carries an idle directSummary", async () => {
+    let detectCalls = 0;
     bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates")
+      if (input.path === "/v1/reviews/detect-updates") {
+        detectCalls += 1;
+        if (detectCalls === 1) return { updatesAvailable: false };
         return new Promise(() => {
           // Left pending: this regression is about the dialog reacting to
           // the submit response itself, not to a later detect-updates read.
         });
+      }
       if (input.path === "/v1/reviews/direct-summary/submit")
         return {
           directSummary: {
@@ -564,9 +767,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(projection({ pendingReview: pending("none") as never }));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Start a review" }));
-    await user.click(
-      screen.getByRole("button", { name: "Write review summary" }),
-    );
     await user.type(
       screen.getByRole("textbox", { name: "Review summary" }),
       "Approve this",
