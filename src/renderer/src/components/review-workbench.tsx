@@ -824,24 +824,32 @@ export function ReviewWorkbench({
               className="flex flex-wrap items-center gap-2"
               aria-label="Pull request status and actions"
             >
-              <span
+              <Button
+                variant="outline"
+                size="xs"
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
+                  "hover:bg-status-success/20 hover:text-status-success",
                   checksPillColor(model.checks.overall),
                 )}
+                onClick={() => setOverviewOpen(true)}
+                aria-label={`Open PR overview: checks ${checksLabel.toLowerCase()}`}
               >
                 {checksIcon(model.checks.overall)}
                 Checks · {checksLabel}
-              </span>
-              <span
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
+                  "hover:bg-destructive/20 hover:text-destructive",
                   mergePillColor(mergeStatus),
                 )}
+                onClick={() => setOverviewOpen(true)}
+                aria-label={`Open PR overview: merge ${mergeLabel(mergeStatus).toLowerCase()}`}
               >
                 {mergeIcon(mergeStatus)}
                 Merge · {mergeLabel(mergeStatus)}
-              </span>
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -855,13 +863,6 @@ export function ReviewWorkbench({
                 }}
               >
                 <ExternalLink data-icon="inline-start" /> Open on GitHub
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setOverviewOpen(true)}
-              >
-                PR overview
               </Button>
               {actions.pendingReview === undefined || terminal ? null : (
                 <PendingReviewHeaderAction

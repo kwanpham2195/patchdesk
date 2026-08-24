@@ -333,6 +333,37 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(diff.getAttribute("aria-pressed")).toBe("false");
     expect(insights.getAttribute("aria-pressed")).toBe("false");
   });
+  it("opens PR overview from either colored status button", async () => {
+    bridge(async (input) =>
+      input.path === "/v1/reviews/detect-updates"
+        ? { updatesAvailable: false }
+        : Promise.reject(new Error(input.path)),
+    );
+    mount(
+      projection({
+        mergeReadiness: { _tag: "Blocked", blockers: [], warnings: [] },
+      }),
+    );
+    const checks = screen.getByRole("button", {
+      name: "Open PR overview: checks passing",
+    });
+    const merge = screen.getByRole("button", {
+      name: "Open PR overview: merge blocked",
+    });
+    expect(checks.className).toContain("text-status-success");
+    expect(merge.className).toContain("text-destructive");
+    expect(screen.queryByRole("button", { name: "PR overview" })).toBeNull();
+
+    const user = userEvent.setup();
+    await user.click(checks);
+    expect(screen.getByRole("dialog", { name: "PR overview" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "PR overview" })).toBeNull(),
+    );
+    await user.click(merge);
+    expect(screen.getByRole("dialog", { name: "PR overview" })).toBeTruthy();
+  });
 
   it("shows why the Review is metadata-only when local checkout preparation fails", () => {
     bridge(async (input) =>
