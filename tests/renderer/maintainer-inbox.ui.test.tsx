@@ -136,9 +136,11 @@ describe("MaintainerInbox", () => {
     ).toBeTruthy();
   });
 
-  it("renders label chips on the row and in the Inspector, showing truncation only in the Inspector", () => {
+  it("renders each label in a dedicated column and clamps pull request titles to two lines", () => {
     const labeled: InboxRow = {
       ...row,
+      title:
+        "A long pull request title that must wrap cleanly before it truncates after the second line",
       labels: [
         { name: "bug", color: "d73a4a" },
         { name: "enhancement", color: "a2eeef" },
@@ -157,11 +159,20 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={vi.fn()}
       />,
     );
-    expect(screen.getAllByText("bug").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("enhancement").length).toBeGreaterThan(0);
-    // The single row is auto-selected, so the Inspector already shows its
-    // labels; "+N more" (labelCount truncation) is Inspector-only copy that
-    // never appears in the dense row itself.
+    expect(screen.getAllByText("Labels").length).toBeGreaterThan(1);
+    const inboxRow = screen.getByRole("option");
+    const labelColumn = inboxRow.querySelector(
+      '[data-slot="pull-request-label-column"]',
+    );
+    if (!(labelColumn instanceof HTMLDivElement))
+      throw new Error("expected dedicated pull request label column");
+    expect(within(labelColumn).getByTitle("bug")).toBeTruthy();
+    expect(within(labelColumn).getByTitle("enhancement")).toBeTruthy();
+    expect(labelColumn.className).toContain("flex-col");
+    const title = within(inboxRow).getByTitle(`#1 ${labeled.title}`);
+    expect(title.className).toContain("line-clamp-2");
+    // The single row is auto-selected, so the Inspector still gives the
+    // complete label count when GitHub returned only a partial label list.
     expect(screen.getByText("+3 more")).toBeTruthy();
   });
 

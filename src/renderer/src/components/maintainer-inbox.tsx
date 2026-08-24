@@ -637,9 +637,10 @@ function InboxRowsPanel({
     <>
       <div
         aria-hidden="true"
-        className="hidden grid-cols-[minmax(0,1fr)_7rem_10.5rem_1.75rem_2.75rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
+        className="hidden grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
       >
         <span>Pull request</span>
+        <span>Labels</span>
         <span>Author</span>
         <span>Changes</span>
         <span>CI</span>
@@ -1033,13 +1034,14 @@ function InboxRowItem({
         selected && "border-l-primary bg-primary/8",
       )}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 min-[1280px]:grid-cols-[minmax(0,1fr)_7rem_10.5rem_1.75rem_2.75rem]">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 min-[1280px]:grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem]">
         <div className="flex min-w-0 items-start gap-2">
           <GitPullRequest className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
               <p
-                className="truncate text-[13px] leading-5 font-medium"
+                data-slot="pull-request-title"
+                className="min-w-0 line-clamp-2 text-[13px] leading-5 font-medium"
                 title={`#${row.identity.number} ${row.title}`}
               >
                 #{row.identity.number} {row.title}
@@ -1048,14 +1050,6 @@ function InboxRowItem({
                 <Badge variant="outline" className="h-4 px-1 text-[10px]">
                   Draft
                 </Badge>
-              ) : null}
-              {row.labels.slice(0, 3).map((label) => (
-                <LabelChip key={label.name} label={label} />
-              ))}
-              {row.labels.length > 3 ? (
-                <span className="text-[10px] text-muted-foreground">
-                  +{row.labels.length - 3}
-                </span>
               ) : null}
             </div>
             {showRepository ? (
@@ -1066,8 +1060,18 @@ function InboxRowItem({
                 {row.identity.owner}/{row.identity.repo}
               </p>
             ) : null}
+            <PullRequestLabelColumn
+              labels={row.labels}
+              className="mt-1 min-[1280px]:hidden"
+              slot="pull-request-labels-mobile"
+            />
           </div>
         </div>
+        <PullRequestLabelColumn
+          labels={row.labels}
+          className="hidden min-[1280px]:flex"
+          slot="pull-request-label-column"
+        />
         <span
           className="hidden truncate text-[11px] text-muted-foreground min-[1280px]:block"
           title={row.author}
@@ -1090,6 +1094,27 @@ function InboxRowItem({
         </div>
       </div>
     </button>
+  );
+}
+
+function PullRequestLabelColumn({
+  labels,
+  className,
+  slot,
+}: {
+  readonly labels: InboxRow["labels"];
+  readonly className: string;
+  readonly slot: "pull-request-label-column" | "pull-request-labels-mobile";
+}): React.JSX.Element {
+  return (
+    <div
+      data-slot={slot}
+      className={cn("min-w-0 flex-col items-start gap-1", className)}
+    >
+      {labels.map((label) => (
+        <LabelChip key={label.name} label={label} />
+      ))}
+    </div>
   );
 }
 

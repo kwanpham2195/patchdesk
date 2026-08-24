@@ -82,9 +82,10 @@ export function MaintainerInboxSkeleton(): React.JSX.Element {
         </div>
         <div
           aria-hidden="true"
-          className="hidden grid-cols-[minmax(0,1fr)_7rem_10.5rem_1.75rem_2.75rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
+          className="hidden grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem] items-center gap-3 border-b px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground min-[1280px]:grid"
         >
           <span>Pull request</span>
+          <span>Labels</span>
           <span>Author</span>
           <span>Changes</span>
           <span>CI</span>
@@ -94,11 +95,12 @@ export function MaintainerInboxSkeleton(): React.JSX.Element {
           {rowPlaceholders.map((row) => (
             <div
               key={row}
-              className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 min-[1280px]:grid-cols-[minmax(0,1fr)_7rem_10.5rem_1.75rem_2.75rem]"
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 min-[1280px]:grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem]"
             >
               <Skeleton className="h-4 w-[min(30rem,80%)]" />
               <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
-              <Skeleton className="hidden h-3 w-20 min-[1280px]:block" />
+              <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
+              <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
               <Skeleton className="hidden size-3.5 rounded-full min-[1280px]:block" />
               <Skeleton className="h-3 w-6 justify-self-end" />
             </div>
