@@ -1,11 +1,4 @@
-export type DiffNodeKind =
-  | "call"
-  | "branch"
-  | "unresolved"
-  | "dependency"
-  | "reference"
-  | "concurrent"
-  | "deferred";
+export type DiffNodeKind = "call" | "branch";
 
 export type DiffNode = {
   readonly key: string;

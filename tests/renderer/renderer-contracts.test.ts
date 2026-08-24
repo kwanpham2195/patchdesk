@@ -10,7 +10,7 @@ import {
 } from "../../src/renderer/src/renderer-contracts";
 
 describe("parseCallFlowResponse", () => {
-  it("accepts bounded source locations and rejects filesystem paths", () => {
+  it("accepts CallDiff node kinds and rejects obsolete kinds and filesystem paths", () => {
     const response = {
       state: "ready" as const,
       snapshot: {
@@ -30,20 +30,13 @@ describe("parseCallFlowResponse", () => {
             file: "src/payment.ts",
             line: 4,
             children: [
-              ...[
-                "branch",
-                "unresolved",
-                "dependency",
-                "reference",
-                "concurrent",
-                "deferred",
-              ].map((kind) => ({
-                key: kind,
-                label: kind,
+              {
+                key: "branch",
+                label: "if ready",
                 status: "same" as const,
-                kind,
+                kind: "branch",
                 children: [],
-              })),
+              },
             ],
           },
         },
@@ -66,7 +59,7 @@ describe("parseCallFlowResponse", () => {
         trees: [
           {
             ...response.trees[0],
-            tree: { ...response.trees[0]?.tree, kind: "unknown" },
+            tree: { ...response.trees[0]?.tree, kind: "dependency" },
           },
         ],
       }),

@@ -396,7 +396,7 @@ function CallFlowRawResult({
 function CallFlowPathView(props: CallFlowPathViewProps): React.JSX.Element {
   return (
     <>
-      <CallFlowPathLegend response={props.response} view={props.view} />
+      <CallFlowPathLegend view={props.view} />
       <CallFlowPathToolbar {...props} />
       <CallFlowPathContent {...props} />
     </>
@@ -404,10 +404,8 @@ function CallFlowPathView(props: CallFlowPathViewProps): React.JSX.Element {
 }
 
 function CallFlowPathLegend({
-  response,
   view,
 }: {
-  readonly response: ReadyCallFlow;
   readonly view: Exclude<CallFlowView, "raw">;
 }): React.JSX.Element {
   return (
@@ -432,19 +430,6 @@ function CallFlowPathLegend({
           </>
         )}
       </div>
-      {response.languages.analyzed.includes("Go") ? (
-        <>
-          <span
-            className="font-medium text-status-info"
-            title="Dependency boundary: control crosses a receiver-held collaborator."
-          >
-            Dependency boundary
-          </span>
-          <span>
-            Go leaves preserve source names; only app-owned calls are expanded.
-          </span>
-        </>
-      ) : null}
       <span className="ml-auto">
         Click to open Diff · Shift-click to select
       </span>
@@ -828,19 +813,7 @@ function CallFlowNodeList({
                 ? "−"
                 : "·"}
           </span>
-          <span
-            className={cn(
-              "min-w-0 truncate",
-              node.kind === "dependency" && "font-medium text-status-info",
-            )}
-            title={
-              node.kind === "dependency"
-                ? "Dependency boundary: control crosses a receiver-held collaborator."
-                : undefined
-            }
-          >
-            {node.label}
-          </span>
+          <span className="min-w-0 truncate">{node.label}</span>
           {node.file === undefined ? null : (
             <span
               className="ml-auto shrink-0 text-muted-foreground tabular-nums"

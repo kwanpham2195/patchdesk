@@ -4,11 +4,6 @@ import { extname } from "node:path";
 import { runDiff, type DiffNode, type DiffResult } from "calldiff";
 import * as v from "valibot";
 
-import {
-  GoCallFlowBudgetExceededError,
-  runGoCallFlowRule,
-} from "./go-call-flow-rule";
-
 import type {
   CallFlowLanguageSummary,
   CallFlowNode,
@@ -19,6 +14,7 @@ import type {
 import { CALL_FLOW_LANGUAGE_NAMES } from "../domain/call-flow";
 
 const MAX_SOURCE_FILES = 2_500;
+
 const MAX_TREES = 100;
 const MAX_NODES = 5_000;
 const MAX_ASCII_BYTES = 750_000;
@@ -45,17 +41,7 @@ const nodeSchema: v.GenericSchema<CallFlowNode> = v.lazy(() =>
     key: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
     label: v.pipe(v.string(), v.minLength(1), v.maxLength(4_096)),
     status: v.picklist(["same", "added", "removed"]),
-    kind: v.optional(
-      v.picklist([
-        "call",
-        "branch",
-        "unresolved",
-        "dependency",
-        "reference",
-        "concurrent",
-        "deferred",
-      ]),
-    ),
+    kind: v.optional(v.picklist(["call", "branch"])),
     file: v.optional(repoRelativePathSchema),
     line: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
     endLine: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
@@ -141,17 +127,10 @@ type CallDiffOptions = {
 
 type CallDiffEngine = (options: CallDiffOptions) => DiffResult;
 
-type GoCallFlowOptions = CallDiffOptions & {
-  readonly changedPaths: ReadonlyArray<string>;
-};
-
-type GoCallFlowEngine = (options: GoCallFlowOptions) => DiffResult;
-
 /** Runs CallDiff against one immutable Review session and projects bounded renderer data. */
 export function analyzeCallFlow(
   input: CallFlowInvocation,
   engine: CallDiffEngine = runDiff,
-  goEngine: GoCallFlowEngine = runGoCallFlowRule,
 ): CallFlowOutcome {
   const snapshot: CallFlowSnapshot = {
     sessionId: input.sessionId,
@@ -192,35 +171,15 @@ export function analyzeCallFlow(
   ) {
     return { state: "unsupported", snapshot, languages };
   }
-  const goPaths = sourceFiles.filter((path) => extname(path) === ".go");
-  const changedPathSet = new Set(changedFiles);
-  const changedGoPaths = goPaths.filter((path) => changedPathSet.has(path));
-  const fallbackPaths = sourceFiles.filter((path) => extname(path) !== ".go");
-  const options: Omit<CallDiffOptions, "paths"> = {
+  const result = engine({
     cwd: input.worktreePath,
     from: input.baseSha,
     to: input.headSha,
+    paths: sourceFiles,
     maxDepth: 12,
     color: false,
     locs: true,
-  };
-  const results: Array<DiffResult> = [];
-  if (fallbackPaths.length > 0) {
-    results.push(engine({ ...options, paths: fallbackPaths }));
-  }
-  if (goPaths.length > 0) {
-    try {
-      results.push(
-        goEngine({ ...options, paths: goPaths, changedPaths: changedGoPaths }),
-      );
-    } catch (error) {
-      if (error instanceof GoCallFlowBudgetExceededError) {
-        return { state: "unavailable", reason: "too_large" };
-      }
-      throw error;
-    }
-  }
-  const result = mergeDiffResults(results, input.baseSha, input.headSha);
+  });
   const projected = projectTrees(result);
   const impactedFiles = new Set<string>();
   let changedSteps = 0;
@@ -401,41 +360,6 @@ function languageSummary(
     skippedChangedFiles: changedFiles.filter(
       (path) => !isPackagedSourceFile(path) || generatedGoFiles.has(path),
     ).length,
-  };
-}
-
-function mergeDiffResults(
-  results: ReadonlyArray<DiffResult>,
-  from: string,
-  to: string,
-): DiffResult {
-  const only = results[0];
-  if (results.length === 1 && only !== undefined) return only;
-  if (results.length === 0) {
-    throw new Error(
-      "Call Flow has no language engine for eligible source files",
-    );
-  }
-  const sortable = results.flatMap((result, engineIndex) =>
-    result.trees.map((tree, treeIndex) => ({ tree, engineIndex, treeIndex })),
-  );
-  sortable.sort((left, right) => {
-    const byEntry = left.tree.entry.localeCompare(right.tree.entry);
-    if (byEntry !== 0) return byEntry;
-    const byFile = (left.tree.tree.file ?? "").localeCompare(
-      right.tree.tree.file ?? "",
-    );
-    if (byFile !== 0) return byFile;
-    const byEngine = left.engineIndex - right.engineIndex;
-    return byEngine === 0 ? left.treeIndex - right.treeIndex : byEngine;
-  });
-  const trees = sortable.map((entry) => entry.tree);
-  return {
-    mode: "diff",
-    from,
-    to,
-    trees,
-    ascii: trees.map((tree) => tree.ascii).join("\n\n"),
   };
 }
 

@@ -1,8 +1,11 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Readable, Writable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
+import { runCallFlowChildProcess } from "../../src/main/call-flow-runner";
 
 import {
   analyzeCallFlow,
@@ -79,7 +82,32 @@ describe("analyzeCallFlow", () => {
     });
   });
 
-  it("analyzes Go with the packaged grammar", async () => {
+  it("rejects a Review that exceeds the source-file limit", async () => {
+    const repository = await createLargeSourceRepository();
+    const baseSha = git(repository, ["rev-parse", "HEAD"]).trim();
+    await writeFile(
+      join(repository, "src", "changed.ts"),
+      "export function changed() { return true; }\n",
+    );
+    git(repository, ["add", "src/changed.ts"]);
+    git(repository, ["commit", "-m", "change large source repository"]);
+    const headSha = git(repository, ["rev-parse", "HEAD"]).trim();
+    expect(
+      analyzeCallFlow(
+        {
+          sessionId: "session-large-source-repository",
+          worktreePath: repository,
+          baseSha,
+          headSha,
+        },
+        () => {
+          throw new Error("source-file limit must run before CallDiff");
+        },
+      ),
+    ).toEqual({ state: "unavailable", reason: "too_large" });
+  });
+
+  it("routes Go through the direct CallDiff wrapper", async () => {
     const repository = await createGoRepository();
     const baseSha = git(repository, ["rev-parse", "HEAD"]).trim();
     await writeFile(
@@ -102,32 +130,48 @@ describe("analyzeCallFlow", () => {
     git(repository, ["commit", "-m", "change Go call path"]);
     const headSha = git(repository, ["rev-parse", "HEAD"]).trim();
 
-    const result = analyzeCallFlow(
-      {
+    const grammarCache = await mkdtemp(
+      join(tmpdir(), "patchdesk-calldiff-grammar-cache-"),
+    );
+    temporaryRepositories.push(grammarCache);
+    const previousGrammarCache = process.env.CALLDIFF_GRAMMAR_CACHE;
+    const previousPath = process.env.PATH;
+    process.env.CALLDIFF_GRAMMAR_CACHE = grammarCache;
+    process.env.PATH = "/usr/bin:/bin";
+    try {
+      const invocation = {
         sessionId: "session-go-call-flow",
         worktreePath: repository,
         baseSha,
         headSha,
-      },
-      () => {
-        throw new Error("Go paths must not use the CallDiff fallback");
-      },
-    );
-
-    expect(result.state).toBe("ready");
-    if (result.state !== "ready") return;
-    expect(result.languages).toEqual({
-      analyzed: ["Go"],
-      available: 5,
-      skippedChangedFiles: 0,
-    });
-    expect(result.changedSteps).toBeGreaterThan(0);
-    expect(result.trees.some((tree) => tree.tree.file === "payment.go")).toBe(
-      true,
-    );
-    expect(result.ascii).toContain("CapturePayment");
+      };
+      const output: Array<string> = [];
+      await runCallFlowChildProcess(
+        Readable.from([JSON.stringify(invocation)]),
+        new Writable({
+          write(chunk, _encoding, callback) {
+            output.push(Buffer.from(chunk).toString("utf8"));
+            callback();
+          },
+        }),
+      );
+      expect(output.join("")).toContain('"ok":true');
+      expect(output.join("")).toContain('"state":"ready"');
+      expect(output.join("")).toContain('"analyzed":["Go"]');
+      expect(output.join("")).toContain('"file":"payment.go"');
+      expect(output.join("")).toContain("CapturePayment");
+    } finally {
+      if (previousGrammarCache === undefined)
+        delete process.env.CALLDIFF_GRAMMAR_CACHE;
+      else process.env.CALLDIFF_GRAMMAR_CACHE = previousGrammarCache;
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
+    expect(
+      existsSync(join(grammarCache, "node_modules", "tree-sitter-go")),
+    ).toBe(false);
   });
-  it("routes TypeScript through the unchanged CallDiff fallback only", async () => {
+  it("routes TypeScript through the direct CallDiff wrapper", async () => {
     const repository = await createRepository();
     const baseSha = git(repository, ["rev-parse", "HEAD"]).trim();
     await writeFile(
@@ -150,16 +194,13 @@ describe("analyzeCallFlow", () => {
         fallbackCalls.push(options.paths);
         return fakeDiff(baseSha, headSha, "capturePayment", "src/payment.ts");
       },
-      () => {
-        throw new Error("TypeScript paths must not use the Go rule");
-      },
     );
 
     expect(result.state).toBe("ready");
     expect(fallbackCalls).toEqual([["src/payment.ts"]]);
   });
 
-  it("partitions mixed Go and TypeScript paths deterministically", async () => {
+  it("routes mixed Go and TypeScript paths through one CallDiff run", async () => {
     const repository = await createMixedRepository();
     const baseSha = git(repository, ["rev-parse", "HEAD"]).trim();
     await writeFile(
@@ -173,80 +214,30 @@ describe("analyzeCallFlow", () => {
     git(repository, ["add", "fallback.ts", "flow.go"]);
     git(repository, ["commit", "-m", "change mixed flows"]);
     const headSha = git(repository, ["rev-parse", "HEAD"]).trim();
-    const fallbackCalls: Array<ReadonlyArray<string>> = [];
-    const goCalls: Array<{
-      readonly paths: ReadonlyArray<string>;
-      readonly changedPaths: ReadonlyArray<string>;
-    }> = [];
+    const calls: Array<ReadonlyArray<string>> = [];
     const invocation = {
       sessionId: "session-mixed-routing",
       worktreePath: repository,
       baseSha,
       headSha,
     };
-    const fallback = (options: {
+    const engine = (options: {
       readonly paths: ReadonlyArray<string>;
     }): DiffResult => {
-      fallbackCalls.push(options.paths);
-      return fakeDiff(baseSha, headSha, "Zed", "fallback.ts");
-    };
-    const goRule = (options: {
-      readonly paths: ReadonlyArray<string>;
-      readonly changedPaths: ReadonlyArray<string>;
-    }): DiffResult => {
-      goCalls.push({
-        paths: options.paths,
-        changedPaths: options.changedPaths,
-      });
-      return fakeDiff(baseSha, headSha, "Alpha", "flow.go");
+      calls.push(options.paths);
+      return fakeDiff(baseSha, headSha, "Run", "flow.go");
     };
 
-    const first = analyzeCallFlow(invocation, fallback, goRule);
-    const second = analyzeCallFlow(invocation, fallback, goRule);
+    const first = analyzeCallFlow(invocation, engine);
+    const second = analyzeCallFlow(invocation, engine);
 
     expect(second).toEqual(first);
-    expect(fallbackCalls).toEqual([["fallback.ts"], ["fallback.ts"]]);
-    expect(goCalls).toEqual([
-      { paths: ["flow.go", "helper.go"], changedPaths: ["flow.go"] },
-      { paths: ["flow.go", "helper.go"], changedPaths: ["flow.go"] },
+    expect(calls).toEqual([
+      ["fallback.ts", "flow.go", "helper.go"],
+      ["fallback.ts", "flow.go", "helper.go"],
     ]);
     if (first.state !== "ready") return;
-    expect(first.trees.map((tree) => tree.entry)).toEqual(["Alpha", "Zed"]);
-  });
-
-  it("maps only the Go rule budget failure to too_large", async () => {
-    const repository = await createGoRepository();
-    const baseSha = git(repository, ["rev-parse", "HEAD"]).trim();
-    const calls = Array.from(
-      { length: 513 },
-      (_, index) => `\tb.unknown${index}()`,
-    ).join("\n");
-    await writeFile(
-      join(repository, "payment.go"),
-      `package payment\n\ntype Budget struct{}\n\nfunc (b *Budget) CapturePayment() {\n${calls}\n}\n`,
-    );
-    git(repository, ["add", "payment.go"]);
-    git(repository, ["commit", "-m", "exceed Go rule budget"]);
-    const headSha = git(repository, ["rev-parse", "HEAD"]).trim();
-    const invocation = {
-      sessionId: "session-go-too-large",
-      worktreePath: repository,
-      baseSha,
-      headSha,
-    };
-    const fallback = (): never => {
-      throw new Error("Go paths must not use the fallback");
-    };
-
-    expect(analyzeCallFlow(invocation, fallback)).toEqual({
-      state: "unavailable",
-      reason: "too_large",
-    });
-    expect(() =>
-      analyzeCallFlow(invocation, fallback, () => {
-        throw new Error("unexpected Go engine defect");
-      }),
-    ).toThrowError("unexpected Go engine defect");
+    expect(first.trees.map((tree) => tree.entry)).toEqual(["Run"]);
   });
 
   it("excludes standard generated Go files and counts changed skips", async () => {
@@ -284,9 +275,6 @@ describe("analyzeCallFlow", () => {
         baseSha,
         headSha,
       },
-      () => {
-        throw new Error("Go paths must not use the fallback");
-      },
       (options) => {
         goCalls.push(options.paths);
         return fakeDiff(baseSha, headSha, "Run", "flow.go");
@@ -307,16 +295,7 @@ describe("analyzeCallFlow", () => {
 });
 
 describe("parseCallFlowOutcome", () => {
-  it("accepts every semantic node kind and rejects unknown kinds", () => {
-    const semanticKinds = [
-      "call",
-      "branch",
-      "unresolved",
-      "dependency",
-      "reference",
-      "concurrent",
-      "deferred",
-    ] as const;
+  it("accepts CallDiff node kinds and rejects obsolete kinds", () => {
     const outcome = {
       state: "ready",
       snapshot: {
@@ -333,19 +312,21 @@ describe("parseCallFlowOutcome", () => {
             label: "Run()",
             status: "same",
             kind: "call",
-            children: semanticKinds.slice(1).map((kind) => ({
-              key: kind,
-              label: kind,
-              status: "same",
-              kind,
-              children: [],
-            })),
+            children: [
+              {
+                key: "branch",
+                label: "if ready",
+                status: "same",
+                kind: "branch",
+                children: [],
+              },
+            ],
           },
         },
       ],
       ascii: "Run",
       changedSteps: 0,
-      contextSteps: semanticKinds.length,
+      contextSteps: 2,
       impactedFiles: 0,
       languages: { analyzed: ["Go"], available: 5, skippedChangedFiles: 0 },
       truncated: false,
@@ -358,7 +339,7 @@ describe("parseCallFlowOutcome", () => {
         trees: [
           {
             ...outcome.trees[0],
-            tree: { ...outcome.trees[0]?.tree, kind: "unknown" },
+            tree: { ...outcome.trees[0]?.tree, kind: "dependency" },
           },
         ],
       }),
@@ -410,6 +391,25 @@ async function createGoRepository(): Promise<string> {
   );
   git(repository, ["add", "payment.go"]);
   git(repository, ["commit", "-m", "base"]);
+  return repository;
+}
+
+async function createLargeSourceRepository(): Promise<string> {
+  const repository = await mkdtemp(
+    join(tmpdir(), "patchdesk-call-flow-large-"),
+  );
+  temporaryRepositories.push(repository);
+  git(repository, ["init"]);
+  git(repository, ["config", "user.email", "call-flow@example.test"]);
+  git(repository, ["config", "user.name", "Call Flow Test"]);
+  await mkdir(join(repository, "src"));
+  await Promise.all(
+    Array.from({ length: 2_500 }, (_, index) =>
+      writeFile(join(repository, "src", `source-${index}.ts`), "export {};\n"),
+    ),
+  );
+  git(repository, ["add", "src"]);
+  git(repository, ["commit", "-m", "large source repository"]);
   return repository;
 }
 

@@ -1,13 +1,6 @@
 export type CallFlowNodeStatus = "same" | "added" | "removed";
 
-export type CallFlowNodeKind =
-  | "call"
-  | "branch"
-  | "unresolved"
-  | "dependency"
-  | "reference"
-  | "concurrent"
-  | "deferred";
+export type CallFlowNodeKind = "call" | "branch";
 
 /** Lists the language parsers packaged with Patchdesk Call Flow. */
 export const CALL_FLOW_LANGUAGE_NAMES = [

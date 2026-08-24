@@ -1086,17 +1086,7 @@ const callFlowNodeSchema: v.GenericSchema<CallFlowNode> = v.lazy(() =>
     key: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
     label: v.pipe(v.string(), v.minLength(1), v.maxLength(4_096)),
     status: v.picklist(["same", "added", "removed"]),
-    kind: v.optional(
-      v.picklist([
-        "call",
-        "branch",
-        "unresolved",
-        "dependency",
-        "reference",
-        "concurrent",
-        "deferred",
-      ]),
-    ),
+    kind: v.optional(v.picklist(["call", "branch"])),
     file: v.optional(repoRelativePathSchema),
     line: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
     endLine: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),

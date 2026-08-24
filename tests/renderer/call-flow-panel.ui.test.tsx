@@ -21,9 +21,9 @@ afterEach(() => {
 });
 
 describe("CallFlowPanel", () => {
-  it("renders an unbadged explanation and filters unchanged descendants", async () => {
+  it("renders CallDiff nodes and filters unchanged descendants", async () => {
     const ascii =
-      "· capturePayment\n  + go\n    + RefreshRolePermissionCache\n      · stableBody\n  - syncPayment\n  + if ready\n  + [dependency] repo.GetRoleIDs\n  + [unresolved] client.Send\n  + [reference] references g.send\n  + defer\n  · unchangedHelper";
+      "· capturePayment\n  + RefreshRolePermissionCache\n    · stableBody\n  - syncPayment\n  + if ready\n  + first duplicate\n  + second duplicate\n  · unchangedHelper";
     const request = vi.fn(async () => ({
       ok: true as const,
       status: 200,
@@ -44,31 +44,21 @@ describe("CallFlowPanel", () => {
               line: 4,
               children: [
                 {
-                  key: "go:refresh",
-                  label: "go",
+                  key: "RefreshRolePermissionCache",
+                  label: "RefreshRolePermissionCache()",
                   status: "added",
-                  kind: "concurrent",
+                  kind: "call",
                   file: "src/payment.ts",
                   line: 5,
                   children: [
                     {
-                      key: "RefreshRolePermissionCache",
-                      label: "RefreshRolePermissionCache()",
-                      status: "added",
+                      key: "stableBody",
+                      label: "stableBody()",
+                      status: "same",
                       kind: "call",
-                      file: "src/payment.ts",
-                      line: 5,
-                      children: [
-                        {
-                          key: "stableBody",
-                          label: "stableBody()",
-                          status: "same",
-                          kind: "call",
-                          file: "src/cache.ts",
-                          line: 20,
-                          children: [],
-                        },
-                      ],
+                      file: "src/cache.ts",
+                      line: 20,
+                      children: [],
                     },
                   ],
                 },
@@ -91,15 +81,6 @@ describe("CallFlowPanel", () => {
                   children: [],
                 },
                 {
-                  key: "dependency:s.repo.GetRoleIDs",
-                  label: "repo.GetRoleIDs",
-                  status: "added",
-                  kind: "dependency",
-                  file: "src/payment.ts",
-                  line: 8,
-                  children: [],
-                },
-                {
                   key: "duplicate",
                   label: "first duplicate",
                   status: "added",
@@ -118,33 +99,6 @@ describe("CallFlowPanel", () => {
                   children: [],
                 },
                 {
-                  key: "unresolved:client.Send",
-                  label: "client.Send",
-                  status: "added",
-                  kind: "unresolved",
-                  file: "src/payment.ts",
-                  line: 8,
-                  children: [],
-                },
-                {
-                  key: "reference:g.send",
-                  label: "references g.send",
-                  status: "added",
-                  kind: "reference",
-                  file: "src/payment.ts",
-                  line: 9,
-                  children: [],
-                },
-                {
-                  key: "defer:cleanup",
-                  label: "defer",
-                  status: "added",
-                  kind: "deferred",
-                  file: "src/payment.ts",
-                  line: 10,
-                  children: [],
-                },
-                {
                   key: "unchangedHelper",
                   label: "unchangedHelper()",
                   status: "same",
@@ -158,7 +112,7 @@ describe("CallFlowPanel", () => {
           },
         ],
         ascii,
-        changedSteps: 10,
+        changedSteps: 5,
         contextSteps: 3,
         impactedFiles: 2,
         languages: {
@@ -185,7 +139,7 @@ describe("CallFlowPanel", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: "10 changed path steps" }),
+      await screen.findByRole("heading", { name: "5 changed path steps" }),
     ).toBeTruthy();
     expect(screen.getByText("Changed call explanation")).toBeTruthy();
     expect(request).toHaveBeenCalledWith({
@@ -198,32 +152,9 @@ describe("CallFlowPanel", () => {
     ).toContain("Languages 1/5");
     expect(screen.queryByText("unchangedHelper()")).toBeNull();
     expect(screen.queryByText("stableBody()")).toBeNull();
+    expect(within(nodeButton("if ready")).queryByText("branch")).toBeNull();
     expect(
-      screen.getByText(
-        "Go leaves preserve source names; only app-owned calls are expanded.",
-      ),
-    ).toBeTruthy();
-    const dependencyLegend = screen.getByText("Dependency boundary");
-    expect(dependencyLegend.getAttribute("title")).toContain(
-      "receiver-held collaborator",
-    );
-    const dependencyLabel = screen.getByText("repo.GetRoleIDs");
-    expect(dependencyLabel.className).toContain("text-status-info");
-    expect(dependencyLabel.getAttribute("title")).toContain(
-      "Dependency boundary",
-    );
-    for (const [label, kind] of [
-      ["if ready", "branch"],
-      ["repo.GetRoleIDs", "dependency"],
-      ["client.Send", "unresolved"],
-      ["references g.send", "reference"],
-      ["go", "concurrent"],
-      ["defer", "deferred"],
-    ] as const) {
-      expect(within(nodeButton(label)).queryByText(kind)).toBeNull();
-    }
-    expect(
-      within(nodeButton("RefreshRolePermissionCache()")).queryByText("branch"),
+      within(nodeButton("RefreshRolePermissionCache()")).queryByText("call"),
     ).toBeNull();
     await user.click(nodeButton("first duplicate"));
     fireEvent.click(nodeButton("second duplicate"), { shiftKey: true });
@@ -286,9 +217,8 @@ describe("CallFlowPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Raw" }));
     await waitFor(() =>
-      expect(screen.getByText(/\[unresolved\] client.Send/)).toBeTruthy(),
+      expect(screen.getByText(/RefreshRolePermissionCache/)).toBeTruthy(),
     );
-    expect(screen.getByText(/\[dependency\] repo.GetRoleIDs/)).toBeTruthy();
     vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(
       new Error("permission denied"),
     );
