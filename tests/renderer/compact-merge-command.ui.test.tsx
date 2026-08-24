@@ -153,6 +153,34 @@ describe("compact merge command", () => {
     await user.keyboard("{Escape}");
   });
 
+  it("keeps the merge choice and action in one named control group", () => {
+    render(
+      <CompactMergeCommand
+        readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
+        context={{
+          repo: "centraldigital/patchdesk",
+          prNumber: 42,
+          title: "Protect review writes",
+          base: "sit",
+          head: "feat/review",
+          headSha: "abcdef1234567890",
+        }}
+        methods={["squash"]}
+        onMerge={async () => ({})}
+      />,
+    );
+
+    const mergeAction = screen.getByRole("group", { name: "Merge action" });
+    expect(
+      mergeAction.contains(
+        screen.getByRole("combobox", { name: "Merge method" }),
+      ),
+    ).toBe(true);
+    expect(
+      mergeAction.contains(screen.getByRole("button", { name: "Merge" })),
+    ).toBe(true);
+  });
+
   it("reports a non-cancellable merge until GitHub returns a final result", async () => {
     let resolveMerge: ((value: { mergeCommitSha: string }) => void) | undefined;
     const user = userEvent.setup();

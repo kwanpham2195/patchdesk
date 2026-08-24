@@ -10,6 +10,7 @@ import {
 } from "../external-links";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -135,9 +136,9 @@ export function CompactMergeCommand(props: {
   return (
     <section
       aria-label="Merge command"
-      className="flex flex-col gap-3 border-t pt-3"
+      className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
     >
-      <p className="text-xs text-muted-foreground">
+      <p className="min-w-0 text-xs text-muted-foreground">
         {props.context.repo}#{props.context.prNumber} · {props.context.base} ←{" "}
         {props.context.head} · <code>{props.context.headSha.slice(0, 8)}</code>
       </p>
@@ -175,12 +176,11 @@ export function CompactMergeCommand(props: {
           </Label>
         </div>
       ) : null}
-      <div className="flex flex-wrap items-end gap-2">
-        <label
-          className="grid gap-1 text-sm font-medium"
-          htmlFor="merge-method"
-        >
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm font-medium" htmlFor="merge-method">
           Merge method
+        </label>
+        <ButtonGroup aria-label="Merge action">
           <Select
             value={method}
             items={props.methods.map((candidate) => ({
@@ -205,14 +205,14 @@ export function CompactMergeCommand(props: {
               </SelectGroup>
             </SelectContent>
           </Select>
-        </label>
-        <Button
-          onClick={() => void merge()}
-          disabled={pending || (needsAcknowledgement && !acknowledged)}
-        >
-          <GitMerge data-icon="inline-start" />
-          {pending ? "Merging…" : "Merge"}
-        </Button>
+          <Button
+            onClick={() => void merge()}
+            disabled={pending || (needsAcknowledgement && !acknowledged)}
+          >
+            <GitMerge data-icon="inline-start" />
+            {pending ? "Merging…" : "Merge"}
+          </Button>
+        </ButtonGroup>
       </div>
     </section>
   );

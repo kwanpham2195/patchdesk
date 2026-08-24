@@ -1,12 +1,89 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseCallFlowResponse,
   parseCommitDiffResponse,
   parseInsightProviderCatalog,
   parseModelCatalog,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
 } from "../../src/renderer/src/renderer-contracts";
+
+describe("parseCallFlowResponse", () => {
+  it("accepts bounded source locations and rejects filesystem paths", () => {
+    const response = {
+      state: "ready" as const,
+      snapshot: {
+        sessionId: "session-a",
+        baseSha: "1".repeat(40),
+        headSha: "2".repeat(40),
+      },
+      trees: [
+        {
+          entry: "capturePayment",
+          ascii: "+ capturePayment",
+          tree: {
+            key: "capturePayment",
+            label: "capturePayment()",
+            status: "added" as const,
+            kind: "call" as const,
+            file: "src/payment.ts",
+            line: 4,
+            children: [
+              ...[
+                "branch",
+                "unresolved",
+                "dependency",
+                "reference",
+                "concurrent",
+                "deferred",
+              ].map((kind) => ({
+                key: kind,
+                label: kind,
+                status: "same" as const,
+                kind,
+                children: [],
+              })),
+            ],
+          },
+        },
+      ],
+      ascii: "+ capturePayment",
+      changedSteps: 1,
+      contextSteps: 0,
+      impactedFiles: 1,
+      languages: {
+        analyzed: ["TypeScript" as const],
+        available: 5 as const,
+        skippedChangedFiles: 0,
+      },
+      truncated: false,
+    };
+    expect(parseCallFlowResponse(response)).toBeDefined();
+    expect(
+      parseCallFlowResponse({
+        ...response,
+        trees: [
+          {
+            ...response.trees[0],
+            tree: { ...response.trees[0]?.tree, kind: "unknown" },
+          },
+        ],
+      }),
+    ).toBeUndefined();
+    expect(
+      parseCallFlowResponse({
+        ...response,
+        trees: [
+          {
+            ...response.trees[0],
+            tree: { ...response.trees[0]?.tree, file: "/tmp/private.ts" },
+          },
+        ],
+      }),
+    ).toBeUndefined();
+  });
+});
 
 const sessionProjection = {
   id: "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",

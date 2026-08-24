@@ -40,6 +40,10 @@ _Avoid_: Completed review, model review
 A revision-bound aid that helps a maintainer understand or evaluate a pull request change. Analysis results and walkthroughs are insight types.
 _Avoid_: Model feature, alternate review
 
+**Call Flow**:
+A read-only, revision-bound workbench screen that compares the represented base and head commits and shows syntax-inferred Go, JavaScript, and TypeScript call paths. Paths can show all changes, focus on added calls, or compare removed base paths with added head paths side by side. It is a deterministic aid that links back to the canonical Diff; it is not an Insight, runtime trace, or GitHub review command.
+_Avoid_: Execution graph, Call Flow Insight, model analysis
+
 **Finding**:
 A concern or observation in an analysis result, supported by evidence from the analyzed pull request revision.
 _Avoid_: Model comment, automated review comment

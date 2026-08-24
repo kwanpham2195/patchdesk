@@ -48,7 +48,10 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: "src/main/electron-main.ts",
+        input: {
+          "electron-main": "src/main/electron-main.ts",
+          "call-flow-runner": "src/main/call-flow-runner.ts",
+        },
       },
     },
   },

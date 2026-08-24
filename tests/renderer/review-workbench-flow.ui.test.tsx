@@ -1535,6 +1535,12 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       screen.queryByRole("button", { name: "Refresh GitHub state" }),
     ).toBeNull();
     expect(
+      screen.getByText(
+        "Pull request merged on GitHub. This Review remains readable.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Merge · Merged")).toBeTruthy();
+    expect(
       screen.getByRole("heading", { name: "Canonical workbench" }),
     ).toBeTruthy();
   });

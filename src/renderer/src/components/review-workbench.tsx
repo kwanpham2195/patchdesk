@@ -62,6 +62,7 @@ import {
   pullRequestPageUrl,
 } from "../external-links";
 import { DiffWorkbench } from "./diff-workbench";
+import { CallFlowPanel } from "./call-flow-panel";
 import type {
   LocalCommentAuthoring,
   LocalCommentLocation,
@@ -370,7 +371,7 @@ export type ReviewWorkbenchSlots = {
 };
 
 export type ReviewWorkbenchInitialState = {
-  readonly activeTab?: "conversation" | "diff" | "insights";
+  readonly activeTab?: "conversation" | "diff" | "call_flow" | "insights";
   readonly section?: ReviewNavigatorSection | "insights";
   readonly selectedPath?: string;
   readonly selectedCommitSha?: string;
@@ -403,12 +404,17 @@ export function ReviewWorkbench({
   readonly initialState?: ReviewWorkbenchInitialState;
   /** Reports a visible navigation command so reloads can restore it. */
   readonly onPositionCommitted?: (state: {
-    readonly activeTab: "conversation" | "diff" | "insights";
+    readonly activeTab: "conversation" | "diff" | "call_flow" | "insights";
     readonly section: ReviewNavigatorSection;
     readonly selectedPath?: string;
   }) => void;
 }): React.JSX.Element {
   const terminal = model.review.status !== "open";
+  const mergeStatus = terminal
+    ? model.review.status === "merged"
+      ? "Merged"
+      : "Closed"
+    : model.mergeReadiness._tag;
   const hasUpdates = model.revision.freshness === "updates_available";
   const freshnessLabel = hasUpdates
     ? "Updates available"
@@ -475,7 +481,7 @@ export function ReviewWorkbench({
       : (initialState?.section ?? "files"),
   );
   const [activeTab, setActiveTab] = useState<
-    "conversation" | "diff" | "insights"
+    "conversation" | "diff" | "call_flow" | "insights"
   >(
     initialState?.activeTab ??
       (initialState?.section === "insights" ? "insights" : "diff"),
@@ -501,7 +507,7 @@ export function ReviewWorkbench({
   >(undefined);
   const commitWorkbenchPosition = useCallback(
     (next: {
-      readonly activeTab: "conversation" | "diff" | "insights";
+      readonly activeTab: "conversation" | "diff" | "call_flow" | "insights";
       readonly section: ReviewNavigatorSection;
       readonly selectedPath?: string;
     }): void => {
@@ -837,11 +843,11 @@ export function ReviewWorkbench({
               <span
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
-                  mergePillColor(model.mergeReadiness._tag),
+                  mergePillColor(mergeStatus),
                 )}
               >
-                {mergeIcon(model.mergeReadiness._tag)}
-                Merge · {mergeLabel(model.mergeReadiness._tag)}
+                {mergeIcon(mergeStatus)}
+                Merge · {mergeLabel(mergeStatus)}
               </span>
               <Button
                 variant="outline"
@@ -879,7 +885,18 @@ export function ReviewWorkbench({
               )}
             </div>
           </div>
-          <PendingReviewNotice pendingReview={actions.pendingReview} />
+          {terminal ? (
+            <p
+              role="status"
+              className="border-t border-status-success/30 bg-status-success/10 px-1 py-2 text-sm text-status-success"
+            >
+              {model.review.status === "merged"
+                ? "Pull request merged on GitHub. This Review remains readable."
+                : "Pull request closed on GitHub. This Review remains readable."}
+            </p>
+          ) : (
+            <PendingReviewNotice pendingReview={actions.pendingReview} />
+          )}
           {model.localCheckout === undefined ? null : (
             <p
               className="border-t border-status-warning/30 bg-status-warning/10 px-1 py-2 text-sm text-status-warning"
@@ -957,6 +974,14 @@ export function ReviewWorkbench({
             }
           >
             Diff
+          </TabButton>
+          <TabButton
+            active={activeTab === "call_flow"}
+            onClick={() =>
+              commitWorkbenchPosition({ activeTab: "call_flow", section })
+            }
+          >
+            Call Flow
           </TabButton>
           <TabButton
             active={activeTab === "insights"}
@@ -1172,6 +1197,119 @@ export function ReviewWorkbench({
                   </div>
                 </div>
               )}
+            </div>
+          ) : activeTab === "call_flow" ? (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <div
+                data-review-call-flow-layout={
+                  navigatorVisible ? "with-navigator" : "collapsed-navigator"
+                }
+                style={navigatorVisible ? navigatorGridStyle : undefined}
+                className={cn(
+                  "grid h-full min-h-0 flex-1",
+                  navigatorVisible
+                    ? "grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]"
+                    : "grid-cols-[2.75rem_minmax(0,1fr)]",
+                )}
+              >
+                {navigatorVisible ? (
+                  <ReviewNavigator
+                    patch={model.fullPatch ?? ""}
+                    commits={model.commits}
+                    conversationThreadEntries={conversationThreadEntries}
+                    section={section}
+                    {...(selectedPath === undefined ? {} : { selectedPath })}
+                    {...(activePath === undefined ? {} : { activePath })}
+                    {...(selectedCommitSha === undefined
+                      ? {}
+                      : { selectedCommitSha })}
+                    {...(selectedThreadId === undefined
+                      ? {}
+                      : { selectedThreadId })}
+                    onSectionChange={selectSection}
+                    onFileSelect={(path) => {
+                      commitWorkbenchPosition({
+                        activeTab: "diff",
+                        section: "files",
+                        selectedPath: path,
+                      });
+                      setActivePath(path);
+                      setSelectedThreadId(undefined);
+                      setSelectedRange(undefined);
+                    }}
+                    onCommitSelect={selectCommit}
+                    onThreadSelect={(row: ConversationThreadRow) => {
+                      setSelectedThreadId(row.id);
+                      setSelectedRange({
+                        start: row.start,
+                        end: row.end,
+                        side: row.side,
+                      });
+                      commitWorkbenchPosition({
+                        activeTab: "diff",
+                        section: "threads",
+                        selectedPath: row.path,
+                      });
+                      setActivePath(row.path);
+                    }}
+                    onCollapse={() => setNavigatorVisible(false)}
+                  />
+                ) : (
+                  <div className="flex items-start justify-center pt-2">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            size="icon-sm"
+                            variant="outline"
+                            onClick={() => setNavigatorVisible(true)}
+                            aria-label="Show review navigator"
+                          />
+                        }
+                      >
+                        <PanelLeftOpen />
+                      </TooltipTrigger>
+                      <TooltipContent>Show review navigator</TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+                {navigatorVisible ? (
+                  <div className="h-full w-3">
+                    <ReviewNavigatorResizeHandle
+                      widthRem={navigatorWidthRem}
+                      onResize={handleNavigatorResize}
+                      onResizeEnd={handleNavigatorResizeEnd}
+                    />
+                  </div>
+                ) : null}
+                <div className="min-h-0 min-w-0">
+                  <CallFlowPanel
+                    key={model.session.id}
+                    profileId={model.session.key.profileId}
+                    sessionId={model.session.id}
+                    headSha={model.revision.reviewedHeadSha}
+                    onOpenSource={(target) => {
+                      commitWorkbenchPosition({
+                        activeTab: "diff",
+                        section: "files",
+                        selectedPath: target.path,
+                      });
+                      setActivePath(target.path);
+                      setSelectedCommitSha(undefined);
+                      setSelectedThreadId(undefined);
+                      setSelectedRange(
+                        target.line === undefined
+                          ? undefined
+                          : {
+                              start: target.line,
+                              end: target.endLine ?? target.line,
+                              side: target.status === "removed" ? "old" : "new",
+                            },
+                      );
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           ) : (
             <div
@@ -1448,8 +1586,11 @@ function checksIcon(overall: string): React.JSX.Element {
 
 function mergePillColor(tag: string): string {
   switch (tag) {
+    case "Merged":
     case "Ready":
       return "border-status-success/30 bg-status-success/10 text-status-success";
+    case "Closed":
+      return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
     case "NeedsAcknowledgement":
       return "border-status-warning/30 bg-status-warning/10 text-status-warning";
     case "Blocked":
@@ -1460,8 +1601,11 @@ function mergePillColor(tag: string): string {
 }
 function mergeIcon(tag: string): React.JSX.Element {
   switch (tag) {
+    case "Merged":
     case "Ready":
       return <CheckCircle2 className="size-3" />;
+    case "Closed":
+      return <XCircle className="size-3" />;
     case "NeedsAcknowledgement":
       return <AlertTriangle className="size-3" />;
     case "Blocked":
@@ -1472,6 +1616,10 @@ function mergeIcon(tag: string): React.JSX.Element {
 }
 function mergeLabel(tag: string): string {
   switch (tag) {
+    case "Merged":
+      return "Merged";
+    case "Closed":
+      return "Closed";
     case "Ready":
       return "Ready";
     case "NeedsAcknowledgement":

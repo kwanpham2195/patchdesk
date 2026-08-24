@@ -1098,10 +1098,18 @@ export class GitHubAdapter
       ],
       timeoutMs: commandTimeoutMs,
     });
-    if (required._tag === "err")
+    // GitHub returns 404 when the branch has no classic required-status-check
+    // policy. Rulesets remain available through the GraphQL policy read above.
+    // All other failures stay fail-closed because the required checks are unknown.
+    if (required._tag === "err") {
+      if (required.error._tag === "CommandNotFound")
+        return ok(
+          completeMergePolicy(input.pr, policyPage, contexts, new Set()),
+        );
       return ok(
         incompleteMergePolicy(input.pr, policyPage, contexts, "permission"),
       );
+    }
     const rawRequired = v.safeParse(requiredStatusChecksSchema, required.value);
     if (!rawRequired.success)
       return ok(

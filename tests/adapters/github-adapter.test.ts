@@ -450,6 +450,50 @@ describe("GitHubAdapter merge policy", () => {
     });
   });
 
+  it("accepts no classic required checks on a ruleset-managed branch", async () => {
+    const adapter = testAdapter(
+      new CommandRunner(
+        new FakeProcessExecutor([
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout: JSON.stringify(mergePolicyPayload()),
+            stderr: "",
+          },
+          {
+            _tag: "Exited",
+            exitCode: 1,
+            stdout: "",
+            stderr: "HTTP 404: Branch not protected",
+          },
+        ]),
+      ),
+    );
+
+    await expect(
+      adapter.getMergePolicy({
+        profile,
+        pr,
+        expectedHeadSha: mustParse(parseGitSha(headSha)),
+      }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: expect.objectContaining({
+        complete: true,
+        checks: {
+          overall: "passing",
+          checks: [
+            expect.objectContaining({
+              name: "unit",
+              required: false,
+              conclusion: "success",
+            }),
+          ],
+        },
+      }),
+    });
+  });
+
   it("parses detailed merge-state statuses and preserves unavailable versus unknown", async () => {
     const statuses = [
       ["BLOCKED", "blocked"],

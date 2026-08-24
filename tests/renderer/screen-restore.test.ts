@@ -33,6 +33,17 @@ describe("workbench UI position persistence", () => {
     });
   });
 
+  it("restores the Call Flow tab", () => {
+    saveWorkbenchUiState(reviewIdA, {
+      activeTab: "call_flow",
+      section: "files",
+    });
+    expect(loadWorkbenchUiState(reviewIdA)).toEqual({
+      activeTab: "call_flow",
+      section: "files",
+    });
+  });
+
   it("scopes positions per review", () => {
     saveWorkbenchUiState(reviewIdA, { activeTab: "diff", section: "files" });
     saveWorkbenchUiState(reviewIdB, {

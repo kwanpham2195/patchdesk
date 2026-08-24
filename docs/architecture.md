@@ -34,6 +34,7 @@ flowchart TB
     subgraph External["External"]
         GitHub["GitHub<br/>gh CLI, REST and GraphQL"]
         Flue["Flue 2 one-shot child<br/>one per Insight run"]
+        CallDiff["CallDiff one-shot child<br/>one per immutable Review session"]
         Codex["Local Codex CLI account<br/>app server"]
         Files["Local files<br/>JSON stores, worktree, logs"]
     end
@@ -45,6 +46,7 @@ flowchart TB
     Adapters -- "read and write" --> GitHub
     Adapters --> Files
     Services -- "bounded stdin, strict result" --> Flue
+    Services -- "bounded stdin, strict result" --> CallDiff
     Services --> Codex
 ```
 
@@ -144,6 +146,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-write-gate.ts` is the shared precondition for every GitHub write: the Review must be Fresh.
 - `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results.
 - `flue-insight-child-invoker.ts` and `codex-insight-invoker.ts` start model children.
+- `call-flow-service.ts` and `call-flow-child-invoker.ts` run and cache a bounded CallDiff projection for one immutable Review session.
 - `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows.
 - `review-worktree-service.ts` owns the read-only git commands that create a session checkout.
 - `review-diff-source-service.ts`, `review-patch-index.ts`, and `review-inspector.ts` read the diff and expose a bounded, immutable inspector to model agents.
@@ -200,6 +203,16 @@ The parent validates the result again before it can affect retained content or G
 
 **Architecture Invariant:** the child mounts no sandbox, no MCP connection, no declared subagent, no generic filesystem or shell capability, and no GitHub writer.
 The shipped child is an exact locked package, staged at package time and validated by package smoke.
+
+### Call Flow child
+
+Call Flow is a deterministic projection of the base and head commits in one Review session (ADR "Run Call Flow as a revision-bound one-shot analysis"). The main process starts `out/main/call-flow-runner.js` through Electron's Node mode and sends one bounded invocation through stdin.
+
+The child runs the app-owned Go syntax rule or the exact packaged CallDiff fallback against the represented-review worktree. Its strict node kinds distinguish calls, control branches, receiver-held dependency boundaries, unresolved targets, references, concurrency, and deferral; the fallback continues to emit only calls and branches. Go returns a compact receiver-collaborator change explanation: it prefers topmost affected definitions in changed files, flattens ordinary control flow, identifies nested receiver-field calls as inversion-of-control boundaries without inferring an implementation, filters package/local support calls, and avoids expanding one-revision callees. It supports only the packaged Go, JavaScript, JSX, TypeScript, and TSX parsers. Native parser packages load their exact published N-API prebuilds; packaging does not rebuild them on the release machine. The child returns one strict bounded result and exits.
+
+The renderer projects that result into three reading modes. Paths shows the combined change tree without row-level semantic badges; only dependency labels receive a restrained semantic text treatment, and one Go legend explains that inversion-of-control boundary. New only keeps added calls and their required ancestors. Call Diff separates removed base paths from added head paths in side-by-side panes. Raw retains technical dependency, uncertainty, and reference markers, and all modes keep source navigation on the canonical Diff.
+
+**Architecture Invariant:** Call Flow has no GitHub credentials, model provider, network access, or write command. Its source links return to the canonical Diff screen. A packaged target is supported only when package verification proves its published parser prebuild loads in the Call Flow child.
 
 ### `src/skills/`
 

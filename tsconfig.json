@@ -6,7 +6,10 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "Bundler",
     "baseUrl": ".",
-    "paths": { "@/*": ["src/renderer/src/*"] },
+    "paths": {
+      "@/*": ["src/renderer/src/*"],
+      "calldiff": ["src/types/calldiff.ts"]
+    },
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,
     "strict": true,

@@ -37,7 +37,7 @@ export type ReviewWorkbenchFlowProps = {
   readonly onNavigate: (section: "diff" | "checks") => void;
   /** Reports in-screen position changes so a reload can restore them. */
   readonly onUiStateChange?: (state: {
-    readonly activeTab: "conversation" | "diff" | "insights";
+    readonly activeTab: "conversation" | "diff" | "call_flow" | "insights";
     readonly section: ReviewNavigatorSection;
     readonly selectedPath?: string;
   }) => void;
