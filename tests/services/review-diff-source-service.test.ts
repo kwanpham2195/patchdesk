@@ -36,6 +36,8 @@ function must<T>(
   return value.value;
 }
 
+const fixtureMergeBaseSha = "0123456789abcdef0123456789abcdef01234567";
+
 class SourceGit implements GitReadExecutor {
   readonly calls: Array<ReadonlyArray<string>> = [];
 
@@ -43,14 +45,34 @@ class SourceGit implements GitReadExecutor {
     private readonly blobs: {
       readonly base: string;
       readonly head: string;
+      readonly mergeBase?: string;
+      readonly rejectDirectBase?: boolean;
     },
   ) {}
 
   async run(argv: ReadonlyArray<string>) {
     this.calls.push(argv);
+    if (argv.includes("merge-base")) {
+      return {
+        _tag: "ok" as const,
+        value: { stdout: `${fixtureMergeBaseSha}\n` },
+      };
+    }
     const target = argv.at(-1) ?? "";
     if (target.includes("/base:")) {
+      if (this.blobs.rejectDirectBase) {
+        return {
+          _tag: "err" as const,
+          error: { _tag: "GitReadFailed" as const },
+        };
+      }
       return { _tag: "ok" as const, value: { stdout: this.blobs.base } };
+    }
+    if (target.startsWith(`${fixtureMergeBaseSha}:`)) {
+      return {
+        _tag: "ok" as const,
+        value: { stdout: this.blobs.mergeBase ?? this.blobs.base },
+      };
     }
     if (target.includes("/head:")) {
       return { _tag: "ok" as const, value: { stdout: this.blobs.head } };
@@ -193,7 +215,7 @@ describe("ReviewDiffSourceService", () => {
     }
   });
 
-  it("hydrates a selected patch file from exact base and head text without exposing a checkout", async () => {
+  it("hydrates a selected patch file from merge-base and head text without exposing a checkout", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-source-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
@@ -266,8 +288,10 @@ describe("ReviewDiffSourceService", () => {
       await new ReviewSessionStore(paths).save(session);
 
       const git = new SourceGit({
-        base: "old line\nbefore\ntrailing line\n",
+        base: "base branch tip must not be read\n",
+        mergeBase: "old line\nbefore\ntrailing line\n",
         head: "old line\nafter\ntrailing line\n",
+        rejectDirectBase: true,
       });
       let patchReads = 0;
       const service = new ReviewDiffSourceService(
@@ -302,7 +326,35 @@ describe("ReviewDiffSourceService", () => {
           },
         },
       });
-      expect(git.calls).toHaveLength(2);
+      expect(git.calls).toEqual([
+        [
+          "git",
+          "-C",
+          worktreePath,
+          "merge-base",
+          "--end-of-options",
+          `refs/patchdesk/reviews/cfw/${sessionId}/base`,
+          `refs/patchdesk/reviews/cfw/${sessionId}/head`,
+        ],
+        [
+          "git",
+          "-C",
+          worktreePath,
+          "show",
+          "--no-textconv",
+          "--end-of-options",
+          `${fixtureMergeBaseSha}:src/example.ts`,
+        ],
+        [
+          "git",
+          "-C",
+          worktreePath,
+          "show",
+          "--no-textconv",
+          "--end-of-options",
+          `refs/patchdesk/reviews/cfw/${sessionId}/head:src/example.ts`,
+        ],
+      ]);
       expect(git.calls.flat()).not.toContain("gh");
       await service.load({
         profileId: "cfw",
@@ -500,6 +552,168 @@ describe("ReviewDiffSourceService", () => {
         _tag: "ok",
         value: { state: "unavailable", reason: "patch_unavailable" },
       });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("rejects blobs with mismatched trailing unchanged context", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-source-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const profile = must(
+        parseWorkspaceProfileConfig({
+          id: "cfw",
+          label: "CFW",
+          githubHost: "github.com",
+          ghAccount: "fixture",
+          ownerFilters: [],
+          workspaceRoots: [],
+          rulePaths: [],
+          repos: [],
+        }),
+      );
+      const profiles = new ProfileStore(paths);
+      const sessions = new ReviewSessionStore(paths);
+      await profiles.save(profile);
+      const session = await saveSession({
+        paths,
+        sessions,
+        profileId: profile.id,
+        number: 43,
+        patch: [
+          "diff --git a/src/example.ts b/src/example.ts",
+          "--- a/src/example.ts",
+          "+++ b/src/example.ts",
+          "@@ -2,1 +2,2 @@",
+          " unchanged",
+          "+added",
+          "",
+        ].join("\n"),
+      });
+
+      for (const source of [
+        {
+          base: "first\nunchanged\nold tail one\nold tail two\n",
+          head: "first\nunchanged\nadded\nnew tail\n",
+        },
+        {
+          base: "first\nunchanged\nold tail\n",
+          head: "first\nunchanged\nadded\nnew tail\n",
+        },
+      ]) {
+        const loaded = await new ReviewDiffSourceService(
+          profiles,
+          sessions,
+          new SourceGit(source),
+        ).load({
+          profileId: "cfw",
+          sessionId: session.id,
+          path: "src/example.ts",
+        });
+
+        expect(loaded).toEqual({
+          _tag: "ok",
+          value: { state: "unavailable", reason: "patch_unavailable" },
+        });
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("hydrates new and deleted files without reading an absent source side", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-source-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const profile = must(
+        parseWorkspaceProfileConfig({
+          id: "cfw",
+          label: "CFW",
+          githubHost: "github.com",
+          ghAccount: "fixture",
+          ownerFilters: [],
+          workspaceRoots: [],
+          rulePaths: [],
+          repos: [],
+        }),
+      );
+      const profiles = new ProfileStore(paths);
+      const sessions = new ReviewSessionStore(paths);
+      await profiles.save(profile);
+      const newSession = await saveSession({
+        paths,
+        sessions,
+        profileId: profile.id,
+        number: 44,
+        patch: [
+          "diff --git a/src/new.ts b/src/new.ts",
+          "new file mode 100644",
+          "--- /dev/null",
+          "+++ b/src/new.ts",
+          "@@ -0,0 +1 @@",
+          "+new file",
+          "",
+        ].join("\n"),
+      });
+      const newGit = new SourceGit({
+        base: "must not read base\n",
+        head: "new file\n",
+      });
+      const newLoaded = await new ReviewDiffSourceService(
+        profiles,
+        sessions,
+        newGit,
+      ).load({
+        profileId: "cfw",
+        sessionId: newSession.id,
+        path: "src/new.ts",
+      });
+      expect(newLoaded).toEqual({
+        _tag: "ok",
+        value: {
+          state: "ready",
+          newFile: { name: "src/new.ts", contents: "new file\n" },
+        },
+      });
+      expect(newGit.calls).toHaveLength(1);
+      expect(newGit.calls.flat()).not.toContain("merge-base");
+
+      const deletedSession = await saveSession({
+        paths,
+        sessions,
+        profileId: profile.id,
+        number: 45,
+        patch: [
+          "diff --git a/src/deleted.ts b/src/deleted.ts",
+          "deleted file mode 100644",
+          "--- a/src/deleted.ts",
+          "+++ /dev/null",
+          "@@ -1 +0,0 @@",
+          "-deleted file",
+          "",
+        ].join("\n"),
+      });
+      const deletedGit = new SourceGit({
+        base: "deleted file\n",
+        head: "must not read head\n",
+      });
+      const deletedLoaded = await new ReviewDiffSourceService(
+        profiles,
+        sessions,
+        deletedGit,
+      ).load({
+        profileId: "cfw",
+        sessionId: deletedSession.id,
+        path: "src/deleted.ts",
+      });
+      expect(deletedLoaded).toEqual({
+        _tag: "ok",
+        value: {
+          state: "ready",
+          oldFile: { name: "src/deleted.ts", contents: "deleted file\n" },
+        },
+      });
+      expect(deletedGit.calls).toHaveLength(2);
+      expect(deletedGit.calls.flat()).toContain("merge-base");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -4,9 +4,11 @@ import type { Stats } from "node:fs";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
+  parseGitSha,
   parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
+  type GitSha,
 } from "../domain/ids";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSession } from "../domain/review-session";
@@ -52,12 +54,18 @@ export type ReviewDiffSource =
         | "github_read";
     };
 
+type MutableReadyReviewDiffSource = {
+  state: "ready";
+  oldFile?: { name: string; contents: string };
+  newFile?: { name: string; contents: string };
+};
+
 export type ReviewDiffSourceFailure = {
   readonly reason: "invalid_input" | "not_found" | "storage";
 };
 
 /**
- * Reads the exact managed base/head blobs needed by Pierre to expand omitted
+ * Reads the exact managed merge-base/head blobs needed by Pierre to expand omitted
  * hunk context. It only uses main-process argv-array Git reads and returns
  * bounded text that matches the immutable saved patch.
  */
@@ -71,6 +79,7 @@ export class ReviewDiffSourceService {
     private readonly patchReader: PreparedPatchReader = filesystemPatchReader,
   ) {}
 
+  /** Parses untrusted local API request input before loading a review diff source. */
   async load(
     input: unknown,
   ): Promise<Result<ReviewDiffSource, ReviewDiffSourceFailure>> {
@@ -122,13 +131,20 @@ export class ReviewDiffSourceService {
     }
     const oldAbsent = /^--- \/dev\/null$/m.test(rawFilePatch);
     const newAbsent = /^\+\+\+ \/dev\/null$/m.test(rawFilePatch);
+    const oldRef = oldAbsent
+      ? undefined
+      : await this.resolveMergeBase(session.value);
+    if (oldRef !== undefined && oldRef._tag === "err") {
+      return ok({ state: "unavailable", reason: "github_read" });
+    }
+    const headRef = `refs/patchdesk/reviews/${session.value.key.profileId}/${session.value.id}/head`;
     const [oldResult, newResult] = await Promise.all([
-      oldAbsent
+      oldRef === undefined
         ? Promise.resolve(undefined)
-        : this.readBlob(session.value, "base", oldPath.value),
+        : this.readBlob(session.value, oldRef.value, oldPath.value),
       newAbsent
         ? Promise.resolve(undefined)
-        : this.readBlob(session.value, "head", newPath.value),
+        : this.readBlob(session.value, headRef, newPath.value),
     ]);
     const unavailable =
       unavailableReason(oldResult) ?? unavailableReason(newResult);
@@ -138,15 +154,12 @@ export class ReviewDiffSourceService {
     if (!matchesPatch(rawFilePatch, oldContents, newContents)) {
       return ok({ state: "unavailable", reason: "patch_unavailable" });
     }
-    return ok({
-      state: "ready",
-      ...(oldResult === undefined
-        ? {}
-        : { oldFile: { name: file.oldPath, contents: oldContents } }),
-      ...(newResult === undefined
-        ? {}
-        : { newFile: { name: file.newPath, contents: newContents } }),
-    });
+    const response: MutableReadyReviewDiffSource = { state: "ready" };
+    if (oldResult !== undefined)
+      response.oldFile = { name: file.oldPath, contents: oldContents };
+    if (newResult !== undefined)
+      response.newFile = { name: file.newPath, contents: newContents };
+    return ok(response);
   }
 
   private async loadPatchIndex(
@@ -185,6 +198,8 @@ export class ReviewDiffSourceService {
       this.patches.size > maxCachedPatchSessions ||
       this.cachedPatchBytes > maxCachedPatchBytes
     ) {
+      // SAFETY: a nonempty cache is guaranteed whenever either eviction limit
+      // is exceeded, so the iterator yields an entry tuple.
       const oldest = this.patches.entries().next().value as
         | [string, CachedPatch]
         | undefined;
@@ -195,9 +210,30 @@ export class ReviewDiffSourceService {
     return next.index;
   }
 
+  private async resolveMergeBase(
+    session: ReviewSession,
+  ): Promise<Result<GitSha, { readonly reason: "github_read" }>> {
+    const baseRef = `refs/patchdesk/reviews/${session.key.profileId}/${session.id}/base`;
+    const headRef = `refs/patchdesk/reviews/${session.key.profileId}/${session.id}/head`;
+    const mergeBase = await this.git.run([
+      "git",
+      "-C",
+      session.worktree.path,
+      "merge-base",
+      "--end-of-options",
+      baseRef,
+      headRef,
+    ]);
+    if (mergeBase._tag === "err") return err({ reason: "github_read" });
+    const parsed = parseGitSha(mergeBase.value.stdout.trim());
+    return parsed._tag === "err"
+      ? err({ reason: "github_read" })
+      : ok(parsed.value);
+  }
+
   private async readBlob(
     session: ReviewSession,
-    side: "base" | "head",
+    ref: string,
     path: string,
   ): Promise<
     Result<
@@ -206,7 +242,6 @@ export class ReviewDiffSourceService {
       { readonly reason: "github_read" }
     >
   > {
-    const ref = `refs/patchdesk/reviews/${session.key.profileId}/${session.id}/${side}`;
     const blob = await this.git.run([
       "git",
       "-C",
@@ -283,8 +318,8 @@ function matchesPatch(
   for (const rawLine of rawPatch.replaceAll("\r\n", "\n").split("\n")) {
     const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine);
     if (header !== null) {
-      oldIndex = Number(header[1]) - 1;
-      newIndex = Number(header[2]) - 1;
+      oldIndex = Math.max(Number(header[1]) - 1, 0);
+      newIndex = Math.max(Number(header[2]) - 1, 0);
       inHunk = true;
       continue;
     }
@@ -303,7 +338,12 @@ function matchesPatch(
       newIndex += 1;
     }
   }
-  return true;
+  while (oldIndex < oldLines.length && newIndex < newLines.length) {
+    if (oldLines[oldIndex] !== newLines[newIndex]) return false;
+    oldIndex += 1;
+    newIndex += 1;
+  }
+  return oldIndex === oldLines.length && newIndex === newLines.length;
 }
 
 function splitLines(contents: string): ReadonlyArray<string> {

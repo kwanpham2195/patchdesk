@@ -173,6 +173,12 @@
         "react/only-export-components": "off",
         "no-undef": "off"
       }
+    },
+    {
+      "files": ["src/services/review-diff-source-service.ts"],
+      "rules": {
+        "anti-slop/no-unknown-parameters": "off"
+      }
     }
   ]
 }
