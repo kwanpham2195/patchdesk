@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "../../src/renderer/src/components/app-shell";
+import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -16,13 +17,15 @@ describe("AppShell settings overlay entry points", () => {
     const onOpenSettings = vi.fn();
 
     render(
-      <AppShell
-        destination={{ kind: "dashboard" }}
-        onNavigate={() => undefined}
-        onOpenSettings={onOpenSettings}
-      >
-        <div>Inbox content</div>
-      </AppShell>,
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          onOpenSettings={onOpenSettings}
+        >
+          <div>Inbox content</div>
+        </AppShell>
+      </BusyProvider>,
     );
 
     await user.click(screen.getByRole("button", { name: "Settings" }));

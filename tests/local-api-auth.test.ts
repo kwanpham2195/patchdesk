@@ -143,10 +143,17 @@ describe("local API current Review capability boundary", () => {
   });
 
   it("serves the current Review diff-file hydration contract", async () => {
+    const mergeBaseSha = "fedcba9876543210fedcba9876543210fedcba98";
     const api = await start({
       readOnlyGit: {
-        run: async (argv) =>
-          ok({ stdout: argv.at(-1)?.includes("/base:") ? "old\n" : "new\n" }),
+        run: async (argv) => {
+          if (argv.includes("merge-base"))
+            return ok({ stdout: `${mergeBaseSha}\n` });
+          return ok({
+            stdout:
+              argv.at(-1) === `${mergeBaseSha}:src/a.ts` ? "old\n" : "new\n",
+          });
+        },
       },
     });
     if (root === undefined) throw new Error("test root was not created");

@@ -6,8 +6,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
 import { InboxFlow } from "../../src/renderer/src/flows/inbox-flow";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { Dashboard } from "../../src/renderer/src/renderer-models";
@@ -117,6 +119,10 @@ const projection: WorkbenchResponse = {
   mergeReasons: [],
 };
 
+function renderInboxFlow(ui: ReactNode): ReturnType<typeof render> {
+  return render(<BusyProvider>{ui}</BusyProvider>);
+}
+
 afterEach(() => {
   cleanup();
   // SAFETY: removes the test-installed `window.patchdesk` stub between
@@ -158,7 +164,7 @@ describe("InboxFlow saved-review recovery", () => {
       },
     });
     const onOpenWorkbench = vi.fn();
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         dashboard={dashboard}
@@ -206,7 +212,7 @@ describe("InboxFlow rate-limited repo outcome", () => {
         ],
       },
     };
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         dashboard={rateLimitedDashboard}
@@ -245,7 +251,7 @@ describe("InboxFlow rate-limited repo outcome", () => {
         ],
       },
     };
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         dashboard={rateLimitedDashboard}
@@ -288,7 +294,7 @@ describe("InboxFlow forbidden repo outcome (plan 009)", () => {
         ],
       },
     };
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         dashboard={forbiddenDashboard}
@@ -327,7 +333,7 @@ describe("InboxFlow forbidden repo outcome (plan 009)", () => {
         ],
       },
     };
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         dashboard={forbiddenDashboard}
@@ -352,7 +358,7 @@ describe("InboxFlow forbidden repo outcome (plan 009)", () => {
 describe("InboxFlow settings targeting", () => {
   it("opens the Workspace section from the first-run setup card", () => {
     const onSettings = vi.fn();
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         state="empty"
@@ -382,7 +388,7 @@ describe("InboxFlow settings targeting", () => {
         ],
       },
     };
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         dashboard={authDashboard}
@@ -444,7 +450,7 @@ describe("InboxFlow setup checklist", () => {
         },
       },
     });
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         state="empty"
@@ -477,7 +483,7 @@ describe("InboxFlow setup checklist", () => {
         },
       },
     });
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         state="empty"
@@ -508,7 +514,7 @@ describe("InboxFlow setup checklist", () => {
         },
       },
     });
-    render(
+    renderInboxFlow(
       <InboxFlow
         destination="dashboard"
         state="empty"
