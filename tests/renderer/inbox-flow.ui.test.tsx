@@ -37,7 +37,7 @@ const savedRow = {
     updatedAt: "2026-08-13T00:00:00.000Z",
     matchesCurrentHead: true,
   },
-  categories: ["saved_review"],
+  categories: ["updated_since_review"],
   recommendedAction: {
     kind: "open_saved_review",
     label: "Open Review",

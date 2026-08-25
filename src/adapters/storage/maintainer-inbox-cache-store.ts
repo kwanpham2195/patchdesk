@@ -93,11 +93,6 @@ const actionSchema = v.variant("kind", [
     label: v.literal("Open merge readiness"),
     reviewId: v.string(),
   }),
-  v.strictObject({
-    kind: v.literal("open_discussion"),
-    label: v.literal("Review author response"),
-    reviewId: v.string(),
-  }),
 ]);
 
 const rowSchema = v.strictObject({
@@ -143,16 +138,7 @@ const rowSchema = v.strictObject({
     v.array(v.strictObject({ name: v.string(), color: v.string() })),
   ),
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-  categories: v.array(
-    v.picklist([
-      "needs_review",
-      "updated_since_review",
-      "waiting_for_author",
-      "checks_failing",
-      "ready_to_merge",
-      "saved_review",
-    ]),
-  ),
+  categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
   recommendedAction: actionSchema,
   dataFreshness: v.picklist(["fresh", "cached"]),
 });

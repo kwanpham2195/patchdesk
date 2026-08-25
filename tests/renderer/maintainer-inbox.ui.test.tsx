@@ -36,7 +36,7 @@ const row: InboxRow = {
     updatedAt: "2026-08-13T00:00:00.000Z",
     matchesCurrentHead: true,
   },
-  categories: ["saved_review"],
+  categories: ["updated_since_review"],
   recommendedAction: {
     kind: "open_saved_review" as const,
     label: "Open Review" as const,

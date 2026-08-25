@@ -290,8 +290,7 @@ export function InboxFlow({
         const row = inbox.inbox.rows.find(
           (candidate) =>
             (candidate.recommendedAction.kind === "open_saved_review" ||
-              candidate.recommendedAction.kind === "open_merge_readiness" ||
-              candidate.recommendedAction.kind === "open_discussion") &&
+              candidate.recommendedAction.kind === "open_merge_readiness") &&
             candidate.recommendedAction.reviewId === savedReviewId,
         );
         void openStoredReviewById(

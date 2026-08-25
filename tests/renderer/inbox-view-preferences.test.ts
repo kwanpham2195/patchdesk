@@ -47,7 +47,7 @@ describe("inbox view preferences", () => {
 
   it("keeps sound fields when a single stored field is malformed", () => {
     store({
-      view: "checks_failing",
+      view: "ready_to_merge",
       search: "nanoid",
       sort: "not-a-sort",
       selectedRepos: ["owner/repo"],
@@ -56,7 +56,7 @@ describe("inbox view preferences", () => {
       savedViews: [],
     });
     const loaded = loadInboxViewPreferences("profile-1");
-    expect(loaded.view).toBe("checks_failing");
+    expect(loaded.view).toBe("ready_to_merge");
     expect(loaded.search).toBe("nanoid");
     expect(loaded.sort).toBe("priority");
     expect(loaded.queueRailOpen).toBe(false);
@@ -85,24 +85,24 @@ describe("inbox view preferences", () => {
   });
 
   it("resets an unlisted or malformed page size to the default while keeping sound fields", () => {
-    store({ view: "waiting", pageSize: 100 });
+    store({ view: "ready_to_merge", pageSize: 100 });
     const loaded = loadInboxViewPreferences("profile-1");
     expect(loaded.pageSize).toBe(25);
-    expect(loaded.view).toBe("waiting");
+    expect(loaded.view).toBe("ready_to_merge");
   });
 
   it("resets to defaults, including page size, when reading version 2 data", () => {
-    storeV2({ view: "waiting", scope: "merged" });
+    storeV2({ view: "ready_to_merge", scope: "merged" });
     expect(loadInboxViewPreferences("profile-1")).toEqual(
       DEFAULT_INBOX_VIEW_PREFERENCES,
     );
   });
 
   it("migrates version 1 preferences with an open scope", () => {
-    storeLegacy({ view: "waiting", search: "fixture" });
+    storeLegacy({ view: "ready_to_merge", search: "fixture" });
     expect(loadInboxViewPreferences("profile-1")).toMatchObject({
       scope: "open",
-      view: "waiting",
+      view: "ready_to_merge",
       search: "fixture",
     });
   });
@@ -113,13 +113,13 @@ describe("inbox view preferences", () => {
         {
           id: "a",
           name: "Waiting",
-          view: "waiting",
+          view: "ready_to_merge",
           search: "",
           sort: "size",
           selectedRepos: [],
         },
-        { id: "a", name: "Duplicate", view: "waiting" },
-        { id: "  ", name: "Blank id", view: "waiting" },
+        { id: "a", name: "Duplicate", view: "ready_to_merge" },
+        { id: "  ", name: "Blank id", view: "ready_to_merge" },
         { id: "b", name: "Bad view", view: "not-a-view" },
       ],
     });
@@ -130,19 +130,19 @@ describe("inbox view preferences", () => {
 
   it("lifts a legacy top-level selectedRepo string into selectedRepos, surviving the migration", () => {
     store({
-      view: "checks_failing",
+      view: "ready_to_merge",
       search: "nanoid",
       selectedRepo: "acme/widgets",
     });
     const loaded = loadInboxViewPreferences("profile-1");
     expect(loaded.selectedRepos).toEqual(["acme/widgets"]);
-    expect(loaded.view).toBe("checks_failing");
+    expect(loaded.view).toBe("ready_to_merge");
     expect(loaded.search).toBe("nanoid");
   });
 
   it("lifts a legacy top-level selectedRepo of '' (all repositories) to an empty array", () => {
     store({
-      view: "checks_failing",
+      view: "ready_to_merge",
       selectedRepo: "",
     });
     const loaded = loadInboxViewPreferences("profile-1");
@@ -155,7 +155,7 @@ describe("inbox view preferences", () => {
         {
           id: "a",
           name: "Acme only",
-          view: "waiting",
+          view: "ready_to_merge",
           sort: "size",
           selectedRepo: "acme/widgets",
         },
@@ -190,13 +190,13 @@ describe("inbox view preferences", () => {
 
   it("degrades a stale string selectedLabel to an empty array without dropping siblings", () => {
     store({
-      view: "checks_failing",
+      view: "ready_to_merge",
       search: "nanoid",
       selectedLabel: "bug",
     });
     const loaded = loadInboxViewPreferences("profile-1");
     expect(loaded.selectedLabels).toEqual([]);
-    expect(loaded.view).toBe("checks_failing");
+    expect(loaded.view).toBe("ready_to_merge");
     expect(loaded.search).toBe("nanoid");
   });
 
@@ -206,7 +206,7 @@ describe("inbox view preferences", () => {
         {
           id: "a",
           name: "Waiting",
-          view: "waiting",
+          view: "ready_to_merge",
           sort: "size",
           selectedLabel: "bug",
         },
@@ -239,7 +239,7 @@ describe("inbox view preferences", () => {
   it("resets on a version mismatch", () => {
     window.localStorage.setItem(
       KEY,
-      JSON.stringify({ version: 99, preferences: { view: "waiting" } }),
+      JSON.stringify({ version: 99, preferences: { view: "ready_to_merge" } }),
     );
     expect(loadInboxViewPreferences("profile-1")).toEqual(
       DEFAULT_INBOX_VIEW_PREFERENCES,

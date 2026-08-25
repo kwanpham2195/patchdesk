@@ -50,9 +50,6 @@ const icons = {
 const inboxCommands = [
   ["my_inbox", "My inbox"],
   ["updated", "Updated pull requests"],
-  ["needs_review", "Needs review"],
-  ["waiting", "Waiting for author"],
-  ["checks_failing", "Checks failing"],
   ["ready_to_merge", "Ready to merge"],
   ["all_open", "All open pull requests"],
 ] as const;

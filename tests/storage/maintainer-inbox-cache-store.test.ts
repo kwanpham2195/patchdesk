@@ -84,7 +84,7 @@ describe("maintainer inbox cache store", () => {
           reviewState: "none" as const,
           mergeability: "unknown" as const,
           labels: [],
-          categories: ["needs_review"] as const,
+          categories: ["updated_since_review"] as const,
           recommendedAction: {
             kind: "run_review" as const,
             label: "Run review" as const,
@@ -163,7 +163,7 @@ describe("maintainer inbox cache store", () => {
           mergeability: "unknown" as const,
           labels: [{ name: "bug", color: "d73a4a" }],
           labelCount: 5,
-          categories: ["needs_review"] as const,
+          categories: ["updated_since_review"] as const,
           recommendedAction: {
             kind: "run_review" as const,
             label: "Run review" as const,
@@ -203,7 +203,7 @@ describe("maintainer inbox cache store", () => {
           checks: { overall: "passing", checks: [] },
           reviewState: "none",
           mergeability: "unknown",
-          categories: ["needs_review"],
+          categories: ["updated_since_review"],
           recommendedAction: {
             kind: "run_review",
             label: "Run review",
@@ -245,7 +245,7 @@ describe("maintainer inbox cache store", () => {
           checks: { overall: "failing", checks: [] },
           reviewState: "none",
           mergeability: "blocked",
-          categories: ["checks_failing"],
+          categories: ["updated_since_review"],
           recommendedAction: {
             kind: "inspect_checks",
             label: "Inspect failing checks",

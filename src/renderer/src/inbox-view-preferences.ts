@@ -11,9 +11,6 @@ export type InboxScope = "open" | "merged";
 const inboxViewSchema = v.picklist([
   "my_inbox",
   "updated",
-  "needs_review",
-  "waiting",
-  "checks_failing",
   "ready_to_merge",
   "all_open",
 ]);

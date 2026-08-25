@@ -126,20 +126,8 @@ export function matchesView(row: InboxRow, view: InboxView): boolean {
     case "all_open":
       return true;
     case "my_inbox":
-      return row.categories.some(
-        (category) =>
-          category === "needs_review" ||
-          category === "updated_since_review" ||
-          category === "saved_review",
-      );
     case "updated":
       return row.categories.includes("updated_since_review");
-    case "needs_review":
-      return row.categories.includes("needs_review");
-    case "waiting":
-      return row.categories.includes("waiting_for_author");
-    case "checks_failing":
-      return row.categories.includes("checks_failing");
     case "ready_to_merge":
       return row.categories.includes("ready_to_merge");
   }
@@ -175,13 +163,9 @@ function changedLines(row: InboxRow): number {
 }
 
 function priority(row: InboxRow): number {
-  if (row.categories.includes("saved_review")) return 0;
-  if (row.categories.includes("updated_since_review")) return 1;
-  if (row.categories.includes("needs_review")) return 2;
-  if (row.categories.includes("waiting_for_author")) return 3;
-  if (row.categories.includes("checks_failing")) return 4;
-  if (row.categories.includes("ready_to_merge")) return 5;
-  return 6;
+  if (row.categories.includes("updated_since_review")) return 0;
+  if (row.categories.includes("ready_to_merge")) return 1;
+  return 2;
 }
 
 function sortRows(
@@ -216,7 +200,6 @@ function requestAction(
       return;
     case "open_saved_review":
     case "open_merge_readiness":
-    case "open_discussion":
       onOpenReviewId(row.recommendedAction.reviewId);
       return;
   }

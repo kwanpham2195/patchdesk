@@ -360,10 +360,10 @@ function scopedInbox(scope: "open" | "merged", number: number, title: string) {
           mergeability: "unknown",
           labels: [],
           // The default queue in "open" scope is "my_inbox", which only
-          // shows rows carrying one of these categories; "merged" scope
-          // bypasses queue filtering entirely, so this only matters for the
-          // open-scope row.
-          categories: scope === "open" ? (["needs_review"] as const) : [],
+          // shows rows carrying this category; "merged" scope bypasses queue
+          // filtering entirely, so this only matters for the open-scope row.
+          categories:
+            scope === "open" ? (["updated_since_review"] as const) : [],
           recommendedAction:
             scope === "open"
               ? { kind: "run_review", label: "Run review" }

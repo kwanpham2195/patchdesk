@@ -25,13 +25,7 @@ export type InboxPageRequest = {
   readonly pageToken?: string;
 };
 
-export type InboxCategory =
-  | "needs_review"
-  | "updated_since_review"
-  | "waiting_for_author"
-  | "checks_failing"
-  | "ready_to_merge"
-  | "saved_review";
+export type InboxCategory = "updated_since_review" | "ready_to_merge";
 
 export type InboxRecommendedAction =
   | { readonly kind: "run_review"; readonly label: "Run review" }
@@ -47,11 +41,6 @@ export type InboxRecommendedAction =
   | {
       readonly kind: "open_merge_readiness";
       readonly label: "Open merge readiness";
-      readonly reviewId: ReviewId;
-    }
-  | {
-      readonly kind: "open_discussion";
-      readonly label: "Review author response";
       readonly reviewId: ReviewId;
     };
 
@@ -100,18 +89,8 @@ export function projectMaintainerInboxRow(input: {
   if (!input.summary.isOpen) return projectMergedMaintainerInboxRow(input);
   const categories: Array<InboxCategory> = [];
   const review = input.latestReview;
-  const requested =
-    input.summary.requestedReviewers?.includes(input.activeAccount) === true;
-  if (requested) categories.push("needs_review");
   if (review !== undefined && !review.matchesCurrentHead)
     categories.push("updated_since_review");
-  if (
-    review?.matchesCurrentHead &&
-    input.summary.reviewState === "changes_requested"
-  )
-    categories.push("waiting_for_author");
-  if (input.checks.overall === "failing") categories.push("checks_failing");
-  if (review?.matchesCurrentHead) categories.push("saved_review");
   if (
     input.dataFreshness === "fresh" &&
     review?.matchesCurrentHead &&
@@ -245,17 +224,6 @@ function recommendedActionFor(input: {
     return {
       kind: "open_merge_readiness",
       label: "Open merge readiness",
-      reviewId: input.review.reviewId,
-    };
-  if (input.categories.includes("needs_review"))
-    return { kind: "run_review", label: "Run review" };
-  if (
-    input.categories.includes("waiting_for_author") &&
-    input.review !== undefined
-  )
-    return {
-      kind: "open_discussion",
-      label: "Review author response",
       reviewId: input.review.reviewId,
     };
   return { kind: "run_review", label: "Run review" };

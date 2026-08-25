@@ -1576,8 +1576,6 @@ function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
       return "Open Review";
     case "open_merge_readiness":
       return "Open merge readiness";
-    case "open_discussion":
-      return "Review author response";
   }
 }
 
@@ -1594,12 +1592,6 @@ function queueIndicatorClass(view: InboxView): string {
     case "my_inbox":
     case "updated":
       return "bg-status-info";
-    case "needs_review":
-      return "bg-status-warning";
-    case "waiting":
-      return "bg-muted-foreground/60";
-    case "checks_failing":
-      return "bg-destructive";
     case "ready_to_merge":
       return "bg-status-success";
     case "all_open":

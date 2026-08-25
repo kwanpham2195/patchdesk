@@ -55,11 +55,6 @@ const actionSchema = v.variant("kind", [
     label: v.literal("Open merge readiness"),
     reviewId: v.pipe(v.string(), v.minLength(1)),
   }),
-  v.strictObject({
-    kind: v.literal("open_discussion"),
-    label: v.literal("Review author response"),
-    reviewId: v.pipe(v.string(), v.minLength(1)),
-  }),
 ]);
 
 const inboxRowSchema = v.strictObject({
@@ -96,16 +91,7 @@ const inboxRowSchema = v.strictObject({
   ),
   labels: v.array(v.strictObject({ name: v.string(), color: v.string() })),
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-  categories: v.array(
-    v.picklist([
-      "needs_review",
-      "updated_since_review",
-      "waiting_for_author",
-      "checks_failing",
-      "ready_to_merge",
-      "saved_review",
-    ]),
-  ),
+  categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
   recommendedAction: actionSchema,
   dataFreshness: v.picklist(["fresh", "cached"]),
 });
@@ -169,14 +155,7 @@ const inboxResponseSchema = v.strictObject({
 
 export type InboxResponse = v.InferOutput<typeof inboxResponseSchema>;
 export type InboxRow = InboxResponse["inbox"]["rows"][number];
-export type InboxView =
-  | "my_inbox"
-  | "updated"
-  | "needs_review"
-  | "waiting"
-  | "checks_failing"
-  | "ready_to_merge"
-  | "all_open";
+export type InboxView = "my_inbox" | "updated" | "ready_to_merge" | "all_open";
 
 /** Parses the local API's JSON-safe inbox projection before renderer state owns it. */
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
