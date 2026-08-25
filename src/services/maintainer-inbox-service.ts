@@ -83,7 +83,6 @@ export type MaintainerInbox = {
       | "unavailable";
     readonly refreshedAt?: IsoTimestamp;
   };
-  readonly directEntryAvailable: true;
 };
 
 export type InboxClock = { readonly now: () => IsoTimestamp };
@@ -198,7 +197,6 @@ export class MaintainerInboxService {
       refreshedAt,
       dataFreshness,
       snapshot: { state: complete ? "current" : "partial", refreshedAt },
-      directEntryAvailable: true,
     };
     if (
       request.scope === "open" &&
@@ -307,7 +305,6 @@ export class MaintainerInboxService {
           state: snapshotState,
           refreshedAt: refreshedAt.value,
         },
-        directEntryAvailable: true,
       });
     }
     return this.unavailablePage(profile, scope, pageSize);
@@ -329,7 +326,6 @@ export class MaintainerInboxService {
       })),
       dataFreshness: "cached",
       snapshot: { state: "unavailable" },
-      directEntryAvailable: true,
     });
   }
 }

@@ -940,12 +940,6 @@ export async function startLocalApiServer(
       runtime: "bundled",
     });
   });
-  app.post("/v1/direct-entry/preview", async (context) => {
-    const body = await jsonBody(context);
-    return body === undefined
-      ? context.json({ error: "invalid_input" }, 400)
-      : response(context, await dashboard.previewDirectEntry(body));
-  });
   app.post("/v1/reviews/inline-conversations/command", async (context) =>
     inlineConversationResponse(
       context,

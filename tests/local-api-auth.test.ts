@@ -411,6 +411,7 @@ describe("local API current Review capability boundary", () => {
     const api = await start();
     const removed = [
       ["GET", "v1/dashboard"],
+      ["POST", "v1/direct-entry/preview"],
       ["GET", "v1/reviews?profileId=profile"],
       ["GET", "v1/reviews/models"],
       ["POST", `v1/reviews/${"ba" + "tch"}`],

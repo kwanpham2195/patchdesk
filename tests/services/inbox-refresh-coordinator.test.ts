@@ -18,7 +18,6 @@ const inbox = {
   repositories: [],
   dataFreshness: "fresh",
   snapshot: { state: "current" },
-  directEntryAvailable: true,
 } satisfies MaintainerInbox;
 
 describe("inbox refresh coordinator", () => {

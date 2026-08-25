@@ -37,11 +37,6 @@ import {
 } from "../../src/services/profile-service";
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import {
-  parsePullRequestEntry,
-  profileSwitchConfirmation,
-  suggestProfile,
-} from "../../src/services/pull-request-input-service";
 
 class FakeCommandExecutor implements CommandExecutor {
   constructor(private readonly execution: CommandExecution) {}
@@ -119,7 +114,7 @@ function summary(
   };
 }
 
-describe("profile settings and direct-entry services", () => {
+describe("profile settings and dashboard services", () => {
   it("persists editable owner filters and rule paths while preserving watched repositories", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-profile-editor-`);
     try {
@@ -332,49 +327,6 @@ describe("profile settings and direct-entry services", () => {
     });
   });
 
-  it("parses every direct PR entry form and never applies owner filters as an admission rule", () => {
-    expect(
-      parsePullRequestEntry(
-        "https://github.com/other-org/service/pull/4",
-        profile.githubHost,
-      ),
-    ).toMatchObject({
-      _tag: "ok",
-      value: { owner: "other-org", repo: "service", number: 4 },
-    });
-    expect(
-      parsePullRequestEntry("centraldigital/patchdesk#42", profile.githubHost),
-    ).toMatchObject({ _tag: "ok" });
-    const enterpriseHost = mustParse(parseGitHubHost("github.example.test"));
-    expect(
-      parsePullRequestEntry("outside/service#7", enterpriseHost),
-    ).toMatchObject({ _tag: "ok", value: { host: "github.example.test" } });
-    expect(
-      parsePullRequestEntry(
-        {
-          _tag: "SelectedDashboardPr",
-          profileId: profile.id,
-          pr: summary(9).ref,
-        },
-        profile.githubHost,
-      ),
-    ).toMatchObject({ _tag: "ok", value: { number: 9 } });
-    expect(
-      parsePullRequestEntry(
-        {
-          _tag: "SeparateFields",
-          owner: "outside",
-          repo: "service",
-          number: 8,
-        },
-        profile.githubHost,
-      ),
-    ).toMatchObject({
-      _tag: "ok",
-      value: { owner: "outside", repo: "service", number: 8 },
-    });
-  });
-
   it("reports github_auth on an empty watchlist when gh is unauthenticated, not a false available", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-access-check-`);
     try {
@@ -429,34 +381,6 @@ describe("profile settings and direct-entry services", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
-
-  it("suggests a matching profile and requires confirmation before switching", () => {
-    const githubEnterprise = mustParse(
-      parseWorkspaceProfileConfig({
-        ...profile,
-        id: "enterprise",
-        label: "Enterprise",
-        githubHost: "github.example.test",
-        ghAccount: "octo",
-        repos: [],
-      }),
-    );
-    const pr = mustParse(
-      parsePullRequestEntry(
-        "https://github.example.test/octo/service/pull/3",
-        profile.githubHost,
-      ),
-    );
-    expect(suggestProfile(pr, [profile, githubEnterprise])).toEqual({
-      _tag: "ok",
-      value: githubEnterprise.id,
-    });
-    expect(profileSwitchConfirmation(profile, githubEnterprise, pr)).toEqual({
-      required: true,
-      targetProfileId: githubEnterprise.id,
-      reason: "host_changed",
-    });
   });
 });
 
@@ -552,7 +476,6 @@ describe("dashboard service", () => {
       value: {
         rows: [],
         repos: [{ repo: profile.repos[0], state: "github_auth" }],
-        directEntryAvailable: true,
       },
     });
   });

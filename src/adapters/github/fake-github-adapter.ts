@@ -58,7 +58,7 @@ export class FakeGitHubAdapter
 
   async listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>> {
     void input;
     return this.values.listOpenPullRequests === undefined

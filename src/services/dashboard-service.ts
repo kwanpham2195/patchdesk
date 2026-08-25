@@ -41,7 +41,6 @@ export type DashboardRepo = {
 export type DashboardPrList = {
   readonly rows: ReadonlyArray<DashboardRow>;
   readonly repos: ReadonlyArray<DashboardRepo>;
-  readonly directEntryAvailable: true;
 };
 export type DiscoveredRepo = WatchedRepoRef & {
   readonly localPath: AbsolutePath;
@@ -77,7 +76,6 @@ export class DashboardService {
             state: mapFailure(auth.error),
           })),
         ],
-        directEntryAvailable: true,
       });
 
     const results = await mapConcurrent(
@@ -91,12 +89,7 @@ export class DashboardService {
       }> => {
         const list = await this.github.listOpenPullRequests({
           profile,
-          repo: {
-            host: repo.host,
-            owner: repo.owner,
-            repo: repo.repo,
-            number: 1 as never,
-          },
+          repo: { host: repo.host, owner: repo.owner, repo: repo.repo },
         });
         if (list._tag === "err") {
           return { rows: [], repo: { repo, state: mapFailure(list.error) } };
@@ -118,7 +111,7 @@ export class DashboardService {
       (left, right) =>
         priorityRank(left.priority) - priorityRank(right.priority),
     );
-    return ok({ rows, repos, directEntryAvailable: true });
+    return ok({ rows, repos });
   }
 
   /** Refreshes one explicit watchlist repo without reading its siblings. */

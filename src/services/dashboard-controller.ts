@@ -43,11 +43,6 @@ import {
 } from "./profile-service";
 import type { ProfileMutationFailure, WatchedRepoRef } from "./profile-service";
 import type { OriginFinder } from "./dashboard-service";
-import {
-  parsePullRequestEntry,
-  profileSwitchConfirmation,
-  suggestProfile,
-} from "./pull-request-input-service";
 
 export type DashboardControllerFailure = {
   readonly _tag: "DashboardControllerFailure";
@@ -87,10 +82,7 @@ const saveProfileInputSchema = v.object({
   workspaceRoots: v.unknown(),
   rulePaths: v.unknown(),
 });
-const directEntryInputSchema = v.object({
-  reference: v.string(),
-});
-/** Main-process composition root for the renderer's profile, dashboard, and direct-entry actions. */
+/** Main-process composition root for the renderer's profile and dashboard actions. */
 export class DashboardController {
   private readonly settings: ProfileSettingsService;
   private readonly dashboard: DashboardService;
@@ -389,36 +381,6 @@ export class DashboardController {
       profile.value,
     );
     return discovered._tag === "ok" ? discovered : failure("storage");
-  }
-
-  async previewDirectEntry(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `POST /v1/direct-entry/preview`; there is no earlier boundary to run it at.
-    value: unknown,
-  ): Promise<Result<unknown, DashboardControllerFailure>> {
-    const parsedValue = v.safeParse(directEntryInputSchema, value);
-    if (!parsedValue.success) return failure("invalid_input");
-    const profile = await this.activeProfile();
-    if (profile._tag === "err") return profile;
-    const pr = parsePullRequestEntry(
-      parsedValue.output.reference,
-      profile.value.githubHost,
-    );
-    if (pr._tag === "err") return failure("invalid_input");
-    const profiles = await this.listProfiles();
-    if (profiles._tag === "err") return profiles;
-    const suggestedId = suggestProfile(pr.value, profiles.value);
-    const suggested =
-      suggestedId._tag === "ok"
-        ? profiles.value.find((candidate) => candidate.id === suggestedId.value)
-        : undefined;
-    return ok({
-      pr: pr.value,
-      confirmation: profileSwitchConfirmation(
-        profile.value,
-        suggested,
-        pr.value,
-      ),
-    });
   }
 
   async testGitHubAccess(): Promise<

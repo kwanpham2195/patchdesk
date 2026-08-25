@@ -166,7 +166,7 @@ function graphqlPullRequestState(scope: InboxScope): "OPEN" | "MERGED" {
 export interface GitHubReader {
   listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>>;
   listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -782,7 +782,7 @@ export class GitHubAdapter
 
   async listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
       argv: [
