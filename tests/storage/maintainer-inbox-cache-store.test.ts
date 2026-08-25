@@ -65,6 +65,7 @@ describe("maintainer inbox cache store", () => {
       refreshedAt: updatedAt,
       rows: [
         {
+          remoteState: "open" as const,
           identity: {
             host: must(parseGitHubHost("github.com")),
             owner: must(parseGitHubOwner("centraldigital")),
@@ -142,6 +143,7 @@ describe("maintainer inbox cache store", () => {
       refreshedAt: updatedAt,
       rows: [
         {
+          remoteState: "open" as const,
           identity: {
             host: must(parseGitHubHost("github.com")),
             owner: must(parseGitHubOwner("centraldigital")),

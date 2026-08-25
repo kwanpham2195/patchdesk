@@ -6,15 +6,22 @@ import type {
 import type { GitSha, IsoTimestamp, ReviewId } from "./ids";
 import type { PullRequestRef } from "./pull-request";
 
-/** The maximum number of pull requests returned by one remote inbox page. */
-export const MAINTAINER_INBOX_PAGE_SIZE = 50;
+/** The only page sizes the main process accepts. */
+export const INBOX_PAGE_SIZES = [10, 25, 50] as const;
 
-/** The only remote pull-request scope Phase 1 may request. */
-export type InboxScope = "open";
+/** A maintainer-selected inbox page size; rejected outside this bounded set. */
+export type InboxPageSize = (typeof INBOX_PAGE_SIZES)[number];
+
+/** The page size an inbox request carries when the caller does not choose one. */
+export const DEFAULT_INBOX_PAGE_SIZE: InboxPageSize = 25;
+
+/** Trusted inbox scopes map to the only GraphQL pull-request states Patchdesk requests. */
+export type InboxScope = "open" | "merged";
 
 /** Parsed inbox pagination intent; page tokens remain opaque outside the main process. */
 export type InboxPageRequest = {
   readonly scope: InboxScope;
+  readonly pageSize: InboxPageSize;
   readonly pageToken?: string;
 };
 
@@ -31,6 +38,10 @@ export type InboxCategory =
 
 export type InboxRecommendedAction =
   | { readonly kind: "run_review"; readonly label: "Run review" }
+  | {
+      readonly kind: "open_merged_review";
+      readonly label: "View merged pull request";
+    }
   | {
       readonly kind: "open_saved_review";
       readonly label: "Open Review";
@@ -55,6 +66,8 @@ export type InboxReviewSummary = {
 };
 
 export type MaintainerInboxRow = {
+  /** Confirmed remote scope for this row; merged rows never enter active-work queues. */
+  readonly remoteState: InboxScope;
   readonly identity: PullRequestRef;
   readonly title: string;
   readonly author: string;
@@ -87,6 +100,7 @@ export function projectMaintainerInboxRow(input: {
   readonly latestReview?: InboxReviewSummary;
   readonly dataFreshness: "fresh" | "cached";
 }): MaintainerInboxRow {
+  if (!input.summary.isOpen) return projectMergedMaintainerInboxRow(input);
   const categories: Array<InboxCategory> = [];
   const review = input.latestReview;
   const requested =
@@ -137,6 +151,7 @@ export function projectMaintainerInboxRow(input: {
       ? {}
       : { labelCount: input.summary.labelCount };
   return {
+    remoteState: "open",
     identity: input.summary.ref,
     title: input.summary.title,
     author: input.summary.author,
@@ -158,6 +173,52 @@ export function projectMaintainerInboxRow(input: {
     ...labelCountField,
     categories,
     recommendedAction,
+    dataFreshness: input.dataFreshness,
+  };
+}
+
+function projectMergedMaintainerInboxRow(input: {
+  readonly summary: PullRequestSummary;
+  readonly checks: CheckSummary;
+  readonly dataFreshness: "fresh" | "cached";
+}): MaintainerInboxRow {
+  const additionsField =
+    input.summary.additions === undefined
+      ? {}
+      : { additions: input.summary.additions };
+  const deletionsField =
+    input.summary.deletions === undefined
+      ? {}
+      : { deletions: input.summary.deletions };
+  const changedFilesField =
+    input.summary.changedFileCount === undefined
+      ? {}
+      : { changedFiles: input.summary.changedFileCount };
+  const labelCountField =
+    input.summary.labelCount === undefined
+      ? {}
+      : { labelCount: input.summary.labelCount };
+  return {
+    remoteState: "merged",
+    identity: input.summary.ref,
+    title: input.summary.title,
+    author: input.summary.author,
+    baseBranch: input.summary.baseBranch,
+    headBranch: input.summary.headBranch,
+    currentHeadSha: input.summary.headSha,
+    isDraft: input.summary.isDraft,
+    updatedAt: input.summary.updatedAt,
+    changeStats: { ...additionsField, ...deletionsField, ...changedFilesField },
+    checks: input.checks,
+    reviewState: input.summary.reviewState,
+    mergeability: input.summary.mergeability,
+    labels: input.summary.labels,
+    ...labelCountField,
+    categories: [],
+    recommendedAction: {
+      kind: "open_merged_review",
+      label: "View merged pull request",
+    },
     dataFreshness: input.dataFreshness,
   };
 }

@@ -1507,18 +1507,19 @@ describe("GitHubAdapter read boundary", () => {
         },
       },
     };
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
+    const executor = new FakeProcessExecutor(
+      Array.from({ length: 2 }, () => ({
+        _tag: "Exited" as const,
         exitCode: 0,
         stdout: JSON.stringify(page),
         stderr: "",
-      },
-    ]);
+      })),
+    );
     const adapter = testAdapter(new CommandRunner(executor));
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
+      pageSize: 25,
       repo: pr,
     });
 
@@ -1526,6 +1527,7 @@ describe("GitHubAdapter read boundary", () => {
       _tag: "ok",
       value: {
         hasNextPage: true,
+        endCursor: "cursor-42",
         entries: [
           {
             cursor: "edge-42",
@@ -1542,9 +1544,87 @@ describe("GitHubAdapter read boundary", () => {
         ],
       },
     });
-    expect(executor.requests).toHaveLength(1);
-    expect(executor.requests[0]).toContain("first=50");
+    const merged = await adapter.listMaintainerPullRequests({
+      profile,
+      pageSize: 25,
+      repo: pr,
+      scope: "merged",
+    });
+    expect(merged).toMatchObject({
+      _tag: "ok",
+      value: { entries: [{ pullRequest: { summary: { isOpen: false } } }] },
+    });
+    expect(executor.requests).toHaveLength(2);
+    // Requests the default inbox page size (25) explicitly.
+    expect(executor.requests[0]).toContain("first=25");
     expect(executor.requests[0]).toContain("state=OPEN");
+    expect(executor.requests[1]).toContain("state=MERGED");
+  });
+
+  it("sends the requested page size as the GraphQL first value", async () => {
+    const emptyPage = {
+      data: {
+        repository: {
+          pullRequests: {
+            edges: [],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      },
+    };
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
+        exitCode: 0,
+        stdout: JSON.stringify(emptyPage),
+        stderr: "",
+      },
+    ]);
+    const adapter = testAdapter(new CommandRunner(executor));
+
+    await adapter.listMaintainerPullRequests({
+      profile,
+      repo: pr,
+      pageSize: 10,
+    });
+
+    expect(executor.requests).toHaveLength(1);
+    expect(executor.requests[0]).toContain("first=10");
+  });
+
+  it("retains the continuation cursor for an empty non-final page", async () => {
+    const adapter = testAdapter(
+      new CommandRunner(
+        new FakeProcessExecutor([
+          {
+            _tag: "Exited",
+            exitCode: 0,
+            stdout: JSON.stringify({
+              data: {
+                repository: {
+                  pullRequests: {
+                    edges: [],
+                    pageInfo: { hasNextPage: true, endCursor: "cursor-empty" },
+                  },
+                },
+              },
+            }),
+            stderr: "",
+          },
+        ]),
+      ),
+    );
+
+    await expect(
+      adapter.listMaintainerPullRequests({ profile, repo: pr, pageSize: 25 }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        entries: [],
+        hasNextPage: true,
+        endCursor: "cursor-empty",
+      },
+    });
   });
 
   it("surfaces label truncation via labelCount when a PR has more labels than the bounded fetch returns", async () => {
@@ -1605,6 +1685,7 @@ describe("GitHubAdapter read boundary", () => {
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
+      pageSize: 25,
       repo: pr,
     });
 
@@ -2036,6 +2117,7 @@ describe("GitHubAdapter read boundary", () => {
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
+      pageSize: 25,
       repo: pr,
     });
 
@@ -2076,12 +2158,14 @@ describe("GitHubAdapter read boundary", () => {
 
     const first = await adapter.listMaintainerPullRequests({
       profile,
+      pageSize: 25,
       repo: pr,
     });
     expect(first).toMatchObject({ _tag: "ok" });
 
     const second = await adapter.listMaintainerPullRequests({
       profile,
+      pageSize: 25,
       repo: pr,
     });
     expect(second).toEqual({
@@ -2109,6 +2193,7 @@ describe("GitHubAdapter read boundary", () => {
 
     const result = await adapter.listMaintainerPullRequests({
       profile,
+      pageSize: 25,
       repo: pr,
     });
 

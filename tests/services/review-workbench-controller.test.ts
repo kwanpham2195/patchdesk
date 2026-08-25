@@ -478,6 +478,60 @@ describe("ReviewWorkbenchController", () => {
     expect(value.lifecycle.refresh.refresh).not.toHaveBeenCalled();
   });
 
+  it("maps terminal-only preparation failure before saving a fresh Review", async () => {
+    const reviews = {
+      load: vi.fn(async () => err({ reason: "not_found" })),
+      save: vi.fn(async () => ok(undefined)),
+    };
+    const value = fixture({ reviews });
+    // SAFETY: this test's mocked prepare function can return this typed failure.
+    value.preparation.prepare.mockImplementation(
+      async () => err({ _tag: "PullRequestStateChanged" }) as never,
+    );
+
+    await expect(
+      value.controller.openMerged({
+        profileId,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "terminal" } });
+    expect(value.preparation.prepare).toHaveBeenCalledWith({
+      profileId,
+      pullRequest: {
+        host: identity.host,
+        owner: identity.owner,
+        repo: identity.repo,
+        number: identity.prNumber,
+      },
+      expectedPullRequestState: "non_open",
+    });
+    expect(reviews.save).not.toHaveBeenCalled();
+  });
+
+  it("requires terminal refresh before openMerged can return an existing writable Review", async () => {
+    const refresh = { refresh: vi.fn(async () => err({ reason: "terminal" })) };
+    const value = fixture({ refresh });
+
+    await expect(
+      value.controller.openMerged({
+        profileId,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "terminal" } });
+    expect(refresh.refresh).toHaveBeenCalledWith({
+      profileId,
+      reviewId,
+      expectedTerminalState: "merged",
+    });
+    expect(value.project.loadRepresented).not.toHaveBeenCalled();
+  });
+
   it("delegates Refresh and observation by reviewId", async () => {
     const value = fixture();
     await expect(

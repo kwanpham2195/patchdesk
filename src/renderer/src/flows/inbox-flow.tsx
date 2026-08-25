@@ -41,6 +41,10 @@ import {
   parseWorkbenchResponse,
 } from "../renderer-contracts";
 import type { inboxFreshnessLabel } from "../inbox-refresh-scheduler";
+import {
+  DEFAULT_INBOX_PAGE_SIZE,
+  type InboxPageSize,
+} from "../../../domain/maintainer-inbox";
 import type { SettingsSection } from "./settings-flow";
 import type {
   Dashboard,
@@ -63,8 +67,12 @@ export function InboxFlow({
   refreshStatus,
   onRefresh,
   scope = "open",
+  listPending = false,
+  pageSize = DEFAULT_INBOX_PAGE_SIZE,
   hasPreviousPage = false,
   hasNextPage = false,
+  onInboxScopeChange = () => undefined,
+  onInboxPageSizeChange = () => undefined,
   onPreviousInboxPage = () => undefined,
   onNextInboxPage = () => undefined,
   onSettings,
@@ -77,10 +85,21 @@ export function InboxFlow({
   readonly state: DashboardScreenState;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onRefresh: () => void;
-  /** Confirmed remote scope; Phase 1 only permits open pull requests. */
-  readonly scope?: "open";
+  /** Requested scope; only App owns its request transition. The toggle
+   * reflects this immediately. `listPending` says whether `inbox`'s rows
+   * have caught up to it yet. */
+  readonly scope?: "open" | "merged";
+  /** True while `inbox`'s confirmed scope has not caught up to the
+   * requested `scope` (a scope change is still in flight). The row list,
+   * row count, and details panel must hold a loading state instead of
+   * rendering the previous scope's rows under the new scope's label. */
+  readonly listPending?: boolean;
+  /** Confirmed remote page size; only App owns its request transition. */
+  readonly pageSize?: InboxPageSize;
   readonly hasPreviousPage?: boolean;
   readonly hasNextPage?: boolean;
+  readonly onInboxScopeChange?: (scope: "open" | "merged") => void;
+  readonly onInboxPageSizeChange?: (pageSize: InboxPageSize) => void;
   readonly onPreviousInboxPage?: () => void;
   readonly onNextInboxPage?: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
@@ -106,12 +125,15 @@ export function InboxFlow({
       pr: PrRef,
       initialSection?: ReviewInitialSection,
       profileId = dashboard?.profile.id,
+      endpoint:
+        | "/v1/reviews/open"
+        | "/v1/reviews/open-merged" = "/v1/reviews/open",
     ): Promise<void> => {
       setOpenedPr(undefined);
       setOpenError(undefined);
       await runBusy(async () => {
         try {
-          const value = await requestJson("/v1/reviews/open", {
+          const value = await requestJson(endpoint, {
             method: "POST",
             body: {
               profileId,
@@ -245,18 +267,31 @@ export function InboxFlow({
       {...(openError === undefined ? {} : { openError })}
       onRefresh={onRefresh}
       scope={scope}
+      listPending={listPending}
+      pageSize={pageSize}
       hasPreviousPage={hasPreviousPage}
       hasNextPage={hasNextPage}
+      onInboxScopeChange={onInboxScopeChange}
+      onInboxPageSizeChange={onInboxPageSizeChange}
       onPreviousInboxPage={onPreviousInboxPage}
       onNextInboxPage={onNextInboxPage}
       onSettings={onSettings}
       onOpenReview={(row, initialSection) =>
-        void openPullRequest(row.identity, initialSection)
+        void openPullRequest(
+          row.identity,
+          initialSection,
+          undefined,
+          row.recommendedAction.kind === "open_merged_review"
+            ? "/v1/reviews/open-merged"
+            : "/v1/reviews/open",
+        )
       }
       onOpenReviewId={(savedReviewId) => {
         const row = inbox.inbox.rows.find(
           (candidate) =>
-            candidate.recommendedAction.kind !== "run_review" &&
+            (candidate.recommendedAction.kind === "open_saved_review" ||
+              candidate.recommendedAction.kind === "open_merge_readiness" ||
+              candidate.recommendedAction.kind === "open_discussion") &&
             candidate.recommendedAction.reviewId === savedReviewId,
         );
         void openStoredReviewById(
@@ -275,8 +310,12 @@ function InboxScreen({
   dashboard,
   onRefresh,
   scope,
+  listPending,
+  pageSize,
   hasPreviousPage,
   hasNextPage,
+  onInboxScopeChange,
+  onInboxPageSizeChange,
   onPreviousInboxPage,
   onNextInboxPage,
   refreshStatus,
@@ -290,9 +329,13 @@ function InboxScreen({
   readonly inbox: InboxResponse;
   readonly dashboard: Dashboard;
   readonly onRefresh: () => void;
-  readonly scope: "open";
+  readonly scope: "open" | "merged";
+  readonly listPending: boolean;
+  readonly pageSize: InboxPageSize;
   readonly hasPreviousPage: boolean;
   readonly hasNextPage: boolean;
+  readonly onInboxScopeChange: (scope: "open" | "merged") => void;
+  readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly onPreviousInboxPage: () => void;
   readonly onNextInboxPage: () => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
@@ -340,9 +383,12 @@ function InboxScreen({
           refreshStatus={refreshStatus}
           onRefresh={onRefresh}
           scope={scope}
-          page={inbox.inbox.page}
+          listPending={listPending}
+          pageSize={pageSize}
           hasPreviousPage={hasPreviousPage}
           hasNextPage={hasNextPage}
+          onScopeChange={onInboxScopeChange}
+          onPageSizeChange={onInboxPageSizeChange}
           onPreviousPage={onPreviousInboxPage}
           onNextPage={onNextInboxPage}
           onOpenReview={onOpenReview}

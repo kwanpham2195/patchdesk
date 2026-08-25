@@ -86,6 +86,7 @@ type GitFailureOptions = {
 
 type GithubReaderOptions = {
   readonly bases?: ReadonlyArray<GitSha | undefined>;
+  readonly openStates?: ReadonlyArray<boolean>;
   readonly onDiff?: () => Promise<void>;
   /** Chooses the returned diff text per call; defaults to always `patch`. */
   readonly diffFor?: (input: DiffInput) => string;
@@ -106,7 +107,7 @@ function github(
   let getPullRequest = 0;
   let diffs = 0;
   const diffCalls: DiffInput[] = [];
-  const summary = (head: GitSha, base: GitSha | undefined) => {
+  const summary = (head: GitSha, base: GitSha | undefined, isOpen: boolean) => {
     const result = {
       ref: pullRequest,
       title: "Fixture review",
@@ -115,7 +116,7 @@ function github(
       baseBranch: "sit",
       headSha: head,
       isDraft: false,
-      isOpen: true,
+      isOpen,
       reviewState: "none" as const,
       mergeability: "unknown" as const,
       labels: [],
@@ -137,8 +138,12 @@ function github(
         options.bases === undefined
           ? baseSha
           : options.bases[Math.min(readIndex, options.bases.length - 1)];
+      const isOpen =
+        options.openStates?.[
+          Math.min(readIndex, options.openStates.length - 1)
+        ] ?? true;
       getPullRequest += 1;
-      return ok(summary(head, base));
+      return ok(summary(head, base, isOpen));
     },
     async getPullRequestComments() {
       return ok({ threads: [], complete: true });
@@ -232,6 +237,8 @@ async function setup(
   const sessions = new ReviewSessionStore(paths);
   const readerOptions: MutableGithubReaderOptions = {};
   if (options.bases !== undefined) readerOptions.bases = options.bases;
+  if (options.openStates !== undefined)
+    readerOptions.openStates = options.openStates;
   if (options.onDiff !== undefined) readerOptions.onDiff = options.onDiff;
   if (options.diffFor !== undefined) readerOptions.diffFor = options.diffFor;
   if (options.diffResult !== undefined)
@@ -271,6 +278,37 @@ async function present(path: string): Promise<boolean> {
 }
 
 describe("ReviewSessionPreparation", () => {
+  it("rejects an open pull request before creating terminal-only review artifacts", async () => {
+    const fixture = await setup({ openStates: [true] });
+
+    await expect(
+      fixture.preparation.prepare({
+        profileId,
+        pullRequest,
+        expectedPullRequestState: "non_open",
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "PullRequestStateChanged" },
+    });
+    expect(fixture.reader.counts.diffs).toBe(0);
+  });
+
+  it("rejects a reopen race while preparing a terminal-only review", async () => {
+    const fixture = await setup({ openStates: [false, false, true] });
+
+    await expect(
+      fixture.preparation.prepare({
+        profileId,
+        pullRequest,
+        expectedPullRequestState: "non_open",
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { _tag: "PullRequestStateChanged" },
+    });
+  });
+
   it("rejects a first PR read without a base before creating an ID or journal", async () => {
     const fixture = await setup({ bases: [undefined] });
     const result = await fixture.preparation.prepare({

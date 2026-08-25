@@ -68,6 +68,91 @@ describe("MaintainerInboxService", () => {
       value: { rows: [{ recommendedAction: { kind: "run_review" } }] },
     });
   });
+
+  it("reads the merged scope and returns only the terminal action", async () => {
+    const scopes: Array<string | undefined> = [];
+    // SAFETY: these narrow fixtures implement exactly the service seams under test.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests: async (input: {
+          readonly scope?: string;
+        }) => {
+          scopes.push(input.scope);
+          return ok({
+            entries: [
+              {
+                cursor: "merged-42",
+                pullRequest: {
+                  summary: {
+                    ref: {
+                      host: "github.com",
+                      owner: "centraldigital",
+                      repo: "patchdesk",
+                      number: 42,
+                    },
+                    title: "Merged fixture",
+                    author: "other",
+                    headBranch: "feature/merged",
+                    baseBranch: "main",
+                    headSha: "a".repeat(40),
+                    baseSha: "b".repeat(40),
+                    isOpen: false,
+                    isDraft: false,
+                    reviewState: "none",
+                    mergeability: "unknown",
+                    labels: [],
+                    updatedAt: "2026-08-01T00:00:00.000Z",
+                  },
+                  checks: { overall: "passing", checks: [] },
+                },
+              },
+            ],
+            hasNextPage: false,
+          });
+        },
+        // SAFETY: this fixture implements only the GitHub reader members list() calls.
+      } as never,
+      // SAFETY: this fixture implements only the session list seam list() calls.
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+        // SAFETY: this fixture implements only the cache read/write seam list() calls.
+      } as never,
+      // SAFETY: the fixed ISO literal is valid and supplies only this test clock.
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: this minimal profile supplies exactly the fields list() reads.
+    const result = await service.list(
+      {
+        id: "cfw",
+        ghAccount: "fixture",
+        repos: [
+          { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
+        ],
+        // SAFETY: this minimal profile supplies exactly the fields list() reads.
+      } as never,
+      { scope: "merged", pageSize: 25 },
+    );
+
+    expect(scopes).toEqual(["merged"]);
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: {
+        scope: "merged",
+        rows: [
+          {
+            remoteState: "merged",
+            categories: [],
+            recommendedAction: { kind: "open_merged_review" },
+          },
+        ],
+      },
+    });
+  });
 });
 
 describe("MaintainerInboxService rate-limited reads", () => {
@@ -284,6 +369,57 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
 });
 
 describe("MaintainerInboxService page token validation", () => {
+  it("advances an empty non-final repository page with its GraphQL continuation", async () => {
+    const service = new MaintainerInboxService(
+      // SAFETY: this GitHub fixture implements only the reader members used by list().
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests: async () =>
+          ok({
+            entries: [],
+            hasNextPage: true,
+            endCursor: "cursor-after-empty-page",
+          }),
+      } as never,
+      // SAFETY: list() requires only the session-list seam from this fixture.
+      { listSessions: async () => ok([]) } as never,
+      // SAFETY: this cache fixture implements only the read/write seam used by list().
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      // SAFETY: this test clock returns a valid fixed ISO timestamp.
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: the minimal profile contains every field read by list().
+    const result = await service.list({
+      id: "cfw",
+      ghAccount: "fixture",
+      repos: [
+        { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
+      ],
+    } as never);
+
+    expect(result._tag).toBe("ok");
+    if (result._tag === "err") return;
+    expect(result.value.nextPageToken).toBeDefined();
+    const token = JSON.parse(
+      Buffer.from(result.value.nextPageToken ?? "", "base64url").toString(
+        "utf8",
+      ),
+    );
+    expect(token.repositories).toEqual([
+      {
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        cursor: "cursor-after-empty-page",
+      },
+    ]);
+  });
+
   it("rejects malformed tokens before reading GitHub", async () => {
     const listMaintainerPullRequests = async (): Promise<never> => {
       throw new Error("GitHub must not receive malformed inbox tokens");
@@ -315,8 +451,153 @@ describe("MaintainerInboxService page token validation", () => {
             { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
           ],
         } as never,
-        { scope: "open", pageToken: "not-a-page-token" },
+        { scope: "open", pageSize: 25, pageToken: "not-a-page-token" },
       ),
     ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+  });
+
+  it("rejects a page token whose recorded size does not match the requested size", async () => {
+    const listMaintainerPullRequests = async (): Promise<never> => {
+      throw new Error("GitHub must not receive a size-mismatched inbox token");
+    };
+    // SAFETY: test fixture narrows partial collaborators to the exact
+    // dependency surface exercised before malformed-token rejection.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests,
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: the malformed-token path only reads the profile id, account,
+    // and watched repository identity supplied by this focused fixture.
+    const profile = {
+      id: "cfw",
+      ghAccount: "fixture",
+      repos: [
+        { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
+      ],
+    } as never;
+
+    // Mint a token by hand that records a size of 10, then request it back
+    // at size 25 — the mismatch must be rejected before any GitHub read.
+    const tokenForSizeTen = Buffer.from(
+      JSON.stringify({
+        scope: "open",
+        page: 2,
+        size: 10,
+        repositories: [
+          { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
+        ],
+      }),
+    ).toString("base64url");
+
+    await expect(
+      service.list(profile, {
+        scope: "open",
+        pageSize: 25,
+        pageToken: tokenForSizeTen,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+  });
+});
+
+describe("MaintainerInboxService page size", () => {
+  it("uses the requested page size as the global page limit when merging repository pages", async () => {
+    function summaryAt(
+      owner: string,
+      repo: string,
+      number: number,
+      updatedAt: string,
+    ) {
+      return {
+        cursor: `${owner}-${repo}-${number}`,
+        pullRequest: {
+          summary: {
+            ref: { host: "github.com", owner, repo, number },
+            title: `PR ${number}`,
+            author: "other",
+            headSha: "a".repeat(40),
+            baseSha: "b".repeat(40),
+            isOpen: true,
+            isDraft: false,
+            reviewState: "none",
+            mergeability: "mergeable",
+            labels: [],
+            updatedAt,
+          },
+          checks: { overall: "passing", checks: [] },
+        },
+      };
+    }
+    // SAFETY: test fixture narrows a partial mock (only the members
+    // MaintainerInboxService actually calls) to its stricter collaborator
+    // and profile types.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests: async (input: {
+          readonly repo: { readonly repo: string };
+        }) =>
+          ok({
+            // 6 rows per repository, newest first, so two watched
+            // repositories together offer 12 rows — more than any
+            // requested page size below.
+            entries: Array.from({ length: 6 }, (_, index) =>
+              summaryAt(
+                "centraldigital",
+                input.repo.repo,
+                index + 1,
+                `2026-08-${String(9 - index).padStart(2, "0")}T00:00:00.000Z`,
+              ),
+            ),
+            hasNextPage: false,
+          }),
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: this minimal profile supplies exactly the fields list() reads;
+    // two watched repositories each return 6 fixture rows above.
+    const profile = {
+      id: "cfw",
+      ghAccount: "fixture",
+      repos: [
+        { host: "github.com", owner: "centraldigital", repo: "one" },
+        { host: "github.com", owner: "centraldigital", repo: "two" },
+      ],
+    } as never;
+
+    const result = await service.list(profile, {
+      scope: "open",
+      pageSize: 10,
+    });
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    // 12 fixture rows across the two repositories, truncated to the
+    // requested page size of 10 rather than the old fixed 50 or the
+    // default 25.
+    expect(result.value.rows).toHaveLength(10);
+    expect(result.value.nextPageToken).toBeDefined();
+    const token = JSON.parse(
+      Buffer.from(result.value.nextPageToken ?? "", "base64url").toString(
+        "utf8",
+      ),
+    );
+    expect(token.size).toBe(10);
   });
 });

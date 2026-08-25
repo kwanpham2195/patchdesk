@@ -17,6 +17,7 @@ import type { Dashboard } from "../../src/renderer/src/renderer-models";
 const sha = "a".repeat(40);
 const patchHash = "b".repeat(64);
 const savedRow = {
+  remoteState: "open" as const,
   identity: { host: "github.com", owner: "owner", repo: "repo", number: 1 },
   title: "PR",
   author: "author",
@@ -193,6 +194,65 @@ describe("InboxFlow saved-review recovery", () => {
       repo: "repo",
       number: 1,
     });
+  });
+});
+
+describe("InboxFlow merged review opening", () => {
+  it("sends only merged rows to the terminal-only endpoint", async () => {
+    const requests: Array<{ readonly path: string; readonly body?: unknown }> =
+      [];
+    const mergedRow = {
+      ...savedRow,
+      remoteState: "merged" as const,
+      categories: [],
+      recommendedAction: {
+        kind: "open_merged_review" as const,
+        label: "View merged pull request" as const,
+      },
+    };
+    // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
+    const mergedInbox = {
+      ...inbox,
+      inbox: { ...inbox.inbox, rows: [mergedRow] },
+    } as never;
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async (input: {
+          readonly path: string;
+          readonly body?: unknown;
+        }) => {
+          requests.push(input);
+          return {
+            ok: true,
+            status: 200,
+            correlationId: input.path,
+            body: projection,
+          };
+        },
+      },
+    });
+    const onOpenWorkbench = vi.fn();
+    renderInboxFlow(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={dashboard}
+        inbox={mergedInbox}
+        state="success"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        scope="merged"
+        onSettings={vi.fn()}
+        onOpenWorkbench={onOpenWorkbench}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("option"));
+
+    await waitFor(() => expect(onOpenWorkbench).toHaveBeenCalledOnce());
+    expect(requests.map((request) => request.path)).toEqual([
+      "/v1/reviews/open-merged",
+    ]);
   });
 });
 

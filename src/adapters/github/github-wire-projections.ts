@@ -32,6 +32,7 @@ import {
   type GitHubRepoName,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
+import type { InboxScope } from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { PendingReviewAnchor } from "../../domain/pending-review";
 import type { GitHubReviewEvent } from "../../domain/pending-review";
@@ -75,6 +76,7 @@ export function parseMaintainerPullRequest(
   host: GitHubHost,
   owner: GitHubOwner,
   repo: GitHubRepoName,
+  scope: InboxScope,
 ): Result<MaintainerPullRequest, { readonly _tag: "Invalid" }> {
   const number = parsePullRequestNumber(input.number);
   const headSha = parseGitSha(input.headRefOid);
@@ -96,7 +98,7 @@ export function parseMaintainerPullRequest(
     baseBranch: input.baseRefName,
     headSha: headSha.value,
     isDraft: input.isDraft,
-    isOpen: true,
+    isOpen: scope === "open",
     reviewState: mapReviewDecision(input.reviewDecision),
     mergeability: mapMergeability(input.mergeable),
     labels: input.labels.nodes.map((label) => ({

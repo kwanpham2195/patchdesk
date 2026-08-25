@@ -5,6 +5,7 @@ import {
   type CallFlowNode,
 } from "../../domain/call-flow";
 import type { RawJsonValue } from "../../domain/json";
+import { INBOX_PAGE_SIZES } from "../../domain/maintainer-inbox";
 
 const pullRequestRefSchema = v.strictObject({
   host: v.pipe(v.string(), v.minLength(1)),
@@ -41,6 +42,10 @@ const actionSchema = v.variant("kind", [
     label: v.literal("Run review"),
   }),
   v.strictObject({
+    kind: v.literal("open_merged_review"),
+    label: v.literal("View merged pull request"),
+  }),
+  v.strictObject({
     kind: v.literal("open_saved_review"),
     label: v.literal("Open Review"),
     reviewId: v.pipe(v.string(), v.minLength(1)),
@@ -58,6 +63,7 @@ const actionSchema = v.variant("kind", [
 ]);
 
 const inboxRowSchema = v.strictObject({
+  remoteState: v.picklist(["open", "merged"]),
   identity: pullRequestRefSchema,
   title: v.pipe(v.string(), v.minLength(1)),
   author: v.pipe(v.string(), v.minLength(1)),
@@ -144,8 +150,8 @@ const inboxResponseSchema = v.strictObject({
     ),
   }),
   inbox: v.object({
-    scope: v.literal("open"),
-    page: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    scope: v.picklist(["open", "merged"]),
+    pageSize: v.picklist(INBOX_PAGE_SIZES),
     nextPageToken: v.optional(v.pipe(v.string(), v.minLength(1))),
     rows: v.array(inboxRowSchema),
     repositories: v.array(repoOutcomeSchema),

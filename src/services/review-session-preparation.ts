@@ -44,6 +44,8 @@ import type {
 export type PrepareReviewSessionInput = {
   readonly profileId: WorkspaceProfileId;
   readonly pullRequest: PullRequestRef;
+  /** Terminal-only opening rechecks that every revision read remains non-open. */
+  readonly expectedPullRequestState?: "non_open";
 };
 
 export type PreparedReviewSession = {
@@ -56,6 +58,7 @@ export type PrepareReviewSessionFailure =
   | { readonly _tag: "ProfileUnavailable" }
   | { readonly _tag: "GitHubReadUnavailable" }
   | { readonly _tag: "HeadChanged" }
+  | { readonly _tag: "PullRequestStateChanged" }
   | { readonly _tag: "SessionStorageUnavailable" }
   | { readonly _tag: "PreparationUnavailable" }
   | { readonly _tag: "PreparationCleanupUnavailable" }
@@ -149,6 +152,8 @@ export class ReviewSessionPreparation {
       pr: input.pullRequest,
     });
     if (current._tag === "err") return err({ _tag: "GitHubReadUnavailable" });
+    if (input.expectedPullRequestState === "non_open" && current.value.isOpen)
+      return err({ _tag: "PullRequestStateChanged" });
     const revision = reviewRevisionOf(current.value);
     if (revision === undefined) return err({ _tag: "PreparationUnavailable" });
     const sessionId = createReviewSessionId({
@@ -227,6 +232,8 @@ export class ReviewSessionPreparation {
     });
     if (current._tag === "err")
       return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
+    if (input.expectedPullRequestState === "non_open" && current.value.isOpen)
+      return await this.abort(journal, { _tag: "PullRequestStateChanged" });
     const currentRevision = reviewRevisionOf(current.value);
     if (
       currentRevision === undefined ||
@@ -299,6 +306,8 @@ export class ReviewSessionPreparation {
     });
     if (verified._tag === "err")
       return await this.abort(journal, { _tag: "GitHubReadUnavailable" });
+    if (input.expectedPullRequestState === "non_open" && verified.value.isOpen)
+      return await this.abort(journal, { _tag: "PullRequestStateChanged" });
     const verifiedRevision = reviewRevisionOf(verified.value);
     if (
       verifiedRevision === undefined ||

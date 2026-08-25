@@ -6,7 +6,9 @@ import {
   saveInboxViewPreferences,
 } from "../../src/renderer/src/inbox-view-preferences";
 
-const KEY = "patchdesk.inbox-view.v1.profile-1";
+const KEY = "patchdesk.inbox-view.v3.profile-1";
+const V2_KEY = "patchdesk.inbox-view.v2.profile-1";
+const LEGACY_KEY = "patchdesk.inbox-view.v1.profile-1";
 
 type StoredValue =
   | string
@@ -17,7 +19,21 @@ type StoredValue =
   | { readonly [key: string]: StoredValue };
 
 function store(preferences: Record<string, StoredValue>): void {
-  window.localStorage.setItem(KEY, JSON.stringify({ version: 1, preferences }));
+  window.localStorage.setItem(KEY, JSON.stringify({ version: 3, preferences }));
+}
+
+function storeV2(preferences: Record<string, StoredValue>): void {
+  window.localStorage.setItem(
+    V2_KEY,
+    JSON.stringify({ version: 2, preferences }),
+  );
+}
+
+function storeLegacy(preferences: Record<string, StoredValue>): void {
+  window.localStorage.setItem(
+    LEGACY_KEY,
+    JSON.stringify({ version: 1, preferences }),
+  );
 }
 
 describe("inbox view preferences", () => {
@@ -49,6 +65,46 @@ describe("inbox view preferences", () => {
   it("round-trips every sort, including change size", () => {
     saveInboxViewPreferences("profile-1", { sort: "size" });
     expect(loadInboxViewPreferences("profile-1").sort).toBe("size");
+  });
+
+  it("round-trips the selected inbox scope without persisting page cursors", () => {
+    saveInboxViewPreferences("profile-1", { scope: "merged" });
+    expect(loadInboxViewPreferences("profile-1").scope).toBe("merged");
+    expect(window.localStorage.getItem(KEY)).not.toContain("pageToken");
+  });
+
+  it("defaults to a page size of 25 without a stored value", () => {
+    expect(loadInboxViewPreferences("profile-1").pageSize).toBe(25);
+  });
+
+  it("round-trips every listed page size", () => {
+    for (const pageSize of [10, 25, 50] as const) {
+      saveInboxViewPreferences("profile-1", { pageSize });
+      expect(loadInboxViewPreferences("profile-1").pageSize).toBe(pageSize);
+    }
+  });
+
+  it("resets an unlisted or malformed page size to the default while keeping sound fields", () => {
+    store({ view: "waiting", pageSize: 100 });
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded.pageSize).toBe(25);
+    expect(loaded.view).toBe("waiting");
+  });
+
+  it("resets to defaults, including page size, when reading version 2 data", () => {
+    storeV2({ view: "waiting", scope: "merged" });
+    expect(loadInboxViewPreferences("profile-1")).toEqual(
+      DEFAULT_INBOX_VIEW_PREFERENCES,
+    );
+  });
+
+  it("migrates version 1 preferences with an open scope", () => {
+    storeLegacy({ view: "waiting", search: "fixture" });
+    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
+      scope: "open",
+      view: "waiting",
+      search: "fixture",
+    });
   });
 
   it("drops unusable saved views and de-duplicates the rest", () => {

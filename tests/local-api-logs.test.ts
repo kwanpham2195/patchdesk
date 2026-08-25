@@ -77,6 +77,11 @@ describe("local API log stream", () => {
       headers: await authHeaders(),
     });
     expect(tailed.status).toBe(200);
+    // SAFETY: the response was asserted 200 above, and the GET /v1/logs
+    // handler returns `context.json(logs.tail(...))` untouched;
+    // AppLogService.tail's return type pins `entries` to LogEntry values
+    // whose `process` and `message` fields are validated (log-entry.ts), so
+    // the parsed JSON can only take this shape.
     const body = (await tailed.json()) as {
       entries: Array<{ process: string; message: string }>;
       nextAfter?: number;
@@ -122,11 +127,16 @@ describe("local API log stream", () => {
     };
     await post("one");
     await post("two");
-    const first = (await (
-      await fetch(new URL("v1/logs", server.url), {
-        headers: await authHeaders(),
-      })
-    ).json()) as {
+    const firstResponse = await fetch(new URL("v1/logs", server.url), {
+      headers: await authHeaders(),
+    });
+    expect(firstResponse.status).toBe(200);
+    // SAFETY: the response was asserted 200 above, and the GET /v1/logs
+    // handler returns `context.json(logs.tail(...))` untouched;
+    // AppLogService.tail's return type pins `entries` to LogEntry values
+    // whose `process` and `message` fields are validated (log-entry.ts), so
+    // the parsed JSON can only take this shape.
+    const first = (await firstResponse.json()) as {
       entries: Array<{ process: string; message: string }>;
       nextAfter?: number;
     };
@@ -139,11 +149,17 @@ describe("local API log stream", () => {
     // The next entry arrives before the next poll; resuming with the returned
     // cursor must deliver it exactly once.
     await post("three");
-    const resumed = (await (
-      await fetch(new URL(`v1/logs?after=${first.nextAfter}`, server.url), {
-        headers: await authHeaders(),
-      })
-    ).json()) as {
+    const resumedResponse = await fetch(
+      new URL(`v1/logs?after=${first.nextAfter}`, server.url),
+      { headers: await authHeaders() },
+    );
+    expect(resumedResponse.status).toBe(200);
+    // SAFETY: the response was asserted 200 above, and the GET /v1/logs
+    // handler returns `context.json(logs.tail(...))` untouched;
+    // AppLogService.tail's return type pins `entries` to LogEntry values
+    // whose `process` and `message` fields are validated (log-entry.ts), so
+    // the parsed JSON can only take this shape.
+    const resumed = (await resumedResponse.json()) as {
       entries: Array<{ process: string; message: string }>;
       nextAfter?: number;
     };
@@ -200,6 +216,13 @@ describe("local API log stream", () => {
     const tailed = await fetch(new URL("v1/logs", localApi.url), {
       headers: await authHeaders(),
     });
+    expect(tailed.status).toBe(200);
+    // SAFETY: the response was asserted 200 above, and the GET /v1/logs
+    // handler returns `context.json(logs.tail(...))` untouched;
+    // AppLogService.tail's return type pins `entries` to LogEntry values
+    // whose `topic` and `message` fields are validated, and `meta` to a
+    // validated record (log-entry.ts), so the parsed JSON can only take
+    // this shape.
     const body = (await tailed.json()) as {
       entries: Array<{
         topic: string;
@@ -218,5 +241,42 @@ describe("local API log stream", () => {
     expect(
       httpEntries.some((entry) => entry.message.includes("/v1/logs")),
     ).toBe(false);
+  });
+
+  it("includes the query string in the request log line", async () => {
+    const paths = PatchdeskPaths.forTest(
+      await mkdtemp(join(tmpdir(), "patchdesk-logs-http-query-")),
+    );
+    const logs = new AppLogService(paths);
+    const startup = await startLocalApiServer({
+      capability,
+      allowedOrigin,
+      paths,
+      logs,
+    });
+    if (startup._tag !== "started")
+      throw new Error("Expected local API startup");
+    localApi = startup.server;
+
+    await fetch(new URL("v1/profiles?scope=open&page=abc123", localApi.url), {
+      headers: await authHeaders(),
+    });
+    const tailed = await fetch(new URL("v1/logs", localApi.url), {
+      headers: await authHeaders(),
+    });
+    // SAFETY: the GET /v1/logs handler returns `context.json(logs.tail(...))`
+    // untouched, and AppLogService.tail's return type pins `entries` to
+    // LogEntry values whose `topic` and `message` fields are validated
+    // non-empty strings (log-entry.ts), so the parsed JSON can only take
+    // this shape.
+    const body = (await tailed.json()) as {
+      entries: Array<{ topic: string; message: string }>;
+    };
+    const httpEntries = body.entries.filter((entry) => entry.topic === "http");
+    expect(
+      httpEntries.some(
+        (entry) => entry.message === "GET /v1/profiles?scope=open&page=abc123",
+      ),
+    ).toBe(true);
   });
 });

@@ -77,6 +77,10 @@ const actionSchema = v.variant("kind", [
     label: v.literal("Run review"),
   }),
   v.strictObject({
+    kind: v.literal("open_merged_review"),
+    label: v.literal("View merged pull request"),
+  }),
+  v.strictObject({
     kind: v.literal("open_saved_review"),
     label: v.literal("Open Review"),
     reviewId: v.string(),
@@ -98,6 +102,9 @@ const actionSchema = v.variant("kind", [
 ]);
 
 const rowSchema = v.strictObject({
+  // Cache version 1 predates remoteState. Cache is open-only, so its omitted
+  // state is reconstructed as open while merged pages remain uncached.
+  remoteState: v.optional(v.literal("open")),
   identity: v.strictObject({
     host: v.string(),
     owner: v.string(),
@@ -273,6 +280,7 @@ function parseRow(
   const labelCountField =
     input.labelCount === undefined ? {} : { labelCount: input.labelCount };
   return ok({
+    remoteState: input.remoteState ?? "open",
     identity: identity.value,
     title: input.title,
     author: input.author,
@@ -371,6 +379,8 @@ function parseAction(
 ): Result<InboxRecommendedAction, StorageFailure> {
   switch (input.kind) {
     case "run_review":
+      return ok(input);
+    case "open_merged_review":
       return ok(input);
     // Cached inboxes from before failed checks could start a review retain this old
     // shape. The cache is local, and the current policy always permits analysis.

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { FakeGitHubAdapter } from "../src/adapters/github/github-adapter";
 import { ProfileStore } from "../src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
 import { createReviewSession } from "../src/domain/review-session";
@@ -53,7 +54,7 @@ type LocalApiServerConfiguration = Parameters<typeof startLocalApiServer>[0];
 async function start(
   options: Pick<
     LocalApiServerConfiguration,
-    "readOnlyGit" | "resolveGitHubCli"
+    "readOnlyGit" | "resolveGitHubCli" | "github"
   > = {},
 ): Promise<LocalApiServer> {
   root = await mkdtemp(join(tmpdir(), "patchdesk-api-auth-"));
@@ -268,6 +269,7 @@ describe("local API current Review capability boundary", () => {
     const api = await start();
     const routes = [
       "v1/reviews/open",
+      "v1/reviews/open-merged",
       "v1/reviews/load",
       "v1/reviews/detect-updates",
       "v1/reviews/refresh",
@@ -311,17 +313,20 @@ describe("local API current Review capability boundary", () => {
 
   it("keeps current entry and reconciliation requests Review-id based", async () => {
     const api = await start();
-    expect(
-      (
-        await post(api, "v1/reviews/open", {
-          profileId: "profile",
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "patchdesk",
-          number: 42,
-        })
-      ).status,
-    ).not.toBe(400);
+    for (const route of ["v1/reviews/open", "v1/reviews/open-merged"]) {
+      expect(
+        (
+          await post(api, route, {
+            profileId: "profile",
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "patchdesk",
+            number: 42,
+          })
+        ).status,
+        route,
+      ).not.toBe(400);
+    }
     for (const route of [
       "v1/reviews/load",
       "v1/reviews/detect-updates",
@@ -431,6 +436,100 @@ describe("local API current Review capability boundary", () => {
     }
     expect((await post(api, "v1/storage/clear-local-data", {})).status).toBe(
       400,
+    );
+  });
+});
+
+describe("GET /v1/inbox page size boundary", () => {
+  async function startWithWatchedProfile() {
+    const adapter = new FakeGitHubAdapter({
+      authenticatedAccount: { host: "github.com", account: "fixture" },
+      maintainerPullRequests: { entries: [], hasNextPage: false },
+    });
+    const listMaintainerPullRequests = vi.spyOn(
+      adapter,
+      "listMaintainerPullRequests",
+    );
+    const api = await start({ github: adapter });
+    if (root === undefined) throw new Error("test root was not created");
+    const paths = PatchdeskPaths.forTest(root);
+    expect(
+      (
+        await new ProfileStore(paths).save(
+          must(
+            parseWorkspaceProfileConfig({
+              id: "profile",
+              label: "Profile",
+              githubHost: "github.com",
+              ghAccount: "fixture",
+              ownerFilters: [],
+              workspaceRoots: [],
+              rulePaths: [],
+              repos: [
+                {
+                  host: "github.com",
+                  owner: "centraldigital",
+                  repo: "patchdesk",
+                },
+              ],
+            }),
+          ),
+        )
+      )._tag,
+    ).toBe("ok");
+    return { api, listMaintainerPullRequests };
+  }
+
+  it("rejects an unlisted pageSize as a normal parse failure with no GitHub read", async () => {
+    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox?pageSize=100", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_input",
+    });
+    expect(listMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-numeric, zero, negative, or float pageSize the same way", async () => {
+    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+
+    for (const value of ["abc", "0", "-10", "25.0"]) {
+      const response = await fetch(
+        new URL(`v1/inbox?pageSize=${value}`, api.url),
+        { headers: headers() },
+      );
+      expect(response.status, value).toBe(400);
+    }
+    expect(listMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("defaults to page size 25 when pageSize is omitted", async () => {
+    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(listMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ pageSize: 25 }),
+    );
+  });
+
+  it("accepts an explicitly listed pageSize and forwards it to GitHub", async () => {
+    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox?pageSize=10", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(listMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ pageSize: 10 }),
     );
   });
 });

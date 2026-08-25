@@ -51,6 +51,15 @@ import {
   type WorkbenchResponse,
 } from "./renderer-contracts";
 import {
+  loadInboxViewPreferences,
+  saveInboxViewPreferences,
+  type InboxScope,
+} from "./inbox-view-preferences";
+import {
+  DEFAULT_INBOX_PAGE_SIZE,
+  type InboxPageSize,
+} from "../../domain/maintainer-inbox";
+import {
   InboxRefreshScheduler,
   inboxFreshnessLabel,
   type InboxRefreshOutcome,
@@ -113,19 +122,24 @@ type WorkspaceAction =
   | { readonly _tag: "cleared" };
 
 type InboxRequestState = {
-  readonly scope: "open";
+  readonly scope: InboxScope;
+  readonly pageSize: InboxPageSize;
   readonly pageToken?: string;
   readonly previousPageTokens: ReadonlyArray<string | undefined>;
 };
 
 const firstInboxRequest: InboxRequestState = {
   scope: "open",
+  pageSize: DEFAULT_INBOX_PAGE_SIZE,
   previousPageTokens: [],
 };
 
 /** Builds the renderer-owned inbox URL without decoding the opaque page token. */
 function inboxRequestPath(request: InboxRequestState): string {
-  const query = new URLSearchParams({ scope: request.scope });
+  const query = new URLSearchParams({
+    scope: request.scope,
+    pageSize: String(request.pageSize),
+  });
   if (request.pageToken !== undefined) query.set("page", request.pageToken);
   return `/v1/inbox?${query.toString()}`;
 }
@@ -378,6 +392,8 @@ export function App({
     };
   }, [fixtureMode]);
   const activeInboxProfileId = useRef<string | undefined>(undefined);
+  const restoredInboxScopeProfileId = useRef<string | undefined>(undefined);
+  const resetInboxScopeOnProfileLoad = useRef(false);
   const workspaceGeneration = useRef(0);
   const inboxRefreshGeneration = useRef(0);
   const inboxRefreshScheduler = useRef<InboxRefreshScheduler | undefined>(
@@ -426,7 +442,7 @@ export function App({
       profiles: nextProfiles,
       inbox: loadedInbox,
       dashboard: currentDashboard,
-      screen: screenStateForDashboard(currentDashboard),
+      screen: screenStateForInbox(loadedInbox, currentDashboard),
     });
     activeInboxProfileId.current = currentDashboard.profile.id;
   }, [initialState]);
@@ -445,7 +461,8 @@ export function App({
         if (
           refreshed === undefined ||
           refreshed.profile.id !== profileId ||
-          refreshed.inbox.scope !== request.scope
+          refreshed.inbox.scope !== request.scope ||
+          refreshed.inbox.pageSize !== request.pageSize
         )
           throw new Error("Invalid inbox refresh response");
         if (generation !== inboxRefreshGeneration.current) return "success";
@@ -454,7 +471,7 @@ export function App({
           _tag: "refreshSucceeded",
           inbox: refreshed,
           dashboard: nextDashboard,
-          screen: screenStateForDashboard(nextDashboard),
+          screen: screenStateForInbox(refreshed, nextDashboard),
         });
         return allRepositoriesRateLimited(refreshed.inbox.repositories)
           ? {
@@ -473,6 +490,32 @@ export function App({
     },
     [],
   );
+  useEffect(() => {
+    const profileId = dashboard?.profile.id;
+    if (
+      profileId === undefined ||
+      restoredInboxScopeProfileId.current === profileId
+    )
+      return;
+    restoredInboxScopeProfileId.current = profileId;
+    if (resetInboxScopeOnProfileLoad.current) {
+      resetInboxScopeOnProfileLoad.current = false;
+      return;
+    }
+    const { scope, pageSize } = loadInboxViewPreferences(profileId);
+    if (
+      scope === inboxRequestRef.current.scope &&
+      pageSize === inboxRequestRef.current.pageSize
+    )
+      return;
+    const request: InboxRequestState = {
+      scope,
+      pageSize,
+      previousPageTokens: [],
+    };
+    updateInboxRequest(request);
+    void refreshInbox(request);
+  }, [dashboard?.profile.id, refreshInbox, updateInboxRequest]);
   const hasDashboard = dashboard !== undefined;
   useEffect(() => {
     if (!fixtureMode) void loadWorkspace();
@@ -585,9 +628,44 @@ export function App({
   }, [fixtureMode, openSettings]);
 
   const refreshDashboard = async (): Promise<void> => {
-    updateInboxRequest(firstInboxRequest);
-    await refreshInbox(firstInboxRequest);
+    const request: InboxRequestState = {
+      scope: inboxRequestRef.current.scope,
+      pageSize: inboxRequestRef.current.pageSize,
+      previousPageTokens: [],
+    };
+    updateInboxRequest(request);
+    await refreshInbox(request);
   };
+  const changeInboxScope = useCallback(
+    (scope: InboxRequestState["scope"]): void => {
+      const request: InboxRequestState = {
+        scope,
+        pageSize: inboxRequestRef.current.pageSize,
+        previousPageTokens: [],
+      };
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { scope });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  const changeInboxPageSize = useCallback(
+    (pageSize: InboxPageSize): void => {
+      const request: InboxRequestState = {
+        scope: inboxRequestRef.current.scope,
+        pageSize,
+        previousPageTokens: [],
+      };
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { pageSize });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
   const previousInboxPage = useCallback((): void => {
     const current = inboxRequestRef.current;
     if (current.previousPageTokens.length === 0) return;
@@ -595,8 +673,17 @@ export function App({
     const previousPageTokens = current.previousPageTokens.slice(0, -1);
     const next: InboxRequestState =
       pageToken === undefined
-        ? { scope: current.scope, previousPageTokens }
-        : { scope: current.scope, pageToken, previousPageTokens };
+        ? {
+            scope: current.scope,
+            pageSize: current.pageSize,
+            previousPageTokens,
+          }
+        : {
+            scope: current.scope,
+            pageSize: current.pageSize,
+            pageToken,
+            previousPageTokens,
+          };
     updateInboxRequest(next);
     void refreshInbox(next);
   }, [refreshInbox, updateInboxRequest]);
@@ -606,6 +693,7 @@ export function App({
     if (pageToken === undefined) return;
     const next: InboxRequestState = {
       scope: current.scope,
+      pageSize: current.pageSize,
       pageToken,
       previousPageTokens: [
         ...current.previousPageTokens,
@@ -677,6 +765,8 @@ export function App({
           activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
           onProfileSwitch={async (id) => {
             await api("/v1/profiles/select", { method: "POST", body: { id } });
+            saveInboxViewPreferences(id, { scope: "open" });
+            resetInboxScopeOnProfileLoad.current = true;
             setWorkbench(undefined);
             dispatchWorkspace({ _tag: "cleared" });
             updateInboxRequest(firstInboxRequest);
@@ -716,6 +806,7 @@ export function App({
             dispatchWorkspace({ _tag: "cleared" });
             activeInboxProfileId.current = undefined;
             inboxRefreshGeneration.current += 1;
+            resetInboxScopeOnProfileLoad.current = true;
             updateInboxRequest(firstInboxRequest);
             setDestination({ kind: "dashboard" });
             window.localStorage.setItem("patchdesk.destination", "dashboard");
@@ -859,6 +950,14 @@ export function App({
     inbox?.inbox.snapshot?.refreshedAt === undefined
       ? {}
       : { refreshedAt: inbox.inbox.snapshot.refreshedAt };
+  // The confirmed inbox response still carries the previous scope's rows
+  // until the in-flight request for the newly requested scope lands. The
+  // toggle below reflects `inboxRequest.scope` immediately (so the click
+  // feels responsive), but the row list must not render those stale rows
+  // under the new scope's label — so InboxFlow gets this boolean and holds
+  // the list in a loading state until the two agree.
+  const inboxListPending =
+    inbox !== undefined && inbox.inbox.scope !== inboxRequest.scope;
   return shell(
     <div className="flex min-h-0 flex-1 flex-col">
       <InboxFlow
@@ -876,8 +975,12 @@ export function App({
         })}
         onRefresh={() => void refreshDashboard()}
         scope={inboxRequest.scope}
+        listPending={inboxListPending}
+        pageSize={inboxRequest.pageSize}
         hasPreviousPage={inboxRequest.previousPageTokens.length > 0}
         hasNextPage={inbox?.inbox.nextPageToken !== undefined}
+        onInboxScopeChange={changeInboxScope}
+        onInboxPageSizeChange={changeInboxPageSize}
         onPreviousInboxPage={previousInboxPage}
         onNextInboxPage={nextInboxPage}
         onSettings={(section) => openSettings(undefined, section)}
@@ -1127,7 +1230,10 @@ function maxResumeAt(
     : new Date(Math.max(...resumeTimesMs)).toISOString();
 }
 
-function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
+function screenStateForInbox(
+  inbox: InboxResponse,
+  dashboard: Dashboard,
+): DashboardScreenState {
   const outcomes = dashboard.dashboard.repos.map((item) => item.state);
   if (
     outcomes.includes("github_auth") ||
@@ -1136,7 +1242,11 @@ function screenStateForDashboard(dashboard: Dashboard): DashboardScreenState {
     outcomes.includes("github_forbidden")
   )
     return "error";
-  if (outcomes.includes("no_open_prs") && dashboard.dashboard.rows.length === 0)
+  if (
+    inbox.inbox.scope === "open" &&
+    outcomes.includes("no_open_prs") &&
+    dashboard.dashboard.rows.length === 0
+  )
     return "no_open_prs";
   return dashboard.dashboard.rows.length === 0 ? "empty" : "success";
 }

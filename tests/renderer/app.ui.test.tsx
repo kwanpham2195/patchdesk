@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
@@ -91,6 +92,49 @@ describe("App Review route loading", () => {
       Reflect.deleteProperty(document, "visibilityState");
     else Object.defineProperty(document, "visibilityState", originalVisibility);
   });
+
+  it("requests the default rows-per-page on load, then clears the page token and requests the first page with the new size on change", async () => {
+    const user = userEvent.setup();
+    const paths: string[] = [];
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async (input: { readonly path?: string }) => {
+          if (input.path?.startsWith("/v1/inbox")) paths.push(input.path);
+          return {
+            ok: true,
+            status: 200,
+            correlationId: "test",
+            body:
+              input.path === "/v1/profiles"
+                ? [
+                    {
+                      id: "profile",
+                      label: "Profile",
+                      githubHost: "github.com",
+                      ghAccount: "fixture",
+                    },
+                  ]
+                : input.path?.startsWith("/v1/inbox")
+                  ? inbox()
+                  : {},
+          };
+        },
+        onNavigate: () => () => undefined,
+      },
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    expect(paths).toEqual(["/v1/inbox?scope=open&pageSize=25"]);
+
+    const select = screen.getByRole("combobox", { name: "Rows per page" });
+    await user.click(select);
+    await user.click(await screen.findByRole("option", { name: "10" }));
+    await waitFor(() =>
+      expect(paths.at(-1)).toBe("/v1/inbox?scope=open&pageSize=10"),
+    );
+  });
+
   it("loads a restored Review through InboxFlow and keeps route callbacks", async () => {
     const deferred = promise<React.ComponentType<ReviewWorkbenchFlowProps>>();
     let received: ReviewWorkbenchFlowProps | undefined;
@@ -205,6 +249,137 @@ describe("App Review route loading", () => {
   });
 });
 
+describe("App inbox scope switch", () => {
+  it("holds the row list in a loading state instead of showing the previous scope's rows under the new scope's label", async () => {
+    const user = userEvent.setup();
+    const mergedGate = promise<void>();
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async (input: { readonly path?: string }) => {
+          if (input.path === "/v1/profiles") {
+            return {
+              ok: true,
+              status: 200,
+              correlationId: "test",
+              body: [
+                {
+                  id: "profile",
+                  label: "Profile",
+                  githubHost: "github.com",
+                  ghAccount: "fixture",
+                },
+              ],
+            };
+          }
+          if (input.path === "/v1/inbox?scope=open&pageSize=25") {
+            return {
+              ok: true,
+              status: 200,
+              correlationId: "test",
+              body: scopedInbox("open", 1, "Open PR title"),
+            };
+          }
+          if (input.path === "/v1/inbox?scope=merged&pageSize=25") {
+            await mergedGate.promise;
+            return {
+              ok: true,
+              status: 200,
+              correlationId: "test",
+              body: scopedInbox("merged", 2, "Merged PR title"),
+            };
+          }
+          return { ok: true, status: 200, correlationId: "test", body: {} };
+        },
+        onNavigate: () => () => undefined,
+      },
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    const rowList = screen.getByRole("listbox", { name: "Pull requests" });
+    expect(await within(rowList).findByText("#1 Open PR title")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Merged" }));
+
+    // The toggle reflects the requested scope immediately, so the click
+    // still feels responsive.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Merged" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true"),
+    );
+    // The refresh indicator — the app's existing loading affordance —
+    // reflects the in-flight request.
+    expect(await screen.findByText("GitHub: Refreshing")).toBeTruthy();
+    // The previous (open) scope's row must not render under the "Merged"
+    // label while the merged-scope response is still in flight, and the
+    // new scope's row has not arrived yet either.
+    expect(within(rowList).queryByText("#1 Open PR title")).toBeNull();
+    expect(within(rowList).queryByText("#2 Merged PR title")).toBeNull();
+
+    mergedGate.resolve();
+    expect(await within(rowList).findByText("#2 Merged PR title")).toBeTruthy();
+    expect(within(rowList).queryByText("#1 Open PR title")).toBeNull();
+  });
+});
+
+/** A single-row inbox response for the given scope, valid against
+ * `parseInboxResponse`'s schema. */
+function scopedInbox(scope: "open" | "merged", number: number, title: string) {
+  return {
+    profile: {
+      id: "profile",
+      label: "Profile",
+      githubHost: "github.com",
+      ghAccount: "fixture",
+    },
+    inbox: {
+      scope,
+      pageSize: 25,
+      rows: [
+        {
+          remoteState: scope,
+          identity: {
+            host: "github.com",
+            owner: "owner",
+            repo: "repo",
+            number,
+          },
+          title,
+          author: "author",
+          baseBranch: "main",
+          headBranch: "change",
+          currentHeadSha: "a".repeat(40),
+          isDraft: false,
+          updatedAt: "2026-08-01T00:00:00.000Z",
+          changeStats: {},
+          checks: { overall: "unknown", checks: [] },
+          reviewState: "none",
+          mergeability: "unknown",
+          labels: [],
+          // The default queue in "open" scope is "my_inbox", which only
+          // shows rows carrying one of these categories; "merged" scope
+          // bypasses queue filtering entirely, so this only matters for the
+          // open-scope row.
+          categories: scope === "open" ? (["needs_review"] as const) : [],
+          recommendedAction:
+            scope === "open"
+              ? { kind: "run_review", label: "Run review" }
+              : {
+                  kind: "open_merged_review",
+                  label: "View merged pull request",
+                },
+          dataFreshness: "fresh",
+        },
+      ],
+      repositories: [],
+      dataFreshness: "fresh",
+    },
+  };
+}
+
 function installDesktop(
   options: {
     readonly failInboxRefresh?: boolean;
@@ -216,7 +391,7 @@ function installDesktop(
     configurable: true,
     value: {
       request: async (input: { readonly path?: string }) => {
-        if (input.path === "/v1/inbox?scope=open") {
+        if (input.path === "/v1/inbox?scope=open&pageSize=25") {
           inboxRequests += 1;
           if (options.failInboxRefresh && inboxRequests > 1) {
             if (options.inboxRefreshGate !== undefined)
@@ -238,7 +413,7 @@ function installDesktop(
                     ghAccount: "fixture",
                   },
                 ]
-              : input.path === "/v1/inbox?scope=open"
+              : input.path === "/v1/inbox?scope=open&pageSize=25"
                 ? inbox()
                 : input.path === "/v1/reviews/load"
                   ? projection()
@@ -260,7 +435,7 @@ function inbox() {
     },
     inbox: {
       scope: "open",
-      page: 1,
+      pageSize: 25,
       rows: [],
       repositories: [],
       dataFreshness: "fresh",

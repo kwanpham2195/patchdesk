@@ -85,68 +85,42 @@ export class ReviewWorkbenchController {
   ) {}
 
   async open(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this method is the controller's own I/O boundary parser (see class doc): the route only schema-validates shape, `open` re-parses every domain value itself.
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this controller I/O boundary parses the strict Review identity before delegating to typed code.
     input: unknown,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const identityFields = {
-      profileId: parseWorkspaceProfileId(readObjectField(input, "profileId")),
-      host: parseGitHubHost(readObjectField(input, "host")),
-      owner: parseGitHubOwner(readObjectField(input, "owner")),
-      repo: parseGitHubRepoName(readObjectField(input, "repo")),
-      number: parsePullRequestNumber(readObjectField(input, "number")),
-    };
-    if (
-      identityFields.profileId._tag === "err" ||
-      identityFields.host._tag === "err" ||
-      identityFields.owner._tag === "err" ||
-      identityFields.repo._tag === "err" ||
-      identityFields.number._tag === "err"
-    )
-      return err({ reason: "invalid_input" });
-    const profileId = identityFields.profileId.value;
-    const reviewId = createReviewId({
-      profileId,
-      host: identityFields.host.value,
-      owner: identityFields.owner.value,
-      repo: identityFields.repo.value,
-      prNumber: identityFields.number.value,
-    });
-    return this.serializedOpen(profileId, reviewId, async () => {
-      return this.openUnlocked(input);
+    const identity = parseReviewIdentity(input);
+    if (identity === undefined) return err({ reason: "invalid_input" });
+    const reviewId = createReviewId(identity);
+    return this.serializedOpen(identity.profileId, reviewId, async () => {
+      return this.openUnlocked(identity);
     });
   }
 
-  private async openUnlocked(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- receives `open`'s already-`unknown` input verbatim; re-parses the same domain values itself rather than trusting an earlier boundary.
+  /** Opens only a currently merged pull request and never returns a writable Review. */
+  async openMerged(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this controller I/O boundary parses the strict Review identity before terminal-only preparation.
     input: unknown,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const profileId = parseWorkspaceProfileId(
-      readObjectField(input, "profileId"),
-    );
-    const host = parseGitHubHost(readObjectField(input, "host"));
-    const owner = parseGitHubOwner(readObjectField(input, "owner"));
-    const repo = parseGitHubRepoName(readObjectField(input, "repo"));
-    const number = parsePullRequestNumber(readObjectField(input, "number"));
-    if (
-      profileId._tag === "err" ||
-      host._tag === "err" ||
-      owner._tag === "err" ||
-      repo._tag === "err" ||
-      number._tag === "err"
-    )
-      return err({ reason: "invalid_input" });
-    const identity = {
-      profileId: profileId.value,
-      host: host.value,
-      owner: owner.value,
-      repo: repo.value,
-      prNumber: number.value,
-    };
+    const identity = parseReviewIdentity(input);
+    if (identity === undefined) return err({ reason: "invalid_input" });
     const reviewId = createReviewId(identity);
-    const recovered = await this.recoverObservation(profileId.value, reviewId);
+    return this.serializedOpen(identity.profileId, reviewId, async () =>
+      this.openUnlocked(identity, "merged"),
+    );
+  }
+
+  private async openUnlocked(
+    identity: ReviewIdentity,
+    expectedTerminalState?: "merged",
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    const reviewId = createReviewId(identity);
+    const recovered = await this.recoverObservation(
+      identity.profileId,
+      reviewId,
+    );
     if (recovered._tag === "err") return recovered;
     const existing = await this.lifecycle.reviews.load(
-      profileId.value,
+      identity.profileId,
       reviewId,
     );
     if (existing._tag === "err") {
@@ -154,7 +128,7 @@ export class ReviewWorkbenchController {
         // A corrupt Review record is moved aside and the Review is rebuilt
         // from the pull request; corrupt local data never blocks opening.
         const quarantined = await this.lifecycle.artifacts.quarantineReview(
-          profileId.value,
+          identity.profileId,
           reviewId,
         );
         if (quarantined._tag === "err") return err({ reason: "storage" });
@@ -164,46 +138,65 @@ export class ReviewWorkbenchController {
     }
     if (existing._tag === "ok") {
       const currentSession = await this.lifecycle.sessions.load(
-        profileId.value,
+        identity.profileId,
         existing.value.currentSessionId,
       );
       if (currentSession._tag === "err") {
         if (!isRestartableStorageFailure(currentSession.error))
           return err({ reason: "storage" });
-        return this.restartUnusableReview(identity);
+        return this.restartUnusableReview(identity, expectedTerminalState);
       }
       if (existing.value.representedRemote !== undefined) {
         const represented = await this.lifecycle.remote.load({
-          profileId: profileId.value,
+          profileId: identity.profileId,
           reviewId,
           snapshotHash: existing.value.representedRemote.snapshotHash,
         });
         if (represented._tag === "err") {
           if (!isRestartableStorageFailure(represented.error))
             return err({ reason: "storage" });
-          return this.restartUnusableReview(identity);
+          return this.restartUnusableReview(identity, expectedTerminalState);
         }
-        return this.projectStable(existing.value);
+        if (expectedTerminalState === undefined)
+          return this.projectStable(existing.value);
+        if (existing.value.status._tag === "Terminal")
+          return existing.value.status.state === "merged"
+            ? this.projectStable(existing.value)
+            : err({ reason: "terminal" });
+        const initialized = await this.initializeSnapshot(
+          identity.profileId,
+          reviewId,
+          expectedTerminalState,
+        );
+        return initialized._tag === "err"
+          ? initialized
+          : this.projectStable(initialized.value);
       }
       const initialized = await this.initializeSnapshot(
-        profileId.value,
+        identity.profileId,
         reviewId,
+        expectedTerminalState,
       );
       if (initialized._tag === "err") return initialized;
       return this.projectStable(initialized.value);
     }
-    return this.openFresh(identity);
+    return this.openFresh(identity, expectedTerminalState);
   }
 
   private async openFresh(
     identity: ReviewIdentity,
+    expectedTerminalState?: "merged",
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    const created = await this.createFreshReview(identity);
+    const created = await this.createFreshReview(
+      identity,
+      expectedTerminalState,
+    );
     if (created._tag === "err") return created;
     const reviewId = createReviewId(identity);
     const initialized = await this.initializeSnapshot(
       identity.profileId,
       reviewId,
+      expectedTerminalState,
     );
     return initialized._tag === "err"
       ? initialized
@@ -212,8 +205,9 @@ export class ReviewWorkbenchController {
 
   private async createFreshReview(
     identity: ReviewIdentity,
+    expectedTerminalState?: "merged",
   ): Promise<Result<Review, ReviewWorkbenchFailure>> {
-    const prepared = await this.preparation.prepare({
+    const preparationInput = {
       profileId: identity.profileId,
       pullRequest: {
         host: identity.host,
@@ -221,7 +215,12 @@ export class ReviewWorkbenchController {
         repo: identity.repo,
         number: identity.prNumber,
       },
-    });
+    };
+    const prepared = await this.preparation.prepare(
+      expectedTerminalState === undefined
+        ? preparationInput
+        : { ...preparationInput, expectedPullRequestState: "non_open" },
+    );
     if (prepared._tag === "err")
       return err(mapPreparationFailure(prepared.error, this.lifecycle.logs));
     const created = createReview({
@@ -236,6 +235,7 @@ export class ReviewWorkbenchController {
 
   private async restartUnusableReview(
     identity: ReviewIdentity,
+    expectedTerminalState?: "merged",
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const reviewId = createReviewId(identity);
     const reset = await this.lifecycle.coordinator.withReviewLock(
@@ -260,7 +260,10 @@ export class ReviewWorkbenchController {
         if (current._tag === "err") {
           if (current.error.reason !== "not_found")
             return err({ reason: "storage" });
-          const created = await this.createFreshReview(identity);
+          const created = await this.createFreshReview(
+            identity,
+            expectedTerminalState,
+          );
           return created._tag === "err"
             ? created
             : ok({ review: created.value, restarted: true });
@@ -321,7 +324,10 @@ export class ReviewWorkbenchController {
           });
           return err({ reason: "storage" });
         }
-        const created = await this.createFreshReview(identity);
+        const created = await this.createFreshReview(
+          identity,
+          expectedTerminalState,
+        );
         return created._tag === "err"
           ? created
           : ok({ review: created.value, restarted: true });
@@ -334,6 +340,7 @@ export class ReviewWorkbenchController {
       const initialized = await this.initializeSnapshot(
         identity.profileId,
         reviewId,
+        expectedTerminalState,
       );
       return initialized._tag === "err"
         ? initialized
@@ -342,6 +349,7 @@ export class ReviewWorkbenchController {
     const initialized = await this.initializeSnapshot(
       identity.profileId,
       reviewId,
+      expectedTerminalState,
     );
     return initialized._tag === "err"
       ? initialized
@@ -351,11 +359,13 @@ export class ReviewWorkbenchController {
   private async initializeSnapshot(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
+    expectedTerminalState?: "merged",
   ): Promise<Result<Review, ReviewWorkbenchFailure>> {
-    const initialRefresh = await this.lifecycle.refresh.refresh({
-      profileId,
-      reviewId,
-    });
+    const initialRefresh = await this.lifecycle.refresh.refresh(
+      expectedTerminalState === undefined
+        ? { profileId, reviewId }
+        : { profileId, reviewId, expectedTerminalState },
+    );
     if (initialRefresh._tag === "err")
       return err({ reason: initialRefresh.error.reason });
     const refreshedReview = await this.lifecycle.reviews.load(
@@ -569,6 +579,35 @@ export class ReviewWorkbenchController {
   }
 }
 
+/** Parses the strict review identity once at the controller I/O boundary. */
+function parseReviewIdentity(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the parser that converts its raw local-API input to the typed ReviewIdentity.
+  input: unknown,
+): ReviewIdentity | undefined {
+  const profileId = parseWorkspaceProfileId(
+    readObjectField(input, "profileId"),
+  );
+  const host = parseGitHubHost(readObjectField(input, "host"));
+  const owner = parseGitHubOwner(readObjectField(input, "owner"));
+  const repo = parseGitHubRepoName(readObjectField(input, "repo"));
+  const number = parsePullRequestNumber(readObjectField(input, "number"));
+  if (
+    profileId._tag === "err" ||
+    host._tag === "err" ||
+    owner._tag === "err" ||
+    repo._tag === "err" ||
+    number._tag === "err"
+  )
+    return undefined;
+  return {
+    profileId: profileId.value,
+    host: host.value,
+    owner: owner.value,
+    repo: repo.value,
+    prNumber: number.value,
+  };
+}
+
 function mapPreparationFailure(
   failure: PrepareReviewSessionFailure,
   logs?: Pick<AppLogService, "write">,
@@ -583,6 +622,8 @@ function mapPreparationFailure(
         return { reason: "github_auth" };
       case "HeadChanged":
         return { reason: "head_changed" };
+      case "PullRequestStateChanged":
+        return { reason: "terminal" };
       case "ProfileUnavailable":
       case "SessionStorageUnavailable":
       case "PreparationUnavailable":

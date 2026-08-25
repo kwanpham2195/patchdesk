@@ -16,6 +16,7 @@ afterEach(() => {
 });
 
 const row: InboxRow = {
+  remoteState: "open",
   identity: { host: "github.com", owner: "owner", repo: "repo", number: 1 },
   title: "PR",
   author: "author",
@@ -71,7 +72,6 @@ describe("MaintainerInbox", () => {
         profileId="pagination"
         profileLabel="P"
         scope="open"
-        page={2}
         hasPreviousPage
         hasNextPage
         rows={[row]}
@@ -84,11 +84,176 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={vi.fn()}
       />,
     );
-    expect(screen.getByText("Page 2")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByLabelText("Go to previous page"));
+    fireEvent.click(screen.getByLabelText("Go to next page"));
     expect(previous).toHaveBeenCalledOnce();
     expect(next).toHaveBeenCalledOnce();
+  });
+
+  it("disables an unavailable pagination direction and ignores clicks on it", () => {
+    const previous = vi.fn();
+    const next = vi.fn();
+    const { rerender } = render(
+      <MaintainerInbox
+        profileId="pagination-disabled"
+        profileLabel="P"
+        scope="open"
+        hasPreviousPage={false}
+        hasNextPage
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onPreviousPage={previous}
+        onNextPage={next}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const previousLink = screen.getByLabelText("Go to previous page");
+    expect(previousLink.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(previousLink);
+    expect(previous).not.toHaveBeenCalled();
+
+    // hasPreviousPage is now true, but a refresh in flight must also disable
+    // both directions.
+    rerender(
+      <MaintainerInbox
+        profileId="pagination-disabled"
+        profileLabel="P"
+        scope="open"
+        hasPreviousPage
+        hasNextPage
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Refreshing"
+        onRefresh={vi.fn()}
+        onPreviousPage={previous}
+        onNextPage={next}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const nextLink = screen.getByLabelText("Go to next page");
+    expect(nextLink.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(nextLink);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("moves the page controls to a footer below the row list and drops the header's page number", () => {
+    render(
+      <MaintainerInbox
+        profileId="footer-placement"
+        profileLabel="P"
+        scope="open"
+        hasPreviousPage
+        hasNextPage
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onPreviousPage={vi.fn()}
+        onNextPage={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/^Page \d+$/)).toBeNull();
+    const header = screen.getByRole("banner");
+    expect(within(header).queryByLabelText("Go to previous page")).toBeNull();
+    expect(within(header).queryByLabelText("Go to next page")).toBeNull();
+    expect(within(header).queryByLabelText("Rows per page")).toBeNull();
+
+    const pagination = screen.getByRole("navigation", { name: "Inbox pages" });
+    const footer = pagination.closest("footer");
+    if (footer === null) throw new Error("Expected pagination in a footer");
+    expect(within(footer).getByText("Rows per page")).toBeTruthy();
+    expect(within(footer).getByLabelText("Go to previous page")).toBeTruthy();
+    expect(within(footer).getByLabelText("Go to next page")).toBeTruthy();
+  });
+
+  it("renders the rows-per-page selector bound to the confirmed size and calls back on selection", async () => {
+    const user = userEvent.setup();
+    const onPageSizeChange = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="rows-per-page"
+        profileLabel="P"
+        scope="open"
+        pageSize={25}
+        hasPreviousPage
+        hasNextPage
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onPageSizeChange={onPageSizeChange}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const select = screen.getByRole("combobox", { name: "Rows per page" });
+    expect(select.textContent).toContain("25");
+    await user.click(select);
+    await user.click(await screen.findByRole("option", { name: "10" }));
+    expect(onPageSizeChange).toHaveBeenCalledWith(10);
+  });
+
+  it("shows merged rows outside active queues and delegates scope selection", () => {
+    const scopeChange = vi.fn();
+    const mergedRow: InboxRow = {
+      ...row,
+      remoteState: "merged",
+      categories: [],
+      recommendedAction: {
+        kind: "open_merged_review",
+        label: "View merged pull request",
+      },
+    };
+    render(
+      <MaintainerInbox
+        profileId="merged"
+        profileLabel="P"
+        scope="merged"
+        rows={[mergedRow]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onScopeChange={scopeChange}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("Merged")).toHaveLength(2);
+    expect(screen.queryByLabelText("Inbox queues")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(scopeChange).toHaveBeenCalledWith("open");
+  });
+
+  it("marks the active inbox scope toggle item as pressed", () => {
+    render(
+      <MaintainerInbox
+        profileId="scope-pressed"
+        profileLabel="P"
+        scope="merged"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onScopeChange={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Merged" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Open" }).getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
   it("carries the repository only while the view spans more than one", () => {
@@ -466,6 +631,52 @@ describe("MaintainerInbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "Bugs only" }));
     expect(screen.getAllByText(/Bug fix/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/New feature/)).toBeNull();
+  });
+
+  it("reserves the desktop rail column only in open scope, where QueueRail actually renders", () => {
+    // The grid template and the QueueRail element are two expressions of the
+    // same `scope === "open"` condition. Assert on the rendered className
+    // directly (via `container.firstChild`, the component's root grid div)
+    // since there is no dedicated seam for the grid template today.
+    const { container: openContainer } = render(
+      <MaintainerInbox
+        profileId="rail-open"
+        profileLabel="P"
+        scope="open"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const openGrid = openContainer.firstChild;
+    if (!(openGrid instanceof HTMLElement))
+      throw new Error("expected root grid element");
+    // Anchored to the grid-cols token itself: `min-h-[calc(100vh-3rem)]` also
+    // contains the substring "3rem" and would otherwise false-positive.
+    expect(openGrid.className).toMatch(/grid-cols-\[(?:13rem|3rem)_minmax/);
+
+    const { container: mergedContainer } = render(
+      <MaintainerInbox
+        profileId="rail-merged"
+        profileLabel="P"
+        scope="merged"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const mergedGrid = mergedContainer.firstChild;
+    if (!(mergedGrid instanceof HTMLElement))
+      throw new Error("expected root grid element");
+    expect(mergedGrid.className).not.toMatch(
+      /grid-cols-\[(?:13rem|3rem)_minmax/,
+    );
   });
 
   it("shows visible elapsed-age copy for a cached-after-failure snapshot", () => {

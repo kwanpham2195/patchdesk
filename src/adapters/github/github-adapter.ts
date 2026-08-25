@@ -48,7 +48,7 @@ import {
   type RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
-import { MAINTAINER_INBOX_PAGE_SIZE } from "../../domain/maintainer-inbox";
+import type { InboxPageSize, InboxScope } from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import {
@@ -158,6 +158,10 @@ const commandTimeoutMs = 15_000;
 // Two source blobs travel through the 2 MiB Electron bridge, so each stays
 // below 512 KiB after allowing for JSON framing and multibyte text.
 const maxHydratedFileBytes = 512 * 1024;
+
+function graphqlPullRequestState(scope: InboxScope): "OPEN" | "MERGED" {
+  return scope === "merged" ? "MERGED" : "OPEN";
+}
 /** The typed read-only operations product code may request from GitHub. */
 export interface GitHubReader {
   listOpenPullRequests(input: {
@@ -167,6 +171,10 @@ export interface GitHubReader {
   listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    /** Trusted service scope; the adapter alone maps it to GraphQL OPEN or MERGED. */
+    readonly scope?: InboxScope;
+    /** Requested page size; becomes the GraphQL `first` value. */
+    readonly pageSize: InboxPageSize;
     /** Opaque repository continuation from the inbox service, never renderer input. */
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>>;
@@ -810,10 +818,12 @@ export class GitHubAdapter
     return ok(summaries);
   }
 
-  /** Reads exactly one bounded page of open pull requests with edge cursors. */
+  /** Reads exactly one trusted-scope page of pull requests with edge cursors. */
   async listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly scope?: InboxScope;
+    readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
     const host = input.profile.githubHost;
@@ -831,9 +841,9 @@ export class GitHubAdapter
         "-F",
         `name=${input.repo.repo}`,
         "-F",
-        `first=${MAINTAINER_INBOX_PAGE_SIZE}`,
+        `first=${input.pageSize}`,
         "-F",
-        "state=OPEN",
+        `state=${graphqlPullRequestState(input.scope ?? "open")}`,
         ...(input.cursor === undefined ? [] : ["-f", `cursor=${input.cursor}`]),
       ],
       timeoutMs: commandTimeoutMs,
@@ -854,7 +864,8 @@ export class GitHubAdapter
     const connection = parsed.output.data.repository.pullRequests;
     if (
       connection.pageInfo.hasNextPage &&
-      connection.pageInfo.endCursor === null
+      (connection.pageInfo.endCursor === null ||
+        connection.pageInfo.endCursor === undefined)
     )
       return invalid("list_maintainer_prs");
     const entries = [];
@@ -864,11 +875,21 @@ export class GitHubAdapter
         host,
         input.repo.owner,
         input.repo.repo,
+        input.scope ?? "open",
       );
       if (projected._tag === "err") return invalid("list_maintainer_prs");
       entries.push({ cursor: edge.cursor, pullRequest: projected.value });
     }
-    return ok({ entries, hasNextPage: connection.pageInfo.hasNextPage });
+    const endCursorField =
+      connection.pageInfo.endCursor === null ||
+      connection.pageInfo.endCursor === undefined
+        ? {}
+        : { endCursor: connection.pageInfo.endCursor };
+    return ok({
+      entries,
+      hasNextPage: connection.pageInfo.hasNextPage,
+      ...endCursorField,
+    });
   }
 
   /** Fetches up to 100 repository labels in one bounded page; `totalCount` reveals truncation beyond that. */

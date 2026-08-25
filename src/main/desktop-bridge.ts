@@ -89,6 +89,7 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/published-comments/delete",
   "POST /v1/reviews/published-reviews/dismiss",
   "POST /v1/reviews/open",
+  "POST /v1/reviews/open-merged",
   "GET /v1/insight-providers",
   "POST /v1/insight-providers/codex/models",
   "POST /v1/reviews/load",

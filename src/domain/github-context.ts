@@ -448,4 +448,6 @@ export type MaintainerPullRequestPage = {
     readonly pullRequest: MaintainerPullRequest;
   }>;
   readonly hasNextPage: boolean;
+  /** The next GraphQL connection cursor when a non-final page contains no edges. */
+  readonly endCursor?: string;
 };

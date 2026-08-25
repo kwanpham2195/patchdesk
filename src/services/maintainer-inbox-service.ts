@@ -15,8 +15,10 @@ import {
   type IsoTimestamp,
 } from "../domain/ids";
 import {
-  MAINTAINER_INBOX_PAGE_SIZE,
+  DEFAULT_INBOX_PAGE_SIZE,
+  INBOX_PAGE_SIZES,
   type InboxPageRequest,
+  type InboxPageSize,
   type InboxScope,
   projectMaintainerInboxRow,
   type InboxReviewSummary,
@@ -34,8 +36,10 @@ const MAX_PAGE_TOKEN_LENGTH = 16_384;
 const MAX_REPOSITORY_CURSOR_LENGTH = 4_096;
 
 const inboxPageTokenSchema = v.strictObject({
-  scope: v.literal("open"),
+  scope: v.picklist(["open", "merged"]),
   page: v.pipe(v.number(), v.integer(), v.minValue(2)),
+  /** The page size the token's cursors were cut at; a mismatched request is rejected as malformed. */
+  size: v.picklist(INBOX_PAGE_SIZES),
   repositories: v.array(
     v.strictObject({
       host: v.string(),
@@ -64,7 +68,7 @@ export type MaintainerInboxRepository = {
 
 export type MaintainerInbox = {
   readonly scope: InboxScope;
-  readonly page: number;
+  readonly pageSize: InboxPageSize;
   readonly nextPageToken?: string;
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
   readonly repositories: ReadonlyArray<MaintainerInboxRepository>;
@@ -83,6 +87,7 @@ export type MaintainerInbox = {
 };
 
 export type InboxClock = { readonly now: () => IsoTimestamp };
+/** A supplied opaque inbox page token is malformed or does not match the active profile. */
 export type InboxPageRequestFailure = "invalid_page";
 
 type SessionReader = Pick<ReviewSessionStore, "listSessions">;
@@ -94,6 +99,8 @@ type RepositoryRead = {
     readonly repo: WatchedRepoConfig;
   }>;
   readonly hasNextPage: boolean;
+  /** Advances an empty GraphQL page without skipping a non-emitted inbox row. */
+  readonly emptyPageEndCursor?: string;
   readonly repository: MaintainerInboxRepository;
 };
 
@@ -108,7 +115,10 @@ export class MaintainerInboxService {
 
   async list(
     profile: WorkspaceProfileConfig,
-    request: InboxPageRequest = { scope: "open" },
+    request: InboxPageRequest = {
+      scope: "open",
+      pageSize: DEFAULT_INBOX_PAGE_SIZE,
+    },
   ): Promise<Result<MaintainerInbox, InboxPageRequestFailure>> {
     const pageToken = decodeInboxPageToken(request, profile);
     if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
@@ -116,8 +126,12 @@ export class MaintainerInboxService {
       await this.github.resolveAuthenticatedAccount(profile);
     if (authenticated._tag === "err")
       return request.pageToken === undefined
-        ? await this.cachedOrUnavailable(profile, request.scope)
-        : this.unavailablePage(profile, request.scope, pageToken.page);
+        ? await this.cachedOrUnavailable(
+            profile,
+            request.scope,
+            request.pageSize,
+          )
+        : this.unavailablePage(profile, request.scope, request.pageSize);
 
     const sessions = await this.sessions.listSessions(profile.id);
     const localSessions = sessions._tag === "ok" ? sessions.value : [];
@@ -128,12 +142,14 @@ export class MaintainerInboxService {
         await this.readRepository(
           profile,
           repo,
+          request.scope,
+          request.pageSize,
           cursorForRepository(pageToken, repo),
           localSessions,
         ),
     );
     const entries = reads.flatMap((read) => read.entries).sort(compareEntries);
-    const visible = entries.slice(0, MAINTAINER_INBOX_PAGE_SIZE);
+    const visible = entries.slice(0, request.pageSize);
     const repositories = reads.map((read) => read.repository);
     const visibleEntries = new Set(visible);
     const hasNextPage = reads.some(
@@ -153,12 +169,18 @@ export class MaintainerInboxService {
       ? encodeInboxPageToken({
           scope: request.scope,
           page: pageToken.page + 1,
+          size: request.pageSize,
           repositories: profile.repos.map((repo) => {
             const emitted = visible
               .filter((entry) => sameRepository(entry.repo, repo))
               .at(-1);
+            const read = reads.find((candidate) =>
+              sameRepository(candidate.repository.repo, repo),
+            );
             const cursor =
-              emitted?.cursor ?? cursorForRepository(pageToken, repo);
+              emitted?.cursor ??
+              read?.emptyPageEndCursor ??
+              cursorForRepository(pageToken, repo);
             return cursor === undefined
               ? { host: repo.host, owner: repo.owner, repo: repo.repo }
               : { host: repo.host, owner: repo.owner, repo: repo.repo, cursor };
@@ -167,7 +189,7 @@ export class MaintainerInboxService {
       : undefined;
     const value: MaintainerInbox = {
       scope: request.scope,
-      page: pageToken.page,
+      pageSize: request.pageSize,
       rows:
         dataFreshness === "fresh"
           ? visible.map((entry) => entry.row)
@@ -179,6 +201,7 @@ export class MaintainerInboxService {
       directEntryAvailable: true,
     };
     if (
+      request.scope === "open" &&
       request.pageToken === undefined &&
       complete &&
       dataFreshness === "fresh"
@@ -203,14 +226,16 @@ export class MaintainerInboxService {
   private async readRepository(
     profile: WorkspaceProfileConfig,
     repo: WatchedRepoConfig,
+    scope: InboxScope,
+    pageSize: InboxPageSize,
     cursor: string | undefined,
     sessions: ReadonlyArray<ReviewSession>,
   ): Promise<RepositoryRead> {
     const repository = { host: repo.host, owner: repo.owner, repo: repo.repo };
     const listed = await this.github.listMaintainerPullRequests(
       cursor === undefined
-        ? { profile, repo: repository }
-        : { profile, repo: repository, cursor },
+        ? { profile, repo: repository, scope, pageSize }
+        : { profile, repo: repository, scope, pageSize, cursor },
     );
     if (listed._tag === "err") return failedRepositoryRead(repo, listed.error);
     const entries = listed.value.entries.map(
@@ -229,7 +254,11 @@ export class MaintainerInboxService {
         return { cursor: entryCursor, row, repo };
       },
     );
-    return {
+    const emptyPageEndCursor =
+      entries.length === 0 && listed.value.hasNextPage
+        ? listed.value.endCursor
+        : undefined;
+    const read: RepositoryRead = {
       entries,
       hasNextPage: listed.value.hasNextPage,
       repository: {
@@ -238,17 +267,23 @@ export class MaintainerInboxService {
         complete: !listed.value.hasNextPage,
       },
     };
+    return emptyPageEndCursor === undefined
+      ? read
+      : { ...read, emptyPageEndCursor };
   }
 
   private async cachedOrUnavailable(
     profile: WorkspaceProfileConfig,
     scope: InboxScope,
+    pageSize: InboxPageSize,
   ): Promise<Result<MaintainerInbox, never>> {
+    if (scope === "merged")
+      return this.unavailablePage(profile, scope, pageSize);
     const cached = await this.cache.read(profile.id);
     if (cached._tag === "ok") {
       const refreshedAt = parseIsoTimestamp(cached.value.refreshedAt);
       if (refreshedAt._tag === "err")
-        return this.unavailablePage(profile, scope, 1);
+        return this.unavailablePage(profile, scope, pageSize);
       const snapshotState = isInboxCacheStale(
         Date.parse(this.clock.now()) - Date.parse(refreshedAt.value),
       )
@@ -256,7 +291,7 @@ export class MaintainerInboxService {
         : "failed_cached";
       return ok({
         scope,
-        page: 1,
+        pageSize,
         rows: cached.value.rows.map(toCachedRow),
         repositories: profile.repos.map((repo) => ({
           repo,
@@ -275,17 +310,17 @@ export class MaintainerInboxService {
         directEntryAvailable: true,
       });
     }
-    return this.unavailablePage(profile, scope, 1);
+    return this.unavailablePage(profile, scope, pageSize);
   }
 
   private unavailablePage(
     profile: WorkspaceProfileConfig,
     scope: InboxScope,
-    page: number,
+    pageSize: InboxPageSize,
   ): Result<MaintainerInbox, never> {
     return ok({
       scope,
-      page,
+      pageSize,
       rows: [],
       repositories: profile.repos.map((repo) => ({
         repo,
@@ -353,11 +388,12 @@ function decodeInboxPageToken(
   request: InboxPageRequest,
   profile: WorkspaceProfileConfig,
 ): InboxPageToken | undefined {
-  if (request.scope !== "open") return undefined;
+  if (request.scope !== "open" && request.scope !== "merged") return undefined;
   if (request.pageToken === undefined)
     return {
       scope: request.scope,
       page: 1,
+      size: request.pageSize,
       repositories: profile.repos.map((repo) => ({
         host: repo.host,
         owner: repo.owner,
@@ -374,6 +410,7 @@ function decodeInboxPageToken(
     const value = parsed.output;
     if (
       value.scope !== request.scope ||
+      value.size !== request.pageSize ||
       value.repositories.length !== profile.repos.length
     )
       return undefined;
@@ -386,6 +423,7 @@ function decodeInboxPageToken(
     return {
       scope: request.scope,
       page: value.page,
+      size: value.size,
       repositories: value.repositories,
     };
   } catch {

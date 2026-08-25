@@ -457,6 +457,8 @@ export class ReviewRefreshService {
   async refresh(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
+    /** Terminal-only opening requires merged evidence at the final authoritative read. */
+    readonly expectedTerminalState?: "merged";
   }): Promise<Result<unknown, ReviewRefreshFailure>> {
     return this.serialized<unknown>(
       input.profileId,
@@ -495,6 +497,8 @@ export class ReviewRefreshService {
           pr: pullRequest,
         });
         if (current._tag === "err") return err({ reason: "github_read" });
+        if (input.expectedTerminalState === "merged" && current.value.isOpen)
+          return err({ reason: "terminal" });
         const currentRevision = reviewRevisionOf(current.value);
         if (currentRevision === undefined)
           return err({ reason: "github_read" });
@@ -563,6 +567,13 @@ export class ReviewRefreshService {
           !sameReviewRevision(verifiedRevision, currentRevision)
         )
           return err({ reason: "head_changed" });
+        if (input.expectedTerminalState === "merged" && verified.value.isOpen)
+          return err({ reason: "terminal" });
+        const expectedTerminal =
+          input.expectedTerminalState === "merged"
+            ? await this.authoritativeMergedTerminalState(profile, pullRequest)
+            : undefined;
+        if (expectedTerminal?._tag === "err") return expectedTerminal;
         const candidateBase = {
           schemaVersion: 1 as const,
           pullRequest: current.value,
@@ -625,10 +636,15 @@ export class ReviewRefreshService {
         let sessionId = review.currentSessionId;
         let selectedSession = currentSession.value;
         if (!sameReviewRevision(currentSession.value.key, currentRevision)) {
-          const prepared = await this.dependencies.preparation.prepare({
-            profileId: input.profileId,
-            pullRequest,
-          });
+          const prepared = await this.dependencies.preparation.prepare(
+            input.expectedTerminalState === undefined
+              ? { profileId: input.profileId, pullRequest }
+              : {
+                  profileId: input.profileId,
+                  pullRequest,
+                  expectedPullRequestState: "non_open",
+                },
+          );
           if (prepared._tag === "err")
             return mapPreparationFailure(
               prepared.error._tag,
@@ -660,19 +676,26 @@ export class ReviewRefreshService {
           updatedAt: representedRemote.refreshedAt,
         });
         if (advanced._tag === "err") return err({ reason: "terminal" });
-        const terminalState = !current.value.isOpen
-          ? await this.authoritativeTerminalState(profile, pullRequest)
-          : undefined;
+        const terminalState =
+          expectedTerminal === undefined && !current.value.isOpen
+            ? await this.authoritativeTerminalState(profile, pullRequest)
+            : undefined;
         if (terminalState?._tag === "err")
           return err({ reason: "github_read" });
         const authoritative =
-          terminalState?.value === undefined
-            ? advanced.value
-            : markReviewTerminal(
+          expectedTerminal !== undefined
+            ? markReviewTerminal(
                 advanced.value,
-                terminalState.value,
+                expectedTerminal.value,
                 representedRemote.refreshedAt,
-              );
+              )
+            : terminalState?.value === undefined
+              ? advanced.value
+              : markReviewTerminal(
+                  advanced.value,
+                  terminalState.value,
+                  representedRemote.refreshedAt,
+                );
         const savedReview = await this.dependencies.reviews.save(
           authoritative,
           review.updatedAt,
@@ -733,6 +756,23 @@ export class ReviewRefreshService {
     if (outcome.value.state === "merged") return ok("merged");
     if (outcome.value.state === "closed_unmerged") return ok("closed");
     return ok(undefined);
+  }
+
+  /** Requires fresh GitHub proof of the merged terminal state for terminal-only opening. */
+  private async authoritativeMergedTerminalState(
+    profile: WorkspaceProfileConfig,
+    pr: PullRequestRef,
+  ): Promise<Result<"merged", ReviewRefreshFailure>> {
+    if (this.dependencies.github.getMergeOutcome === undefined)
+      return err({ reason: "terminal" });
+    const outcome = await this.dependencies.github.getMergeOutcome({
+      profile,
+      pr,
+    });
+    if (outcome._tag === "err") return err({ reason: "github_read" });
+    return outcome.value.state === "merged"
+      ? ok("merged")
+      : err({ reason: "terminal" });
   }
 
   private async loadReview(
@@ -1213,13 +1253,15 @@ function mapPreparationFailure(
   const reason: ReviewRefreshFailure["reason"] =
     tag === "HeadChanged"
       ? "head_changed"
-      : tag === "ProfileNotFound"
-        ? "not_found"
-        : tag === "GitHubReadUnavailable"
-          ? "github_read"
-          : tag === "GitHubAuthenticationFailed"
-            ? "github_auth"
-            : "storage";
+      : tag === "PullRequestStateChanged"
+        ? "terminal"
+        : tag === "ProfileNotFound"
+          ? "not_found"
+          : tag === "GitHubReadUnavailable"
+            ? "github_read"
+            : tag === "GitHubAuthenticationFailed"
+              ? "github_auth"
+              : "storage";
   // This is a default fallthrough: any preparation failure tag not named
   // above (currently ProfileUnavailable, SessionStorageUnavailable,
   // PreparationUnavailable, PreparationCleanupUnavailable) becomes "storage".

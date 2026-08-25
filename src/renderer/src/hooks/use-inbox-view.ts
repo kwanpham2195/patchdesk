@@ -211,6 +211,9 @@ function requestAction(
     case "run_review":
       onOpenReview(row);
       return;
+    case "open_merged_review":
+      onOpenReview(row);
+      return;
     case "open_saved_review":
     case "open_merge_readiness":
     case "open_discussion":
@@ -239,6 +242,8 @@ function resolveInboxView(value: string): InboxView | undefined {
  */
 export function useInboxView(params: {
   readonly profileId: string;
+  /** Merged rows are historical and bypass every active-work queue filter. */
+  readonly scope: "open" | "merged";
   readonly rows: ReadonlyArray<InboxRow>;
   readonly repos?: ReadonlyArray<{
     readonly host: string;
@@ -251,7 +256,8 @@ export function useInboxView(params: {
   ) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
 }) {
-  const { profileId, rows, repos, onOpenReview, onOpenReviewId } = params;
+  const { profileId, scope, rows, repos, onOpenReview, onOpenReviewId } =
+    params;
   const preferences = useMemo(
     () => loadInboxViewPreferences(profileId),
     [profileId],
@@ -316,10 +322,16 @@ export function useInboxView(params: {
   const visibleRows = useMemo(
     () =>
       sortRows(
-        filterRows(rows, view, search, selectedRepos, selectedLabels),
+        filterRows(
+          rows,
+          scope === "open" ? view : "all_open",
+          search,
+          selectedRepos,
+          selectedLabels,
+        ),
         sort,
       ),
-    [rows, search, sort, view, selectedRepos, selectedLabels],
+    [rows, scope, search, sort, view, selectedRepos, selectedLabels],
   );
   // The repository reads as noise when every visible row shares it, so rows
   // only carry it while the view actually spans more than one repository.

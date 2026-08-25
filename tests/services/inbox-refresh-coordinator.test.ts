@@ -13,7 +13,7 @@ const profile = { id: "cfw" } as WorkspaceProfileConfig;
 const secondProfile = { id: "other" } as WorkspaceProfileConfig;
 const inbox = {
   scope: "open",
-  page: 1,
+  pageSize: 25,
   rows: [],
   repositories: [],
   dataFreshness: "fresh",
@@ -74,15 +74,51 @@ it("does not coalesce different page tokens for the same profile", async () => {
   );
   const coordinator = new InboxRefreshCoordinator({ list });
 
-  const firstPage = coordinator.refresh(profile, { scope: "open" });
+  const firstPage = coordinator.refresh(profile, {
+    scope: "open",
+    pageSize: 25,
+  });
   const nextPage = coordinator.refresh(profile, {
     scope: "open",
+    pageSize: 25,
     pageToken: "opaque-next-page",
   });
 
   expect(list).toHaveBeenCalledTimes(2);
   resolveFirst?.(ok(inbox));
   await expect(Promise.all([firstPage, nextPage])).resolves.toEqual([
+    ok(inbox),
+    ok(inbox),
+  ]);
+});
+
+it("does not coalesce different page sizes for the same profile", async () => {
+  let resolveDefault:
+    | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
+    | undefined;
+  const defaultSize = new Promise<ReturnType<typeof ok<MaintainerInbox>>>(
+    (resolve) => {
+      resolveDefault = resolve;
+    },
+  );
+  const list = vi.fn(
+    (_: WorkspaceProfileConfig, page?: { readonly pageSize?: number }) =>
+      page?.pageSize === 25 ? defaultSize : Promise.resolve(ok(inbox)),
+  );
+  const coordinator = new InboxRefreshCoordinator({ list });
+
+  const defaultPage = coordinator.refresh(profile, {
+    scope: "open",
+    pageSize: 25,
+  });
+  const largerPage = coordinator.refresh(profile, {
+    scope: "open",
+    pageSize: 50,
+  });
+
+  expect(list).toHaveBeenCalledTimes(2);
+  resolveDefault?.(ok(inbox));
+  await expect(Promise.all([defaultPage, largerPage])).resolves.toEqual([
     ok(inbox),
     ok(inbox),
   ]);

@@ -34,6 +34,11 @@ import type { InboxSort, SavedInboxView } from "@/inbox-view-preferences";
 import { formatInboxAge } from "@/inbox-refresh-scheduler";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
+  DEFAULT_INBOX_PAGE_SIZE,
+  INBOX_PAGE_SIZES,
+  type InboxPageSize,
+} from "../../../domain/maintainer-inbox";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -70,11 +75,19 @@ import {
 } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -91,6 +104,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 export type { ReviewInitialSection } from "../hooks/use-inbox-view";
@@ -98,11 +112,20 @@ export type { ReviewInitialSection } from "../hooks/use-inbox-view";
 type MaintainerInboxProps = {
   readonly profileId: string;
   readonly profileLabel: string;
-  /** Confirmed remote scope; Phase 1 only permits open pull requests. */
-  readonly scope?: "open";
-  readonly page?: number;
+  /** Requested scope; App owns remote scope transitions. The Open/Merged
+   * toggle reflects this immediately, even before `listPending` clears. */
+  readonly scope?: "open" | "merged";
+  /** True while `rows` still belongs to the previous scope (a scope change
+   * is in flight). The row list, row count, and details panel hold a
+   * loading state instead of rendering those rows under the new scope's
+   * label; the toggle above keeps reflecting `scope` regardless. */
+  readonly listPending?: boolean;
+  /** Confirmed remote page size; App owns remote page-size transitions. */
+  readonly pageSize?: InboxPageSize;
   readonly hasPreviousPage?: boolean;
   readonly hasNextPage?: boolean;
+  readonly onScopeChange?: (scope: "open" | "merged") => void;
+  readonly onPageSizeChange?: (pageSize: InboxPageSize) => void;
   readonly onPreviousPage?: () => void;
   readonly onNextPage?: () => void;
   readonly rows: ReadonlyArray<InboxRow>;
@@ -139,9 +162,12 @@ export function MaintainerInbox({
   profileId,
   profileLabel,
   scope = "open",
-  page = 1,
+  listPending = false,
+  pageSize = DEFAULT_INBOX_PAGE_SIZE,
   hasPreviousPage = false,
   hasNextPage = false,
+  onScopeChange = () => undefined,
+  onPageSizeChange = () => undefined,
   onPreviousPage = () => undefined,
   onNextPage = () => undefined,
   rows,
@@ -154,6 +180,12 @@ export function MaintainerInbox({
   onOpenReviewId,
 }: MaintainerInboxProps): React.JSX.Element {
   const reposField = repos === undefined ? {} : { repos };
+  // While a scope change is in flight, `rows` still belongs to the previous
+  // scope. Every row-derived view (filtered/sorted list, selection, labels,
+  // queue counts) must not present that data under the newly requested
+  // scope's label, so it is withheld here rather than threaded through and
+  // re-guarded at every consumer.
+  const effectiveRows = listPending ? [] : rows;
   const {
     view,
     search,
@@ -191,7 +223,8 @@ export function MaintainerInbox({
     onListKeyDown,
   } = useInboxView({
     profileId,
-    rows,
+    scope,
+    rows: effectiveRows,
     ...reposField,
     onOpenReview,
     onOpenReviewId,
@@ -202,11 +235,7 @@ export function MaintainerInbox({
       <InboxHeader
         profileLabel={profileLabel}
         scope={scope}
-        page={page}
-        hasPreviousPage={hasPreviousPage}
-        hasNextPage={hasNextPage}
-        onPreviousPage={onPreviousPage}
-        onNextPage={onNextPage}
+        onScopeChange={onScopeChange}
         refreshStatus={refreshStatus}
         {...(snapshot === undefined ? {} : { snapshot })}
         onRefresh={onRefresh}
@@ -228,6 +257,8 @@ export function MaintainerInbox({
         sort={sort}
         onSortChange={changeSort}
         visibleCount={visibleRows.length}
+        scope={scope}
+        listPending={listPending}
         inspectorOpen={inspectorOpen}
         onToggleInspector={toggleInspector}
       />
@@ -236,20 +267,41 @@ export function MaintainerInbox({
         visibleRows={visibleRows}
         selected={selected}
         multipleRepositories={multipleRepositories}
+        scope={scope}
+        listPending={listPending}
         onKeyDown={onListKeyDown}
         onSelectRow={selectRow}
         onActionRow={triggerAction}
       />
+      <InboxFooter
+        pageSize={pageSize}
+        hasPreviousPage={hasPreviousPage}
+        hasNextPage={hasNextPage}
+        refreshStatus={refreshStatus}
+        onPageSizeChange={onPageSizeChange}
+        onPreviousPage={onPreviousPage}
+        onNextPage={onNextPage}
+      />
     </div>
   );
 
-  const desktopGridColumns = queueOpen
-    ? inspectorOpen
-      ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]"
-      : "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]"
-    : inspectorOpen
-      ? "min-[1280px]:grid-cols-[3rem_minmax(0,1fr)_21rem]"
-      : "min-[1280px]:grid-cols-[3rem_minmax(0,1fr)]";
+  // The rail column below and the QueueRail element further down are two
+  // expressions of the same condition (`scope === "open"`): the rail only
+  // renders in "open" scope, so the grid must only reserve its column there.
+  // Keep them in sync — letting them drift is exactly how the row list ended
+  // up crushed into a phantom rail slot in "merged" scope.
+  const desktopGridColumns =
+    scope === "open"
+      ? queueOpen
+        ? inspectorOpen
+          ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]"
+          : "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]"
+        : inspectorOpen
+          ? "min-[1280px]:grid-cols-[3rem_minmax(0,1fr)_21rem]"
+          : "min-[1280px]:grid-cols-[3rem_minmax(0,1fr)]"
+      : inspectorOpen
+        ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]"
+        : "min-[1280px]:grid-cols-[minmax(0,1fr)]";
 
   return (
     <div
@@ -258,19 +310,21 @@ export function MaintainerInbox({
         desktopGridColumns,
       )}
     >
-      <QueueRail
-        rows={rows}
-        view={view}
-        savedViews={savedViews}
-        selectedRepos={selectedRepos}
-        selectedLabels={selectedLabels}
-        open={queueOpen}
-        onSelect={selectView}
-        onSelectSaved={selectSavedView}
-        onSaveCurrent={() => setSaveViewOpen(true)}
-        onDeleteSaved={setDeleteView}
-        onToggle={toggleQueue}
-      />
+      {scope === "open" ? (
+        <QueueRail
+          rows={effectiveRows}
+          view={view}
+          savedViews={savedViews}
+          selectedRepos={selectedRepos}
+          selectedLabels={selectedLabels}
+          open={queueOpen}
+          onSelect={selectView}
+          onSelectSaved={selectSavedView}
+          onSaveCurrent={() => setSaveViewOpen(true)}
+          onDeleteSaved={setDeleteView}
+          onToggle={toggleQueue}
+        />
+      ) : null}
       <ScrollArea className="min-w-0 overflow-x-hidden min-[1280px]:h-full">
         {main}
       </ScrollArea>
@@ -327,20 +381,14 @@ function StaleInboxBanner({
 function InboxHeader({
   profileLabel,
   scope,
-  page,
-  hasPreviousPage,
-  hasNextPage,
+  onScopeChange,
   refreshStatus,
   snapshot,
   onRefresh,
-  onPreviousPage,
-  onNextPage,
 }: {
   readonly profileLabel: string;
-  readonly scope: "open";
-  readonly page: number;
-  readonly hasPreviousPage: boolean;
-  readonly hasNextPage: boolean;
+  readonly scope: "open" | "merged";
+  readonly onScopeChange: (scope: "open" | "merged") => void;
   readonly refreshStatus:
     | "Refreshing"
     | "Current"
@@ -360,8 +408,6 @@ function InboxHeader({
     readonly refreshedAt?: string | undefined;
   };
   readonly onRefresh: () => void;
-  readonly onPreviousPage: () => void;
-  readonly onNextPage: () => void;
 }): React.JSX.Element {
   return (
     <header className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5 min-[1280px]:px-3">
@@ -375,36 +421,28 @@ function InboxHeader({
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
           {scope === "open"
             ? "Open pull requests that need your next decision."
-            : "Pull requests returned by GitHub."}
+            : "Merged pull requests returned by GitHub."}
         </p>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
           GitHub updates order this page. Local sorting applies only here.
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1" aria-label="Inbox pages">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            onClick={onPreviousPage}
-            disabled={!hasPreviousPage || refreshStatus === "Refreshing"}
-          >
-            Back
-          </Button>
-          <span className="min-w-12 text-center text-xs text-muted-foreground">
-            Page {page}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            onClick={onNextPage}
-            disabled={!hasNextPage || refreshStatus === "Refreshing"}
-          >
-            Next
-          </Button>
-        </div>
+        <ToggleGroup
+          value={[scope]}
+          onValueChange={(values) => {
+            const next = values[0];
+            if (next === undefined) return;
+            if (next === "open" || next === "merged") onScopeChange(next);
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label="Inbox scope"
+        >
+          <ToggleGroupItem value="open">Open</ToggleGroupItem>
+          <ToggleGroupItem value="merged">Merged</ToggleGroupItem>
+        </ToggleGroup>
         <InboxFreshness
           status={refreshStatus}
           {...(snapshot === undefined ? {} : { snapshot })}
@@ -447,6 +485,8 @@ function InboxFiltersBar({
   sort,
   onSortChange,
   visibleCount,
+  scope,
+  listPending,
   inspectorOpen,
   onToggleInspector,
 }: {
@@ -463,6 +503,8 @@ function InboxFiltersBar({
   readonly sort: InboxSort;
   readonly onSortChange: (value: InboxSort) => void;
   readonly visibleCount: number;
+  readonly scope: "open" | "merged";
+  readonly listPending: boolean;
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
 }): React.JSX.Element {
@@ -644,7 +686,9 @@ function InboxFiltersBar({
         </SelectContent>
       </Select>
       <span className="text-[11px] tabular-nums text-muted-foreground">
-        {visibleCount} open
+        {listPending
+          ? "Loading…"
+          : `${visibleCount} ${scope === "open" ? "open" : "merged"}`}
       </span>
       <Button
         size="icon-sm"
@@ -675,11 +719,25 @@ function repoFilterTriggerText(selected: ReadonlyArray<string>): string {
   return `${selected.length} repositories`;
 }
 
+/** Placeholder row count shown by {@link InboxRowsPanel} while `listPending`
+ * is true, matching the row-skeleton density the initial-load skeleton
+ * (`maintainer-inbox-skeleton.tsx`) uses for the same purpose. */
+const pendingRowPlaceholders = [
+  "pending-row-1",
+  "pending-row-2",
+  "pending-row-3",
+  "pending-row-4",
+  "pending-row-5",
+  "pending-row-6",
+] as const;
+
 function InboxRowsPanel({
   listRef,
   visibleRows,
   selected,
   multipleRepositories,
+  scope,
+  listPending,
   onKeyDown,
   onSelectRow,
   onActionRow,
@@ -688,6 +746,8 @@ function InboxRowsPanel({
   readonly visibleRows: ReadonlyArray<InboxRow>;
   readonly selected: InboxRow | undefined;
   readonly multipleRepositories: boolean;
+  readonly scope: "open" | "merged";
+  readonly listPending: boolean;
   readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   readonly onSelectRow: (row: InboxRow) => void;
   readonly onActionRow: (row: InboxRow) => void;
@@ -709,32 +769,158 @@ function InboxRowsPanel({
         ref={listRef}
         role="listbox"
         aria-label="Pull requests"
+        aria-busy={listPending}
         tabIndex={0}
         onKeyDown={onKeyDown}
         className="divide-y outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {visibleRows.map((row) => {
-          const key = inboxIdentityKey(row);
-          const active =
-            selected !== undefined && key === inboxIdentityKey(selected);
-          return (
-            <InboxRowItem
-              key={key}
-              row={row}
-              selected={active}
-              showRepository={multipleRepositories}
-              onSelect={() => onSelectRow(row)}
-              onAction={() => onActionRow(row)}
-            />
-          );
-        })}
-        {visibleRows.length === 0 ? (
+        {listPending
+          ? pendingRowPlaceholders.map((placeholder) => (
+              <div
+                key={placeholder}
+                aria-hidden="true"
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 min-[1280px]:grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem]"
+              >
+                <Skeleton className="h-4 w-[min(30rem,80%)]" />
+                <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
+                <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
+                <Skeleton className="hidden h-3 w-16 min-[1280px]:block" />
+                <Skeleton className="hidden size-3.5 rounded-full min-[1280px]:block" />
+                <Skeleton className="h-3 w-6 justify-self-end" />
+              </div>
+            ))
+          : visibleRows.map((row) => {
+              const key = inboxIdentityKey(row);
+              const active =
+                selected !== undefined && key === inboxIdentityKey(selected);
+              return (
+                <InboxRowItem
+                  key={key}
+                  row={row}
+                  selected={active}
+                  showRepository={multipleRepositories}
+                  onSelect={() => onSelectRow(row)}
+                  onAction={() => onActionRow(row)}
+                />
+              );
+            })}
+        {!listPending && visibleRows.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
-            No open pull requests match this view.
+            No {scope === "open" ? "open" : "merged"} pull requests match this
+            view.
           </div>
         ) : null}
       </div>
     </>
+  );
+}
+
+/** Rows-per-page selector and Back/Next controls, below the row list so a
+ * narrow inbox column (a review panel open) wraps instead of clipping the
+ * pagination controls the way the former header placement did.
+ *
+ * Below the review panel's `min-[1280px]` breakpoint the review-details
+ * `Sheet` covers the right portion of the window as a fixed overlay, so the
+ * groups stay left-aligned there instead of spreading to the (occluded)
+ * right edge; at that breakpoint and above the panel renders inline in the
+ * grid instead, so the groups can spread to the true edges again. */
+function InboxFooter({
+  pageSize,
+  hasPreviousPage,
+  hasNextPage,
+  refreshStatus,
+  onPageSizeChange,
+  onPreviousPage,
+  onNextPage,
+}: {
+  readonly pageSize: InboxPageSize;
+  readonly hasPreviousPage: boolean;
+  readonly hasNextPage: boolean;
+  readonly refreshStatus:
+    | "Refreshing"
+    | "Current"
+    | "Aged"
+    | "Partial"
+    | "Cached after refresh failure"
+    | "Stale"
+    | "Unavailable"
+    | "Paused";
+  readonly onPageSizeChange: (pageSize: InboxPageSize) => void;
+  readonly onPreviousPage: () => void;
+  readonly onNextPage: () => void;
+}): React.JSX.Element {
+  const previousDisabled = !hasPreviousPage || refreshStatus === "Refreshing";
+  const nextDisabled = !hasNextPage || refreshStatus === "Refreshing";
+  return (
+    <footer className="flex flex-wrap items-center justify-start gap-2 px-3 py-2 min-[1280px]:justify-between">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Rows per page</span>
+        <Select
+          value={String(pageSize)}
+          items={INBOX_PAGE_SIZES.map((size) => ({
+            label: String(size),
+            value: String(size),
+          }))}
+          onValueChange={(value) => {
+            const next = inboxPageSizeFrom(value);
+            if (next !== undefined) onPageSizeChange(next);
+          }}
+        >
+          <SelectTrigger
+            size="sm"
+            className="w-[4.5rem] text-xs"
+            aria-label="Rows per page"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {INBOX_PAGE_SIZES.map((size) => (
+                <SelectItem key={size} value={String(size)} className="text-xs">
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+      <Pagination aria-label="Inbox pages" className="mx-0 w-auto">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              href="#"
+              aria-disabled={previousDisabled ? "true" : undefined}
+              tabIndex={previousDisabled ? -1 : undefined}
+              className={cn(
+                "border-0",
+                previousDisabled && "pointer-events-none opacity-50",
+              )}
+              onClick={(event) => {
+                event.preventDefault();
+                if (previousDisabled) return;
+                onPreviousPage();
+              }}
+            />
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationNext
+              href="#"
+              aria-disabled={nextDisabled ? "true" : undefined}
+              tabIndex={nextDisabled ? -1 : undefined}
+              className={cn(
+                "border-0",
+                nextDisabled && "pointer-events-none opacity-50",
+              )}
+              onClick={(event) => {
+                event.preventDefault();
+                if (nextDisabled) return;
+                onNextPage();
+              }}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    </footer>
   );
 }
 
@@ -1110,6 +1296,11 @@ function InboxRowItem({
                   Draft
                 </Badge>
               ) : null}
+              {row.remoteState === "merged" ? (
+                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                  Merged
+                </Badge>
+              ) : null}
             </div>
             {showRepository ? (
               <p
@@ -1379,6 +1570,8 @@ function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
   switch (kind) {
     case "run_review":
       return recoveryActionLabel("run_review");
+    case "open_merged_review":
+      return "View merged pull request";
     case "open_saved_review":
       return "Open Review";
     case "open_merge_readiness":
@@ -1446,4 +1639,7 @@ const inboxSorts: ReadonlyArray<InboxSort> = [
 ];
 function inboxSortFrom(value: string | null): InboxSort | undefined {
   return inboxSorts.find((sort) => sort === value);
+}
+function inboxPageSizeFrom(value: string | null): InboxPageSize | undefined {
+  return INBOX_PAGE_SIZES.find((size) => String(size) === value);
 }

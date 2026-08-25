@@ -1,5 +1,12 @@
 import * as v from "valibot";
 import type { InboxView } from "./renderer-contracts";
+import {
+  DEFAULT_INBOX_PAGE_SIZE,
+  INBOX_PAGE_SIZES,
+  type InboxPageSize,
+} from "../../domain/maintainer-inbox";
+
+export type InboxScope = "open" | "merged";
 
 const inboxViewSchema = v.picklist([
   "my_inbox",
@@ -17,6 +24,10 @@ const inboxSortSchema = v.picklist([
   "repository",
   "size",
 ]);
+
+const inboxScopeSchema = v.picklist(["open", "merged"]);
+
+const inboxPageSizeSchema = v.picklist(INBOX_PAGE_SIZES);
 
 export type InboxSort = v.InferOutput<typeof inboxSortSchema>;
 
@@ -80,6 +91,8 @@ export type SavedInboxView = v.InferOutput<typeof savedViewSchema>;
 // itself instead of discarding the whole stored view.
 const preferencesSchema = v.pipe(
   v.object({
+    scope: v.fallback(inboxScopeSchema, "open"),
+    pageSize: v.fallback(inboxPageSizeSchema, DEFAULT_INBOX_PAGE_SIZE),
     view: v.fallback(inboxViewSchema, "my_inbox"),
     search: v.fallback(clipped(200), ""),
     sort: v.fallback(inboxSortSchema, "priority"),
@@ -101,6 +114,8 @@ const preferencesSchema = v.pipe(
 );
 
 export type InboxViewPreferences = {
+  readonly scope: InboxScope;
+  readonly pageSize: InboxPageSize;
   readonly view: InboxView;
   readonly search: string;
   readonly sort: InboxSort;
@@ -113,6 +128,8 @@ export type InboxViewPreferences = {
 };
 
 export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
+  scope: "open",
+  pageSize: DEFAULT_INBOX_PAGE_SIZE,
   view: "my_inbox",
   search: "",
   sort: "priority",
@@ -123,10 +140,20 @@ export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   savedViews: [],
 };
 
-const VERSION = 1;
+// v3 adds `pageSize`. Bumping VERSION (rather than migrating the v2 key)
+// resets every field to default on an old-version read, matching how v1 -> v2
+// already worked: `loadLegacyInboxViewPreferences` only recognizes the v1 key,
+// so any other stale version falls straight through to
+// `DEFAULT_INBOX_VIEW_PREFERENCES`.
+const VERSION = 3;
 
 const storedSchema = v.object({
   version: v.literal(VERSION),
+  preferences: preferencesSchema,
+});
+
+const legacyStoredSchema = v.object({
+  version: v.literal(1),
   preferences: preferencesSchema,
 });
 
@@ -136,7 +163,7 @@ export function loadInboxViewPreferences(
 ): InboxViewPreferences {
   const stored = globalThis.window?.localStorage.getItem(key(profileId));
   if (stored === null || stored === undefined)
-    return DEFAULT_INBOX_VIEW_PREFERENCES;
+    return loadLegacyInboxViewPreferences(profileId);
   try {
     const parsed = v.safeParse(storedSchema, JSON.parse(stored));
     return parsed.success
@@ -164,6 +191,8 @@ function preferencesFrom(
   parsed: v.InferOutput<typeof preferencesSchema>,
 ): InboxViewPreferences {
   const base = {
+    scope: parsed.scope,
+    pageSize: parsed.pageSize,
     view: parsed.view,
     search: parsed.search,
     sort: parsed.sort,
@@ -195,4 +224,23 @@ function uniqueSavedViews(
 
 function key(profileId: string): string {
   return `patchdesk.inbox-view.v${VERSION}.${profileId}`;
+}
+
+function legacyKey(profileId: string): string {
+  return `patchdesk.inbox-view.v1.${profileId}`;
+}
+
+function loadLegacyInboxViewPreferences(
+  profileId: string,
+): InboxViewPreferences {
+  const stored = globalThis.window?.localStorage.getItem(legacyKey(profileId));
+  if (stored === null || stored === undefined)
+    return DEFAULT_INBOX_VIEW_PREFERENCES;
+  try {
+    const parsed = v.safeParse(legacyStoredSchema, JSON.parse(stored));
+    if (!parsed.success) return DEFAULT_INBOX_VIEW_PREFERENCES;
+    return { ...preferencesFrom(parsed.output.preferences), scope: "open" };
+  } catch {
+    return DEFAULT_INBOX_VIEW_PREFERENCES;
+  }
 }

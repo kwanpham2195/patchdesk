@@ -136,6 +136,11 @@ import { readObjectField } from "../services/read-object-field";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { err, ok, type Result } from "../domain/result";
 import {
+  DEFAULT_INBOX_PAGE_SIZE,
+  INBOX_PAGE_SIZES,
+  type InboxPageSize,
+} from "../domain/maintainer-inbox";
+import {
   parseContentHash,
   parseFindingId,
   parseGitHubReviewNodeId,
@@ -871,11 +876,16 @@ export async function startLocalApiServer(
   app.get("/v1/inbox", async (context) =>
     runWithRequestAbortSignal(context.req.raw.signal, async () => {
       const scope = context.req.query("scope") ?? "open";
-      if (scope !== "open")
+      if (scope !== "open" && scope !== "merged")
+        return response(context, err({ reason: "invalid_input" }));
+      const pageSize = parseInboxPageSize(context.req.query("pageSize"));
+      if (pageSize === undefined)
         return response(context, err({ reason: "invalid_input" }));
       const page = context.req.query("page");
       const result = await dashboard.inboxForActiveProfile(
-        page === undefined ? { scope } : { scope, pageToken: page },
+        page === undefined
+          ? { scope, pageSize }
+          : { scope, pageSize, pageToken: page },
       );
       if (result._tag === "err")
         await recordProfileReloadFailure("profile-reload-inbox");
@@ -1056,6 +1066,12 @@ export async function startLocalApiServer(
     const parsed = safeParse(reviewOpenSchema, await jsonBody(context));
     return parsed.success
       ? response(context, await reviewWorkbench.open(parsed.output))
+      : context.json({ error: "invalid_input" }, 400);
+  });
+  app.post("/v1/reviews/open-merged", async (context) => {
+    const parsed = safeParse(reviewOpenSchema, await jsonBody(context));
+    return parsed.success
+      ? response(context, await reviewWorkbench.openMerged(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/load", async (context) => {
@@ -1417,11 +1433,16 @@ function logLocalApiRequests(
       correlationId === undefined
         ? { status, durationMs }
         : { status, durationMs, correlationId };
+    // The query string carries the opaque, credential-free pagination
+    // token (see the plan's Shared Contract), so it is safe to log; without
+    // it every inbox request line reads as a bare `GET /v1/inbox` with no
+    // way to see which page was requested.
+    const query = new URL(context.req.url).search;
     logs.write({
       process: "main",
       level: status >= 500 ? "error" : status >= 400 ? "warn" : "debug",
       topic: "http",
-      message: `${context.req.method} ${path}`,
+      message: `${context.req.method} ${path}${query}`,
       meta,
     });
   };
@@ -2609,6 +2630,14 @@ async function insightFindingResponse(
 
 function parseInsightType(value: string | undefined): InsightType | undefined {
   return value === "analysis" || value === "walkthrough" ? value : undefined;
+}
+
+/** A missing value means the default; anything else must be one of the listed sizes exactly. */
+function parseInboxPageSize(
+  value: string | undefined,
+): InboxPageSize | undefined {
+  if (value === undefined) return DEFAULT_INBOX_PAGE_SIZE;
+  return INBOX_PAGE_SIZES.find((size) => String(size) === value);
 }
 
 function response(
