@@ -7,8 +7,7 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/renderer/src/*"],
-      "calldiff": ["src/types/calldiff.ts"]
+      "@/*": ["src/renderer/src/*"]
     },
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,

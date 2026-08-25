@@ -33,17 +33,6 @@ describe("workbench UI position persistence", () => {
     });
   });
 
-  it("restores the Call Flow tab", () => {
-    saveWorkbenchUiState(reviewIdA, {
-      activeTab: "call_flow",
-      section: "files",
-    });
-    expect(loadWorkbenchUiState(reviewIdA)).toEqual({
-      activeTab: "call_flow",
-      section: "files",
-    });
-  });
-
   it("scopes positions per review", () => {
     saveWorkbenchUiState(reviewIdA, { activeTab: "diff", section: "files" });
     saveWorkbenchUiState(reviewIdB, {
@@ -123,6 +112,21 @@ describe("workbench UI position persistence", () => {
       JSON.stringify({ activeTab: 42, section: "files" }),
     );
     expect(loadWorkbenchUiState(reviewIdA)).toEqual({ section: "files" });
+  });
+
+  it("drops a removed tab value from an older build and keeps the rest", () => {
+    window.localStorage.setItem(
+      workbenchUiKey(reviewIdA),
+      JSON.stringify({
+        activeTab: "call_flow",
+        section: "files",
+        selectedPath: "src/a.ts",
+      }),
+    );
+    expect(loadWorkbenchUiState(reviewIdA)).toEqual({
+      section: "files",
+      selectedPath: "src/a.ts",
+    });
   });
 
   it("clamps an over-long selectedPath the same way on load as on save", () => {

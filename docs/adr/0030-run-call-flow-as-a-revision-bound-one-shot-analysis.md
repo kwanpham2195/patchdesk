@@ -1,5 +1,7 @@
 # Run Call Flow as a revision-bound one-shot analysis
 
+> **Status: Superseded.** Superseded on 2026-08-26 by the ADR "Remove the Call Flow feature". Call Flow was removed; the decision below is kept as historical record.
+
 Call Flow explains which calls changed and keeps only the resolved ancestors needed to understand them. It is a deterministic Review reading aid, not a complete runtime graph, an Insight, a model result, or a source of GitHub review authority.
 
 ## The decision
