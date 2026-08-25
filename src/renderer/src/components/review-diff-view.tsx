@@ -86,9 +86,12 @@ registerPierreThemeLoaders();
 const DIFF_CODE_METRICS = {
   fontSize: "13px",
   lineHeight: "20px",
-  // Pierre renders into a shadow root, so the stack is passed as an inline
-  // value rather than inherited from the `font-mono` utility.
+  // Pierre's shadow-root stylesheet re-sets font-family on code elements, so
+  // the stack must be handed over as the `--diffs-font-family` custom
+  // property (custom properties cross the shadow boundary). `fontFamily`
+  // still covers host-level text outside the shadow root.
   fontFamily: "var(--font-mono)",
+  "--diffs-font-family": "var(--font-mono)",
 } as CSSProperties;
 // Pierre derives diff chrome colors from the selected Shiki theme. Some themes
 // use saturated terminal red/green values that produce poor contrast in the
