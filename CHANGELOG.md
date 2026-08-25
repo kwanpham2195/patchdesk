@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed the saved diff theme not reaching a diff view opened later in the session.
 - Fixed code diffs using the system monospace font instead of the app font.
 - Switched the interface font to Geist, with Inter as the fallback.
 - Improve the Pull Requests list with a Labels column and two-line title clamp.

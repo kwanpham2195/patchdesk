@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  applyDiffThemePreferences,
-  clearDiffThemePreferences,
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
   loadDiffThemePreferences,
@@ -183,7 +181,14 @@ describe("diff theme preferences", () => {
     expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).toBeNull();
   });
 
-  it("announces saved config values and clears both renderer keys", () => {
+  // Uses a fresh module instance: this test's applyDiffThemePreferences()
+  // call would otherwise write into the module-level cache shared by the
+  // statically-imported module above, leaking into whichever test happens to
+  // run afterward under shuffled order.
+  it("announces saved config values and clears both renderer keys", async () => {
+    vi.resetModules();
+    const mod = await import("../../src/renderer/src/diff-theme-preferences");
+
     const events: Array<Event> = [];
     const onTheme = (event: Event): void => {
       events.push(event);
@@ -200,12 +205,40 @@ describe("diff theme preferences", () => {
       "patchdesk.diff-theme.v1",
       JSON.stringify("github"),
     );
-    applyDiffThemePreferences({ light: "pierre-light", dark: "pierre-dark" });
-    clearDiffThemePreferences();
+    mod.applyDiffThemePreferences({
+      light: "pierre-light",
+      dark: "pierre-dark",
+    });
+    mod.clearDiffThemePreferences();
 
     window.removeEventListener("patchdesk:diff-theme", onTheme);
     expect(events).toHaveLength(1);
     expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).toBeNull();
     expect(window.localStorage.getItem("patchdesk.diff-theme.v1")).toBeNull();
+  });
+
+  // Regression: a lazily-mounted diff view calls loadDiffThemePreferences()
+  // after config.json has already replaced localStorage as the source of
+  // truth, so nothing writes the v2 key any more. The last applied value
+  // must still be readable with storage empty.
+  //
+  // Uses a fresh module instance (vi.resetModules() + dynamic import) so the
+  // module-level cache this test exercises is private to this test, rather
+  // than polluting the statically-imported module shared by every other test
+  // in this file.
+  it("returns the last applied preferences even when localStorage is empty", async () => {
+    vi.resetModules();
+    const mod = await import("../../src/renderer/src/diff-theme-preferences");
+
+    mod.applyDiffThemePreferences({
+      light: "github-light",
+      dark: "synthwave-84",
+    });
+
+    expect(window.localStorage.getItem("patchdesk.diff-theme.v2")).toBeNull();
+    expect(mod.loadDiffThemePreferences()).toEqual({
+      light: "github-light",
+      dark: "synthwave-84",
+    });
   });
 });

@@ -54,7 +54,15 @@ export function parseDiffThemePreferences(
   return parsed.success ? parsed.output : DEFAULT_DIFF_THEME_PREFERENCES;
 }
 
+// config.json (over IPC) is the durable store; nothing writes the localStorage
+// keys below any more. app.tsx dispatches applyDiffThemePreferences() on
+// mount and on every change, so this cache is always current before any
+// lazily-mounted diff view reads it — the seed must not depend on a storage
+// key that nothing writes.
+let lastAppliedPreferences: DiffThemePreferences | undefined;
+
 export function loadDiffThemePreferences(): DiffThemePreferences {
+  if (lastAppliedPreferences !== undefined) return lastAppliedPreferences;
   if (globalThis.window === undefined) return DEFAULT_DIFF_THEME_PREFERENCES;
   try {
     const serialized = window.localStorage.getItem(storageKey);
@@ -74,7 +82,12 @@ export function loadDiffThemePreferences(): DiffThemePreferences {
   }
 }
 
-/** Removes renderer preference keys after config.json accepts the durable value. */
+/**
+ * Removes renderer preference keys after config.json accepts the durable
+ * value. Does not clear the in-memory `lastAppliedPreferences` cache: that
+ * cache is the live source of truth for already-mounted and future diff
+ * views, independent of the now-legacy localStorage keys.
+ */
 export function clearDiffThemePreferences(): void {
   if (globalThis.window === undefined) return;
   try {
@@ -87,6 +100,7 @@ export function clearDiffThemePreferences(): void {
 
 /** Announces an already-persisted preference change to mounted diff views. */
 export function applyDiffThemePreferences(value: DiffThemePreferences): void {
+  lastAppliedPreferences = value;
   window.dispatchEvent(
     new CustomEvent<DiffThemePreferences>("patchdesk:diff-theme", {
       detail: value,
