@@ -112,6 +112,24 @@ type WorkspaceAction =
   | { readonly _tag: "refreshFinished" }
   | { readonly _tag: "cleared" };
 
+type InboxRequestState = {
+  readonly scope: "open";
+  readonly pageToken?: string;
+  readonly previousPageTokens: ReadonlyArray<string | undefined>;
+};
+
+const firstInboxRequest: InboxRequestState = {
+  scope: "open",
+  previousPageTokens: [],
+};
+
+/** Builds the renderer-owned inbox URL without decoding the opaque page token. */
+function inboxRequestPath(request: InboxRequestState): string {
+  const query = new URLSearchParams({ scope: request.scope });
+  if (request.pageToken !== undefined) query.set("page", request.pageToken);
+  return `/v1/inbox?${query.toString()}`;
+}
+
 function workspaceReducer(
   state: WorkspaceState,
   action: WorkspaceAction,
@@ -235,6 +253,9 @@ export function App({
     refreshFailed: inboxRefreshFailed,
   } = workspace;
   const [inboxPaused, setInboxPaused] = useState(false);
+  const [inboxRequest, setInboxRequest] =
+    useState<InboxRequestState>(firstInboxRequest);
+  const inboxRequestRef = useRef<InboxRequestState>(firstInboxRequest);
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsOpener, setSettingsOpener] = useState<
@@ -367,6 +388,10 @@ export function App({
     useState<NavigationState>("clear");
   const [pendingDestination, setPendingDestination] =
     useState<AppDestination>();
+  const updateInboxRequest = useCallback((next: InboxRequestState): void => {
+    inboxRequestRef.current = next;
+    setInboxRequest(next);
+  }, []);
   const loadWorkspace = useCallback(async (): Promise<void> => {
     const generation = ++workspaceGeneration.current;
     inboxRefreshGeneration.current += 1;
@@ -379,7 +404,7 @@ export function App({
     let inboxPayload: unknown;
     try {
       profilePayload = await api("/v1/profiles");
-      inboxPayload = await api("/v1/inbox");
+      inboxPayload = await api(inboxRequestPath(inboxRequestRef.current));
     } catch {
       if (generation === workspaceGeneration.current)
         dispatchWorkspace({ _tag: "failed", screen: "error" });
@@ -405,40 +430,49 @@ export function App({
     });
     activeInboxProfileId.current = currentDashboard.profile.id;
   }, [initialState]);
-  const refreshInbox = useCallback(async (): Promise<InboxRefreshOutcome> => {
-    const profileId = activeInboxProfileId.current;
-    if (profileId === undefined) return "failure";
-    const generation = ++inboxRefreshGeneration.current;
-    dispatchWorkspace({ _tag: "refreshStarted" });
-    setInboxPaused(false);
-    try {
-      const payload = await api("/v1/inbox");
-      const refreshed = parseInboxResponse(payload);
-      if (refreshed === undefined || refreshed.profile.id !== profileId)
-        throw new Error("Invalid inbox refresh response");
-      if (generation !== inboxRefreshGeneration.current) return "success";
-      const nextDashboard = dashboardFromInbox(refreshed);
-      dispatchWorkspace({
-        _tag: "refreshSucceeded",
-        inbox: refreshed,
-        dashboard: nextDashboard,
-        screen: screenStateForDashboard(nextDashboard),
-      });
-      return allRepositoriesRateLimited(refreshed.inbox.repositories)
-        ? {
-            kind: "rate_limited",
-            resumeAt: maxResumeAt(refreshed.inbox.repositories),
-          }
-        : "success";
-    } catch {
-      if (generation === inboxRefreshGeneration.current)
-        dispatchWorkspace({ _tag: "refreshFailed" });
-      return "failure";
-    } finally {
-      if (generation === inboxRefreshGeneration.current)
-        dispatchWorkspace({ _tag: "refreshFinished" });
-    }
-  }, []);
+  const refreshInbox = useCallback(
+    async (
+      request: InboxRequestState = inboxRequestRef.current,
+    ): Promise<InboxRefreshOutcome> => {
+      const profileId = activeInboxProfileId.current;
+      if (profileId === undefined) return "failure";
+      const generation = ++inboxRefreshGeneration.current;
+      dispatchWorkspace({ _tag: "refreshStarted" });
+      setInboxPaused(false);
+      try {
+        const payload = await api(inboxRequestPath(request));
+        const refreshed = parseInboxResponse(payload);
+        if (
+          refreshed === undefined ||
+          refreshed.profile.id !== profileId ||
+          refreshed.inbox.scope !== request.scope
+        )
+          throw new Error("Invalid inbox refresh response");
+        if (generation !== inboxRefreshGeneration.current) return "success";
+        const nextDashboard = dashboardFromInbox(refreshed);
+        dispatchWorkspace({
+          _tag: "refreshSucceeded",
+          inbox: refreshed,
+          dashboard: nextDashboard,
+          screen: screenStateForDashboard(nextDashboard),
+        });
+        return allRepositoriesRateLimited(refreshed.inbox.repositories)
+          ? {
+              kind: "rate_limited",
+              resumeAt: maxResumeAt(refreshed.inbox.repositories),
+            }
+          : "success";
+      } catch {
+        if (generation === inboxRefreshGeneration.current)
+          dispatchWorkspace({ _tag: "refreshFailed" });
+        return "failure";
+      } finally {
+        if (generation === inboxRefreshGeneration.current)
+          dispatchWorkspace({ _tag: "refreshFinished" });
+      }
+    },
+    [],
+  );
   const hasDashboard = dashboard !== undefined;
   useEffect(() => {
     if (!fixtureMode) void loadWorkspace();
@@ -446,7 +480,7 @@ export function App({
   useEffect(() => {
     if (fixtureMode || destination.kind !== "dashboard" || !hasDashboard)
       return;
-    const scheduler = new InboxRefreshScheduler(refreshInbox);
+    const scheduler = new InboxRefreshScheduler(() => refreshInbox());
     inboxRefreshScheduler.current = scheduler;
     const visible = document.visibilityState !== "hidden";
     setInboxPaused(!visible);
@@ -551,13 +585,36 @@ export function App({
   }, [fixtureMode, openSettings]);
 
   const refreshDashboard = async (): Promise<void> => {
-    const scheduler = inboxRefreshScheduler.current;
-    if (scheduler !== undefined) {
-      await scheduler.refreshManual();
-      return;
-    }
-    await loadWorkspace();
+    updateInboxRequest(firstInboxRequest);
+    await refreshInbox(firstInboxRequest);
   };
+  const previousInboxPage = useCallback((): void => {
+    const current = inboxRequestRef.current;
+    if (current.previousPageTokens.length === 0) return;
+    const pageToken = current.previousPageTokens.at(-1);
+    const previousPageTokens = current.previousPageTokens.slice(0, -1);
+    const next: InboxRequestState =
+      pageToken === undefined
+        ? { scope: current.scope, previousPageTokens }
+        : { scope: current.scope, pageToken, previousPageTokens };
+    updateInboxRequest(next);
+    void refreshInbox(next);
+  }, [refreshInbox, updateInboxRequest]);
+  const nextInboxPage = useCallback((): void => {
+    const current = inboxRequestRef.current;
+    const pageToken = inbox?.inbox.nextPageToken;
+    if (pageToken === undefined) return;
+    const next: InboxRequestState = {
+      scope: current.scope,
+      pageToken,
+      previousPageTokens: [
+        ...current.previousPageTokens,
+        current.pageToken,
+      ].slice(-20),
+    };
+    updateInboxRequest(next);
+    void refreshInbox(next);
+  }, [inbox?.inbox.nextPageToken, refreshInbox, updateInboxRequest]);
   const updateAppearance = useCallback(
     async (next: AppearancePreference): Promise<void> => {
       preferenceRetry.current = async () => updateAppearance(next);
@@ -622,6 +679,7 @@ export function App({
             await api("/v1/profiles/select", { method: "POST", body: { id } });
             setWorkbench(undefined);
             dispatchWorkspace({ _tag: "cleared" });
+            updateInboxRequest(firstInboxRequest);
             await loadWorkspace();
           }}
         >
@@ -658,6 +716,7 @@ export function App({
             dispatchWorkspace({ _tag: "cleared" });
             activeInboxProfileId.current = undefined;
             inboxRefreshGeneration.current += 1;
+            updateInboxRequest(firstInboxRequest);
             setDestination({ kind: "dashboard" });
             window.localStorage.setItem("patchdesk.destination", "dashboard");
           }}
@@ -816,6 +875,11 @@ export function App({
           ...refreshedAtField,
         })}
         onRefresh={() => void refreshDashboard()}
+        scope={inboxRequest.scope}
+        hasPreviousPage={inboxRequest.previousPageTokens.length > 0}
+        hasNextPage={inbox?.inbox.nextPageToken !== undefined}
+        onPreviousInboxPage={previousInboxPage}
+        onNextInboxPage={nextInboxPage}
         onSettings={(section) => openSettings(undefined, section)}
         onOpenWorkbench={(next, initialSection) => {
           setWorkbench(next);

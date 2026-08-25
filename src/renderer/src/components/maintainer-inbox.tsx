@@ -98,6 +98,13 @@ export type { ReviewInitialSection } from "../hooks/use-inbox-view";
 type MaintainerInboxProps = {
   readonly profileId: string;
   readonly profileLabel: string;
+  /** Confirmed remote scope; Phase 1 only permits open pull requests. */
+  readonly scope?: "open";
+  readonly page?: number;
+  readonly hasPreviousPage?: boolean;
+  readonly hasNextPage?: boolean;
+  readonly onPreviousPage?: () => void;
+  readonly onNextPage?: () => void;
   readonly rows: ReadonlyArray<InboxRow>;
   readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
   readonly freshness: "fresh" | "cached";
@@ -131,6 +138,12 @@ type MaintainerInboxProps = {
 export function MaintainerInbox({
   profileId,
   profileLabel,
+  scope = "open",
+  page = 1,
+  hasPreviousPage = false,
+  hasNextPage = false,
+  onPreviousPage = () => undefined,
+  onNextPage = () => undefined,
   rows,
   repos,
   freshness,
@@ -188,6 +201,12 @@ export function MaintainerInbox({
     <div className="min-w-0">
       <InboxHeader
         profileLabel={profileLabel}
+        scope={scope}
+        page={page}
+        hasPreviousPage={hasPreviousPage}
+        hasNextPage={hasNextPage}
+        onPreviousPage={onPreviousPage}
+        onNextPage={onNextPage}
         refreshStatus={refreshStatus}
         {...(snapshot === undefined ? {} : { snapshot })}
         onRefresh={onRefresh}
@@ -307,11 +326,21 @@ function StaleInboxBanner({
 
 function InboxHeader({
   profileLabel,
+  scope,
+  page,
+  hasPreviousPage,
+  hasNextPage,
   refreshStatus,
   snapshot,
   onRefresh,
+  onPreviousPage,
+  onNextPage,
 }: {
   readonly profileLabel: string;
+  readonly scope: "open";
+  readonly page: number;
+  readonly hasPreviousPage: boolean;
+  readonly hasNextPage: boolean;
   readonly refreshStatus:
     | "Refreshing"
     | "Current"
@@ -331,6 +360,8 @@ function InboxHeader({
     readonly refreshedAt?: string | undefined;
   };
   readonly onRefresh: () => void;
+  readonly onPreviousPage: () => void;
+  readonly onNextPage: () => void;
 }): React.JSX.Element {
   return (
     <header className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5 min-[1280px]:px-3">
@@ -342,10 +373,38 @@ function InboxHeader({
           Maintainer inbox
         </h1>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-          Open pull requests that need your next decision.
+          {scope === "open"
+            ? "Open pull requests that need your next decision."
+            : "Pull requests returned by GitHub."}
+        </p>
+        <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
+          GitHub updates order this page. Local sorting applies only here.
         </p>
       </div>
       <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1" aria-label="Inbox pages">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs"
+            onClick={onPreviousPage}
+            disabled={!hasPreviousPage || refreshStatus === "Refreshing"}
+          >
+            Back
+          </Button>
+          <span className="min-w-12 text-center text-xs text-muted-foreground">
+            Page {page}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs"
+            onClick={onNextPage}
+            disabled={!hasNextPage || refreshStatus === "Refreshing"}
+          >
+            Next
+          </Button>
+        </div>
         <InboxFreshness
           status={refreshStatus}
           {...(snapshot === undefined ? {} : { snapshot })}

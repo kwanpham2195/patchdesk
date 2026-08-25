@@ -398,51 +398,54 @@ export const maintainerInboxResponseSchema = v.looseObject({
     ),
     repository: v.looseObject({
       pullRequests: v.looseObject({
-        nodes: v.array(
+        edges: v.array(
           v.looseObject({
-            number: v.pipe(v.number(), v.integer(), v.minValue(1)),
-            title: v.string(),
-            isDraft: v.boolean(),
-            headRefName: v.string(),
-            headRefOid: v.string(),
-            baseRefName: v.string(),
-            baseRefOid: v.optional(v.string()),
-            author: v.nullish(v.looseObject({ login: v.string() })),
-            updatedAt: v.string(),
-            mergeable: v.string(),
-            reviewDecision: v.nullish(v.string()),
-            additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-            deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-            changedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
-            labels: v.looseObject({
-              totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
-              nodes: v.array(
-                v.looseObject({ name: v.string(), color: v.string() }),
-              ),
-              pageInfo: v.looseObject({ hasNextPage: v.boolean() }),
-            }),
-            reviewRequests: v.looseObject({
-              nodes: v.array(
-                v.looseObject({
-                  requestedReviewer: v.nullish(
-                    v.looseObject({ login: v.optional(v.string()) }),
-                  ),
-                }),
-              ),
-            }),
-            assignees: v.looseObject({
-              nodes: v.array(v.looseObject({ login: v.string() })),
-            }),
-            commits: v.looseObject({
-              nodes: v.array(
-                v.looseObject({
-                  commit: v.looseObject({
-                    statusCheckRollup: v.nullish(
-                      v.looseObject({ state: v.string() }),
+            cursor: v.pipe(v.string(), v.minLength(1)),
+            node: v.looseObject({
+              number: v.pipe(v.number(), v.integer(), v.minValue(1)),
+              title: v.string(),
+              isDraft: v.boolean(),
+              headRefName: v.string(),
+              headRefOid: v.string(),
+              baseRefName: v.string(),
+              baseRefOid: v.optional(v.string()),
+              author: v.nullish(v.looseObject({ login: v.string() })),
+              updatedAt: v.string(),
+              mergeable: v.string(),
+              reviewDecision: v.nullish(v.string()),
+              additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+              deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+              changedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+              labels: v.looseObject({
+                totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+                nodes: v.array(
+                  v.looseObject({ name: v.string(), color: v.string() }),
+                ),
+                pageInfo: v.looseObject({ hasNextPage: v.boolean() }),
+              }),
+              reviewRequests: v.looseObject({
+                nodes: v.array(
+                  v.looseObject({
+                    requestedReviewer: v.nullish(
+                      v.looseObject({ login: v.optional(v.string()) }),
                     ),
                   }),
-                }),
-              ),
+                ),
+              }),
+              assignees: v.looseObject({
+                nodes: v.array(v.looseObject({ login: v.string() })),
+              }),
+              commits: v.looseObject({
+                nodes: v.array(
+                  v.looseObject({
+                    commit: v.looseObject({
+                      statusCheckRollup: v.nullish(
+                        v.looseObject({ state: v.string() }),
+                      ),
+                    }),
+                  }),
+                ),
+              }),
             }),
           }),
         ),

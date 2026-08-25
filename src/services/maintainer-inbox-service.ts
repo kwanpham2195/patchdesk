@@ -1,3 +1,5 @@
+import * as v from "valibot";
+
 import type { ForbiddenReason } from "../adapters/github/command-runner";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import type {
@@ -7,19 +9,50 @@ import type {
 } from "../adapters/storage/maintainer-inbox-cache-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { PullRequestSummary } from "../domain/github-context";
-import { createReviewId, type IsoTimestamp } from "../domain/ids";
-import type { ReviewSession } from "../domain/review-session";
 import {
+  createReviewId,
+  parseIsoTimestamp,
+  type IsoTimestamp,
+} from "../domain/ids";
+import {
+  MAINTAINER_INBOX_PAGE_SIZE,
+  type InboxPageRequest,
+  type InboxScope,
   projectMaintainerInboxRow,
   type InboxReviewSummary,
   type MaintainerInboxRow,
 } from "../domain/maintainer-inbox";
+import type { ReviewSession } from "../domain/review-session";
 import { ok, type Result } from "../domain/result";
 import type {
   WorkspaceProfileConfig,
   WatchedRepoConfig,
 } from "../domain/workspace-profile";
 import { isInboxCacheStale } from "../domain/inbox-freshness-policy";
+
+const MAX_PAGE_TOKEN_LENGTH = 16_384;
+const MAX_REPOSITORY_CURSOR_LENGTH = 4_096;
+
+const inboxPageTokenSchema = v.strictObject({
+  scope: v.literal("open"),
+  page: v.pipe(v.number(), v.integer(), v.minValue(2)),
+  repositories: v.array(
+    v.strictObject({
+      host: v.string(),
+      owner: v.string(),
+      repo: v.string(),
+      cursor: v.optional(
+        v.pipe(
+          v.string(),
+          v.minLength(1),
+          v.maxLength(MAX_REPOSITORY_CURSOR_LENGTH),
+        ),
+      ),
+    }),
+  ),
+});
+
+type InboxPageToken = v.InferOutput<typeof inboxPageTokenSchema>;
 
 export type MaintainerInboxRepository = {
   readonly repo: WatchedRepoConfig;
@@ -30,6 +63,9 @@ export type MaintainerInboxRepository = {
 };
 
 export type MaintainerInbox = {
+  readonly scope: InboxScope;
+  readonly page: number;
+  readonly nextPageToken?: string;
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
   readonly repositories: ReadonlyArray<MaintainerInboxRepository>;
   readonly refreshedAt?: IsoTimestamp;
@@ -47,11 +83,21 @@ export type MaintainerInbox = {
 };
 
 export type InboxClock = { readonly now: () => IsoTimestamp };
+export type InboxPageRequestFailure = "invalid_page";
 
 type SessionReader = Pick<ReviewSessionStore, "listSessions">;
 type CacheReader = Pick<MaintainerInboxCacheStore, "read" | "save">;
+type RepositoryRead = {
+  readonly entries: ReadonlyArray<{
+    readonly cursor: string;
+    readonly row: MaintainerInboxRow;
+    readonly repo: WatchedRepoConfig;
+  }>;
+  readonly hasNextPage: boolean;
+  readonly repository: MaintainerInboxRepository;
+};
 
-/** Reads watched repositories concurrently, enriches them with local review state, and falls back to parsed cache data. */
+/** Reads one globally ordered maintainer inbox page and keeps GitHub cursors inside an opaque token. */
 export class MaintainerInboxService {
   constructor(
     private readonly github: GitHubReader,
@@ -62,160 +108,184 @@ export class MaintainerInboxService {
 
   async list(
     profile: WorkspaceProfileConfig,
-  ): Promise<Result<MaintainerInbox, never>> {
+    request: InboxPageRequest = { scope: "open" },
+  ): Promise<Result<MaintainerInbox, InboxPageRequestFailure>> {
+    const pageToken = decodeInboxPageToken(request, profile);
+    if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
     const authenticated =
       await this.github.resolveAuthenticatedAccount(profile);
     if (authenticated._tag === "err")
-      return await this.cachedOrUnavailable(profile);
+      return request.pageToken === undefined
+        ? await this.cachedOrUnavailable(profile, request.scope)
+        : this.unavailablePage(profile, request.scope, pageToken.page);
+
     const sessions = await this.sessions.listSessions(profile.id);
     const localSessions = sessions._tag === "ok" ? sessions.value : [];
-    const active = profile.repos;
-    const results = await mapConcurrent(
-      active,
+    const reads = await mapConcurrent(
+      profile.repos,
       3,
-      async (repo) => await this.readRepository(profile, repo, localSessions),
+      async (repo) =>
+        await this.readRepository(
+          profile,
+          repo,
+          cursorForRepository(pageToken, repo),
+          localSessions,
+        ),
     );
-    const rows = results.flatMap((result) => result.rows).sort(compareRows);
-    const repositories = results.map((result) => result.repository);
+    const entries = reads.flatMap((read) => read.entries).sort(compareEntries);
+    const visible = entries.slice(0, MAINTAINER_INBOX_PAGE_SIZE);
+    const repositories = reads.map((read) => read.repository);
+    const visibleEntries = new Set(visible);
+    const hasNextPage = reads.some(
+      (read) =>
+        read.entries.some((entry) => !visibleEntries.has(entry)) ||
+        read.hasNextPage,
+    );
+    const complete =
+      !hasNextPage && repositories.every((repo) => repo.complete);
+    const dataFreshness = repositories.every(
+      (repo) => repo.state === "ready" || repo.state === "no_open_prs",
+    )
+      ? "fresh"
+      : "cached";
     const refreshedAt = this.clock.now();
-    const complete = results.every((result) => result.repository.complete);
-    const dataFreshness = complete ? ("fresh" as const) : ("cached" as const);
-    const snapshotState = complete
-      ? ("current" as const)
-      : ("partial" as const);
-    const projectedRows =
-      dataFreshness === "fresh" ? rows : rows.map(toCachedRow);
+    const nextPageToken = hasNextPage
+      ? encodeInboxPageToken({
+          scope: request.scope,
+          page: pageToken.page + 1,
+          repositories: profile.repos.map((repo) => {
+            const emitted = visible
+              .filter((entry) => sameRepository(entry.repo, repo))
+              .at(-1);
+            const cursor =
+              emitted?.cursor ?? cursorForRepository(pageToken, repo);
+            return cursor === undefined
+              ? { host: repo.host, owner: repo.owner, repo: repo.repo }
+              : { host: repo.host, owner: repo.owner, repo: repo.repo, cursor };
+          }),
+        })
+      : undefined;
     const value: MaintainerInbox = {
-      rows: projectedRows,
+      scope: request.scope,
+      page: pageToken.page,
+      rows:
+        dataFreshness === "fresh"
+          ? visible.map((entry) => entry.row)
+          : visible.map((entry) => toCachedRow(entry.row)),
       repositories,
       refreshedAt,
       dataFreshness,
-      snapshot: { state: snapshotState, refreshedAt },
+      snapshot: { state: complete ? "current" : "partial", refreshedAt },
       directEntryAvailable: true,
     };
-    const cached: MaintainerInboxCache = {
-      schemaVersion: 1,
-      refreshedAt,
-      rows,
-      repositories: repositories.map(({ repo, state, complete }) => ({
-        identity: { host: repo.host, owner: repo.owner, repo: repo.repo },
-        state,
-        complete,
-      })),
-    };
-    if (complete) await this.cache.save(profile.id, cached);
-    return ok(value);
+    if (
+      request.pageToken === undefined &&
+      complete &&
+      dataFreshness === "fresh"
+    ) {
+      const cached: MaintainerInboxCache = {
+        schemaVersion: 1,
+        refreshedAt,
+        rows: visible.map((entry) => entry.row),
+        repositories: repositories.map(({ repo, state, complete }) => ({
+          identity: { host: repo.host, owner: repo.owner, repo: repo.repo },
+          state,
+          complete,
+        })),
+      };
+      await this.cache.save(profile.id, cached);
+    }
+    return ok(
+      nextPageToken === undefined ? value : { ...value, nextPageToken },
+    );
   }
 
   private async readRepository(
     profile: WorkspaceProfileConfig,
     repo: WatchedRepoConfig,
+    cursor: string | undefined,
     sessions: ReadonlyArray<ReviewSession>,
-  ): Promise<{
-    readonly rows: ReadonlyArray<MaintainerInboxRow>;
-    readonly repository: MaintainerInboxRepository;
-  }> {
-    const listed = await this.github.listMaintainerPullRequests({
-      profile,
-      repo: {
-        host: repo.host,
-        owner: repo.owner,
-        repo: repo.repo,
-        // SAFETY: listMaintainerPullRequests lists every PR in the repo and
-        // never reads repo.number; PullRequestRef requires the field only
-        // because it is shared with single-PR lookups.
-        number: 1 as never,
-      },
-    });
-    if (listed._tag === "err") {
-      const state =
-        listed.error._tag === "GitHubAuthenticationFailed"
-          ? ("github_auth" as const)
-          : listed.error._tag === "GitHubRateLimited"
-            ? ("github_rate_limited" as const)
-            : listed.error._tag === "GitHubForbidden"
-              ? ("github_forbidden" as const)
-              : ("github_read" as const);
-      const resumeAtField =
-        listed.error._tag === "GitHubRateLimited" &&
-        listed.error.resumeAt !== undefined
-          ? { resumeAt: listed.error.resumeAt }
-          : {};
-      const forbiddenReasonField =
-        listed.error._tag === "GitHubForbidden"
-          ? { forbiddenReason: listed.error.reason }
-          : {};
-      return {
-        rows: [],
-        repository: {
-          repo,
-          state,
-          complete: false,
-          ...resumeAtField,
-          ...forbiddenReasonField,
-        },
-      };
-    }
-    const rows = await Promise.all(
-      listed.value.pullRequests.map(async ({ summary, checks }) => {
-        const latestReview = latestReviewFor(summary, sessions);
+  ): Promise<RepositoryRead> {
+    const repository = { host: repo.host, owner: repo.owner, repo: repo.repo };
+    const listed = await this.github.listMaintainerPullRequests(
+      cursor === undefined
+        ? { profile, repo: repository }
+        : { profile, repo: repository, cursor },
+    );
+    if (listed._tag === "err") return failedRepositoryRead(repo, listed.error);
+    const entries = listed.value.entries.map(
+      ({ cursor: entryCursor, pullRequest }) => {
+        const latestReview = latestReviewFor(pullRequest.summary, sessions);
         const input = {
-          summary,
-          checks,
+          summary: pullRequest.summary,
+          checks: pullRequest.checks,
           activeAccount: profile.ghAccount,
           dataFreshness: "fresh" as const,
         };
-        return latestReview === undefined
-          ? projectMaintainerInboxRow(input)
-          : projectMaintainerInboxRow({ ...input, latestReview });
-      }),
+        const row =
+          latestReview === undefined
+            ? projectMaintainerInboxRow(input)
+            : projectMaintainerInboxRow({ ...input, latestReview });
+        return { cursor: entryCursor, row, repo };
+      },
     );
     return {
-      rows,
+      entries,
+      hasNextPage: listed.value.hasNextPage,
       repository: {
         repo,
-        state: listed.value.pullRequests.length === 0 ? "no_open_prs" : "ready",
-        complete: listed.value.complete,
+        state: entries.length === 0 ? "no_open_prs" : "ready",
+        complete: !listed.value.hasNextPage,
       },
     };
   }
 
   private async cachedOrUnavailable(
     profile: WorkspaceProfileConfig,
+    scope: InboxScope,
   ): Promise<Result<MaintainerInbox, never>> {
     const cached = await this.cache.read(profile.id);
     if (cached._tag === "ok") {
-      const ageMs =
-        Date.parse(this.clock.now()) - Date.parse(cached.value.refreshedAt);
-      const snapshotState = isInboxCacheStale(ageMs)
+      const refreshedAt = parseIsoTimestamp(cached.value.refreshedAt);
+      if (refreshedAt._tag === "err")
+        return this.unavailablePage(profile, scope, 1);
+      const snapshotState = isInboxCacheStale(
+        Date.parse(this.clock.now()) - Date.parse(refreshedAt.value),
+      )
         ? "stale_cached"
         : "failed_cached";
-      // SAFETY: parseMaintainerInboxCache validates refreshedAt with
-      // parseIsoTimestamp before cache.read() resolves "ok", even though
-      // MaintainerInboxCache types the field as a plain string.
       return ok({
+        scope,
+        page: 1,
         rows: cached.value.rows.map(toCachedRow),
         repositories: profile.repos.map((repo) => ({
           repo,
           state:
-            cached.value.repositories.find(
-              (entry) =>
-                entry.identity.host === repo.host &&
-                entry.identity.owner === repo.owner &&
-                entry.identity.repo === repo.repo,
+            cached.value.repositories.find((entry) =>
+              sameRepository(entry.identity, repo),
             )?.state ?? "github_auth",
           complete: false,
         })),
-        refreshedAt: cached.value.refreshedAt as IsoTimestamp,
+        refreshedAt: refreshedAt.value,
         dataFreshness: "cached",
         snapshot: {
           state: snapshotState,
-          refreshedAt: cached.value.refreshedAt as IsoTimestamp,
+          refreshedAt: refreshedAt.value,
         },
         directEntryAvailable: true,
       });
     }
+    return this.unavailablePage(profile, scope, 1);
+  }
+
+  private unavailablePage(
+    profile: WorkspaceProfileConfig,
+    scope: InboxScope,
+    page: number,
+  ): Result<MaintainerInbox, never> {
     return ok({
+      scope,
+      page,
       rows: [],
       repositories: profile.repos.map((repo) => ({
         repo,
@@ -229,6 +299,140 @@ export class MaintainerInboxService {
   }
 }
 
+function failedRepositoryRead(
+  repo: WatchedRepoConfig,
+  error: {
+    readonly _tag: string;
+    readonly resumeAt?: IsoTimestamp;
+    readonly reason?: ForbiddenReason;
+  },
+): RepositoryRead {
+  const state =
+    error._tag === "GitHubAuthenticationFailed"
+      ? "github_auth"
+      : error._tag === "GitHubRateLimited"
+        ? "github_rate_limited"
+        : error._tag === "GitHubForbidden"
+          ? "github_forbidden"
+          : "github_read";
+  const base = {
+    entries: [],
+    hasNextPage: false,
+  };
+  if (error.resumeAt === undefined) {
+    if (error.reason === undefined)
+      return { ...base, repository: { repo, state, complete: false } };
+    return {
+      ...base,
+      repository: {
+        repo,
+        state,
+        complete: false,
+        forbiddenReason: error.reason,
+      },
+    };
+  }
+  if (error.reason === undefined)
+    return {
+      ...base,
+      repository: { repo, state, complete: false, resumeAt: error.resumeAt },
+    };
+  return {
+    ...base,
+    repository: {
+      repo,
+      state,
+      complete: false,
+      resumeAt: error.resumeAt,
+      forbiddenReason: error.reason,
+    },
+  };
+}
+
+function decodeInboxPageToken(
+  request: InboxPageRequest,
+  profile: WorkspaceProfileConfig,
+): InboxPageToken | undefined {
+  if (request.scope !== "open") return undefined;
+  if (request.pageToken === undefined)
+    return {
+      scope: request.scope,
+      page: 1,
+      repositories: profile.repos.map((repo) => ({
+        host: repo.host,
+        owner: repo.owner,
+        repo: repo.repo,
+      })),
+    };
+  if (request.pageToken.length > MAX_PAGE_TOKEN_LENGTH) return undefined;
+  try {
+    const decoded: unknown = JSON.parse(
+      Buffer.from(request.pageToken, "base64url").toString("utf8"),
+    );
+    const parsed = v.safeParse(inboxPageTokenSchema, decoded);
+    if (!parsed.success) return undefined;
+    const value = parsed.output;
+    if (
+      value.scope !== request.scope ||
+      value.repositories.length !== profile.repos.length
+    )
+      return undefined;
+    if (
+      !profile.repos.every((repo) =>
+        value.repositories.some((entry) => sameRepository(entry, repo)),
+      )
+    )
+      return undefined;
+    return {
+      scope: request.scope,
+      page: value.page,
+      repositories: value.repositories,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeInboxPageToken(token: InboxPageToken): string {
+  return Buffer.from(JSON.stringify(token)).toString("base64url");
+}
+function cursorForRepository(
+  token: InboxPageToken,
+  repo: WatchedRepoConfig,
+): string | undefined {
+  return token.repositories.find((entry) => sameRepository(entry, repo))
+    ?.cursor;
+}
+function sameRepository(
+  left: {
+    readonly host: string;
+    readonly owner: string;
+    readonly repo: string;
+  },
+  right: {
+    readonly host: string;
+    readonly owner: string;
+    readonly repo: string;
+  },
+): boolean {
+  return (
+    left.host === right.host &&
+    left.owner === right.owner &&
+    left.repo === right.repo
+  );
+}
+function compareEntries(
+  left: RepositoryRead["entries"][number],
+  right: RepositoryRead["entries"][number],
+): number {
+  return (
+    right.row.updatedAt.localeCompare(left.row.updatedAt) ||
+    left.repo.host.localeCompare(right.repo.host) ||
+    left.repo.owner.localeCompare(right.repo.owner) ||
+    left.repo.repo.localeCompare(right.repo.repo) ||
+    left.row.identity.number - right.row.identity.number
+  );
+}
 function latestReviewFor(
   summary: PullRequestSummary,
   sessions: ReadonlyArray<ReviewSession>,
@@ -240,21 +444,21 @@ function latestReviewFor(
       candidate.key.repo === summary.ref.repo &&
       candidate.key.prNumber === summary.ref.number,
   );
-  if (session === undefined) return undefined;
-  return {
-    reviewId: createReviewId({
-      profileId: session.key.profileId,
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
-      prNumber: session.key.prNumber,
-    }),
-    reviewedHeadSha: session.key.headSha,
-    updatedAt: session.updatedAt,
-    matchesCurrentHead: session.key.headSha === summary.headSha,
-  };
+  return session === undefined
+    ? undefined
+    : {
+        reviewId: createReviewId({
+          profileId: session.key.profileId,
+          host: session.key.host,
+          owner: session.key.owner,
+          repo: session.key.repo,
+          prNumber: session.key.prNumber,
+        }),
+        reviewedHeadSha: session.key.headSha,
+        updatedAt: session.updatedAt,
+        matchesCurrentHead: session.key.headSha === summary.headSha,
+      };
 }
-
 function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
   return {
     ...row,
@@ -265,32 +469,6 @@ function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
         : row.recommendedAction,
   };
 }
-
-function compareRows(
-  left: MaintainerInboxRow,
-  right: MaintainerInboxRow,
-): number {
-  const priority = (row: MaintainerInboxRow): number =>
-    row.categories.includes("saved_review")
-      ? 0
-      : row.categories.includes("updated_since_review")
-        ? 1
-        : row.categories.includes("needs_review")
-          ? 2
-          : row.categories.includes("waiting_for_author")
-            ? 3
-            : row.categories.includes("checks_failing")
-              ? 4
-              : row.categories.includes("ready_to_merge")
-                ? 5
-                : 6;
-  return (
-    priority(left) - priority(right) ||
-    right.updatedAt.localeCompare(left.updatedAt) ||
-    left.title.localeCompare(right.title)
-  );
-}
-
 async function mapConcurrent<T, R>(
   items: ReadonlyArray<T>,
   concurrency: number,
@@ -298,17 +476,17 @@ async function mapConcurrent<T, R>(
 ): Promise<ReadonlyArray<R>> {
   const values: Array<R> = [];
   let next = 0;
+  function processNext(): Promise<void> {
+    const index = next++;
+    const item = items[index];
+    if (item === undefined) return Promise.resolve();
+    return map(item).then((value) => {
+      values[index] = value;
+      return processNext();
+    });
+  }
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-      for (;;) {
-        const index = next;
-        next += 1;
-        if (index >= items.length) return;
-        const item = items[index];
-        if (item === undefined) return;
-        values[index] = await map(item);
-      }
-    }),
+    Array.from({ length: Math.min(concurrency, items.length) }, processNext),
   );
   return values;
 }

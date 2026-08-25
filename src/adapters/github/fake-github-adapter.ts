@@ -6,6 +6,7 @@ import type {
   GitHubMergePolicyEvidence,
   GitHubPublishedFeedback,
   MergePolicySnapshot,
+  MaintainerPullRequestPage,
   PullRequestCommit,
   PullRequestReviewerListing,
   PullRequestSummary,
@@ -41,7 +42,6 @@ import {
   type GitHubReadFailure,
   type GitHubReviewWriter,
   type GitHubThreadTarget,
-  type MaintainerPullRequestListing,
   type MergeOutcome,
   type PendingReviewComment,
   type RepositoryPermissionEvidence,
@@ -67,19 +67,23 @@ export class FakeGitHubAdapter
 
   async listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
-  }): Promise<Result<MaintainerPullRequestListing, GitHubReadFailure>> {
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
     void input;
     if (this.values.maintainerPullRequests !== undefined)
       return ok(this.values.maintainerPullRequests);
     if (this.values.listOpenPullRequests === undefined)
       return missing("list_maintainer_prs");
     return ok({
-      pullRequests: this.values.listOpenPullRequests.map((summary) => ({
-        summary,
-        checks: this.values.checks ?? { overall: "unknown", checks: [] },
+      entries: this.values.listOpenPullRequests.map((summary, index) => ({
+        cursor: `fixture-${index}`,
+        pullRequest: {
+          summary,
+          checks: this.values.checks ?? { overall: "unknown", checks: [] },
+        },
       })),
-      complete: true,
+      hasNextPage: false,
     });
   }
 
@@ -639,7 +643,7 @@ export class FakeGitHubAdapter
 /** Fixture values accepted by FakeGitHubAdapter. */
 export type FakeGitHubAdapterValues = {
   readonly listOpenPullRequests: ReadonlyArray<PullRequestSummary>;
-  readonly maintainerPullRequests: MaintainerPullRequestListing;
+  readonly maintainerPullRequests: MaintainerPullRequestPage;
   readonly repositoryLabels: RepositoryLabelListing;
   readonly assignableUsers: AssignableUserListing;
   readonly pullRequestReviewers: PullRequestReviewerListing;

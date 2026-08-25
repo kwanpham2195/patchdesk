@@ -144,6 +144,9 @@ const inboxResponseSchema = v.strictObject({
     ),
   }),
   inbox: v.object({
+    scope: v.literal("open"),
+    page: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    nextPageToken: v.optional(v.pipe(v.string(), v.minLength(1))),
     rows: v.array(inboxRowSchema),
     repositories: v.array(repoOutcomeSchema),
     dataFreshness: v.picklist(["fresh", "cached"]),

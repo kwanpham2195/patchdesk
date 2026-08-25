@@ -27,6 +27,7 @@ import type {
   PullRequestReviewerListing,
   PullRequestSummary,
   MergePolicySnapshot,
+  MaintainerPullRequestPage,
   RepositoryLabelListing,
   RepositoryLabelPermission,
 } from "../../domain/github-context";
@@ -47,6 +48,7 @@ import {
   type RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
+import { MAINTAINER_INBOX_PAGE_SIZE } from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import {
@@ -164,8 +166,10 @@ export interface GitHubReader {
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>>;
   listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
-  }): Promise<Result<MaintainerPullRequestListing, GitHubReadFailure>>;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    /** Opaque repository continuation from the inbox service, never renderer input. */
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>>;
   /** Bounded list of labels available in the repository, for populating a label picker. */
   listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -282,17 +286,6 @@ export type GitHubThreadTarget =
 export type GitHubCommentTarget =
   | { readonly found: true; readonly viewerDidAuthor: boolean }
   | { readonly found: false };
-
-export type MaintainerPullRequest = {
-  readonly summary: PullRequestSummary;
-  readonly checks: CheckSummary;
-};
-
-export type MaintainerPullRequestListing = {
-  readonly pullRequests: ReadonlyArray<MaintainerPullRequest>;
-  /** False means GitHub reported more than Patchdesk's deliberate 300-PR cap. */
-  readonly complete: boolean;
-};
 
 /** Safe projection for one source file; binary and oversized blobs never enter the renderer. */
 export type GitHubFileContents =
@@ -817,65 +810,65 @@ export class GitHubAdapter
     return ok(summaries);
   }
 
-  /** Lists up to 300 open PRs with the inbox metadata in three bounded GraphQL pages. */
+  /** Reads exactly one bounded page of open pull requests with edge cursors. */
   async listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
-  }): Promise<Result<MaintainerPullRequestListing, GitHubReadFailure>> {
-    const pullRequests: Array<MaintainerPullRequest> = [];
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
     const host = input.profile.githubHost;
-    let cursor: string | undefined;
-    let hasNextPage = true;
-    for (let page = 0; page < 3 && hasNextPage; page += 1) {
-      const response = await this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "graphql",
-          "--hostname",
-          host,
-          "-f",
-          `query=${maintainerInboxQuery}`,
-          "-F",
-          `owner=${input.repo.owner}`,
-          "-F",
-          `name=${input.repo.repo}`,
-          ...(cursor === undefined ? [] : ["-f", `cursor=${cursor}`]),
-        ],
-        timeoutMs: commandTimeoutMs,
-      });
-      if (response._tag === "err") {
-        return this.commandFailure("list_maintainer_prs", response.error, host);
-      }
-      const parsed = v.safeParse(maintainerInboxResponseSchema, response.value);
-      if (!parsed.success) return invalid("list_maintainer_prs");
-      const rateLimit = parsed.output.data.rateLimit;
-      if (rateLimit !== undefined) {
-        const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
-        if (resumeAt._tag === "ok") {
-          this.rateLimitByHost.set(host, {
-            remaining: rateLimit.remaining,
-            resetAt: resumeAt.value,
-          });
-        }
-      }
-      const connection = parsed.output.data.repository.pullRequests;
-      for (const node of connection.nodes) {
-        const projected = parseMaintainerPullRequest(
-          node,
-          host,
-          input.repo.owner,
-          input.repo.repo,
-        );
-        if (projected._tag === "err") return invalid("list_maintainer_prs");
-        pullRequests.push(projected.value);
-      }
-      hasNextPage = connection.pageInfo.hasNextPage;
-      cursor = connection.pageInfo.endCursor ?? undefined;
-      if (hasNextPage && cursor === undefined)
-        return invalid("list_maintainer_prs");
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${maintainerInboxQuery}`,
+        "-F",
+        `owner=${input.repo.owner}`,
+        "-F",
+        `name=${input.repo.repo}`,
+        "-F",
+        `first=${MAINTAINER_INBOX_PAGE_SIZE}`,
+        "-F",
+        "state=OPEN",
+        ...(input.cursor === undefined ? [] : ["-f", `cursor=${input.cursor}`]),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure("list_maintainer_prs", response.error, host);
+    const parsed = v.safeParse(maintainerInboxResponseSchema, response.value);
+    if (!parsed.success) return invalid("list_maintainer_prs");
+    const rateLimit = parsed.output.data.rateLimit;
+    if (rateLimit !== undefined) {
+      const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
+      if (resumeAt._tag === "ok")
+        this.rateLimitByHost.set(host, {
+          remaining: rateLimit.remaining,
+          resetAt: resumeAt.value,
+        });
     }
-    return ok({ pullRequests, complete: !hasNextPage });
+    const connection = parsed.output.data.repository.pullRequests;
+    if (
+      connection.pageInfo.hasNextPage &&
+      connection.pageInfo.endCursor === null
+    )
+      return invalid("list_maintainer_prs");
+    const entries = [];
+    for (const edge of connection.edges) {
+      const projected = parseMaintainerPullRequest(
+        edge.node,
+        host,
+        input.repo.owner,
+        input.repo.repo,
+      );
+      if (projected._tag === "err") return invalid("list_maintainer_prs");
+      entries.push({ cursor: edge.cursor, pullRequest: projected.value });
+    }
+    return ok({ entries, hasNextPage: connection.pageInfo.hasNextPage });
   }
 
   /** Fetches up to 100 repository labels in one bounded page; `totalCount` reveals truncation beyond that. */

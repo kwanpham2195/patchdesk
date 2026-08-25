@@ -17,30 +17,33 @@ describe("MaintainerInboxService", () => {
           ok({ host: "github.com", account: "fixture" }),
         listMaintainerPullRequests: async () =>
           ok({
-            pullRequests: [
+            entries: [
               {
-                summary: {
-                  ref: {
-                    host: "github.com",
-                    owner: "centraldigital",
-                    repo: "patchdesk",
-                    number: 42,
+                cursor: "fixture-42",
+                pullRequest: {
+                  summary: {
+                    ref: {
+                      host: "github.com",
+                      owner: "centraldigital",
+                      repo: "patchdesk",
+                      number: 42,
+                    },
+                    title: "Fixture",
+                    author: "other",
+                    headSha: "a".repeat(40),
+                    baseSha: "b".repeat(40),
+                    isOpen: true,
+                    isDraft: false,
+                    reviewState: "none",
+                    mergeability: "mergeable",
+                    labels: [],
+                    updatedAt: "2026-08-01T00:00:00.000Z",
                   },
-                  title: "Fixture",
-                  author: "other",
-                  headSha: "a".repeat(40),
-                  baseSha: "b".repeat(40),
-                  isOpen: true,
-                  isDraft: false,
-                  reviewState: "none",
-                  mergeability: "mergeable",
-                  labels: [],
-                  updatedAt: "2026-08-01T00:00:00.000Z",
+                  checks: { overall: "passing", checks: [] },
                 },
-                checks: { overall: "passing", checks: [] },
               },
             ],
-            complete: true,
+            hasNextPage: false,
           }),
       } as never,
       { listSessions: async () => ok([]) } as never,
@@ -225,7 +228,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
           error: { _tag: "GitHubAuthenticationFailed" },
         }),
         listMaintainerPullRequests: async () =>
-          ok({ pullRequests: [], complete: true }),
+          ok({ entries: [], hasNextPage: false }),
       } as never,
       { listSessions: async () => ok([]) } as never,
       cache as never,
@@ -277,5 +280,43 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
       _tag: "ok",
       value: { snapshot: { state: "unavailable" } },
     });
+  });
+});
+
+describe("MaintainerInboxService page token validation", () => {
+  it("rejects malformed tokens before reading GitHub", async () => {
+    const listMaintainerPullRequests = async (): Promise<never> => {
+      throw new Error("GitHub must not receive malformed inbox tokens");
+    };
+    // SAFETY: test fixture narrows partial collaborators to the exact
+    // dependency surface exercised before malformed-token rejection.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests,
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    await expect(
+      service.list(
+        // SAFETY: the malformed-token path only reads the profile id, account,
+        // and watched repository identity supplied by this focused fixture.
+        {
+          id: "cfw",
+          ghAccount: "fixture",
+          repos: [
+            { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
+          ],
+        } as never,
+        { scope: "open", pageToken: "not-a-page-token" },
+      ),
+    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
   });
 });

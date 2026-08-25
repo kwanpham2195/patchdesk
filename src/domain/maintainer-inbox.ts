@@ -6,6 +6,18 @@ import type {
 import type { GitSha, IsoTimestamp, ReviewId } from "./ids";
 import type { PullRequestRef } from "./pull-request";
 
+/** The maximum number of pull requests returned by one remote inbox page. */
+export const MAINTAINER_INBOX_PAGE_SIZE = 50;
+
+/** The only remote pull-request scope Phase 1 may request. */
+export type InboxScope = "open";
+
+/** Parsed inbox pagination intent; page tokens remain opaque outside the main process. */
+export type InboxPageRequest = {
+  readonly scope: InboxScope;
+  readonly pageToken?: string;
+};
+
 export type InboxCategory =
   | "needs_review"
   | "updated_since_review"

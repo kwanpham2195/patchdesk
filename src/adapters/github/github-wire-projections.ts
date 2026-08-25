@@ -13,6 +13,7 @@ import type {
   GitHubMergePolicyEvidence,
   GitHubMergeStateStatus,
   MergePolicySnapshot,
+  MaintainerPullRequest,
   PullRequestReviewEntry,
   PullRequestReviewerListing,
   PullRequestSummary,
@@ -38,7 +39,6 @@ import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-rev
 import {
   type GitHubReadFailure,
   type GitHubReadOperation,
-  type MaintainerPullRequest,
   type MergeOutcome,
   type PendingReviewComment,
 } from "./github-adapter";
@@ -71,7 +71,7 @@ import {
 export function parseMaintainerPullRequest(
   input: v.InferOutput<
     typeof maintainerInboxResponseSchema
-  >["data"]["repository"]["pullRequests"]["nodes"][number],
+  >["data"]["repository"]["pullRequests"]["edges"][number]["node"],
   host: GitHubHost,
   owner: GitHubOwner,
   repo: GitHubRepoName,

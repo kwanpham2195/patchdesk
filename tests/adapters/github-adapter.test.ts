@@ -1463,55 +1463,58 @@ describe("pullRequestWritePermission", () => {
 });
 
 describe("GitHubAdapter read boundary", () => {
-  it("returns parsed GraphQL inbox rows and marks a capped listing incomplete", async () => {
-    const page = (hasNextPage: boolean, endCursor: string | null) => ({
+  it("reads one OPEN GraphQL inbox page with edge cursors", async () => {
+    const page = {
       data: {
         repository: {
           pullRequests: {
-            nodes: [
+            edges: [
               {
-                number: 42,
-                title: "Add safe GitHub reads",
-                isDraft: false,
-                headRefName: "feat/github-read",
-                headRefOid: headSha,
-                baseRefName: "sit",
-                author: { login: "reviewer" },
-                updatedAt: "2026-07-16T12:00:00Z",
-                mergeable: "MERGEABLE",
-                reviewDecision: "REVIEW_REQUIRED",
-                additions: 12,
-                deletions: 3,
-                changedFiles: 2,
-                labels: {
-                  totalCount: 2,
-                  nodes: [{ name: "bug", color: "d73a4a" }],
-                  pageInfo: { hasNextPage: false },
-                },
-                reviewRequests: {
-                  nodes: [{ requestedReviewer: { login: "pmquan2cfw" } }],
-                },
-                assignees: { nodes: [] },
-                commits: {
-                  nodes: [
-                    { commit: { statusCheckRollup: { state: "SUCCESS" } } },
-                  ],
+                cursor: "edge-42",
+                node: {
+                  number: 42,
+                  title: "Add safe GitHub reads",
+                  isDraft: false,
+                  headRefName: "feat/github-read",
+                  headRefOid: headSha,
+                  baseRefName: "sit",
+                  author: { login: "reviewer" },
+                  updatedAt: "2026-07-16T12:00:00Z",
+                  mergeable: "MERGEABLE",
+                  reviewDecision: "REVIEW_REQUIRED",
+                  additions: 12,
+                  deletions: 3,
+                  changedFiles: 2,
+                  labels: {
+                    totalCount: 2,
+                    nodes: [{ name: "bug", color: "d73a4a" }],
+                    pageInfo: { hasNextPage: false },
+                  },
+                  reviewRequests: {
+                    nodes: [{ requestedReviewer: { login: "pmquan2cfw" } }],
+                  },
+                  assignees: { nodes: [] },
+                  commits: {
+                    nodes: [
+                      { commit: { statusCheckRollup: { state: "SUCCESS" } } },
+                    ],
+                  },
                 },
               },
             ],
-            pageInfo: { hasNextPage, endCursor },
+            pageInfo: { hasNextPage: true, endCursor: "cursor-42" },
           },
         },
       },
-    });
-    const executor = new FakeProcessExecutor(
-      [0, 1, 2].map((index) => ({
-        _tag: "Exited" as const,
+    };
+    const executor = new FakeProcessExecutor([
+      {
+        _tag: "Exited",
         exitCode: 0,
-        stdout: JSON.stringify(page(true, `cursor-${index}`)),
+        stdout: JSON.stringify(page),
         stderr: "",
-      })),
-    );
+      },
+    ]);
     const adapter = testAdapter(new CommandRunner(executor));
 
     const result = await adapter.listMaintainerPullRequests({
@@ -1522,33 +1525,26 @@ describe("GitHubAdapter read boundary", () => {
     expect(result).toMatchObject({
       _tag: "ok",
       value: {
-        complete: false,
-        pullRequests: expect.arrayContaining([
-          expect.objectContaining({
-            summary: expect.objectContaining({
-              reviewState: "review_pending",
-              mergeability: "mergeable",
-              labels: [{ name: "bug", color: "d73a4a" }],
-              labelCount: 2,
-            }),
-            checks: { overall: "passing", checks: [] },
-          }),
-        ]),
+        hasNextPage: true,
+        entries: [
+          {
+            cursor: "edge-42",
+            pullRequest: {
+              summary: {
+                reviewState: "review_pending",
+                mergeability: "mergeable",
+                labels: [{ name: "bug", color: "d73a4a" }],
+                labelCount: 2,
+              },
+              checks: { overall: "passing", checks: [] },
+            },
+          },
+        ],
       },
     });
-    if (result._tag === "ok") expect(result.value.pullRequests).toHaveLength(3);
-    expect(executor.requests).toHaveLength(3);
-    expect(executor.requests[1]).toContain("cursor=cursor-0");
-    expect(
-      executor.requests[0]?.some((argument) =>
-        argument.includes("reviewRequests(first: 50)"),
-      ),
-    ).toBe(true);
-    expect(
-      executor.requests[0]?.some((argument) =>
-        argument.includes("labels(first: 20)"),
-      ),
-    ).toBe(true);
+    expect(executor.requests).toHaveLength(1);
+    expect(executor.requests[0]).toContain("first=50");
+    expect(executor.requests[0]).toContain("state=OPEN");
   });
 
   it("surfaces label truncation via labelCount when a PR has more labels than the bounded fetch returns", async () => {
@@ -1560,32 +1556,35 @@ describe("GitHubAdapter read boundary", () => {
       data: {
         repository: {
           pullRequests: {
-            nodes: [
+            edges: [
               {
-                number: 42,
-                title: "Add safe GitHub reads",
-                isDraft: false,
-                headRefName: "feat/github-read",
-                headRefOid: headSha,
-                baseRefName: "sit",
-                author: { login: "reviewer" },
-                updatedAt: "2026-07-16T12:00:00Z",
-                mergeable: "MERGEABLE",
-                reviewDecision: "REVIEW_REQUIRED",
-                additions: 12,
-                deletions: 3,
-                changedFiles: 2,
-                labels: {
-                  totalCount: 25,
-                  nodes: truncatedLabels,
-                  pageInfo: { hasNextPage: true },
-                },
-                reviewRequests: { nodes: [] },
-                assignees: { nodes: [] },
-                commits: {
-                  nodes: [
-                    { commit: { statusCheckRollup: { state: "SUCCESS" } } },
-                  ],
+                cursor: "edge-42",
+                node: {
+                  number: 42,
+                  title: "Add safe GitHub reads",
+                  isDraft: false,
+                  headRefName: "feat/github-read",
+                  headRefOid: headSha,
+                  baseRefName: "sit",
+                  author: { login: "reviewer" },
+                  updatedAt: "2026-07-16T12:00:00Z",
+                  mergeable: "MERGEABLE",
+                  reviewDecision: "REVIEW_REQUIRED",
+                  additions: 12,
+                  deletions: 3,
+                  changedFiles: 2,
+                  labels: {
+                    totalCount: 25,
+                    nodes: truncatedLabels,
+                    pageInfo: { hasNextPage: true },
+                  },
+                  reviewRequests: { nodes: [] },
+                  assignees: { nodes: [] },
+                  commits: {
+                    nodes: [
+                      { commit: { statusCheckRollup: { state: "SUCCESS" } } },
+                    ],
+                  },
                 },
               },
             ],
@@ -1611,7 +1610,7 @@ describe("GitHubAdapter read boundary", () => {
 
     expect(result._tag).toBe("ok");
     if (result._tag !== "ok") return;
-    const summary = result.value.pullRequests[0]?.summary;
+    const summary = result.value.entries[0]?.pullRequest.summary;
     expect(summary?.labelCount).toBe(25);
     expect(summary?.labels).toHaveLength(20);
   });
@@ -2053,7 +2052,7 @@ describe("GitHubAdapter read boundary", () => {
         rateLimit: { remaining: 10, resetAt },
         repository: {
           pullRequests: {
-            nodes: [],
+            edges: [],
             pageInfo: { hasNextPage: false, endCursor: null },
           },
         },

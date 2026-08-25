@@ -870,7 +870,13 @@ export async function startLocalApiServer(
   );
   app.get("/v1/inbox", async (context) =>
     runWithRequestAbortSignal(context.req.raw.signal, async () => {
-      const result = await dashboard.inboxForActiveProfile();
+      const scope = context.req.query("scope") ?? "open";
+      if (scope !== "open")
+        return response(context, err({ reason: "invalid_input" }));
+      const page = context.req.query("page");
+      const result = await dashboard.inboxForActiveProfile(
+        page === undefined ? { scope } : { scope, pageToken: page },
+      );
       if (result._tag === "err")
         await recordProfileReloadFailure("profile-reload-inbox");
       return response(context, result);

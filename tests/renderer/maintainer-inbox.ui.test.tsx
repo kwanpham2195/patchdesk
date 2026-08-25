@@ -54,12 +54,41 @@ describe("MaintainerInbox", () => {
         freshness="fresh"
         refreshStatus="Current"
         onRefresh={vi.fn()}
+
         onOpenReview={vi.fn()}
         onOpenReviewId={open}
       />,
     );
     fireEvent.click(screen.getByRole("option"));
     expect(open).toHaveBeenCalledWith("review-1");
+  });
+
+  it("delegates page navigation through callbacks without loading an inbox itself", () => {
+    const previous = vi.fn();
+    const next = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="pagination"
+        profileLabel="P"
+        scope="open"
+        page={2}
+        hasPreviousPage
+        hasNextPage
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onPreviousPage={previous}
+        onNextPage={next}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Page 2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(previous).toHaveBeenCalledOnce();
+    expect(next).toHaveBeenCalledOnce();
   });
 
   it("carries the repository only while the view spans more than one", () => {

@@ -17,6 +17,7 @@ import {
   parsePatchdeskSettingsPatch,
   type PatchdeskConfigFile,
 } from "../domain/contracts";
+import type { InboxPageRequest } from "../domain/maintainer-inbox";
 import { err, ok, type Result } from "../domain/result";
 import type {
   WatchedRepoConfig,
@@ -89,7 +90,6 @@ const saveProfileInputSchema = v.object({
 const directEntryInputSchema = v.object({
   reference: v.string(),
 });
-
 /** Main-process composition root for the renderer's profile, dashboard, and direct-entry actions. */
 export class DashboardController {
   private readonly settings: ProfileSettingsService;
@@ -252,8 +252,8 @@ export class DashboardController {
     return ok({ profile: profile.value, dashboard: dashboard.value });
   }
 
-  /** Returns the read-only maintainer inbox for the active profile without starting a review. */
-  async inboxForActiveProfile(): Promise<
+  /** Returns one parsed read-only maintainer inbox page without starting a review. */
+  async inboxForActiveProfile(input: InboxPageRequest): Promise<
     Result<
       {
         readonly profile: WorkspaceProfileConfig;
@@ -264,8 +264,8 @@ export class DashboardController {
   > {
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
-    const inbox = await this.inboxRefresh.refresh(profile.value);
-    if (inbox._tag === "err") return failure("storage");
+    const inbox = await this.inboxRefresh.refresh(profile.value, input);
+    if (inbox._tag === "err") return failure("invalid_input");
     return ok({ profile: profile.value, inbox: inbox.value });
   }
 

@@ -62,6 +62,11 @@ export function InboxFlow({
   state,
   refreshStatus,
   onRefresh,
+  scope = "open",
+  hasPreviousPage = false,
+  hasNextPage = false,
+  onPreviousInboxPage = () => undefined,
+  onNextInboxPage = () => undefined,
   onSettings,
   onOpenWorkbench,
 }: {
@@ -72,6 +77,12 @@ export function InboxFlow({
   readonly state: DashboardScreenState;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onRefresh: () => void;
+  /** Confirmed remote scope; Phase 1 only permits open pull requests. */
+  readonly scope?: "open";
+  readonly hasPreviousPage?: boolean;
+  readonly hasNextPage?: boolean;
+  readonly onPreviousInboxPage?: () => void;
+  readonly onNextInboxPage?: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenWorkbench: (
     workbench: WorkbenchPayload,
@@ -233,6 +244,11 @@ export function InboxFlow({
       {...(openedPr === undefined ? {} : { openedPr })}
       {...(openError === undefined ? {} : { openError })}
       onRefresh={onRefresh}
+      scope={scope}
+      hasPreviousPage={hasPreviousPage}
+      hasNextPage={hasNextPage}
+      onPreviousInboxPage={onPreviousInboxPage}
+      onNextInboxPage={onNextInboxPage}
       onSettings={onSettings}
       onOpenReview={(row, initialSection) =>
         void openPullRequest(row.identity, initialSection)
@@ -258,6 +274,11 @@ function InboxScreen({
   inbox,
   dashboard,
   onRefresh,
+  scope,
+  hasPreviousPage,
+  hasNextPage,
+  onPreviousInboxPage,
+  onNextInboxPage,
   refreshStatus,
   onSettings,
   onOpenReview,
@@ -269,6 +290,11 @@ function InboxScreen({
   readonly inbox: InboxResponse;
   readonly dashboard: Dashboard;
   readonly onRefresh: () => void;
+  readonly scope: "open";
+  readonly hasPreviousPage: boolean;
+  readonly hasNextPage: boolean;
+  readonly onPreviousInboxPage: () => void;
+  readonly onNextInboxPage: () => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenReview: (
@@ -313,6 +339,12 @@ function InboxScreen({
             : { snapshot: inbox.inbox.snapshot })}
           refreshStatus={refreshStatus}
           onRefresh={onRefresh}
+          scope={scope}
+          page={inbox.inbox.page}
+          hasPreviousPage={hasPreviousPage}
+          hasNextPage={hasNextPage}
+          onPreviousPage={onPreviousInboxPage}
+          onNextPage={onNextInboxPage}
           onOpenReview={onOpenReview}
           onOpenReviewId={onOpenReviewId}
         />

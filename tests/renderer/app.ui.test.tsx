@@ -9,12 +9,13 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { parseContentHash } from "../../src/domain/ids";
 import { App, type ReviewWorkbenchLoader } from "../../src/renderer/src/app";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchFlowProps } from "../../src/renderer/src/flows/review-workbench-flow";
 
 const sha = "a".repeat(40);
-const patchHash = "b".repeat(64);
+const patchHash = contentHashFixture("b".repeat(64));
 
 afterEach(() => {
   cleanup();
@@ -83,7 +84,9 @@ describe("App Review route loading", () => {
         screen.getByText("GitHub: Cached after refresh failure"),
       ).toBeTruthy(),
     );
-    expect((refresh as HTMLButtonElement).disabled).toBe(false);
+    if (!(refresh instanceof HTMLButtonElement))
+      throw new Error("Expected refresh control to be a button");
+    expect(refresh.disabled).toBe(false);
     if (originalVisibility === undefined)
       Reflect.deleteProperty(document, "visibilityState");
     else Object.defineProperty(document, "visibilityState", originalVisibility);
@@ -213,7 +216,7 @@ function installDesktop(
     configurable: true,
     value: {
       request: async (input: { readonly path?: string }) => {
-        if (input.path === "/v1/inbox") {
+        if (input.path === "/v1/inbox?scope=open") {
           inboxRequests += 1;
           if (options.failInboxRefresh && inboxRequests > 1) {
             if (options.inboxRefreshGate !== undefined)
@@ -235,7 +238,7 @@ function installDesktop(
                     ghAccount: "fixture",
                   },
                 ]
-              : input.path === "/v1/inbox"
+              : input.path === "/v1/inbox?scope=open"
                 ? inbox()
                 : input.path === "/v1/reviews/load"
                   ? projection()
@@ -255,7 +258,13 @@ function inbox() {
       githubHost: "github.com",
       ghAccount: "fixture",
     },
-    inbox: { rows: [], repositories: [], dataFreshness: "fresh" },
+    inbox: {
+      scope: "open",
+      page: 1,
+      rows: [],
+      repositories: [],
+      dataFreshness: "fresh",
+    },
   };
 }
 
@@ -281,7 +290,7 @@ function projection(
       currentHeadSha: sha,
       freshness: "fresh",
       refreshedAt: "2026-08-01T00:00:00.000Z",
-      patchHash: patchHash as never,
+      patchHash,
     },
     fullPatch:
       "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
@@ -314,7 +323,7 @@ function projection(
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
     mergeReasons: [],
     ...overrides,
-  } as WorkbenchResponse;
+  } satisfies WorkbenchResponse;
 }
 
 function replacedProjection(): WorkbenchResponse {
@@ -326,14 +335,16 @@ function replacedProjection(): WorkbenchResponse {
     pullRequest: {
       ...pullRequest,
       title: "Replaced",
-    } as WorkbenchResponse["pullRequest"],
+    },
   });
 }
 
-function promise<T>(): {
+type Deferred<T> = {
   readonly promise: Promise<T>;
   readonly resolve: (value: T) => void;
-} {
+};
+
+function promise<T>(): Deferred<T> {
   let resolve: (value: T) => void = () => undefined;
   return {
     promise: new Promise<T>((done) => {
@@ -341,4 +352,10 @@ function promise<T>(): {
     }),
     resolve,
   };
+}
+
+function contentHashFixture(value: string) {
+  const parsed = parseContentHash(value);
+  if (parsed._tag === "err") throw new Error("Expected a content hash fixture");
+  return parsed.value;
 }

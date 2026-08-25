@@ -434,3 +434,18 @@ export type PullRequestSummary = PullRequestSnapshot & {
   readonly additions?: number;
   readonly deletions?: number;
 };
+
+/** One pull request plus the check summary returned by a bounded inbox GraphQL page. */
+export type MaintainerPullRequest = {
+  readonly summary: PullRequestSummary;
+  readonly checks: CheckSummary;
+};
+
+/** One repository page preserves every GitHub edge cursor needed for global inbox pagination. */
+export type MaintainerPullRequestPage = {
+  readonly entries: ReadonlyArray<{
+    readonly cursor: string;
+    readonly pullRequest: MaintainerPullRequest;
+  }>;
+  readonly hasNextPage: boolean;
+};
