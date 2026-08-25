@@ -132,6 +132,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/**
+ * The review endpoints a test drove, in order. Scoped to `/v1/reviews/` on
+ * purpose: the renderer also flushes `/v1/logs` through the same bridge, and
+ * whether it lands mid-test depends on timing, so asserting over every captured
+ * request made these cases order-dependent and intermittently red.
+ */
+function reviewRequestPaths(
+  requests: ReadonlyArray<{ readonly path: string }>,
+): ReadonlyArray<string> {
+  return requests
+    .map((request) => request.path)
+    .filter((path) => path.startsWith("/v1/reviews/"));
+}
+
 describe("InboxFlow saved-review recovery", () => {
   it("falls back to opening by PR identity when the stored review cannot be loaded", async () => {
     const requests: Array<{ readonly path: string; readonly body?: unknown }> =
@@ -180,7 +194,7 @@ describe("InboxFlow saved-review recovery", () => {
     );
     fireEvent.click(screen.getByRole("option"));
     await waitFor(() => expect(onOpenWorkbench).toHaveBeenCalled());
-    expect(requests.map((request) => request.path)).toEqual([
+    expect(reviewRequestPaths(requests)).toEqual([
       "/v1/reviews/load",
       "/v1/reviews/open",
     ]);
@@ -250,9 +264,7 @@ describe("InboxFlow merged review opening", () => {
     fireEvent.click(screen.getByRole("option"));
 
     await waitFor(() => expect(onOpenWorkbench).toHaveBeenCalledOnce());
-    expect(requests.map((request) => request.path)).toEqual([
-      "/v1/reviews/open-merged",
-    ]);
+    expect(reviewRequestPaths(requests)).toEqual(["/v1/reviews/open-merged"]);
   });
 });
 
