@@ -4,6 +4,42 @@ Patchdesk is a local-first workbench for maintainers who evaluate GitHub pull re
 
 ## Language
 
+**Pull requests screen**:
+The surface where a maintainer picks a Selected repository and finds the pull request to review. It is read-only: it opens Reviews and performs no GitHub write. It holds two listings that never merge — the Repository listing, which GitHub answers, and the Local review listing, which Patchdesk owns.
+_Avoid_: Maintainer inbox, dashboard, queue, feed
+
+**Selected repository**:
+The one watched repository a Pull requests screen represents. Every listing, filter, count, and page in the Pull requests screen is scoped to it. Patchdesk shows no combined view across repositories; a maintainer answers a cross-repository question by selecting each repository in turn.
+_Avoid_: Active repo, current repo, repo filter, watchlist scope
+
+**Repository listing**:
+The Pull requests screen's list of GitHub pull requests in the Selected repository. GitHub decides membership, order, and count from the Pull request filter, and pages the result. Patchdesk does not re-filter, re-sort, or re-count what comes back, so what the listing reports is GitHub's answer for the whole repository rather than for the loaded page.
+_Avoid_: Inbox rows, search results, PR feed
+
+**Local review listing**:
+The Pull requests screen's list of the maintainer's Review sessions for the Selected repository. Patchdesk owns it, it is bounded by the reviews the maintainer has actually opened, and it is always read whole — never filtered by GitHub, never paginated, and always exactly counted.
+_Avoid_: My reviews queue, saved reviews, session cache
+
+**Pull request filter**:
+The maintainer's chosen constraints on the Repository listing, expressed in GitHub's own search vocabulary — open or merged state, author, label, assignee, milestone, project, review state, check status, branch, and date. Patchdesk adds no filter GitHub cannot express, and applies none of them itself.
+_Avoid_: Inbox filter, queue, saved view, facet
+
+**Review indicator**:
+A signal on one Pull requests screen row that Patchdesk derives instead of reading from GitHub. There are two: Updated since review and Ready to merge. Both are computed from the Local review listing, and neither filters, orders, or groups the Repository listing.
+_Avoid_: Inbox indicator, category, tag, queue
+
+**Updated since review**:
+The Review indicator for a pull request whose current head has moved past the pinned revision of the maintainer's Review session. GitHub cannot express this condition in a search, so it is Patchdesk's to compute and Patchdesk's alone to show.
+_Avoid_: Stale review, outdated review, needs re-review
+
+**Ready to merge**:
+The Review indicator for a pull request whose Review session matches the current head, whose checks pass, and which GitHub reports mergeable. It is asserted only from fresh GitHub state and never from a cached snapshot, because a merge-shaped claim Patchdesk cannot currently prove is worse than no claim.
+_Avoid_: Mergeable, approved, green, good to go
+
+**Recommended action**:
+The single primary command a Pull requests screen row offers. Exactly one per row, chosen from the row's Review indicators and its Review session. It states what the maintainer would do next, not everything they could do.
+_Avoid_: Row actions, quick actions, suggested next step
+
 **Review**:
 A maintainer's end-to-end evaluation of an open pull request. It continues as the pull request receives updates and ends when the pull request is merged or closed, whether or not the maintainer uses model analysis.
 _Avoid_: Model review, completed review, prepared review

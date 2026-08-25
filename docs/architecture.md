@@ -21,7 +21,7 @@ flowchart TB
     subgraph Electron
         direction TB
         subgraph Renderer["Renderer process (sandboxed React)"]
-            UI["Inbox and Review workbench"]
+            UI["Pull requests and Review workbench"]
         end
         subgraph Main["Main process (Node)"]
             Bridge["Desktop bridge<br/>route allowlist"]
@@ -152,7 +152,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-diff-source-service.ts`, `review-patch-index.ts`, and `review-inspector.ts` read the diff and expose a bounded, immutable inspector to model agents.
 - `review-recovery-service.ts` recovers a Review after an interrupted operation.
 - `review-diagnostic-service.ts` and `app-log-service.ts` implement observability.
-- `dashboard-service.ts`, `maintainer-inbox-service.ts`, and `inbox-refresh-coordinator.ts` implement the maintainer inbox.
+- `dashboard-service.ts`, `maintainer-inbox-service.ts`, and `inbox-refresh-coordinator.ts` implement the Pull requests screen.
 
 **Architecture Invariant:** services receive parsed domain values.
 They never parse raw input themselves and never trust the renderer's claims.
@@ -257,7 +257,7 @@ Patchdesk serializes mutations at two levels:
 
 - `ReviewOperationCoordinator` queues every mutation or reconciliation for one Review. Command callers use a non-waiting acquire/release pair so a user action returns an immediate in-progress result instead of blocking behind another action.
 - `ReviewLifecycleGate` serializes durable lifecycle mutations per workspace profile.
-- `InboxRefreshCoordinator` coalesces concurrent inbox scans for one profile.
+- `InboxRefreshCoordinator` coalesces concurrent pull-request scans for one profile.
 
 **Architecture Invariant:** one owner mutates one Review at a time.
 There is no lock-free mutation of a Review anywhere.
