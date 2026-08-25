@@ -33,7 +33,6 @@ export type InboxCacheRepository = {
   readonly identity: Omit<PullRequestRef, "number">;
   readonly state:
     | "ready"
-    | "missing_local_path"
     | "github_auth"
     | "github_read"
     | "github_rate_limited"
@@ -150,10 +149,7 @@ const rowSchema = v.strictObject({
       "updated_since_review",
       "waiting_for_author",
       "checks_failing",
-      "checks_pending",
       "ready_to_merge",
-      "draft",
-      "authored",
       "saved_review",
     ]),
   ),
@@ -174,7 +170,6 @@ const cacheSchema = v.strictObject({
       }),
       state: v.picklist([
         "ready",
-        "missing_local_path",
         "github_auth",
         "github_read",
         "github_rate_limited",

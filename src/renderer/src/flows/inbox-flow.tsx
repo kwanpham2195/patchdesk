@@ -895,26 +895,6 @@ function Outcome({
         </AlertDescription>
       </Alert>
     );
-  if (state === "degraded")
-    return (
-      <Alert className="mt-6">
-        <AlertTitle>Some repositories need attention</AlertTitle>
-        <AlertDescription>
-          A local checkout path is missing, so repository-aware review is
-          blocked only for those repositories. Healthy repositories remain
-          available.
-          <div>
-            <Button
-              className="mt-3"
-              variant="outline"
-              onClick={() => onSettings()}
-            >
-              Open Settings to choose a local path
-            </Button>
-          </div>
-        </AlertDescription>
-      </Alert>
-    );
   return (
     <section className="mt-6 space-y-2">
       {repos.flatMap(({ repo, state: outcome, resumeAt, forbiddenReason }) =>

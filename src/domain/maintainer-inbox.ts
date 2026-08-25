@@ -30,10 +30,7 @@ export type InboxCategory =
   | "updated_since_review"
   | "waiting_for_author"
   | "checks_failing"
-  | "checks_pending"
   | "ready_to_merge"
-  | "draft"
-  | "authored"
   | "saved_review";
 
 export type InboxRecommendedAction =
@@ -114,9 +111,6 @@ export function projectMaintainerInboxRow(input: {
   )
     categories.push("waiting_for_author");
   if (input.checks.overall === "failing") categories.push("checks_failing");
-  if (input.checks.overall === "pending") categories.push("checks_pending");
-  if (input.summary.isDraft) categories.push("draft");
-  if (input.summary.author === input.activeAccount) categories.push("authored");
   if (review?.matchesCurrentHead) categories.push("saved_review");
   if (
     input.dataFreshness === "fresh" &&

@@ -2,7 +2,6 @@ export type DashboardScreenState =
   | "empty"
   | "loading"
   | "success"
-  | "degraded"
   | "error"
   | "no_open_prs";
 
