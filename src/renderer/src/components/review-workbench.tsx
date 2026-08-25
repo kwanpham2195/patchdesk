@@ -62,7 +62,6 @@ import {
   pullRequestPageUrl,
 } from "../external-links";
 import { DiffWorkbench } from "./diff-workbench";
-import { CallFlowPanel } from "./call-flow-panel";
 import type {
   LocalCommentAuthoring,
   LocalCommentLocation,
@@ -364,7 +363,7 @@ export type ReviewWorkbenchSlots = {
 };
 
 export type ReviewWorkbenchInitialState = {
-  readonly activeTab?: "conversation" | "diff" | "call_flow" | "insights";
+  readonly activeTab?: "conversation" | "diff" | "insights";
   readonly section?: ReviewNavigatorSection | "insights";
   readonly selectedPath?: string;
   readonly selectedCommitSha?: string;
@@ -397,7 +396,7 @@ export function ReviewWorkbench({
   readonly initialState?: ReviewWorkbenchInitialState;
   /** Reports a visible navigation command so reloads can restore it. */
   readonly onPositionCommitted?: (state: {
-    readonly activeTab: "conversation" | "diff" | "call_flow" | "insights";
+    readonly activeTab: "conversation" | "diff" | "insights";
     readonly section: ReviewNavigatorSection;
     readonly selectedPath?: string;
   }) => void;
@@ -474,7 +473,7 @@ export function ReviewWorkbench({
       : (initialState?.section ?? "files"),
   );
   const [activeTab, setActiveTab] = useState<
-    "conversation" | "diff" | "call_flow" | "insights"
+    "conversation" | "diff" | "insights"
   >(
     initialState?.activeTab ??
       (initialState?.section === "insights" ? "insights" : "diff"),
@@ -500,7 +499,7 @@ export function ReviewWorkbench({
   >(undefined);
   const commitWorkbenchPosition = useCallback(
     (next: {
-      readonly activeTab: "conversation" | "diff" | "call_flow" | "insights";
+      readonly activeTab: "conversation" | "diff" | "insights";
       readonly section: ReviewNavigatorSection;
       readonly selectedPath?: string;
     }): void => {
@@ -967,14 +966,6 @@ export function ReviewWorkbench({
             Diff
           </TabButton>
           <TabButton
-            active={activeTab === "call_flow"}
-            onClick={() =>
-              commitWorkbenchPosition({ activeTab: "call_flow", section })
-            }
-          >
-            Call Flow
-          </TabButton>
-          <TabButton
             active={activeTab === "insights"}
             onClick={() =>
               commitWorkbenchPosition({
@@ -1188,119 +1179,6 @@ export function ReviewWorkbench({
                   </div>
                 </div>
               )}
-            </div>
-          ) : activeTab === "call_flow" ? (
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <div
-                data-review-call-flow-layout={
-                  navigatorVisible ? "with-navigator" : "collapsed-navigator"
-                }
-                style={navigatorVisible ? navigatorGridStyle : undefined}
-                className={cn(
-                  "grid h-full min-h-0 flex-1",
-                  navigatorVisible
-                    ? "grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]"
-                    : "grid-cols-[2.75rem_minmax(0,1fr)]",
-                )}
-              >
-                {navigatorVisible ? (
-                  <ReviewNavigator
-                    patch={model.fullPatch ?? ""}
-                    commits={model.commits}
-                    conversationThreadEntries={conversationThreadEntries}
-                    section={section}
-                    {...(selectedPath === undefined ? {} : { selectedPath })}
-                    {...(activePath === undefined ? {} : { activePath })}
-                    {...(selectedCommitSha === undefined
-                      ? {}
-                      : { selectedCommitSha })}
-                    {...(selectedThreadId === undefined
-                      ? {}
-                      : { selectedThreadId })}
-                    onSectionChange={selectSection}
-                    onFileSelect={(path) => {
-                      commitWorkbenchPosition({
-                        activeTab: "diff",
-                        section: "files",
-                        selectedPath: path,
-                      });
-                      setActivePath(path);
-                      setSelectedThreadId(undefined);
-                      setSelectedRange(undefined);
-                    }}
-                    onCommitSelect={selectCommit}
-                    onThreadSelect={(row: ConversationThreadRow) => {
-                      setSelectedThreadId(row.id);
-                      setSelectedRange({
-                        start: row.start,
-                        end: row.end,
-                        side: row.side,
-                      });
-                      commitWorkbenchPosition({
-                        activeTab: "diff",
-                        section: "threads",
-                        selectedPath: row.path,
-                      });
-                      setActivePath(row.path);
-                    }}
-                    onCollapse={() => setNavigatorVisible(false)}
-                  />
-                ) : (
-                  <div className="flex items-start justify-center pt-2">
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            size="icon-sm"
-                            variant="outline"
-                            onClick={() => setNavigatorVisible(true)}
-                            aria-label="Show review navigator"
-                          />
-                        }
-                      >
-                        <PanelLeftOpen />
-                      </TooltipTrigger>
-                      <TooltipContent>Show review navigator</TooltipContent>
-                    </Tooltip>
-                  </div>
-                )}
-                {navigatorVisible ? (
-                  <div className="h-full w-3">
-                    <ReviewNavigatorResizeHandle
-                      widthRem={navigatorWidthRem}
-                      onResize={handleNavigatorResize}
-                      onResizeEnd={handleNavigatorResizeEnd}
-                    />
-                  </div>
-                ) : null}
-                <div className="min-h-0 min-w-0">
-                  <CallFlowPanel
-                    key={model.session.id}
-                    profileId={model.session.key.profileId}
-                    sessionId={model.session.id}
-                    headSha={model.revision.reviewedHeadSha}
-                    onOpenSource={(target) => {
-                      commitWorkbenchPosition({
-                        activeTab: "diff",
-                        section: "files",
-                        selectedPath: target.path,
-                      });
-                      setActivePath(target.path);
-                      setSelectedCommitSha(undefined);
-                      setSelectedThreadId(undefined);
-                      setSelectedRange(
-                        target.line === undefined
-                          ? undefined
-                          : {
-                              start: target.line,
-                              end: target.endLine ?? target.line,
-                              side: target.status === "removed" ? "old" : "new",
-                            },
-                      );
-                    }}
-                  />
-                </div>
-              </div>
             </div>
           ) : (
             <div

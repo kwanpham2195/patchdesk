@@ -1,9 +1,5 @@
 import * as v from "valibot";
 
-import {
-  CALL_FLOW_LANGUAGE_NAMES,
-  type CallFlowNode,
-} from "../../domain/call-flow";
 import type { RawJsonValue } from "../../domain/json";
 import { INBOX_PAGE_SIZES } from "../../domain/maintainer-inbox";
 
@@ -1077,77 +1073,5 @@ export function parseInsightProviderCatalog(
   input: unknown,
 ): InsightProviderCatalog | undefined {
   const parsed = v.safeParse(insightProviderCatalogSchema, input);
-  return parsed.success ? parsed.output : undefined;
-}
-
-const callFlowNodeSchema: v.GenericSchema<CallFlowNode> = v.lazy(() =>
-  v.strictObject({
-    key: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
-    label: v.pipe(v.string(), v.minLength(1), v.maxLength(4_096)),
-    status: v.picklist(["same", "added", "removed"]),
-    kind: v.optional(v.picklist(["call", "branch"])),
-    file: v.optional(repoRelativePathSchema),
-    line: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
-    endLine: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
-    children: v.pipe(v.array(callFlowNodeSchema), v.maxLength(5_000)),
-  }),
-);
-const callFlowSnapshotSchema = v.strictObject({
-  sessionId: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
-  baseSha: v.pipe(v.string(), v.regex(/^[a-f0-9]{40}$/)),
-  headSha: v.pipe(v.string(), v.regex(/^[a-f0-9]{40}$/)),
-});
-const callFlowLanguagesSchema = v.strictObject({
-  analyzed: v.array(v.picklist(CALL_FLOW_LANGUAGE_NAMES)),
-  available: v.literal(CALL_FLOW_LANGUAGE_NAMES.length),
-  skippedChangedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
-});
-const callFlowResponseSchema = v.variant("state", [
-  v.strictObject({
-    state: v.literal("ready"),
-    snapshot: callFlowSnapshotSchema,
-    trees: v.pipe(
-      v.array(
-        v.strictObject({
-          entry: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
-          ascii: v.pipe(v.string(), v.maxLength(750_100)),
-          tree: callFlowNodeSchema,
-        }),
-      ),
-      v.maxLength(100),
-    ),
-    ascii: v.pipe(v.string(), v.maxLength(750_100)),
-    changedSteps: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    contextSteps: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    impactedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    languages: callFlowLanguagesSchema,
-    truncated: v.boolean(),
-  }),
-  v.strictObject({
-    state: v.literal("unsupported"),
-    snapshot: callFlowSnapshotSchema,
-    languages: callFlowLanguagesSchema,
-  }),
-  v.strictObject({
-    state: v.literal("unavailable"),
-    reason: v.picklist([
-      "metadata_only",
-      "runtime_unavailable",
-      "timed_out",
-      "execution_failed",
-      "too_large",
-      "cancelled",
-    ]),
-  }),
-]);
-
-export type CallFlowResponse = v.InferOutput<typeof callFlowResponseSchema>;
-
-/** Rejects malformed main-process Call Flow output before it reaches UI state. */
-export function parseCallFlowResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the renderer's strict JSON boundary parser for the Call Flow response.
-  input: unknown,
-): CallFlowResponse | undefined {
-  const parsed = v.safeParse(callFlowResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }

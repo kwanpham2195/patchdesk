@@ -54,7 +54,6 @@ export default defineConfig({
       rollupOptions: {
         input: {
           "electron-main": "src/main/electron-main.ts",
-          "call-flow-runner": "src/main/call-flow-runner.ts",
         },
       },
     },

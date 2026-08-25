@@ -1,7 +1,5 @@
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   optional,
   array,
@@ -130,8 +128,6 @@ import {
 } from "../services/review-worktree-service";
 import { ReviewWriteGate } from "../services/review-write-gate";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
-import { CallFlowChildInvoker } from "../services/call-flow-child-invoker";
-import { CallFlowService } from "../services/call-flow-service";
 import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
 import type { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import { readObjectField } from "../services/read-object-field";
@@ -386,8 +382,6 @@ export type LocalApiConfiguration = {
     Partial<
       Pick<InsightRunCoordinator, "updateWalkthroughProgress" | "addFinding">
     >;
-  /** Test-only Call Flow seam; production runs the app-owned deterministic child. */
-  readonly callFlow?: Pick<CallFlowService, "load">;
   /**
    * Enables the automatic retention sweep after startup and every 24 hours.
    * Main-process-only; local integration tests keep it off.
@@ -797,15 +791,6 @@ export async function startLocalApiServer(
     sessions,
     configuration.readOnlyGit ?? readOnlyGit,
   );
-  const callFlow =
-    configuration.callFlow ??
-    new CallFlowService(
-      sessions,
-      new CallFlowChildInvoker(
-        commands,
-        join(dirname(fileURLToPath(import.meta.url)), "call-flow-runner.js"),
-      ),
-    );
   const reviewWorkbench = new ReviewWorkbenchController(
     reviewPreparation,
     reviewProjection,
@@ -1328,11 +1313,6 @@ export async function startLocalApiServer(
   });
   app.post("/v1/reviews/diff-file", async (context) =>
     response(context, await reviewDiffSources.load(await jsonBody(context))),
-  );
-  app.post("/v1/reviews/call-flow", async (context) =>
-    runWithRequestAbortSignal(context.req.raw.signal, async () =>
-      response(context, await callFlow.load(await jsonBody(context))),
-    ),
   );
   app.post("/v1/reviews/merge", async (context) =>
     mergeWrites === undefined

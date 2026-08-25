@@ -12,7 +12,7 @@ const WORKBENCH_UI_KEY_PREFIX = "patchdesk.workbench-ui.v1.";
 const SETTINGS_RESTORE_KEY = "patchdesk.settings.v1";
 
 export type WorkbenchUiState = {
-  activeTab?: "conversation" | "diff" | "call_flow" | "insights";
+  activeTab?: "conversation" | "diff" | "insights";
   section?: "files" | "commits" | "insights" | "threads";
   selectedPath?: string;
 };
@@ -81,12 +81,7 @@ export function clearSettingsRestore(): void {
   window.sessionStorage.removeItem(SETTINGS_RESTORE_KEY);
 }
 
-const activeTabSchema = v.picklist([
-  "conversation",
-  "diff",
-  "call_flow",
-  "insights",
-]);
+const activeTabSchema = v.picklist(["conversation", "diff", "insights"]);
 const sectionNameSchema = v.picklist([
   "files",
   "commits",
