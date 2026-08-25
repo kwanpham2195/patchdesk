@@ -823,6 +823,13 @@ function ReviewDiffRenderSite({
             selectedLines={selectedLines}
             className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-auto overflow-y-auto font-mono outline-none [contain:strict] [overflow-anchor:none] focus-visible:ring-2 focus-visible:ring-ring"
             style={DIFF_CODE_METRICS}
+            // The @pierre/diffs Web Worker keeps its own highlighter and
+            // never redraws the theme CSS after a theme change, so the diff
+            // stays stuck on Pierre's default theme. Highlighting on the
+            // main thread does redraw it, at a cost: ~20% higher average
+            // frame time and 6x more frames over 32ms when scrolling a
+            // large diff. Remove this once @pierre/diffs fixes the worker.
+            disableWorkerPool
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
             renderAnnotation={renderAnnotation}
