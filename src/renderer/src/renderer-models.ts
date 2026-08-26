@@ -20,7 +20,7 @@ export type Repo = {
   readonly host: string;
   readonly owner: string;
   readonly repo: string;
-  readonly localPath?: string;
+  readonly localPath?: string | undefined;
 };
 
 export type RepoOutcome = {

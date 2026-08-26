@@ -134,6 +134,13 @@ const inboxResponseSchema = v.strictObject({
           host: v.pipe(v.string(), v.minLength(1)),
           owner: v.pipe(v.string(), v.minLength(1)),
           repo: v.pipe(v.string(), v.minLength(1)),
+          // Absent on a watched repository with no local checkout configured
+          // (the main process omits the key rather than sending `null`; see
+          // `parseWatchedRepo` in `src/domain/workspace-profile.ts`). Without
+          // this field the Settings watchlist grouping
+          // (`groupWatchlistEntries` in `settings-workspace-repositories.tsx`)
+          // could never match a repo to its saved workspace root.
+          localPath: v.optional(v.pipe(v.string(), v.minLength(1))),
         }),
       ),
     ),

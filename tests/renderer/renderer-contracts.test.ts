@@ -150,6 +150,43 @@ describe("parseInboxResponse", () => {
     expect(parsed).toBeDefined();
     expect(parsed?.inbox.matchCount).toBeUndefined();
   });
+
+  it("carries a watched repository's localPath across the IPC boundary", () => {
+    const parsed = parseInboxResponse({
+      ...response,
+      profile: {
+        ...response.profile,
+        repos: [
+          {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "cfw-sales-crm-api",
+            localPath: "/Users/kwanpham/Work/cfw/cfw-sales-crm-api",
+          },
+        ],
+      },
+    });
+    expect(parsed?.profile.repos?.[0]?.localPath).toBe(
+      "/Users/kwanpham/Work/cfw/cfw-sales-crm-api",
+    );
+  });
+
+  it("still parses a watched repository with no localPath, the main process's shape for a repo with no local checkout", () => {
+    const parsed = parseInboxResponse({
+      ...response,
+      profile: {
+        ...response.profile,
+        repos: [
+          {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "cfw-bo-customer-management-service",
+          },
+        ],
+      },
+    });
+    expect(parsed?.profile.repos?.[0]?.localPath).toBeUndefined();
+  });
 });
 
 describe("parseRepositoryLabelListResponse", () => {
