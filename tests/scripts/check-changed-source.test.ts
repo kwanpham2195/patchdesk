@@ -28,12 +28,48 @@ type HarnessOptions = {
   readonly ratchetDiagnosticsCount?: number;
   /** Raw ratchet Oxlint result. Overrides `ratchetDiagnosticsCount`. */
   readonly ratchetResult?: CommandResult;
+  /**
+   * `git show` result keyed by its `<revision>:<path>` argument, for the
+   * size ratchet. When this is left unset entirely, any `git show` call
+   * gets `DEFAULT_SHOW_CONTENT` (a few short lines), which never trips the
+   * ratchet, so tests that are not about file sizes do not need to know it
+   * runs at all. Once a test configures ANY spec here, every other spec the
+   * ratchet reads must be configured too -- an unlisted spec then reports
+   * "absent", the same as a real revision that does not have that path.
+   */
+  readonly showResults?: ReadonlyMap<string, CommandResult>;
+  /**
+   * The resolved-base/resolved-head rename pairing the size ratchet asks
+   * for whenever a changed path is absent under its own name at the
+   * resolved base commit. Keyed by the path's name at head, valued by its
+   * name at base. Defaults to no renames.
+   */
+  readonly renameMap?: ReadonlyMap<string, string>;
 };
 
 const cwd = "/fixture/project";
 
 /** Where the gate must find a pinned tool: never a same-named binary on PATH. */
 const pinned = (name: string): string => `${cwd}/node_modules/.bin/${name}`;
+
+/** Well under every size-ratchet limit, so unrelated tests never trip it. */
+const DEFAULT_SHOW_CONTENT = "one\ntwo\nthree\n";
+
+/**
+ * Encodes a rename map into the `git diff --name-status -M -z` output the
+ * size ratchet's rename lookup parses. Each entry becomes one `R100`
+ * (old-path, new-path) record; an empty/absent map means "no renames".
+ */
+function renameDiffStdout(
+  renameMap: ReadonlyMap<string, string> | undefined,
+): string {
+  if (renameMap === undefined) return "";
+  let stdout = "";
+  for (const [newPath, oldPath] of renameMap) {
+    stdout += `R100\0${oldPath}\0${newPath}\0`;
+  }
+  return stdout;
+}
 
 const PINNED_TOOLS: ReadonlySet<string> = new Set([
   "node_modules/.bin/oxfmt",
@@ -87,11 +123,30 @@ function createHarness(options: HarnessOptions = {}) {
     if (command === "git" && args[0] === "rev-parse") {
       if (args.includes("--output=/tmp/changed-source^{commit}"))
         return failure("option-like commit reference", 128);
-      return success(
-        args.includes("base-sha^{commit}")
-          ? `${resolvedBase}\n`
-          : `${resolvedHead}\n`,
-      );
+      if (args.includes("base-sha^{commit}"))
+        return success(`${resolvedBase}\n`);
+      if (args.includes("head-sha^{commit}"))
+        return success(`${resolvedHead}\n`);
+      // The size ratchet re-validates the already-resolved base/head
+      // commits before reading anything at them; only the exit code (0)
+      // matters for that, not this content.
+      return success("irrelevant-but-valid\n");
+    }
+    if (
+      command === "git" &&
+      args[0] === "diff" &&
+      args.includes("--name-status")
+    )
+      return success(renameDiffStdout(options.renameMap));
+    if (command === "git" && args[0] === "show") {
+      const spec = args[1];
+      const configured =
+        spec === undefined ? undefined : options.showResults?.get(spec);
+      if (configured !== undefined) return configured;
+      if (options.showResults !== undefined && options.showResults.size > 0) {
+        return failure(`fatal: path '${String(spec)}' does not exist`, 128);
+      }
+      return success(DEFAULT_SHOW_CONTENT);
     }
     if (command === "git")
       return (
@@ -156,7 +211,7 @@ describe("checkChangedSource", () => {
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(0);
-    expect(harness.calls[3]?.args.at(-1)).toBe("src/renamed.ts");
+    expect(harness.calls[7]?.args.at(-1)).toBe("src/renamed.ts");
   });
 
   it("keeps paths with spaces as one formatter argument", async () => {
@@ -167,7 +222,7 @@ describe("checkChangedSource", () => {
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(0);
-    expect(harness.calls[3]?.args).toEqual([
+    expect(harness.calls[7]?.args).toEqual([
       "--check",
       "--no-error-on-unmatched-pattern",
       path,
@@ -184,6 +239,10 @@ describe("checkChangedSource", () => {
       "git",
       "git",
       "git",
+      "git",
+      "git",
+      "git",
+      "git",
       pinned("oxfmt"),
     ]);
     expect(harness.stderr.join("")).toContain("format error");
@@ -196,6 +255,10 @@ describe("checkChangedSource", () => {
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(1);
     expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
+      "git",
+      "git",
+      "git",
       "git",
       "git",
       "git",
@@ -259,8 +322,8 @@ describe("checkChangedSource", () => {
           command === "git" && (args[1] === "--cached" || args[0] === "add"),
       ),
     ).toBe(false);
-    expect(harness.calls[3]?.args).toContain("--check");
-    expect(harness.calls[4]?.args).not.toContain("--fix");
+    expect(harness.calls[7]?.args).toContain("--check");
+    expect(harness.calls[8]?.args).not.toContain("--fix");
   });
 
   it("fails the lint ratchet when repo-wide findings rise above the baseline", async () => {
@@ -379,4 +442,116 @@ describe("checkChangedSource", () => {
     );
     expect(harness.stderr.join("")).toContain("core dumped");
   });
+
+  it("fails the size ratchet using the resolved base and head commits, before Oxfmt, Oxlint, or the lint ratchet run", async () => {
+    const harness = createHarness({
+      showResults: new Map([
+        [`${resolvedBase}:src/example.ts`, success(linesOf(1001))],
+        [`${resolvedHead}:src/example.ts`, success(linesOf(1002))],
+      ]),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
+      "git",
+      "git",
+      "git",
+      "git",
+      "git",
+      "git",
+    ]);
+    // calls[3] is the ratchet's own validation of the resolved head commit
+    // (`rev-parse`) before it trusts a nonzero `git show` exit as "absent".
+    expect(harness.calls[4]?.args).toEqual([
+      "show",
+      `${resolvedHead}:src/example.ts`,
+    ]);
+    // calls[5] validates the resolved base commit the same way.
+    expect(harness.calls[6]?.args).toEqual([
+      "show",
+      `${resolvedBase}:src/example.ts`,
+    ]);
+    expect(harness.stderr.join("")).toContain("src/example.ts");
+    expect(harness.stderr.join("")).toContain("1001");
+    expect(harness.stderr.join("")).toContain("1002");
+    expect(harness.stderr.join("")).toContain("Move something out");
+  });
+
+  it("passes the size ratchet and still runs Oxfmt, Oxlint, and the lint ratchet when a changed file is well within the limits", async () => {
+    const harness = createHarness({
+      showResults: new Map([
+        [`${resolvedBase}:src/example.ts`, success(linesOf(10))],
+        [`${resolvedHead}:src/example.ts`, success(linesOf(12))],
+      ]),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
+      "git",
+      "git",
+      "git",
+      "git",
+      "git",
+      "git",
+      pinned("oxfmt"),
+      pinned("oxlint"),
+      pinned("oxlint"),
+    ]);
+  });
+
+  it("passes a rename between the resolved base and head commits over 500 lines by reading its old path's line count at base", async () => {
+    // The changed-file list only ever names the NEW path
+    // (`--diff-filter=ACMR`), so `git show <resolvedBase>:<newpath>` fails
+    // here -- not because the file is new, but because it lived under
+    // "src/old.ts" at the resolved base commit.
+    const renamed = "src/renamed.ts";
+    const oldPath = "src/old.ts";
+    const harness = createHarness({
+      diffOutput: `${renamed}\0`,
+      existingPaths: new Set([renamed]),
+      showResults: new Map([
+        [`${resolvedHead}:${renamed}`, success(linesOf(550))],
+        [
+          `${resolvedBase}:${renamed}`,
+          failure("fatal: path does not exist", 128),
+        ],
+        [`${resolvedBase}:${oldPath}`, success(linesOf(500))],
+      ]),
+      renameMap: new Map([[renamed, oldPath]]),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.stderr.join("")).toBe("");
+  });
+
+  it("still fails a rename between the resolved base and head commits that grew past 1,000 lines, naming both counts", async () => {
+    const renamed = "src/renamed.ts";
+    const oldPath = "src/old.ts";
+    const harness = createHarness({
+      diffOutput: `${renamed}\0`,
+      existingPaths: new Set([renamed]),
+      showResults: new Map([
+        [`${resolvedHead}:${renamed}`, success(linesOf(1010))],
+        [
+          `${resolvedBase}:${renamed}`,
+          failure("fatal: path does not exist", 128),
+        ],
+        [`${resolvedBase}:${oldPath}`, success(linesOf(1001))],
+      ]),
+      renameMap: new Map([[renamed, oldPath]]),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(renamed);
+    expect(harness.stderr.join("")).toContain("1001");
+    expect(harness.stderr.join("")).toContain("1010");
+    expect(harness.stderr.join("")).toContain("Move something out");
+  });
 });
+
+/** `n` lines of trivial, distinct content, newline-terminated like a real file. */
+function linesOf(n: number): string {
+  return `${Array.from({ length: n }, (_, i) => `line ${i}`).join("\n")}\n`;
+}

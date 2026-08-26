@@ -99,9 +99,18 @@ per-file overrides in `.oxlintrc.json` with a boundary contract comment
 
 ## Verifying before pushing
 
-- `pnpm typecheck`
-- `pnpm test:all` (root suite and separate `runtime/flue` suite)
-- `pnpm lint:staged` (checks what you will commit)
+`pnpm check` is the pre-handoff command: it runs `pnpm typecheck`,
+`pnpm test:root`, then `pnpm lint:staged` (checks what you will commit), in
+that order, and stops at the first failure. `pnpm lint:staged` passes with
+"no staged source files" when nothing is staged, so `pnpm check` only checks
+lint on the files you have staged.
+
+Beyond `pnpm check`:
+
+- `pnpm test:all` (root suite and separate `runtime/flue` suite) — the
+  complete test gate; `pnpm check` only runs the root suite.
+- `pnpm knip` finds unused files, exports, and dependencies. Not yet part of
+  `pnpm check`; run it directly.
 - For desktop or renderer changes: `pnpm build`, then the focused browser
   suite (`pnpm test:e2e` or `pnpm test:a11y`, `pnpm test:performance`).
 

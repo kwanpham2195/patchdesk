@@ -377,11 +377,10 @@ const PublishedFeedbackNavigationContext = createContext<
 >(undefined);
 
 /** Renders the canonical Review projection. Optional work stays in typed slots. */
-// Pre-existing giant component (~850 lines before this change;
-// `react-doctor --scope changed --base main` reports zero new issues here).
-// Splitting it is the renderer god-file refactor the project's own plans
-// explicitly defer to dedicated, separately-scoped work, not a fix this
-// small feature change should take on.
+// ReviewWorkbench renders the whole review screen: the diff view, the
+// conversation, and the insights panel all live in this one component.
+// Splitting this component into smaller files is scheduled work, not done yet.
+// Until that split lands, the file size ratchet blocks this file from growing.
 // react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function ReviewWorkbench({
   model,

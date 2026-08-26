@@ -85,6 +85,8 @@ export async function checkChangedSource({
     run,
     fileExists,
     output,
+    base,
+    head,
   });
   if (sourceCheckResult !== 0) return sourceCheckResult;
 

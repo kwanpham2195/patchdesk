@@ -401,11 +401,10 @@ export type AppProps = {
 };
 
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
-// Pre-existing giant component (~800 lines before this change;
-// `react-doctor --scope changed --base 55748e8` reports zero new issues here).
-// Splitting it is the renderer god-file refactor the project's own plans
-// explicitly defer to dedicated, separately-scoped work, not a fix this
-// small feature change should take on.
+// App is the renderer's root component. It owns the dashboard, navigation,
+// and screen routing for the whole app.
+// Splitting this component into smaller files is scheduled work, not done yet.
+// Until that split lands, the file size ratchet blocks this file from growing.
 // react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
 export function App({
   initialState,

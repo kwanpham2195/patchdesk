@@ -25,7 +25,8 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - If either pane is gone or idle, start/restart it before doing the work.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
-- Verification commands live in `CONTRIBUTING.md`.
+- Verification commands live in `CONTRIBUTING.md`. `pnpm check` (typecheck,
+  root test suite, staged lint) is the pre-handoff command.
 - For live verification of the running app, drive it with `agent-browser` over CDP 9233. Read-only by default; ask before any write.
 
 ## Code and Testing Conventions
