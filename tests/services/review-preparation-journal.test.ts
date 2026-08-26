@@ -28,6 +28,24 @@ import type { Result } from "../../src/domain/result";
 import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
 import { ok } from "../../src/domain/result";
 import { createReviewSession } from "../../src/domain/review-session";
+import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
+
+/**
+ * Records every `withProfileLock` call (as a string profile id) while still
+ * running the operation through the real gate, so a test can assert both
+ * "the lock was taken" and "the operation actually ran serialized" from one
+ * instance.
+ */
+class InstrumentedGate extends ReviewLifecycleGate {
+  readonly calls: string[] = [];
+  override async withProfileLock<T>(
+    profileId: Parameters<ReviewLifecycleGate["withProfileLock"]>[0],
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.calls.push(String(profileId));
+    return super.withProfileLock(profileId, operation);
+  }
+}
 
 const roots: string[] = [];
 
@@ -58,7 +76,22 @@ async function fixture() {
 function worktrees(paths: PatchdeskPaths): ReviewWorktreeService {
   return new ReviewWorktreeService(
     paths,
-    { run: async () => ok({ stdout: "" }) },
+    {
+      // Mirrors real `git worktree remove`'s effect on disk: everything
+      // else this fixture exercises never inspects the git executor's
+      // stdout, so the stub only needs to actually delete the directory a
+      // real worktree removal would.
+      run: async (argv) => {
+        if (argv[3] === "worktree" && argv[4] === "remove") {
+          const target = argv[5];
+          if (target !== undefined)
+            await rm(target, { recursive: true, force: true }).catch(
+              () => undefined,
+            );
+        }
+        return ok({ stdout: "" });
+      },
+    },
     { environmentFor: async () => ok({}), forget: () => undefined },
     async () => "/usr/local/bin/gh",
   );
@@ -72,6 +105,10 @@ async function writePersistedJournal(
     readonly stagingRoot: string;
     readonly targets: ReadonlyArray<string>;
     readonly state?: "preparing" | "committing";
+    readonly worktree?: {
+      readonly path: string;
+      readonly repositoryPath: string;
+    };
   },
 ): Promise<void> {
   await mkdir(join(filePath, ".."), { recursive: true });
@@ -365,5 +402,222 @@ describe("ReviewPreparationJournal", () => {
 
     await expectPresent(target);
     await expect(access(subject.journalFile)).rejects.toThrow();
+  });
+
+  it("cleans up a committing journal's target and worktree when no session was ever saved", async () => {
+    const subject = await fixture();
+    const target = subject.paths.patchFile(
+      subject.profileId,
+      subject.sessionId,
+    );
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, "patch", "utf8");
+
+    const worktreePath = subject.paths.worktreeDirectory(
+      subject.profileId,
+      subject.sessionId,
+    );
+    const repositoryPath = join(subject.root, "repo");
+    await mkdir(repositoryPath, { recursive: true });
+    await mkdir(worktreePath, { recursive: true });
+    await writeFile(
+      join(worktreePath, "worktree.json"),
+      JSON.stringify({
+        profileId: subject.profileId,
+        sessionId: subject.sessionId,
+      }),
+      "utf8",
+    );
+    await writePersistedJournal(subject.journalFile, {
+      profileId: subject.profileId,
+      sessionId: subject.sessionId,
+      stagingRoot: join(subject.sessionDirectory, ".staging"),
+      targets: [target],
+      state: "committing",
+      worktree: { path: worktreePath, repositoryPath },
+    });
+    await expectPresent(target);
+    await expectPresent(worktreePath);
+
+    // No `sessions` store is passed here: a crash between
+    // `journal.markCommitting()` and `sessions.save()` leaves exactly this —
+    // a `committing` journal with no persisted Session behind it — and
+    // recovery must clean it up exactly like a `preparing` journal would,
+    // not just delete the journal file and strand the target and worktree.
+    await expect(
+      ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
+
+    await expect(access(target)).rejects.toThrow();
+    await expect(access(worktreePath)).rejects.toThrow();
+    await expect(access(subject.journalFile)).rejects.toThrow();
+  });
+
+  it("returns journal_exists rather than overwriting a live journal, leaving it byte-identical", async () => {
+    const subject = await fixture();
+    const first = must(
+      await ReviewPreparationJournal.begin(
+        subject.paths,
+        subject.profileId,
+        subject.sessionId,
+      ),
+    );
+    const target = subject.paths.preparedContextFile(
+      subject.profileId,
+      subject.sessionId,
+    );
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, "target", "utf8");
+    expect((await first.record(target))._tag).toBe("ok");
+    const before = await readFile(subject.journalFile, "utf8");
+
+    const second = await ReviewPreparationJournal.begin(
+      subject.paths,
+      subject.profileId,
+      subject.sessionId,
+    );
+
+    expect(second).toEqual({
+      _tag: "err",
+      error: { _tag: "PreparationJournalFailed", reason: "journal_exists" },
+    });
+    expect(await readFile(subject.journalFile, "utf8")).toBe(before);
+  });
+
+  it("recoverSession clears a corrupt (invalid JSON) journal so the begin retry succeeds", async () => {
+    const subject = await fixture();
+    await mkdir(subject.sessionDirectory, { recursive: true });
+    await writeFile(subject.journalFile, "{ truncated", "utf8");
+
+    const recovered = await ReviewPreparationJournal.recoverSession(
+      subject.paths,
+      worktrees(subject.paths),
+      subject.profileId,
+      subject.sessionId,
+      "profile-lock-held",
+    );
+
+    expect(recovered).toBe(true);
+    await expect(access(subject.journalFile)).rejects.toThrow();
+
+    const retried = await ReviewPreparationJournal.begin(
+      subject.paths,
+      subject.profileId,
+      subject.sessionId,
+    );
+    expect(retried._tag).toBe("ok");
+  });
+
+  it("recoverSession clears a schema-invalid journal (unsupported schemaVersion) the same way", async () => {
+    const subject = await fixture();
+    await mkdir(subject.sessionDirectory, { recursive: true });
+    await writeFile(
+      subject.journalFile,
+      JSON.stringify({
+        schemaVersion: 2,
+        profileId: subject.profileId,
+        sessionId: subject.sessionId,
+        state: "preparing",
+        stagingRoot: join(subject.sessionDirectory, ".staging"),
+        targets: [],
+      }),
+      "utf8",
+    );
+
+    const recovered = await ReviewPreparationJournal.recoverSession(
+      subject.paths,
+      worktrees(subject.paths),
+      subject.profileId,
+      subject.sessionId,
+      "profile-lock-held",
+    );
+
+    expect(recovered).toBe(true);
+    await expect(access(subject.journalFile)).rejects.toThrow();
+
+    const retried = await ReviewPreparationJournal.begin(
+      subject.paths,
+      subject.profileId,
+      subject.sessionId,
+    );
+    expect(retried._tag).toBe("ok");
+  });
+
+  it("startup recover() clears a corrupt journal instead of failing on it", async () => {
+    const subject = await fixture();
+    await mkdir(subject.sessionDirectory, { recursive: true });
+    await writeFile(subject.journalFile, "{ truncated", "utf8");
+
+    await expect(
+      ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
+
+    await expect(access(subject.journalFile)).rejects.toThrow();
+  });
+
+  it("recover() takes the profile lock before deleting an unreadable journal, when given a gate", async () => {
+    const subject = await fixture();
+    await mkdir(subject.sessionDirectory, { recursive: true });
+    await writeFile(subject.journalFile, "{ truncated", "utf8");
+    const gate = new InstrumentedGate();
+
+    await expect(
+      ReviewPreparationJournal.recover(
+        subject.paths,
+        worktrees(subject.paths),
+        undefined,
+        gate,
+      ),
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
+
+    // The delete only ran if the lock was actually taken for this profile —
+    // this is the same instrumented-gate technique the evaluator used to
+    // prove ATK-9's absence of any lock call; here it must show exactly one.
+    expect(gate.calls).toEqual([subject.profileId]);
+    await expect(access(subject.journalFile)).rejects.toThrow();
+  });
+
+  it("recoverSession does not take a profile lock, and still completes when called from inside one already held", async () => {
+    const subject = await fixture();
+    await mkdir(subject.sessionDirectory, { recursive: true });
+    await writeFile(subject.journalFile, "{ truncated", "utf8");
+    const gate = new InstrumentedGate();
+
+    // Mirrors `ReviewSessionPreparation.prepareCurrent`'s real call shape:
+    // `recoverSession` is invoked from inside a profile lock the caller
+    // already holds. If `recoverSession` ever started taking its own lock,
+    // this would hang forever on the non-reentrant gate; the timeout race
+    // makes that failure fast and unambiguous instead of hanging the suite.
+    const deadlineMs = 2000;
+    const withTimeout = Promise.race([
+      gate.withProfileLock(subject.profileId, () =>
+        ReviewPreparationJournal.recoverSession(
+          subject.paths,
+          worktrees(subject.paths),
+          subject.profileId,
+          subject.sessionId,
+          "profile-lock-held",
+        ),
+      ),
+      new Promise<never>((_resolve, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `recoverSession did not complete within ${deadlineMs}ms — ` +
+                  "likely deadlocked on the non-reentrant profile lock",
+              ),
+            ),
+          deadlineMs,
+        ),
+      ),
+    ]);
+
+    await expect(withTimeout).resolves.toBe(true);
+    await expect(access(subject.journalFile)).rejects.toThrow();
+    // Exactly the one call this test itself made — recoverSession's internal
+    // path to recoverJournalFile always passes `lifecycleGate: undefined`,
+    // so it never adds a second entry here.
+    expect(gate.calls).toEqual([subject.profileId]);
   });
 });

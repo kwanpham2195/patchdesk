@@ -726,6 +726,96 @@ describe("ReviewSessionPreparation", () => {
     expect(session.canonicalPatchHash).not.toBe(contentHashOf(worktreeDiff));
   });
 
+  it("fails closed, without looping, when a journal is already live and recovery cannot clear it", async () => {
+    const fixture = await setup();
+    const sessionId = createReviewSessionId({
+      profileId,
+      host: pullRequest.host,
+      owner: pullRequest.owner,
+      repo: pullRequest.repo,
+      prNumber: pullRequest.number,
+      headSha,
+      baseSha,
+    });
+    const sessionDirectory = fixture.paths.sessionDirectory(
+      profileId,
+      sessionId,
+    );
+    const journalFile = join(sessionDirectory, "preparation.journal.json");
+    await mkdir(sessionDirectory, { recursive: true });
+    // A journal whose `stagingRoot` doesn't match its derived location fails
+    // `validatedDeletionSet`, so recovery can never clear it (mirrors a
+    // journal recovery cannot fix, rather than one it legitimately clears).
+    // `begin()` must still see this file and refuse to overwrite it.
+    await writeFile(
+      journalFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        profileId,
+        sessionId,
+        state: "preparing",
+        stagingRoot: join(sessionDirectory, "not-the-real-staging-root"),
+        targets: [],
+      }),
+      "utf8",
+    );
+
+    const result = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "SessionStorageUnavailable" },
+    });
+    // The unrecoverable journal is still exactly what was written: the
+    // retry gave up rather than looping or overwriting it.
+    expect(await readFile(journalFile, "utf8")).toContain(
+      "not-the-real-staging-root",
+    );
+  });
+
+  it("recovers from a corrupt journal on disk rather than reporting SessionStorageUnavailable forever", async () => {
+    const fixture = await setup();
+    const sessionId = createReviewSessionId({
+      profileId,
+      host: pullRequest.host,
+      owner: pullRequest.owner,
+      repo: pullRequest.repo,
+      prNumber: pullRequest.number,
+      headSha,
+      baseSha,
+    });
+    const sessionDirectory = fixture.paths.sessionDirectory(
+      profileId,
+      sessionId,
+    );
+    const journalFile = join(sessionDirectory, "preparation.journal.json");
+    await mkdir(sessionDirectory, { recursive: true });
+    // Mirrors the evaluator's P-E1 probe: a journal this process can never
+    // parse, sitting at the exact path `prepare()` computes for this PR.
+    await writeFile(journalFile, "{ truncated", "utf8");
+
+    const first = await fixture.preparation.prepare({ profileId, pullRequest });
+
+    expect(first).toMatchObject({
+      _tag: "ok",
+      value: { disposition: "prepared" },
+    });
+    await expect(access(journalFile)).rejects.toThrow();
+
+    const second = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(second).toMatchObject({
+      _tag: "ok",
+      value: { disposition: "resumed" },
+    });
+  });
+
   it("still creates the session with the canonical hash absent when the extra canonical fetch fails", async () => {
     const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
     roots.push(localRepo);

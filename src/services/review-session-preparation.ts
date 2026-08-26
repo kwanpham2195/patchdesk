@@ -208,14 +208,48 @@ export class ReviewSessionPreparation {
       input.profileId,
       sessionId,
     );
-    if (started._tag === "err")
+    if (started._tag === "ok")
+      return await this.commit(
+        input,
+        profile,
+        revision,
+        sessionId,
+        started.value,
+      );
+    if (started.error.reason !== "journal_exists")
+      return err({ _tag: "SessionStorageUnavailable" });
+    // A live journal from an interrupted preparation is already at this
+    // path — recover that one session (never the whole-tree `recover()`,
+    // which would deadlock re-acquiring the profile lock `prepare()` is
+    // already holding) and retry `begin()` exactly once. If it still finds
+    // a journal on the second attempt, recovery could not clear it, so this
+    // reports a failure instead of retrying forever.
+    await ReviewPreparationJournal.recoverSession(
+      this.dependencies.paths,
+      this.dependencies.worktrees,
+      input.profileId,
+      sessionId,
+      // This call is only reachable from inside `this.serialized(...)`
+      // above (always active) and, when configured, the profile-wide
+      // `lifecycleGate.withProfileLock` in `prepare()` — see
+      // `recoverSession`'s doc comment for why that lock is required.
+      "profile-lock-held",
+      this.dependencies.sessions,
+      this.dependencies.diagnostics,
+    );
+    const retried = await ReviewPreparationJournal.begin(
+      this.dependencies.paths,
+      input.profileId,
+      sessionId,
+    );
+    if (retried._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
     return await this.commit(
       input,
       profile,
       revision,
       sessionId,
-      started.value,
+      retried.value,
     );
   }
 

@@ -26,8 +26,17 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
+/**
+ * `reason` is optional rather than a required discriminant: every
+ * pre-existing construction site reports a generic storage failure and the
+ * caller already treats those uniformly (`SessionStorageUnavailable`), so
+ * forcing them to each name a reason would be a bigger diff for no behavior
+ * change. Only `begin()`'s new "a live journal is already there" case needs
+ * to be distinguished, so it is the only site that sets `reason`.
+ */
 export type PreparationJournalFailure = {
   readonly _tag: "PreparationJournalFailed";
+  readonly reason?: "journal_exists";
 };
 export type PreparationCleanupFailure = {
   readonly _tag: "PreparationCleanupFailed";
@@ -143,26 +152,37 @@ export class ReviewPreparationJournal {
     private content: JournalContent,
   ) {}
 
-  /** Create the journal before any artifact write for this Session. */
+  /**
+   * Create the journal before any artifact write for this Session. Reads
+   * the journal file first: a crash between `markCommitting()` and
+   * `sessions.save()` leaves a `committing` journal on disk with no journal
+   * object in memory to detect it, so `begin()` must check the file itself
+   * rather than overwrite whatever is there. Any file already present —
+   * parsed or not — reports `journal_exists` rather than being silently
+   * replaced; the caller recovers that session and retries once.
+   */
   static async begin(
     paths: PatchdeskPaths,
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
   ): Promise<Result<ReviewPreparationJournal, PreparationJournalFailure>> {
+    const filePath = journalFile(paths, profileId, sessionId);
+    const existing = await readJsonFile(filePath);
+    if (existing._tag === "ok" || existing.error.reason !== "not_found")
+      return err({
+        _tag: "PreparationJournalFailed",
+        reason: "journal_exists",
+      });
     const sessionDirectory = paths.sessionDirectory(profileId, sessionId);
     const stagingRoot = join(sessionDirectory, ".staging");
-    const journal = new ReviewPreparationJournal(
-      paths,
-      journalFile(paths, profileId, sessionId),
-      {
-        schemaVersion: 1,
-        profileId,
-        sessionId,
-        state: "preparing",
-        stagingRoot,
-        targets: [],
-      },
-    );
+    const journal = new ReviewPreparationJournal(paths, filePath, {
+      schemaVersion: 1,
+      profileId,
+      sessionId,
+      state: "preparing",
+      stagingRoot,
+      targets: [],
+    });
     const written = await journal.write();
     return written._tag === "ok" ? ok(journal) : written;
   }
@@ -356,81 +376,20 @@ export class ReviewPreparationJournal {
     diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
     const journals = await findJournals(paths);
-    const recoverOne = async (
-      filePath: string,
-    ): Promise<{ readonly recovered: number; readonly failed: number }> => {
-      const stored = await readJsonFile(filePath);
-      if (stored._tag === "err") {
-        await recordRecoveredJournalDiagnostic(
-          diagnostics,
-          filePath,
-          "journal-read",
-        );
-        return { recovered: 0, failed: 1 };
-      }
-      const parsed = v.safeParse(journalContentSchema, stored.value);
-      const content = parsed.success
-        ? toJournalContent(parsed.output)
-        : undefined;
-      if (content === undefined) {
-        await recordRecoveredJournalDiagnostic(
-          diagnostics,
-          filePath,
-          "journal-parse",
-        );
-        return { recovered: 0, failed: 1 };
-      }
-      const journal = new ReviewPreparationJournal(paths, filePath, content);
-      const process = async (): Promise<boolean> => {
-        const deletion = await journal.validatedDeletionSet();
-        if (deletion === undefined) return false;
-        if (content.state === "committing") {
-          if (sessions === undefined) return false;
-          const session = await sessions.load(
-            deletion.profileId,
-            deletion.sessionId,
-          );
-          if (session._tag !== "ok" || session.value.id !== deletion.sessionId)
-            return false;
-          return await rm(deletion.journalFile, { force: true })
-            .then(() => true)
-            .catch(() => false);
-        }
-        const cleaned = await journal.cleanup(worktrees);
-        return cleaned._tag === "ok";
-      };
-      const profileId = parseWorkspaceProfileId(content.profileId);
-      const success =
-        lifecycleGate !== undefined && profileId._tag === "ok"
-          ? await lifecycleGate.withProfileLock(profileId.value, process)
-          : await process();
-      if (!success) {
-        const parsedSessionId = parseReviewSessionId(content.sessionId);
-        if (
-          diagnostics !== undefined &&
-          profileId._tag === "ok" &&
-          parsedSessionId._tag === "ok"
-        ) {
-          await diagnostics.record({
-            profileId: profileId.value,
-            sessionId: parsedSessionId.value,
-            category: "preparation",
-            phase: "journal-recovery",
-            retryable: true,
-            detail: "Preparation journal recovery failed.",
-          });
-        }
-      }
-      return success
-        ? { recovered: 1, failed: 0 }
-        : { recovered: 0, failed: 1 };
-    };
     const groups = groupJournalPaths(journals);
     const recovered = await mapConcurrent(groups, 4, async (group) => {
       const results = await mapConcurrent(
         group,
         lifecycleGate === undefined ? 1 : 4,
-        recoverOne,
+        (filePath) =>
+          ReviewPreparationJournal.recoverJournalFile(
+            paths,
+            worktrees,
+            filePath,
+            sessions,
+            lifecycleGate,
+            diagnostics,
+          ),
       );
       return results.reduce(
         (total, result) => ({
@@ -447,6 +406,209 @@ export class ReviewPreparationJournal {
       }),
       { recovered: 0, failed: 0 },
     );
+  }
+
+  /**
+   * Recover exactly one session's journal, without the directory-wide scan
+   * `recover()` does. Used by `ReviewSessionPreparation.begin()` retry: that
+   * caller already holds this profile's `withProfileLock` (when a
+   * `lifecycleGate` is configured), so it must never route back through
+   * `recover()`'s own `withProfileLock` call for the same profile — that
+   * would await a lock it is already holding and deadlock forever. Because
+   * the caller's lock already excludes every other operation on this
+   * profile, this method takes no lock of its own.
+   *
+   * `profileLockHeld` is a required, explicit acknowledgment of that
+   * precondition rather than only a doc comment: this method runs
+   * `cleanup`/`validatedDeletionSet` (`rm` of the patch file, prepared-
+   * context file, staging root, and `git worktree remove`) with no locking
+   * of its own, so calling it without the profile lock actually held races
+   * a concurrent `recover()` sweep or another `prepare()` call for the same
+   * profile. Passing the literal is not a runtime guarantee — it can be
+   * forged with `as`, exactly like every branded `parse*Id` cast elsewhere
+   * in this codebase (see `domain/ids.ts`) — but it forces a new call site
+   * to name the precondition instead of silently missing it, and it makes
+   * every call site claiming the precondition findable with one grep.
+   */
+  static async recoverSession(
+    paths: PatchdeskPaths,
+    worktrees: ReviewWorktreeService,
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    _profileLockHeld: "profile-lock-held",
+    sessions?: Pick<ReviewSessionStore, "load">,
+    diagnostics?: Pick<ReviewDiagnosticService, "record">,
+  ): Promise<boolean> {
+    const result = await ReviewPreparationJournal.recoverJournalFile(
+      paths,
+      worktrees,
+      journalFile(paths, profileId, sessionId),
+      sessions,
+      undefined,
+      diagnostics,
+    );
+    return result.recovered === 1;
+  }
+
+  /**
+   * Recover the one journal at `filePath`. Shared by `recover()`'s
+   * directory-wide scan and `recoverSession()`'s single-session lookup; the
+   * `lifecycleGate` parameter is only ever non-`undefined` from `recover()` —
+   * `recoverSession()` always passes `undefined` because its caller already
+   * holds that profile's lock (see the note on `recoverSession`).
+   *
+   * A `committing` journal means the Session save it was guarding may or may
+   * not have completed before the crash: when a matching Session is on disk,
+   * that save won, and only the journal itself is removed (the Session keeps
+   * its artifacts). Otherwise — no `sessions` store to check, the load fails,
+   * or the loaded Session's id doesn't match — the save never landed, so this
+   * falls through to the same `cleanup(worktrees)` a `preparing` journal
+   * gets, removing every artifact it recorded.
+   */
+  private static async recoverJournalFile(
+    paths: PatchdeskPaths,
+    worktrees: ReviewWorktreeService,
+    filePath: string,
+    sessions: Pick<ReviewSessionStore, "load"> | undefined,
+    lifecycleGate: ReviewLifecycleGate | undefined,
+    diagnostics: Pick<ReviewDiagnosticService, "record"> | undefined,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    const stored = await readJsonFile(filePath);
+    // `readJsonFile` returning "not_found" means there is no file at all —
+    // nothing for the fallback below to derive-and-delete, so that case
+    // keeps reporting a plain failure exactly as before this fix.
+    const filePresent =
+      stored._tag === "ok" || stored.error.reason !== "not_found";
+    const parsed =
+      stored._tag === "ok"
+        ? v.safeParse(journalContentSchema, stored.value)
+        : undefined;
+    const content = parsed?.success
+      ? toJournalContent(parsed.output)
+      : undefined;
+    if (content === undefined) {
+      if (filePresent) {
+        // Derive the profile id from the path itself — the file's own
+        // content is exactly what could not be parsed — so this delete can
+        // be serialized under the same profile lock the healthy-journal
+        // branch below uses, rather than running unlocked ahead of it.
+        const ids = deriveJournalIds(filePath);
+        const recoverUnreadable = (): Promise<boolean> =>
+          ReviewPreparationJournal.recoverUnreadableJournal(paths, filePath);
+        const recovered =
+          ids !== undefined && lifecycleGate !== undefined
+            ? await lifecycleGate.withProfileLock(
+                ids.profileId,
+                recoverUnreadable,
+              )
+            : await recoverUnreadable();
+        if (recovered) return { recovered: 1, failed: 0 };
+      }
+      await recordRecoveredJournalDiagnostic(
+        diagnostics,
+        filePath,
+        stored._tag === "err" ? "journal-read" : "journal-parse",
+      );
+      return { recovered: 0, failed: 1 };
+    }
+    const journal = new ReviewPreparationJournal(paths, filePath, content);
+    const process = async (): Promise<boolean> => {
+      const deletion = await journal.validatedDeletionSet();
+      if (deletion === undefined) return false;
+      if (content.state === "committing") {
+        const session =
+          sessions === undefined
+            ? undefined
+            : await sessions.load(deletion.profileId, deletion.sessionId);
+        if (session?._tag === "ok" && session.value.id === deletion.sessionId) {
+          return await rm(deletion.journalFile, { force: true })
+            .then(() => true)
+            .catch(() => false);
+        }
+      }
+      const cleaned = await journal.cleanup(worktrees);
+      return cleaned._tag === "ok";
+    };
+    const profileId = parseWorkspaceProfileId(content.profileId);
+    const success =
+      lifecycleGate !== undefined && profileId._tag === "ok"
+        ? await lifecycleGate.withProfileLock(profileId.value, process)
+        : await process();
+    if (!success) {
+      const parsedSessionId = parseReviewSessionId(content.sessionId);
+      if (
+        diagnostics !== undefined &&
+        profileId._tag === "ok" &&
+        parsedSessionId._tag === "ok"
+      ) {
+        await diagnostics.record({
+          profileId: profileId.value,
+          sessionId: parsedSessionId.value,
+          category: "preparation",
+          phase: "journal-recovery",
+          retryable: true,
+          detail: "Preparation journal recovery failed.",
+        });
+      }
+    }
+    return success ? { recovered: 1, failed: 0 } : { recovered: 0, failed: 1 };
+  }
+
+  /**
+   * Delete a journal this process could not read or parse — a corrupt file,
+   * an `io` read failure, or a credential-shaped payload `readJsonFile`
+   * refuses to hand back — so a later `begin()` retry (or a later
+   * `recover()` sweep) is not permanently blocked by a file this process
+   * can never make sense of. Also removes that session's derived `.staging`
+   * directory: it is orphaned scratch space the same crash that corrupted
+   * the journal would have left behind, and its path is derivable from the
+   * profile/session ids without reading the journal's contents at all.
+   *
+   * Both deleted paths are reconstructed from ids parsed out of `filePath`'s
+   * own directory structure — the same derivation
+   * `recordRecoveredJournalDiagnostic` uses — never from the unreadable
+   * file's contents. If the derived ids don't reconstruct back to exactly
+   * `filePath`, or either path fails the containment check, nothing is
+   * deleted: an orphaned unreadable journal is a smaller problem than a
+   * wrong delete.
+   *
+   * Trade-off: deleting a journal this process cannot parse means
+   * discarding the record of which staged and final artifacts that
+   * preparation attempt had already written. Any of those already on disk
+   * (beyond `.staging`, whose path is safe to reclaim on derivation alone)
+   * are left in place, orphaned rather than tracked for cleanup. That is
+   * weighed against the alternative this fix replaces: a pull request that
+   * opens fine on `main` becoming permanently unopenable until a human
+   * deletes `preparation.journal.json` by hand.
+   */
+  private static async recoverUnreadableJournal(
+    paths: PatchdeskPaths,
+    filePath: string,
+  ): Promise<boolean> {
+    const ids = deriveJournalIds(filePath);
+    if (ids === undefined) return false;
+    if (journalFile(paths, ids.profileId, ids.sessionId) !== filePath)
+      return false;
+    const sessionDirectory = paths.sessionDirectory(
+      ids.profileId,
+      ids.sessionId,
+    );
+    const stagingRoot = join(sessionDirectory, ".staging");
+    if (
+      !(await isSafeOwnedPath(paths.dataDirectory(), sessionDirectory, true)) ||
+      !(await isSafeOwnedPath(sessionDirectory, filePath, true)) ||
+      !(await isSafeOwnedPath(sessionDirectory, stagingRoot))
+    )
+      return false;
+    await rm(stagingRoot, { recursive: true, force: true }).catch(
+      () => undefined,
+    );
+    try {
+      await rm(filePath, { force: true });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async write(): Promise<Result<void, PreparationJournalFailure>> {
@@ -570,19 +732,35 @@ async function recordRecoveredJournalDiagnostic(
   phase: "journal-read" | "journal-parse",
 ): Promise<void> {
   if (diagnostics === undefined) return;
-  const sessionId = parseReviewSessionId(basename(dirname(filePath)));
-  const profileId = parseWorkspaceProfileId(
-    basename(dirname(dirname(dirname(filePath)))),
-  );
-  if (sessionId._tag === "err" || profileId._tag === "err") return;
+  const ids = deriveJournalIds(filePath);
+  if (ids === undefined) return;
   await diagnostics.record({
-    profileId: profileId.value,
-    sessionId: sessionId.value,
+    profileId: ids.profileId,
+    sessionId: ids.sessionId,
     category: "preparation",
     phase,
     retryable: true,
     detail: "Preparation journal evidence could not be recovered safely.",
   });
+}
+
+/**
+ * Recover the profile/session id pair a journal path was written under, from
+ * the path's own directory structure alone (`.../profiles/<profileId>/
+ * reviews/<sessionId>/preparation.journal.json`) — never from a corrupt or
+ * unparseable file's contents. Shared by the diagnostic recorder above and
+ * `recoverUnreadableJournal`, which additionally verifies the derived ids
+ * reconstruct back to the exact same path before deleting anything.
+ */
+function deriveJournalIds(
+  filePath: string,
+): { profileId: WorkspaceProfileId; sessionId: ReviewSessionId } | undefined {
+  const sessionId = parseReviewSessionId(basename(dirname(filePath)));
+  const profileId = parseWorkspaceProfileId(
+    basename(dirname(dirname(dirname(filePath)))),
+  );
+  if (sessionId._tag === "err" || profileId._tag === "err") return undefined;
+  return { profileId: profileId.value, sessionId: sessionId.value };
 }
 
 async function findJournals(
