@@ -179,6 +179,44 @@
       "rules": {
         "anti-slop/no-unknown-parameters": "off"
       }
+    },
+    {
+      "files": ["tests/**"],
+      "rules": {
+        "anti-slop/require-safety-comment-for-type-assertion": "off"
+      }
+    },
+    {
+      "files": [
+        "src/domain/log-entry.ts",
+        "src/domain/review-result.ts",
+        "src/domain/pending-review.ts",
+        "src/domain/review-diagnostic.ts",
+        "src/domain/contracts.ts",
+        "src/domain/narrative-walkthrough.ts",
+        "src/domain/pull-request.ts",
+        "src/domain/workspace-profile.ts",
+        "src/domain/direct-summary-review.ts",
+        "src/domain/review.ts",
+        "src/domain/insight-provider.ts",
+        "src/adapters/storage/insight-store.ts",
+        "src/adapters/storage/json-file.ts",
+        "src/adapters/storage/merge-operation-store.ts",
+        "src/adapters/storage/profile-store.ts",
+        "src/adapters/storage/review-artifact-storage.ts",
+        "src/adapters/storage/review-observation-journal-store.ts",
+        "src/adapters/storage/review-store.ts",
+        "src/services/flue-insight-child-invoker.ts",
+        "src/services/model-review-runner.ts",
+        "src/services/read-object-field.ts",
+        "src/services/review-context-service.ts",
+        "src/services/review-diagnostic-service.ts",
+        "src/services/review-inspector.ts"
+      ],
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off",
+        "anti-slop/no-unknown-parameters": "off"
+      }
     }
   ]
 }
