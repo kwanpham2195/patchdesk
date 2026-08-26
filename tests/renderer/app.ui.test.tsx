@@ -422,6 +422,102 @@ describe("App repository picker", () => {
     ).toContain(`${repoA.owner}/${repoA.repo}`);
   });
 
+  it("holds the row list in a loading state while a repository change is in flight", async () => {
+    const user = userEvent.setup();
+    const gate = promise<void>();
+    const desktop = installRepoDesktop(undefined, (path) =>
+      path.includes(`repo=${repoB.repo}`) ? gate.promise : undefined,
+    );
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    const rowList = screen.getByRole("listbox", { name: "Pull requests" });
+    expect(
+      await within(rowList).findByText(`#1 ${repoA.owner}/${repoA.repo} PR`),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("combobox", { name: "Repository" }));
+    await user.click(
+      await screen.findByRole("option", {
+        name: `${repoB.owner}/${repoB.repo}`,
+      }),
+    );
+
+    // The picker reflects the new repository immediately, so the click feels
+    // responsive. The rows must not: repository A's rows presented under
+    // repository B's name are the previous request's answer.
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`repo=${repoB.repo}`),
+    );
+    // Re-queried, not reused: a repository change remounts the inbox (its
+    // `key` is the repository), so the node captured above is detached.
+    const pendingList = screen.getByRole("listbox", { name: "Pull requests" });
+    expect(
+      within(pendingList).queryByText(`#1 ${repoA.owner}/${repoA.repo} PR`),
+    ).toBeNull();
+    expect(pendingList.getAttribute("aria-busy")).toBe("true");
+
+    gate.resolve();
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("listbox", { name: "Pull requests" })
+          .getAttribute("aria-busy"),
+      ).not.toBe("true"),
+    );
+    expect(
+      within(screen.getByRole("listbox", { name: "Pull requests" })).getByText(
+        `#1 ${repoB.owner}/${repoB.repo} PR`,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("holds the row list in a loading state while a filter the response never echoes is in flight", async () => {
+    const user = userEvent.setup();
+    const gate = promise<void>();
+    const desktop = installRepoDesktop(undefined, (path) =>
+      path.includes("awaitingMyReview=1") ? gate.promise : undefined,
+    );
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    const rowList = screen.getByRole("listbox", { name: "Pull requests" });
+    expect(
+      await within(rowList).findByText(`#1 ${repoA.owner}/${repoA.repo} PR`),
+    ).toBeTruthy();
+
+    // The response echoes only the state filter and the page size. It says
+    // nothing about the preset or the label filter, so whether the rows on
+    // screen are stale is a fact about the request that produced them, not
+    // something the response can be asked.
+    await user.click(
+      screen.getByRole("button", { name: "Awaiting review from you" }),
+    );
+
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain("awaitingMyReview=1"),
+    );
+    // Re-queried rather than reused: the row list is replaced, not updated
+    // in place, when the request behind it changes.
+    const pendingList = screen.getByRole("listbox", { name: "Pull requests" });
+    expect(
+      within(pendingList).queryByText(`#1 ${repoA.owner}/${repoA.repo} PR`),
+    ).toBeNull();
+    expect(pendingList.getAttribute("aria-busy")).toBe("true");
+
+    gate.resolve();
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("listbox", { name: "Pull requests" })
+          .getAttribute("aria-busy"),
+      ).not.toBe("true"),
+    );
+    expect(
+      within(screen.getByRole("listbox", { name: "Pull requests" })).getByText(
+        `#1 ${repoA.owner}/${repoA.repo} PR`,
+      ),
+    ).toBeTruthy();
+  });
+
   it("carries the Awaiting review from you preset across a repository change", async () => {
     const user = userEvent.setup();
     const desktop = installRepoDesktop();
@@ -690,6 +786,9 @@ function repoInboxResponse(
  * silently humored. */
 function installRepoDesktop(
   watchlist: ReadonlyArray<typeof repoA> = [repoA, repoB],
+  /** Holds a matching inbox request open so a test can assert on the row
+   * list while it is genuinely in flight. */
+  gateFor: (path: string) => Promise<void> | undefined = () => undefined,
 ) {
   const paths: string[] = [];
   Object.defineProperty(window, "patchdesk", {
@@ -716,6 +815,7 @@ function installRepoDesktop(
         if (!path.startsWith("/v1/inbox"))
           return { ok: true, status: 200, correlationId: "test", body: {} };
         paths.push(path);
+        await gateFor(path);
         const url = new URL(path, "http://localhost");
         const owner = url.searchParams.get("owner");
         const repoName = url.searchParams.get("repo");

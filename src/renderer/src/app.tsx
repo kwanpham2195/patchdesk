@@ -208,6 +208,33 @@ function nextInboxRequest(
   };
 }
 
+/**
+ * True when two requests would ask GitHub for the same rows.
+ *
+ * Every field that changes the answer is compared, because any of them
+ * leaves the displayed rows describing the previous request until the new
+ * one lands. Comparing the response instead cannot work: it echoes only the
+ * state filter and the page size, and says nothing about the label filter or
+ * the "Awaiting review from you" preset, so a label change looked identical
+ * to no change at all.
+ */
+function sameInboxRows(
+  left: InboxRequestState,
+  right: InboxRequestState,
+): boolean {
+  return (
+    sameRepositoryIdentity(left.repository, right.repository) &&
+    left.state === right.state &&
+    left.pageSize === right.pageSize &&
+    left.awaitingMyReview === right.awaitingMyReview &&
+    left.pageToken === right.pageToken &&
+    left.selectedLabels.length === right.selectedLabels.length &&
+    left.selectedLabels.every(
+      (label, index) => label === right.selectedLabels[index],
+    )
+  );
+}
+
 const firstInboxRequest: InboxRequestState = {
   state: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
@@ -425,6 +452,11 @@ export function App({
   } = workspace;
   const [inboxRequest, setInboxRequest] =
     useState<InboxRequestState>(firstInboxRequest);
+  /** The request whose rows `inbox` currently holds; `undefined` until the
+   * first read lands. Compared against `inboxRequest` to decide whether the
+   * row list is showing the previous request's answer. */
+  const [confirmedInboxRequest, setConfirmedInboxRequest] =
+    useState<InboxRequestState>();
   const inboxRequestRef = useRef<InboxRequestState>(firstInboxRequest);
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -596,6 +628,10 @@ export function App({
       if (initialRequest !== inboxRequestRef.current)
         updateInboxRequest(initialRequest);
       inboxPayload = await api(inboxRequestPath(initialRequest));
+      // The rows about to be shown are this request's answer. Without this
+      // the row list would sit in its loading state forever after a cold
+      // start, because nothing else records what produced them.
+      setConfirmedInboxRequest(initialRequest);
     } catch {
       if (generation === workspaceGeneration.current)
         dispatchWorkspace({ _tag: "failed", screen: "error" });
@@ -637,6 +673,7 @@ export function App({
         )
           throw new Error("Invalid inbox refresh response");
         if (generation !== inboxRefreshGeneration.current) return;
+        setConfirmedInboxRequest(request);
         const nextDashboard = dashboardFromInbox(refreshed);
         dispatchWorkspace({
           _tag: "refreshSucceeded",
@@ -1142,14 +1179,16 @@ export function App({
     inbox?.inbox.snapshot?.refreshedAt === undefined
       ? {}
       : { refreshedAt: inbox.inbox.snapshot.refreshedAt };
-  // The confirmed inbox response still carries the previous state filter's
-  // rows until the in-flight request for the newly requested one lands. The
-  // toggle below reflects `inboxRequest.state` immediately (so the click
-  // feels responsive), but the row list must not render those stale rows
-  // under the new filter's label — so InboxFlow gets this boolean and holds
-  // the list in a loading state until the two agree.
+  // The confirmed inbox response still carries the previous request's rows
+  // until the in-flight request for the new one lands. The filter bar
+  // reflects `inboxRequest` immediately (so the click feels responsive), but
+  // the row list must not present those stale rows as the new request's
+  // answer — so InboxFlow gets this boolean and holds the list in a loading
+  // state until the two agree.
   const inboxListPending =
-    inbox !== undefined && inbox.inbox.state !== inboxRequest.state;
+    inbox !== undefined &&
+    (confirmedInboxRequest === undefined ||
+      !sameInboxRows(confirmedInboxRequest, inboxRequest));
   return shell(
     <div className="flex min-h-0 flex-1 flex-col">
       <InboxFlow
