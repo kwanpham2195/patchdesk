@@ -22,10 +22,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # No `version:` here on purpose. `package.json`'s `packageManager`
+      # field already pins pnpm, and action-setup refuses to start when both
+      # are set: "Multiple versions of pnpm specified". One source, and it is
+      # the one the repository uses locally.
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 8.8.0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
