@@ -54,7 +54,6 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
 
         onOpenReview={vi.fn()}
         onOpenReviewId={open}
@@ -77,7 +76,6 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onPreviousPage={previous}
         onNextPage={next}
         onOpenReview={vi.fn()}
@@ -103,16 +101,20 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onPreviousPage={previous}
         onNextPage={next}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
     );
-    const previousLink = screen.getByLabelText("Go to previous page");
-    expect(previousLink.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(previousLink);
+    // A real `disabled` button, not `aria-disabled` on a clickable anchor
+    // (see maintainer-inbox.tsx's `InboxFooter`) — genuinely inert, not just
+    // advisory.
+    const previousButton = screen.getByLabelText("Go to previous page");
+    if (!(previousButton instanceof HTMLButtonElement))
+      throw new Error("expected a button element");
+    expect(previousButton.disabled).toBe(true);
+    fireEvent.click(previousButton);
     expect(previous).not.toHaveBeenCalled();
 
     // hasPreviousPage is now true, but a refresh in flight must also disable
@@ -127,16 +129,17 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Refreshing"
-        onRefresh={vi.fn()}
         onPreviousPage={previous}
         onNextPage={next}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
     );
-    const nextLink = screen.getByLabelText("Go to next page");
-    expect(nextLink.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(nextLink);
+    const nextButton = screen.getByLabelText("Go to next page");
+    if (!(nextButton instanceof HTMLButtonElement))
+      throw new Error("expected a button element");
+    expect(nextButton.disabled).toBe(true);
+    fireEvent.click(nextButton);
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -151,7 +154,6 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onPreviousPage={vi.fn()}
         onNextPage={vi.fn()}
         onOpenReview={vi.fn()}
@@ -186,7 +188,6 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onPageSizeChange={onPageSizeChange}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
@@ -210,7 +211,6 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -228,7 +228,6 @@ describe("MaintainerInbox", () => {
         selectedRepository={repoA}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -251,7 +250,6 @@ describe("MaintainerInbox", () => {
         onRepositoryChange={onRepositoryChange}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -264,7 +262,8 @@ describe("MaintainerInbox", () => {
     expect(onRepositoryChange).toHaveBeenCalledWith(repoB);
   });
 
-  it("shows merged rows outside active queues and delegates scope selection", () => {
+  it("shows merged rows and delegates state selection through the filter bar", async () => {
+    const user = userEvent.setup();
     const scopeChange = vi.fn();
     const mergedRow: InboxRow = {
       ...row,
@@ -283,20 +282,25 @@ describe("MaintainerInbox", () => {
         rows={[mergedRow]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onScopeChange={scopeChange}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
     );
 
+    // The row's Merged badge, and the filter bar's state Select showing its
+    // current value — the queue rail is gone entirely (slice 8a), so no
+    // third "Merged" source remains.
     expect(screen.getAllByText("Merged")).toHaveLength(2);
-    expect(screen.queryByLabelText("Inbox queues")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    const stateSelect = screen.getByRole("combobox", {
+      name: "Pull request state",
+    });
+    await user.click(stateSelect);
+    await user.click(await screen.findByRole("option", { name: "Open" }));
     expect(scopeChange).toHaveBeenCalledWith("open");
   });
 
-  it("marks the active inbox scope toggle item as pressed", () => {
+  it("reflects the requested state in the filter bar's state Select", () => {
     render(
       <MaintainerInbox
         profileId="scope-pressed"
@@ -305,20 +309,14 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onScopeChange={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
     );
     expect(
-      screen
-        .getByRole("button", { name: "Merged" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    expect(
-      screen.getByRole("button", { name: "Open" }).getAttribute("aria-pressed"),
-    ).toBe("false");
+      screen.getByRole("combobox", { name: "Pull request state" }).textContent,
+    ).toContain("Merged");
   });
 
   it("renders large change counts in compact form", () => {
@@ -333,7 +331,6 @@ describe("MaintainerInbox", () => {
         rows={[sized]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -359,7 +356,6 @@ describe("MaintainerInbox", () => {
           state: "stale_cached",
           refreshedAt: "2020-01-01T00:00:00.000Z",
         }}
-        onRefresh={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -387,7 +383,6 @@ describe("MaintainerInbox", () => {
         rows={[labeled]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -409,8 +404,9 @@ describe("MaintainerInbox", () => {
     expect(screen.getByText("+3 more")).toBeTruthy();
   });
 
-  it("filters rows by the selected label", async () => {
+  it("sends the label filter to GitHub instead of filtering loaded rows locally", async () => {
     const user = userEvent.setup();
+    const onLabelsChange = vi.fn();
     const bugRow: InboxRow = {
       ...row,
       identity: { ...row.identity, number: 1 },
@@ -430,7 +426,7 @@ describe("MaintainerInbox", () => {
         rows={[bugRow, featureRow]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
+        onLabelsChange={onLabelsChange}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -441,57 +437,39 @@ describe("MaintainerInbox", () => {
     await user.click(screen.getByRole("button", { name: "Filter by label" }));
     await user.click(await screen.findByRole("checkbox", { name: "bug" }));
 
-    expect(
-      screen.getByRole("button", { name: "Filter by label" }).textContent,
-    ).toContain("bug");
+    // The label filter is a GitHub `label:"NAME"` search qualifier now (ADR
+    // 0031/0032): selecting it asks the parent for a new request rather
+    // than filtering the already-loaded page, so both rows stay on screen
+    // until that request's response replaces `rows`.
+    expect(onLabelsChange).toHaveBeenCalledWith(["bug"]);
     expect(screen.getAllByText(/Bug fix/).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/New feature/)).toBeNull();
+    expect(screen.getAllByText(/New feature/).length).toBeGreaterThan(0);
   });
 
-  it("reserves the desktop rail column only in open scope, where QueueRail actually renders", () => {
-    // The grid template and the QueueRail element are two expressions of the
-    // same `scope === "open"` condition. Assert on the rendered className
-    // directly (via `container.firstChild`, the component's root grid div)
+  it("reserves the review-details grid column while the inspector is open", () => {
+    // Assert on the rendered className directly (via `container.firstChild`,
+    // the component's root grid div)
     // since there is no dedicated seam for the grid template today.
-    const { container: openContainer } = render(
+    const { container } = render(
       <MaintainerInbox
-        profileId="rail-open"
+        profileId="grid-columns"
         profileLabel="P"
         scope="open"
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onRefresh={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
     );
-    const openGrid = openContainer.firstChild;
-    if (!(openGrid instanceof HTMLElement))
+    const grid = container.firstChild;
+    if (!(grid instanceof HTMLElement))
       throw new Error("expected root grid element");
-    // Anchored to the grid-cols token itself: `min-h-[calc(100vh-3rem)]` also
-    // contains the substring "3rem" and would otherwise false-positive.
-    expect(openGrid.className).toMatch(/grid-cols-\[(?:13rem|3rem)_minmax/);
-
-    const { container: mergedContainer } = render(
-      <MaintainerInbox
-        profileId="rail-merged"
-        profileLabel="P"
-        scope="merged"
-        rows={[row]}
-        freshness="fresh"
-        refreshStatus="Current"
-        onRefresh={vi.fn()}
-        onOpenReview={vi.fn()}
-        onOpenReviewId={vi.fn()}
-      />,
-    );
-    const mergedGrid = mergedContainer.firstChild;
-    if (!(mergedGrid instanceof HTMLElement))
-      throw new Error("expected root grid element");
-    expect(mergedGrid.className).not.toMatch(
-      /grid-cols-\[(?:13rem|3rem)_minmax/,
-    );
+    // Inspector open by default (see `inbox-view-preferences.ts`), so the
+    // grid reserves the review-details column. The queue rail's own column
+    // — reserved only in "open" scope — is gone entirely (slice 8a); there
+    // is no scope-conditional grid template left to assert on.
+    expect(grid.className).toMatch(/grid-cols-\[minmax\(0,1fr\)_21rem\]/);
   });
 
   it("shows visible elapsed-age copy for a cached-after-failure snapshot", () => {
@@ -506,11 +484,51 @@ describe("MaintainerInbox", () => {
           state: "failed_cached",
           refreshedAt: "2020-01-01T00:00:00.000Z",
         }}
-        onRefresh={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
     );
     expect(within(container).getByText(/Updated .* ago/)).toBeTruthy();
+  });
+
+  it("renders GitHub's repository-wide matchCount, not the loaded page's row count", () => {
+    // Ten loaded rows, GitHub reports 237 matching in total — the exact
+    // "10 merged" defect ADR 0031 exists to remove. Rendering `rows.length`
+    // here instead of `matchCount` must fail this assertion.
+    const rows = Array.from({ length: 10 }, (_, index) => ({
+      ...row,
+      identity: { ...row.identity, number: index + 1 },
+    }));
+    render(
+      <MaintainerInbox
+        profileId="match-count"
+        profileLabel="P"
+        rows={rows}
+        matchCount={237}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("237 open")).toBeTruthy();
+    expect(screen.queryByText("10 open")).toBeNull();
+  });
+
+  it("renders the count honestly as unknown, never as 0, when matchCount is absent", () => {
+    render(
+      <MaintainerInbox
+        profileId="match-count-absent"
+        profileLabel="P"
+        rows={[row]}
+        freshness="cached"
+        refreshStatus="Cached after refresh failure"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("1 on this page")).toBeTruthy();
+    expect(screen.queryByText("0 open")).toBeNull();
+    expect(screen.queryByText(/^0$/)).toBeNull();
   });
 });

@@ -327,17 +327,15 @@ describe("App inbox scope switch", () => {
     const rowList = screen.getByRole("listbox", { name: "Pull requests" });
     expect(await within(rowList).findByText("#1 Open PR title")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: "Merged" }));
+    const stateSelect = screen.getByRole("combobox", {
+      name: "Pull request state",
+    });
+    await user.click(stateSelect);
+    await user.click(await screen.findByRole("option", { name: "Merged" }));
 
-    // The toggle reflects the requested scope immediately, so the click
-    // still feels responsive.
-    await waitFor(() =>
-      expect(
-        screen
-          .getByRole("button", { name: "Merged" })
-          .getAttribute("aria-pressed"),
-      ).toBe("true"),
-    );
+    // The filter bar's state Select reflects the requested scope
+    // immediately, so the click still feels responsive.
+    await waitFor(() => expect(stateSelect.textContent).toContain("Merged"));
     // The refresh indicator — the app's existing loading affordance —
     // reflects the in-flight request.
     expect(await screen.findByText("GitHub: Refreshing")).toBeTruthy();
@@ -424,10 +422,9 @@ describe("App repository picker", () => {
     ).toContain(`${repoA.owner}/${repoA.repo}`);
   });
 
-  it("changing the selected repository resets the page cursor and clears the label filter, in exactly one request, while the search filter survives", async () => {
+  it("changing the selected repository resets the page cursor and clears the label filter, in exactly one request", async () => {
     const user = userEvent.setup();
     saveInboxViewPreferences("profile", {
-      search: "needle",
       selectedLabels: ["bug"],
     });
     const desktop = installRepoDesktop();
@@ -456,7 +453,6 @@ describe("App repository picker", () => {
     expect(desktop.paths.at(-1)).not.toContain("page=");
     const preferences = loadInboxViewPreferences("profile");
     expect(preferences.selectedLabels).toEqual([]);
-    expect(preferences.search).toBe("needle");
   });
 });
 

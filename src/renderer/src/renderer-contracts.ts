@@ -102,7 +102,14 @@ const repoOutcomeSchema = v.object({
     owner: v.pipe(v.string(), v.minLength(1)),
     repo: v.pipe(v.string(), v.minLength(1)),
   }),
-  state: v.pipe(v.string(), v.minLength(1)),
+  state: v.picklist([
+    "ready",
+    "no_open_prs",
+    "github_auth",
+    "github_read",
+    "github_rate_limited",
+    "github_forbidden",
+  ]),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
   forbiddenReason: v.optional(
     v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
@@ -157,7 +164,6 @@ const inboxResponseSchema = v.strictObject({
 
 export type InboxResponse = v.InferOutput<typeof inboxResponseSchema>;
 export type InboxRow = InboxResponse["inbox"]["rows"][number];
-export type InboxView = "my_inbox" | "updated" | "ready_to_merge" | "all_open";
 
 /** Parses the local API's JSON-safe inbox projection before renderer state owns it. */
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.

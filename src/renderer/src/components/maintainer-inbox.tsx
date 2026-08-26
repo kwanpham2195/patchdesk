@@ -7,26 +7,16 @@ import {
   CircleDashed,
   CircleSlash,
   Clock3,
-  Filter,
   GitPullRequest,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Search,
 } from "lucide-react";
 
-import {
-  inboxIdentityKey,
-  type InboxRow,
-  type InboxView,
-} from "@/renderer-contracts";
+import { inboxIdentityKey, type InboxRow } from "@/renderer-contracts";
 import { recoveryActionLabel } from "@/review-copy";
 import { LabelChip } from "./label-chip";
 import {
-  filterRows,
   useInboxView,
   type ReviewInitialSection,
 } from "../hooks/use-inbox-view";
-import { inboxQueues } from "@/inbox-queues";
 import {
   formatInboxAge,
   type inboxFreshnessLabel,
@@ -35,6 +25,7 @@ import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_PAGE_SIZES,
+  INBOX_STATE_FILTERS,
   type InboxPageSize,
 } from "../../../domain/maintainer-inbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -49,16 +40,9 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group";
-import {
   Pagination,
   PaginationContent,
   PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
   Popover,
@@ -84,7 +68,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 export type { ReviewInitialSection } from "../hooks/use-inbox-view";
@@ -101,23 +84,32 @@ function repositoryKey(repo: {
 type MaintainerInboxProps = {
   readonly profileId: string;
   readonly profileLabel: string;
-  /** Requested scope; App owns remote scope transitions. The Open/Merged
-   * toggle reflects this immediately, even before `listPending` clears. */
+  /** Requested state; App owns remote state transitions. The filter bar's
+   * state `Select` reflects this immediately, even before `listPending`
+   * clears. */
   readonly scope?: "open" | "merged";
-  /** True while `rows` still belongs to the previous scope (a scope change
-   * is in flight). The row list, row count, and details panel hold a
-   * loading state instead of rendering those rows under the new scope's
-   * label; the toggle above keeps reflecting `scope` regardless. */
+  /** True while `rows` still belongs to the previous request (a filter
+   * change is in flight). The row list, row count, and details panel hold a
+   * loading state instead of rendering that data under the newly requested
+   * filter's label. */
   readonly listPending?: boolean;
   /** Confirmed remote page size; App owns remote page-size transitions. */
   readonly pageSize?: InboxPageSize;
   readonly hasPreviousPage?: boolean;
   readonly hasNextPage?: boolean;
   readonly onScopeChange?: (scope: "open" | "merged") => void;
+  /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — never a
+   * local, in-page filter (ADR 0031/0032). App owns the request transition. */
+  readonly selectedLabels?: ReadonlyArray<string>;
+  readonly onLabelsChange?: (labels: ReadonlyArray<string>) => void;
   readonly onPageSizeChange?: (pageSize: InboxPageSize) => void;
   readonly onPreviousPage?: () => void;
   readonly onNextPage?: () => void;
   readonly rows: ReadonlyArray<InboxRow>;
+  /** GitHub's true repository-wide match count for the current filter.
+   * Absent on a cached or failed read that cannot know it — render that
+   * absence honestly, never as 0. Never the loaded page's row count. */
+  readonly matchCount?: number;
   /** The profile's full watchlist — the picker's only source of options
    * (never `/v1/watchlist/suggestions`, which answers a different question).
    * The picker does not render when this is empty; the setup checklist owns
@@ -141,13 +133,6 @@ type MaintainerInboxProps = {
     readonly refreshedAt?: string | undefined;
   };
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
-  /**
-   * Unused since the header's "Refresh all" control was removed (ADR 0032).
-   * Kept optional rather than deleted: existing call sites still pass it,
-   * and slice 8 (the control's replacement — likely the freshness badge
-   * itself) is expected to wire a manual-refresh trigger back in here.
-   */
-  readonly onRefresh?: () => void;
   readonly onOpenReview: (
     row: InboxRow,
     initialSection?: ReviewInitialSection,
@@ -165,10 +150,13 @@ export function MaintainerInbox({
   hasPreviousPage = false,
   hasNextPage = false,
   onScopeChange = () => undefined,
+  selectedLabels = [],
+  onLabelsChange = () => undefined,
   onPageSizeChange = () => undefined,
   onPreviousPage = () => undefined,
   onNextPage = () => undefined,
   rows,
+  matchCount,
   repos,
   selectedRepository,
   onRepositoryChange = () => undefined,
@@ -178,37 +166,25 @@ export function MaintainerInbox({
   onOpenReview,
   onOpenReviewId,
 }: MaintainerInboxProps): React.JSX.Element {
-  const reposField = repos === undefined ? {} : { repos };
-  // While a scope change is in flight, `rows` still belongs to the previous
-  // scope. Every row-derived view (filtered/sorted list, selection, labels,
-  // queue counts) must not present that data under the newly requested
-  // scope's label, so it is withheld here rather than threaded through and
-  // re-guarded at every consumer.
+  // While a filter change is in flight, `rows` still belongs to the previous
+  // request. Every row-derived view (the row list, selection, labels) must
+  // not present that data under the newly requested filter's label, so it
+  // is withheld here rather than threaded through and re-guarded at every
+  // consumer.
   const effectiveRows = listPending ? [] : rows;
   const {
-    view,
-    search,
-    selectedLabels,
-    queueOpen,
     inspectorOpen,
     narrow,
     listRef,
     labelItems,
-    visibleRows,
     selected,
     triggerAction,
-    selectView,
     selectRow,
-    changeSearch,
-    changeSelectedLabels,
-    toggleQueue,
     toggleInspector,
     onListKeyDown,
   } = useInboxView({
     profileId,
-    scope,
     rows: effectiveRows,
-    ...reposField,
     onOpenReview,
     onOpenReviewId,
   });
@@ -217,8 +193,6 @@ export function MaintainerInbox({
     <div className="min-w-0">
       <InboxHeader
         profileLabel={profileLabel}
-        scope={scope}
-        onScopeChange={onScopeChange}
         {...(repos === undefined ? {} : { repos })}
         {...(selectedRepository === undefined ? {} : { selectedRepository })}
         onRepositoryChange={onRepositoryChange}
@@ -229,25 +203,25 @@ export function MaintainerInbox({
         <StaleInboxBanner refreshedAt={snapshot.refreshedAt} />
       ) : null}
       <InboxFiltersBar
-        queueOpen={queueOpen}
-        onToggleQueue={toggleQueue}
-        search={search}
-        onSearchChange={changeSearch}
+        scope={scope}
+        onScopeChange={onScopeChange}
         labelItems={labelItems}
         selectedLabels={selectedLabels}
-        onLabelChange={changeSelectedLabels}
-        visibleCount={visibleRows.length}
-        scope={scope}
+        onLabelChange={onLabelsChange}
+        rowCount={effectiveRows.length}
+        {...(matchCount === undefined ? {} : { matchCount })}
         listPending={listPending}
         inspectorOpen={inspectorOpen}
         onToggleInspector={toggleInspector}
       />
       <InboxRowsPanel
         listRef={listRef}
-        visibleRows={visibleRows}
+        rows={effectiveRows}
         selected={selected}
         scope={scope}
         listPending={listPending}
+        {...(matchCount === undefined ? {} : { matchCount })}
+        hasLabelFilter={selectedLabels.length > 0}
         onKeyDown={onListKeyDown}
         onSelectRow={selectRow}
         onActionRow={triggerAction}
@@ -264,23 +238,9 @@ export function MaintainerInbox({
     </div>
   );
 
-  // The rail column below and the QueueRail element further down are two
-  // expressions of the same condition (`scope === "open"`): the rail only
-  // renders in "open" scope, so the grid must only reserve its column there.
-  // Keep them in sync — letting them drift is exactly how the row list ended
-  // up crushed into a phantom rail slot in "merged" scope.
-  const desktopGridColumns =
-    scope === "open"
-      ? queueOpen
-        ? inspectorOpen
-          ? "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem]"
-          : "min-[1280px]:grid-cols-[13rem_minmax(0,1fr)]"
-        : inspectorOpen
-          ? "min-[1280px]:grid-cols-[3rem_minmax(0,1fr)_21rem]"
-          : "min-[1280px]:grid-cols-[3rem_minmax(0,1fr)]"
-      : inspectorOpen
-        ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]"
-        : "min-[1280px]:grid-cols-[minmax(0,1fr)]";
+  const desktopGridColumns = inspectorOpen
+    ? "min-[1280px]:grid-cols-[minmax(0,1fr)_21rem]"
+    : "min-[1280px]:grid-cols-[minmax(0,1fr)]";
 
   return (
     <div
@@ -289,16 +249,6 @@ export function MaintainerInbox({
         desktopGridColumns,
       )}
     >
-      {scope === "open" ? (
-        <QueueRail
-          rows={effectiveRows}
-          view={view}
-          selectedLabels={selectedLabels}
-          open={queueOpen}
-          onSelect={selectView}
-          onToggle={toggleQueue}
-        />
-      ) : null}
       <ScrollArea className="min-w-0 overflow-x-hidden min-[1280px]:h-full">
         {main}
       </ScrollArea>
@@ -339,8 +289,6 @@ function StaleInboxBanner({
 
 function InboxHeader({
   profileLabel,
-  scope,
-  onScopeChange,
   repos,
   selectedRepository,
   onRepositoryChange,
@@ -348,8 +296,6 @@ function InboxHeader({
   snapshot,
 }: {
   readonly profileLabel: string;
-  readonly scope: "open" | "merged";
-  readonly onScopeChange: (scope: "open" | "merged") => void;
   /** The profile's full watchlist; the picker hides itself when empty (the
    * setup checklist owns the screen instead), and stays visible for exactly
    * one watched repository — hiding it there would make the scoping
@@ -382,12 +328,8 @@ function InboxHeader({
           Maintainer inbox
         </h1>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-          {scope === "open"
-            ? "Open pull requests that need your next decision."
-            : "Merged pull requests returned by GitHub."}
-        </p>
-        <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-          GitHub updates order this page. Local sorting applies only here.
+          Pull requests for the selected repository, filtered and ordered by
+          GitHub.
         </p>
       </div>
       <div className="flex items-center gap-2">
@@ -430,21 +372,6 @@ function InboxHeader({
             </SelectContent>
           </Select>
         )}
-        <ToggleGroup
-          value={[scope]}
-          onValueChange={(values) => {
-            const next = values[0];
-            if (next === undefined) return;
-            if (next === "open" || next === "merged") onScopeChange(next);
-          }}
-          variant="outline"
-          size="sm"
-          spacing={0}
-          aria-label="Inbox scope"
-        >
-          <ToggleGroupItem value="open">Open</ToggleGroupItem>
-          <ToggleGroupItem value="merged">Merged</ToggleGroupItem>
-        </ToggleGroup>
         <InboxFreshness
           status={refreshStatus}
           {...(snapshot === undefined ? {} : { snapshot })}
@@ -455,28 +382,24 @@ function InboxHeader({
 }
 
 function InboxFiltersBar({
-  queueOpen,
-  onToggleQueue,
-  search,
-  onSearchChange,
+  scope,
+  onScopeChange,
   labelItems,
   selectedLabels,
   onLabelChange,
-  visibleCount,
-  scope,
+  rowCount,
+  matchCount,
   listPending,
   inspectorOpen,
   onToggleInspector,
 }: {
-  readonly queueOpen: boolean;
-  readonly onToggleQueue: () => void;
-  readonly search: string;
-  readonly onSearchChange: (value: string) => void;
+  readonly scope: "open" | "merged";
+  readonly onScopeChange: (scope: "open" | "merged") => void;
   readonly labelItems: ReadonlyArray<{ label: string; value: string }>;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onLabelChange: (value: ReadonlyArray<string>) => void;
-  readonly visibleCount: number;
-  readonly scope: "open" | "merged";
+  readonly rowCount: number;
+  readonly matchCount?: number;
   readonly listPending: boolean;
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
@@ -487,27 +410,40 @@ function InboxFiltersBar({
       className="sticky top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur"
       aria-label="Inbox filters"
     >
-      <Button
-        className="min-[1280px]:hidden"
-        size="sm"
-        variant="outline"
-        onClick={onToggleQueue}
-        aria-expanded={queueOpen}
+      <Select
+        value={scope}
+        items={INBOX_STATE_FILTERS.map((option) => ({
+          label: stateFilterShortLabel(option.state),
+          value: option.state,
+        }))}
+        onValueChange={(value) => {
+          const next = INBOX_STATE_FILTERS.find(
+            (option) => option.state === value,
+          );
+          if (next !== undefined) onScopeChange(next.state);
+        }}
       >
-        <Filter /> Queues
-      </Button>
-      <InputGroup className="h-8 min-w-40 flex-1">
-        <InputGroupAddon className="pl-2 [&>svg]:size-3.5">
-          <Search />
-        </InputGroupAddon>
-        <InputGroupInput
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          className="h-8 text-xs"
-          placeholder="Filter pull requests"
-          aria-label="Filter pull requests"
-        />
-      </InputGroup>
+        <SelectTrigger
+          size="sm"
+          className="w-28 text-xs"
+          aria-label="Pull request state"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {INBOX_STATE_FILTERS.map((option) => (
+              <SelectItem
+                key={option.state}
+                value={option.state}
+                className="text-xs"
+              >
+                {stateFilterShortLabel(option.state)}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
       {labelItems.length > 0 ? (
         <Popover>
           <PopoverTrigger
@@ -564,10 +500,15 @@ function InboxFiltersBar({
           </PopoverContent>
         </Popover>
       ) : null}
-      <span className="text-[11px] tabular-nums text-muted-foreground">
+      <span
+        className="ml-auto text-[11px] tabular-nums text-muted-foreground"
+        aria-live="polite"
+      >
         {listPending
           ? "Loading…"
-          : `${visibleCount} ${scope === "open" ? "open" : "merged"}`}
+          : matchCount === undefined
+            ? `${rowCount} on this page`
+            : `${matchCount} ${scope === "open" ? "open" : "merged"}`}
       </span>
       <Button
         size="icon-sm"
@@ -582,6 +523,14 @@ function InboxFiltersBar({
       </Button>
     </section>
   );
+}
+
+/** Compact form of an `INBOX_STATE_FILTERS` option for the filter bar's
+ * narrow `Select` — the command palette uses the full `option.label`
+ * ("Open pull requests") where space isn't constrained; this trigger is
+ * `w-28`. */
+function stateFilterShortLabel(state: "open" | "merged"): string {
+  return state === "open" ? "Open" : "Merged";
 }
 
 /** Trigger copy for the label filter: names the single selection, or a count once more than one is picked. */
@@ -603,21 +552,42 @@ const pendingRowPlaceholders = [
   "pending-row-6",
 ] as const;
 
+/** Distinct copy for an empty row list: a repository the filter genuinely
+ * excludes everything from must not read the same as one with nothing open
+ * at all — see ADR 0031 and .agents/PLANS/2026-08-25-scope-pull-requests-
+ * to-one-repository.md, slice 8a. */
+function emptyRowsMessage(
+  scope: "open" | "merged",
+  matchCount: number | undefined,
+  hasLabelFilter: boolean,
+): string {
+  if (matchCount === undefined)
+    return `No ${scope === "open" ? "open" : "merged"} pull requests on this page.`;
+  if (matchCount > 0)
+    return `No ${scope === "open" ? "open" : "merged"} pull requests on this page — GitHub reports ${matchCount} in total.`;
+  if (hasLabelFilter) return "No pull requests match the selected labels.";
+  return `This repository has no ${scope === "open" ? "open" : "merged"} pull requests right now.`;
+}
+
 function InboxRowsPanel({
   listRef,
-  visibleRows,
+  rows,
   selected,
   scope,
   listPending,
+  matchCount,
+  hasLabelFilter,
   onKeyDown,
   onSelectRow,
   onActionRow,
 }: {
   readonly listRef: React.RefObject<HTMLDivElement | null>;
-  readonly visibleRows: ReadonlyArray<InboxRow>;
+  readonly rows: ReadonlyArray<InboxRow>;
   readonly selected: InboxRow | undefined;
   readonly scope: "open" | "merged";
   readonly listPending: boolean;
+  readonly matchCount?: number;
+  readonly hasLabelFilter: boolean;
   readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   readonly onSelectRow: (row: InboxRow) => void;
   readonly onActionRow: (row: InboxRow) => void;
@@ -635,14 +605,21 @@ function InboxRowsPanel({
         <span>CI</span>
         <span className="text-right">Updated</span>
       </div>
+      {/* Announces the busy-to-loaded transition; the listbox below stays
+       * `aria-hidden` skeleton rows without this, nothing tells assistive
+       * technology loading finished. */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {listPending
+          ? "Loading pull requests…"
+          : `${rows.length} pull request${rows.length === 1 ? "" : "s"} loaded.`}
+      </div>
       <div
         ref={listRef}
         role="listbox"
         aria-label="Pull requests"
         aria-busy={listPending}
-        tabIndex={0}
         onKeyDown={onKeyDown}
-        className="divide-y outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="divide-y outline-none"
       >
         {listPending
           ? pendingRowPlaceholders.map((placeholder) => (
@@ -659,7 +636,7 @@ function InboxRowsPanel({
                 <Skeleton className="h-3 w-6 justify-self-end" />
               </div>
             ))
-          : visibleRows.map((row) => {
+          : rows.map((row) => {
               const key = inboxIdentityKey(row);
               const active =
                 selected !== undefined && key === inboxIdentityKey(selected);
@@ -673,10 +650,9 @@ function InboxRowsPanel({
                 />
               );
             })}
-        {!listPending && visibleRows.length === 0 ? (
+        {!listPending && rows.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
-            No {scope === "open" ? "open" : "merged"} pull requests match this
-            view.
+            {emptyRowsMessage(scope, matchCount, hasLabelFilter)}
           </div>
         ) : null}
       </div>
@@ -745,39 +721,39 @@ function InboxFooter({
           </SelectContent>
         </Select>
       </div>
+      {/* Real `<button>` elements (via `Button`), not the vendored
+       * `PaginationPrevious`/`PaginationNext` anchors — those render an `<a>`
+       * with `aria-disabled`, which is advisory only and stays keyboard-
+       * operable and clickable when "disabled". A native `disabled` button
+       * is genuinely inert. The `Pagination`/`PaginationContent`/
+       * `PaginationItem` wrapper is unchanged. */}
       <Pagination aria-label="Inbox pages" className="mx-0 w-auto">
         <PaginationContent>
           <PaginationItem>
-            <PaginationPrevious
-              href="#"
-              aria-disabled={previousDisabled ? "true" : undefined}
-              tabIndex={previousDisabled ? -1 : undefined}
-              className={cn(
-                "border-0",
-                previousDisabled && "pointer-events-none opacity-50",
-              )}
-              onClick={(event) => {
-                event.preventDefault();
-                if (previousDisabled) return;
-                onPreviousPage();
-              }}
-            />
+            <Button
+              type="button"
+              variant="ghost"
+              className="gap-1 border-0 pl-1.5"
+              aria-label="Go to previous page"
+              disabled={previousDisabled}
+              onClick={onPreviousPage}
+            >
+              <ChevronLeft />
+              <span className="hidden sm:block">Previous</span>
+            </Button>
           </PaginationItem>
           <PaginationItem>
-            <PaginationNext
-              href="#"
-              aria-disabled={nextDisabled ? "true" : undefined}
-              tabIndex={nextDisabled ? -1 : undefined}
-              className={cn(
-                "border-0",
-                nextDisabled && "pointer-events-none opacity-50",
-              )}
-              onClick={(event) => {
-                event.preventDefault();
-                if (nextDisabled) return;
-                onNextPage();
-              }}
-            />
+            <Button
+              type="button"
+              variant="ghost"
+              className="gap-1 border-0 pr-1.5"
+              aria-label="Go to next page"
+              disabled={nextDisabled}
+              onClick={onNextPage}
+            >
+              <span className="hidden sm:block">Next</span>
+              <ChevronRight />
+            </Button>
           </PaginationItem>
         </PaginationContent>
       </Pagination>
@@ -890,89 +866,6 @@ function InboxFreshness({
   );
 }
 
-function QueueRail({
-  rows,
-  view,
-  selectedLabels,
-  open,
-  onSelect,
-  onToggle,
-}: {
-  readonly rows: ReadonlyArray<InboxRow>;
-  readonly view: InboxView;
-  readonly selectedLabels: ReadonlyArray<string>;
-  readonly open: boolean;
-  readonly onSelect: (view: InboxView) => void;
-  readonly onToggle: () => void;
-}): React.JSX.Element {
-  if (!open)
-    return (
-      <aside className="hidden border-r min-[1280px]:flex min-[1280px]:justify-center min-[1280px]:pt-2">
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={onToggle}
-          aria-label="Show inbox queues"
-        >
-          <PanelLeftOpen />
-        </Button>
-      </aside>
-    );
-  return (
-    <aside
-      className="border-r bg-muted/10 max-[1279px]:border-b min-[1280px]:min-h-0"
-      aria-label="Inbox queues"
-    >
-      <div className="flex items-center justify-between px-3 py-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          Queues
-        </p>
-        <Button
-          className="hidden min-[1280px]:inline-flex"
-          size="icon-sm"
-          variant="ghost"
-          onClick={onToggle}
-          aria-label="Hide inbox queues"
-        >
-          <PanelLeftClose />
-        </Button>
-      </div>
-      <nav
-        className="flex gap-0.5 overflow-x-auto px-2 pb-1.5 min-[1280px]:flex-col"
-        aria-label="Inbox views"
-      >
-        {inboxQueues.map((item) => (
-          <Button
-            key={item.id}
-            variant={view === item.id ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 justify-between whitespace-nowrap text-xs min-[1280px]:w-full"
-            onClick={() => onSelect(item.id)}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <Badge
-                variant="ghost"
-                aria-hidden="true"
-                className={cn(
-                  "size-1.5 min-w-1.5 shrink-0 rounded-full border-0 p-0",
-                  queueIndicatorClass(item.id),
-                )}
-              />
-              {item.label}
-            </span>
-            <Badge
-              variant="outline"
-              className="ml-2 h-4 min-w-4 px-1 text-[10px]"
-            >
-              {viewCount(rows, item.id, selectedLabels)}
-            </Badge>
-          </Button>
-        ))}
-      </nav>
-    </aside>
-  );
-}
-
 function InboxRowItem({
   row,
   selected,
@@ -991,6 +884,11 @@ function InboxRowItem({
       type="button"
       role="option"
       aria-selected={selected}
+      // Roving tabindex: only the selected option sits in the Tab order,
+      // the way a native `<select>`'s options do. Arrow keys move both the
+      // selection and real DOM focus (see `onListKeyDown` in
+      // `use-inbox-view.ts`); Tab never has to step through every row.
+      tabIndex={selected ? 0 : -1}
       onClick={() => {
         onSelect();
         onAction();
@@ -1292,24 +1190,6 @@ function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
   }
 }
 
-function viewCount(
-  rows: ReadonlyArray<InboxRow>,
-  view: InboxView,
-  selectedLabels: ReadonlyArray<string>,
-): number {
-  return filterRows(rows, view, "", selectedLabels).length;
-}
-function queueIndicatorClass(view: InboxView): string {
-  switch (view) {
-    case "my_inbox":
-    case "updated":
-      return "bg-status-info";
-    case "ready_to_merge":
-      return "bg-status-success";
-    case "all_open":
-      return "bg-muted-foreground";
-  }
-}
 function actionIcon(
   kind: InboxRow["recommendedAction"]["kind"],
 ): React.JSX.Element {

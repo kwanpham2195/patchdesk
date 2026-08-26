@@ -193,6 +193,87 @@ describe("MaintainerInboxService search query", () => {
       "repo:centraldigital/patchdesk is:pr is:open",
     ]);
   });
+
+  it("composes selected labels into the search query as label qualifiers", async () => {
+    const searchQueries: Array<string> = [];
+    // SAFETY: this fixture implements only the GitHub reader members list() calls.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async (input: {
+          readonly searchQuery: string;
+        }) => {
+          searchQueries.push(input.searchQuery);
+          return ok({ entries: [], hasNextPage: false, issueCount: 0 });
+        },
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: this minimal profile supplies exactly the fields list() reads.
+    await service.list(
+      { id: "cfw", ghAccount: "fixture" } as never,
+      repository,
+      { filter: { state: "open", labels: ["bug", "p0"] }, pageSize: 25 },
+    );
+
+    expect(searchQueries).toEqual([
+      'repo:centraldigital/patchdesk is:pr is:open label:"bug" label:"p0"',
+    ]);
+  });
+
+  it("rejects a page token minted under a different label filter", async () => {
+    // SAFETY: this fixture implements only the GitHub reader members list() calls.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async () =>
+          ok({
+            entries: [],
+            hasNextPage: true,
+            endCursor: "cursor-2",
+            issueCount: 0,
+          }),
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: this minimal profile supplies exactly the fields list() reads.
+    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    const firstPage = await service.list(profile, repository, {
+      filter: { state: "open", labels: ["bug"] },
+      pageSize: 25,
+    });
+    expect(firstPage._tag).toBe("ok");
+    if (firstPage._tag !== "ok") return;
+    const pageToken = firstPage.value.nextPageToken;
+    if (pageToken === undefined) throw new Error("expected a next page token");
+
+    // The cursor was minted for `labels: ["bug"]`; requesting the next page
+    // under a different label filter must not silently continue the old
+    // search — it must be rejected the same way a repository mismatch is.
+    const mismatchedPage = await service.list(profile, repository, {
+      filter: { state: "open", labels: ["enhancement"] },
+      pageSize: 25,
+      pageToken,
+    });
+    expect(mismatchedPage).toMatchObject({
+      _tag: "err",
+      error: "invalid_page",
+    });
+  });
 });
 
 // The defect this whole plan targets: a maintainer inbox header reading

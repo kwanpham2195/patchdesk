@@ -138,6 +138,9 @@ import { err, ok, type Result } from "../domain/result";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_PAGE_SIZES,
+  MAX_INBOX_FILTER_LABELS,
+  MAX_INBOX_FILTER_LABEL_LENGTH,
+  type InboxFilter,
   type InboxPageSize,
 } from "../domain/maintainer-inbox";
 import {
@@ -897,12 +900,17 @@ export async function startLocalApiServer(
       );
       if (repository === "invalid")
         return response(context, err({ reason: "invalid_input" }));
+      const labels = parseInboxLabelsQuery(context.req.queries("label") ?? []);
+      if (labels === "invalid")
+        return response(context, err({ reason: "invalid_input" }));
+      const filter: InboxFilter =
+        labels.length === 0 ? { state } : { state, labels };
       const page = context.req.query("page");
       const result = await dashboard.inboxForActiveProfile(
         repository,
         page === undefined
-          ? { filter: { state }, pageSize }
-          : { filter: { state }, pageSize, pageToken: page },
+          ? { filter, pageSize }
+          : { filter, pageSize, pageToken: page },
       );
       if (result._tag === "err")
         await recordProfileReloadFailure("profile-reload-inbox");
@@ -2682,6 +2690,44 @@ function parseInboxRepositoryQuery(
     owner: parsedOwner.value,
     repo: parsedRepo.value,
   };
+}
+
+/**
+ * Validates the `GET /v1/inbox` `label` query param(s) — repeatable, one per
+ * selected label — into the structured filter `buildInboxSearchQuery`
+ * composes into `label:"NAME"` qualifiers. Bounded by count and length so
+ * the composed query cannot exceed GitHub's 256-character search cap, and
+ * stripped of the double quote a label name would otherwise use to break
+ * out of its own qualifier. This is the injection boundary ADR 0031/0032
+ * name: the renderer sends label names, never GitHub search-qualifier text.
+ */
+function parseInboxLabelsQuery(
+  values: ReadonlyArray<string>,
+): ReadonlyArray<string> | "invalid" {
+  if (values.length > MAX_INBOX_FILTER_LABELS) return "invalid";
+  const labels: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (
+      trimmed.length === 0 ||
+      trimmed.length > MAX_INBOX_FILTER_LABEL_LENGTH ||
+      containsQuoteOrControlCharacter(trimmed)
+    )
+      return "invalid";
+    labels.push(trimmed);
+  }
+  return labels;
+}
+
+/** Rejects the double quote a label would otherwise use to break out of its
+ * own `label:"NAME"` qualifier, and any control character (including
+ * newlines) — a real GitHub label name has no legitimate use for either. */
+function containsQuoteOrControlCharacter(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (value[i] === '"' || code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
 }
 
 function response(

@@ -24,12 +24,15 @@ import {
   type InboxReviewSummary,
   type MaintainerInboxRow,
 } from "../domain/maintainer-inbox";
-// `InboxPageRequest.filter.state` is the only enumerated field this slice
-// carries. `list()` extracts it once into a plain `InboxScope` immediately
-// below and threads that through unchanged everywhere the pre-slice-6 code
-// already took a bare `scope: InboxScope` — `readRepository`,
-// `cachedOrUnavailable`, `unavailablePage`, and `buildInboxSearchQuery` are
-// untouched by this slice.
+// `list()` extracts `filter.state` once into a plain `InboxScope` and
+// normalizes `filter.labels` once into a sorted, deduplicated label list
+// (`normalizeInboxLabels`), then threads both through everywhere the
+// pre-slice-6 code already took a bare `scope: InboxScope` —
+// `readRepository`, `cachedOrUnavailable`, `unavailablePage`, and
+// `buildInboxSearchQuery`. `cachedOrUnavailable` and `unavailablePage` stay
+// label-blind on purpose: a cached or unavailable read has no live query to
+// filter, so it always serves (or reports) every cached row regardless of
+// the requested label filter.
 import type { PullRequestRef } from "../domain/pull-request";
 import type { ReviewSession } from "../domain/review-session";
 import { ok, type Result } from "../domain/result";
@@ -59,6 +62,10 @@ const inboxPageTokenSchema = v.strictObject({
     owner: v.string(),
     repo: v.string(),
   }),
+  /** The (sorted) label filter the token's cursor was cut under; a request
+   * whose label filter has changed is rejected the same way a repository
+   * change is — the cursor belongs to a different search query. */
+  labels: v.array(v.string()),
   cursor: v.optional(
     v.pipe(
       v.string(),
@@ -141,7 +148,8 @@ export class MaintainerInboxService {
     },
   ): Promise<Result<MaintainerInbox, InboxPageRequestFailure>> {
     const scope = request.filter.state;
-    const pageToken = decodeInboxPageToken(request, repository, scope);
+    const labels = normalizeInboxLabels(request.filter.labels);
+    const pageToken = decodeInboxPageToken(request, repository, scope, labels);
     if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
     const authenticated =
       await this.github.resolveAuthenticatedAccount(profile);
@@ -161,6 +169,7 @@ export class MaintainerInboxService {
       profile,
       repository,
       scope,
+      labels,
       request.pageSize,
       pageToken.cursor,
       localSessions,
@@ -186,6 +195,7 @@ export class MaintainerInboxService {
         owner: repository.owner,
         repo: repository.repo,
       },
+      labels,
     };
     const nextPageToken = hasNextPage
       ? encodeInboxPageToken(
@@ -238,6 +248,7 @@ export class MaintainerInboxService {
     profile: WorkspaceProfileConfig,
     repository: InboxRepositoryRef,
     scope: InboxScope,
+    labels: ReadonlyArray<string>,
     pageSize: InboxPageSize,
     cursor: string | undefined,
     sessions: ReadonlyArray<ReviewSession>,
@@ -247,7 +258,7 @@ export class MaintainerInboxService {
       owner: repository.owner,
       repo: repository.repo,
     };
-    const searchQuery = buildInboxSearchQuery(repo, scope);
+    const searchQuery = buildInboxSearchQuery(repo, scope, labels);
     const searched = await this.github.searchMaintainerPullRequests(
       cursor === undefined
         ? { profile, repo, searchQuery, scope, pageSize }
@@ -361,19 +372,44 @@ export class MaintainerInboxService {
 }
 
 /**
- * Builds the GitHub search qualifier string for one repository and scope:
- * `repo:OWNER/NAME is:pr is:open` or `...is:merged`. The sole place that
- * builds this string, so slice 8's user-chosen filters extend it here
+ * Builds the GitHub search qualifier string for one repository, scope, and
+ * label filter: `repo:OWNER/NAME is:pr is:open label:"NAME"`. The sole place
+ * that builds this string, so every renderer-chosen filter extends it here
  * rather than through ad hoc concatenation elsewhere — and so GitHub's
- * 256-character, five-boolean-operator search cap has one place to be
- * enforced once filters can grow the string.
+ * 256-character search cap has one place to be enforced. `labels` is trusted
+ * here: the route already bounds its count, length, and character set
+ * (see `parseInboxLabelsQuery` in `local-api.ts`) before it reaches this
+ * function, so a label name can never contain the quote it is wrapped in.
  */
 function buildInboxSearchQuery(
   repo: InboxRepositoryRef,
   scope: InboxScope,
+  labels: ReadonlyArray<string>,
 ): string {
   const state = scope === "merged" ? "is:merged" : "is:open";
-  return `repo:${repo.owner}/${repo.repo} is:pr ${state}`;
+  const labelQualifiers = labels.map((label) => `label:"${label}"`).join(" ");
+  const base = `repo:${repo.owner}/${repo.repo} is:pr ${state}`;
+  return labelQualifiers.length === 0 ? base : `${base} ${labelQualifiers}`;
+}
+
+/** Sorted, deduplicated label filter — the canonical form compared against
+ * a decoded page token's own `labels`. Returns a mutable `string[]` (rather
+ * than `ReadonlyArray<string>`) because `InboxPageToken`'s `labels` field,
+ * inferred from `inboxPageTokenSchema`'s `v.array(v.string())`, is itself
+ * mutable — matching it here avoids a readonly-to-mutable cast at every
+ * call site that builds or compares a token. */
+function normalizeInboxLabels(
+  labels: ReadonlyArray<string> | undefined,
+): string[] {
+  return [...new Set(labels ?? [])].sort();
+}
+function sameLabels(
+  left: ReadonlyArray<string>,
+  right: ReadonlyArray<string>,
+): boolean {
+  return (
+    left.length === right.length && left.every((label, i) => label === right[i])
+  );
 }
 
 function failedRepositoryRead(
@@ -430,6 +466,7 @@ function decodeInboxPageToken(
   request: InboxPageRequest,
   repository: InboxRepositoryRef,
   scope: InboxScope,
+  labels: string[],
 ): InboxPageToken | undefined {
   if (request.pageToken === undefined)
     return {
@@ -441,6 +478,7 @@ function decodeInboxPageToken(
         owner: repository.owner,
         repo: repository.repo,
       },
+      labels,
     };
   if (request.pageToken.length > MAX_PAGE_TOKEN_LENGTH) return undefined;
   try {
@@ -453,7 +491,8 @@ function decodeInboxPageToken(
     if (
       value.scope !== scope ||
       value.size !== request.pageSize ||
-      !sameRepository(value.repository, repository)
+      !sameRepository(value.repository, repository) ||
+      !sameLabels(value.labels, labels)
     )
       return undefined;
     return value;

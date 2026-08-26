@@ -1,5 +1,3 @@
-import { inboxQueues } from "@/inbox-queues";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const rowPlaceholders = [
@@ -24,41 +22,11 @@ const detailPlaceholders = [
 export function MaintainerInboxSkeleton(): React.JSX.Element {
   return (
     <div
-      className="min-h-[calc(100vh-3rem)] min-w-0 bg-background min-[1280px]:grid min-[1280px]:h-full min-[1280px]:min-h-0 min-[1280px]:grid-cols-[13rem_minmax(0,1fr)_21rem] min-[1280px]:overflow-hidden"
+      className="min-h-[calc(100vh-3rem)] min-w-0 bg-background min-[1280px]:grid min-[1280px]:h-full min-[1280px]:min-h-0 min-[1280px]:grid-cols-[minmax(0,1fr)_21rem] min-[1280px]:overflow-hidden"
       role="status"
       aria-busy="true"
       aria-label="Loading maintainer inbox"
     >
-      <aside className="border-r bg-muted/10 max-[1279px]:border-b min-[1280px]:min-h-0">
-        <div className="flex items-center px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Queues
-          </p>
-        </div>
-        <div
-          className="flex gap-0.5 overflow-x-auto px-2 pb-1.5 min-[1280px]:flex-col"
-          aria-hidden="true"
-        >
-          {inboxQueues.map((item) => (
-            <div
-              key={item.id}
-              className="flex h-7 items-center justify-between gap-2 whitespace-nowrap px-2 text-xs text-muted-foreground min-[1280px]:w-full"
-            >
-              {item.label}
-              <Skeleton className="h-4 w-5" />
-            </div>
-          ))}
-        </div>
-        <Separator className="my-1.5" />
-        <div className="flex items-center px-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            Saved views
-          </p>
-        </div>
-        <div className="px-2 pb-2" aria-hidden="true">
-          <Skeleton className="mt-1 h-4 w-24" />
-        </div>
-      </aside>
       <div className="min-w-0">
         <header className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5">
           <div className="min-w-0">
@@ -67,7 +35,8 @@ export function MaintainerInboxSkeleton(): React.JSX.Element {
               Maintainer inbox
             </h1>
             <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-              Open pull requests that need your next decision.
+              Pull requests for the selected repository, filtered and ordered by
+              GitHub.
             </p>
           </div>
           <Skeleton className="h-8 w-28" />
@@ -76,7 +45,6 @@ export function MaintainerInboxSkeleton(): React.JSX.Element {
           className="flex min-h-10 items-center gap-2 border-b px-3 py-1.5"
           aria-hidden="true"
         >
-          <Skeleton className="h-8 min-w-40 flex-1" />
           <Skeleton className="h-8 w-32" />
           <Skeleton className="h-8 w-28" />
         </div>

@@ -18,17 +18,35 @@ export const DEFAULT_INBOX_PAGE_SIZE: InboxPageSize = 25;
 /** Trusted inbox scopes map to the only GraphQL pull-request states Patchdesk requests. */
 export type InboxScope = "open" | "merged";
 
+/** The only repository label filter GitHub's search API and Patchdesk's 256-character query cap can absorb; see `buildInboxSearchQuery`. */
+export const MAX_INBOX_FILTER_LABELS = 5;
+/** GitHub's own label-name length cap. */
+export const MAX_INBOX_FILTER_LABEL_LENGTH = 50;
+
 /**
- * A structured, enumerated inbox filter. Every field is validated against a
- * literal union at the route the same way `scope` used to be — the renderer
- * never sends a GitHub search-qualifier string, only these enumerated
+ * A structured, enumerated inbox filter. Every field is validated at the
+ * route the same way `scope` used to be — the renderer never sends a GitHub
+ * search-qualifier string, only these bounded, enumerated-or-sanitized
  * values, so `buildInboxSearchQuery` (in `maintainer-inbox-service.ts`) stays
- * the one place free text can reach GitHub's search API. Slice 8 adds more
- * fields here.
+ * the one place free text can reach GitHub's search API.
  */
 export type InboxFilter = {
   readonly state: InboxScope;
+  /** Repository label names, ANDed together as `label:"NAME"`. Capped at
+   * `MAX_INBOX_FILTER_LABELS`, each within `MAX_INBOX_FILTER_LABEL_LENGTH`
+   * and free of the double quote that would let one break out of its
+   * qualifier — enforced at the route, not here. */
+  readonly labels?: ReadonlyArray<string>;
 };
+
+/** Presented together in the filter bar and the command palette (slice 8a); one list so the two surfaces cannot drift. */
+export const INBOX_STATE_FILTERS: ReadonlyArray<{
+  readonly state: InboxScope;
+  readonly label: string;
+}> = [
+  { state: "open", label: "Open pull requests" },
+  { state: "merged", label: "Merged pull requests" },
+];
 
 /** Parsed inbox pagination intent; page tokens remain opaque outside the main process. */
 export type InboxPageRequest = {

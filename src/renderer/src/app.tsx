@@ -131,6 +131,10 @@ type InboxRequestState = {
   readonly repository?: Repo;
   readonly scope: InboxScope;
   readonly pageSize: InboxPageSize;
+  /** The label filter, sent as repeated `label` qualifiers (slice 8a).
+   * Repository-scoped: `changeInboxRepository` always resets it to `[]`,
+   * since a label chosen in one repository may not exist in the next. */
+  readonly selectedLabels: ReadonlyArray<string>;
   readonly pageToken?: string;
   readonly previousPageTokens: ReadonlyArray<string | undefined>;
 };
@@ -171,6 +175,7 @@ function resolveInboxRepository(
 const firstInboxRequest: InboxRequestState = {
   scope: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
+  selectedLabels: [],
   previousPageTokens: [],
 };
 
@@ -193,8 +198,9 @@ function firstInboxRequestFor(
 ): InboxRequestState {
   const profileId = profiles[0]?.id;
   if (profileId === undefined) return firstInboxRequest;
-  const { scope, pageSize } = loadInboxViewPreferences(profileId);
-  return { scope, pageSize, previousPageTokens: [] };
+  const { scope, pageSize, selectedLabels } =
+    loadInboxViewPreferences(profileId);
+  return { scope, pageSize, selectedLabels, previousPageTokens: [] };
 }
 
 /** Builds the renderer-owned inbox URL without decoding the opaque page token. */
@@ -208,6 +214,7 @@ function inboxRequestPath(request: InboxRequestState): string {
     query.set("owner", request.repository.owner);
     query.set("repo", request.repository.repo);
   }
+  for (const label of request.selectedLabels) query.append("label", label);
   if (request.pageToken !== undefined) query.set("page", request.pageToken);
   return `/v1/inbox?${query.toString()}`;
 }
@@ -252,6 +259,7 @@ function reconcileInboxRepository(
     ...repositoryField,
     scope: base.scope,
     pageSize: base.pageSize,
+    selectedLabels: [],
     previousPageTokens: [],
   };
 }
@@ -657,6 +665,7 @@ export function App({
       ...repositoryField,
       scope: preferences.scope,
       pageSize: preferences.pageSize,
+      selectedLabels: repositoryChanged ? [] : preferences.selectedLabels,
       previousPageTokens: [],
     };
     updateInboxRequest(request);
@@ -730,6 +739,7 @@ export function App({
       ...repositoryField,
       scope: inboxRequestRef.current.scope,
       pageSize: inboxRequestRef.current.pageSize,
+      selectedLabels: inboxRequestRef.current.selectedLabels,
       previousPageTokens: [],
     };
     updateInboxRequest(request);
@@ -750,6 +760,7 @@ export function App({
         ...repositoryField,
         scope,
         pageSize: inboxRequestRef.current.pageSize,
+        selectedLabels: inboxRequestRef.current.selectedLabels,
         previousPageTokens: [],
       };
       const profileId = activeInboxProfileId.current;
@@ -768,6 +779,7 @@ export function App({
         ...repositoryField,
         scope: inboxRequestRef.current.scope,
         pageSize,
+        selectedLabels: inboxRequestRef.current.selectedLabels,
         previousPageTokens: [],
       };
       const profileId = activeInboxProfileId.current;
@@ -779,12 +791,36 @@ export function App({
     [refreshInbox, updateInboxRequest],
   );
   /**
+   * Changes the label filter (slice 8a) — GitHub's `label:"NAME"` search
+   * qualifier, never a local, in-page filter. Resets the page cursor: a
+   * cursor minted under the previous label filter belongs to a different
+   * search query and is rejected as `invalid_page`.
+   */
+  const changeInboxLabels = useCallback(
+    (selectedLabels: ReadonlyArray<string>): void => {
+      const { repository } = inboxRequestRef.current;
+      const repositoryField = repository === undefined ? {} : { repository };
+      const request: InboxRequestState = {
+        ...repositoryField,
+        scope: inboxRequestRef.current.scope,
+        pageSize: inboxRequestRef.current.pageSize,
+        selectedLabels,
+        previousPageTokens: [],
+      };
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { selectedLabels });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /**
    * Selects a repository from the picker (slice 7c). The Selected repository
    * is the screen's root state, so changing it resets the page cursor — a
    * cursor minted for the previous repository is rejected as `invalid_page`
    * — and clears the label filter, which is repository-scoped and may name a
-   * label the new repository does not have. Search and every other filter
-   * are GitHub-independent and survive.
+   * label the new repository does not have.
    */
   const changeInboxRepository = useCallback(
     (repository: Repo): void => {
@@ -799,6 +835,7 @@ export function App({
         repository,
         scope: inboxRequestRef.current.scope,
         pageSize: inboxRequestRef.current.pageSize,
+        selectedLabels: [],
         previousPageTokens: [],
       };
       updateInboxRequest(request);
@@ -821,12 +858,14 @@ export function App({
             ...repositoryField,
             scope: current.scope,
             pageSize: current.pageSize,
+            selectedLabels: current.selectedLabels,
             previousPageTokens,
           }
         : {
             ...repositoryField,
             scope: current.scope,
             pageSize: current.pageSize,
+            selectedLabels: current.selectedLabels,
             pageToken,
             previousPageTokens,
           };
@@ -845,6 +884,7 @@ export function App({
       ...repositoryField,
       scope: current.scope,
       pageSize: current.pageSize,
+      selectedLabels: current.selectedLabels,
       pageToken,
       previousPageTokens: [
         ...current.previousPageTokens,
@@ -914,6 +954,7 @@ export function App({
           onOpenSettings={openSettings}
           profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
           activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
+          onInboxStateChange={changeInboxScope}
           onProfileSwitch={async (id) => {
             await api("/v1/profiles/select", { method: "POST", body: { id } });
             saveInboxViewPreferences(id, { scope: "open" });
@@ -1131,6 +1172,8 @@ export function App({
         hasNextPage={inbox?.inbox.nextPageToken !== undefined}
         onInboxScopeChange={changeInboxScope}
         onInboxPageSizeChange={changeInboxPageSize}
+        selectedLabels={inboxRequest.selectedLabels}
+        onInboxLabelsChange={changeInboxLabels}
         {...(inboxRequest.repository === undefined
           ? {}
           : { selectedRepository: inboxRequest.repository })}

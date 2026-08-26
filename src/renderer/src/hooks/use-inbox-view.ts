@@ -8,12 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import {
-  inboxIdentityKey,
-  type InboxRow,
-  type InboxView,
-} from "@/renderer-contracts";
-import { inboxQueues } from "@/inbox-queues";
+import { inboxIdentityKey, type InboxRow } from "@/renderer-contracts";
 import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
@@ -23,36 +18,19 @@ import {
 export type ReviewInitialSection = "overview" | "diff" | "checks";
 
 type InboxViewState = {
-  readonly view: InboxView;
-  readonly search: string;
-  readonly selectedLabels: ReadonlyArray<string>;
-  readonly queueOpen: boolean;
   readonly inspectorOpen: boolean;
   readonly selectedKey?: string;
 };
 
 type InboxViewAction =
   | { readonly _tag: "preferencesLoaded"; readonly state: InboxViewState }
-  | { readonly _tag: "viewSelected"; readonly view: InboxView }
-  | { readonly _tag: "searchChanged"; readonly search: string }
-  | {
-      readonly _tag: "labelChanged";
-      readonly selectedLabels: ReadonlyArray<string>;
-    }
   | { readonly _tag: "rowSelected"; readonly selectedKey: string }
-  | { readonly _tag: "queueToggled" }
   | { readonly _tag: "inspectorToggled" };
 
 function inboxViewState(
   preferences: ReturnType<typeof loadInboxViewPreferences>,
 ): InboxViewState {
-  const state: InboxViewState = {
-    view: preferences.view,
-    search: preferences.search,
-    selectedLabels: preferences.selectedLabels,
-    queueOpen: preferences.queueRailOpen,
-    inspectorOpen: preferences.inspectorOpen,
-  };
+  const state: InboxViewState = { inspectorOpen: preferences.inspectorOpen };
   return preferences.selectedIdentity === undefined
     ? state
     : { ...state, selectedKey: preferences.selectedIdentity };
@@ -65,58 +43,25 @@ function inboxViewReducer(
   switch (action._tag) {
     case "preferencesLoaded":
       return action.state;
-    case "viewSelected":
-      return { ...state, view: action.view };
-    case "searchChanged":
-      return { ...state, search: action.search };
-    case "labelChanged":
-      return { ...state, selectedLabels: action.selectedLabels };
     case "rowSelected":
       return { ...state, selectedKey: action.selectedKey };
-    case "queueToggled":
-      return { ...state, queueOpen: !state.queueOpen };
     case "inspectorToggled":
       return { ...state, inspectorOpen: !state.inspectorOpen };
   }
 }
 
-export function matchesView(row: InboxRow, view: InboxView): boolean {
-  switch (view) {
-    case "all_open":
-      return true;
-    case "my_inbox":
-    case "updated":
-      return row.categories.includes("updated_since_review");
-    case "ready_to_merge":
-      return row.categories.includes("ready_to_merge");
-  }
-}
-
-export function filterRows(
+/** Every label present on the loaded page, for the filter bar's label
+ * popover. Sourced from `rows` rather than a repository-wide listing — this
+ * is deliberately incomplete (a label used only on pull requests off this
+ * page cannot appear), and stays that way until the label picker is fed
+ * from `listRepositoryLabels` instead. */
+function labelItemsFrom(
   rows: ReadonlyArray<InboxRow>,
-  view: InboxView,
-  search: string,
-  selectedLabels: ReadonlyArray<string> = [],
-): ReadonlyArray<InboxRow> {
-  const needle = search.trim().toLocaleLowerCase();
-  const selectedLabelSet = new Set(selectedLabels);
-  return rows.filter(
-    (row) =>
-      matchesView(row, view) &&
-      (needle.length === 0 ||
-        `${row.identity.owner}/${row.identity.repo} ${row.title} ${row.author} #${row.identity.number}`
-          .toLocaleLowerCase()
-          .includes(needle)) &&
-      (selectedLabelSet.size === 0 ||
-        row.labels.some((label) => selectedLabelSet.has(label.name))),
-  );
-}
-
-// GitHub's own ordering is the only sort left; see ADR 0031.
-function sortRows(rows: ReadonlyArray<InboxRow>): ReadonlyArray<InboxRow> {
-  return [...rows].sort((left, right) =>
-    right.updatedAt.localeCompare(left.updatedAt),
-  );
+): ReadonlyArray<{ label: string; value: string }> {
+  const seen = new Map<string, string>();
+  for (const row of rows)
+    for (const label of row.labels) seen.set(label.name, label.color);
+  return [...seen.keys()].sort().map((name) => ({ label: name, value: name }));
 }
 
 function requestAction(
@@ -146,33 +91,26 @@ function narrowViewportQuery(): MediaQueryList | undefined {
 function isNarrowViewport(): boolean {
   return narrowViewportQuery()?.matches ?? false;
 }
-function resolveInboxView(value: string): InboxView | undefined {
-  return inboxQueues.find((queue) => queue.id === value)?.id;
-}
 
 /**
- * Owns the maintainer inbox's local view state (queue, search, label
- * filter, selection) and derives the visible row list from it. Extracted
- * out of `MaintainerInbox` to keep that component under the renderer's
- * giant-component guardrail.
+ * Owns the maintainer inbox's local view state (selection, inspector,
+ * keyboard navigation) over `rows` — already the exact, server-filtered and
+ * server-ordered page GitHub returned; this hook does no filtering or
+ * sorting of its own (see ADR 0031/0032 and
+ * .agents/PLANS/2026-08-25-scope-pull-requests-to-one-repository.md, slice
+ * 8a). Extracted out of `MaintainerInbox` to keep that component under the
+ * renderer's giant-component guardrail.
  */
 export function useInboxView(params: {
   readonly profileId: string;
-  /** Merged rows are historical and bypass every active-work queue filter. */
-  readonly scope: "open" | "merged";
   readonly rows: ReadonlyArray<InboxRow>;
-  readonly repos?: ReadonlyArray<{
-    readonly host: string;
-    readonly owner: string;
-    readonly repo: string;
-  }>;
   readonly onOpenReview: (
     row: InboxRow,
     initialSection?: ReviewInitialSection,
   ) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
 }) {
-  const { profileId, scope, rows, onOpenReview, onOpenReviewId } = params;
+  const { profileId, rows, onOpenReview, onOpenReviewId } = params;
   const preferences = useMemo(
     () => loadInboxViewPreferences(profileId),
     [profileId],
@@ -182,14 +120,7 @@ export function useInboxView(params: {
     preferences,
     inboxViewState,
   );
-  const {
-    view,
-    search,
-    selectedLabels,
-    queueOpen,
-    inspectorOpen,
-    selectedKey,
-  } = inboxView;
+  const { inspectorOpen, selectedKey } = inboxView;
   const [narrow, setNarrow] = useState(() => isNarrowViewport());
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -210,60 +141,20 @@ export function useInboxView(params: {
     });
   }, [profileId]);
 
-  const labelItems = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const row of rows)
-      for (const label of row.labels) seen.set(label.name, label.color);
-    return [...seen.keys()]
-      .sort()
-      .map((name) => ({ label: name, value: name }));
-  }, [rows]);
+  const labelItems = useMemo(() => labelItemsFrom(rows), [rows]);
 
-  const visibleRows = useMemo(
-    () =>
-      sortRows(
-        filterRows(
-          rows,
-          scope === "open" ? view : "all_open",
-          search,
-          selectedLabels,
-        ),
-      ),
-    [rows, scope, search, view, selectedLabels],
-  );
   const selected =
-    visibleRows.find((row) => inboxIdentityKey(row) === selectedKey) ??
-    visibleRows[0];
+    rows.find((row) => inboxIdentityKey(row) === selectedKey) ?? rows[0];
 
   const triggerAction = useCallback(
     (row: InboxRow): void => requestAction(row, onOpenReview, onOpenReviewId),
     [onOpenReview, onOpenReviewId],
   );
 
-  const selectView = useCallback(
-    (next: InboxView): void => {
-      dispatchInboxView({ _tag: "viewSelected", view: next });
-      saveInboxViewPreferences(profileId, { view: next });
-    },
-    [profileId],
-  );
   const selectRow = (row: InboxRow): void => {
     const key = inboxIdentityKey(row);
     dispatchInboxView({ _tag: "rowSelected", selectedKey: key });
     saveInboxViewPreferences(profileId, { selectedIdentity: key });
-  };
-  const changeSearch = (next: string): void => {
-    dispatchInboxView({ _tag: "searchChanged", search: next });
-    saveInboxViewPreferences(profileId, { search: next });
-  };
-  const changeSelectedLabels = (next: ReadonlyArray<string>): void => {
-    dispatchInboxView({ _tag: "labelChanged", selectedLabels: next });
-    saveInboxViewPreferences(profileId, { selectedLabels: next });
-  };
-  const toggleQueue = (): void => {
-    const next = !queueOpen;
-    dispatchInboxView({ _tag: "queueToggled" });
-    saveInboxViewPreferences(profileId, { queueRailOpen: next });
   };
   const toggleInspector = (): void => {
     const next = !inspectorOpen;
@@ -271,22 +162,19 @@ export function useInboxView(params: {
     saveInboxViewPreferences(profileId, { inspectorOpen: next });
   };
   const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (visibleRows.length === 0) return;
-    const first = visibleRows[0];
+    if (rows.length === 0) return;
+    const first = rows[0];
     if (first === undefined) return;
     const currentIndex = Math.max(
       0,
-      visibleRows.findIndex(
+      rows.findIndex(
         (row) => inboxIdentityKey(row) === inboxIdentityKey(selected ?? first),
       ),
     );
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const offset = event.key === "ArrowDown" ? 1 : -1;
-      const next =
-        visibleRows[
-          (currentIndex + offset + visibleRows.length) % visibleRows.length
-        ];
+      const next = rows[(currentIndex + offset + rows.length) % rows.length];
       if (next === undefined) return;
       selectRow(next);
       document.getElementById(`inbox-row-${inboxIdentityKey(next)}`)?.focus();
@@ -295,39 +183,27 @@ export function useInboxView(params: {
       triggerAction(selected);
   };
 
+  // The command palette's "Open selected pull request" entry has no other
+  // way to reach the currently selected row, which lives only here — a
+  // window event stays the practical choice for that one case (see
+  // app-shell.tsx and .agents/PLANS/2026-08-25-scope-pull-requests-to-one-
+  // repository.md, slice 8a, item 6).
   useEffect(() => {
-    const onView = (event: CustomEvent<string>): void => {
-      const next = resolveInboxView(event.detail);
-      if (next !== undefined) selectView(next);
-    };
     const onAction = (): void => {
       if (selected !== undefined) triggerAction(selected);
     };
-    window.addEventListener("patchdesk:inbox-view", onView);
     window.addEventListener("patchdesk:inbox-action", onAction);
-    return () => {
-      window.removeEventListener("patchdesk:inbox-view", onView);
-      window.removeEventListener("patchdesk:inbox-action", onAction);
-    };
-  }, [selectView, selected, triggerAction]);
+    return () => window.removeEventListener("patchdesk:inbox-action", onAction);
+  }, [selected, triggerAction]);
 
   return {
-    view,
-    search,
-    selectedLabels,
-    queueOpen,
     inspectorOpen,
     narrow,
     listRef,
     labelItems,
-    visibleRows,
     selected,
     triggerAction,
-    selectView,
     selectRow,
-    changeSearch,
-    changeSelectedLabels,
-    toggleQueue,
     toggleInspector,
     onListKeyDown,
   };

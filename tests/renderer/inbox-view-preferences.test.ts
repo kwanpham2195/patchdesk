@@ -6,7 +6,7 @@ import {
   saveInboxViewPreferences,
 } from "../../src/renderer/src/inbox-view-preferences";
 
-const KEY = "patchdesk.inbox-view.v4.profile-1";
+const KEY = "patchdesk.inbox-view.v5.profile-1";
 const V2_KEY = "patchdesk.inbox-view.v2.profile-1";
 const LEGACY_KEY = "patchdesk.inbox-view.v1.profile-1";
 
@@ -19,7 +19,7 @@ type StoredValue =
   | { readonly [key: string]: StoredValue };
 
 function store(preferences: Record<string, StoredValue>): void {
-  window.localStorage.setItem(KEY, JSON.stringify({ version: 4, preferences }));
+  window.localStorage.setItem(KEY, JSON.stringify({ version: 5, preferences }));
 }
 
 function storeV2(preferences: Record<string, StoredValue>): void {
@@ -47,15 +47,13 @@ describe("inbox view preferences", () => {
 
   it("keeps sound fields when a single stored field is malformed", () => {
     store({
-      view: "ready_to_merge",
-      search: "nanoid",
-      queueRailOpen: false,
+      scope: "merged",
+      selectedLabels: ["bug"],
       inspectorOpen: "not-a-boolean",
     });
     const loaded = loadInboxViewPreferences("profile-1");
-    expect(loaded.view).toBe("ready_to_merge");
-    expect(loaded.search).toBe("nanoid");
-    expect(loaded.queueRailOpen).toBe(false);
+    expect(loaded.scope).toBe("merged");
+    expect(loaded.selectedLabels).toEqual(["bug"]);
     expect(loaded.inspectorOpen).toBe(true);
   });
 
@@ -77,38 +75,35 @@ describe("inbox view preferences", () => {
   });
 
   it("resets an unlisted or malformed page size to the default while keeping sound fields", () => {
-    store({ view: "ready_to_merge", pageSize: 100 });
+    store({ scope: "merged", pageSize: 100 });
     const loaded = loadInboxViewPreferences("profile-1");
     expect(loaded.pageSize).toBe(25);
-    expect(loaded.view).toBe("ready_to_merge");
+    expect(loaded.scope).toBe("merged");
   });
 
   it("resets to defaults, including page size, when reading version 2 data", () => {
-    storeV2({ view: "ready_to_merge", scope: "merged" });
+    storeV2({ scope: "merged", pageSize: 50 });
     expect(loadInboxViewPreferences("profile-1")).toEqual(
       DEFAULT_INBOX_VIEW_PREFERENCES,
     );
   });
 
   it("migrates version 1 preferences with an open scope", () => {
-    storeLegacy({ view: "ready_to_merge", search: "fixture" });
+    storeLegacy({ scope: "merged", selectedLabels: ["bug"] });
     expect(loadInboxViewPreferences("profile-1")).toMatchObject({
       scope: "open",
-      view: "ready_to_merge",
-      search: "fixture",
+      selectedLabels: ["bug"],
     });
   });
 
   it("degrades a stale string selectedLabel to an empty array without dropping siblings", () => {
     store({
-      view: "ready_to_merge",
-      search: "nanoid",
+      scope: "merged",
       selectedLabel: "bug",
     });
     const loaded = loadInboxViewPreferences("profile-1");
     expect(loaded.selectedLabels).toEqual([]);
-    expect(loaded.view).toBe("ready_to_merge");
-    expect(loaded.search).toBe("nanoid");
+    expect(loaded.scope).toBe("merged");
   });
 
   it("round-trips a selectedLabels array", () => {
@@ -121,12 +116,12 @@ describe("inbox view preferences", () => {
     ]);
   });
 
-  it("caps selectedLabels at 50 entries", () => {
-    const labels = Array.from({ length: 60 }, (_, index) => `label-${index}`);
+  it("caps selectedLabels at MAX_INBOX_FILTER_LABELS entries", () => {
+    const labels = Array.from({ length: 10 }, (_, index) => `label-${index}`);
     store({ selectedLabels: labels });
     const loaded = loadInboxViewPreferences("profile-1");
-    expect(loaded.selectedLabels).toHaveLength(50);
-    expect(loaded.selectedLabels).toEqual(labels.slice(0, 50));
+    expect(loaded.selectedLabels).toHaveLength(5);
+    expect(loaded.selectedLabels).toEqual(labels.slice(0, 5));
   });
 
   it("resets on a version mismatch", () => {

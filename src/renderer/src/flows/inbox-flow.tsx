@@ -73,6 +73,8 @@ export function InboxFlow({
   hasNextPage = false,
   onInboxScopeChange = () => undefined,
   onInboxPageSizeChange = () => undefined,
+  selectedLabels = [],
+  onInboxLabelsChange = () => undefined,
   selectedRepository,
   onRepositoryChange = () => undefined,
   onPreviousInboxPage = () => undefined,
@@ -102,6 +104,10 @@ export function InboxFlow({
   readonly hasNextPage?: boolean;
   readonly onInboxScopeChange?: (scope: "open" | "merged") => void;
   readonly onInboxPageSizeChange?: (pageSize: InboxPageSize) => void;
+  /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — never a
+   * local, in-page filter. Only App owns its request transition. */
+  readonly selectedLabels?: ReadonlyArray<string>;
+  readonly onInboxLabelsChange?: (labels: ReadonlyArray<string>) => void;
   /** The screen's root state (slice 7c); only App owns its request
    * transition. Absent only before the active profile's watchlist is known. */
   readonly selectedRepository?: { host: string; owner: string; repo: string };
@@ -283,6 +289,8 @@ export function InboxFlow({
       hasNextPage={hasNextPage}
       onInboxScopeChange={onInboxScopeChange}
       onInboxPageSizeChange={onInboxPageSizeChange}
+      selectedLabels={selectedLabels}
+      onInboxLabelsChange={onInboxLabelsChange}
       {...(selectedRepository === undefined ? {} : { selectedRepository })}
       onRepositoryChange={onRepositoryChange}
       onPreviousInboxPage={onPreviousInboxPage}
@@ -327,6 +335,8 @@ function InboxScreen({
   hasNextPage,
   onInboxScopeChange,
   onInboxPageSizeChange,
+  selectedLabels,
+  onInboxLabelsChange,
   selectedRepository,
   onRepositoryChange,
   onPreviousInboxPage,
@@ -349,6 +359,8 @@ function InboxScreen({
   readonly hasNextPage: boolean;
   readonly onInboxScopeChange: (scope: "open" | "merged") => void;
   readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
+  readonly selectedLabels: ReadonlyArray<string>;
+  readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
   readonly selectedRepository?: { host: string; owner: string; repo: string };
   readonly onRepositoryChange: (repository: {
     host: string;
@@ -411,6 +423,11 @@ function InboxScreen({
           refreshStatus={refreshStatus}
           scope={scope}
           listPending={listPending}
+          selectedLabels={selectedLabels}
+          onLabelsChange={onInboxLabelsChange}
+          {...(inbox.inbox.matchCount === undefined
+            ? {}
+            : { matchCount: inbox.inbox.matchCount })}
           pageSize={pageSize}
           hasPreviousPage={hasPreviousPage}
           hasNextPage={hasNextPage}
@@ -925,7 +942,7 @@ function Outcome({
   return (
     <section className="mt-6 space-y-2">
       {repos.flatMap(({ repo, state: outcome, resumeAt, forbiddenReason }) =>
-        outcome === "ready" || outcome === "no_open_prs"
+        outcome === "ready"
           ? []
           : [
               <Alert
@@ -942,15 +959,22 @@ function Outcome({
                   {repo.owner}/{repo.repo}
                 </AlertTitle>
                 <AlertDescription>
-                  {outcome === "github_auth"
-                    ? "GitHub authentication is required before Patchdesk can refresh pull requests. Run gh auth login for the exact GitHub account entered in Settings -> Workspace. Local review records remain available."
-                    : outcome === "github_read"
-                      ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
-                      : outcome === "github_forbidden"
-                        ? forbiddenCopy(forbiddenReason, repo)
-                        : outcome === "github_rate_limited"
-                          ? rateLimitedCopy(resumeAt)
-                          : outcome}
+                  {outcome === "no_open_prs"
+                    ? // Distinct from a filter that excludes everything: this
+                      // repository genuinely has nothing matching the current
+                      // state and label filter right now — see ADR 0031 and
+                      // .agents/PLANS/2026-08-25-scope-pull-requests-to-one-
+                      // repository.md, slice 8a.
+                      "This repository has no pull requests matching the current filter."
+                    : outcome === "github_auth"
+                      ? "GitHub authentication is required before Patchdesk can refresh pull requests. Run gh auth login for the exact GitHub account entered in Settings -> Workspace. Local review records remain available."
+                      : outcome === "github_read"
+                        ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
+                        : outcome === "github_forbidden"
+                          ? forbiddenCopy(forbiddenReason, repo)
+                          : outcome === "github_rate_limited"
+                            ? rateLimitedCopy(resumeAt)
+                            : outcome}
                   {outcome === "github_read" ? (
                     <div>
                       <Button

@@ -1,8 +1,9 @@
 import * as v from "valibot";
-import type { InboxView } from "./renderer-contracts";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_PAGE_SIZES,
+  MAX_INBOX_FILTER_LABELS,
+  MAX_INBOX_FILTER_LABEL_LENGTH,
   type InboxPageSize,
 } from "../../domain/maintainer-inbox";
 
@@ -14,13 +15,6 @@ export type InboxRepositoryIdentity = {
   readonly owner: string;
   readonly repo: string;
 };
-
-const inboxViewSchema = v.picklist([
-  "my_inbox",
-  "updated",
-  "ready_to_merge",
-  "all_open",
-]);
 
 const inboxScopeSchema = v.picklist(["open", "merged"]);
 
@@ -39,11 +33,13 @@ const trimmed = (limit: number) =>
     v.minLength(1),
   );
 
-// selectedLabels is a string list capped at 50 entries so a runaway stored
-// value can't grow the payload unbounded.
-const cappedStrings = (max: number) =>
+// selectedLabels is the persisted form of the label filter (slice 8a); it is
+// bounded the same way the route bounds it (`parseInboxLabelsQuery` in
+// local-api.ts) so a stored value that was once valid never grows into one
+// the server rejects as `invalid_input`.
+const cappedStrings = (max: number, itemLimit: number) =>
   v.pipe(
-    v.array(clipped(200)),
+    v.array(clipped(itemLimit)),
     v.transform((values) => values.slice(0, max)),
   );
 
@@ -58,10 +54,10 @@ const repositoryIdentitySchema = v.object({
 const preferencesSchema = v.object({
   scope: v.fallback(inboxScopeSchema, "open"),
   pageSize: v.fallback(inboxPageSizeSchema, DEFAULT_INBOX_PAGE_SIZE),
-  view: v.fallback(inboxViewSchema, "my_inbox"),
-  search: v.fallback(clipped(200), ""),
-  selectedLabels: v.fallback(cappedStrings(50), []),
-  queueRailOpen: v.fallback(v.boolean(), true),
+  selectedLabels: v.fallback(
+    cappedStrings(MAX_INBOX_FILTER_LABELS, MAX_INBOX_FILTER_LABEL_LENGTH),
+    [],
+  ),
   inspectorOpen: v.fallback(v.boolean(), true),
   selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
   // The Selected repository (see .agents/PLANS/2026-08-25-scope-pull-
@@ -77,10 +73,9 @@ const preferencesSchema = v.object({
 export type InboxViewPreferences = {
   readonly scope: InboxScope;
   readonly pageSize: InboxPageSize;
-  readonly view: InboxView;
-  readonly search: string;
+  /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — no
+   * longer a local, in-page filter (slice 8a). */
   readonly selectedLabels: ReadonlyArray<string>;
-  readonly queueRailOpen: boolean;
   readonly inspectorOpen: boolean;
   readonly selectedIdentity?: string;
   /** The last repository selected from the watchlist, per profile. Falls
@@ -92,22 +87,20 @@ export type InboxViewPreferences = {
 export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   scope: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
-  view: "my_inbox",
-  search: "",
   selectedLabels: [],
-  queueRailOpen: true,
   inspectorOpen: true,
 };
 
-// v4 drops saved views, the repository multi-select, and every sort but
-// GitHub's own "updated" order — see
-// .agents/PLANS/2026-08-25-scope-pull-requests-to-one-repository.md.
-// Bumping VERSION (rather than migrating the v3 key) resets every field to
-// default on an old-version read, matching how v1 -> v2 and v2 -> v3 already
-// worked: `loadLegacyInboxViewPreferences` only recognizes the v1 key, so any
-// other stale version falls straight through to
+// v5 drops the queue rail (`view`, `queueRailOpen`) and the in-page search
+// box — every filter now reaches GitHub as a structured, server-side
+// qualifier instead of filtering the loaded page — see
+// .agents/PLANS/2026-08-25-scope-pull-requests-to-one-repository.md, slice
+// 8a. Bumping VERSION (rather than migrating the v4 key) resets every field
+// to default on an old-version read, matching how v1 -> v2 -> v3 -> v4
+// already worked: `loadLegacyInboxViewPreferences` only recognizes the v1
+// key, so any other stale version falls straight through to
 // `DEFAULT_INBOX_VIEW_PREFERENCES`.
-const VERSION = 4;
+const VERSION = 5;
 
 const storedSchema = v.object({
   version: v.literal(VERSION),
@@ -155,10 +148,7 @@ function preferencesFrom(
   const base = {
     scope: parsed.scope,
     pageSize: parsed.pageSize,
-    view: parsed.view,
-    search: parsed.search,
     selectedLabels: parsed.selectedLabels,
-    queueRailOpen: parsed.queueRailOpen,
     inspectorOpen: parsed.inspectorOpen,
   };
   const withIdentity =
