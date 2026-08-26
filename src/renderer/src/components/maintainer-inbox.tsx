@@ -9,7 +9,6 @@ import {
   Clock3,
   Filter,
   GitPullRequest,
-  LoaderCircle,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -28,7 +27,10 @@ import {
   type ReviewInitialSection,
 } from "../hooks/use-inbox-view";
 import { inboxQueues } from "@/inbox-queues";
-import { formatInboxAge } from "@/inbox-refresh-scheduler";
+import {
+  formatInboxAge,
+  type inboxFreshnessLabel,
+} from "@/inbox-refresh-scheduler";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
@@ -117,16 +119,14 @@ type MaintainerInboxProps = {
       | "unavailable";
     readonly refreshedAt?: string | undefined;
   };
-  readonly refreshStatus:
-    | "Refreshing"
-    | "Current"
-    | "Aged"
-    | "Partial"
-    | "Cached after refresh failure"
-    | "Stale"
-    | "Unavailable"
-    | "Paused";
-  readonly onRefresh: () => void;
+  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
+  /**
+   * Unused since the header's "Refresh all" control was removed (ADR 0032).
+   * Kept optional rather than deleted: existing call sites still pass it,
+   * and slice 8 (the control's replacement — likely the freshness badge
+   * itself) is expected to wire a manual-refresh trigger back in here.
+   */
+  readonly onRefresh?: () => void;
   readonly onOpenReview: (
     row: InboxRow,
     initialSection?: ReviewInitialSection,
@@ -152,7 +152,6 @@ export function MaintainerInbox({
   freshness,
   snapshot,
   refreshStatus,
-  onRefresh,
   onOpenReview,
   onOpenReviewId,
 }: MaintainerInboxProps): React.JSX.Element {
@@ -199,7 +198,6 @@ export function MaintainerInbox({
         onScopeChange={onScopeChange}
         refreshStatus={refreshStatus}
         {...(snapshot === undefined ? {} : { snapshot })}
-        onRefresh={onRefresh}
       />
       {refreshStatus === "Stale" && snapshot?.refreshedAt !== undefined ? (
         <StaleInboxBanner refreshedAt={snapshot.refreshedAt} />
@@ -319,20 +317,11 @@ function InboxHeader({
   onScopeChange,
   refreshStatus,
   snapshot,
-  onRefresh,
 }: {
   readonly profileLabel: string;
   readonly scope: "open" | "merged";
   readonly onScopeChange: (scope: "open" | "merged") => void;
-  readonly refreshStatus:
-    | "Refreshing"
-    | "Current"
-    | "Aged"
-    | "Partial"
-    | "Cached after refresh failure"
-    | "Stale"
-    | "Unavailable"
-    | "Paused";
+  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly snapshot?: {
     readonly state:
       | "current"
@@ -342,7 +331,6 @@ function InboxHeader({
       | "unavailable";
     readonly refreshedAt?: string | undefined;
   };
-  readonly onRefresh: () => void;
 }): React.JSX.Element {
   return (
     <header className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5 min-[1280px]:px-3">
@@ -382,25 +370,6 @@ function InboxHeader({
           status={refreshStatus}
           {...(snapshot === undefined ? {} : { snapshot })}
         />
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 text-xs"
-          onClick={onRefresh}
-          disabled={refreshStatus === "Refreshing"}
-          aria-label={
-            refreshStatus === "Refreshing"
-              ? "Refresh all — refresh already running"
-              : "Refresh all watched repositories"
-          }
-        >
-          {refreshStatus === "Refreshing" ? (
-            <LoaderCircle className="animate-spin" />
-          ) : (
-            <Clock3 />
-          )}
-          Refresh all
-        </Button>
       </div>
     </header>
   );
@@ -657,15 +626,7 @@ function InboxFooter({
   readonly pageSize: InboxPageSize;
   readonly hasPreviousPage: boolean;
   readonly hasNextPage: boolean;
-  readonly refreshStatus:
-    | "Refreshing"
-    | "Current"
-    | "Aged"
-    | "Partial"
-    | "Cached after refresh failure"
-    | "Stale"
-    | "Unavailable"
-    | "Paused";
+  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly onPreviousPage: () => void;
   readonly onNextPage: () => void;
@@ -817,15 +778,7 @@ function InboxFreshness({
       | "unavailable";
     readonly refreshedAt?: string | undefined;
   };
-  readonly status:
-    | "Refreshing"
-    | "Current"
-    | "Aged"
-    | "Partial"
-    | "Cached after refresh failure"
-    | "Stale"
-    | "Unavailable"
-    | "Paused";
+  readonly status: ReturnType<typeof inboxFreshnessLabel>;
 }): React.JSX.Element {
   const stable = status === "Current";
   const ageMs =
@@ -849,10 +802,7 @@ function InboxFreshness({
       >
         GitHub: {status}
       </Badge>
-      {!stable &&
-      status !== "Refreshing" &&
-      status !== "Paused" &&
-      ageMs !== undefined ? (
+      {!stable && status !== "Refreshing" && ageMs !== undefined ? (
         <span className="text-[10px] text-muted-foreground">
           Updated {formatInboxAge(ageMs)}
         </span>

@@ -60,11 +60,7 @@ import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxPageSize,
 } from "../../domain/maintainer-inbox";
-import {
-  InboxRefreshScheduler,
-  inboxFreshnessLabel,
-  type InboxRefreshOutcome,
-} from "./inbox-refresh-scheduler";
+import { inboxFreshnessLabel } from "./inbox-refresh-scheduler";
 import {
   applyAppearance,
   clearAppearancePreference,
@@ -304,7 +300,6 @@ export function App({
     refreshing: inboxRefreshing,
     refreshFailed: inboxRefreshFailed,
   } = workspace;
-  const [inboxPaused, setInboxPaused] = useState(false);
   const [inboxRequest, setInboxRequest] =
     useState<InboxRequestState>(firstInboxRequest);
   const inboxRequestRef = useRef<InboxRequestState>(firstInboxRequest);
@@ -438,10 +433,6 @@ export function App({
   const resetInboxScopeOnProfileLoad = useRef(false);
   const workspaceGeneration = useRef(0);
   const inboxRefreshGeneration = useRef(0);
-  const inboxRefreshScheduler = useRef<InboxRefreshScheduler | undefined>(
-    undefined,
-  );
-  const inboxSchedulerInitialized = useRef(false);
   const [navigationState, setNavigationState] =
     useState<NavigationState>("clear");
   const [pendingDestination, setPendingDestination] =
@@ -507,12 +498,11 @@ export function App({
   const refreshInbox = useCallback(
     async (
       request: InboxRequestState = inboxRequestRef.current,
-    ): Promise<InboxRefreshOutcome> => {
+    ): Promise<void> => {
       const profileId = activeInboxProfileId.current;
-      if (profileId === undefined) return "failure";
+      if (profileId === undefined) return;
       const generation = ++inboxRefreshGeneration.current;
       dispatchWorkspace({ _tag: "refreshStarted" });
-      setInboxPaused(false);
       try {
         const payload = await api(inboxRequestPath(request));
         const refreshed = parseInboxResponse(payload);
@@ -523,7 +513,7 @@ export function App({
           refreshed.inbox.pageSize !== request.pageSize
         )
           throw new Error("Invalid inbox refresh response");
-        if (generation !== inboxRefreshGeneration.current) return "success";
+        if (generation !== inboxRefreshGeneration.current) return;
         const nextDashboard = dashboardFromInbox(refreshed);
         activeInboxRepositoryRef.current = nextDashboard.profile.repos?.[0];
         dispatchWorkspace({
@@ -532,16 +522,9 @@ export function App({
           dashboard: nextDashboard,
           screen: screenStateForInbox(refreshed, nextDashboard),
         });
-        return allRepositoriesRateLimited(refreshed.inbox.repositories)
-          ? {
-              kind: "rate_limited",
-              resumeAt: maxResumeAt(refreshed.inbox.repositories),
-            }
-          : "success";
       } catch {
         if (generation === inboxRefreshGeneration.current)
           dispatchWorkspace({ _tag: "refreshFailed" });
-        return "failure";
       } finally {
         if (generation === inboxRefreshGeneration.current)
           dispatchWorkspace({ _tag: "refreshFinished" });
@@ -589,57 +572,9 @@ export function App({
     updateInboxRequest(request);
     void refreshInbox(request);
   }, [dashboard?.profile.id, refreshInbox, updateInboxRequest]);
-  const hasDashboard = dashboard !== undefined;
   useEffect(() => {
     if (!fixtureMode) void loadWorkspace();
   }, [fixtureMode, loadWorkspace]);
-  useEffect(() => {
-    if (fixtureMode || destination.kind !== "dashboard" || !hasDashboard)
-      return;
-    const scheduler = new InboxRefreshScheduler(() => refreshInbox());
-    inboxRefreshScheduler.current = scheduler;
-    const visible = document.visibilityState !== "hidden";
-    setInboxPaused(!visible);
-    if (visible) {
-      if (inboxSchedulerInitialized.current) scheduler.activate();
-      else {
-        inboxSchedulerInitialized.current = true;
-        scheduler.activateAfterSuccessfulResponse();
-      }
-    }
-
-    const foreground = (): void => {
-      if (document.visibilityState === "hidden") return;
-      setInboxPaused(false);
-      scheduler.setForeground(true);
-    };
-    const background = (): void => {
-      setInboxPaused(true);
-      scheduler.setForeground(false);
-    };
-    const onVisibilityChange = (): void => {
-      if (document.visibilityState === "hidden") background();
-      else foreground();
-    };
-    window.addEventListener("focus", foreground);
-    window.addEventListener("blur", background);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      scheduler.deactivate();
-      if (inboxRefreshScheduler.current === scheduler)
-        inboxRefreshScheduler.current = undefined;
-      window.removeEventListener("focus", foreground);
-      window.removeEventListener("blur", background);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      setInboxPaused(true);
-    };
-  }, [
-    dashboard?.profile.id,
-    destination.kind,
-    fixtureMode,
-    hasDashboard,
-    refreshInbox,
-  ]);
   useEffect(() => {
     if (fixtureMode) return;
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -693,14 +628,7 @@ export function App({
     },
     [navigationState],
   );
-  useEffect(() => {
-    if (fixtureMode || window.patchdesk?.onNavigate === undefined) return;
-    return window.patchdesk.onNavigate((next) => {
-      if (next === "settings") openSettings();
-    });
-  }, [fixtureMode, openSettings]);
-
-  const refreshDashboard = async (): Promise<void> => {
+  const refreshDashboard = useCallback(async (): Promise<void> => {
     const { repository } = inboxRequestRef.current;
     const repositoryField = repository === undefined ? {} : { repository };
     const request: InboxRequestState = {
@@ -711,7 +639,14 @@ export function App({
     };
     updateInboxRequest(request);
     await refreshInbox(request);
-  };
+  }, [refreshInbox, updateInboxRequest]);
+  useEffect(() => {
+    if (fixtureMode || window.patchdesk?.onNavigate === undefined) return;
+    return window.patchdesk.onNavigate((next) => {
+      if (next === "settings") openSettings();
+      else if (next === "refresh") void refreshDashboard();
+    });
+  }, [fixtureMode, openSettings, refreshDashboard]);
   const changeInboxScope = useCallback(
     (scope: InboxRequestState["scope"]): void => {
       const { repository } = inboxRequestRef.current;
@@ -1063,7 +998,6 @@ export function App({
         refreshStatus={inboxFreshnessLabel({
           ...remoteField,
           refreshing: inboxRefreshing,
-          paused: inboxPaused,
           refreshFailed: inboxRefreshFailed,
           ...refreshedAtField,
         })}
@@ -1297,31 +1231,6 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
       }),
     },
   };
-}
-
-/** True only when every watched repo is rate-limited; a mix with healthy repos keeps the normal poll cadence. */
-function allRepositoriesRateLimited(
-  repositories: InboxResponse["inbox"]["repositories"],
-): boolean {
-  return (
-    repositories.length > 0 &&
-    repositories.every((repo) => repo.state === "github_rate_limited")
-  );
-}
-
-/** The latest known resume time across all-rate-limited repos, falling back to a conservative 60-minute wait. */
-function maxResumeAt(
-  repositories: InboxResponse["inbox"]["repositories"],
-): string {
-  const resumeTimesMs = repositories.reduce<Array<number>>((acc, repo) => {
-    const parsed =
-      repo.resumeAt === undefined ? NaN : Date.parse(repo.resumeAt);
-    if (!Number.isNaN(parsed)) acc.push(parsed);
-    return acc;
-  }, []);
-  return resumeTimesMs.length === 0
-    ? new Date(Date.now() + 60 * 60_000).toISOString()
-    : new Date(Math.max(...resumeTimesMs)).toISOString();
 }
 
 function screenStateForInbox(

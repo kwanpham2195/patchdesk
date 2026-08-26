@@ -380,7 +380,6 @@ function InboxScreen({
             ? {}
             : { snapshot: inbox.inbox.snapshot })}
           refreshStatus={refreshStatus}
-          onRefresh={onRefresh}
           scope={scope}
           listPending={listPending}
           pageSize={pageSize}

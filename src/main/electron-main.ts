@@ -394,7 +394,10 @@ function registerDesktopEvents(): void {
           process.platform,
           app.name,
           !app.isPackaged,
-          { openSettings: () => requestRendererNavigation("settings") },
+          {
+            openSettings: () => requestRendererNavigation("settings"),
+            refresh: () => requestRendererNavigation("refresh"),
+          },
         ),
       ]),
     );
@@ -645,7 +648,7 @@ function focusWindow(window: BrowserWindow): void {
   window.focus();
 }
 
-function requestRendererNavigation(destination: "settings"): void {
+function requestRendererNavigation(destination: "settings" | "refresh"): void {
   const window = mainWindow;
   if (window === undefined || window.isDestroyed()) return;
   window.webContents.send(DESKTOP_NAVIGATE_CHANNEL, destination);

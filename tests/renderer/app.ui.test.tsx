@@ -56,42 +56,29 @@ describe("App Review route loading", () => {
     expect(fixtureCalls).toBe(0);
   });
 
-  it("releases the Inbox refresh state after a failed manual refresh", async () => {
-    const user = userEvent.setup();
-    const originalVisibility = Object.getOwnPropertyDescriptor(
-      document,
-      "visibilityState",
-    );
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      value: "visible",
-    });
+  it("releases the Inbox refresh state after a failed manual refresh triggered from View → Refresh", async () => {
     const refreshFailure = promise<void>();
-    installDesktop({
+    const desktop = installDesktop({
       failInboxRefresh: true,
       inboxRefreshGate: refreshFailure.promise,
     });
     render(<App />);
 
     await screen.findByRole("heading", { name: "Maintainer inbox" });
-    fireEvent.focus(window);
-    const refresh = screen.getByRole("button", {
-      name: "Refresh all watched repositories",
-    });
-    await user.click(refresh);
+    // There is no header refresh control (ADR 0032): the menu's View →
+    // Refresh is the only manual trigger, reaching the renderer through the
+    // desktop navigate channel exercised here.
+    desktop.navigate("refresh");
     expect(await screen.findByText("GitHub: Refreshing")).toBeTruthy();
     refreshFailure.resolve();
+    // `inboxFreshnessLabel` returns "Refreshing" whenever the refreshing
+    // flag is still true, so finding this text also proves the flag was
+    // released rather than left stuck true after the failure.
     await waitFor(() =>
       expect(
         screen.getByText("GitHub: Cached after refresh failure"),
       ).toBeTruthy(),
     );
-    if (!(refresh instanceof HTMLButtonElement))
-      throw new Error("Expected refresh control to be a button");
-    expect(refresh.disabled).toBe(false);
-    if (originalVisibility === undefined)
-      Reflect.deleteProperty(document, "visibilityState");
-    else Object.defineProperty(document, "visibilityState", originalVisibility);
   });
 
   it("requests the default rows-per-page on load, then clears the page token and requests the first page with the new size on change", async () => {
@@ -418,13 +405,23 @@ function scopedInbox(scope: "open" | "merged", number: number, title: string) {
   };
 }
 
+/** Test double for the desktop navigate channel: lets a test fire the same
+ * "refresh"/"settings" destinations the View menu sends over IPC, without a
+ * real Electron main process. */
+type DesktopNavigateDouble = {
+  readonly navigate: (destination: "settings" | "refresh") => void;
+};
+
 function installDesktop(
   options: {
     readonly failInboxRefresh?: boolean;
     readonly inboxRefreshGate?: Promise<void>;
   } = {},
-): void {
+): DesktopNavigateDouble {
   let inboxRequests = 0;
+  let navigateListener:
+    | ((destination: "settings" | "refresh") => void)
+    | undefined;
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
     value: {
@@ -458,9 +455,17 @@ function installDesktop(
                   : {},
         };
       },
-      onNavigate: () => () => undefined,
+      onNavigate: (listener: (destination: "settings" | "refresh") => void) => {
+        navigateListener = listener;
+        return () => {
+          navigateListener = undefined;
+        };
+      },
     },
   });
+  return {
+    navigate: (destination) => navigateListener?.(destination),
+  };
 }
 
 function inbox() {
