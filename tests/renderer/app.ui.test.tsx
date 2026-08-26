@@ -12,7 +12,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { parseContentHash } from "../../src/domain/ids";
 import { App, type ReviewWorkbenchLoader } from "../../src/renderer/src/app";
-import { saveInboxViewPreferences } from "../../src/renderer/src/inbox-view-preferences";
+import {
+  loadInboxViewPreferences,
+  saveInboxViewPreferences,
+} from "../../src/renderer/src/inbox-view-preferences";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchFlowProps } from "../../src/renderer/src/flows/review-workbench-flow";
 
@@ -350,6 +353,113 @@ describe("App inbox scope switch", () => {
   });
 });
 
+describe("App repository picker", () => {
+  it("selects the first watched repository by default, then the selection persists across a reload", async () => {
+    const user = userEvent.setup();
+    const desktop = installRepoDesktop();
+    const { unmount } = render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    // The bootstrap request never carries a repository; the correction
+    // fetch that follows resolves it to the first watched repository.
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
+    );
+
+    const combo = screen.getByRole("combobox", { name: "Repository" });
+    expect(combo.textContent).toContain(`${repoA.owner}/${repoA.repo}`);
+    await user.click(combo);
+    await user.click(
+      await screen.findByRole("option", {
+        name: `${repoB.owner}/${repoB.repo}`,
+      }),
+    );
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoB.owner}`),
+    );
+    expect(loadInboxViewPreferences("profile").selectedRepository).toEqual(
+      repoB,
+    );
+
+    // Simulate an app restart: a fresh mount, same localStorage.
+    unmount();
+    desktop.paths.length = 0;
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoB.owner}`),
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Repository" }).textContent,
+    ).toContain(`${repoB.owner}/${repoB.repo}`);
+  });
+
+  it("falls back to the first watched repository, and never requests one outside the watchlist, when the stored selection is no longer watched", async () => {
+    saveInboxViewPreferences("profile", {
+      selectedRepository: {
+        host: "github.com",
+        owner: "removed-owner",
+        repo: "removed-repo",
+      },
+    });
+    const desktop = installRepoDesktop();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
+    );
+    expect(
+      desktop.paths.some((path) => path.includes("owner=removed-owner")),
+    ).toBe(false);
+  });
+
+  it("still shows the picker for exactly one watched repository", async () => {
+    const desktop = installRepoDesktop([repoA]);
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Repository" }).textContent,
+    ).toContain(`${repoA.owner}/${repoA.repo}`);
+  });
+
+  it("changing the selected repository resets the page cursor and clears the label filter, in exactly one request, while the search filter survives", async () => {
+    const user = userEvent.setup();
+    saveInboxViewPreferences("profile", {
+      search: "needle",
+      selectedLabels: ["bug"],
+    });
+    const desktop = installRepoDesktop();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
+    );
+
+    // Reach page 2, so a cursor is on record for repoA.
+    await user.click(screen.getByLabelText("Go to next page"));
+    await waitFor(() => expect(desktop.paths.at(-1)).toContain("page=page-1"));
+
+    const requestsBeforeSwitch = desktop.paths.length;
+    await user.click(screen.getByRole("combobox", { name: "Repository" }));
+    await user.click(
+      await screen.findByRole("option", {
+        name: `${repoB.owner}/${repoB.repo}`,
+      }),
+    );
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoB.owner}`),
+    );
+
+    expect(desktop.paths.length).toBe(requestsBeforeSwitch + 1);
+    expect(desktop.paths.at(-1)).not.toContain("page=");
+    const preferences = loadInboxViewPreferences("profile");
+    expect(preferences.selectedLabels).toEqual([]);
+    expect(preferences.search).toBe("needle");
+  });
+});
+
 /** A single-row inbox response for the given scope, valid against
  * `parseInboxResponse`'s schema. */
 function scopedInbox(scope: "open" | "merged", number: number, title: string) {
@@ -484,6 +594,125 @@ function inbox() {
       dataFreshness: "fresh",
     },
   };
+}
+
+const repoA = { host: "github.com", owner: "acme", repo: "widgets" };
+const repoB = { host: "github.com", owner: "acme", repo: "gadgets" };
+
+/** A valid single-row inbox response for the given repository, optionally
+ * carrying a `nextPageToken` so a test can page forward. */
+function repoInboxResponse(
+  repo: typeof repoA,
+  watchlist: ReadonlyArray<typeof repoA>,
+  options: { readonly nextPageToken?: string } = {},
+) {
+  const nextPageTokenField =
+    options.nextPageToken === undefined
+      ? {}
+      : { nextPageToken: options.nextPageToken };
+  return {
+    profile: {
+      id: "profile",
+      label: "Profile",
+      githubHost: "github.com",
+      ghAccount: "fixture",
+      repos: watchlist,
+    },
+    inbox: {
+      scope: "open",
+      pageSize: 25,
+      ...nextPageTokenField,
+      rows: [
+        {
+          remoteState: "open",
+          identity: { ...repo, number: 1 },
+          title: `${repo.owner}/${repo.repo} PR`,
+          author: "author",
+          baseBranch: "main",
+          headBranch: "change",
+          currentHeadSha: "a".repeat(40),
+          isDraft: false,
+          updatedAt: "2026-08-01T00:00:00.000Z",
+          changeStats: {},
+          checks: { overall: "unknown", checks: [] },
+          reviewState: "none",
+          mergeability: "unknown",
+          labels: [],
+          categories: ["updated_since_review"],
+          recommendedAction: { kind: "run_review", label: "Run review" },
+          dataFreshness: "fresh",
+        },
+      ],
+      repositories: [{ repo, state: "ready" }],
+      dataFreshness: "fresh",
+    },
+  };
+}
+
+/** Test double for the desktop request channel with a two-(or one-)
+ * repository watchlist, keyed by the `owner` and `page` query parameters
+ * `inboxRequestPath` builds. Mirrors the server's hard rejection
+ * (`DashboardController.inboxForActiveProfile`) for any repository outside
+ * `watchlist`, so a misbehaving renderer fails loudly rather than being
+ * silently humored. */
+function installRepoDesktop(
+  watchlist: ReadonlyArray<typeof repoA> = [repoA, repoB],
+) {
+  const paths: string[] = [];
+  Object.defineProperty(window, "patchdesk", {
+    configurable: true,
+    value: {
+      request: async (input: { readonly path?: string }) => {
+        const path = input.path ?? "";
+        if (path === "/v1/profiles") {
+          return {
+            ok: true,
+            status: 200,
+            correlationId: "test",
+            body: [
+              {
+                id: "profile",
+                label: "Profile",
+                githubHost: "github.com",
+                ghAccount: "fixture",
+                repos: watchlist,
+              },
+            ],
+          };
+        }
+        if (!path.startsWith("/v1/inbox"))
+          return { ok: true, status: 200, correlationId: "test", body: {} };
+        paths.push(path);
+        const url = new URL(path, "http://localhost");
+        const owner = url.searchParams.get("owner");
+        const repoName = url.searchParams.get("repo");
+        // No explicit repository (the bootstrap request) resolves the same
+        // way the server does: the first watched repository.
+        const repo =
+          owner === null || repoName === null
+            ? watchlist[0]
+            : watchlist.find(
+                (candidate) =>
+                  candidate.owner === owner && candidate.repo === repoName,
+              );
+        if (repo === undefined)
+          return {
+            ok: false,
+            status: 400,
+            correlationId: "test",
+            body: { error: "invalid_input" },
+          };
+        const page = url.searchParams.get("page");
+        const body =
+          page === "page-1"
+            ? repoInboxResponse(repo, watchlist)
+            : repoInboxResponse(repo, watchlist, { nextPageToken: "page-1" });
+        return { ok: true, status: 200, correlationId: "test", body };
+      },
+      onNavigate: () => () => undefined,
+    },
+  });
+  return { paths };
 }
 
 function projection(

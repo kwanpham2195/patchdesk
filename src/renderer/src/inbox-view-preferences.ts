@@ -8,6 +8,13 @@ import {
 
 export type InboxScope = "open" | "merged";
 
+/** A watched repository's identity, enough to look it up in `profile.repos`. */
+export type InboxRepositoryIdentity = {
+  readonly host: string;
+  readonly owner: string;
+  readonly repo: string;
+};
+
 const inboxViewSchema = v.picklist([
   "my_inbox",
   "updated",
@@ -40,6 +47,12 @@ const cappedStrings = (max: number) =>
     v.transform((values) => values.slice(0, max)),
   );
 
+const repositoryIdentitySchema = v.object({
+  host: trimmed(200),
+  owner: trimmed(200),
+  repo: trimmed(200),
+});
+
 // Every field falls back independently: one stale or hand-edited value resets
 // itself instead of discarding the whole stored view.
 const preferencesSchema = v.object({
@@ -51,6 +64,14 @@ const preferencesSchema = v.object({
   queueRailOpen: v.fallback(v.boolean(), true),
   inspectorOpen: v.fallback(v.boolean(), true),
   selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
+  // The Selected repository (see .agents/PLANS/2026-08-25-scope-pull-
+  // requests-to-one-repository.md, slice 7c). Added without bumping VERSION:
+  // it is optional and falls back to `undefined`, so a v4 record written
+  // before this field existed still parses — there is nothing to migrate.
+  selectedRepository: v.fallback(
+    v.optional(repositoryIdentitySchema),
+    undefined,
+  ),
 });
 
 export type InboxViewPreferences = {
@@ -62,6 +83,10 @@ export type InboxViewPreferences = {
   readonly queueRailOpen: boolean;
   readonly inspectorOpen: boolean;
   readonly selectedIdentity?: string;
+  /** The last repository selected from the watchlist, per profile. Falls
+   * back to the first watched repository when unset or no longer watched —
+   * see `resolveInboxRepository` in `app.tsx`. */
+  readonly selectedRepository?: InboxRepositoryIdentity;
 };
 
 export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
@@ -136,8 +161,12 @@ function preferencesFrom(
     queueRailOpen: parsed.queueRailOpen,
     inspectorOpen: parsed.inspectorOpen,
   };
-  if (parsed.selectedIdentity === undefined) return base;
-  return { ...base, selectedIdentity: parsed.selectedIdentity };
+  const withIdentity =
+    parsed.selectedIdentity === undefined
+      ? base
+      : { ...base, selectedIdentity: parsed.selectedIdentity };
+  if (parsed.selectedRepository === undefined) return withIdentity;
+  return { ...withIdentity, selectedRepository: parsed.selectedRepository };
 }
 
 function key(profileId: string): string {

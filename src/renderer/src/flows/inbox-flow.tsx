@@ -73,6 +73,8 @@ export function InboxFlow({
   hasNextPage = false,
   onInboxScopeChange = () => undefined,
   onInboxPageSizeChange = () => undefined,
+  selectedRepository,
+  onRepositoryChange = () => undefined,
   onPreviousInboxPage = () => undefined,
   onNextInboxPage = () => undefined,
   onSettings,
@@ -100,6 +102,14 @@ export function InboxFlow({
   readonly hasNextPage?: boolean;
   readonly onInboxScopeChange?: (scope: "open" | "merged") => void;
   readonly onInboxPageSizeChange?: (pageSize: InboxPageSize) => void;
+  /** The screen's root state (slice 7c); only App owns its request
+   * transition. Absent only before the active profile's watchlist is known. */
+  readonly selectedRepository?: { host: string; owner: string; repo: string };
+  readonly onRepositoryChange?: (repository: {
+    host: string;
+    owner: string;
+    repo: string;
+  }) => void;
   readonly onPreviousInboxPage?: () => void;
   readonly onNextInboxPage?: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
@@ -273,6 +283,8 @@ export function InboxFlow({
       hasNextPage={hasNextPage}
       onInboxScopeChange={onInboxScopeChange}
       onInboxPageSizeChange={onInboxPageSizeChange}
+      {...(selectedRepository === undefined ? {} : { selectedRepository })}
+      onRepositoryChange={onRepositoryChange}
       onPreviousInboxPage={onPreviousInboxPage}
       onNextInboxPage={onNextInboxPage}
       onSettings={onSettings}
@@ -315,6 +327,8 @@ function InboxScreen({
   hasNextPage,
   onInboxScopeChange,
   onInboxPageSizeChange,
+  selectedRepository,
+  onRepositoryChange,
   onPreviousInboxPage,
   onNextInboxPage,
   refreshStatus,
@@ -335,6 +349,12 @@ function InboxScreen({
   readonly hasNextPage: boolean;
   readonly onInboxScopeChange: (scope: "open" | "merged") => void;
   readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
+  readonly selectedRepository?: { host: string; owner: string; repo: string };
+  readonly onRepositoryChange: (repository: {
+    host: string;
+    owner: string;
+    repo: string;
+  }) => void;
   readonly onPreviousInboxPage: () => void;
   readonly onNextInboxPage: () => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
@@ -369,12 +389,21 @@ function InboxScreen({
       />
       <div className="min-h-0 flex-1">
         <MaintainerInbox
+          // Remounts the view on a repository change so the label filter and
+          // every other locally-owned view state reload fresh from
+          // preferences (already cleared by `onRepositoryChange`) instead of
+          // carrying labels scoped to the previous repository.
+          key={
+            selectedRepository === undefined ? "none" : key(selectedRepository)
+          }
           profileId={inbox.profile.id}
           profileLabel={inbox.profile.label}
           rows={inbox.inbox.rows}
           {...(inbox.profile.repos === undefined
             ? {}
             : { repos: inbox.profile.repos })}
+          {...(selectedRepository === undefined ? {} : { selectedRepository })}
+          onRepositoryChange={onRepositoryChange}
           freshness={inbox.inbox.dataFreshness}
           {...(inbox.inbox.snapshot === undefined
             ? {}

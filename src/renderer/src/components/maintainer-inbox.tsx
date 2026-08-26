@@ -72,6 +72,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -87,6 +88,15 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 export type { ReviewInitialSection } from "../hooks/use-inbox-view";
+
+/** Stable option value for the repository picker's `Select`. */
+function repositoryKey(repo: {
+  readonly host: string;
+  readonly owner: string;
+  readonly repo: string;
+}): string {
+  return `${repo.host}/${repo.owner}/${repo.repo}`;
+}
 
 type MaintainerInboxProps = {
   readonly profileId: string;
@@ -108,7 +118,18 @@ type MaintainerInboxProps = {
   readonly onPreviousPage?: () => void;
   readonly onNextPage?: () => void;
   readonly rows: ReadonlyArray<InboxRow>;
+  /** The profile's full watchlist — the picker's only source of options
+   * (never `/v1/watchlist/suggestions`, which answers a different question).
+   * The picker does not render when this is empty; the setup checklist owns
+   * the screen instead. */
   readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
+  /** The screen's root state (slice 7c); App owns its request transition. */
+  readonly selectedRepository?: { host: string; owner: string; repo: string };
+  readonly onRepositoryChange?: (repository: {
+    host: string;
+    owner: string;
+    repo: string;
+  }) => void;
   readonly freshness: "fresh" | "cached";
   readonly snapshot?: {
     readonly state:
@@ -149,6 +170,8 @@ export function MaintainerInbox({
   onNextPage = () => undefined,
   rows,
   repos,
+  selectedRepository,
+  onRepositoryChange = () => undefined,
   freshness,
   snapshot,
   refreshStatus,
@@ -196,6 +219,9 @@ export function MaintainerInbox({
         profileLabel={profileLabel}
         scope={scope}
         onScopeChange={onScopeChange}
+        {...(repos === undefined ? {} : { repos })}
+        {...(selectedRepository === undefined ? {} : { selectedRepository })}
+        onRepositoryChange={onRepositoryChange}
         refreshStatus={refreshStatus}
         {...(snapshot === undefined ? {} : { snapshot })}
       />
@@ -315,12 +341,26 @@ function InboxHeader({
   profileLabel,
   scope,
   onScopeChange,
+  repos,
+  selectedRepository,
+  onRepositoryChange,
   refreshStatus,
   snapshot,
 }: {
   readonly profileLabel: string;
   readonly scope: "open" | "merged";
   readonly onScopeChange: (scope: "open" | "merged") => void;
+  /** The profile's full watchlist; the picker hides itself when empty (the
+   * setup checklist owns the screen instead), and stays visible for exactly
+   * one watched repository — hiding it there would make the scoping
+   * invisible. */
+  readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
+  readonly selectedRepository?: { host: string; owner: string; repo: string };
+  readonly onRepositoryChange: (repository: {
+    host: string;
+    owner: string;
+    repo: string;
+  }) => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly snapshot?: {
     readonly state:
@@ -351,6 +391,45 @@ function InboxHeader({
         </p>
       </div>
       <div className="flex items-center gap-2">
+        {repos === undefined || repos.length === 0 ? null : (
+          <Select
+            value={
+              selectedRepository === undefined
+                ? undefined
+                : repositoryKey(selectedRepository)
+            }
+            items={repos.map((repo) => ({
+              label: `${repo.owner}/${repo.repo}`,
+              value: repositoryKey(repo),
+            }))}
+            onValueChange={(value) => {
+              const next = repos.find((repo) => repositoryKey(repo) === value);
+              if (next !== undefined) onRepositoryChange(next);
+            }}
+          >
+            <SelectTrigger
+              size="sm"
+              className="max-w-48 text-xs"
+              aria-label="Repository"
+            >
+              <SelectValue placeholder="Select a repository" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel>Repository</SelectLabel>
+                {repos.map((repo) => (
+                  <SelectItem
+                    key={repositoryKey(repo)}
+                    value={repositoryKey(repo)}
+                    className="text-xs"
+                  >
+                    {repo.owner}/{repo.repo}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        )}
         <ToggleGroup
           value={[scope]}
           onValueChange={(values) => {

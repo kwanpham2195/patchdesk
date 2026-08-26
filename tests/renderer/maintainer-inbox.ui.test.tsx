@@ -199,6 +199,71 @@ describe("MaintainerInbox", () => {
     expect(onPageSizeChange).toHaveBeenCalledWith(10);
   });
 
+  const repoA = { host: "github.com", owner: "acme", repo: "widgets" };
+  const repoB = { host: "github.com", owner: "acme", repo: "gadgets" };
+
+  it("does not render the repository picker without a watchlist", () => {
+    render(
+      <MaintainerInbox
+        profileId="no-watchlist"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("combobox", { name: "Repository" })).toBeNull();
+  });
+
+  it("still shows the labelled repository picker for exactly one watched repository", () => {
+    render(
+      <MaintainerInbox
+        profileId="one-repo"
+        profileLabel="P"
+        rows={[row]}
+        repos={[repoA]}
+        selectedRepository={repoA}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const combo = screen.getByRole("combobox", { name: "Repository" });
+    // Labelled so the current scope is readable without opening it.
+    expect(combo.textContent).toContain("acme/widgets");
+  });
+
+  it("selects a different watched repository by keyboard alone and calls back", async () => {
+    const user = userEvent.setup();
+    const onRepositoryChange = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="repo-picker"
+        profileLabel="P"
+        rows={[row]}
+        repos={[repoA, repoB]}
+        selectedRepository={repoA}
+        onRepositoryChange={onRepositoryChange}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    const combo = screen.getByRole("combobox", { name: "Repository" });
+    combo.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Enter}");
+    expect(onRepositoryChange).toHaveBeenCalledWith(repoB);
+  });
+
   it("shows merged rows outside active queues and delegates scope selection", () => {
     const scopeChange = vi.fn();
     const mergedRow: InboxRow = {
