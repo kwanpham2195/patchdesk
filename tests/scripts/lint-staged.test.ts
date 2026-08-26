@@ -21,9 +21,18 @@ type HarnessOptions = {
   readonly partiallyStagedPaths?: ReadonlySet<string>;
   readonly toolResults?: ReadonlyMap<string, CommandResult>;
   readonly rejectedCommand?: string;
+  readonly installedTools?: ReadonlySet<string>;
 };
 
 const cwd = "/fixture/project";
+
+/** Where the gate must find a pinned tool: never a same-named binary on PATH. */
+const pinned = (name: string): string => `${cwd}/node_modules/.bin/${name}`;
+
+const PINNED_TOOLS: ReadonlySet<string> = new Set([
+  "node_modules/.bin/oxfmt",
+  "node_modules/.bin/oxlint",
+]);
 
 const success = (stdout = ""): CommandResult => ({
   status: 0,
@@ -45,6 +54,7 @@ function createHarness(options: HarnessOptions = {}) {
   const stderr: string[] = [];
   const stagedOutput = options.stagedOutput ?? "src/example.ts\0";
   const existingPaths = options.existingPaths ?? new Set(["src/example.ts"]);
+  const installedTools = options.installedTools ?? PINNED_TOOLS;
   const partiallyStagedPaths =
     options.partiallyStagedPaths ?? new Set<string>();
   const toolResults = options.toolResults ?? new Map<string, CommandResult>();
@@ -63,8 +73,11 @@ function createHarness(options: HarnessOptions = {}) {
         ? failure("unstaged changes")
         : success();
     }
-    if (options.rejectedCommand === command) throw new Error("spawn failed");
-    const result = toolResults.get(command);
+    const tool = command.startsWith(`${cwd}/node_modules/.bin/`)
+      ? command.slice(`${cwd}/node_modules/.bin/`.length)
+      : command;
+    if (options.rejectedCommand === tool) throw new Error("spawn failed");
+    const result = toolResults.get(tool);
     return result ?? success();
   };
 
@@ -75,9 +88,12 @@ function createHarness(options: HarnessOptions = {}) {
     options: {
       cwd,
       run,
-      fileExists: async (path: string) =>
-        existingPaths.has(path) ||
-        existingPaths.has(path.slice(cwd.length + 1)),
+      fileExists: async (path: string) => {
+        const relative = path.slice(cwd.length + 1);
+        if (relative.startsWith("node_modules/.bin/"))
+          return installedTools.has(relative);
+        return existingPaths.has(path) || existingPaths.has(relative);
+      },
       output: {
         stdout: (text: string) => stdout.push(text),
         stderr: (text: string) => stderr.push(text),
@@ -105,8 +121,8 @@ describe("lintStaged", () => {
     expect(harness.calls.map(({ command }) => command)).toEqual([
       "git",
       "git",
-      "oxfmt",
-      "oxlint",
+      pinned("oxfmt"),
+      pinned("oxlint"),
     ]);
     expect(harness.calls[0]).toMatchObject({
       command: "git",
@@ -114,12 +130,12 @@ describe("lintStaged", () => {
       cwd,
     });
     expect(harness.calls[2]).toMatchObject({
-      command: "oxfmt",
+      command: pinned("oxfmt"),
       args: ["--check", "--no-error-on-unmatched-pattern", "src/example.ts"],
       cwd,
     });
     expect(harness.calls[3]).toMatchObject({
-      command: "oxlint",
+      command: pinned("oxlint"),
       args: [
         "--deny-warnings",
         "--no-error-on-unmatched-pattern",
@@ -138,7 +154,7 @@ describe("lintStaged", () => {
     expect(harness.calls.map(({ command }) => command)).toEqual([
       "git",
       "git",
-      "oxfmt",
+      pinned("oxfmt"),
     ]);
     expect(harness.stderr.join("")).toContain("format error");
     expect(harness.stderr.join("")).toContain("pnpm exec oxfmt --write");
@@ -153,8 +169,8 @@ describe("lintStaged", () => {
     expect(harness.calls.map(({ command }) => command)).toEqual([
       "git",
       "git",
-      "oxfmt",
-      "oxlint",
+      pinned("oxfmt"),
+      pinned("oxlint"),
     ]);
     expect(harness.calls[3]?.args).toContain("--deny-warnings");
     expect(harness.stderr.join("")).toContain("lint warning");
@@ -223,8 +239,24 @@ describe("lintStaged", () => {
     expect(harness.calls.map(({ command }) => command)).toEqual([
       "git",
       "git",
-      "oxfmt",
+      pinned("oxfmt"),
     ]);
+  });
+
+  it("refuses to run a tool missing from node_modules rather than one on PATH", async () => {
+    const harness = createHarness({
+      installedTools: new Set(["node_modules/.bin/oxlint"]),
+    });
+
+    // Falling back to a same-named binary on PATH is what this guards
+    // against: an editor's older oxfmt disagrees with the pinned one, so it
+    // would reject files `pnpm format:check` considers correct.
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.calls.map(({ command }) => command)).toEqual(["git", "git"]);
+    expect(harness.stderr.join("")).toContain(
+      "oxfmt is not installed at node_modules/.bin/oxfmt",
+    );
+    expect(harness.stderr.join("")).toContain("never a copy on PATH");
   });
 
   it("does not call git add or mutate files", async () => {

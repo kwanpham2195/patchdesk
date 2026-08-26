@@ -23,6 +23,14 @@ type HarnessOptions = {
 };
 
 const cwd = "/fixture/project";
+
+/** Where the gate must find a pinned tool: never a same-named binary on PATH. */
+const pinned = (name: string): string => `${cwd}/node_modules/.bin/${name}`;
+
+const PINNED_TOOLS: ReadonlySet<string> = new Set([
+  "node_modules/.bin/oxfmt",
+  "node_modules/.bin/oxlint",
+]);
 const resolvedBase = "a".repeat(40);
 const resolvedHead = "b".repeat(40);
 
@@ -66,7 +74,10 @@ function createHarness(options: HarnessOptions = {}) {
       return (
         options.diffResult ?? success(options.diffOutput ?? "src/example.ts\0")
       );
-    return toolResults.get(command) ?? success();
+    const tool = command.startsWith(`${cwd}/node_modules/.bin/`)
+      ? command.slice(`${cwd}/node_modules/.bin/`.length)
+      : command;
+    return toolResults.get(tool) ?? success();
   };
 
   return {
@@ -77,9 +88,12 @@ function createHarness(options: HarnessOptions = {}) {
       args: ["base-sha", "head-sha"],
       cwd,
       run,
-      fileExists: async (path: string) =>
-        existingPaths.has(path) ||
-        existingPaths.has(path.slice(cwd.length + 1)),
+      fileExists: async (path: string) => {
+        const relative = path.slice(cwd.length + 1);
+        if (relative.startsWith("node_modules/.bin/"))
+          return PINNED_TOOLS.has(relative);
+        return existingPaths.has(path) || existingPaths.has(relative);
+      },
       output: {
         stdout: (text: string) => stdout.push(text),
         stderr: (text: string) => stderr.push(text),
@@ -141,7 +155,7 @@ describe("checkChangedSource", () => {
       "git",
       "git",
       "git",
-      "oxfmt",
+      pinned("oxfmt"),
     ]);
     expect(harness.stderr.join("")).toContain("format error");
   });
@@ -156,8 +170,8 @@ describe("checkChangedSource", () => {
       "git",
       "git",
       "git",
-      "oxfmt",
-      "oxlint",
+      pinned("oxfmt"),
+      pinned("oxlint"),
     ]);
     expect(harness.stderr.join("")).toContain("lint error");
   });
