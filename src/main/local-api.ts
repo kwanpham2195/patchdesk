@@ -1001,7 +1001,7 @@ export async function startLocalApiServer(
     inlineConversationResponse(
       context,
       inlineConversations,
-      await jsonBody(context),
+      parseInlineConversationCommand(await jsonBody(context), logs),
     ),
   );
   app.post("/v1/reviews/labels/command", async (context) =>
@@ -1462,11 +1462,9 @@ const rendererLogEntrySchema = strictObject({
   sessionId: optional(pipe(string(), minLength(1), maxLength(180))),
   correlationId: optional(pipe(string(), minLength(1), maxLength(120))),
 });
-
+type LogWriter = Pick<AppLogService, "write">;
 /** Logs every authenticated loopback request; the log endpoints and health never log themselves. */
-function logLocalApiRequests(
-  logs: Pick<AppLogService, "write">,
-): MiddlewareHandler {
+function logLocalApiRequests(logs: LogWriter): MiddlewareHandler {
   return async (context, next) => {
     const startedAt = performance.now();
     await next();
@@ -2034,10 +2032,8 @@ function parsePendingReviewAnchor(
 async function inlineConversationResponse(
   context: Context,
   service: InlineConversationService,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-  body: unknown,
+  parsed: ParsedInlineConversationCommand | undefined,
 ): Promise<Response> {
-  const parsed = parseInlineConversationCommand(body);
   if (parsed === undefined)
     return context.json({ error: "invalid_input" }, 400);
   const result = await service.execute(parsed);
@@ -2060,15 +2056,16 @@ async function inlineConversationResponse(
             : 400;
   return context.json({ error: result.error }, status);
 }
-
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-function parseInlineConversationCommand(body: unknown):
-  | {
-      readonly profileId: WorkspaceProfileId;
-      readonly reviewId: ReviewId;
-      readonly command: DirectConversationCommand;
-    }
-  | undefined {
+type ParsedInlineConversationCommand = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly command: DirectConversationCommand;
+};
+function parseInlineConversationCommand(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
+  body: unknown,
+  logs: LogWriter,
+): ParsedInlineConversationCommand | undefined {
   const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
   const reviewId = parseReviewId(readObjectField(body, "reviewId"));
   const raw = readObjectField(body, "command");
@@ -2079,24 +2076,27 @@ function parseInlineConversationCommand(body: unknown):
   );
   const headSha = parseGitSha(readObjectField(expectedRaw, "headSha"));
   const patchHash = parseContentHash(readObjectField(expectedRaw, "patchHash"));
+  const profileOk = profileId._tag;
+  const reviewOk = reviewId._tag;
+  const sessionOk = sessionId._tag;
+  const headShaOk = headSha._tag;
+  const patchHashOk = patchHash._tag;
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
+  const tagType = typeof tag;
   if (
-    profileId._tag === "err" ||
-    reviewId._tag === "err" ||
-    sessionId._tag === "err" ||
-    headSha._tag === "err" ||
-    patchHash._tag === "err" ||
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof tag !== "string"
+    profileOk === "err" ||
+    reviewOk === "err" ||
+    sessionOk === "err" ||
+    headShaOk === "err" ||
+    patchHashOk === "err" ||
+    tagType !== "string"
   ) {
-    console.error("Inline conversation command parse failed", {
-      profileOk: profileId._tag,
-      reviewOk: reviewId._tag,
-      sessionOk: sessionId._tag,
-      headShaOk: headSha._tag,
-      patchHashOk: patchHash._tag,
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- reads the runtime type name for a diagnostic log message only, not to narrow/validate the value.
-      tagType: typeof tag,
-      rawCommand: JSON.stringify(raw),
+    logs.write({
+      process: "main",
+      level: "warn",
+      topic: "http",
+      message: "inline conversation command parse failed",
+      meta: { profileOk, reviewOk, sessionOk, headShaOk, patchHashOk, tagType },
     });
     return undefined;
   }
