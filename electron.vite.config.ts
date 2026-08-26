@@ -1,6 +1,6 @@
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import { fileURLToPath, URL } from "node:url";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
@@ -34,6 +34,10 @@ function rendererGraphArtifact(): Plugin {
       }
       chunks.sort((left, right) => left.fileName.localeCompare(right.fileName));
       const outputDirectory = options.dir ?? "out/renderer";
+      // `generateBundle` runs before Rollup writes the bundle, so on a clean
+      // tree (fresh clone or worktree) `outputDirectory` doesn't exist yet.
+      // Without this, the first build always fails with ENOENT.
+      await mkdir(outputDirectory, { recursive: true });
       await writeFile(
         join(outputDirectory, "renderer-graph.json"),
         `${JSON.stringify({ chunks }, null, 2)}\n`,
