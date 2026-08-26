@@ -37,6 +37,39 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Always ask before removing functionality or code that appears intentional.
 - Do not preserve backward compatibility unless the user asks for it.
 
+## Testing
+
+Test at the lowest layer that can observe the behaviour.
+
+- Domain and services: every behaviour has a test, written before the fix.
+  A bug fix lands with the regression test that failed on `main`.
+- Hooks: a hook that owns timing, generations, optimistic state, or a request
+  payload gets a `renderHook` test with a fake bridge. Do not test hook logic
+  by mounting the component that uses it.
+- Components: one smoke test per screen (renders a fixture; primary actions
+  call their props) plus keyboard and focus tests that need a DOM. No
+  assertions on copy sentences, class names, badge tone, or element order. If
+  a component computes something worth asserting, export the function and
+  test the function.
+- Query by role or label (`getByRole`, `getByLabelText`), never by class name
+  or by a sentence of copy.
+- Playwright (`tests/browser/`): end-to-end journeys and things only a real
+  browser shows (Pierre CodeView scrolling, virtualisation, computed CSS,
+  performance budget). Never a behaviour an RTL or hook test already proves.
+- Test doubles: use the shared helpers (`tests/renderer/fake-desktop-response.ts`
+  for `window.patchdesk`, `FakeGitHubAdapter` for the GitHub gateway). Do not
+  hand-roll a new `Object.defineProperty(window, "patchdesk", ...)` or an
+  inline gateway fake.
+- Invariants that span flows (every GitHub write persists intent before the
+  network call; every Review entry point takes the coordinator lock; every
+  preparation step is recoverable after a crash) are table-driven tests over
+  all flows, not one test per service.
+- No assistive-technology tests: no axe scans, no screen-reader narration
+  checks, no forced-colors or reduced-motion checks (ADR 0034).
+- Before adding a test, check whether one already asserts the behaviour at a
+  lower layer or in another file. Duplicates are deleted, not kept "for
+  safety".
+
 ## Git
 
 Multiple AI sessions may be running in this cwd at the same time, each modifying different files. Git operations that touch unstaged, staged, or untracked files outside your own changes will stomp on other sessions' work. Follow these rules:
