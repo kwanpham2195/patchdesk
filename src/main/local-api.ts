@@ -143,6 +143,9 @@ import {
 import {
   parseContentHash,
   parseFindingId,
+  parseGitHubHost,
+  parseGitHubOwner,
+  parseGitHubRepoName,
   parseGitHubReviewNodeId,
   parseGitHubThreadId,
   parseGitSha,
@@ -156,6 +159,7 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
+import type { InboxRepositoryRef } from "../services/maintainer-inbox-service";
 import type { InsightType } from "../domain/insight-record";
 import type { RawJsonValue } from "../domain/json";
 
@@ -875,17 +879,30 @@ export async function startLocalApiServer(
   );
   app.get("/v1/inbox", async (context) =>
     runWithRequestAbortSignal(context.req.raw.signal, async () => {
-      const scope = context.req.query("scope") ?? "open";
-      if (scope !== "open" && scope !== "merged")
+      // The filter is a structured, enumerated value — each field is
+      // validated against a literal union here, exactly as `scope` was
+      // validated before slice 6. The renderer never sends a GitHub search
+      // qualifier string; `buildInboxSearchQuery` in
+      // `maintainer-inbox-service.ts` is the only place that composes one.
+      const state = context.req.query("state") ?? "open";
+      if (state !== "open" && state !== "merged")
         return response(context, err({ reason: "invalid_input" }));
       const pageSize = parseInboxPageSize(context.req.query("pageSize"));
       if (pageSize === undefined)
         return response(context, err({ reason: "invalid_input" }));
+      const repository = parseInboxRepositoryQuery(
+        context.req.query("host"),
+        context.req.query("owner"),
+        context.req.query("repo"),
+      );
+      if (repository === "invalid")
+        return response(context, err({ reason: "invalid_input" }));
       const page = context.req.query("page");
       const result = await dashboard.inboxForActiveProfile(
+        repository,
         page === undefined
-          ? { scope, pageSize }
-          : { scope, pageSize, pageToken: page },
+          ? { filter: { state }, pageSize }
+          : { filter: { state }, pageSize, pageToken: page },
       );
       if (result._tag === "err")
         await recordProfileReloadFailure("profile-reload-inbox");
@@ -2632,6 +2649,39 @@ function parseInboxPageSize(
 ): InboxPageSize | undefined {
   if (value === undefined) return DEFAULT_INBOX_PAGE_SIZE;
   return INBOX_PAGE_SIZES.find((size) => String(size) === value);
+}
+
+/**
+ * Parses the `GET /v1/inbox` repository query params. All three are omitted
+ * together when the renderer has not learned the active profile's watchlist
+ * yet (the bootstrap request); `DashboardController.inboxForActiveProfile`
+ * falls back to the profile's first watched repository in that case. A
+ * request that supplies any of the three but fails to parse as a genuine
+ * GitHub host/owner/repo is malformed, not omitted, so it is rejected here
+ * rather than silently falling back — the watchlist-membership check itself
+ * lives in the controller, which already holds the active profile.
+ */
+function parseInboxRepositoryQuery(
+  host: string | undefined,
+  owner: string | undefined,
+  repo: string | undefined,
+): InboxRepositoryRef | undefined | "invalid" {
+  if (host === undefined && owner === undefined && repo === undefined)
+    return undefined;
+  const parsedHost = parseGitHubHost(host);
+  const parsedOwner = parseGitHubOwner(owner);
+  const parsedRepo = parseGitHubRepoName(repo);
+  if (
+    parsedHost._tag === "err" ||
+    parsedOwner._tag === "err" ||
+    parsedRepo._tag === "err"
+  )
+    return "invalid";
+  return {
+    host: parsedHost.value,
+    owner: parsedOwner.value,
+    repo: parsedRepo.value,
+  };
 }
 
 function response(

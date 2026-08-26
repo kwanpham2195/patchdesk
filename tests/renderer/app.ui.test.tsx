@@ -125,13 +125,13 @@ describe("App Review route loading", () => {
     });
     render(<App />);
     await screen.findByRole("heading", { name: "Maintainer inbox" });
-    expect(paths).toEqual(["/v1/inbox?scope=open&pageSize=25"]);
+    expect(paths).toEqual(["/v1/inbox?state=open&pageSize=25"]);
 
     const select = screen.getByRole("combobox", { name: "Rows per page" });
     await user.click(select);
     await user.click(await screen.findByRole("option", { name: "10" }));
     await waitFor(() =>
-      expect(paths.at(-1)).toBe("/v1/inbox?scope=open&pageSize=10"),
+      expect(paths.at(-1)).toBe("/v1/inbox?state=open&pageSize=10"),
     );
   });
 
@@ -272,7 +272,7 @@ describe("App inbox scope switch", () => {
               ],
             };
           }
-          if (input.path === "/v1/inbox?scope=open&pageSize=25") {
+          if (input.path === "/v1/inbox?state=open&pageSize=25") {
             return {
               ok: true,
               status: 200,
@@ -280,7 +280,7 @@ describe("App inbox scope switch", () => {
               body: scopedInbox("open", 1, "Open PR title"),
             };
           }
-          if (input.path === "/v1/inbox?scope=merged&pageSize=25") {
+          if (input.path === "/v1/inbox?state=merged&pageSize=25") {
             await mergedGate.promise;
             return {
               ok: true,
@@ -391,7 +391,7 @@ function installDesktop(
     configurable: true,
     value: {
       request: async (input: { readonly path?: string }) => {
-        if (input.path === "/v1/inbox?scope=open&pageSize=25") {
+        if (input.path === "/v1/inbox?state=open&pageSize=25") {
           inboxRequests += 1;
           if (options.failInboxRefresh && inboxRequests > 1) {
             if (options.inboxRefreshGate !== undefined)
@@ -413,7 +413,7 @@ function installDesktop(
                     ghAccount: "fixture",
                   },
                 ]
-              : input.path === "/v1/inbox?scope=open&pageSize=25"
+              : input.path === "/v1/inbox?state=open&pageSize=25"
                 ? inbox()
                 : input.path === "/v1/reviews/load"
                   ? projection()

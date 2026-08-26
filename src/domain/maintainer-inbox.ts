@@ -18,9 +18,21 @@ export const DEFAULT_INBOX_PAGE_SIZE: InboxPageSize = 25;
 /** Trusted inbox scopes map to the only GraphQL pull-request states Patchdesk requests. */
 export type InboxScope = "open" | "merged";
 
+/**
+ * A structured, enumerated inbox filter. Every field is validated against a
+ * literal union at the route the same way `scope` used to be — the renderer
+ * never sends a GitHub search-qualifier string, only these enumerated
+ * values, so `buildInboxSearchQuery` (in `maintainer-inbox-service.ts`) stays
+ * the one place free text can reach GitHub's search API. Slice 8 adds more
+ * fields here.
+ */
+export type InboxFilter = {
+  readonly state: InboxScope;
+};
+
 /** Parsed inbox pagination intent; page tokens remain opaque outside the main process. */
 export type InboxPageRequest = {
-  readonly scope: InboxScope;
+  readonly filter: InboxFilter;
   readonly pageSize: InboxPageSize;
   readonly pageToken?: string;
 };

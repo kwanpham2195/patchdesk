@@ -24,6 +24,12 @@ import {
   type InboxReviewSummary,
   type MaintainerInboxRow,
 } from "../domain/maintainer-inbox";
+// `InboxPageRequest.filter.state` is the only enumerated field this slice
+// carries. `list()` extracts it once into a plain `InboxScope` immediately
+// below and threads that through unchanged everywhere the pre-slice-6 code
+// already took a bare `scope: InboxScope` — `readRepository`,
+// `cachedOrUnavailable`, `unavailablePage`, and `buildInboxSearchQuery` are
+// untouched by this slice.
 import type { PullRequestRef } from "../domain/pull-request";
 import type { ReviewSession } from "../domain/review-session";
 import { ok, type Result } from "../domain/result";
@@ -130,11 +136,12 @@ export class MaintainerInboxService {
     profile: WorkspaceProfileConfig,
     repository: InboxRepositoryRef,
     request: InboxPageRequest = {
-      scope: "open",
+      filter: { state: "open" },
       pageSize: DEFAULT_INBOX_PAGE_SIZE,
     },
   ): Promise<Result<MaintainerInbox, InboxPageRequestFailure>> {
-    const pageToken = decodeInboxPageToken(request, repository);
+    const scope = request.filter.state;
+    const pageToken = decodeInboxPageToken(request, repository, scope);
     if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
     const authenticated =
       await this.github.resolveAuthenticatedAccount(profile);
@@ -143,17 +150,17 @@ export class MaintainerInboxService {
         ? await this.cachedOrUnavailable(
             profile,
             repository,
-            request.scope,
+            scope,
             request.pageSize,
           )
-        : this.unavailablePage(repository, request.scope, request.pageSize);
+        : this.unavailablePage(repository, scope, request.pageSize);
 
     const sessions = await this.sessions.listSessions(profile.id);
     const localSessions = sessions._tag === "ok" ? sessions.value : [];
     const read = await this.readRepository(
       profile,
       repository,
-      request.scope,
+      scope,
       request.pageSize,
       pageToken.cursor,
       localSessions,
@@ -171,7 +178,7 @@ export class MaintainerInboxService {
     const cursor =
       visible.at(-1)?.cursor ?? read.emptyPageEndCursor ?? pageToken.cursor;
     const baseNextToken = {
-      scope: request.scope,
+      scope,
       page: pageToken.page + 1,
       size: request.pageSize,
       repository: {
@@ -188,7 +195,7 @@ export class MaintainerInboxService {
     const matchCountField =
       read.issueCount === undefined ? {} : { matchCount: read.issueCount };
     const value: MaintainerInbox = {
-      scope: request.scope,
+      scope,
       pageSize: request.pageSize,
       rows:
         dataFreshness === "fresh"
@@ -201,7 +208,7 @@ export class MaintainerInboxService {
       ...matchCountField,
     };
     if (
-      request.scope === "open" &&
+      scope === "open" &&
       request.pageToken === undefined &&
       complete &&
       dataFreshness === "fresh"
@@ -422,11 +429,11 @@ function failedRepositoryRead(
 function decodeInboxPageToken(
   request: InboxPageRequest,
   repository: InboxRepositoryRef,
+  scope: InboxScope,
 ): InboxPageToken | undefined {
-  if (request.scope !== "open" && request.scope !== "merged") return undefined;
   if (request.pageToken === undefined)
     return {
-      scope: request.scope,
+      scope,
       page: 1,
       size: request.pageSize,
       repository: {
@@ -444,7 +451,7 @@ function decodeInboxPageToken(
     if (!parsed.success) return undefined;
     const value = parsed.output;
     if (
-      value.scope !== request.scope ||
+      value.scope !== scope ||
       value.size !== request.pageSize ||
       !sameRepository(value.repository, repository)
     )

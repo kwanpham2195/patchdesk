@@ -405,8 +405,8 @@ describe("profile settings and dashboard services", () => {
         paths,
       );
 
-      const result = await controller.inboxForActiveProfile({
-        scope: "open",
+      const result = await controller.inboxForActiveProfile(undefined, {
+        filter: { state: "open" },
         pageSize: 25,
       });
 

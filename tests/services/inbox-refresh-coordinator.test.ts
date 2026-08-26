@@ -136,11 +136,11 @@ it("does not coalesce different page tokens for the same profile and repository"
   const coordinator = new InboxRefreshCoordinator({ list });
 
   const firstPage = coordinator.refresh(profile, repository, {
-    scope: "open",
+    filter: { state: "open" },
     pageSize: 25,
   });
   const nextPage = coordinator.refresh(profile, repository, {
-    scope: "open",
+    filter: { state: "open" },
     pageSize: 25,
     pageToken: "opaque-next-page",
   });
@@ -172,17 +172,53 @@ it("does not coalesce different page sizes for the same profile and repository",
   const coordinator = new InboxRefreshCoordinator({ list });
 
   const defaultPage = coordinator.refresh(profile, repository, {
-    scope: "open",
+    filter: { state: "open" },
     pageSize: 25,
   });
   const largerPage = coordinator.refresh(profile, repository, {
-    scope: "open",
+    filter: { state: "open" },
     pageSize: 50,
   });
 
   expect(list).toHaveBeenCalledTimes(2);
   resolveDefault?.(ok(inbox));
   await expect(Promise.all([defaultPage, largerPage])).resolves.toEqual([
+    ok(inbox),
+    ok(inbox),
+  ]);
+});
+
+it("does not coalesce different filters for the same profile and repository", async () => {
+  let resolveOpen:
+    | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
+    | undefined;
+  const openScan = new Promise<ReturnType<typeof ok<MaintainerInbox>>>(
+    (resolve) => {
+      resolveOpen = resolve;
+    },
+  );
+  const list = vi.fn(
+    (
+      _profile: WorkspaceProfileConfig,
+      _repository: InboxRepositoryRef,
+      page?: { readonly filter?: { readonly state?: string } },
+    ) =>
+      page?.filter?.state === "open" ? openScan : Promise.resolve(ok(inbox)),
+  );
+  const coordinator = new InboxRefreshCoordinator({ list });
+
+  const openPage = coordinator.refresh(profile, repository, {
+    filter: { state: "open" },
+    pageSize: 25,
+  });
+  const mergedPage = coordinator.refresh(profile, repository, {
+    filter: { state: "merged" },
+    pageSize: 25,
+  });
+
+  expect(list).toHaveBeenCalledTimes(2);
+  resolveOpen?.(ok(inbox));
+  await expect(Promise.all([openPage, mergedPage])).resolves.toEqual([
     ok(inbox),
     ok(inbox),
   ]);

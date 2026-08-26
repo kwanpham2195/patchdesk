@@ -18,6 +18,7 @@ import type {
   Dashboard,
   DashboardScreenState,
   Profile,
+  Repo,
   WorkbenchPayload,
 } from "./renderer-models";
 import {
@@ -122,6 +123,15 @@ type WorkspaceAction =
   | { readonly _tag: "cleared" };
 
 type InboxRequestState = {
+  /**
+   * The Selected repository, sent explicitly once known. Absent only for the
+   * renderer's bootstrap request, before the active profile's watchlist is
+   * known — the main process resolves the active profile and falls back to
+   * its first watched repository in that case. Until slice 7c builds the
+   * repository picker, every other request explicitly sends the first
+   * watched repository (see `activeInboxRepositoryRef`).
+   */
+  readonly repository?: Repo;
   readonly scope: InboxScope;
   readonly pageSize: InboxPageSize;
   readonly pageToken?: string;
@@ -137,9 +147,14 @@ const firstInboxRequest: InboxRequestState = {
 /** Builds the renderer-owned inbox URL without decoding the opaque page token. */
 function inboxRequestPath(request: InboxRequestState): string {
   const query = new URLSearchParams({
-    scope: request.scope,
+    state: request.scope,
     pageSize: String(request.pageSize),
   });
+  if (request.repository !== undefined) {
+    query.set("host", request.repository.host);
+    query.set("owner", request.repository.owner);
+    query.set("repo", request.repository.repo);
+  }
   if (request.pageToken !== undefined) query.set("page", request.pageToken);
   return `/v1/inbox?${query.toString()}`;
 }
@@ -392,6 +407,10 @@ export function App({
     };
   }, [fixtureMode]);
   const activeInboxProfileId = useRef<string | undefined>(undefined);
+  // The active profile's first watched repository, known only once a
+  // profile has loaded (see `inboxForActiveProfile`'s bootstrap fallback).
+  // Every inbox request built after that point sends it explicitly.
+  const activeInboxRepositoryRef = useRef<Repo | undefined>(undefined);
   const restoredInboxScopeProfileId = useRef<string | undefined>(undefined);
   const resetInboxScopeOnProfileLoad = useRef(false);
   const workspaceGeneration = useRef(0);
@@ -445,6 +464,7 @@ export function App({
       screen: screenStateForInbox(loadedInbox, currentDashboard),
     });
     activeInboxProfileId.current = currentDashboard.profile.id;
+    activeInboxRepositoryRef.current = currentDashboard.profile.repos?.[0];
   }, [initialState]);
   const refreshInbox = useCallback(
     async (
@@ -467,6 +487,7 @@ export function App({
           throw new Error("Invalid inbox refresh response");
         if (generation !== inboxRefreshGeneration.current) return "success";
         const nextDashboard = dashboardFromInbox(refreshed);
+        activeInboxRepositoryRef.current = nextDashboard.profile.repos?.[0];
         dispatchWorkspace({
           _tag: "refreshSucceeded",
           inbox: refreshed,
@@ -503,12 +524,26 @@ export function App({
       return;
     }
     const { scope, pageSize } = loadInboxViewPreferences(profileId);
+    // The bootstrap request (`firstInboxRequest`) never carries a
+    // repository — the renderer does not learn the active profile's
+    // watchlist until this response arrives. Once it has, every later
+    // request sends the first watched repository explicitly, so a request
+    // still missing one is corrected here alongside scope and page size.
+    // An empty watchlist has no repository to add, so that alone must not
+    // force a redundant second fetch.
+    const repository = activeInboxRepositoryRef.current;
+    const repositoryLearned =
+      repository !== undefined &&
+      inboxRequestRef.current.repository === undefined;
     if (
+      !repositoryLearned &&
       scope === inboxRequestRef.current.scope &&
       pageSize === inboxRequestRef.current.pageSize
     )
       return;
+    const repositoryField = repository === undefined ? {} : { repository };
     const request: InboxRequestState = {
+      ...repositoryField,
       scope,
       pageSize,
       previousPageTokens: [],
@@ -628,7 +663,10 @@ export function App({
   }, [fixtureMode, openSettings]);
 
   const refreshDashboard = async (): Promise<void> => {
+    const { repository } = inboxRequestRef.current;
+    const repositoryField = repository === undefined ? {} : { repository };
     const request: InboxRequestState = {
+      ...repositoryField,
       scope: inboxRequestRef.current.scope,
       pageSize: inboxRequestRef.current.pageSize,
       previousPageTokens: [],
@@ -638,7 +676,10 @@ export function App({
   };
   const changeInboxScope = useCallback(
     (scope: InboxRequestState["scope"]): void => {
+      const { repository } = inboxRequestRef.current;
+      const repositoryField = repository === undefined ? {} : { repository };
       const request: InboxRequestState = {
+        ...repositoryField,
         scope,
         pageSize: inboxRequestRef.current.pageSize,
         previousPageTokens: [],
@@ -653,7 +694,10 @@ export function App({
   );
   const changeInboxPageSize = useCallback(
     (pageSize: InboxPageSize): void => {
+      const { repository } = inboxRequestRef.current;
+      const repositoryField = repository === undefined ? {} : { repository };
       const request: InboxRequestState = {
+        ...repositoryField,
         scope: inboxRequestRef.current.scope,
         pageSize,
         previousPageTokens: [],
@@ -671,14 +715,20 @@ export function App({
     if (current.previousPageTokens.length === 0) return;
     const pageToken = current.previousPageTokens.at(-1);
     const previousPageTokens = current.previousPageTokens.slice(0, -1);
+    const repositoryField =
+      current.repository === undefined
+        ? {}
+        : { repository: current.repository };
     const next: InboxRequestState =
       pageToken === undefined
         ? {
+            ...repositoryField,
             scope: current.scope,
             pageSize: current.pageSize,
             previousPageTokens,
           }
         : {
+            ...repositoryField,
             scope: current.scope,
             pageSize: current.pageSize,
             pageToken,
@@ -691,7 +741,12 @@ export function App({
     const current = inboxRequestRef.current;
     const pageToken = inbox?.inbox.nextPageToken;
     if (pageToken === undefined) return;
+    const repositoryField =
+      current.repository === undefined
+        ? {}
+        : { repository: current.repository };
     const next: InboxRequestState = {
+      ...repositoryField,
       scope: current.scope,
       pageSize: current.pageSize,
       pageToken,
@@ -805,6 +860,7 @@ export function App({
             setWorkbench(undefined);
             dispatchWorkspace({ _tag: "cleared" });
             activeInboxProfileId.current = undefined;
+            activeInboxRepositoryRef.current = undefined;
             inboxRefreshGeneration.current += 1;
             resetInboxScopeOnProfileLoad.current = true;
             updateInboxRequest(firstInboxRequest);

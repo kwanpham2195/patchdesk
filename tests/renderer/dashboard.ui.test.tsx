@@ -53,7 +53,7 @@ describe("dashboard renderer", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "Maintainer inbox" });
     expect(calls).toContain("/v1/profiles");
-    expect(calls).toContain("/v1/inbox?scope=open&pageSize=25");
+    expect(calls).toContain("/v1/inbox?state=open&pageSize=25");
     expect(calls).not.toContain("/v1/reviews/models");
   });
 });

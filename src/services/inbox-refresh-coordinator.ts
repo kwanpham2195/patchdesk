@@ -13,7 +13,7 @@ import type {
 
 type ReadOnlyInbox = Pick<MaintainerInboxService, "list">;
 
-/** Coalesces only matching profile, repository, scope, size, and opaque-token inbox reads. */
+/** Coalesces only matching profile, repository, filter, size, and opaque-token inbox reads. */
 export class InboxRefreshCoordinator {
   private readonly inFlight = new Map<
     string,
@@ -26,11 +26,11 @@ export class InboxRefreshCoordinator {
     profile: WorkspaceProfileConfig,
     repository: InboxRepositoryRef,
     page: InboxPageRequest = {
-      scope: "open",
+      filter: { state: "open" },
       pageSize: DEFAULT_INBOX_PAGE_SIZE,
     },
   ): Promise<Result<MaintainerInbox, InboxPageRequestFailure>> {
-    const key = `${profile.id}:${repository.host}/${repository.owner}/${repository.repo}:${page.scope}:${page.pageSize}:${page.pageToken ?? "first"}`;
+    const key = `${profile.id}:${repository.host}/${repository.owner}/${repository.repo}:${page.filter.state}:${page.pageSize}:${page.pageToken ?? "first"}`;
     const existing = this.inFlight.get(key);
     if (existing !== undefined) return existing;
     const request = this.inbox.list(profile, repository, page).finally(() => {

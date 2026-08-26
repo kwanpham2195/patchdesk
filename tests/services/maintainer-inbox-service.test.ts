@@ -137,7 +137,7 @@ describe("MaintainerInboxService", () => {
     const result = await service.list(
       { id: "cfw", ghAccount: "fixture" } as never,
       repository,
-      { scope: "merged", pageSize: 25 },
+      { filter: { state: "merged" }, pageSize: 25 },
     );
 
     expect(scopes).toEqual(["merged"]);
@@ -257,7 +257,7 @@ describe("MaintainerInboxService match count", () => {
     const result = await service.list(
       { id: "cfw", ghAccount: "fixture" } as never,
       repository,
-      { scope: "merged", pageSize: 10 },
+      { filter: { state: "merged" }, pageSize: 10 },
     );
 
     expect(result._tag).toBe("ok");
@@ -553,7 +553,11 @@ describe("MaintainerInboxService page token validation", () => {
         // account supplied by this focused fixture.
         { id: "cfw", ghAccount: "fixture" } as never,
         repository,
-        { scope: "open", pageSize: 25, pageToken: "not-a-page-token" },
+        {
+          filter: { state: "open" },
+          pageSize: 25,
+          pageToken: "not-a-page-token",
+        },
       ),
     ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
   });
@@ -599,7 +603,7 @@ describe("MaintainerInboxService page token validation", () => {
 
     await expect(
       service.list(profile, repository, {
-        scope: "open",
+        filter: { state: "open" },
         pageSize: 25,
         pageToken: tokenForSizeTen,
       }),
@@ -648,7 +652,7 @@ describe("MaintainerInboxService page token validation", () => {
 
     await expect(
       service.list(profile, repository, {
-        scope: "open",
+        filter: { state: "open" },
         pageSize: 25,
         pageToken: tokenForAnotherRepository,
       }),
@@ -719,7 +723,7 @@ describe("MaintainerInboxService page size", () => {
     const profile = { id: "cfw", ghAccount: "fixture" } as never;
 
     const result = await service.list(profile, repository, {
-      scope: "open",
+      filter: { state: "open" },
       pageSize: 10,
     });
 

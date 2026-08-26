@@ -541,6 +541,64 @@ describe("GET /v1/inbox page size boundary", () => {
       expect.objectContaining({ pageSize: 10 }),
     );
   });
+
+  it("rejects an unknown filter state as a normal parse failure with no GitHub read", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox?state=closed", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_input",
+    });
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("rejects a repository the active profile does not watch, with no GitHub read", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL(
+        "v1/inbox?host=github.com&owner=some-other-org&repo=some-other-repo",
+        api.url,
+      ),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_input",
+    });
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("accepts a watched repository and forwards its search query to GitHub", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL(
+        "v1/inbox?host=github.com&owner=centraldigital&repo=patchdesk",
+        api.url,
+      ),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repo: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+      }),
+    );
+  });
 });
 
 function must<T>(
