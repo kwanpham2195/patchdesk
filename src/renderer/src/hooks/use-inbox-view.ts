@@ -82,9 +82,8 @@ function isNarrowViewport(): boolean {
  * Owns the maintainer inbox's local view state (selection, inspector,
  * keyboard navigation) over `rows` — already the exact, server-filtered and
  * server-ordered page GitHub returned; this hook does no filtering or
- * sorting of its own (see ADR 0031/0032 and
- * .agents/PLANS/2026-08-25-scope-pull-requests-to-one-repository.md, slice
- * 8a). Extracted out of `MaintainerInbox` to keep that component under the
+ * sorting of its own (see ADR 0031/0032). Extracted out of
+ * `MaintainerInbox` to keep that component under the
  * renderer's giant-component guardrail.
  */
 export function useInboxView(params: {
@@ -170,8 +169,7 @@ export function useInboxView(params: {
   // The command palette's "Open selected pull request" entry has no other
   // way to reach the currently selected row, which lives only here — a
   // window event stays the practical choice for that one case (see
-  // app-shell.tsx and .agents/PLANS/2026-08-25-scope-pull-requests-to-one-
-  // repository.md, slice 8a, item 6).
+  // app-shell.tsx).
   useEffect(() => {
     const onAction = (): void => {
       if (selected !== undefined) triggerAction(selected);

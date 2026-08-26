@@ -73,7 +73,7 @@ export function AppShell({
   readonly onProfileSwitch?: (id: string) => void;
   /** Jumps the Maintainer inbox to an open/merged preset from
    * `INBOX_STATE_FILTERS` — the palette and the filter bar share this one
-   * list so the two surfaces cannot drift (slice 8a). A prop, not a window
+   * list so the two surfaces cannot drift. A prop, not a window
    * event: `App` renders both `AppShell` and the inbox screen from the same
    * call, so the state change reaches it directly. Absent before the inbox
    * screen exists (fixture routes, first paint) — the "Inbox" command group

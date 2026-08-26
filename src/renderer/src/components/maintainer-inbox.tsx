@@ -8,6 +8,7 @@ import {
   CircleSlash,
   Clock3,
   GitPullRequest,
+  UserRoundCheck,
 } from "lucide-react";
 
 import {
@@ -16,6 +17,12 @@ import {
   type RepositoryLabelListResponse,
 } from "@/renderer-contracts";
 import { recoveryActionLabel } from "@/review-copy";
+import {
+  forbiddenCopy,
+  projectRepositoryLabelReadState,
+  rateLimitedCopy,
+  type RepositoryLabelReadState,
+} from "@/github-read-failure-copy";
 import { LabelChip } from "./label-chip";
 import {
   useInboxView,
@@ -66,6 +73,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Toggle } from "@/components/ui/toggle";
 import {
   Sheet,
   SheetContent,
@@ -74,6 +82,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import type { RepositoryIdentity } from "../../../domain/repository-identity";
 
 export type { ReviewInitialSection } from "../hooks/use-inbox-view";
 
@@ -83,7 +92,8 @@ export type { ReviewInitialSection } from "../hooks/use-inbox-view";
  * from `rows` (one loaded page) — mirrors `LabelPickerActions`
  * (label-picker.tsx) for the same read, minus write actions this filter
  * never performs. `undefined` only before the screen has a Selected
- * repository to read labels from (slice 7c bootstrap); the picker withholds
+ * repository to read labels from (absent only during bootstrap, before the
+ * watchlist is known); the picker withholds
  * its trigger entirely in that case, the same way `LabelPicker` does for
  * `actions === undefined`.
  */
@@ -92,11 +102,7 @@ export type InboxLabelActions = {
 };
 
 /** Stable option value for the repository picker's `Select`. */
-function repositoryKey(repo: {
-  readonly host: string;
-  readonly owner: string;
-  readonly repo: string;
-}): string {
+function repositoryKey(repo: RepositoryIdentity): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;
 }
 
@@ -106,7 +112,7 @@ type MaintainerInboxProps = {
   /** Requested state; App owns remote state transitions. The filter bar's
    * state `Select` reflects this immediately, even before `listPending`
    * clears. */
-  readonly scope?: "open" | "merged";
+  readonly state?: "open" | "merged";
   /** True while `rows` still belongs to the previous request (a filter
    * change is in flight). The row list, row count, and details panel hold a
    * loading state instead of rendering that data under the newly requested
@@ -116,13 +122,21 @@ type MaintainerInboxProps = {
   readonly pageSize?: InboxPageSize;
   readonly hasPreviousPage?: boolean;
   readonly hasNextPage?: boolean;
-  readonly onScopeChange?: (scope: "open" | "merged") => void;
+  readonly onStateChange?: (state: "open" | "merged") => void;
   /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — never a
    * local, in-page filter (ADR 0031/0032). App owns the request transition. */
   readonly selectedLabels?: ReadonlyArray<string>;
   readonly onLabelsChange?: (labels: ReadonlyArray<string>) => void;
+  /** Re-reads GitHub. Refresh stays explicit under ADR 0032 — this is the
+   * in-screen affordance for it, beside the View menu's Refresh command. */
+  readonly onRefresh?: () => void;
+  /** The "Awaiting review from you" preset (ADR 0031), sent to GitHub as
+   * `user-review-requested:@me` — a filter preset that composes with the
+   * state and label filters, never a separate queue. */
+  readonly awaitingMyReview?: boolean;
+  readonly onAwaitingMyReviewChange?: (value: boolean) => void;
   /** Absent only before the screen has a Selected repository to read labels
-   * from (slice 7c bootstrap). See {@link InboxLabelActions}. */
+   * from (absent only during bootstrap). See {@link InboxLabelActions}. */
   readonly labelActions?: InboxLabelActions;
   readonly onPageSizeChange?: (pageSize: InboxPageSize) => void;
   readonly onPreviousPage?: () => void;
@@ -136,14 +150,10 @@ type MaintainerInboxProps = {
    * (never `/v1/watchlist/suggestions`, which answers a different question).
    * The picker does not render when this is empty; the setup checklist owns
    * the screen instead. */
-  readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
-  /** The screen's root state (slice 7c); App owns its request transition. */
-  readonly selectedRepository?: { host: string; owner: string; repo: string };
-  readonly onRepositoryChange?: (repository: {
-    host: string;
-    owner: string;
-    repo: string;
-  }) => void;
+  readonly repos?: ReadonlyArray<RepositoryIdentity>;
+  /** The screen's root state (ADR 0031); App owns its request transition. */
+  readonly selectedRepository?: RepositoryIdentity;
+  readonly onRepositoryChange?: (repository: RepositoryIdentity) => void;
   readonly freshness: "fresh" | "cached";
   readonly snapshot?: {
     readonly state:
@@ -166,14 +176,17 @@ type MaintainerInboxProps = {
 export function MaintainerInbox({
   profileId,
   profileLabel,
-  scope = "open",
+  state = "open",
   listPending = false,
   pageSize = DEFAULT_INBOX_PAGE_SIZE,
   hasPreviousPage = false,
   hasNextPage = false,
-  onScopeChange = () => undefined,
+  onStateChange = () => undefined,
+  onRefresh = () => undefined,
   selectedLabels = [],
   onLabelsChange = () => undefined,
+  awaitingMyReview = false,
+  onAwaitingMyReviewChange = () => undefined,
   labelActions,
   onPageSizeChange = () => undefined,
   onPreviousPage = () => undefined,
@@ -219,17 +232,20 @@ export function MaintainerInbox({
         {...(selectedRepository === undefined ? {} : { selectedRepository })}
         onRepositoryChange={onRepositoryChange}
         refreshStatus={refreshStatus}
+        onRefresh={onRefresh}
         {...(snapshot === undefined ? {} : { snapshot })}
       />
       {refreshStatus === "Stale" && snapshot?.refreshedAt !== undefined ? (
         <StaleInboxBanner refreshedAt={snapshot.refreshedAt} />
       ) : null}
       <InboxFiltersBar
-        scope={scope}
-        onScopeChange={onScopeChange}
+        state={state}
+        onStateChange={onStateChange}
         {...(labelActions === undefined ? {} : { labelActions })}
         selectedLabels={selectedLabels}
         onLabelChange={onLabelsChange}
+        awaitingMyReview={awaitingMyReview}
+        onAwaitingMyReviewChange={onAwaitingMyReviewChange}
         rowCount={effectiveRows.length}
         {...(matchCount === undefined ? {} : { matchCount })}
         listPending={listPending}
@@ -240,7 +256,7 @@ export function MaintainerInbox({
         listRef={listRef}
         rows={effectiveRows}
         selected={selected}
-        scope={scope}
+        state={state}
         listPending={listPending}
         {...(matchCount === undefined ? {} : { matchCount })}
         hasLabelFilter={selectedLabels.length > 0}
@@ -315,6 +331,7 @@ function InboxHeader({
   selectedRepository,
   onRepositoryChange,
   refreshStatus,
+  onRefresh,
   snapshot,
 }: {
   readonly profileLabel: string;
@@ -322,14 +339,11 @@ function InboxHeader({
    * setup checklist owns the screen instead), and stays visible for exactly
    * one watched repository — hiding it there would make the scoping
    * invisible. */
-  readonly repos?: ReadonlyArray<{ host: string; owner: string; repo: string }>;
-  readonly selectedRepository?: { host: string; owner: string; repo: string };
-  readonly onRepositoryChange: (repository: {
-    host: string;
-    owner: string;
-    repo: string;
-  }) => void;
+  readonly repos?: ReadonlyArray<RepositoryIdentity>;
+  readonly selectedRepository?: RepositoryIdentity;
+  readonly onRepositoryChange: (repository: RepositoryIdentity) => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
+  readonly onRefresh: () => void;
   readonly snapshot?: {
     readonly state:
       | "current"
@@ -396,6 +410,7 @@ function InboxHeader({
         )}
         <InboxFreshness
           status={refreshStatus}
+          onRefresh={onRefresh}
           {...(snapshot === undefined ? {} : { snapshot })}
         />
       </div>
@@ -404,25 +419,29 @@ function InboxHeader({
 }
 
 function InboxFiltersBar({
-  scope,
-  onScopeChange,
+  state,
+  onStateChange,
   labelActions,
   selectedLabels,
   onLabelChange,
+  awaitingMyReview,
+  onAwaitingMyReviewChange,
   rowCount,
   matchCount,
   listPending,
   inspectorOpen,
   onToggleInspector,
 }: {
-  readonly scope: "open" | "merged";
-  readonly onScopeChange: (scope: "open" | "merged") => void;
+  readonly state: "open" | "merged";
+  readonly onStateChange: (state: "open" | "merged") => void;
   /** Absent only before the screen has a Selected repository to read labels
-   * from (slice 7c bootstrap); the label filter trigger withholds itself in
+   * from (absent only during bootstrap); the label filter trigger withholds itself in
    * that case, the same way `LabelPicker` does for `actions === undefined`. */
   readonly labelActions?: InboxLabelActions;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onLabelChange: (value: ReadonlyArray<string>) => void;
+  readonly awaitingMyReview: boolean;
+  readonly onAwaitingMyReviewChange: (value: boolean) => void;
   readonly rowCount: number;
   readonly matchCount?: number;
   readonly listPending: boolean;
@@ -435,7 +454,7 @@ function InboxFiltersBar({
       aria-label="Inbox filters"
     >
       <Select
-        value={scope}
+        value={state}
         items={INBOX_STATE_FILTERS.map((option) => ({
           label: stateFilterShortLabel(option.state),
           value: option.state,
@@ -444,7 +463,7 @@ function InboxFiltersBar({
           const next = INBOX_STATE_FILTERS.find(
             (option) => option.state === value,
           );
-          if (next !== undefined) onScopeChange(next.state);
+          if (next !== undefined) onStateChange(next.state);
         }}
       >
         <SelectTrigger
@@ -468,6 +487,18 @@ function InboxFiltersBar({
           </SelectGroup>
         </SelectContent>
       </Select>
+      {/* A filter preset, not a queue (ADR 0031): it composes with the state
+          and label filters above rather than replacing the listing. */}
+      <Toggle
+        pressed={awaitingMyReview}
+        onPressedChange={onAwaitingMyReviewChange}
+        size="sm"
+        variant="outline"
+        className="h-7 gap-1.5 px-2 text-xs"
+      >
+        <UserRoundCheck className="size-3.5" aria-hidden="true" />
+        Awaiting review from you
+      </Toggle>
       {labelActions === undefined ? null : (
         <LabelFilterPopover
           fetchLabels={labelActions.fetchLabels}
@@ -483,7 +514,7 @@ function InboxFiltersBar({
           ? "Loading…"
           : matchCount === undefined
             ? `${rowCount} on this page`
-            : `${matchCount} ${scope === "open" ? "open" : "merged"}`}
+            : `${matchCount} ${state === "open" ? "open" : "merged"}`}
       </span>
       <Button
         size="icon-sm"
@@ -515,55 +546,6 @@ function labelFilterTriggerText(selected: ReadonlyArray<string>): string {
   return `${selected.length} labels`;
 }
 
-/** The label filter popover's read state, mirroring `LabelPicker`'s
- * `ReadState` (label-picker.tsx) but without `permission` — this picker is
- * read-only, so it never resolves write permission. */
-type LabelFilterReadState =
-  | { readonly _tag: "loading" }
-  | {
-      readonly _tag: "ready";
-      readonly labels: ReadonlyArray<{ readonly name: string }>;
-      readonly totalCount: number;
-    }
-  | { readonly _tag: "github_auth" }
-  | { readonly _tag: "github_read" }
-  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
-  | {
-      readonly _tag: "github_forbidden";
-      readonly reason?:
-        | "ip_allow_list"
-        | "saml"
-        | "insufficient_scopes"
-        | "unknown";
-    };
-
-function projectLabelFilterReadState(
-  response: RepositoryLabelListResponse | undefined,
-): LabelFilterReadState {
-  if (response === undefined) return { _tag: "github_read" };
-  if (response.state === "ready") {
-    const labels = response.labels ?? [];
-    return {
-      _tag: "ready",
-      labels,
-      totalCount: response.totalCount ?? labels.length,
-    };
-  }
-  if (response.state === "github_rate_limited") {
-    const resumeAtField =
-      response.resumeAt === undefined ? {} : { resumeAt: response.resumeAt };
-    return { _tag: "github_rate_limited", ...resumeAtField };
-  }
-  if (response.state === "github_forbidden") {
-    const reasonField =
-      response.forbiddenReason === undefined
-        ? {}
-        : { reason: response.forbiddenReason };
-    return { _tag: "github_forbidden", ...reasonField };
-  }
-  return { _tag: response.state };
-}
-
 /**
  * The Pull requests screen's label filter: fed from the Selected
  * repository's real, repository-wide labels (`GET /v1/inbox/labels`), never
@@ -582,7 +564,7 @@ function LabelFilterPopover({
   readonly onLabelChange: (value: ReadonlyArray<string>) => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const [readState, setReadState] = useState<LabelFilterReadState>({
+  const [readState, setReadState] = useState<RepositoryLabelReadState>({
     _tag: "loading",
   });
 
@@ -592,7 +574,7 @@ function LabelFilterPopover({
     setReadState({ _tag: "loading" });
     fetchLabels()
       .then((response) => {
-        if (!cancelled) setReadState(projectLabelFilterReadState(response));
+        if (!cancelled) setReadState(projectRepositoryLabelReadState(response));
       })
       .catch(() => {
         if (!cancelled) setReadState({ _tag: "github_read" });
@@ -649,7 +631,7 @@ function LabelFilterList({
   selectedLabels,
   onLabelChange,
 }: {
-  readonly readState: LabelFilterReadState;
+  readonly readState: RepositoryLabelReadState;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onLabelChange: (value: ReadonlyArray<string>) => void;
 }): React.JSX.Element {
@@ -676,13 +658,13 @@ function LabelFilterList({
   if (readState._tag === "github_rate_limited")
     return (
       <p role="alert" className="text-xs text-destructive">
-        {labelFilterRateLimitedCopy(readState.resumeAt)}
+        {rateLimitedCopy(readState.resumeAt)}
       </p>
     );
   if (readState._tag === "github_forbidden")
     return (
       <p role="alert" className="text-xs text-destructive">
-        {labelFilterForbiddenCopy(readState.reason)}
+        {forbiddenCopy(readState.reason)}
       </p>
     );
   if (readState.labels.length === 0)
@@ -726,37 +708,6 @@ function LabelFilterList({
   );
 }
 
-function labelFilterRateLimitedCopy(resumeAt: string | undefined): string {
-  const resumeAtMs = resumeAt === undefined ? Number.NaN : Date.parse(resumeAt);
-  if (Number.isNaN(resumeAtMs))
-    return "GitHub rate-limited this account. Try again once the limit clears.";
-  const formatted = new Date(resumeAtMs).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `GitHub rate-limited this account. Try again at ${formatted}.`;
-}
-
-function labelFilterForbiddenCopy(
-  reason:
-    | "ip_allow_list"
-    | "saml"
-    | "insufficient_scopes"
-    | "unknown"
-    | undefined,
-): string {
-  switch (reason) {
-    case "ip_allow_list":
-      return "GitHub blocked this read: an IP allow list is enabled and this network is not on it.";
-    case "saml":
-      return "GitHub blocked this read: this account's token needs SAML single sign-on authorization.";
-    case "insufficient_scopes":
-      return "GitHub blocked this read: this account's token lacks the scopes this repository requires.";
-    default:
-      return "GitHub blocked this read and did not say why.";
-  }
-}
-
 /** Placeholder row count shown by {@link InboxRowsPanel} while `listPending`
  * is true, matching the row-skeleton density the initial-load skeleton
  * (`maintainer-inbox-skeleton.tsx`) uses for the same purpose. */
@@ -771,26 +722,25 @@ const pendingRowPlaceholders = [
 
 /** Distinct copy for an empty row list: a repository the filter genuinely
  * excludes everything from must not read the same as one with nothing open
- * at all — see ADR 0031 and .agents/PLANS/2026-08-25-scope-pull-requests-
- * to-one-repository.md, slice 8a. */
+ * at all — see ADR 0031. */
 function emptyRowsMessage(
-  scope: "open" | "merged",
+  state: "open" | "merged",
   matchCount: number | undefined,
   hasLabelFilter: boolean,
 ): string {
   if (matchCount === undefined)
-    return `No ${scope === "open" ? "open" : "merged"} pull requests on this page.`;
+    return `No ${state === "open" ? "open" : "merged"} pull requests on this page.`;
   if (matchCount > 0)
-    return `No ${scope === "open" ? "open" : "merged"} pull requests on this page — GitHub reports ${matchCount} in total.`;
+    return `No ${state === "open" ? "open" : "merged"} pull requests on this page — GitHub reports ${matchCount} in total.`;
   if (hasLabelFilter) return "No pull requests match the selected labels.";
-  return `This repository has no ${scope === "open" ? "open" : "merged"} pull requests right now.`;
+  return `This repository has no ${state === "open" ? "open" : "merged"} pull requests right now.`;
 }
 
 function InboxRowsPanel({
   listRef,
   rows,
   selected,
-  scope,
+  state,
   listPending,
   matchCount,
   hasLabelFilter,
@@ -801,7 +751,7 @@ function InboxRowsPanel({
   readonly listRef: React.RefObject<HTMLDivElement | null>;
   readonly rows: ReadonlyArray<InboxRow>;
   readonly selected: InboxRow | undefined;
-  readonly scope: "open" | "merged";
+  readonly state: "open" | "merged";
   readonly listPending: boolean;
   readonly matchCount?: number;
   readonly hasLabelFilter: boolean;
@@ -869,7 +819,7 @@ function InboxRowsPanel({
             })}
         {!listPending && rows.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
-            {emptyRowsMessage(scope, matchCount, hasLabelFilter)}
+            {emptyRowsMessage(state, matchCount, hasLabelFilter)}
           </div>
         ) : null}
       </div>
@@ -1037,9 +987,17 @@ function ReviewDetailsPanel({
   );
 }
 
+/**
+ * The freshness badge, and the screen's one in-app refresh affordance
+ * (ADR 0032). Refresh stays explicit — the badge never refreshes itself, it
+ * only lets the maintainer ask — so making the badge the click target puts
+ * the command next to the state it acts on rather than adding a second
+ * control beside it.
+ */
 function InboxFreshness({
   snapshot,
   status,
+  onRefresh,
 }: {
   readonly snapshot?: {
     readonly state:
@@ -1051,6 +1009,7 @@ function InboxFreshness({
     readonly refreshedAt?: string | undefined;
   };
   readonly status: ReturnType<typeof inboxFreshnessLabel>;
+  readonly onRefresh: () => void;
 }): React.JSX.Element {
   const stable = status === "Current";
   const ageMs =
@@ -1063,9 +1022,18 @@ function InboxFreshness({
   return (
     <div className="flex items-center gap-1.5">
       <Badge
+        render={
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={status === "Refreshing"}
+            aria-label={`Refresh pull requests. GitHub: ${status}`}
+          />
+        }
         variant={variant}
         className={cn(
-          "h-5 max-w-full px-1.5 text-[10px]",
+          "h-5 max-w-full cursor-pointer px-1.5 text-[10px]",
+          "disabled:cursor-default disabled:opacity-70",
           degraded &&
             status !== "Stale" &&
             "border-amber-500/40 text-amber-600 dark:text-amber-400",

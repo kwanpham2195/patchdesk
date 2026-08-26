@@ -146,7 +146,7 @@ const inboxResponseSchema = v.strictObject({
     ),
   }),
   inbox: v.object({
-    scope: v.picklist(["open", "merged"]),
+    state: v.picklist(["open", "merged"]),
     pageSize: v.picklist(INBOX_PAGE_SIZES),
     nextPageToken: v.optional(v.pipe(v.string(), v.minLength(1))),
     rows: v.array(inboxRowSchema),

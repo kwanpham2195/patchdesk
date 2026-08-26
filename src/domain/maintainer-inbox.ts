@@ -15,8 +15,10 @@ export type InboxPageSize = (typeof INBOX_PAGE_SIZES)[number];
 /** The page size an inbox request carries when the caller does not choose one. */
 export const DEFAULT_INBOX_PAGE_SIZE: InboxPageSize = 25;
 
-/** Trusted inbox scopes map to the only GraphQL pull-request states Patchdesk requests. */
-export type InboxScope = "open" | "merged";
+/** The pull-request state an inbox listing is filtered to; maps to the only
+ * GraphQL pull-request states Patchdesk requests. Named for `InboxFilter.state`,
+ * the one spelling the domain, the route, and the renderer all use. */
+export type InboxStateFilter = "open" | "merged";
 
 /** The only repository label filter GitHub's search API and Patchdesk's 256-character query cap can absorb; see `buildInboxSearchQuery`. */
 export const MAX_INBOX_FILTER_LABELS = 5;
@@ -31,17 +33,24 @@ export const MAX_INBOX_FILTER_LABEL_LENGTH = 50;
  * the one place free text can reach GitHub's search API.
  */
 export type InboxFilter = {
-  readonly state: InboxScope;
+  readonly state: InboxStateFilter;
   /** Repository label names, ANDed together as `label:"NAME"`. Capped at
    * `MAX_INBOX_FILTER_LABELS`, each within `MAX_INBOX_FILTER_LABEL_LENGTH`
    * and free of the double quote that would let one break out of its
    * qualifier — enforced at the route, not here. */
   readonly labels?: ReadonlyArray<string>;
+  /** The "Awaiting review from you" preset from ADR 0031 — GitHub's
+   * `user-review-requested:@me` qualifier, which GitHub itself resolves to
+   * the authenticated viewer, so Patchdesk never looks the login up. A
+   * filter preset, not a queue: it composes with `state` and `labels` rather
+   * than replacing the listing. Unlike `labels` it is not
+   * repository-scoped, so a repository change carries it over. */
+  readonly awaitingMyReview?: boolean;
 };
 
-/** Presented together in the filter bar and the command palette (slice 8a); one list so the two surfaces cannot drift. */
+/** Presented together in the filter bar and the command palette; one list so the two surfaces cannot drift. */
 export const INBOX_STATE_FILTERS: ReadonlyArray<{
-  readonly state: InboxScope;
+  readonly state: InboxStateFilter;
   readonly label: string;
 }> = [
   { state: "open", label: "Open pull requests" },
@@ -83,7 +92,7 @@ export type InboxReviewSummary = {
 
 export type MaintainerInboxRow = {
   /** Confirmed remote scope for this row; merged rows never enter active-work queues. */
-  readonly remoteState: InboxScope;
+  readonly remoteState: InboxStateFilter;
   readonly identity: PullRequestRef;
   readonly title: string;
   readonly author: string;

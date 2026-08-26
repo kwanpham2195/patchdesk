@@ -19,21 +19,13 @@ import {
   INBOX_PAGE_SIZES,
   type InboxPageRequest,
   type InboxPageSize,
-  type InboxScope,
+  type InboxStateFilter,
   projectMaintainerInboxRow,
   type InboxReviewSummary,
   type MaintainerInboxRow,
 } from "../domain/maintainer-inbox";
-// `list()` extracts `filter.state` once into a plain `InboxScope` and
-// normalizes `filter.labels` once into a sorted, deduplicated label list
-// (`normalizeInboxLabels`), then threads both through everywhere the
-// pre-slice-6 code already took a bare `scope: InboxScope` —
-// `readRepository`, `cachedOrUnavailable`, `unavailablePage`, and
-// `buildInboxSearchQuery`. `cachedOrUnavailable` and `unavailablePage` stay
-// label-blind on purpose: a cached or unavailable read has no live query to
-// filter, so it always serves (or reports) every cached row regardless of
-// the requested label filter.
 import type { PullRequestRef } from "../domain/pull-request";
+import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { ReviewSession } from "../domain/review-session";
 import { ok, type Result } from "../domain/result";
 import type {
@@ -45,14 +37,18 @@ import { isInboxCacheStale } from "../domain/inbox-freshness-policy";
 const MAX_PAGE_TOKEN_LENGTH = 16_384;
 const MAX_REPOSITORY_CURSOR_LENGTH = 4_096;
 
-/** One watched repository, identified without any of the maintainer's local checkout details. */
+/** One watched repository, identified without any of the maintainer's local
+ * checkout details. Branded, because the main process is the side that parses
+ * GitHub identifiers; the renderer's plain-string counterpart is
+ * `RepositoryIdentity`. Structurally the same as `WatchedRepoRef` in
+ * `profile-service.ts` — see the note in `repository-identity.ts`. */
 export type InboxRepositoryRef = Pick<
   PullRequestRef,
   "host" | "owner" | "repo"
 >;
 
 const inboxPageTokenSchema = v.strictObject({
-  scope: v.picklist(["open", "merged"]),
+  state: v.picklist(["open", "merged"]),
   page: v.pipe(v.number(), v.integer(), v.minValue(2)),
   /** The page size the token's cursor was cut at; a mismatched request is rejected as malformed. */
   size: v.picklist(INBOX_PAGE_SIZES),
@@ -66,6 +62,10 @@ const inboxPageTokenSchema = v.strictObject({
    * whose label filter has changed is rejected the same way a repository
    * change is — the cursor belongs to a different search query. */
   labels: v.array(v.string()),
+  /** The "Awaiting review from you" preset the token's cursor was cut under;
+   * like a label change, flipping it is a different search query, so the
+   * cursor no longer belongs to it. */
+  awaitingMyReview: v.boolean(),
   cursor: v.optional(
     v.pipe(
       v.string(),
@@ -86,7 +86,7 @@ export type MaintainerInboxRepository = {
 };
 
 export type MaintainerInbox = {
-  readonly scope: InboxScope;
+  readonly state: InboxStateFilter;
   readonly pageSize: InboxPageSize;
   readonly nextPageToken?: string;
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
@@ -94,7 +94,7 @@ export type MaintainerInbox = {
   readonly refreshedAt?: IsoTimestamp;
   readonly dataFreshness: "fresh" | "cached";
   /**
-   * GitHub's true repository-wide match count for the current scope's
+   * GitHub's true repository-wide match count for the current state's
    * search filter (`issueCount`), not this page's loaded row count. Present
    * only when the repository was just freshly read through the
    * search-backed query; absent for cached, unavailable, or failed reads.
@@ -139,6 +139,26 @@ export class MaintainerInboxService {
     private readonly clock: InboxClock,
   ) {}
 
+  /**
+   * Reads one page of the Selected repository's inbox.
+   *
+   * Extracts `filter.state` once into a plain `InboxStateFilter` and normalizes
+   * `filter.labels` once into a sorted, deduplicated label list
+   * (`normalizeInboxLabels`), then threads both through `readRepository`,
+   * `cachedOrUnavailable`, `unavailablePage`, and `buildInboxSearchQuery`.
+   *
+   * Only the wholly unfiltered listing — no labels, no "Awaiting review from
+   * you" preset — is ever written to the cache. The cache is
+   * keyed by profile and repository alone, and `cachedOrUnavailable` reads it
+   * back with no label argument at all — so a label-filtered result saved
+   * there would come back later as the repository's whole inbox, three
+   * `label:"bug"` rows presented as everything open. Widening the key to hold
+   * one entry per label combination was rejected in ADR 0031's terms: the
+   * offline value of a label-filtered snapshot does not pay for that many
+   * entries. Refusing to save the filtered read instead keeps
+   * `cachedOrUnavailable` and `unavailablePage` label-blind honestly, because
+   * the only thing they can ever find is the unfiltered listing.
+   */
   async list(
     profile: WorkspaceProfileConfig,
     repository: InboxRepositoryRef,
@@ -147,9 +167,16 @@ export class MaintainerInboxService {
       pageSize: DEFAULT_INBOX_PAGE_SIZE,
     },
   ): Promise<Result<MaintainerInbox, InboxPageRequestFailure>> {
-    const scope = request.filter.state;
+    const state = request.filter.state;
     const labels = normalizeInboxLabels(request.filter.labels);
-    const pageToken = decodeInboxPageToken(request, repository, scope, labels);
+    const awaitingMyReview = request.filter.awaitingMyReview ?? false;
+    const pageToken = decodeInboxPageToken(
+      request,
+      repository,
+      state,
+      labels,
+      awaitingMyReview,
+    );
     if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
 
     const authenticated =
@@ -159,21 +186,22 @@ export class MaintainerInboxService {
         ? await this.cachedOrUnavailable(
             profile,
             repository,
-            scope,
+            state,
             request.pageSize,
           )
-        : this.unavailablePage(repository, scope, request.pageSize);
+        : this.unavailablePage(repository, state, request.pageSize);
 
     const sessions = await this.sessions.listSessions(profile.id);
     const allSessions = sessions._tag === "ok" ? sessions.value : [];
     const repositorySessions = allSessions.filter((session) =>
-      sameRepository(session.key, repository),
+      sameRepositoryIdentity(session.key, repository),
     );
     const read = await this.readRepository(
       profile,
       repository,
-      scope,
+      state,
       labels,
+      awaitingMyReview,
       request.pageSize,
       pageToken.cursor,
       repositorySessions,
@@ -191,7 +219,7 @@ export class MaintainerInboxService {
     const cursor =
       visible.at(-1)?.cursor ?? read.emptyPageEndCursor ?? pageToken.cursor;
     const baseNextToken = {
-      scope,
+      state,
       page: pageToken.page + 1,
       size: request.pageSize,
       repository: {
@@ -200,6 +228,7 @@ export class MaintainerInboxService {
         repo: repository.repo,
       },
       labels,
+      awaitingMyReview,
     };
     const nextPageToken = hasNextPage
       ? encodeInboxPageToken(
@@ -209,7 +238,7 @@ export class MaintainerInboxService {
     const matchCountField =
       read.issueCount === undefined ? {} : { matchCount: read.issueCount };
     const value: MaintainerInbox = {
-      scope,
+      state,
       pageSize: request.pageSize,
       rows:
         dataFreshness === "fresh"
@@ -222,7 +251,9 @@ export class MaintainerInboxService {
       ...matchCountField,
     };
     if (
-      scope === "open" &&
+      state === "open" &&
+      labels.length === 0 &&
+      !awaitingMyReview &&
       request.pageToken === undefined &&
       complete &&
       dataFreshness === "fresh"
@@ -251,8 +282,9 @@ export class MaintainerInboxService {
   private async readRepository(
     profile: WorkspaceProfileConfig,
     repository: InboxRepositoryRef,
-    scope: InboxScope,
+    state: InboxStateFilter,
     labels: ReadonlyArray<string>,
+    awaitingMyReview: boolean,
     pageSize: InboxPageSize,
     cursor: string | undefined,
     sessions: ReadonlyArray<ReviewSession>,
@@ -262,11 +294,16 @@ export class MaintainerInboxService {
       owner: repository.owner,
       repo: repository.repo,
     };
-    const searchQuery = buildInboxSearchQuery(repo, scope, labels);
+    const searchQuery = buildInboxSearchQuery(
+      repo,
+      state,
+      labels,
+      awaitingMyReview,
+    );
     const searched = await this.github.searchMaintainerPullRequests(
       cursor === undefined
-        ? { profile, repo, searchQuery, scope, pageSize }
-        : { profile, repo, searchQuery, scope, pageSize, cursor },
+        ? { profile, repo, searchQuery, state, pageSize }
+        : { profile, repo, searchQuery, state, pageSize, cursor },
     );
     if (searched._tag === "err")
       return failedRepositoryRead(repo, searched.error);
@@ -308,23 +345,23 @@ export class MaintainerInboxService {
   private async cachedOrUnavailable(
     profile: WorkspaceProfileConfig,
     repository: InboxRepositoryRef,
-    scope: InboxScope,
+    state: InboxStateFilter,
     pageSize: InboxPageSize,
   ): Promise<Result<MaintainerInbox, never>> {
-    if (scope === "merged")
-      return this.unavailablePage(repository, scope, pageSize);
+    if (state === "merged")
+      return this.unavailablePage(repository, state, pageSize);
     const cached = await this.cache.read(profile.id, repository);
     if (cached._tag === "ok") {
       const refreshedAt = parseIsoTimestamp(cached.value.refreshedAt);
       if (refreshedAt._tag === "err")
-        return this.unavailablePage(repository, scope, pageSize);
+        return this.unavailablePage(repository, state, pageSize);
       const snapshotState = isInboxCacheStale(
         Date.parse(this.clock.now()) - Date.parse(refreshedAt.value),
       )
         ? "stale_cached"
         : "failed_cached";
       return ok({
-        scope,
+        state,
         pageSize,
         rows: cached.value.rows.map(toCachedRow),
         repositories: [
@@ -346,16 +383,16 @@ export class MaintainerInboxService {
         },
       });
     }
-    return this.unavailablePage(repository, scope, pageSize);
+    return this.unavailablePage(repository, state, pageSize);
   }
 
   private unavailablePage(
     repository: InboxRepositoryRef,
-    scope: InboxScope,
+    state: InboxStateFilter,
     pageSize: InboxPageSize,
   ): Result<MaintainerInbox, never> {
     return ok({
-      scope,
+      state,
       pageSize,
       rows: [],
       repositories: [
@@ -376,8 +413,9 @@ export class MaintainerInboxService {
 }
 
 /**
- * Builds the GitHub search qualifier string for one repository, scope, and
- * label filter: `repo:OWNER/NAME is:pr is:open label:"NAME"`. The sole place
+ * Builds the GitHub search qualifier string for one repository, state, label
+ * filter, and preset: `repo:OWNER/NAME is:pr is:open
+ * user-review-requested:@me label:"NAME"`. The sole place
  * that builds this string, so every renderer-chosen filter extends it here
  * rather than through ad hoc concatenation elsewhere — and so GitHub's
  * 256-character search cap has one place to be enforced. `labels` is trusted
@@ -387,13 +425,20 @@ export class MaintainerInboxService {
  */
 function buildInboxSearchQuery(
   repo: InboxRepositoryRef,
-  scope: InboxScope,
+  state: InboxStateFilter,
   labels: ReadonlyArray<string>,
+  awaitingMyReview: boolean,
 ): string {
-  const state = scope === "merged" ? "is:merged" : "is:open";
-  const labelQualifiers = labels.map((label) => `label:"${label}"`).join(" ");
-  const base = `repo:${repo.owner}/${repo.repo} is:pr ${state}`;
-  return labelQualifiers.length === 0 ? base : `${base} ${labelQualifiers}`;
+  const stateQualifier = state === "merged" ? "is:merged" : "is:open";
+  // `@me` is GitHub's own token for the authenticated viewer and is resolved
+  // server-side, so this needs no viewer login lookup. Probed 2026-08-26:
+  // `author:@me` and `author:<login>` return the identical `issueCount`.
+  const qualifiers = [
+    ...(awaitingMyReview ? ["user-review-requested:@me"] : []),
+    ...labels.map((label) => `label:"${label}"`),
+  ].join(" ");
+  const base = `repo:${repo.owner}/${repo.repo} is:pr ${stateQualifier}`;
+  return qualifiers.length === 0 ? base : `${base} ${qualifiers}`;
 }
 
 /** Sorted, deduplicated label filter — the canonical form compared against
@@ -402,7 +447,7 @@ function buildInboxSearchQuery(
  * inferred from `inboxPageTokenSchema`'s `v.array(v.string())`, is itself
  * mutable — matching it here avoids a readonly-to-mutable cast at every
  * call site that builds or compares a token. */
-function normalizeInboxLabels(
+export function normalizeInboxLabels(
   labels: ReadonlyArray<string> | undefined,
 ): string[] {
   return [...new Set(labels ?? [])].sort();
@@ -469,12 +514,13 @@ function failedRepositoryRead(
 function decodeInboxPageToken(
   request: InboxPageRequest,
   repository: InboxRepositoryRef,
-  scope: InboxScope,
+  state: InboxStateFilter,
   labels: string[],
+  awaitingMyReview: boolean,
 ): InboxPageToken | undefined {
   if (request.pageToken === undefined)
     return {
-      scope,
+      state,
       page: 1,
       size: request.pageSize,
       repository: {
@@ -483,6 +529,7 @@ function decodeInboxPageToken(
         repo: repository.repo,
       },
       labels,
+      awaitingMyReview,
     };
   if (request.pageToken.length > MAX_PAGE_TOKEN_LENGTH) return undefined;
   try {
@@ -493,10 +540,11 @@ function decodeInboxPageToken(
     if (!parsed.success) return undefined;
     const value = parsed.output;
     if (
-      value.scope !== scope ||
+      value.state !== state ||
       value.size !== request.pageSize ||
-      !sameRepository(value.repository, repository) ||
-      !sameLabels(value.labels, labels)
+      !sameRepositoryIdentity(value.repository, repository) ||
+      !sameLabels(value.labels, labels) ||
+      value.awaitingMyReview !== awaitingMyReview
     )
       return undefined;
     return value;
@@ -507,24 +555,6 @@ function decodeInboxPageToken(
 
 function encodeInboxPageToken(token: InboxPageToken): string {
   return Buffer.from(JSON.stringify(token)).toString("base64url");
-}
-function sameRepository(
-  left: {
-    readonly host: string;
-    readonly owner: string;
-    readonly repo: string;
-  },
-  right: {
-    readonly host: string;
-    readonly owner: string;
-    readonly repo: string;
-  },
-): boolean {
-  return (
-    left.host === right.host &&
-    left.owner === right.owner &&
-    left.repo === right.repo
-  );
 }
 function latestReviewFor(
   summary: PullRequestSummary,

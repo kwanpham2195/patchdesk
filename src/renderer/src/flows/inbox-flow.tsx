@@ -60,6 +60,7 @@ import type {
   InboxResponse,
   RepositoryLabelListResponse,
 } from "../renderer-contracts";
+import type { RepositoryIdentity } from "../../../domain/repository-identity";
 
 export function InboxFlow({
   destination,
@@ -69,15 +70,17 @@ export function InboxFlow({
   state,
   refreshStatus,
   onRefresh,
-  scope = "open",
+  inboxState = "open",
   listPending = false,
   pageSize = DEFAULT_INBOX_PAGE_SIZE,
   hasPreviousPage = false,
   hasNextPage = false,
-  onInboxScopeChange = () => undefined,
+  onInboxStateChange = () => undefined,
   onInboxPageSizeChange = () => undefined,
   selectedLabels = [],
   onInboxLabelsChange = () => undefined,
+  awaitingMyReview = false,
+  onInboxAwaitingMyReviewChange = () => undefined,
   selectedRepository,
   onRepositoryChange = () => undefined,
   onPreviousInboxPage = () => undefined,
@@ -92,33 +95,34 @@ export function InboxFlow({
   readonly state: DashboardScreenState;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onRefresh: () => void;
-  /** Requested scope; only App owns its request transition. The toggle
-   * reflects this immediately. `listPending` says whether `inbox`'s rows
-   * have caught up to it yet. */
-  readonly scope?: "open" | "merged";
-  /** True while `inbox`'s confirmed scope has not caught up to the
-   * requested `scope` (a scope change is still in flight). The row list,
+  /** The requested pull-request state filter — named `inboxState` here only
+   * because this component already carries a screen-level `state`. Only App
+   * owns its request transition; the toggle reflects this immediately, and
+   * `listPending` says whether `inbox`'s rows have caught up to it yet. */
+  readonly inboxState?: "open" | "merged";
+  /** True while `inbox`'s confirmed state filter has not caught up to the
+   * requested one (a change is still in flight). The row list,
    * row count, and details panel must hold a loading state instead of
-   * rendering the previous scope's rows under the new scope's label. */
+   * rendering the previous state's rows under the new state's label. */
   readonly listPending?: boolean;
   /** Confirmed remote page size; only App owns its request transition. */
   readonly pageSize?: InboxPageSize;
   readonly hasPreviousPage?: boolean;
   readonly hasNextPage?: boolean;
-  readonly onInboxScopeChange?: (scope: "open" | "merged") => void;
+  readonly onInboxStateChange?: (state: "open" | "merged") => void;
   readonly onInboxPageSizeChange?: (pageSize: InboxPageSize) => void;
   /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — never a
    * local, in-page filter. Only App owns its request transition. */
   readonly selectedLabels?: ReadonlyArray<string>;
   readonly onInboxLabelsChange?: (labels: ReadonlyArray<string>) => void;
-  /** The screen's root state (slice 7c); only App owns its request
+  /** The "Awaiting review from you" preset (ADR 0031), sent to GitHub as
+   * `user-review-requested:@me`. Only App owns its request transition. */
+  readonly awaitingMyReview?: boolean;
+  readonly onInboxAwaitingMyReviewChange?: (value: boolean) => void;
+  /** The screen's root state (ADR 0031); only App owns its request
    * transition. Absent only before the active profile's watchlist is known. */
-  readonly selectedRepository?: { host: string; owner: string; repo: string };
-  readonly onRepositoryChange?: (repository: {
-    host: string;
-    owner: string;
-    repo: string;
-  }) => void;
+  readonly selectedRepository?: RepositoryIdentity;
+  readonly onRepositoryChange?: (repository: RepositoryIdentity) => void;
   readonly onPreviousInboxPage?: () => void;
   readonly onNextInboxPage?: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
@@ -307,15 +311,17 @@ export function InboxFlow({
       {...(openedPr === undefined ? {} : { openedPr })}
       {...(openError === undefined ? {} : { openError })}
       onRefresh={onRefresh}
-      scope={scope}
+      inboxState={inboxState}
       listPending={listPending}
       pageSize={pageSize}
       hasPreviousPage={hasPreviousPage}
       hasNextPage={hasNextPage}
-      onInboxScopeChange={onInboxScopeChange}
+      onInboxStateChange={onInboxStateChange}
       onInboxPageSizeChange={onInboxPageSizeChange}
       selectedLabels={selectedLabels}
       onInboxLabelsChange={onInboxLabelsChange}
+      awaitingMyReview={awaitingMyReview}
+      onInboxAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
       {...(labelActions === undefined ? {} : { labelActions })}
       {...(selectedRepository === undefined ? {} : { selectedRepository })}
       onRepositoryChange={onRepositoryChange}
@@ -354,15 +360,17 @@ function InboxScreen({
   inbox,
   dashboard,
   onRefresh,
-  scope,
+  inboxState,
   listPending,
   pageSize,
   hasPreviousPage,
   hasNextPage,
-  onInboxScopeChange,
+  onInboxStateChange,
   onInboxPageSizeChange,
   selectedLabels,
   onInboxLabelsChange,
+  awaitingMyReview,
+  onInboxAwaitingMyReviewChange,
   labelActions,
   selectedRepository,
   onRepositoryChange,
@@ -379,22 +387,22 @@ function InboxScreen({
   readonly inbox: InboxResponse;
   readonly dashboard: Dashboard;
   readonly onRefresh: () => void;
-  readonly scope: "open" | "merged";
+  /** The requested pull-request state filter; see `InboxFlow`'s `inboxState`
+   * for why it is not simply `state` here. */
+  readonly inboxState: "open" | "merged";
   readonly listPending: boolean;
   readonly pageSize: InboxPageSize;
   readonly hasPreviousPage: boolean;
   readonly hasNextPage: boolean;
-  readonly onInboxScopeChange: (scope: "open" | "merged") => void;
+  readonly onInboxStateChange: (state: "open" | "merged") => void;
   readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
+  readonly awaitingMyReview: boolean;
+  readonly onInboxAwaitingMyReviewChange: (value: boolean) => void;
   readonly labelActions?: InboxLabelActions;
-  readonly selectedRepository?: { host: string; owner: string; repo: string };
-  readonly onRepositoryChange: (repository: {
-    host: string;
-    owner: string;
-    repo: string;
-  }) => void;
+  readonly selectedRepository?: RepositoryIdentity;
+  readonly onRepositoryChange: (repository: RepositoryIdentity) => void;
   readonly onPreviousInboxPage: () => void;
   readonly onNextInboxPage: () => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
@@ -449,10 +457,13 @@ function InboxScreen({
             ? {}
             : { snapshot: inbox.inbox.snapshot })}
           refreshStatus={refreshStatus}
-          scope={scope}
+          state={inboxState}
           listPending={listPending}
+          onRefresh={onRefresh}
           selectedLabels={selectedLabels}
           onLabelsChange={onInboxLabelsChange}
+          awaitingMyReview={awaitingMyReview}
+          onAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
           {...(labelActions === undefined ? {} : { labelActions })}
           {...(inbox.inbox.matchCount === undefined
             ? {}
@@ -460,7 +471,7 @@ function InboxScreen({
           pageSize={pageSize}
           hasPreviousPage={hasPreviousPage}
           hasNextPage={hasNextPage}
-          onScopeChange={onInboxScopeChange}
+          onStateChange={onInboxStateChange}
           onPageSizeChange={onInboxPageSizeChange}
           onPreviousPage={onPreviousInboxPage}
           onNextPage={onNextInboxPage}
@@ -991,9 +1002,7 @@ function Outcome({
                   {outcome === "no_open_prs"
                     ? // Distinct from a filter that excludes everything: this
                       // repository genuinely has nothing matching the current
-                      // state and label filter right now — see ADR 0031 and
-                      // .agents/PLANS/2026-08-25-scope-pull-requests-to-one-
-                      // repository.md, slice 8a.
+                      // state and label filter right now — see ADR 0031.
                       "This repository has no pull requests matching the current filter."
                     : outcome === "github_auth"
                       ? "GitHub authentication is required before Patchdesk can refresh pull requests. Run gh auth login for the exact GitHub account entered in Settings -> Workspace. Local review records remain available."
@@ -1033,11 +1042,7 @@ function Outcome({
   );
 }
 
-function key(repo: {
-  readonly host: string;
-  readonly owner: string;
-  readonly repo: string;
-}): string {
+function key(repo: RepositoryIdentity): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;
 }
 

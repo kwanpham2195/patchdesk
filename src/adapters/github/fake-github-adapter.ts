@@ -22,7 +22,10 @@ import {
   type RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
-import type { InboxPageSize, InboxScope } from "../../domain/maintainer-inbox";
+import type {
+  InboxPageSize,
+  InboxStateFilter,
+} from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import {
@@ -70,7 +73,7 @@ export class FakeGitHubAdapter
   async listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
-    readonly scope?: InboxScope;
+    readonly state?: InboxStateFilter;
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
@@ -95,7 +98,7 @@ export class FakeGitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
     readonly searchQuery: string;
-    readonly scope: InboxScope;
+    readonly state: InboxStateFilter;
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {

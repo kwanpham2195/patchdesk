@@ -122,7 +122,7 @@ describe("parseInboxResponse", () => {
       ghAccount: "fixture",
     },
     inbox: {
-      scope: "merged" as const,
+      state: "merged" as const,
       pageSize: 25 as const,
       rows: [],
       repositories: [],

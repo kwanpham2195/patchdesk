@@ -393,7 +393,7 @@ export const threadCommentsResponseSchema = v.looseObject({
 // `search.edges[].node` — the two queries select identical PullRequest
 // fields, so one schema serves both and `parseMaintainerPullRequest` accepts
 // either node unchanged. (Collapsed from two deliberately-duplicated copies
-// per plan slice 5b; the copies had not drifted — same fields, same order,
+// the copies had not drifted — same fields, same order,
 // only incidental line-wrapping differed.)
 const maintainerInboxNodeSchema = v.looseObject({
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),

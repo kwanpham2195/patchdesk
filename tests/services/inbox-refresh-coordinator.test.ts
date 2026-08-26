@@ -30,7 +30,7 @@ const secondRepository = {
   repo: "other-repo",
 } as InboxRepositoryRef;
 const inbox = {
-  scope: "open",
+  state: "open",
   pageSize: 25,
   rows: [],
   repositories: [],
@@ -219,6 +219,86 @@ it("does not coalesce different filters for the same profile and repository", as
   expect(list).toHaveBeenCalledTimes(2);
   resolveOpen?.(ok(inbox));
   await expect(Promise.all([openPage, mergedPage])).resolves.toEqual([
+    ok(inbox),
+    ok(inbox),
+  ]);
+});
+
+it("does not coalesce different label filters for the same profile and repository", async () => {
+  // The unfiltered read never resolves on its own, so the assertions below
+  // all happen while it is genuinely in flight — a key that ignores
+  // `filter.labels` would find its entry and serve its rows to the second
+  // caller.
+  let resolveUnfiltered:
+    | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
+    | undefined;
+  const unfiltered = new Promise<ReturnType<typeof ok<MaintainerInbox>>>(
+    (resolve) => {
+      resolveUnfiltered = resolve;
+    },
+  );
+  const list = vi.fn(
+    (
+      _profile: WorkspaceProfileConfig,
+      _repository: InboxRepositoryRef,
+      page?: { readonly filter?: { readonly labels?: ReadonlyArray<string> } },
+    ) =>
+      (page?.filter?.labels ?? []).length === 0
+        ? unfiltered
+        : Promise.resolve(ok(inbox)),
+  );
+  const coordinator = new InboxRefreshCoordinator({ list });
+
+  const everything = coordinator.refresh(profile, repository, {
+    filter: { state: "open" },
+    pageSize: 25,
+  });
+  const bugsOnly = coordinator.refresh(profile, repository, {
+    filter: { state: "open", labels: ["bug"] },
+    pageSize: 25,
+  });
+
+  expect(list).toHaveBeenCalledTimes(2);
+  resolveUnfiltered?.(ok(inbox));
+  await expect(Promise.all([everything, bugsOnly])).resolves.toEqual([
+    ok(inbox),
+    ok(inbox),
+  ]);
+});
+
+it("coalesces label filters that differ only by order or repetition", async () => {
+  let resolveScan:
+    | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
+    | undefined;
+  const scan = new Promise<ReturnType<typeof ok<MaintainerInbox>>>(
+    (resolve) => {
+      resolveScan = resolve;
+    },
+  );
+  const list = vi.fn(() => scan);
+  const coordinator = new InboxRefreshCoordinator({ list });
+
+  // `["b","a"]`, `["a","b"]`, and `["a","b","a"]` all compose into the same
+  // GitHub search query, so they are one read, not three.
+  const first = coordinator.refresh(profile, repository, {
+    filter: { state: "open", labels: ["b", "a"] },
+    pageSize: 25,
+  });
+  const second = coordinator.refresh(profile, repository, {
+    filter: { state: "open", labels: ["a", "b"] },
+    pageSize: 25,
+  });
+  const third = coordinator.refresh(profile, repository, {
+    filter: { state: "open", labels: ["a", "b", "a"] },
+    pageSize: 25,
+  });
+
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(second).toBe(first);
+  expect(third).toBe(first);
+  resolveScan?.(ok(inbox));
+  await expect(Promise.all([first, second, third])).resolves.toEqual([
+    ok(inbox),
     ok(inbox),
     ok(inbox),
   ]);

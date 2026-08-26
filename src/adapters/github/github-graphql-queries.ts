@@ -34,8 +34,7 @@ export const maintainerInboxQuery =
 // Repository-wide companion to maintainerInboxQuery: `search(type: ISSUE)`
 // is GitHub's only field that returns a true repository-wide match count
 // (`issueCount`) rather than a loaded-page count, which is the entire reason
-// this query exists (spike-proven 2026-08-25, see plan
-// 2026-08-25-scope-pull-requests-to-one-repository.md slice 4). `rateLimit {
+// this query exists (spike-proven 2026-08-25; see ADR 0031). `rateLimit {
 // remaining resetAt }` rides at the top level beside `search`, exactly as it
 // does in maintainerInboxQuery, at a confirmed cost of 1 point. The `... on
 // PullRequest` selection below is copied field-for-field from

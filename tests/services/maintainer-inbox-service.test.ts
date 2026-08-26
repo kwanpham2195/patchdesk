@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { MaintainerInboxService } from "../../src/services/maintainer-inbox-service";
+import {
+  MaintainerInboxService,
+  type InboxRepositoryRef,
+} from "../../src/services/maintainer-inbox-service";
 import { err, ok, type Result } from "../../src/domain/result";
 import { INBOX_CACHE_REFUSE_AFTER_MS } from "../../src/domain/inbox-freshness-policy";
 import type { MaintainerInboxCache } from "../../src/adapters/storage/maintainer-inbox-cache-store";
@@ -73,8 +76,8 @@ describe("MaintainerInboxService", () => {
     });
   });
 
-  it("reads the merged scope and returns only the terminal action", async () => {
-    const scopes: Array<string | undefined> = [];
+  it("reads the merged state and returns only the terminal action", async () => {
+    const stateFilters: Array<string | undefined> = [];
     const searchQueries: Array<string> = [];
     // SAFETY: these narrow fixtures implement exactly the service seams under test.
     const service = new MaintainerInboxService(
@@ -82,10 +85,10 @@ describe("MaintainerInboxService", () => {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
         searchMaintainerPullRequests: async (input: {
-          readonly scope?: string;
+          readonly state?: string;
           readonly searchQuery: string;
         }) => {
-          scopes.push(input.scope);
+          stateFilters.push(input.state);
           searchQueries.push(input.searchQuery);
           return ok({
             entries: [
@@ -140,14 +143,14 @@ describe("MaintainerInboxService", () => {
       { filter: { state: "merged" }, pageSize: 25 },
     );
 
-    expect(scopes).toEqual(["merged"]);
+    expect(stateFilters).toEqual(["merged"]);
     expect(searchQueries).toEqual([
       "repo:centraldigital/patchdesk is:pr is:merged",
     ]);
     expect(result).toMatchObject({
       _tag: "ok",
       value: {
-        scope: "merged",
+        state: "merged",
         rows: [
           {
             remoteState: "merged",
@@ -161,7 +164,7 @@ describe("MaintainerInboxService", () => {
 });
 
 describe("MaintainerInboxService search query", () => {
-  it("requests the open-scope search query when no scope is given", async () => {
+  it("requests the open-state search query when no state is given", async () => {
     const searchQueries: Array<string> = [];
     // SAFETY: this fixture implements only the GitHub reader members list() calls.
     const service = new MaintainerInboxService(
@@ -226,6 +229,125 @@ describe("MaintainerInboxService search query", () => {
     expect(searchQueries).toEqual([
       'repo:centraldigital/patchdesk is:pr is:open label:"bug" label:"p0"',
     ]);
+  });
+
+  it("composes the Awaiting review from you preset into the search query", async () => {
+    const searchQueries: Array<string> = [];
+    // SAFETY: this fixture implements only the GitHub reader members list() calls.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async (input: {
+          readonly searchQuery: string;
+        }) => {
+          searchQueries.push(input.searchQuery);
+          return ok({ entries: [], hasNextPage: false, issueCount: 0 });
+        },
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // A preset, not a queue: it composes beside the state and the label
+    // qualifiers rather than replacing them. `@me` reaches GitHub verbatim —
+    // GitHub resolves it to the authenticated viewer, so Patchdesk never
+    // looks the login up.
+    // SAFETY: this minimal profile supplies exactly the fields list() reads.
+    await service.list(
+      { id: "cfw", ghAccount: "fixture" } as never,
+      repository,
+      {
+        filter: { state: "open", labels: ["bug"], awaitingMyReview: true },
+        pageSize: 25,
+      },
+    );
+
+    expect(searchQueries).toEqual([
+      'repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me label:"bug"',
+    ]);
+  });
+
+  it("omits the Awaiting review from you qualifier when the preset is off", async () => {
+    const searchQueries: Array<string> = [];
+    // SAFETY: this fixture implements only the GitHub reader members list() calls.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async (input: {
+          readonly searchQuery: string;
+        }) => {
+          searchQueries.push(input.searchQuery);
+          return ok({ entries: [], hasNextPage: false, issueCount: 0 });
+        },
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: this minimal profile supplies exactly the fields list() reads.
+    await service.list(
+      { id: "cfw", ghAccount: "fixture" } as never,
+      repository,
+      { filter: { state: "open", awaitingMyReview: false }, pageSize: 25 },
+    );
+
+    expect(searchQueries).toEqual([
+      "repo:centraldigital/patchdesk is:pr is:open",
+    ]);
+  });
+
+  it("rejects a page token minted under a different Awaiting review from you preset", async () => {
+    // SAFETY: this fixture implements only the GitHub reader members list() calls.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async () =>
+          ok({
+            entries: [],
+            hasNextPage: true,
+            endCursor: "cursor-2",
+            issueCount: 0,
+          }),
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: this minimal profile supplies exactly the fields list() reads.
+    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    const firstPage = await service.list(profile, repository, {
+      filter: { state: "open", awaitingMyReview: true },
+      pageSize: 25,
+    });
+    expect(firstPage._tag).toBe("ok");
+    if (firstPage._tag !== "ok") return;
+    const pageToken = firstPage.value.nextPageToken;
+    if (pageToken === undefined) throw new Error("expected a next page token");
+
+    // Turning the preset off is a different search query, so its cursor is
+    // rejected the same way a label or repository change is.
+    await expect(
+      service.list(profile, repository, {
+        filter: { state: "open" },
+        pageSize: 25,
+        pageToken,
+      }),
+    ).resolves.toMatchObject({ _tag: "err", error: "invalid_page" });
   });
 
   it("rejects a page token minted under a different label filter", async () => {
@@ -475,6 +597,246 @@ describe("MaintainerInboxService forbidden reads (plan 009)", () => {
   });
 });
 
+describe("MaintainerInboxService cache writes", () => {
+  const now = "2026-08-01T00:00:00.000Z";
+  // SAFETY: test fixture narrows a partial profile mock to
+  // WorkspaceProfileConfig; only the fields the service reads are set.
+  const profile = { id: "cfw", ghAccount: "fixture" } as never;
+
+  function pullRequestEntry(number: number, cursor: string) {
+    return {
+      cursor,
+      pullRequest: {
+        summary: {
+          ref: {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "patchdesk",
+            number,
+          },
+          title: `Fixture ${number}`,
+          author: "other",
+          headSha: "a".repeat(40),
+          baseSha: "b".repeat(40),
+          isOpen: true,
+          isDraft: false,
+          reviewState: "none",
+          mergeability: "mergeable",
+          labels: [],
+          updatedAt: "2026-08-01T00:00:00.000Z",
+        },
+        checks: { overall: "passing", checks: [] },
+      },
+    };
+  }
+
+  /** A service whose GitHub read always succeeds with `entries`, recording
+   * every `cache.save` call into `saved` so the assertion lands on the cache
+   * double itself rather than on a later read. */
+  function serviceRecordingSaves(
+    entries: ReadonlyArray<ReturnType<typeof pullRequestEntry>>,
+    saved: Array<MaintainerInboxCache>,
+  ): MaintainerInboxService {
+    // SAFETY: these narrow fixtures implement exactly the service seams
+    // under test.
+    return new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async () =>
+          ok({ entries, hasNextPage: false, issueCount: entries.length }),
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async (
+          _profileId: string,
+          _repository: InboxRepositoryRef,
+          cached: MaintainerInboxCache,
+        ) => {
+          saved.push(cached);
+          return ok(undefined);
+        },
+      } as never,
+      { now: () => now as never },
+    );
+  }
+
+  it("caches a fresh, complete, first-page read with no label filter", async () => {
+    const saved: Array<MaintainerInboxCache> = [];
+    const service = serviceRecordingSaves(
+      [pullRequestEntry(42, "fixture-42")],
+      saved,
+    );
+
+    await service.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 25,
+    });
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.rows.map((row) => row.identity.number)).toEqual([42]);
+  });
+
+  it("does not cache a fresh, complete, first-page read that applied a label filter", async () => {
+    const saved: Array<MaintainerInboxCache> = [];
+    const service = serviceRecordingSaves(
+      [pullRequestEntry(7, "fixture-7")],
+      saved,
+    );
+
+    // Identical to the read above in every respect the save condition used
+    // to test — open state, first page, complete, fresh. Only the label
+    // filter differs, and the cache is keyed by profile and repository
+    // alone, so saving this would present one `label:"bug"` row as the
+    // repository's whole inbox.
+    await service.list(profile, repository, {
+      filter: { state: "open", labels: ["bug"] },
+      pageSize: 25,
+    });
+
+    expect(saved).toEqual([]);
+  });
+
+  it("falls back to the earlier unfiltered cache entry after a label-filtered read, never to the filtered rows", async () => {
+    const store: Array<MaintainerInboxCache> = [];
+    // SAFETY: these narrow fixtures implement exactly the service seams
+    // under test.
+    const collaborators = (
+      authenticated: boolean,
+    ): ConstructorParameters<typeof MaintainerInboxService> =>
+      [
+        {
+          resolveAuthenticatedAccount: async () =>
+            authenticated
+              ? ok({ host: "github.com", account: "fixture" })
+              : err({ _tag: "GitHubAuthenticationFailed" }),
+          searchMaintainerPullRequests: async (input: {
+            readonly searchQuery: string;
+          }) =>
+            ok({
+              entries: input.searchQuery.includes("label:")
+                ? [pullRequestEntry(7, "fixture-7")]
+                : [pullRequestEntry(42, "fixture-42")],
+              hasNextPage: false,
+              issueCount: 1,
+            }),
+        },
+        { listSessions: async () => ok([]) },
+        {
+          read: async () =>
+            store.at(-1) === undefined
+              ? { _tag: "err", error: { reason: "not_found" } }
+              : ok(store.at(-1)),
+          save: async (
+            _profileId: string,
+            _repository: InboxRepositoryRef,
+            cached: MaintainerInboxCache,
+          ) => {
+            store.push(cached);
+            return ok(undefined);
+          },
+        },
+        { now: () => now },
+      ] as never;
+
+    const online = new MaintainerInboxService(...collaborators(true));
+    await online.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 25,
+    });
+    await online.list(profile, repository, {
+      filter: { state: "open", labels: ["bug"] },
+      pageSize: 25,
+    });
+
+    // GitHub is now unreachable, so `list` serves whatever the cache holds.
+    // The label-filtered read must not have overwritten the unfiltered one.
+    const offline = new MaintainerInboxService(...collaborators(false));
+    const served = await offline.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 25,
+    });
+
+    expect(served._tag).toBe("ok");
+    if (served._tag !== "ok") return;
+    expect(served.value.rows.map((row) => row.identity.number)).toEqual([42]);
+  });
+
+  it("does not cache a read that applied the Awaiting review from you preset", async () => {
+    const saved: Array<MaintainerInboxCache> = [];
+    const service = serviceRecordingSaves(
+      [pullRequestEntry(7, "fixture-7")],
+      saved,
+    );
+
+    // Same defect class as the label filter: the cache is keyed by profile
+    // and repository alone, so a preset-filtered result saved here would come
+    // back as the repository's whole inbox.
+    await service.list(profile, repository, {
+      filter: { state: "open", awaitingMyReview: true },
+      pageSize: 25,
+    });
+
+    expect(saved).toEqual([]);
+  });
+
+  it("serves the unavailable page when the only completed read applied a label filter", async () => {
+    const store: Array<MaintainerInboxCache> = [];
+    // SAFETY: these narrow fixtures implement exactly the service seams
+    // under test.
+    const collaborators = (
+      authenticated: boolean,
+    ): ConstructorParameters<typeof MaintainerInboxService> =>
+      [
+        {
+          resolveAuthenticatedAccount: async () =>
+            authenticated
+              ? ok({ host: "github.com", account: "fixture" })
+              : err({ _tag: "GitHubAuthenticationFailed" }),
+          searchMaintainerPullRequests: async () =>
+            ok({
+              entries: [pullRequestEntry(7, "fixture-7")],
+              hasNextPage: false,
+              issueCount: 1,
+            }),
+        },
+        { listSessions: async () => ok([]) },
+        {
+          read: async () =>
+            store.at(-1) === undefined
+              ? { _tag: "err", error: { reason: "not_found" } }
+              : ok(store.at(-1)),
+          save: async (
+            _profileId: string,
+            _repository: InboxRepositoryRef,
+            cached: MaintainerInboxCache,
+          ) => {
+            store.push(cached);
+            return ok(undefined);
+          },
+        },
+        { now: () => now },
+      ] as never;
+
+    await new MaintainerInboxService(...collaborators(true)).list(
+      profile,
+      repository,
+      { filter: { state: "open", labels: ["bug"] }, pageSize: 25 },
+    );
+    expect(store).toEqual([]);
+
+    const served = await new MaintainerInboxService(
+      ...collaborators(false),
+    ).list(profile, repository, { filter: { state: "open" }, pageSize: 25 });
+
+    expect(served).toMatchObject({
+      _tag: "ok",
+      value: { rows: [], snapshot: { state: "unavailable" } },
+    });
+  });
+});
+
 describe("MaintainerInboxService.cachedOrUnavailable", () => {
   const now = "2026-08-01T04:00:00.000Z";
   // SAFETY: test fixture narrows a partial profile mock to
@@ -671,7 +1033,7 @@ describe("MaintainerInboxService page token validation", () => {
     // at size 25 — the mismatch must be rejected before any GitHub read.
     const tokenForSizeTen = Buffer.from(
       JSON.stringify({
-        scope: "open",
+        state: "open",
         page: 2,
         size: 10,
         repository: {
@@ -720,7 +1082,7 @@ describe("MaintainerInboxService page token validation", () => {
     // Mint a token for a different repository than the one being requested.
     const tokenForAnotherRepository = Buffer.from(
       JSON.stringify({
-        scope: "open",
+        state: "open",
         page: 2,
         size: 25,
         repository: {

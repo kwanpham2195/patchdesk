@@ -1552,7 +1552,7 @@ describe("GitHubAdapter read boundary", () => {
       profile,
       pageSize: 25,
       repo: pr,
-      scope: "merged",
+      state: "merged",
     });
     expect(merged).toMatchObject({
       _tag: "ok",
@@ -2282,7 +2282,7 @@ describe("GitHubAdapter read boundary", () => {
         profile,
         repo: pr,
         searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
-        scope: "open",
+        state: "open",
         pageSize: 25,
       });
 
@@ -2318,7 +2318,7 @@ describe("GitHubAdapter read boundary", () => {
         profile,
         repo: pr,
         searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
-        scope: "open",
+        state: "open",
         pageSize: 25,
       });
 
@@ -2382,7 +2382,7 @@ describe("GitHubAdapter read boundary", () => {
         profile,
         repo: pr,
         searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
-        scope: "open",
+        state: "open",
         pageSize: 25,
       });
 

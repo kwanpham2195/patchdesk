@@ -6,6 +6,12 @@ import type {
   RepositoryLabelPermission,
 } from "../../../domain/github-context";
 import { PatchdeskApiError } from "../api-client";
+import {
+  forbiddenCopy,
+  projectRepositoryLabelReadState,
+  rateLimitedCopy,
+  type RepositoryLabelReadState,
+} from "../github-read-failure-copy";
 import { withoutMember } from "../picker-selection";
 import type { RepositoryLabelListResponse } from "../renderer-contracts";
 import { LabelChip } from "./label-chip";
@@ -37,33 +43,6 @@ export type LabelPickerActions = {
     labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
   ) => Promise<void>;
 };
-
-type ReadState =
-  | { readonly _tag: "loading" }
-  | { readonly _tag: "github_read" }
-  | { readonly _tag: "github_auth" }
-  | {
-      readonly _tag: "ready";
-      readonly labels: ReadonlyArray<RepositoryLabel>;
-      readonly totalCount: number;
-      /**
-       * The service's real, GitHub-evidenced answer for whether this
-       * account can write labels here (`LabelListOutcome.ready.permission`
-       * in `src/services/label-service.ts`). Never inferred client-side —
-       * `"unknown"` means evidence was genuinely unavailable, not that a
-       * write hasn't been tried yet.
-       */
-      readonly permission: RepositoryLabelPermission;
-    }
-  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
-  | {
-      readonly _tag: "github_forbidden";
-      readonly reason?:
-        | "ip_allow_list"
-        | "saml"
-        | "insufficient_scopes"
-        | "unknown";
-    };
 
 /**
  * Assigns and removes labels on the pull request under review. Rendered as
@@ -100,7 +79,9 @@ export function LabelPicker({
   readonly actions?: LabelPickerActions;
 }): React.JSX.Element | null {
   const [open, setOpen] = useState(false);
-  const [readState, setReadState] = useState<ReadState>({ _tag: "loading" });
+  const [readState, setReadState] = useState<RepositoryLabelReadState>({
+    _tag: "loading",
+  });
   const permission: RepositoryLabelPermission =
     readState._tag === "ready" ? readState.permission : "unknown";
   const [pendingAdds, setPendingAdds] = useState<ReadonlySet<string>>(
@@ -149,7 +130,7 @@ export function LabelPicker({
       .fetchLabels()
       .then((response) => {
         if (cancelled) return;
-        setReadState(projectReadState(response));
+        setReadState(projectRepositoryLabelReadState(response));
       })
       .catch(() => {
         if (!cancelled) setReadState({ _tag: "github_read" });
@@ -243,36 +224,6 @@ export function LabelPicker({
   );
 }
 
-function projectReadState(
-  response: RepositoryLabelListResponse | undefined,
-): ReadState {
-  if (response === undefined) return { _tag: "github_read" };
-  if (response.state === "ready") {
-    const labels = response.labels ?? [];
-    return {
-      _tag: "ready",
-      labels,
-      totalCount: response.totalCount ?? labels.length,
-      // Fails closed to `"unknown"` (never `"permitted"`) if the field is
-      // ever missing — an unconfirmed state, not an authorized one.
-      permission: response.permission ?? "unknown",
-    };
-  }
-  if (response.state === "github_rate_limited") {
-    const resumeAtField =
-      response.resumeAt === undefined ? {} : { resumeAt: response.resumeAt };
-    return { _tag: "github_rate_limited", ...resumeAtField };
-  }
-  if (response.state === "github_forbidden") {
-    const reasonField =
-      response.forbiddenReason === undefined
-        ? {}
-        : { reason: response.forbiddenReason };
-    return { _tag: "github_forbidden", ...reasonField };
-  }
-  return { _tag: response.state };
-}
-
 /** The picker's body: the read state's message, or its list of toggleable repository labels. */
 function LabelPickerList({
   readState,
@@ -283,7 +234,7 @@ function LabelPickerList({
   disabled,
   onToggle,
 }: {
-  readonly readState: ReadState;
+  readonly readState: RepositoryLabelReadState;
   readonly attachedNames: ReadonlySet<string>;
   readonly pendingAdds: ReadonlySet<string>;
   readonly pendingRemoves: ReadonlySet<string>;
@@ -384,35 +335,4 @@ function LabelPickerList({
       ) : null}
     </FieldSet>
   );
-}
-
-function rateLimitedCopy(resumeAt: string | undefined): string {
-  const resumeAtMs = resumeAt === undefined ? Number.NaN : Date.parse(resumeAt);
-  if (Number.isNaN(resumeAtMs))
-    return "GitHub rate-limited this account. Try again once the limit clears.";
-  const formatted = new Date(resumeAtMs).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `GitHub rate-limited this account. Try again at ${formatted}.`;
-}
-
-function forbiddenCopy(
-  reason:
-    | "ip_allow_list"
-    | "saml"
-    | "insufficient_scopes"
-    | "unknown"
-    | undefined,
-): string {
-  switch (reason) {
-    case "ip_allow_list":
-      return "GitHub blocked this read: an IP allow list is enabled and this network is not on it.";
-    case "saml":
-      return "GitHub blocked this read: this account's token needs SAML single sign-on authorization.";
-    case "insufficient_scopes":
-      return "GitHub blocked this read: this account's token lacks the scopes this repository requires.";
-    default:
-      return "GitHub blocked this read and did not say why.";
-  }
 }

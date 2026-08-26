@@ -49,7 +49,10 @@ import {
   type RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
-import type { InboxPageSize, InboxScope } from "../../domain/maintainer-inbox";
+import type {
+  InboxPageSize,
+  InboxStateFilter,
+} from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import {
@@ -162,8 +165,8 @@ const commandTimeoutMs = 15_000;
 // below 512 KiB after allowing for JSON framing and multibyte text.
 const maxHydratedFileBytes = 512 * 1024;
 
-function graphqlPullRequestState(scope: InboxScope): "OPEN" | "MERGED" {
-  return scope === "merged" ? "MERGED" : "OPEN";
+function graphqlPullRequestState(state: InboxStateFilter): "OPEN" | "MERGED" {
+  return state === "merged" ? "MERGED" : "OPEN";
 }
 /** The typed read-only operations product code may request from GitHub. */
 export interface GitHubReader {
@@ -174,8 +177,8 @@ export interface GitHubReader {
   listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
-    /** Trusted service scope; the adapter alone maps it to GraphQL OPEN or MERGED. */
-    readonly scope?: InboxScope;
+    /** Trusted service state; the adapter alone maps it to GraphQL OPEN or MERGED. */
+    readonly state?: InboxStateFilter;
     /** Requested page size; becomes the GraphQL `first` value. */
     readonly pageSize: InboxPageSize;
     /** Opaque repository continuation from the inbox service, never renderer input. */
@@ -184,7 +187,7 @@ export interface GitHubReader {
   /**
    * Reads one repository-wide `search(type: ISSUE)` page of pull requests,
    * alongside `issueCount` — GitHub's true repository-wide match count for
-   * `searchQuery`, distinct from this page's loaded entry count. `scope` is
+   * `searchQuery`, distinct from this page's loaded entry count. `state` is
    * required because the search query string alone does not tell the
    * adapter whether the caller is browsing open or merged pull requests, and
    * `parseMaintainerPullRequest` needs it to set `summary.isOpen`.
@@ -194,7 +197,7 @@ export interface GitHubReader {
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
     /** GitHub search qualifier string, e.g. `repo:OWNER/NAME is:pr is:open`. */
     readonly searchQuery: string;
-    readonly scope: InboxScope;
+    readonly state: InboxStateFilter;
     /** Requested page size; becomes the GraphQL `first` value. */
     readonly pageSize: InboxPageSize;
     /** Opaque repository continuation from the inbox service, never renderer input. */
@@ -635,7 +638,7 @@ export function repositoryLabelPermission(
  * or failed evidence yields `unknown`, never a wrong extreme in either
  * direction — see `PullRequestAssigneePermission`, whose name predates this
  * function covering reviewers too (kept as-is: renderer components outside
- * this change's scope import that type name directly). Renamed from
+ * this change's state import that type name directly). Renamed from
  * `pullRequestAssigneePermission` to `pullRequestWritePermission` because
  * `AssigneeService` and `ReviewerService` both resolve their write
  * permission through this one function now, not just assignees.
@@ -841,11 +844,11 @@ export class GitHubAdapter
     return ok(summaries);
   }
 
-  /** Reads exactly one trusted-scope page of pull requests with edge cursors. */
+  /** Reads exactly one trusted-state page of pull requests with edge cursors. */
   async listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
-    readonly scope?: InboxScope;
+    readonly state?: InboxStateFilter;
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
@@ -866,7 +869,7 @@ export class GitHubAdapter
         "-F",
         `first=${input.pageSize}`,
         "-F",
-        `state=${graphqlPullRequestState(input.scope ?? "open")}`,
+        `state=${graphqlPullRequestState(input.state ?? "open")}`,
         ...(input.cursor === undefined ? [] : ["-f", `cursor=${input.cursor}`]),
       ],
       timeoutMs: commandTimeoutMs,
@@ -898,7 +901,7 @@ export class GitHubAdapter
         host,
         input.repo.owner,
         input.repo.repo,
-        input.scope ?? "open",
+        input.state ?? "open",
       );
       if (projected._tag === "err") return invalid("list_maintainer_prs");
       entries.push({ cursor: edge.cursor, pullRequest: projected.value });
@@ -920,7 +923,7 @@ export class GitHubAdapter
    * with edge cursors, alongside `issueCount` — GitHub's true repository-wide
    * match count for `searchQuery`, distinct from this page's loaded entry
    * count. Mirrors `listMaintainerPullRequests`'s structure; unlike that
-   * method, `scope` is required here because the search query string alone
+   * method, `state` is required here because the search query string alone
    * does not tell the adapter whether the caller is browsing open or merged
    * pull requests, and `parseMaintainerPullRequest` needs it to set
    * `summary.isOpen`.
@@ -929,7 +932,7 @@ export class GitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
     readonly searchQuery: string;
-    readonly scope: InboxScope;
+    readonly state: InboxStateFilter;
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
@@ -981,7 +984,7 @@ export class GitHubAdapter
         host,
         input.repo.owner,
         input.repo.repo,
-        input.scope,
+        input.state,
       );
       if (projected._tag === "err") return invalid("search_maintainer_prs");
       entries.push({ cursor: edge.cursor, pullRequest: projected.value });

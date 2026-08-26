@@ -885,8 +885,8 @@ export async function startLocalApiServer(
   app.get("/v1/inbox", async (context) =>
     runWithRequestAbortSignal(context.req.raw.signal, async () => {
       // The filter is a structured, enumerated value — each field is
-      // validated against a literal union here, exactly as `scope` was
-      // validated before slice 6. The renderer never sends a GitHub search
+      // validated against a literal union here, exactly as `state` was
+      // validated here. The renderer never sends a GitHub search
       // qualifier string; `buildInboxSearchQuery` in
       // `maintainer-inbox-service.ts` is the only place that composes one.
       const state = context.req.query("state") ?? "open";
@@ -905,8 +905,20 @@ export async function startLocalApiServer(
       const labels = parseInboxLabelsQuery(context.req.queries("label") ?? []);
       if (labels === "invalid")
         return response(context, err({ reason: "invalid_input" }));
-      const filter: InboxFilter =
-        labels.length === 0 ? { state } : { state, labels };
+      const awaitingMyReview = parseInboxBooleanQuery(
+        context.req.query("awaitingMyReview"),
+      );
+      if (awaitingMyReview === "invalid")
+        return response(context, err({ reason: "invalid_input" }));
+      const labelsField = labels.length === 0 ? {} : { labels };
+      const awaitingMyReviewField = awaitingMyReview
+        ? { awaitingMyReview }
+        : {};
+      const filter: InboxFilter = {
+        state,
+        ...labelsField,
+        ...awaitingMyReviewField,
+      };
       const page = context.req.query("page");
       const result = await dashboard.inboxForActiveProfile(
         repository,
@@ -2770,6 +2782,22 @@ function parseInboxRepositoryQuery(
  * out of its own qualifier. This is the injection boundary ADR 0031/0032
  * name: the renderer sends label names, never GitHub search-qualifier text.
  */
+/**
+ * Validates a boolean `GET /v1/inbox` filter param — today the "Awaiting
+ * review from you" preset. Absent means off; only the spellings a
+ * `URLSearchParams` caller would produce are accepted, and anything else is
+ * `invalid_input` rather than a silent false, so a typo in the query string
+ * is reported instead of quietly widening the listing.
+ */
+function parseInboxBooleanQuery(
+  value: string | undefined,
+): boolean | "invalid" {
+  if (value === undefined) return false;
+  if (value === "1" || value === "true") return true;
+  if (value === "0" || value === "false") return false;
+  return "invalid";
+}
+
 function parseInboxLabelsQuery(
   values: ReadonlyArray<string>,
 ): ReadonlyArray<string> | "invalid" {

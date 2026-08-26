@@ -70,7 +70,7 @@ describe("MaintainerInbox", () => {
       <MaintainerInbox
         profileId="pagination"
         profileLabel="P"
-        scope="open"
+        state="open"
         hasPreviousPage
         hasNextPage
         rows={[row]}
@@ -95,7 +95,7 @@ describe("MaintainerInbox", () => {
       <MaintainerInbox
         profileId="pagination-disabled"
         profileLabel="P"
-        scope="open"
+        state="open"
         hasPreviousPage={false}
         hasNextPage
         rows={[row]}
@@ -123,7 +123,7 @@ describe("MaintainerInbox", () => {
       <MaintainerInbox
         profileId="pagination-disabled"
         profileLabel="P"
-        scope="open"
+        state="open"
         hasPreviousPage
         hasNextPage
         rows={[row]}
@@ -148,7 +148,7 @@ describe("MaintainerInbox", () => {
       <MaintainerInbox
         profileId="footer-placement"
         profileLabel="P"
-        scope="open"
+        state="open"
         hasPreviousPage
         hasNextPage
         rows={[row]}
@@ -181,7 +181,7 @@ describe("MaintainerInbox", () => {
       <MaintainerInbox
         profileId="rows-per-page"
         profileLabel="P"
-        scope="open"
+        state="open"
         pageSize={25}
         hasPreviousPage
         hasNextPage
@@ -233,7 +233,7 @@ describe("MaintainerInbox", () => {
       />,
     );
     const combo = screen.getByRole("combobox", { name: "Repository" });
-    // Labelled so the current scope is readable without opening it.
+    // Labelled so the current state is readable without opening it.
     expect(combo.textContent).toContain("acme/widgets");
   });
 
@@ -264,7 +264,7 @@ describe("MaintainerInbox", () => {
 
   it("shows merged rows and delegates state selection through the filter bar", async () => {
     const user = userEvent.setup();
-    const scopeChange = vi.fn();
+    const stateChange = vi.fn();
     const mergedRow: InboxRow = {
       ...row,
       remoteState: "merged",
@@ -278,11 +278,11 @@ describe("MaintainerInbox", () => {
       <MaintainerInbox
         profileId="merged"
         profileLabel="P"
-        scope="merged"
+        state="merged"
         rows={[mergedRow]}
         freshness="fresh"
         refreshStatus="Current"
-        onScopeChange={scopeChange}
+        onStateChange={stateChange}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -297,19 +297,19 @@ describe("MaintainerInbox", () => {
     });
     await user.click(stateSelect);
     await user.click(await screen.findByRole("option", { name: "Open" }));
-    expect(scopeChange).toHaveBeenCalledWith("open");
+    expect(stateChange).toHaveBeenCalledWith("open");
   });
 
   it("reflects the requested state in the filter bar's state Select", () => {
     render(
       <MaintainerInbox
-        profileId="scope-pressed"
+        profileId="state-pressed"
         profileLabel="P"
-        scope="merged"
+        state="merged"
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-        onScopeChange={vi.fn()}
+        onStateChange={vi.fn()}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -547,7 +547,7 @@ describe("MaintainerInbox", () => {
       <MaintainerInbox
         profileId="grid-columns"
         profileLabel="P"
-        scope="open"
+        state="open"
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
@@ -560,9 +560,60 @@ describe("MaintainerInbox", () => {
       throw new Error("expected root grid element");
     // Inspector open by default (see `inbox-view-preferences.ts`), so the
     // grid reserves the review-details column. The queue rail's own column
-    // — reserved only in "open" scope — is gone entirely (slice 8a); there
-    // is no scope-conditional grid template left to assert on.
+    // — reserved only in "open" state — is gone entirely (slice 8a); there
+    // is no state-conditional grid template left to assert on.
     expect(grid.className).toMatch(/grid-cols-\[minmax\(0,1fr\)_21rem\]/);
+  });
+
+  it("refreshes GitHub from the freshness badge, the screen's one refresh affordance", async () => {
+    const user = userEvent.setup();
+    const refresh = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onRefresh={refresh}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Refresh pull requests. GitHub: Current",
+      }),
+    );
+
+    // Refresh stays explicit under ADR 0032 — one click, one read, and the
+    // badge never refreshes itself.
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not offer refresh from the badge while a read is already in flight", async () => {
+    const user = userEvent.setup();
+    const refresh = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Refreshing"
+        onRefresh={refresh}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+
+    const badge = screen.getByRole("button", {
+      name: "Refresh pull requests. GitHub: Refreshing",
+    });
+    expect(badge.hasAttribute("disabled")).toBe(true);
+    await user.click(badge);
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("shows visible elapsed-age copy for a cached-after-failure snapshot", () => {

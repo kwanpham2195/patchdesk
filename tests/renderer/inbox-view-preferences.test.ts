@@ -6,7 +6,7 @@ import {
   saveInboxViewPreferences,
 } from "../../src/renderer/src/inbox-view-preferences";
 
-const KEY = "patchdesk.inbox-view.v5.profile-1";
+const KEY = "patchdesk.inbox-view.v6.profile-1";
 const V2_KEY = "patchdesk.inbox-view.v2.profile-1";
 const LEGACY_KEY = "patchdesk.inbox-view.v1.profile-1";
 
@@ -19,7 +19,7 @@ type StoredValue =
   | { readonly [key: string]: StoredValue };
 
 function store(preferences: Record<string, StoredValue>): void {
-  window.localStorage.setItem(KEY, JSON.stringify({ version: 5, preferences }));
+  window.localStorage.setItem(KEY, JSON.stringify({ version: 6, preferences }));
 }
 
 function storeV2(preferences: Record<string, StoredValue>): void {
@@ -47,19 +47,19 @@ describe("inbox view preferences", () => {
 
   it("keeps sound fields when a single stored field is malformed", () => {
     store({
-      scope: "merged",
+      state: "merged",
       selectedLabels: ["bug"],
       inspectorOpen: "not-a-boolean",
     });
     const loaded = loadInboxViewPreferences("profile-1");
-    expect(loaded.scope).toBe("merged");
+    expect(loaded.state).toBe("merged");
     expect(loaded.selectedLabels).toEqual(["bug"]);
     expect(loaded.inspectorOpen).toBe(true);
   });
 
-  it("round-trips the selected inbox scope without persisting page cursors", () => {
-    saveInboxViewPreferences("profile-1", { scope: "merged" });
-    expect(loadInboxViewPreferences("profile-1").scope).toBe("merged");
+  it("round-trips the selected inbox state without persisting page cursors", () => {
+    saveInboxViewPreferences("profile-1", { state: "merged" });
+    expect(loadInboxViewPreferences("profile-1").state).toBe("merged");
     expect(window.localStorage.getItem(KEY)).not.toContain("pageToken");
   });
 
@@ -75,35 +75,35 @@ describe("inbox view preferences", () => {
   });
 
   it("resets an unlisted or malformed page size to the default while keeping sound fields", () => {
-    store({ scope: "merged", pageSize: 100 });
+    store({ state: "merged", pageSize: 100 });
     const loaded = loadInboxViewPreferences("profile-1");
     expect(loaded.pageSize).toBe(25);
-    expect(loaded.scope).toBe("merged");
+    expect(loaded.state).toBe("merged");
   });
 
   it("resets to defaults, including page size, when reading version 2 data", () => {
-    storeV2({ scope: "merged", pageSize: 50 });
+    storeV2({ state: "merged", pageSize: 50 });
     expect(loadInboxViewPreferences("profile-1")).toEqual(
       DEFAULT_INBOX_VIEW_PREFERENCES,
     );
   });
 
-  it("migrates version 1 preferences with an open scope", () => {
-    storeLegacy({ scope: "merged", selectedLabels: ["bug"] });
+  it("migrates version 1 preferences with an open state", () => {
+    storeLegacy({ state: "merged", selectedLabels: ["bug"] });
     expect(loadInboxViewPreferences("profile-1")).toMatchObject({
-      scope: "open",
+      state: "open",
       selectedLabels: ["bug"],
     });
   });
 
   it("degrades a stale string selectedLabel to an empty array without dropping siblings", () => {
     store({
-      scope: "merged",
+      state: "merged",
       selectedLabel: "bug",
     });
     const loaded = loadInboxViewPreferences("profile-1");
     expect(loaded.selectedLabels).toEqual([]);
-    expect(loaded.scope).toBe("merged");
+    expect(loaded.state).toBe("merged");
   });
 
   it("round-trips a selectedLabels array", () => {

@@ -542,6 +542,62 @@ describe("GET /v1/inbox page size boundary", () => {
     );
   });
 
+  it("forwards the Awaiting review from you preset to GitHub as a search qualifier", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL("v1/inbox?awaitingMyReview=1", api.url),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(200);
+    // The renderer sends a bounded, enumerated value; the route is the only
+    // place it becomes GitHub search-qualifier text.
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery:
+          "repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me",
+      }),
+    );
+  });
+
+  it("omits the Awaiting review from you qualifier when the param is absent or off", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    for (const query of ["v1/inbox", "v1/inbox?awaitingMyReview=0"]) {
+      const response = await fetch(new URL(query, api.url), {
+        headers: headers(),
+      });
+      expect(response.status, query).toBe(200);
+    }
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery: expect.stringContaining("user-review-requested"),
+      }),
+    );
+  });
+
+  it("rejects an unparseable awaitingMyReview value with no GitHub read", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    // A typo must be reported, not silently read as off — that would widen
+    // the listing without the maintainer noticing.
+    for (const value of ["yes", "2", ""]) {
+      const response = await fetch(
+        new URL(`v1/inbox?awaitingMyReview=${value}`, api.url),
+        { headers: headers() },
+      );
+      expect(response.status, value).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_input",
+      });
+    }
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
   it("rejects an unknown filter state as a normal parse failure with no GitHub read", async () => {
     const { api, searchMaintainerPullRequests } =
       await startWithWatchedProfile();

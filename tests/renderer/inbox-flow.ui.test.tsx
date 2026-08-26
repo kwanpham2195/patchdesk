@@ -255,7 +255,7 @@ describe("InboxFlow merged review opening", () => {
         state="success"
         refreshStatus="Current"
         onRefresh={vi.fn()}
-        scope="merged"
+        inboxState="merged"
         onSettings={vi.fn()}
         onOpenWorkbench={onOpenWorkbench}
       />,

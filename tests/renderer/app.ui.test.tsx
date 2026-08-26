@@ -277,8 +277,8 @@ describe("App Review route loading", () => {
   });
 });
 
-describe("App inbox scope switch", () => {
-  it("holds the row list in a loading state instead of showing the previous scope's rows under the new scope's label", async () => {
+describe("App inbox state switch", () => {
+  it("holds the row list in a loading state instead of showing the previous state's rows under the new state's label", async () => {
     const user = userEvent.setup();
     const mergedGate = promise<void>();
     Object.defineProperty(window, "patchdesk", {
@@ -305,7 +305,7 @@ describe("App inbox scope switch", () => {
               ok: true,
               status: 200,
               correlationId: "test",
-              body: scopedInbox("open", 1, "Open PR title"),
+              body: stateFilteredInbox("open", 1, "Open PR title"),
             };
           }
           if (input.path === "/v1/inbox?state=merged&pageSize=25") {
@@ -314,7 +314,7 @@ describe("App inbox scope switch", () => {
               ok: true,
               status: 200,
               correlationId: "test",
-              body: scopedInbox("merged", 2, "Merged PR title"),
+              body: stateFilteredInbox("merged", 2, "Merged PR title"),
             };
           }
           return { ok: true, status: 200, correlationId: "test", body: {} };
@@ -333,15 +333,15 @@ describe("App inbox scope switch", () => {
     await user.click(stateSelect);
     await user.click(await screen.findByRole("option", { name: "Merged" }));
 
-    // The filter bar's state Select reflects the requested scope
+    // The filter bar's state Select reflects the requested state
     // immediately, so the click still feels responsive.
     await waitFor(() => expect(stateSelect.textContent).toContain("Merged"));
     // The refresh indicator — the app's existing loading affordance —
     // reflects the in-flight request.
     expect(await screen.findByText("GitHub: Refreshing")).toBeTruthy();
-    // The previous (open) scope's row must not render under the "Merged"
-    // label while the merged-scope response is still in flight, and the
-    // new scope's row has not arrived yet either.
+    // The previous (open) state's row must not render under the "Merged"
+    // label while the merged-state response is still in flight, and the
+    // new state's row has not arrived yet either.
     expect(within(rowList).queryByText("#1 Open PR title")).toBeNull();
     expect(within(rowList).queryByText("#2 Merged PR title")).toBeNull();
 
@@ -422,6 +422,39 @@ describe("App repository picker", () => {
     ).toContain(`${repoA.owner}/${repoA.repo}`);
   });
 
+  it("carries the Awaiting review from you preset across a repository change", async () => {
+    const user = userEvent.setup();
+    const desktop = installRepoDesktop();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Awaiting review from you" }),
+    );
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain("awaitingMyReview=1"),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Repository" }));
+    await user.click(
+      await screen.findByRole("option", {
+        name: `${repoB.owner}/${repoB.repo}`,
+      }),
+    );
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoB.owner}`),
+    );
+
+    // Unlike the label filter, `user-review-requested:@me` means the same
+    // thing in every repository, so a repository change must not clear it —
+    // validation section 6 requires the preset to survive the change.
+    expect(desktop.paths.at(-1)).toContain("awaitingMyReview=1");
+    expect(loadInboxViewPreferences("profile").awaitingMyReview).toBe(true);
+  });
+
   it("changing the selected repository resets the page cursor and clears the label filter, in exactly one request", async () => {
     const user = userEvent.setup();
     saveInboxViewPreferences("profile", {
@@ -456,9 +489,13 @@ describe("App repository picker", () => {
   });
 });
 
-/** A single-row inbox response for the given scope, valid against
+/** A single-row inbox response for the given state, valid against
  * `parseInboxResponse`'s schema. */
-function scopedInbox(scope: "open" | "merged", number: number, title: string) {
+function stateFilteredInbox(
+  state: "open" | "merged",
+  number: number,
+  title: string,
+) {
   return {
     profile: {
       id: "profile",
@@ -467,11 +504,11 @@ function scopedInbox(scope: "open" | "merged", number: number, title: string) {
       ghAccount: "fixture",
     },
     inbox: {
-      scope,
+      state,
       pageSize: 25,
       rows: [
         {
-          remoteState: scope,
+          remoteState: state,
           identity: {
             host: "github.com",
             owner: "owner",
@@ -490,13 +527,13 @@ function scopedInbox(scope: "open" | "merged", number: number, title: string) {
           reviewState: "none",
           mergeability: "unknown",
           labels: [],
-          // The default queue in "open" scope is "my_inbox", which only
-          // shows rows carrying this category; "merged" scope bypasses queue
-          // filtering entirely, so this only matters for the open-scope row.
+          // The default queue in "open" state is "my_inbox", which only
+          // shows rows carrying this category; "merged" state bypasses queue
+          // filtering entirely, so this only matters for the open-state row.
           categories:
-            scope === "open" ? (["updated_since_review"] as const) : [],
+            state === "open" ? (["updated_since_review"] as const) : [],
           recommendedAction:
-            scope === "open"
+            state === "open"
               ? { kind: "run_review", label: "Run review" }
               : {
                   kind: "open_merged_review",
@@ -583,7 +620,7 @@ function inbox() {
       ghAccount: "fixture",
     },
     inbox: {
-      scope: "open",
+      state: "open",
       pageSize: 25,
       rows: [],
       repositories: [],
@@ -615,7 +652,7 @@ function repoInboxResponse(
       repos: watchlist,
     },
     inbox: {
-      scope: "open",
+      state: "open",
       pageSize: 25,
       ...nextPageTokenField,
       rows: [

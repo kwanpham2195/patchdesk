@@ -42,6 +42,7 @@ import {
   removeWatchedRepo,
   updateWatchedRepoPath,
 } from "./profile-service";
+import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { ProfileMutationFailure, WatchedRepoRef } from "./profile-service";
 import type { OriginFinder } from "./dashboard-service";
 
@@ -293,7 +294,7 @@ export class DashboardController {
       return ok({
         profile: profile.value,
         inbox: {
-          scope: input.filter.state,
+          state: input.filter.state,
           pageSize: input.pageSize,
           rows: [],
           repositories: [],
@@ -508,12 +509,7 @@ function isWatchedRepository(
   profile: WorkspaceProfileConfig,
   repository: InboxRepositoryRef,
 ): boolean {
-  return profile.repos.some(
-    (repo) =>
-      repo.host === repository.host &&
-      repo.owner === repository.owner &&
-      repo.repo === repository.repo,
-  );
+  return profile.repos.some((repo) => sameRepositoryIdentity(repo, repository));
 }
 
 function repoRef(
