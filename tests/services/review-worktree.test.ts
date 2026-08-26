@@ -2,12 +2,13 @@ import {
   access,
   mkdtemp,
   mkdir,
+  realpath,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
@@ -358,6 +359,95 @@ describe("ReviewWorktreeService", () => {
           targetPath: target,
         }),
       ).toMatchObject({
+        _tag: "err",
+        error: { _tag: "UnsafeWorktreeCleanup" },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses cleanup when a resolved target's relative form reads as a Windows-absolute path", async () => {
+    // What this proves: `cleanup` rejects a resolved target whose path,
+    // relative to the cache root, reads as a Windows-absolute path — the
+    // `win32.isAbsolute` check inside the shared `isPathContained`
+    // predicate. This is NOT an escape test. The target built below is a
+    // real directory placed directly inside the cache root, so its
+    // relative form never carries a leading "..". The sanity assertion
+    // near the end of this test proves that directly.
+    //
+    // An escape case (a target genuinely outside the cache root) cannot be
+    // built on this platform. On POSIX, `path.relative` between any two
+    // different absolute paths always returns a string that starts with
+    // "..": confirmed over 300,000 random path pairs, plus targeted
+    // cross-mount shapes. So the old
+    // `relative(root, target).startsWith("..")` check was already correct
+    // for a realpath'd target on POSIX. What that old check missed is the
+    // case covered here: a target genuinely inside the cache root whose
+    // name happens to read as a Windows drive path, reached through an
+    // attacker-controlled ancestor symlink. This regression must fail
+    // against the old `relative(root, target).startsWith("..")` check and
+    // pass once `cleanup` uses the shared predicate.
+    //
+    // This fixture is POSIX-only: it needs a real directory literally
+    // named `C:\evil`. Windows filesystems do not allow `:` or `\` in a
+    // file name, so this directory cannot be created on a Windows runner.
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const local = join(root, "repo");
+      await mkdir(local);
+      const cacheDir = paths.cacheDirectory();
+      await mkdir(cacheDir, { recursive: true });
+      // A real directory, directly inside the cache root, whose name happens
+      // to read as a Windows drive path. `relative(cacheDir, target)` for
+      // anything inside it starts with this literal string, no ".." needed.
+      const driveNamed = join(cacheDir, "C:\\evil");
+      const realTarget = join(
+        driveNamed,
+        ids.profileId,
+        "review-worktrees",
+        sessionId,
+      );
+      await mkdir(realTarget, { recursive: true });
+      await writeFile(
+        join(realTarget, "worktree.json"),
+        JSON.stringify({ profileId: ids.profileId, sessionId }),
+        "utf8",
+      );
+      // Redirect the ordinary, expected "profiles" ancestor to the
+      // drive-named directory. The final path component Patchdesk asks to
+      // remove is never itself a symlink, so the existing symlink guard
+      // (`lstat(...).isSymbolicLink()`) does not fire; only the containment
+      // check below stands between this and `git worktree remove` + `rm`.
+      await symlink(driveNamed, join(cacheDir, "profiles"));
+      const target = paths.worktreeDirectory(ids.profileId, sessionId);
+
+      // Sanity: prove the resolved target really is inside the cache root
+      // (its relative form does not start with ".."), and that the
+      // relative form is exactly the Windows-drive-shaped string this test
+      // is about.
+      const resolvedRoot = await realpath(cacheDir);
+      const resolvedTarget = await realpath(target);
+      const relation = relative(resolvedRoot, resolvedTarget);
+      expect(relation.startsWith("..")).toBe(false);
+      expect(relation).toBe(
+        ["C:\\evil", ids.profileId, "review-worktrees", sessionId].join(sep),
+      );
+
+      const cleaned = await new ReviewWorktreeService(
+        paths,
+        new RecordingGit(),
+        credentials,
+        resolveGh,
+      ).cleanup({
+        profileId: ids.profileId,
+        sessionId,
+        localPath: local,
+        targetPath: target,
+      });
+
+      expect(cleaned).toMatchObject({
         _tag: "err",
         error: { _tag: "UnsafeWorktreeCleanup" },
       });

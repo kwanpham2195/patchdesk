@@ -8,19 +8,12 @@ import {
   rmdir,
   stat,
 } from "node:fs/promises";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { basename, dirname, join } from "node:path";
 import * as v from "valibot";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
+import { isPathContained } from "../adapters/storage/path-containment";
 import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
@@ -683,7 +676,7 @@ async function isSafeOwnedPath(
   path: string,
   requirePath: boolean = false,
 ): Promise<boolean> {
-  if (!isContainedPath(root, path)) return false;
+  if (!isPathContained(root, path)) return false;
   const entry = await lstat(path).catch(() => undefined);
   if (entry?.isSymbolicLink() || (requirePath && entry === undefined))
     return false;
@@ -694,7 +687,7 @@ async function isSafeOwnedPath(
   return (
     canonicalRoot !== undefined &&
     canonicalParent !== undefined &&
-    isContainedPath(canonicalRoot, canonicalParent)
+    isPathContained(canonicalRoot, canonicalParent)
   );
 }
 
@@ -709,14 +702,4 @@ async function realpathNearestExistingParent(
     if (parent === candidate) return undefined;
     candidate = parent;
   }
-}
-
-function isContainedPath(root: string, path: string): boolean {
-  const relation = relative(resolve(root), resolve(path));
-  return (
-    relation === "" ||
-    (relation !== ".." &&
-      !relation.startsWith(`..${sep}`) &&
-      !isAbsolute(relation))
-  );
 }

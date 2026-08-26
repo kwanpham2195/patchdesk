@@ -1,6 +1,13 @@
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -120,5 +127,27 @@ describe("ReviewArtifactStorage", () => {
         "utf8",
       ),
     ).resolves.toContain("worktree");
+  });
+
+  it("refuses to remove a session whose directory is a symlink", async () => {
+    // `isUnderRoot`'s parent-walk is the only thing standing between a
+    // symlinked session directory and a real `rm`. Removing that directory
+    // and replacing it with a symlink to somewhere else must still be
+    // rejected: this proves the symlink guard survives sharing the lexical
+    // half of the check with the other three call sites.
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-review-artifacts-"));
+    roots.push(root);
+    const paths = PatchdeskPaths.forTest(root);
+    const elsewhere = join(root, "elsewhere");
+    await mkdir(elsewhere, { recursive: true });
+    const sessionRoot = paths.sessionDirectory(profileId, sessionId);
+    await mkdir(dirname(sessionRoot), { recursive: true });
+    await symlink(elsewhere, sessionRoot);
+    const storage = new ReviewArtifactStorage(paths, () => at);
+
+    const result = await storage.removeSession(profileId, sessionId);
+
+    expect(result).toMatchObject({ _tag: "err" });
+    await expect(access(elsewhere)).resolves.toBeUndefined();
   });
 });

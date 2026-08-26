@@ -7,11 +7,12 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import * as v from "valibot";
 
 import type { GitHubCredentials } from "../adapters/github/github-credentials";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { isPathContained } from "../adapters/storage/path-containment";
 import type {
   GitSha,
   GitHubHost,
@@ -310,7 +311,7 @@ export class ReviewWorktreeService {
       const info = await lstat(input.targetPath);
       if (info.isSymbolicLink()) return err({ _tag: "UnsafeWorktreeCleanup" });
       const target = await realpath(input.targetPath);
-      if (relative(root, target).startsWith(".."))
+      if (!isPathContained(root, target))
         return err({ _tag: "UnsafeWorktreeCleanup" });
       if (
         !(await this.matchesMetadata(target, input.profileId, input.sessionId))

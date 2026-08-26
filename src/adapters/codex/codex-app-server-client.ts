@@ -4,7 +4,7 @@ import {
   type SpawnOptions,
 } from "node:child_process";
 import { realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import * as v from "valibot";
 
@@ -12,6 +12,7 @@ import { err, ok, type Result } from "../../domain/result";
 import type { InsightReasoning } from "../../domain/insight-provider";
 import type { RepresentedReviewWorktree } from "../../domain/represented-review-worktree";
 import type { InsightFailureCategory } from "../../domain/insight-record";
+import { isPathContained } from "../storage/path-containment";
 
 const CLIENT_NAME = "patchdesk";
 const CLIENT_VERSION = "0.1.0";
@@ -221,10 +222,7 @@ export async function isPathInsideWorktree(
     realpath(candidatePath),
   ]).catch(() => ["", ""] as const);
   if (worktree.length === 0 || candidate.length === 0) return false;
-  const child = relative(worktree, candidate);
-  return (
-    child.length === 0 || (!child.startsWith(`..${sep}`) && child !== "..")
-  );
+  return isPathContained(worktree, candidate);
 }
 
 /** The Analysis result contract Codex must return, kept faithful to modelReviewResultSchema. */

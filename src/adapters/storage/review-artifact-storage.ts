@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
-import { dirname, relative, resolve, join } from "node:path";
+import { dirname, resolve, join } from "node:path";
 
 import { err, ok, type Result } from "../../domain/result";
+import { isPathContained } from "./path-containment";
 import {
   parseReviewSessionId,
   type IsoTimestamp,
@@ -513,8 +514,7 @@ export class ReviewArtifactStorage {
   private async isUnderRoot(path: string, root: string): Promise<boolean> {
     const absoluteRoot = resolve(root);
     let current = resolve(path);
-    const lexical = relative(absoluteRoot, current);
-    if (lexical.startsWith("..") || lexical === "..") return false;
+    if (!isPathContained(absoluteRoot, current)) return false;
     for (;;) {
       try {
         const info = await lstat(current);
@@ -526,8 +526,7 @@ export class ReviewArtifactStorage {
       const parent = dirname(current);
       if (parent === current) return false;
       current = parent;
-      const remaining = relative(absoluteRoot, current);
-      if (remaining.startsWith("..") || remaining === "..") return false;
+      if (!isPathContained(absoluteRoot, current)) return false;
     }
   }
 

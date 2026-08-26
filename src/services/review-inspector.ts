@@ -1,7 +1,8 @@
 import { readFile, realpath, writeFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
+import { isAbsolute, resolve, win32 } from "node:path";
 
 import { err, ok, type Result } from "../domain/result";
+import { isPathContained } from "../adapters/storage/path-containment";
 
 export const MAX_ANALYSIS_INSPECTION_CALLS = 8;
 export const MAX_GIT_SHOW_BYTES = 512 * 1024;
@@ -220,13 +221,17 @@ function isRelative(path: string): boolean {
     !path.split(/[\\/]/).includes("..")
   );
 }
+/**
+ * Unlike the shared `isPathContained` predicate (which the preparation
+ * journal relies on treating a path equal to its root as contained), the
+ * inspector must reject the snapshot root itself: reading a file by
+ * relative path must never resolve to the worktree root directory. That
+ * extra condition lives here rather than in the shared predicate, which
+ * cannot silently satisfy both contracts at once.
+ */
 function isContainedPath(root: string, candidate: string): boolean {
-  const relativePath = relative(root, candidate);
   return (
-    relativePath.length > 0 &&
-    relativePath !== ".." &&
-    !relativePath.startsWith(`..${sep}`) &&
-    !isAbsolute(relativePath)
+    resolve(root) !== resolve(candidate) && isPathContained(root, candidate)
   );
 }
 function isWindowsDriveRelative(path: string): boolean {
