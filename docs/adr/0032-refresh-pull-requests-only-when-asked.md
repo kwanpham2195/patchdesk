@@ -1,7 +1,18 @@
 # Refresh the pull requests screen only when asked
 
-> **Status: Accepted. Not yet implemented.** Companion to ADR 0031, which scopes
-> the screen to one repository. Terms in bold are defined in `CONTEXT.md`.
+> **Status: Accepted. Implemented in `ad02438..HEAD` on `main`** —
+> `InboxRefreshScheduler` and its focus polling, backoff ladder, and rate-limit
+> wait are gone; refresh happens only when the maintainer asks. Companion to
+> ADR 0031, which scopes the screen to one repository. Terms in bold are
+> defined in `CONTEXT.md`.
+>
+> **The freshness badge is the in-app refresh target.** This was left
+> unsettled when the polling was removed, leaving refresh reachable only from
+> the View menu. Settled here: the badge is a button that asks for a refresh,
+> and is disabled while a read is already in flight. It puts the command next
+> to the state it acts on rather than adding a second control beside it, and
+> it does not weaken this ADR — the badge never refreshes itself, it only lets
+> the maintainer ask.
 
 The Pull requests screen polls. `InboxRefreshScheduler`
 (`src/renderer/src/inbox-refresh-scheduler.ts`) refreshes every sixty seconds
