@@ -72,4 +72,61 @@ describe("maintainer inbox", () => {
     });
     expect(row.latestReview).toBeUndefined();
   });
+
+  describe("ready_to_merge", () => {
+    const matchingReview = {
+      reviewId,
+      reviewedHeadSha: sha.value,
+      // SAFETY: this fixed ISO timestamp is valid fixture data.
+      updatedAt: "2026-08-12T00:00:00.000Z" as never,
+      matchesCurrentHead: true,
+    };
+    const readyInput = {
+      ...input,
+      summary: { ...input.summary, mergeability: "mergeable" as const },
+      checks: { overall: "passing" as const, checks: [] },
+      latestReview: matchingReview,
+      dataFreshness: "fresh" as const,
+    };
+
+    it("is emitted when the session matches head, GitHub reports mergeable, checks pass, and data is fresh", () => {
+      const row = projectMaintainerInboxRow(readyInput);
+      expect(row.categories).toContain("ready_to_merge");
+    });
+
+    it("is absent when the data is cached, even though every other condition is satisfied", () => {
+      const row = projectMaintainerInboxRow({
+        ...readyInput,
+        dataFreshness: "cached",
+      });
+      expect(row.categories).not.toContain("ready_to_merge");
+    });
+
+    it("is absent when the saved session no longer matches the current head", () => {
+      const row = projectMaintainerInboxRow({
+        ...readyInput,
+        latestReview: { ...matchingReview, matchesCurrentHead: false },
+      });
+      expect(row.categories).not.toContain("ready_to_merge");
+    });
+
+    it("is absent when GitHub does not report the pull request mergeable", () => {
+      const row = projectMaintainerInboxRow({
+        ...readyInput,
+        summary: {
+          ...readyInput.summary,
+          mergeability: "conflicting" as const,
+        },
+      });
+      expect(row.categories).not.toContain("ready_to_merge");
+    });
+
+    it("is absent when checks are not passing", () => {
+      const row = projectMaintainerInboxRow({
+        ...readyInput,
+        checks: { overall: "failing" as const, checks: [] },
+      });
+      expect(row.categories).not.toContain("ready_to_merge");
+    });
+  });
 });

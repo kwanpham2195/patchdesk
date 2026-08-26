@@ -7,6 +7,7 @@ import type {
   GitHubPublishedFeedback,
   MergePolicySnapshot,
   MaintainerPullRequestPage,
+  MaintainerPullRequestSearchPage,
   PullRequestCommit,
   PullRequestReviewerListing,
   PullRequestSummary,
@@ -21,7 +22,10 @@ import {
   type RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
-import type { InboxPageSize, InboxScope } from "../../domain/maintainer-inbox";
+import type {
+  InboxPageSize,
+  InboxStateFilter,
+} from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import {
@@ -69,7 +73,7 @@ export class FakeGitHubAdapter
   async listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
-    readonly scope?: InboxScope;
+    readonly state?: InboxStateFilter;
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
@@ -90,9 +94,38 @@ export class FakeGitHubAdapter
     });
   }
 
+  async searchMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly searchQuery: string;
+    readonly state: InboxStateFilter;
+    readonly pageSize: InboxPageSize;
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
+    void input;
+    if (this.values.maintainerPullRequestsSearch !== undefined)
+      return ok(this.values.maintainerPullRequestsSearch);
+    if (this.values.listOpenPullRequests === undefined)
+      return missing("search_maintainer_prs");
+    // Fallback fixture built off `listOpenPullRequests`: issueCount equals
+    // the entry count here, unlike `maintainerPullRequestsSearch`, which a
+    // test sets explicitly to prove the two can differ.
+    return ok({
+      entries: this.values.listOpenPullRequests.map((summary, index) => ({
+        cursor: `fixture-${index}`,
+        pullRequest: {
+          summary,
+          checks: this.values.checks ?? { overall: "unknown", checks: [] },
+        },
+      })),
+      hasNextPage: false,
+      issueCount: this.values.listOpenPullRequests.length,
+    });
+  }
+
   async listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
     void input;
     return this.values.repositoryLabels === undefined
@@ -647,6 +680,8 @@ export class FakeGitHubAdapter
 export type FakeGitHubAdapterValues = {
   readonly listOpenPullRequests: ReadonlyArray<PullRequestSummary>;
   readonly maintainerPullRequests: MaintainerPullRequestPage;
+  /** `searchMaintainerPullRequests` fixture. Set `issueCount` independently of `entries.length` to test the repository-wide count diverging from the loaded page. */
+  readonly maintainerPullRequestsSearch: MaintainerPullRequestSearchPage;
   readonly repositoryLabels: RepositoryLabelListing;
   readonly assignableUsers: AssignableUserListing;
   readonly pullRequestReviewers: PullRequestReviewerListing;

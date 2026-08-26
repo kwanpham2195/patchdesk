@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseCommitDiffResponse,
+  parseInboxResponse,
   parseInsightProviderCatalog,
   parseModelCatalog,
   parseRepositoryLabelListResponse,
@@ -41,6 +42,82 @@ const reviewProjection = {
   checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
 };
+
+describe("parseInboxResponse", () => {
+  const response = {
+    profile: {
+      id: "cfw",
+      label: "Profile",
+      githubHost: "github.com",
+      ghAccount: "fixture",
+    },
+    inbox: {
+      state: "merged" as const,
+      pageSize: 25 as const,
+      rows: [],
+      repositories: [],
+      dataFreshness: "fresh" as const,
+      // GitHub's repository-wide match count (`issueCount`), distinct from
+      // `rows.length`. `inboxResponseSchema` is a `v.strictObject`, so this
+      // field is silently dropped at parse time if it is ever removed from
+      // the schema — that trap is exactly what this test guards.
+      matchCount: 237,
+    },
+  };
+
+  it("carries matchCount, GitHub's repository-wide match count, across the IPC boundary", () => {
+    const parsed = parseInboxResponse(response);
+    expect(parsed?.inbox.matchCount).toBe(237);
+  });
+
+  it("omits matchCount when the source response has none, rather than inventing a value", () => {
+    const { matchCount, ...inboxWithoutMatchCount } = response.inbox;
+    void matchCount;
+    const parsed = parseInboxResponse({
+      ...response,
+      inbox: inboxWithoutMatchCount,
+    });
+    expect(parsed).toBeDefined();
+    expect(parsed?.inbox.matchCount).toBeUndefined();
+  });
+
+  it("carries a watched repository's localPath across the IPC boundary", () => {
+    const parsed = parseInboxResponse({
+      ...response,
+      profile: {
+        ...response.profile,
+        repos: [
+          {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "cfw-sales-crm-api",
+            localPath: "/Users/kwanpham/Work/cfw/cfw-sales-crm-api",
+          },
+        ],
+      },
+    });
+    expect(parsed?.profile.repos?.[0]?.localPath).toBe(
+      "/Users/kwanpham/Work/cfw/cfw-sales-crm-api",
+    );
+  });
+
+  it("still parses a watched repository with no localPath, the main process's shape for a repo with no local checkout", () => {
+    const parsed = parseInboxResponse({
+      ...response,
+      profile: {
+        ...response.profile,
+        repos: [
+          {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "cfw-bo-customer-management-service",
+          },
+        ],
+      },
+    });
+    expect(parsed?.profile.repos?.[0]?.localPath).toBeUndefined();
+  });
+});
 
 describe("parseRepositoryLabelListResponse", () => {
   it("reaches the renderer with a successful fetch's labels and total intact", () => {

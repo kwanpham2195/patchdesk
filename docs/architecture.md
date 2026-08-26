@@ -149,7 +149,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-diff-source-service.ts`, `review-patch-index.ts`, and `review-inspector.ts` read the diff and expose a bounded, immutable inspector to model agents.
 - `review-recovery-service.ts` recovers a Review after an interrupted operation.
 - `review-diagnostic-service.ts` and `app-log-service.ts` implement observability.
-- `dashboard-service.ts`, `maintainer-inbox-service.ts`, and `inbox-refresh-coordinator.ts` implement the Pull requests screen.
+- `maintainer-inbox-service.ts` and `inbox-refresh-coordinator.ts` implement the Pull requests screen. `dashboard-service.ts`'s pull-request scanning is dead code with no callers; its workspace-repo discovery (`discoverWorkspaceRepos`) is still live and used by Settings.
 
 **Architecture Invariant:** services receive parsed domain values.
 They never parse raw input themselves and never trust the renderer's claims.

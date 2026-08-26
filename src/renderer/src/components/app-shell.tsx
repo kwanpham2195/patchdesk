@@ -13,6 +13,7 @@ import {
   destinationTitle,
   primaryDestinations,
 } from "@/routes";
+import { INBOX_STATE_FILTERS } from "../../../domain/maintainer-inbox";
 import { BrandMark } from "@/components/brand-mark";
 import { BusyIndicator } from "@/components/busy-indicator";
 import { Button } from "@/components/ui/button";
@@ -47,13 +48,6 @@ const icons = {
   settings: Settings,
 } as const;
 
-const inboxCommands = [
-  ["my_inbox", "My inbox"],
-  ["updated", "Updated pull requests"],
-  ["ready_to_merge", "Ready to merge"],
-  ["all_open", "All open pull requests"],
-] as const;
-
 type ProfileEntry = {
   readonly id: string;
   readonly label: string;
@@ -67,6 +61,7 @@ export function AppShell({
   profiles,
   activeProfileId,
   onProfileSwitch,
+  onInboxStateChange,
   children,
 }: {
   readonly destination: AppDestination;
@@ -76,6 +71,14 @@ export function AppShell({
   readonly profiles?: ReadonlyArray<ProfileEntry>;
   readonly activeProfileId?: string;
   readonly onProfileSwitch?: (id: string) => void;
+  /** Jumps the Maintainer inbox to an open/merged preset from
+   * `INBOX_STATE_FILTERS` — the palette and the filter bar share this one
+   * list so the two surfaces cannot drift. A prop, not a window
+   * event: `App` renders both `AppShell` and the inbox screen from the same
+   * call, so the state change reaches it directly. Absent before the inbox
+   * screen exists (fixture routes, first paint) — the "Inbox" command group
+   * hides itself in that case rather than dispatching into nothing. */
+  readonly onInboxStateChange?: (state: "open" | "merged") => void;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
@@ -121,16 +124,10 @@ export function AppShell({
     setCommandOpen(false);
     onNavigate(next);
   };
-  const chooseInboxView = (view: string): void => {
+  const chooseInboxState = (state: "open" | "merged"): void => {
     setCommandOpen(false);
     onNavigate({ kind: "dashboard" });
-    window.setTimeout(
-      () =>
-        window.dispatchEvent(
-          new CustomEvent("patchdesk:inbox-view", { detail: view }),
-        ),
-      0,
-    );
+    onInboxStateChange?.(state);
   };
   const openSelectedInboxAction = (): void => {
     setCommandOpen(false);
@@ -299,14 +296,14 @@ export function AppShell({
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Inbox">
-              {inboxCommands.map(([id, label]) => (
+              {INBOX_STATE_FILTERS.map((option) => (
                 <CommandItem
-                  key={id}
-                  value={label}
-                  onSelect={() => chooseInboxView(id)}
+                  key={option.state}
+                  value={option.label}
+                  onSelect={() => chooseInboxState(option.state)}
                 >
                   <GitPullRequest />
-                  {label}
+                  {option.label}
                 </CommandItem>
               ))}
               <CommandItem

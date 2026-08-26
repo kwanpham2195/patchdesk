@@ -15,6 +15,7 @@ import type {
   WorkspaceProfileConfig,
 } from "../domain/workspace-profile";
 import { ok, type Result } from "../domain/result";
+import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { WatchedRepoRef } from "./profile-service";
 
 export type PendingPrPriority =
@@ -132,8 +133,8 @@ export class DashboardService {
       const parsed = parseGitOrigin(value.origin, value.localPath);
       if (
         parsed === undefined ||
-        profile.repos.some((repo) => sameRepo(repo, parsed)) ||
-        discovered.some((repo) => sameRepo(repo, parsed))
+        profile.repos.some((repo) => sameRepositoryIdentity(repo, parsed)) ||
+        discovered.some((repo) => sameRepositoryIdentity(repo, parsed))
       )
         continue;
       discovered.push(parsed);
@@ -223,12 +224,4 @@ function parseGitOrigin(
         localPath: path.value,
       }
     : undefined;
-}
-
-function sameRepo(left: WatchedRepoRef, right: WatchedRepoRef): boolean {
-  return (
-    left.host === right.host &&
-    left.owner === right.owner &&
-    left.repo === right.repo
-  );
 }

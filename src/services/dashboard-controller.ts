@@ -31,6 +31,7 @@ import {
 } from "./dashboard-service";
 import {
   MaintainerInboxService,
+  type InboxRepositoryRef,
   type MaintainerInbox,
 } from "./maintainer-inbox-service";
 import { InboxRefreshCoordinator } from "./inbox-refresh-coordinator";
@@ -41,6 +42,7 @@ import {
   removeWatchedRepo,
   updateWatchedRepoPath,
 } from "./profile-service";
+import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { ProfileMutationFailure, WatchedRepoRef } from "./profile-service";
 import type { OriginFinder } from "./dashboard-service";
 
@@ -244,8 +246,28 @@ export class DashboardController {
     return ok({ profile: profile.value, dashboard: dashboard.value });
   }
 
-  /** Returns one parsed read-only maintainer inbox page without starting a review. */
-  async inboxForActiveProfile(input: InboxPageRequest): Promise<
+  /**
+   * Returns one parsed read-only maintainer inbox page without starting a
+   * review, for the given repository and structured filter.
+   *
+   * `repository` is `undefined` only for the renderer's bootstrap request,
+   * sent before it has learned the active profile's watchlist (profile
+   * selection is resolved here, server-side, and only revealed to the
+   * renderer through this response's `profile` field — there is no earlier
+   * point the renderer could know which repository to ask for). That case
+   * falls back to the first watched repository, same as every other
+   * omitted-and-defaulted field on this request (`pageToken`, `pageSize`).
+   *
+   * A caller-supplied repository is different: it must already be a member
+   * of the active profile's watchlist, or the request is rejected before any
+   * GitHub call. Without this check the renderer could point the
+   * maintainer's token at a repository they never watched — the same class
+   * of hole `buildInboxSearchQuery` guards against for the filter string.
+   */
+  async inboxForActiveProfile(
+    repository: InboxRepositoryRef | undefined,
+    input: InboxPageRequest,
+  ): Promise<
     Result<
       {
         readonly profile: WorkspaceProfileConfig;
@@ -256,9 +278,69 @@ export class DashboardController {
   > {
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
-    const inbox = await this.inboxRefresh.refresh(profile.value, input);
+    if (
+      repository !== undefined &&
+      !isWatchedRepository(profile.value, repository)
+    )
+      return failure("invalid_input");
+    const target = repository ?? profile.value.repos[0];
+    // An empty watchlist has no repository to read. That must stay a
+    // successful, empty inbox rather than a failure: the renderer's
+    // first-run setup checklist (`inbox-flow.tsx`) only renders on screen
+    // state "empty", which requires an `ok` response, and a brand-new
+    // profile with no watched repositories is exactly the state that screen
+    // exists for. No GitHub call is made — there is no repository to read.
+    if (target === undefined)
+      return ok({
+        profile: profile.value,
+        inbox: {
+          state: input.filter.state,
+          pageSize: input.pageSize,
+          rows: [],
+          repositories: [],
+          dataFreshness: "fresh",
+          snapshot: { state: "current" },
+        },
+      });
+    const inbox = await this.inboxRefresh.refresh(profile.value, target, input);
     if (inbox._tag === "err") return failure("invalid_input");
     return ok({ profile: profile.value, inbox: inbox.value });
+  }
+
+  /**
+   * Resolves the active profile and its target repository for a
+   * repository-scoped local-API read that is not `GET /v1/inbox` itself
+   * (currently `GET /v1/inbox/labels`) — the same fallback-to-first-watched
+   * and watchlist-membership rules `inboxForActiveProfile` applies, so a
+   * repository outside the watchlist is rejected before any GitHub call the
+   * same way it is there. `repository` absent from the result (rather than
+   * the whole call failing) means the watchlist itself is empty; the caller
+   * decides what an empty watchlist means for its own read.
+   */
+  async activeProfileRepository(
+    repository: InboxRepositoryRef | undefined,
+  ): Promise<
+    Result<
+      {
+        readonly profile: WorkspaceProfileConfig;
+        readonly repository?: InboxRepositoryRef;
+      },
+      DashboardControllerFailure
+    >
+  > {
+    const profile = await this.activeProfile();
+    if (profile._tag === "err") return profile;
+    if (
+      repository !== undefined &&
+      !isWatchedRepository(profile.value, repository)
+    )
+      return failure("invalid_input");
+    const target = repository ?? profile.value.repos[0];
+    return ok(
+      target === undefined
+        ? { profile: profile.value }
+        : { profile: profile.value, repository: target },
+    );
   }
 
   /** Refreshes one persisted repo while leaving other watchlist reads untouched. */
@@ -420,6 +502,14 @@ export class DashboardController {
     if (selected !== undefined) return ok(selected);
     return first === undefined ? failure("not_found") : ok(first);
   }
+}
+
+/** Whether `repository` is one of `profile`'s watched repositories. */
+function isWatchedRepository(
+  profile: WorkspaceProfileConfig,
+  repository: InboxRepositoryRef,
+): boolean {
+  return profile.repos.some((repo) => sameRepositoryIdentity(repo, repository));
 }
 
 function repoRef(

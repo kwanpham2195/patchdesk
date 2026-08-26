@@ -14,7 +14,7 @@ export type RendererLocalApi = {
 
 export const DESKTOP_REQUEST_CHANNEL = "patchdesk:request";
 export const DESKTOP_NAVIGATE_CHANNEL = "patchdesk:navigate";
-export type DesktopDestination = "settings";
+export type DesktopDestination = "settings" | "refresh";
 
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {

@@ -2,6 +2,7 @@ import { CheckCircle2, CircleAlert, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
   MaintainerInbox,
+  type InboxLabelActions,
   type ReviewInitialSection,
 } from "../components/maintainer-inbox";
 import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
@@ -38,6 +39,7 @@ import { useBusy } from "../hooks/use-busy";
 import {
   parseEnvironmentCheckResponse,
   parseGitHubAccessCheckResponse,
+  parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
 } from "../renderer-contracts";
 import type { inboxFreshnessLabel } from "../inbox-refresh-scheduler";
@@ -56,7 +58,9 @@ import type {
 import type {
   EnvironmentCheckResponse,
   InboxResponse,
+  RepositoryLabelListResponse,
 } from "../renderer-contracts";
+import type { RepositoryIdentity } from "../../../domain/repository-identity";
 
 export function InboxFlow({
   destination,
@@ -66,13 +70,19 @@ export function InboxFlow({
   state,
   refreshStatus,
   onRefresh,
-  scope = "open",
+  inboxState = "open",
   listPending = false,
   pageSize = DEFAULT_INBOX_PAGE_SIZE,
   hasPreviousPage = false,
   hasNextPage = false,
-  onInboxScopeChange = () => undefined,
+  onInboxStateChange = () => undefined,
   onInboxPageSizeChange = () => undefined,
+  selectedLabels = [],
+  onInboxLabelsChange = () => undefined,
+  awaitingMyReview = false,
+  onInboxAwaitingMyReviewChange = () => undefined,
+  selectedRepository,
+  onRepositoryChange = () => undefined,
   onPreviousInboxPage = () => undefined,
   onNextInboxPage = () => undefined,
   onSettings,
@@ -85,21 +95,34 @@ export function InboxFlow({
   readonly state: DashboardScreenState;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onRefresh: () => void;
-  /** Requested scope; only App owns its request transition. The toggle
-   * reflects this immediately. `listPending` says whether `inbox`'s rows
-   * have caught up to it yet. */
-  readonly scope?: "open" | "merged";
-  /** True while `inbox`'s confirmed scope has not caught up to the
-   * requested `scope` (a scope change is still in flight). The row list,
+  /** The requested pull-request state filter — named `inboxState` here only
+   * because this component already carries a screen-level `state`. Only App
+   * owns its request transition; the toggle reflects this immediately, and
+   * `listPending` says whether `inbox`'s rows have caught up to it yet. */
+  readonly inboxState?: "open" | "merged";
+  /** True while `inbox`'s confirmed state filter has not caught up to the
+   * requested one (a change is still in flight). The row list,
    * row count, and details panel must hold a loading state instead of
-   * rendering the previous scope's rows under the new scope's label. */
+   * rendering the previous state's rows under the new state's label. */
   readonly listPending?: boolean;
   /** Confirmed remote page size; only App owns its request transition. */
   readonly pageSize?: InboxPageSize;
   readonly hasPreviousPage?: boolean;
   readonly hasNextPage?: boolean;
-  readonly onInboxScopeChange?: (scope: "open" | "merged") => void;
+  readonly onInboxStateChange?: (state: "open" | "merged") => void;
   readonly onInboxPageSizeChange?: (pageSize: InboxPageSize) => void;
+  /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — never a
+   * local, in-page filter. Only App owns its request transition. */
+  readonly selectedLabels?: ReadonlyArray<string>;
+  readonly onInboxLabelsChange?: (labels: ReadonlyArray<string>) => void;
+  /** The "Awaiting review from you" preset (ADR 0031), sent to GitHub as
+   * `user-review-requested:@me`. Only App owns its request transition. */
+  readonly awaitingMyReview?: boolean;
+  readonly onInboxAwaitingMyReviewChange?: (value: boolean) => void;
+  /** The screen's root state (ADR 0031); only App owns its request
+   * transition. Absent only before the active profile's watchlist is known. */
+  readonly selectedRepository?: RepositoryIdentity;
+  readonly onRepositoryChange?: (repository: RepositoryIdentity) => void;
   readonly onPreviousInboxPage?: () => void;
   readonly onNextInboxPage?: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
@@ -112,6 +135,28 @@ export function InboxFlow({
   const [openError, setOpenError] = useState<string>();
   const dashboardProfileId = dashboard?.profile.id;
   const { runBusy } = useBusy();
+
+  // Feeds the label filter popover the Selected repository's real,
+  // repository-wide labels (`GET /v1/inbox/labels`) rather than deriving
+  // them from the loaded page — mirrors `useReviewMetadataActions.fetchLabels`
+  // for the same read. Undefined only before a repository is selected; the
+  // popover withholds its trigger entirely in that case.
+  const fetchInboxLabels = useCallback(async (): Promise<
+    RepositoryLabelListResponse | undefined
+  > => {
+    if (selectedRepository === undefined) return undefined;
+    const query = new URLSearchParams({
+      host: selectedRepository.host,
+      owner: selectedRepository.owner,
+      repo: selectedRepository.repo,
+    });
+    const value = await requestJson(`/v1/inbox/labels?${query.toString()}`);
+    return parseRepositoryLabelListResponse(value);
+  }, [selectedRepository]);
+  const labelActions: InboxLabelActions | undefined =
+    selectedRepository === undefined
+      ? undefined
+      : { fetchLabels: fetchInboxLabels };
 
   type PrRef = {
     readonly host?: string;
@@ -266,13 +311,20 @@ export function InboxFlow({
       {...(openedPr === undefined ? {} : { openedPr })}
       {...(openError === undefined ? {} : { openError })}
       onRefresh={onRefresh}
-      scope={scope}
+      inboxState={inboxState}
       listPending={listPending}
       pageSize={pageSize}
       hasPreviousPage={hasPreviousPage}
       hasNextPage={hasNextPage}
-      onInboxScopeChange={onInboxScopeChange}
+      onInboxStateChange={onInboxStateChange}
       onInboxPageSizeChange={onInboxPageSizeChange}
+      selectedLabels={selectedLabels}
+      onInboxLabelsChange={onInboxLabelsChange}
+      awaitingMyReview={awaitingMyReview}
+      onInboxAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
+      {...(labelActions === undefined ? {} : { labelActions })}
+      {...(selectedRepository === undefined ? {} : { selectedRepository })}
+      onRepositoryChange={onRepositoryChange}
       onPreviousInboxPage={onPreviousInboxPage}
       onNextInboxPage={onNextInboxPage}
       onSettings={onSettings}
@@ -308,13 +360,20 @@ function InboxScreen({
   inbox,
   dashboard,
   onRefresh,
-  scope,
+  inboxState,
   listPending,
   pageSize,
   hasPreviousPage,
   hasNextPage,
-  onInboxScopeChange,
+  onInboxStateChange,
   onInboxPageSizeChange,
+  selectedLabels,
+  onInboxLabelsChange,
+  awaitingMyReview,
+  onInboxAwaitingMyReviewChange,
+  labelActions,
+  selectedRepository,
+  onRepositoryChange,
   onPreviousInboxPage,
   onNextInboxPage,
   refreshStatus,
@@ -328,13 +387,22 @@ function InboxScreen({
   readonly inbox: InboxResponse;
   readonly dashboard: Dashboard;
   readonly onRefresh: () => void;
-  readonly scope: "open" | "merged";
+  /** The requested pull-request state filter; see `InboxFlow`'s `inboxState`
+   * for why it is not simply `state` here. */
+  readonly inboxState: "open" | "merged";
   readonly listPending: boolean;
   readonly pageSize: InboxPageSize;
   readonly hasPreviousPage: boolean;
   readonly hasNextPage: boolean;
-  readonly onInboxScopeChange: (scope: "open" | "merged") => void;
+  readonly onInboxStateChange: (state: "open" | "merged") => void;
   readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
+  readonly selectedLabels: ReadonlyArray<string>;
+  readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
+  readonly awaitingMyReview: boolean;
+  readonly onInboxAwaitingMyReviewChange: (value: boolean) => void;
+  readonly labelActions?: InboxLabelActions;
+  readonly selectedRepository?: RepositoryIdentity;
+  readonly onRepositoryChange: (repository: RepositoryIdentity) => void;
   readonly onPreviousInboxPage: () => void;
   readonly onNextInboxPage: () => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
@@ -369,24 +437,41 @@ function InboxScreen({
       />
       <div className="min-h-0 flex-1">
         <MaintainerInbox
+          // Remounts the view on a repository change so the label filter and
+          // every other locally-owned view state reload fresh from
+          // preferences (already cleared by `onRepositoryChange`) instead of
+          // carrying labels scoped to the previous repository.
+          key={
+            selectedRepository === undefined ? "none" : key(selectedRepository)
+          }
           profileId={inbox.profile.id}
           profileLabel={inbox.profile.label}
           rows={inbox.inbox.rows}
           {...(inbox.profile.repos === undefined
             ? {}
             : { repos: inbox.profile.repos })}
+          {...(selectedRepository === undefined ? {} : { selectedRepository })}
+          onRepositoryChange={onRepositoryChange}
           freshness={inbox.inbox.dataFreshness}
           {...(inbox.inbox.snapshot === undefined
             ? {}
             : { snapshot: inbox.inbox.snapshot })}
           refreshStatus={refreshStatus}
-          onRefresh={onRefresh}
-          scope={scope}
+          state={inboxState}
           listPending={listPending}
+          onRefresh={onRefresh}
+          selectedLabels={selectedLabels}
+          onLabelsChange={onInboxLabelsChange}
+          awaitingMyReview={awaitingMyReview}
+          onAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
+          {...(labelActions === undefined ? {} : { labelActions })}
+          {...(inbox.inbox.matchCount === undefined
+            ? {}
+            : { matchCount: inbox.inbox.matchCount })}
           pageSize={pageSize}
           hasPreviousPage={hasPreviousPage}
           hasNextPage={hasNextPage}
-          onScopeChange={onInboxScopeChange}
+          onStateChange={onInboxStateChange}
           onPageSizeChange={onInboxPageSizeChange}
           onPreviousPage={onPreviousInboxPage}
           onNextPage={onNextInboxPage}
@@ -897,7 +982,7 @@ function Outcome({
   return (
     <section className="mt-6 space-y-2">
       {repos.flatMap(({ repo, state: outcome, resumeAt, forbiddenReason }) =>
-        outcome === "ready" || outcome === "no_open_prs"
+        outcome === "ready"
           ? []
           : [
               <Alert
@@ -914,15 +999,20 @@ function Outcome({
                   {repo.owner}/{repo.repo}
                 </AlertTitle>
                 <AlertDescription>
-                  {outcome === "github_auth"
-                    ? "GitHub authentication is required before Patchdesk can refresh pull requests. Run gh auth login for the exact GitHub account entered in Settings -> Workspace. Local review records remain available."
-                    : outcome === "github_read"
-                      ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
-                      : outcome === "github_forbidden"
-                        ? forbiddenCopy(forbiddenReason, repo)
-                        : outcome === "github_rate_limited"
-                          ? rateLimitedCopy(resumeAt)
-                          : outcome}
+                  {outcome === "no_open_prs"
+                    ? // Distinct from a filter that excludes everything: this
+                      // repository genuinely has nothing matching the current
+                      // state and label filter right now — see ADR 0031.
+                      "This repository has no pull requests matching the current filter."
+                    : outcome === "github_auth"
+                      ? "GitHub authentication is required before Patchdesk can refresh pull requests. Run gh auth login for the exact GitHub account entered in Settings -> Workspace. Local review records remain available."
+                      : outcome === "github_read"
+                        ? "GitHub metadata is temporarily unavailable. Retry the read; Patchdesk will not discard local review data."
+                        : outcome === "github_forbidden"
+                          ? forbiddenCopy(forbiddenReason, repo)
+                          : outcome === "github_rate_limited"
+                            ? rateLimitedCopy(resumeAt)
+                            : outcome}
                   {outcome === "github_read" ? (
                     <div>
                       <Button
@@ -952,11 +1042,7 @@ function Outcome({
   );
 }
 
-function key(repo: {
-  readonly host: string;
-  readonly owner: string;
-  readonly repo: string;
-}): string {
+function key(repo: RepositoryIdentity): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;
 }
 

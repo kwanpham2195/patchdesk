@@ -131,13 +131,21 @@ export async function checkSourcePaths(
     return 0;
   }
 
-  return runSourceQualityChecks(files, { cwd, run, output });
+  return runSourceQualityChecks(files, { cwd, run, fileExists, output });
 }
 
-async function runSourceQualityChecks(files, { cwd, run, output }) {
+async function runSourceQualityChecks(
+  files,
+  { cwd, run, fileExists = defaultFileExists, output },
+) {
+  const oxfmt = await pinnedTool("oxfmt", cwd, fileExists, output);
+  if (oxfmt === undefined) return 1;
+  const oxlint = await pinnedTool("oxlint", cwd, fileExists, output);
+  if (oxlint === undefined) return 1;
+
   const formatter = await execute(
     run,
-    "oxfmt",
+    oxfmt,
     ["--check", "--no-error-on-unmatched-pattern", ...files],
     cwd,
     output,
@@ -154,7 +162,7 @@ async function runSourceQualityChecks(files, { cwd, run, output }) {
 
   const linter = await execute(
     run,
-    "oxlint",
+    oxlint,
     ["--deny-warnings", "--no-error-on-unmatched-pattern", ...files],
     cwd,
     output,
@@ -201,6 +209,28 @@ function splitNullDelimitedPaths(stdout) {
 function extensionOf(path) {
   const lastDot = path.lastIndexOf(".");
   return lastDot === -1 ? "" : path.slice(lastDot).toLowerCase();
+}
+
+/**
+ * Resolves one of the repository's pinned tools to its exact path under
+ * `node_modules/.bin`.
+ *
+ * Deliberately never falls back to a same-named binary on PATH. A developer
+ * whose editor installs its own oxfmt (a Mason or Homebrew copy, say) would
+ * otherwise have the commit gate check staged files with a different version
+ * than `pnpm format:check` uses, and the two disagree: an older oxfmt rejects
+ * files this repository formats correctly, and reformatting to satisfy it
+ * breaks the repository check instead. A tool missing from `node_modules` is
+ * a setup problem, so it is reported as one.
+ */
+async function pinnedTool(name, cwd, fileExists, output) {
+  const path = resolve(cwd, "node_modules", ".bin", name);
+  if (await fileExists(path)) return path;
+  output.stderr(
+    `${name} is not installed at node_modules/.bin/${name}. Run pnpm install.\n` +
+      `The commit gate uses this repository's pinned tools, never a copy on PATH.\n`,
+  );
+  return undefined;
 }
 
 async function defaultFileExists(path) {

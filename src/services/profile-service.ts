@@ -9,6 +9,7 @@ import {
   type GitHubOwner,
   type GitHubRepoName,
 } from "../domain/ids";
+import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type {
   PatchdeskConfigFile,
   PatchdeskSettingsPatch,
@@ -22,6 +23,10 @@ import type {
 } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
 
+/** One watched repository as the main process holds it: branded, because
+ * this is the side that parses GitHub identifiers. Structurally the same as
+ * `InboxRepositoryRef` in `maintainer-inbox-service.ts` — see the note in
+ * `repository-identity.ts`. */
 export type WatchedRepoRef = {
   readonly host: GitHubHost;
   readonly owner: GitHubOwner;
@@ -175,7 +180,9 @@ export function addWatchedRepo(
   profile: WorkspaceProfileConfig,
   repo: WatchedRepoConfig,
 ): Result<WorkspaceProfileConfig, ProfileMutationFailure> {
-  if (profile.repos.some((candidate) => sameRepo(candidate, repo))) {
+  if (
+    profile.repos.some((candidate) => sameRepositoryIdentity(candidate, repo))
+  ) {
     return err({ _tag: "ProfileMutationFailure", reason: "duplicate_repo" });
   }
   return ok({ ...profile, repos: [...profile.repos, repo] });
@@ -195,7 +202,11 @@ export function updateWatchedRepoPath(
       reason: "invalid_local_path",
     });
   }
-  if (!profile.repos.some((candidate) => sameRepo(candidate, target))) {
+  if (
+    !profile.repos.some((candidate) =>
+      sameRepositoryIdentity(candidate, target),
+    )
+  ) {
     return err({ _tag: "ProfileMutationFailure", reason: "repo_not_found" });
   }
   const path: AbsolutePath | undefined =
@@ -203,7 +214,7 @@ export function updateWatchedRepoPath(
   return ok({
     ...profile,
     repos: profile.repos.map((repo) => {
-      if (!sameRepo(repo, target)) return repo;
+      if (!sameRepositoryIdentity(repo, target)) return repo;
       const updated: WatchedRepoConfig = {
         host: repo.host,
         owner: repo.owner,
@@ -219,19 +230,17 @@ export function removeWatchedRepo(
   profile: WorkspaceProfileConfig,
   target: WatchedRepoRef,
 ): Result<WorkspaceProfileConfig, ProfileMutationFailure> {
-  if (!profile.repos.some((candidate) => sameRepo(candidate, target))) {
+  if (
+    !profile.repos.some((candidate) =>
+      sameRepositoryIdentity(candidate, target),
+    )
+  ) {
     return err({ _tag: "ProfileMutationFailure", reason: "repo_not_found" });
   }
   return ok({
     ...profile,
-    repos: profile.repos.filter((repo) => !sameRepo(repo, target)),
+    repos: profile.repos.filter(
+      (repo) => !sameRepositoryIdentity(repo, target),
+    ),
   });
-}
-
-function sameRepo(left: WatchedRepoRef, right: WatchedRepoRef): boolean {
-  return (
-    left.host === right.host &&
-    left.owner === right.owner &&
-    left.repo === right.repo
-  );
 }

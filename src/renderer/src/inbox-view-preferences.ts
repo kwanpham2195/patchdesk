@@ -1,32 +1,17 @@
 import * as v from "valibot";
-import type { InboxView } from "./renderer-contracts";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_PAGE_SIZES,
+  MAX_INBOX_FILTER_LABELS,
+  MAX_INBOX_FILTER_LABEL_LENGTH,
   type InboxPageSize,
+  type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
+import type { RepositoryIdentity } from "../../domain/repository-identity";
 
-export type InboxScope = "open" | "merged";
-
-const inboxViewSchema = v.picklist([
-  "my_inbox",
-  "updated",
-  "ready_to_merge",
-  "all_open",
-]);
-
-const inboxSortSchema = v.picklist([
-  "priority",
-  "updated",
-  "repository",
-  "size",
-]);
-
-const inboxScopeSchema = v.picklist(["open", "merged"]);
+const inboxStateFilterSchema = v.picklist(["open", "merged"]);
 
 const inboxPageSizeSchema = v.picklist(INBOX_PAGE_SIZES);
-
-export type InboxSort = v.InferOutput<typeof inboxSortSchema>;
 
 const clipped = (limit: number) =>
   v.pipe(
@@ -41,108 +26,80 @@ const trimmed = (limit: number) =>
     v.minLength(1),
   );
 
-// Shared by selectedRepos and selectedLabels: both are string lists capped
-// at 50 entries so a runaway stored value can't grow the payload unbounded.
-const cappedStrings = (max: number) =>
+// selectedLabels is the persisted form of the label filter; it is
+// bounded the same way the route bounds it (`parseInboxLabelsQuery` in
+// local-api.ts) so a stored value that was once valid never grows into one
+// the server rejects as `invalid_input`.
+const cappedStrings = (max: number, itemLimit: number) =>
   v.pipe(
-    v.array(clipped(200)),
+    v.array(clipped(itemLimit)),
     v.transform((values) => values.slice(0, max)),
   );
 
-// Pre-VERSION-bump payloads carried a single `selectedRepo: string` field,
-// where "" meant "all repositories". Every field here uses `v.fallback`, so
-// a straight rename would silently drop the old value instead of erroring:
-// stored preferences and saved views would keep loading fine, just without
-// their repo filter. Parse both the legacy and current shape and resolve
-// them at the schema boundary so the old value survives.
-function resolveSelectedRepos(
-  legacy: string | undefined,
-  current: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> {
-  if (current !== undefined) return current;
-  if (legacy === undefined || legacy.length === 0) return [];
-  return [legacy];
-}
-
-const savedViewSchema = v.pipe(
-  v.object({
-    id: trimmed(80),
-    name: trimmed(60),
-    view: inboxViewSchema,
-    search: v.fallback(clipped(200), ""),
-    sort: v.fallback(inboxSortSchema, "priority"),
-    selectedRepo: v.fallback(v.optional(clipped(200)), undefined),
-    selectedRepos: v.fallback(v.optional(cappedStrings(50)), undefined),
-    selectedLabels: v.fallback(cappedStrings(50), []),
-  }),
-  v.transform(({ selectedRepo, selectedRepos, ...rest }) => ({
-    ...rest,
-    selectedRepos: resolveSelectedRepos(selectedRepo, selectedRepos),
-  })),
-);
-
-/** A named local shortcut for a composed inbox filter; it never changes review state. */
-export type SavedInboxView = v.InferOutput<typeof savedViewSchema>;
+const repositoryIdentitySchema = v.object({
+  host: trimmed(200),
+  owner: trimmed(200),
+  repo: trimmed(200),
+});
 
 // Every field falls back independently: one stale or hand-edited value resets
 // itself instead of discarding the whole stored view.
-const preferencesSchema = v.pipe(
-  v.object({
-    scope: v.fallback(inboxScopeSchema, "open"),
-    pageSize: v.fallback(inboxPageSizeSchema, DEFAULT_INBOX_PAGE_SIZE),
-    view: v.fallback(inboxViewSchema, "my_inbox"),
-    search: v.fallback(clipped(200), ""),
-    sort: v.fallback(inboxSortSchema, "priority"),
-    selectedRepo: v.fallback(v.optional(clipped(200)), undefined),
-    selectedRepos: v.fallback(v.optional(cappedStrings(50)), undefined),
-    selectedLabels: v.fallback(cappedStrings(50), []),
-    queueRailOpen: v.fallback(v.boolean(), true),
-    inspectorOpen: v.fallback(v.boolean(), true),
-    selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
-    // Saved views are parsed per item below so one bad entry drops itself
-    // instead of resetting the whole list. Each item goes through
-    // `savedViewSchema`, which carries the same legacy-repo migration.
-    savedViews: v.fallback(v.array(v.unknown()), []),
-  }),
-  v.transform(({ selectedRepo, selectedRepos, ...rest }) => ({
-    ...rest,
-    selectedRepos: resolveSelectedRepos(selectedRepo, selectedRepos),
-  })),
-);
+const preferencesSchema = v.object({
+  state: v.fallback(inboxStateFilterSchema, "open"),
+  pageSize: v.fallback(inboxPageSizeSchema, DEFAULT_INBOX_PAGE_SIZE),
+  selectedLabels: v.fallback(
+    cappedStrings(MAX_INBOX_FILTER_LABELS, MAX_INBOX_FILTER_LABEL_LENGTH),
+    [],
+  ),
+  // The "Awaiting review from you" preset (ADR 0031). Unlike selectedLabels
+  // it is not repository-scoped — `user-review-requested:@me` means the same
+  // thing in every repository — so a repository change carries it over.
+  awaitingMyReview: v.fallback(v.boolean(), false),
+  inspectorOpen: v.fallback(v.boolean(), true),
+  selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
+  // The Selected repository (see ADR 0031).
+  selectedRepository: v.fallback(
+    v.optional(repositoryIdentitySchema),
+    undefined,
+  ),
+});
 
 export type InboxViewPreferences = {
-  readonly scope: InboxScope;
+  readonly state: InboxStateFilter;
   readonly pageSize: InboxPageSize;
-  readonly view: InboxView;
-  readonly search: string;
-  readonly sort: InboxSort;
-  readonly selectedRepos: ReadonlyArray<string>;
+  /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — no
+   * longer a local, in-page filter. */
   readonly selectedLabels: ReadonlyArray<string>;
-  readonly queueRailOpen: boolean;
+  /** The "Awaiting review from you" preset, sent to GitHub as
+   * `user-review-requested:@me`. Not repository-scoped — see the schema. */
+  readonly awaitingMyReview: boolean;
   readonly inspectorOpen: boolean;
   readonly selectedIdentity?: string;
-  readonly savedViews: ReadonlyArray<SavedInboxView>;
+  /** The last repository selected from the watchlist, per profile. Falls
+   * back to the first watched repository when unset or no longer watched —
+   * see `resolveInboxRepository` in `app.tsx`. */
+  readonly selectedRepository?: RepositoryIdentity;
 };
 
 export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
-  scope: "open",
+  state: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
-  view: "my_inbox",
-  search: "",
-  sort: "priority",
-  selectedRepos: [],
   selectedLabels: [],
-  queueRailOpen: true,
+  awaitingMyReview: false,
   inspectorOpen: true,
-  savedViews: [],
 };
 
-// v3 adds `pageSize`. Bumping VERSION (rather than migrating the v2 key)
-// resets every field to default on an old-version read, matching how v1 -> v2
-// already worked: `loadLegacyInboxViewPreferences` only recognizes the v1 key,
-// so any other stale version falls straight through to
+// v5 dropped the queue rail (`view`, `queueRailOpen`) and the in-page search
+// box — every filter now reaches GitHub as a structured, server-side
+// qualifier instead of filtering the loaded page — see ADR 0031. v6 renames
+// the stored `scope` field to `state`, the one spelling the domain, the
+// route, and the renderer all use for the same value.
+// Bumping VERSION (rather than migrating the v5 key) resets every field
+// to default on an old-version read, matching how v1 -> v2 -> v3 -> v4
+// already worked: `loadLegacyInboxViewPreferences` only recognizes the v1
+// key, so any other stale version falls straight through to
 // `DEFAULT_INBOX_VIEW_PREFERENCES`.
-const VERSION = 3;
+const VERSION = 6;
 
 const storedSchema = v.object({
   version: v.literal(VERSION),
@@ -188,35 +145,18 @@ function preferencesFrom(
   parsed: v.InferOutput<typeof preferencesSchema>,
 ): InboxViewPreferences {
   const base = {
-    scope: parsed.scope,
+    state: parsed.state,
     pageSize: parsed.pageSize,
-    view: parsed.view,
-    search: parsed.search,
-    sort: parsed.sort,
-    selectedRepos: parsed.selectedRepos,
     selectedLabels: parsed.selectedLabels,
-    queueRailOpen: parsed.queueRailOpen,
+    awaitingMyReview: parsed.awaitingMyReview,
     inspectorOpen: parsed.inspectorOpen,
-    savedViews: uniqueSavedViews(parsed.savedViews),
   };
-  if (parsed.selectedIdentity === undefined) return base;
-  return { ...base, selectedIdentity: parsed.selectedIdentity };
-}
-
-/** Keeps the first sound view per id and bounds the list the way the save path does. */
-function uniqueSavedViews(
-  views: v.InferOutput<typeof preferencesSchema>["savedViews"],
-): ReadonlyArray<SavedInboxView> {
-  const seen = new Set<string>();
-  const unique: SavedInboxView[] = [];
-  for (const view of views) {
-    const parsed = v.safeParse(savedViewSchema, view);
-    if (!parsed.success || seen.has(parsed.output.id)) continue;
-    seen.add(parsed.output.id);
-    unique.push(parsed.output);
-    if (unique.length === 20) break;
-  }
-  return unique;
+  const withIdentity =
+    parsed.selectedIdentity === undefined
+      ? base
+      : { ...base, selectedIdentity: parsed.selectedIdentity };
+  if (parsed.selectedRepository === undefined) return withIdentity;
+  return { ...withIdentity, selectedRepository: parsed.selectedRepository };
 }
 
 function key(profileId: string): string {
@@ -236,7 +176,7 @@ function loadLegacyInboxViewPreferences(
   try {
     const parsed = v.safeParse(legacyStoredSchema, JSON.parse(stored));
     if (!parsed.success) return DEFAULT_INBOX_VIEW_PREFERENCES;
-    return { ...preferencesFrom(parsed.output.preferences), scope: "open" };
+    return { ...preferencesFrom(parsed.output.preferences), state: "open" };
   } catch {
     return DEFAULT_INBOX_VIEW_PREFERENCES;
   }

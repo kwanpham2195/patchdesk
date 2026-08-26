@@ -98,7 +98,14 @@ const repoOutcomeSchema = v.object({
     owner: v.pipe(v.string(), v.minLength(1)),
     repo: v.pipe(v.string(), v.minLength(1)),
   }),
-  state: v.pipe(v.string(), v.minLength(1)),
+  state: v.picklist([
+    "ready",
+    "no_open_prs",
+    "github_auth",
+    "github_read",
+    "github_rate_limited",
+    "github_forbidden",
+  ]),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
   forbiddenReason: v.optional(
     v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
@@ -123,16 +130,25 @@ const inboxResponseSchema = v.strictObject({
           host: v.pipe(v.string(), v.minLength(1)),
           owner: v.pipe(v.string(), v.minLength(1)),
           repo: v.pipe(v.string(), v.minLength(1)),
+          // Absent on a watched repository with no local checkout configured
+          // (the main process omits the key rather than sending `null`; see
+          // `parseWatchedRepo` in `src/domain/workspace-profile.ts`). Without
+          // this field the Settings watchlist grouping
+          // (`groupWatchlistEntries` in `settings-workspace-repositories.tsx`)
+          // could never match a repo to its saved workspace root.
+          localPath: v.optional(v.pipe(v.string(), v.minLength(1))),
         }),
       ),
     ),
   }),
   inbox: v.object({
-    scope: v.picklist(["open", "merged"]),
+    state: v.picklist(["open", "merged"]),
     pageSize: v.picklist(INBOX_PAGE_SIZES),
     nextPageToken: v.optional(v.pipe(v.string(), v.minLength(1))),
     rows: v.array(inboxRowSchema),
     repositories: v.array(repoOutcomeSchema),
+    /** GitHub's repository-wide match count for the current filter, absent on a cached or failed read that cannot know it. Never the loaded page's row count. */
+    matchCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
     dataFreshness: v.picklist(["fresh", "cached"]),
     snapshot: v.optional(
       v.strictObject({
@@ -151,7 +167,6 @@ const inboxResponseSchema = v.strictObject({
 
 export type InboxResponse = v.InferOutput<typeof inboxResponseSchema>;
 export type InboxRow = InboxResponse["inbox"]["rows"][number];
-export type InboxView = "my_inbox" | "updated" | "ready_to_merge" | "all_open";
 
 /** Parses the local API's JSON-safe inbox projection before renderer state owns it. */
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.

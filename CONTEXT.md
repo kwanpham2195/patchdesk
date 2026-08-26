@@ -5,7 +5,7 @@ Patchdesk is a local-first workbench for maintainers who evaluate GitHub pull re
 ## Language
 
 **Pull requests screen**:
-The surface where a maintainer picks a Selected repository and finds the pull request to review. It is read-only: it opens Reviews and performs no GitHub write. It holds two listings that never merge — the Repository listing, which GitHub answers, and the Local review listing, which Patchdesk owns.
+The surface where a maintainer picks a Selected repository and finds the pull request to review. It is read-only: it opens Reviews and performs no GitHub write. It holds one listing, the Repository listing, which GitHub answers.
 _Avoid_: Maintainer inbox, dashboard, queue, feed
 
 **Selected repository**:
@@ -16,16 +16,18 @@ _Avoid_: Active repo, current repo, repo filter, watchlist scope
 The Pull requests screen's list of GitHub pull requests in the Selected repository. GitHub decides membership, order, and count from the Pull request filter, and pages the result. Patchdesk does not re-filter, re-sort, or re-count what comes back, so what the listing reports is GitHub's answer for the whole repository rather than for the loaded page.
 _Avoid_: Inbox rows, search results, PR feed
 
-**Local review listing**:
-The Pull requests screen's list of the maintainer's Review sessions for the Selected repository. Patchdesk owns it, it is bounded by the reviews the maintainer has actually opened, and it is always read whole — never filtered by GitHub, never paginated, and always exactly counted.
+**Local review listing** (removed):
+A second listing on the Pull requests screen, of the maintainer's Review sessions for the Selected repository. Built and then removed at the maintainer's request (commit `dc845a6`, with the amendment recorded in ADR 0031). The Repository listing is now the screen's only source. The term is kept here so the removal is findable; do not reintroduce it. The Review sessions it listed still exist and still feed the Review indicators.
 _Avoid_: My reviews queue, saved reviews, session cache
 
 **Pull request filter**:
 The maintainer's chosen constraints on the Repository listing, expressed in GitHub's own search vocabulary — open or merged state, author, label, assignee, milestone, project, review state, check status, branch, and date. Patchdesk adds no filter GitHub cannot express, and applies none of them itself.
+
+Built so far: state, label, and the "Awaiting review from you" preset (`user-review-requested:@me`). The remaining seven fields — author, assignee, milestone, project, review state, check status, branch, and date — are specified but not built; they are scheduled as their own plan rather than dropped from the vocabulary.
 _Avoid_: Inbox filter, queue, saved view, facet
 
 **Review indicator**:
-A signal on one Pull requests screen row that Patchdesk derives instead of reading from GitHub. There are two: Updated since review and Ready to merge. Both are computed from the Local review listing, and neither filters, orders, or groups the Repository listing.
+A signal on one Pull requests screen row that Patchdesk derives instead of reading from GitHub. There are two: Updated since review and Ready to merge. Both are computed from the maintainer's Review sessions for the Selected repository — the same source the removed Local review listing displayed — and neither filters, orders, or groups the Repository listing.
 _Avoid_: Inbox indicator, category, tag, queue
 
 **Updated since review**:

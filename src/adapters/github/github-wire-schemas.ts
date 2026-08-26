@@ -388,6 +388,56 @@ export const threadCommentsResponseSchema = v.looseObject({
   }),
 });
 
+// Shared pull-request node shape for both `maintainerInboxQuery`'s
+// `repository.pullRequests.edges[].node` and `maintainerInboxSearchQuery`'s
+// `search.edges[].node` — the two queries select identical PullRequest
+// fields, so one schema serves both and `parseMaintainerPullRequest` accepts
+// either node unchanged. (Collapsed from two deliberately-duplicated copies
+// the copies had not drifted — same fields, same order,
+// only incidental line-wrapping differed.)
+const maintainerInboxNodeSchema = v.looseObject({
+  number: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  title: v.string(),
+  isDraft: v.boolean(),
+  headRefName: v.string(),
+  headRefOid: v.string(),
+  baseRefName: v.string(),
+  baseRefOid: v.optional(v.string()),
+  author: v.nullish(v.looseObject({ login: v.string() })),
+  updatedAt: v.string(),
+  mergeable: v.string(),
+  reviewDecision: v.nullish(v.string()),
+  additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  changedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  labels: v.looseObject({
+    totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    nodes: v.array(v.looseObject({ name: v.string(), color: v.string() })),
+    pageInfo: v.looseObject({ hasNextPage: v.boolean() }),
+  }),
+  reviewRequests: v.looseObject({
+    nodes: v.array(
+      v.looseObject({
+        requestedReviewer: v.nullish(
+          v.looseObject({ login: v.optional(v.string()) }),
+        ),
+      }),
+    ),
+  }),
+  assignees: v.looseObject({
+    nodes: v.array(v.looseObject({ login: v.string() })),
+  }),
+  commits: v.looseObject({
+    nodes: v.array(
+      v.looseObject({
+        commit: v.looseObject({
+          statusCheckRollup: v.nullish(v.looseObject({ state: v.string() })),
+        }),
+      }),
+    ),
+  }),
+});
+
 export const maintainerInboxResponseSchema = v.looseObject({
   data: v.looseObject({
     rateLimit: v.optional(
@@ -401,58 +451,38 @@ export const maintainerInboxResponseSchema = v.looseObject({
         edges: v.array(
           v.looseObject({
             cursor: v.pipe(v.string(), v.minLength(1)),
-            node: v.looseObject({
-              number: v.pipe(v.number(), v.integer(), v.minValue(1)),
-              title: v.string(),
-              isDraft: v.boolean(),
-              headRefName: v.string(),
-              headRefOid: v.string(),
-              baseRefName: v.string(),
-              baseRefOid: v.optional(v.string()),
-              author: v.nullish(v.looseObject({ login: v.string() })),
-              updatedAt: v.string(),
-              mergeable: v.string(),
-              reviewDecision: v.nullish(v.string()),
-              additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-              deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-              changedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
-              labels: v.looseObject({
-                totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
-                nodes: v.array(
-                  v.looseObject({ name: v.string(), color: v.string() }),
-                ),
-                pageInfo: v.looseObject({ hasNextPage: v.boolean() }),
-              }),
-              reviewRequests: v.looseObject({
-                nodes: v.array(
-                  v.looseObject({
-                    requestedReviewer: v.nullish(
-                      v.looseObject({ login: v.optional(v.string()) }),
-                    ),
-                  }),
-                ),
-              }),
-              assignees: v.looseObject({
-                nodes: v.array(v.looseObject({ login: v.string() })),
-              }),
-              commits: v.looseObject({
-                nodes: v.array(
-                  v.looseObject({
-                    commit: v.looseObject({
-                      statusCheckRollup: v.nullish(
-                        v.looseObject({ state: v.string() }),
-                      ),
-                    }),
-                  }),
-                ),
-              }),
-            }),
+            node: maintainerInboxNodeSchema,
           }),
         ),
         pageInfo: v.looseObject({
           hasNextPage: v.boolean(),
           endCursor: v.nullish(v.string()),
         }),
+      }),
+    }),
+  }),
+});
+
+/** Response shape for `maintainerInboxSearchQuery`: `search(type: ISSUE)` plus the top-level `rateLimit`, mirroring `maintainerInboxResponseSchema` but keyed by `issueCount`, GitHub's true repository-wide match count, rather than the `repository.pullRequests` connection. */
+export const maintainerInboxSearchResponseSchema = v.looseObject({
+  data: v.looseObject({
+    rateLimit: v.optional(
+      v.looseObject({
+        remaining: v.pipe(v.number(), v.integer(), v.minValue(0)),
+        resetAt: v.string(),
+      }),
+    ),
+    search: v.looseObject({
+      issueCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      edges: v.array(
+        v.looseObject({
+          cursor: v.pipe(v.string(), v.minLength(1)),
+          node: maintainerInboxNodeSchema,
+        }),
+      ),
+      pageInfo: v.looseObject({
+        hasNextPage: v.boolean(),
+        endCursor: v.nullish(v.string()),
       }),
     }),
   }),

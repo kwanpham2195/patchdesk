@@ -56,6 +56,11 @@ async function fixtureStore(): Promise<{
 
 const updatedAt = must(parseIsoTimestamp("2026-07-18T00:00:00.000Z"));
 const sha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
+const repository = {
+  host: must(parseGitHubHost("github.com")),
+  owner: must(parseGitHubOwner("centraldigital")),
+  repo: must(parseGitHubRepoName("patchdesk")),
+};
 
 describe("maintainer inbox cache store", () => {
   it("round-trips only parsed JSON-safe inbox data", async () => {
@@ -92,48 +97,47 @@ describe("maintainer inbox cache store", () => {
           dataFreshness: "fresh" as const,
         },
       ],
-      repositories: [
-        {
-          identity: {
-            host: must(parseGitHubHost("github.com")),
-            owner: must(parseGitHubOwner("centraldigital")),
-            repo: must(parseGitHubRepoName("patchdesk")),
-          },
-          state: "ready" as const,
-          complete: true,
-        },
-      ],
+      repository: {
+        identity: repository,
+        state: "ready" as const,
+        complete: true,
+      },
     };
-    expect(await store.save(profileId, cache)).toEqual({
+    expect(await store.save(profileId, repository, cache)).toEqual({
       _tag: "ok",
       value: undefined,
     });
-    expect(await store.read(profileId)).toEqual({ _tag: "ok", value: cache });
+    expect(await store.read(profileId, repository)).toEqual({
+      _tag: "ok",
+      value: cache,
+    });
   });
 
   it("round-trips a github_forbidden repository state (plan 009 picklist lockstep regression)", async () => {
     const { store, profileId } = await fixtureStore();
+    const forbiddenRepository = {
+      host: must(parseGitHubHost("github.com")),
+      owner: must(parseGitHubOwner("OmisePayments")),
+      repo: must(parseGitHubRepoName("dynamic-onboarding-service")),
+    };
     const cache = {
       schemaVersion: 1 as const,
       refreshedAt: updatedAt,
       rows: [],
-      repositories: [
-        {
-          identity: {
-            host: must(parseGitHubHost("github.com")),
-            owner: must(parseGitHubOwner("OmisePayments")),
-            repo: must(parseGitHubRepoName("dynamic-onboarding-service")),
-          },
-          state: "github_forbidden" as const,
-          complete: false,
-        },
-      ],
+      repository: {
+        identity: forbiddenRepository,
+        state: "github_forbidden" as const,
+        complete: false,
+      },
     };
-    expect(await store.save(profileId, cache)).toEqual({
+    expect(await store.save(profileId, forbiddenRepository, cache)).toEqual({
       _tag: "ok",
       value: undefined,
     });
-    expect(await store.read(profileId)).toEqual({ _tag: "ok", value: cache });
+    expect(await store.read(profileId, forbiddenRepository)).toEqual({
+      _tag: "ok",
+      value: cache,
+    });
   });
 
   it("round-trips a row carrying labels and labelCount", async () => {
@@ -171,13 +175,20 @@ describe("maintainer inbox cache store", () => {
           dataFreshness: "fresh" as const,
         },
       ],
-      repositories: [],
+      repository: {
+        identity: repository,
+        state: "ready" as const,
+        complete: true,
+      },
     };
-    expect(await store.save(profileId, cache)).toEqual({
+    expect(await store.save(profileId, repository, cache)).toEqual({
       _tag: "ok",
       value: undefined,
     });
-    expect(await store.read(profileId)).toEqual({ _tag: "ok", value: cache });
+    expect(await store.read(profileId, repository)).toEqual({
+      _tag: "ok",
+      value: cache,
+    });
   });
 
   it("parses a pre-labels cache row that omits `labels` entirely, defaulting it to an empty array (no invalidation of old caches)", () => {
@@ -211,7 +222,15 @@ describe("maintainer inbox cache store", () => {
           dataFreshness: "fresh",
         },
       ],
-      repositories: [],
+      repository: {
+        identity: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+        state: "ready",
+        complete: true,
+      },
     });
 
     expect(parsed).toMatchObject({
@@ -253,7 +272,15 @@ describe("maintainer inbox cache store", () => {
           dataFreshness: "cached",
         },
       ],
-      repositories: [],
+      repository: {
+        identity: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+        state: "ready",
+        complete: true,
+      },
     });
 
     expect(parsed).toMatchObject({
@@ -274,21 +301,15 @@ describe("maintainer inbox cache store", () => {
       // credential-like value even when it rides along on an otherwise
       // valid cache payload; `as never` only bypasses the compile-time
       // shape check for this intentionally-invalid fixture.
-      await store.save(profileId, {
+      await store.save(profileId, repository, {
         schemaVersion: 1,
         refreshedAt: updatedAt,
         rows: [],
-        repositories: [
-          {
-            identity: {
-              host: must(parseGitHubHost("github.com")),
-              owner: must(parseGitHubOwner("centraldigital")),
-              repo: must(parseGitHubRepoName("patchdesk")),
-            },
-            state: "github_read",
-            complete: false,
-          },
-        ],
+        repository: {
+          identity: repository,
+          state: "github_read",
+          complete: false,
+        },
         note: "ghp_123456789012345678901234567890",
       } as never),
     ).toEqual({

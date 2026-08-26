@@ -1,11 +1,32 @@
 # Scope the Pull requests screen to one repository and filter with GitHub's vocabulary
 
-> **Status: Accepted. Not yet implemented.** Companion to ADR 0032, which
-> removes this screen's polling and makes refresh explicit. Terms in bold
-> are defined in `CONTEXT.md`. Current shape recorded in
+> **Status: Accepted. Implemented in `ad02438..HEAD` on `main`** — the
+> repository scoping, the state and label filters, the opaque page token, the
+> repository-wide match count, and the "Awaiting review from you" preset.
+> Companion to ADR 0032, which removes this screen's polling and makes
+> refresh explicit. Terms in bold are defined in `CONTEXT.md`.
+>
+> **Two of the nine filter fields are not built.** This ADR specifies author,
+> label, assignee, milestone, project, review state, check status, branch, and
+> date. What shipped is state, label, and the `user-review-requested:@me`
+> preset. The remaining seven are scheduled as their own plan
+> (`.agents/PLANS/2026-08-26-remaining-pull-request-filter-fields.md`), not
+> dropped: this ADR still describes the target. The consequence to record is
+> that the validation proof requiring "the author and review-state filters
+> survive" a repository change cannot be written until they exist; the
+> equivalent proof for the preset was written instead. Current shape recorded in
 > `.agents/research/2026-08-25-maintainer-inbox.md`; GitHub's capabilities
 > in `.agents/research/2026-08-25-github-pr-search-capabilities.md` — both
 > are local working notes under a gitignored path, not in the repository.
+
+> **Local review listing removed.** The **Local review listing** described
+> below was built (commit `151162c`) and then removed at the maintainer's
+> request. The Repository listing is now the screen's only source. The
+> cost: a saved Review is not visible on this screen when GitHub does not
+> return its pull request — deleted, transferred, made private, or simply
+> off the current filter and page. The saved review itself is not lost and
+> still opens normally once its pull request is reachable again; only this
+> screen's separate listing of it is gone.
 
 The Pull requests screen scans every watched repository of a workspace
 profile at once. `MaintainerInboxService.list` reads one GraphQL page

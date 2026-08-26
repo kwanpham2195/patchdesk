@@ -451,3 +451,8 @@ export type MaintainerPullRequestPage = {
   /** The next GraphQL connection cursor when a non-final page contains no edges. */
   readonly endCursor?: string;
 };
+
+/** One repository-wide `search(type: ISSUE)` page: everything `MaintainerPullRequestPage` carries, plus `issueCount`, GitHub's true repository-wide match count rather than the loaded page's entry count. */
+export type MaintainerPullRequestSearchPage = MaintainerPullRequestPage & {
+  readonly issueCount: number;
+};

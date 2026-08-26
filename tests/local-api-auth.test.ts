@@ -445,11 +445,15 @@ describe("GET /v1/inbox page size boundary", () => {
   async function startWithWatchedProfile() {
     const adapter = new FakeGitHubAdapter({
       authenticatedAccount: { host: "github.com", account: "fixture" },
-      maintainerPullRequests: { entries: [], hasNextPage: false },
+      maintainerPullRequestsSearch: {
+        entries: [],
+        hasNextPage: false,
+        issueCount: 0,
+      },
     });
-    const listMaintainerPullRequests = vi.spyOn(
+    const searchMaintainerPullRequests = vi.spyOn(
       adapter,
-      "listMaintainerPullRequests",
+      "searchMaintainerPullRequests",
     );
     const api = await start({ github: adapter });
     if (root === undefined) throw new Error("test root was not created");
@@ -478,11 +482,12 @@ describe("GET /v1/inbox page size boundary", () => {
         )
       )._tag,
     ).toBe("ok");
-    return { api, listMaintainerPullRequests };
+    return { api, searchMaintainerPullRequests };
   }
 
   it("rejects an unlisted pageSize as a normal parse failure with no GitHub read", async () => {
-    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?pageSize=100", api.url), {
       headers: headers(),
@@ -492,11 +497,12 @@ describe("GET /v1/inbox page size boundary", () => {
     await expect(response.json()).resolves.toEqual({
       error: "invalid_input",
     });
-    expect(listMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
   });
 
   it("rejects a non-numeric, zero, negative, or float pageSize the same way", async () => {
-    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
 
     for (const value of ["abc", "0", "-10", "25.0"]) {
       const response = await fetch(
@@ -505,32 +511,241 @@ describe("GET /v1/inbox page size boundary", () => {
       );
       expect(response.status, value).toBe(400);
     }
-    expect(listMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
   });
 
   it("defaults to page size 25 when pageSize is omitted", async () => {
-    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox", api.url), {
       headers: headers(),
     });
 
     expect(response.status).toBe(200);
-    expect(listMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
       expect.objectContaining({ pageSize: 25 }),
     );
   });
 
   it("accepts an explicitly listed pageSize and forwards it to GitHub", async () => {
-    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?pageSize=10", api.url), {
       headers: headers(),
     });
 
     expect(response.status).toBe(200);
-    expect(listMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
       expect.objectContaining({ pageSize: 10 }),
+    );
+  });
+
+  it("forwards the Awaiting review from you preset to GitHub as a search qualifier", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL("v1/inbox?awaitingMyReview=1", api.url),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(200);
+    // The renderer sends a bounded, enumerated value; the route is the only
+    // place it becomes GitHub search-qualifier text.
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery:
+          "repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me",
+      }),
+    );
+  });
+
+  it("omits the Awaiting review from you qualifier when the param is absent or off", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    for (const query of ["v1/inbox", "v1/inbox?awaitingMyReview=0"]) {
+      const response = await fetch(new URL(query, api.url), {
+        headers: headers(),
+      });
+      expect(response.status, query).toBe(200);
+    }
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery: expect.stringContaining("user-review-requested"),
+      }),
+    );
+  });
+
+  it("rejects an unparseable awaitingMyReview value with no GitHub read", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    // A typo must be reported, not silently read as off — that would widen
+    // the listing without the maintainer noticing.
+    for (const value of ["yes", "2", ""]) {
+      const response = await fetch(
+        new URL(`v1/inbox?awaitingMyReview=${value}`, api.url),
+        { headers: headers() },
+      );
+      expect(response.status, value).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_input",
+      });
+    }
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown filter state as a normal parse failure with no GitHub read", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox?state=closed", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_input",
+    });
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("rejects a repository the active profile does not watch, with no GitHub read", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL(
+        "v1/inbox?host=github.com&owner=some-other-org&repo=some-other-repo",
+        api.url,
+      ),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_input",
+    });
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("accepts a watched repository and forwards its search query to GitHub", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL(
+        "v1/inbox?host=github.com&owner=centraldigital&repo=patchdesk",
+        api.url,
+      ),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repo: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+      }),
+    );
+  });
+});
+
+describe("GET /v1/inbox/labels", () => {
+  async function startWithWatchedProfile() {
+    const adapter = new FakeGitHubAdapter({
+      authenticatedAccount: { host: "github.com", account: "fixture" },
+      repositoryLabels: {
+        labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+        totalCount: 1,
+      },
+    });
+    const listRepositoryLabels = vi.spyOn(adapter, "listRepositoryLabels");
+    const api = await start({ github: adapter });
+    if (root === undefined) throw new Error("test root was not created");
+    const paths = PatchdeskPaths.forTest(root);
+    expect(
+      (
+        await new ProfileStore(paths).save(
+          must(
+            parseWorkspaceProfileConfig({
+              id: "profile",
+              label: "Profile",
+              githubHost: "github.com",
+              ghAccount: "fixture",
+              ownerFilters: [],
+              workspaceRoots: [],
+              rulePaths: [],
+              repos: [
+                {
+                  host: "github.com",
+                  owner: "centraldigital",
+                  repo: "patchdesk",
+                },
+              ],
+            }),
+          ),
+        )
+      )._tag,
+    ).toBe("ok");
+    return { api, listRepositoryLabels };
+  }
+
+  // Mirrors "GET /v1/inbox page size boundary"'s "rejects a repository the
+  // active profile does not watch" test above: the label filter's read is
+  // repository-scoped the same way the inbox listing itself is, and must
+  // reject a repository outside the watchlist before any GitHub call —
+  // without this a renderer could read labels from any repository the
+  // active token can see, not just a watched one.
+  it("rejects a repository the active profile does not watch, with no GitHub read", async () => {
+    const { api, listRepositoryLabels } = await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL(
+        "v1/inbox/labels?host=github.com&owner=some-other-org&repo=some-other-repo",
+        api.url,
+      ),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_input",
+    });
+    expect(listRepositoryLabels).not.toHaveBeenCalled();
+  });
+
+  it("accepts a watched repository and returns its GitHub-read labels", async () => {
+    const { api, listRepositoryLabels } = await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL(
+        "v1/inbox/labels?host=github.com&owner=centraldigital&repo=patchdesk",
+        api.url,
+      ),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      state: "ready",
+      labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+      totalCount: 1,
+    });
+    expect(listRepositoryLabels).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repo: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+      }),
     );
   });
 });

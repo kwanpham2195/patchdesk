@@ -28,6 +28,7 @@ import type {
   PullRequestSummary,
   MergePolicySnapshot,
   MaintainerPullRequestPage,
+  MaintainerPullRequestSearchPage,
   RepositoryLabelListing,
   RepositoryLabelPermission,
 } from "../../domain/github-context";
@@ -48,7 +49,10 @@ import {
   type RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
-import type { InboxPageSize, InboxScope } from "../../domain/maintainer-inbox";
+import type {
+  InboxPageSize,
+  InboxStateFilter,
+} from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import {
@@ -67,6 +71,7 @@ import {
   assignableUsersQuery,
   confirmCreatedCommentThreadQuery,
   maintainerInboxQuery,
+  maintainerInboxSearchQuery,
   maxMergePolicyPages,
   maxPullRequestCommits,
   maxReviewCommentPages,
@@ -95,6 +100,7 @@ import {
   createdInlineCommentSchema,
   directSummaryReceiptSchema,
   maintainerInboxResponseSchema,
+  maintainerInboxSearchResponseSchema,
   mergeOutcomeSchema,
   type MergePolicyPage,
   mergePolicyResponseSchema,
@@ -159,8 +165,8 @@ const commandTimeoutMs = 15_000;
 // below 512 KiB after allowing for JSON framing and multibyte text.
 const maxHydratedFileBytes = 512 * 1024;
 
-function graphqlPullRequestState(scope: InboxScope): "OPEN" | "MERGED" {
-  return scope === "merged" ? "MERGED" : "OPEN";
+function graphqlPullRequestState(state: InboxStateFilter): "OPEN" | "MERGED" {
+  return state === "merged" ? "MERGED" : "OPEN";
 }
 /** The typed read-only operations product code may request from GitHub. */
 export interface GitHubReader {
@@ -171,17 +177,36 @@ export interface GitHubReader {
   listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
-    /** Trusted service scope; the adapter alone maps it to GraphQL OPEN or MERGED. */
-    readonly scope?: InboxScope;
+    /** Trusted service state; the adapter alone maps it to GraphQL OPEN or MERGED. */
+    readonly state?: InboxStateFilter;
     /** Requested page size; becomes the GraphQL `first` value. */
     readonly pageSize: InboxPageSize;
     /** Opaque repository continuation from the inbox service, never renderer input. */
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>>;
+  /**
+   * Reads one repository-wide `search(type: ISSUE)` page of pull requests,
+   * alongside `issueCount` — GitHub's true repository-wide match count for
+   * `searchQuery`, distinct from this page's loaded entry count. `state` is
+   * required because the search query string alone does not tell the
+   * adapter whether the caller is browsing open or merged pull requests, and
+   * `parseMaintainerPullRequest` needs it to set `summary.isOpen`.
+   */
+  searchMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    /** GitHub search qualifier string, e.g. `repo:OWNER/NAME is:pr is:open`. */
+    readonly searchQuery: string;
+    readonly state: InboxStateFilter;
+    /** Requested page size; becomes the GraphQL `first` value. */
+    readonly pageSize: InboxPageSize;
+    /** Opaque repository continuation from the inbox service, never renderer input. */
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>>;
   /** Bounded list of labels available in the repository, for populating a label picker. */
   listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>>;
   /** Bounded list of repository collaborators eligible for assignment, for populating an assignee picker. `query` filters server-side by login/name substring. */
   listAssignableUsers(input: {
@@ -613,7 +638,7 @@ export function repositoryLabelPermission(
  * or failed evidence yields `unknown`, never a wrong extreme in either
  * direction — see `PullRequestAssigneePermission`, whose name predates this
  * function covering reviewers too (kept as-is: renderer components outside
- * this change's scope import that type name directly). Renamed from
+ * this change's state import that type name directly). Renamed from
  * `pullRequestAssigneePermission` to `pullRequestWritePermission` because
  * `AssigneeService` and `ReviewerService` both resolve their write
  * permission through this one function now, not just assignees.
@@ -660,6 +685,7 @@ export type GitHubReadFailure =
 export type GitHubReadOperation =
   | "list_open_prs"
   | "list_maintainer_prs"
+  | "search_maintainer_prs"
   | "list_repository_labels"
   | "list_assignable_users"
   | "get_pull_request_reviewers"
@@ -818,11 +844,11 @@ export class GitHubAdapter
     return ok(summaries);
   }
 
-  /** Reads exactly one trusted-scope page of pull requests with edge cursors. */
+  /** Reads exactly one trusted-state page of pull requests with edge cursors. */
   async listMaintainerPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
-    readonly scope?: InboxScope;
+    readonly state?: InboxStateFilter;
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
@@ -843,7 +869,7 @@ export class GitHubAdapter
         "-F",
         `first=${input.pageSize}`,
         "-F",
-        `state=${graphqlPullRequestState(input.scope ?? "open")}`,
+        `state=${graphqlPullRequestState(input.state ?? "open")}`,
         ...(input.cursor === undefined ? [] : ["-f", `cursor=${input.cursor}`]),
       ],
       timeoutMs: commandTimeoutMs,
@@ -875,7 +901,7 @@ export class GitHubAdapter
         host,
         input.repo.owner,
         input.repo.repo,
-        input.scope ?? "open",
+        input.state ?? "open",
       );
       if (projected._tag === "err") return invalid("list_maintainer_prs");
       entries.push({ cursor: edge.cursor, pullRequest: projected.value });
@@ -892,10 +918,94 @@ export class GitHubAdapter
     });
   }
 
+  /**
+   * Reads one repository-wide `search(type: ISSUE)` page of pull requests
+   * with edge cursors, alongside `issueCount` — GitHub's true repository-wide
+   * match count for `searchQuery`, distinct from this page's loaded entry
+   * count. Mirrors `listMaintainerPullRequests`'s structure; unlike that
+   * method, `state` is required here because the search query string alone
+   * does not tell the adapter whether the caller is browsing open or merged
+   * pull requests, and `parseMaintainerPullRequest` needs it to set
+   * `summary.isOpen`.
+   */
+  async searchMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly searchQuery: string;
+    readonly state: InboxStateFilter;
+    readonly pageSize: InboxPageSize;
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
+    const host = input.profile.githubHost;
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${maintainerInboxSearchQuery}`,
+        "-F",
+        `search=${input.searchQuery}`,
+        "-F",
+        `first=${input.pageSize}`,
+        ...(input.cursor === undefined ? [] : ["-f", `cursor=${input.cursor}`]),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure("search_maintainer_prs", response.error, host);
+    const parsed = v.safeParse(
+      maintainerInboxSearchResponseSchema,
+      response.value,
+    );
+    if (!parsed.success) return invalid("search_maintainer_prs");
+    const rateLimit = parsed.output.data.rateLimit;
+    if (rateLimit !== undefined) {
+      const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
+      if (resumeAt._tag === "ok")
+        this.rateLimitByHost.set(host, {
+          remaining: rateLimit.remaining,
+          resetAt: resumeAt.value,
+        });
+    }
+    const connection = parsed.output.data.search;
+    if (
+      connection.pageInfo.hasNextPage &&
+      (connection.pageInfo.endCursor === null ||
+        connection.pageInfo.endCursor === undefined)
+    )
+      return invalid("search_maintainer_prs");
+    const entries = [];
+    for (const edge of connection.edges) {
+      const projected = parseMaintainerPullRequest(
+        edge.node,
+        host,
+        input.repo.owner,
+        input.repo.repo,
+        input.state,
+      );
+      if (projected._tag === "err") return invalid("search_maintainer_prs");
+      entries.push({ cursor: edge.cursor, pullRequest: projected.value });
+    }
+    const endCursorField =
+      connection.pageInfo.endCursor === null ||
+      connection.pageInfo.endCursor === undefined
+        ? {}
+        : { endCursor: connection.pageInfo.endCursor };
+    return ok({
+      entries,
+      hasNextPage: connection.pageInfo.hasNextPage,
+      issueCount: connection.issueCount,
+      ...endCursorField,
+    });
+  }
+
   /** Fetches up to 100 repository labels in one bounded page; `totalCount` reveals truncation beyond that. */
   async listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
     const host = input.profile.githubHost;
     const response = await this.ghJson(input.profile, {

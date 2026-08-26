@@ -18,6 +18,7 @@ import type {
   Dashboard,
   DashboardScreenState,
   Profile,
+  Repo,
   WorkbenchPayload,
 } from "./renderer-models";
 import {
@@ -53,17 +54,13 @@ import {
 import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
-  type InboxScope,
 } from "./inbox-view-preferences";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxPageSize,
+  type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
-import {
-  InboxRefreshScheduler,
-  inboxFreshnessLabel,
-  type InboxRefreshOutcome,
-} from "./inbox-refresh-scheduler";
+import { inboxFreshnessLabel } from "./inbox-refresh-scheduler";
 import {
   applyAppearance,
   clearAppearancePreference,
@@ -77,6 +74,10 @@ import {
   parseDiffThemePreferences,
   type DiffThemePreferences,
 } from "./diff-theme-preferences";
+import {
+  sameRepositoryIdentity,
+  type RepositoryIdentity,
+} from "../../domain/repository-identity";
 
 type NavigationState = "clear" | "dirty_draft" | "write_pending";
 type ReviewWorkbenchFlowComponent =
@@ -122,26 +123,209 @@ type WorkspaceAction =
   | { readonly _tag: "cleared" };
 
 type InboxRequestState = {
-  readonly scope: InboxScope;
+  /**
+   * The Selected repository, sent explicitly once known. Absent only for the
+   * renderer's bootstrap request, before the active profile's watchlist is
+   * known — the main process resolves the active profile and falls back to
+   * its first watched repository in that case. Every other request explicitly
+   * sends the repository the picker has selected, resolved by
+   * `resolveInboxRepository` from the stored preference and the current
+   * watchlist.
+   */
+  readonly repository?: Repo;
+  readonly state: InboxStateFilter;
   readonly pageSize: InboxPageSize;
+  /** The label filter, sent as repeated `label` qualifiers.
+   * Repository-scoped: `changeInboxRepository` always resets it to `[]`,
+   * since a label chosen in one repository may not exist in the next. */
+  readonly selectedLabels: ReadonlyArray<string>;
+  /** The "Awaiting review from you" preset (ADR 0031), sent as
+   * `awaitingMyReview=1`. Unlike `selectedLabels` it is not
+   * repository-scoped, so `changeInboxRepository` carries it over. */
+  readonly awaitingMyReview: boolean;
   readonly pageToken?: string;
   readonly previousPageTokens: ReadonlyArray<string | undefined>;
 };
 
+/**
+ * Resolves the Selected repository (the screen's root state, see ADR 0031)
+ * from the profile's current watchlist and the last repository stored in
+ * preferences: the stored repository if it is still watched, otherwise the
+ * first watched repository, or `undefined` when the watchlist is empty.
+ */
+function resolveInboxRepository(
+  watchlist: ReadonlyArray<Repo>,
+  stored: RepositoryIdentity | undefined,
+): Repo | undefined {
+  const kept =
+    stored === undefined
+      ? undefined
+      : watchlist.find((candidate) =>
+          sameRepositoryIdentity(candidate, stored),
+        );
+  return kept ?? watchlist[0];
+}
+
+/**
+ * Builds the next inbox request from the current one. Each caller states only
+ * what it changes; every field it does not name carries over, and the page
+ * cursor resets — a cursor minted under a different repository, state, page
+ * size, or label filter belongs to a different GitHub search and is rejected
+ * as `invalid_page`, so carrying one forward could only produce a failed
+ * read. The two paging callers are the exception and name `pageToken` and
+ * `previousPageTokens` themselves.
+ *
+ * `repository` is honoured by key presence rather than by value: passing
+ * `{ repository: undefined }` clears it, which the bootstrap request and an
+ * emptied watchlist both need, while omitting the key keeps the current one.
+ */
+function nextInboxRequest(
+  current: InboxRequestState,
+  overrides: {
+    readonly repository?: Repo | undefined;
+    readonly state?: InboxStateFilter;
+    readonly pageSize?: InboxPageSize;
+    readonly selectedLabels?: ReadonlyArray<string>;
+    readonly awaitingMyReview?: boolean;
+    readonly pageToken?: string | undefined;
+    readonly previousPageTokens?: ReadonlyArray<string | undefined>;
+  } = {},
+): InboxRequestState {
+  const repository = Object.hasOwn(overrides, "repository")
+    ? overrides.repository
+    : current.repository;
+  const repositoryField = repository === undefined ? {} : { repository };
+  const pageTokenField =
+    overrides.pageToken === undefined ? {} : { pageToken: overrides.pageToken };
+  return {
+    ...repositoryField,
+    ...pageTokenField,
+    state: overrides.state ?? current.state,
+    pageSize: overrides.pageSize ?? current.pageSize,
+    selectedLabels: overrides.selectedLabels ?? current.selectedLabels,
+    awaitingMyReview: overrides.awaitingMyReview ?? current.awaitingMyReview,
+    previousPageTokens: overrides.previousPageTokens ?? [],
+  };
+}
+
+/**
+ * True when two requests would ask GitHub for the same rows.
+ *
+ * Every field that changes the answer is compared, because any of them
+ * leaves the displayed rows describing the previous request until the new
+ * one lands. Comparing the response instead cannot work: it echoes only the
+ * state filter and the page size, and says nothing about the label filter or
+ * the "Awaiting review from you" preset, so a label change looked identical
+ * to no change at all.
+ */
+function sameInboxRows(
+  left: InboxRequestState,
+  right: InboxRequestState,
+): boolean {
+  return (
+    sameRepositoryIdentity(left.repository, right.repository) &&
+    left.state === right.state &&
+    left.pageSize === right.pageSize &&
+    left.awaitingMyReview === right.awaitingMyReview &&
+    left.pageToken === right.pageToken &&
+    left.selectedLabels.length === right.selectedLabels.length &&
+    left.selectedLabels.every(
+      (label, index) => label === right.selectedLabels[index],
+    )
+  );
+}
+
 const firstInboxRequest: InboxRequestState = {
-  scope: "open",
+  state: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
+  selectedLabels: [],
+  awaitingMyReview: false,
   previousPageTokens: [],
 };
+
+/**
+ * Guesses the request to build the very first inbox fetch from, before the
+ * true active profile is confirmed. `profiles[0]` matches the main
+ * process's own fallback (`DashboardController.activeProfile`) whenever no
+ * profile has ever been explicitly selected — the common case, and the only
+ * one this needs to get right up front. A wrong guess (an explicitly
+ * selected, non-first profile) still self-corrects once the real active
+ * profile is confirmed — see the `dashboard?.profile.id` effect below — so
+ * getting it wrong here costs one extra refetch, not incorrect data. The
+ * repository is deliberately left unset: sending one that turns out not to
+ * belong to the true active profile's watchlist fails the whole request
+ * server-side (`DashboardController.inboxForActiveProfile`), which a wrong
+ * page-size guess never does.
+ */
+function firstInboxRequestFor(
+  profiles: ReadonlyArray<Profile>,
+): InboxRequestState {
+  const profileId = profiles[0]?.id;
+  if (profileId === undefined) return firstInboxRequest;
+  const { state, pageSize, selectedLabels, awaitingMyReview } =
+    loadInboxViewPreferences(profileId);
+  return {
+    state,
+    pageSize,
+    selectedLabels,
+    awaitingMyReview,
+    previousPageTokens: [],
+  };
+}
 
 /** Builds the renderer-owned inbox URL without decoding the opaque page token. */
 function inboxRequestPath(request: InboxRequestState): string {
   const query = new URLSearchParams({
-    scope: request.scope,
+    state: request.state,
     pageSize: String(request.pageSize),
   });
+  if (request.repository !== undefined) {
+    query.set("host", request.repository.host);
+    query.set("owner", request.repository.owner);
+    query.set("repo", request.repository.repo);
+  }
+  for (const label of request.selectedLabels) query.append("label", label);
+  if (request.awaitingMyReview) query.set("awaitingMyReview", "1");
   if (request.pageToken !== undefined) query.set("page", request.pageToken);
   return `/v1/inbox?${query.toString()}`;
+}
+
+/**
+ * Re-validates a request's repository against a freshly fetched profile
+ * list before the request is sent — a repository the profile no longer
+ * watches (removed in Settings while the screen still held it) would
+ * otherwise be sent as-is and hard-rejected by `GET /v1/inbox`. Resetting
+ * the cursor and clearing the label filter mirror an explicit picker change
+ * (see `resolveInboxRepository`'s doc comment) because, from the request's
+ * point of view, this is the same kind of change.
+ *
+ * Only meaningful once the active profile is already known and unchanged.
+ * A profile switch resets the request to `firstInboxRequest` beforehand and
+ * never reaches here with a non-bootstrap `base`; the repository for that
+ * case is corrected afterward instead, once the new active profile is
+ * confirmed (see the `dashboard?.profile.id` effect below).
+ */
+function reconcileInboxRepository(
+  base: InboxRequestState,
+  profiles: ReadonlyArray<Profile>,
+  activeProfileId: string | undefined,
+): InboxRequestState {
+  const profile = profiles.find(
+    (candidate) => candidate.id === activeProfileId,
+  );
+  if (profile === undefined) return base;
+  const repository = resolveInboxRepository(
+    profile.repos ?? [],
+    loadInboxViewPreferences(profile.id).selectedRepository,
+  );
+  if (sameRepositoryIdentity(repository, base.repository)) return base;
+  const selectedRepositoryField =
+    repository === undefined ? {} : { selectedRepository: repository };
+  saveInboxViewPreferences(profile.id, {
+    ...selectedRepositoryField,
+    selectedLabels: [],
+  });
+  return nextInboxRequest(base, { repository, selectedLabels: [] });
 }
 
 function workspaceReducer(
@@ -266,9 +450,13 @@ export function App({
     refreshing: inboxRefreshing,
     refreshFailed: inboxRefreshFailed,
   } = workspace;
-  const [inboxPaused, setInboxPaused] = useState(false);
   const [inboxRequest, setInboxRequest] =
     useState<InboxRequestState>(firstInboxRequest);
+  /** The request whose rows `inbox` currently holds; `undefined` until the
+   * first read lands. Compared against `inboxRequest` to decide whether the
+   * row list is showing the previous request's answer. */
+  const [confirmedInboxRequest, setConfirmedInboxRequest] =
+    useState<InboxRequestState>();
   const inboxRequestRef = useRef<InboxRequestState>(firstInboxRequest);
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -392,14 +580,10 @@ export function App({
     };
   }, [fixtureMode]);
   const activeInboxProfileId = useRef<string | undefined>(undefined);
-  const restoredInboxScopeProfileId = useRef<string | undefined>(undefined);
-  const resetInboxScopeOnProfileLoad = useRef(false);
+  const restoredInboxStateProfileId = useRef<string | undefined>(undefined);
+  const resetInboxStateOnProfileLoad = useRef(false);
   const workspaceGeneration = useRef(0);
   const inboxRefreshGeneration = useRef(0);
-  const inboxRefreshScheduler = useRef<InboxRefreshScheduler | undefined>(
-    undefined,
-  );
-  const inboxSchedulerInitialized = useRef(false);
   const [navigationState, setNavigationState] =
     useState<NavigationState>("clear");
   const [pendingDestination, setPendingDestination] =
@@ -418,18 +602,42 @@ export function App({
     dispatchWorkspace({ _tag: "loading" });
     let profilePayload: unknown;
     let inboxPayload: unknown;
+    let nextProfiles: ReadonlyArray<Profile> = [];
     try {
       profilePayload = await api("/v1/profiles");
-      inboxPayload = await api(inboxRequestPath(inboxRequestRef.current));
+      nextProfiles = Array.isArray(profilePayload)
+        ? profilePayload.filter(isProfile)
+        : [];
+      // The bootstrap request (`firstInboxRequest`) never knows the saved
+      // page size or state filter up front. Guessing them from the just-fetched
+      // profile list here — instead of always requesting the default and
+      // correcting afterward once the real active profile is confirmed —
+      // is what keeps a cold start to one `/v1/inbox` call instead of two.
+      // A reload that already has a real request in flight (profile switch
+      // mid-flight aside) is reconciled against the fresh watchlist instead
+      // — see `reconcileInboxRepository` — so a repository removed from
+      // Settings while this screen held it is never resent.
+      const initialRequest =
+        inboxRequestRef.current === firstInboxRequest
+          ? firstInboxRequestFor(nextProfiles)
+          : reconcileInboxRepository(
+              inboxRequestRef.current,
+              nextProfiles,
+              activeInboxProfileId.current,
+            );
+      if (initialRequest !== inboxRequestRef.current)
+        updateInboxRequest(initialRequest);
+      inboxPayload = await api(inboxRequestPath(initialRequest));
+      // The rows about to be shown are this request's answer. Without this
+      // the row list would sit in its loading state forever after a cold
+      // start, because nothing else records what produced them.
+      setConfirmedInboxRequest(initialRequest);
     } catch {
       if (generation === workspaceGeneration.current)
         dispatchWorkspace({ _tag: "failed", screen: "error" });
       return;
     }
     if (generation !== workspaceGeneration.current) return;
-    const nextProfiles = Array.isArray(profilePayload)
-      ? profilePayload.filter(isProfile)
-      : [];
     const loadedInbox = parseInboxResponse(inboxPayload);
     if (loadedInbox === undefined) {
       if (initialState === undefined)
@@ -445,27 +653,27 @@ export function App({
       screen: screenStateForInbox(loadedInbox, currentDashboard),
     });
     activeInboxProfileId.current = currentDashboard.profile.id;
-  }, [initialState]);
+  }, [initialState, updateInboxRequest]);
   const refreshInbox = useCallback(
     async (
       request: InboxRequestState = inboxRequestRef.current,
-    ): Promise<InboxRefreshOutcome> => {
+    ): Promise<void> => {
       const profileId = activeInboxProfileId.current;
-      if (profileId === undefined) return "failure";
+      if (profileId === undefined) return;
       const generation = ++inboxRefreshGeneration.current;
       dispatchWorkspace({ _tag: "refreshStarted" });
-      setInboxPaused(false);
       try {
         const payload = await api(inboxRequestPath(request));
         const refreshed = parseInboxResponse(payload);
         if (
           refreshed === undefined ||
           refreshed.profile.id !== profileId ||
-          refreshed.inbox.scope !== request.scope ||
+          refreshed.inbox.state !== request.state ||
           refreshed.inbox.pageSize !== request.pageSize
         )
           throw new Error("Invalid inbox refresh response");
-        if (generation !== inboxRefreshGeneration.current) return "success";
+        if (generation !== inboxRefreshGeneration.current) return;
+        setConfirmedInboxRequest(request);
         const nextDashboard = dashboardFromInbox(refreshed);
         dispatchWorkspace({
           _tag: "refreshSucceeded",
@@ -473,16 +681,9 @@ export function App({
           dashboard: nextDashboard,
           screen: screenStateForInbox(refreshed, nextDashboard),
         });
-        return allRepositoriesRateLimited(refreshed.inbox.repositories)
-          ? {
-              kind: "rate_limited",
-              resumeAt: maxResumeAt(refreshed.inbox.repositories),
-            }
-          : "success";
       } catch {
         if (generation === inboxRefreshGeneration.current)
           dispatchWorkspace({ _tag: "refreshFailed" });
-        return "failure";
       } finally {
         if (generation === inboxRefreshGeneration.current)
           dispatchWorkspace({ _tag: "refreshFinished" });
@@ -494,79 +695,63 @@ export function App({
     const profileId = dashboard?.profile.id;
     if (
       profileId === undefined ||
-      restoredInboxScopeProfileId.current === profileId
+      restoredInboxStateProfileId.current === profileId
     )
       return;
-    restoredInboxScopeProfileId.current = profileId;
-    if (resetInboxScopeOnProfileLoad.current) {
-      resetInboxScopeOnProfileLoad.current = false;
+    restoredInboxStateProfileId.current = profileId;
+    if (resetInboxStateOnProfileLoad.current) {
+      resetInboxStateOnProfileLoad.current = false;
       return;
     }
-    const { scope, pageSize } = loadInboxViewPreferences(profileId);
+    const preferences = loadInboxViewPreferences(profileId);
+    // The bootstrap request (`firstInboxRequest`) never carries a
+    // repository — the renderer does not learn the active profile's
+    // watchlist until this response arrives. Once it has, every later
+    // request sends the Selected repository explicitly, resolved from the
+    // stored preference and this watchlist, so a request still missing one
+    // is corrected here alongside the state filter and page size. An empty watchlist
+    // resolves to `undefined`, so that alone must not force a redundant
+    // second fetch.
+    const repository = resolveInboxRepository(
+      dashboard?.profile.repos ?? [],
+      preferences.selectedRepository,
+    );
+    const repositoryChanged = !sameRepositoryIdentity(
+      repository,
+      inboxRequestRef.current.repository,
+    );
     if (
-      scope === inboxRequestRef.current.scope &&
-      pageSize === inboxRequestRef.current.pageSize
+      !repositoryChanged &&
+      preferences.state === inboxRequestRef.current.state &&
+      preferences.pageSize === inboxRequestRef.current.pageSize
     )
       return;
-    const request: InboxRequestState = {
-      scope,
-      pageSize,
-      previousPageTokens: [],
-    };
+    if (repositoryChanged) {
+      const selectedRepositoryField =
+        repository === undefined ? {} : { selectedRepository: repository };
+      saveInboxViewPreferences(profileId, {
+        ...selectedRepositoryField,
+        selectedLabels: [],
+      });
+    }
+    const request = nextInboxRequest(inboxRequestRef.current, {
+      repository,
+      state: preferences.state,
+      pageSize: preferences.pageSize,
+      selectedLabels: repositoryChanged ? [] : preferences.selectedLabels,
+      awaitingMyReview: preferences.awaitingMyReview,
+    });
     updateInboxRequest(request);
     void refreshInbox(request);
-  }, [dashboard?.profile.id, refreshInbox, updateInboxRequest]);
-  const hasDashboard = dashboard !== undefined;
+  }, [
+    dashboard?.profile.id,
+    dashboard?.profile.repos,
+    refreshInbox,
+    updateInboxRequest,
+  ]);
   useEffect(() => {
     if (!fixtureMode) void loadWorkspace();
   }, [fixtureMode, loadWorkspace]);
-  useEffect(() => {
-    if (fixtureMode || destination.kind !== "dashboard" || !hasDashboard)
-      return;
-    const scheduler = new InboxRefreshScheduler(() => refreshInbox());
-    inboxRefreshScheduler.current = scheduler;
-    const visible = document.visibilityState !== "hidden";
-    setInboxPaused(!visible);
-    if (visible) {
-      if (inboxSchedulerInitialized.current) scheduler.activate();
-      else {
-        inboxSchedulerInitialized.current = true;
-        scheduler.activateAfterSuccessfulResponse();
-      }
-    }
-
-    const foreground = (): void => {
-      if (document.visibilityState === "hidden") return;
-      setInboxPaused(false);
-      scheduler.setForeground(true);
-    };
-    const background = (): void => {
-      setInboxPaused(true);
-      scheduler.setForeground(false);
-    };
-    const onVisibilityChange = (): void => {
-      if (document.visibilityState === "hidden") background();
-      else foreground();
-    };
-    window.addEventListener("focus", foreground);
-    window.addEventListener("blur", background);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      scheduler.deactivate();
-      if (inboxRefreshScheduler.current === scheduler)
-        inboxRefreshScheduler.current = undefined;
-      window.removeEventListener("focus", foreground);
-      window.removeEventListener("blur", background);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      setInboxPaused(true);
-    };
-  }, [
-    dashboard?.profile.id,
-    destination.kind,
-    fixtureMode,
-    hasDashboard,
-    refreshInbox,
-  ]);
   useEffect(() => {
     if (fixtureMode) return;
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -620,32 +805,26 @@ export function App({
     },
     [navigationState],
   );
+  const refreshDashboard = useCallback(async (): Promise<void> => {
+    const request = nextInboxRequest(inboxRequestRef.current);
+    updateInboxRequest(request);
+    await refreshInbox(request);
+  }, [refreshInbox, updateInboxRequest]);
   useEffect(() => {
     if (fixtureMode || window.patchdesk?.onNavigate === undefined) return;
     return window.patchdesk.onNavigate((next) => {
       if (next === "settings") openSettings();
+      else if (next === "refresh") void refreshDashboard();
     });
-  }, [fixtureMode, openSettings]);
-
-  const refreshDashboard = async (): Promise<void> => {
-    const request: InboxRequestState = {
-      scope: inboxRequestRef.current.scope,
-      pageSize: inboxRequestRef.current.pageSize,
-      previousPageTokens: [],
-    };
-    updateInboxRequest(request);
-    await refreshInbox(request);
-  };
-  const changeInboxScope = useCallback(
-    (scope: InboxRequestState["scope"]): void => {
-      const request: InboxRequestState = {
-        scope,
-        pageSize: inboxRequestRef.current.pageSize,
-        previousPageTokens: [],
-      };
+  }, [fixtureMode, openSettings, refreshDashboard]);
+  const changeInboxState = useCallback(
+    (nextState: InboxRequestState["state"]): void => {
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        state: nextState,
+      });
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
-        saveInboxViewPreferences(profileId, { scope });
+        saveInboxViewPreferences(profileId, { state: nextState });
       updateInboxRequest(request);
       void refreshInbox(request);
     },
@@ -653,14 +832,77 @@ export function App({
   );
   const changeInboxPageSize = useCallback(
     (pageSize: InboxPageSize): void => {
-      const request: InboxRequestState = {
-        scope: inboxRequestRef.current.scope,
-        pageSize,
-        previousPageTokens: [],
-      };
+      const request = nextInboxRequest(inboxRequestRef.current, { pageSize });
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { pageSize });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /**
+   * Changes the label filter — GitHub's `label:"NAME"` search
+   * qualifier, never a local, in-page filter. Resets the page cursor: a
+   * cursor minted under the previous label filter belongs to a different
+   * search query and is rejected as `invalid_page`.
+   */
+  const changeInboxLabels = useCallback(
+    (selectedLabels: ReadonlyArray<string>): void => {
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        selectedLabels,
+      });
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { selectedLabels });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /**
+   * Toggles the "Awaiting review from you" preset (ADR 0031) — GitHub's
+   * `user-review-requested:@me` qualifier, which composes with the state and
+   * label filters rather than replacing the listing. Resets the page cursor
+   * for the same reason a label change does: the cursor was minted under a
+   * different search query.
+   */
+  const changeInboxAwaitingMyReview = useCallback(
+    (awaitingMyReview: boolean): void => {
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        awaitingMyReview,
+      });
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { awaitingMyReview });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /**
+   * Selects a repository from the picker. The Selected repository
+   * is the screen's root state, so changing it resets the page cursor — a
+   * cursor minted for the previous repository is rejected as `invalid_page`
+   * — and clears the label filter, which is repository-scoped and may name a
+   * label the new repository does not have.
+   */
+  const changeInboxRepository = useCallback(
+    (repository: Repo): void => {
+      if (
+        sameRepositoryIdentity(repository, inboxRequestRef.current.repository)
+      )
+        return;
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, {
+          selectedRepository: repository,
+          selectedLabels: [],
+        });
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        repository,
+        selectedLabels: [],
+      });
       updateInboxRequest(request);
       void refreshInbox(request);
     },
@@ -671,19 +913,7 @@ export function App({
     if (current.previousPageTokens.length === 0) return;
     const pageToken = current.previousPageTokens.at(-1);
     const previousPageTokens = current.previousPageTokens.slice(0, -1);
-    const next: InboxRequestState =
-      pageToken === undefined
-        ? {
-            scope: current.scope,
-            pageSize: current.pageSize,
-            previousPageTokens,
-          }
-        : {
-            scope: current.scope,
-            pageSize: current.pageSize,
-            pageToken,
-            previousPageTokens,
-          };
+    const next = nextInboxRequest(current, { pageToken, previousPageTokens });
     updateInboxRequest(next);
     void refreshInbox(next);
   }, [refreshInbox, updateInboxRequest]);
@@ -691,15 +921,13 @@ export function App({
     const current = inboxRequestRef.current;
     const pageToken = inbox?.inbox.nextPageToken;
     if (pageToken === undefined) return;
-    const next: InboxRequestState = {
-      scope: current.scope,
-      pageSize: current.pageSize,
+    const next = nextInboxRequest(current, {
       pageToken,
       previousPageTokens: [
         ...current.previousPageTokens,
         current.pageToken,
       ].slice(-20),
-    };
+    });
     updateInboxRequest(next);
     void refreshInbox(next);
   }, [inbox?.inbox.nextPageToken, refreshInbox, updateInboxRequest]);
@@ -763,10 +991,11 @@ export function App({
           onOpenSettings={openSettings}
           profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
           activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
+          onInboxStateChange={changeInboxState}
           onProfileSwitch={async (id) => {
             await api("/v1/profiles/select", { method: "POST", body: { id } });
-            saveInboxViewPreferences(id, { scope: "open" });
-            resetInboxScopeOnProfileLoad.current = true;
+            saveInboxViewPreferences(id, { state: "open" });
+            resetInboxStateOnProfileLoad.current = true;
             setWorkbench(undefined);
             dispatchWorkspace({ _tag: "cleared" });
             updateInboxRequest(firstInboxRequest);
@@ -806,7 +1035,7 @@ export function App({
             dispatchWorkspace({ _tag: "cleared" });
             activeInboxProfileId.current = undefined;
             inboxRefreshGeneration.current += 1;
-            resetInboxScopeOnProfileLoad.current = true;
+            resetInboxStateOnProfileLoad.current = true;
             updateInboxRequest(firstInboxRequest);
             setDestination({ kind: "dashboard" });
             window.localStorage.setItem("patchdesk.destination", "dashboard");
@@ -950,14 +1179,16 @@ export function App({
     inbox?.inbox.snapshot?.refreshedAt === undefined
       ? {}
       : { refreshedAt: inbox.inbox.snapshot.refreshedAt };
-  // The confirmed inbox response still carries the previous scope's rows
-  // until the in-flight request for the newly requested scope lands. The
-  // toggle below reflects `inboxRequest.scope` immediately (so the click
-  // feels responsive), but the row list must not render those stale rows
-  // under the new scope's label — so InboxFlow gets this boolean and holds
-  // the list in a loading state until the two agree.
+  // The confirmed inbox response still carries the previous request's rows
+  // until the in-flight request for the new one lands. The filter bar
+  // reflects `inboxRequest` immediately (so the click feels responsive), but
+  // the row list must not present those stale rows as the new request's
+  // answer — so InboxFlow gets this boolean and holds the list in a loading
+  // state until the two agree.
   const inboxListPending =
-    inbox !== undefined && inbox.inbox.scope !== inboxRequest.scope;
+    inbox !== undefined &&
+    (confirmedInboxRequest === undefined ||
+      !sameInboxRows(confirmedInboxRequest, inboxRequest));
   return shell(
     <div className="flex min-h-0 flex-1 flex-col">
       <InboxFlow
@@ -969,18 +1200,25 @@ export function App({
         refreshStatus={inboxFreshnessLabel({
           ...remoteField,
           refreshing: inboxRefreshing,
-          paused: inboxPaused,
           refreshFailed: inboxRefreshFailed,
           ...refreshedAtField,
         })}
         onRefresh={() => void refreshDashboard()}
-        scope={inboxRequest.scope}
+        inboxState={inboxRequest.state}
         listPending={inboxListPending}
         pageSize={inboxRequest.pageSize}
         hasPreviousPage={inboxRequest.previousPageTokens.length > 0}
         hasNextPage={inbox?.inbox.nextPageToken !== undefined}
-        onInboxScopeChange={changeInboxScope}
+        onInboxStateChange={changeInboxState}
         onInboxPageSizeChange={changeInboxPageSize}
+        selectedLabels={inboxRequest.selectedLabels}
+        onInboxLabelsChange={changeInboxLabels}
+        awaitingMyReview={inboxRequest.awaitingMyReview}
+        onInboxAwaitingMyReviewChange={changeInboxAwaitingMyReview}
+        {...(inboxRequest.repository === undefined
+          ? {}
+          : { selectedRepository: inboxRequest.repository })}
+        onRepositoryChange={changeInboxRepository}
         onPreviousInboxPage={previousInboxPage}
         onNextInboxPage={nextInboxPage}
         onSettings={(section) => openSettings(undefined, section)}
@@ -1205,31 +1443,6 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
   };
 }
 
-/** True only when every watched repo is rate-limited; a mix with healthy repos keeps the normal poll cadence. */
-function allRepositoriesRateLimited(
-  repositories: InboxResponse["inbox"]["repositories"],
-): boolean {
-  return (
-    repositories.length > 0 &&
-    repositories.every((repo) => repo.state === "github_rate_limited")
-  );
-}
-
-/** The latest known resume time across all-rate-limited repos, falling back to a conservative 60-minute wait. */
-function maxResumeAt(
-  repositories: InboxResponse["inbox"]["repositories"],
-): string {
-  const resumeTimesMs = repositories.reduce<Array<number>>((acc, repo) => {
-    const parsed =
-      repo.resumeAt === undefined ? NaN : Date.parse(repo.resumeAt);
-    if (!Number.isNaN(parsed)) acc.push(parsed);
-    return acc;
-  }, []);
-  return resumeTimesMs.length === 0
-    ? new Date(Date.now() + 60 * 60_000).toISOString()
-    : new Date(Math.max(...resumeTimesMs)).toISOString();
-}
-
 function screenStateForInbox(
   inbox: InboxResponse,
   dashboard: Dashboard,
@@ -1243,7 +1456,7 @@ function screenStateForInbox(
   )
     return "error";
   if (
-    inbox.inbox.scope === "open" &&
+    inbox.inbox.state === "open" &&
     outcomes.includes("no_open_prs") &&
     dashboard.dashboard.rows.length === 0
   )

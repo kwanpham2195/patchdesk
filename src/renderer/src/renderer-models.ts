@@ -1,3 +1,5 @@
+import type { RepositoryIdentity } from "../../domain/repository-identity";
+
 export type DashboardScreenState =
   | "empty"
   | "loading"
@@ -16,11 +18,12 @@ export type Profile = {
   readonly repos?: ReadonlyArray<Repo>;
 };
 
-export type Repo = {
-  readonly host: string;
-  readonly owner: string;
-  readonly repo: string;
-  readonly localPath?: string;
+/** A watched repository as the renderer holds it: its identity plus the
+ * maintainer's optional local checkout. The identity alone is
+ * `RepositoryIdentity`; anything that only names a repository should use that
+ * instead of this. */
+export type Repo = RepositoryIdentity & {
+  readonly localPath?: string | undefined;
 };
 
 export type RepoOutcome = {
