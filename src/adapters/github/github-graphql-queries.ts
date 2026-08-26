@@ -31,6 +31,24 @@ export const maxReviewComments = 5_000;
 /** One bounded open-pull-request page; the inbox service owns opaque cursor progression. */
 export const maintainerInboxQuery =
   "query MaintainerInbox($owner: String!, $name: String!, $first: Int!, $cursor: String, $state: PullRequestState!) { rateLimit { remaining resetAt } repository(owner: $owner, name: $name) { pullRequests(first: $first, after: $cursor, states: [$state], orderBy: { field: UPDATED_AT, direction: DESC }) { edges { cursor node { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles labels(first: 20) { totalCount nodes { name color } pageInfo { hasNextPage } } reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } pageInfo { hasNextPage endCursor } } } }";
+// Repository-wide companion to maintainerInboxQuery: `search(type: ISSUE)`
+// is GitHub's only field that returns a true repository-wide match count
+// (`issueCount`) rather than a loaded-page count, which is the entire reason
+// this query exists (spike-proven 2026-08-25, see plan
+// 2026-08-25-scope-pull-requests-to-one-repository.md slice 4). `rateLimit {
+// remaining resetAt }` rides at the top level beside `search`, exactly as it
+// does in maintainerInboxQuery, at a confirmed cost of 1 point. The `... on
+// PullRequest` selection below is copied field-for-field from
+// maintainerInboxQuery's node selection — the spike confirmed every field
+// the row projection needs comes back identically on a search node, so
+// omitting any of them here would silently break `parseMaintainerPullRequest`
+// reuse. The GraphQL variable carrying the search query string is named
+// `$search`, not `$query`, for the same reason assignableUsersQuery below
+// names its equivalent variable `$search`: `gh api graphql` reserves the
+// literal key "query" (via `-f query=...`) for the request's own GraphQL
+// document text, so a variable also named "query" would collide with it.
+export const maintainerInboxSearchQuery =
+  "query MaintainerInboxSearch($search: String!, $first: Int!, $cursor: String) { rateLimit { remaining resetAt } search(query: $search, type: ISSUE, first: $first, after: $cursor) { issueCount pageInfo { hasNextPage endCursor } edges { cursor node { ... on PullRequest { number title isDraft headRefName headRefOid baseRefName baseRefOid author { login } updatedAt mergeable reviewDecision additions deletions changedFiles labels(first: 20) { totalCount nodes { name color } pageInfo { hasNextPage } } reviewRequests(first: 50) { nodes { requestedReviewer { ... on User { login } } } } assignees(first: 50) { nodes { login } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } } }";
 // GitHub's `labels` connection rejects `first` above 100 (confirmed live
 // 2026-08-18: `first: 101` fails with EXCESSIVE_PAGINATION), so 100 is the
 // largest single page the schema allows — this fetches it unpaginated and

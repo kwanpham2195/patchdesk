@@ -19,6 +19,10 @@ import {
   type GitHubReadFailure,
 } from "../../src/adapters/github/github-adapter";
 import {
+  maintainerInboxQuery,
+  maintainerInboxSearchQuery,
+} from "../../src/adapters/github/github-graphql-queries";
+import {
   GitHubCliCredentials,
   type GitHubCredentials,
 } from "../../src/adapters/github/github-credentials";
@@ -2204,6 +2208,188 @@ describe("GitHubAdapter read boundary", () => {
         operation: "list_maintainer_prs",
         reason: "ip_allow_list",
       },
+    });
+  });
+
+  // Both listing queries carry `rateLimit { remaining resetAt }`, and they are
+  // the only place the per-host rate-limit cache is ever filled. Every other
+  // GitHub call reads that cache through commandFailure to report a resume
+  // time, so losing the selection here degrades the whole app to a blind
+  // sixty-minute wait, silently. The whole selection is asserted, not just the
+  // field name: dropping `resetAt` alone would remove the resume time while
+  // leaving a substring match on "rateLimit" intact.
+  it("guards the rateLimit selection on maintainerInboxQuery, the sole source of the per-host rate-limit cache", () => {
+    expect(maintainerInboxQuery).toContain("rateLimit { remaining resetAt }");
+  });
+
+  it("guards the rateLimit selection on maintainerInboxSearchQuery, the sole source of the per-host rate-limit cache", () => {
+    expect(maintainerInboxSearchQuery).toContain(
+      "rateLimit { remaining resetAt }",
+    );
+  });
+
+  describe("searchMaintainerPullRequests", () => {
+    /** Identical wire shape to the "reads one OPEN GraphQL inbox page" node fixture above, so the two queries can be proven to project equal rows for the same node. */
+    const sharedNode = {
+      number: 42,
+      title: "Add safe GitHub reads",
+      isDraft: false,
+      headRefName: "feat/github-read",
+      headRefOid: headSha,
+      baseRefName: "sit",
+      author: { login: "reviewer" },
+      updatedAt: "2026-07-16T12:00:00Z",
+      mergeable: "MERGEABLE",
+      reviewDecision: "REVIEW_REQUIRED",
+      additions: 12,
+      deletions: 3,
+      changedFiles: 2,
+      labels: {
+        totalCount: 2,
+        nodes: [{ name: "bug", color: "d73a4a" }],
+        pageInfo: { hasNextPage: false },
+      },
+      reviewRequests: {
+        nodes: [{ requestedReviewer: { login: "pmquan2cfw" } }],
+      },
+      assignees: { nodes: [] },
+      commits: {
+        nodes: [{ commit: { statusCheckRollup: { state: "SUCCESS" } } }],
+      },
+    };
+
+    it("sends the search qualifier string as the GraphQL search variable", async () => {
+      const emptyPage = {
+        data: {
+          search: {
+            issueCount: 0,
+            edges: [],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      };
+      const executor = new FakeProcessExecutor([
+        {
+          _tag: "Exited",
+          exitCode: 0,
+          stdout: JSON.stringify(emptyPage),
+          stderr: "",
+        },
+      ]);
+      const adapter = testAdapter(new CommandRunner(executor));
+
+      await adapter.searchMaintainerPullRequests({
+        profile,
+        repo: pr,
+        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+        scope: "open",
+        pageSize: 25,
+      });
+
+      expect(executor.requests).toHaveLength(1);
+      expect(executor.requests[0]).toContain(
+        "search=repo:centraldigital/patchdesk is:pr is:open",
+      );
+      expect(executor.requests[0]).toContain("first=25");
+    });
+
+    it("returns issueCount, GitHub's true repository-wide match count, from the response", async () => {
+      const page = {
+        data: {
+          rateLimit: { remaining: 4998, resetAt: "2026-08-25T10:00:00Z" },
+          search: {
+            issueCount: 137,
+            edges: [{ cursor: "edge-42", node: sharedNode }],
+            pageInfo: { hasNextPage: true, endCursor: "cursor-42" },
+          },
+        },
+      };
+      const executor = new FakeProcessExecutor([
+        {
+          _tag: "Exited",
+          exitCode: 0,
+          stdout: JSON.stringify(page),
+          stderr: "",
+        },
+      ]);
+      const adapter = testAdapter(new CommandRunner(executor));
+
+      const result = await adapter.searchMaintainerPullRequests({
+        profile,
+        repo: pr,
+        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+        scope: "open",
+        pageSize: 25,
+      });
+
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: { issueCount: 137, hasNextPage: true, endCursor: "cursor-42" },
+      });
+    });
+
+    it("projects rows equal to what listMaintainerPullRequests produces for the same node fixture", async () => {
+      const listPage = {
+        data: {
+          repository: {
+            pullRequests: {
+              edges: [{ cursor: "edge-42", node: sharedNode }],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        },
+      };
+      const searchPage = {
+        data: {
+          search: {
+            issueCount: 1,
+            edges: [{ cursor: "edge-42", node: sharedNode }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      };
+      const listAdapter = testAdapter(
+        new CommandRunner(
+          new FakeProcessExecutor([
+            {
+              _tag: "Exited",
+              exitCode: 0,
+              stdout: JSON.stringify(listPage),
+              stderr: "",
+            },
+          ]),
+        ),
+      );
+      const searchAdapter = testAdapter(
+        new CommandRunner(
+          new FakeProcessExecutor([
+            {
+              _tag: "Exited",
+              exitCode: 0,
+              stdout: JSON.stringify(searchPage),
+              stderr: "",
+            },
+          ]),
+        ),
+      );
+
+      const listResult = await listAdapter.listMaintainerPullRequests({
+        profile,
+        repo: pr,
+        pageSize: 25,
+      });
+      const searchResult = await searchAdapter.searchMaintainerPullRequests({
+        profile,
+        repo: pr,
+        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+        scope: "open",
+        pageSize: 25,
+      });
+
+      expect(listResult._tag).toBe("ok");
+      expect(searchResult._tag).toBe("ok");
+      if (listResult._tag !== "ok" || searchResult._tag !== "ok") return;
+      expect(searchResult.value.entries).toEqual(listResult.value.entries);
     });
   });
 

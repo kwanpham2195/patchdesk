@@ -28,6 +28,7 @@ import type {
   PullRequestSummary,
   MergePolicySnapshot,
   MaintainerPullRequestPage,
+  MaintainerPullRequestSearchPage,
   RepositoryLabelListing,
   RepositoryLabelPermission,
 } from "../../domain/github-context";
@@ -67,6 +68,7 @@ import {
   assignableUsersQuery,
   confirmCreatedCommentThreadQuery,
   maintainerInboxQuery,
+  maintainerInboxSearchQuery,
   maxMergePolicyPages,
   maxPullRequestCommits,
   maxReviewCommentPages,
@@ -95,6 +97,7 @@ import {
   createdInlineCommentSchema,
   directSummaryReceiptSchema,
   maintainerInboxResponseSchema,
+  maintainerInboxSearchResponseSchema,
   mergeOutcomeSchema,
   type MergePolicyPage,
   mergePolicyResponseSchema,
@@ -660,6 +663,7 @@ export type GitHubReadFailure =
 export type GitHubReadOperation =
   | "list_open_prs"
   | "list_maintainer_prs"
+  | "search_maintainer_prs"
   | "list_repository_labels"
   | "list_assignable_users"
   | "get_pull_request_reviewers"
@@ -888,6 +892,90 @@ export class GitHubAdapter
     return ok({
       entries,
       hasNextPage: connection.pageInfo.hasNextPage,
+      ...endCursorField,
+    });
+  }
+
+  /**
+   * Reads one repository-wide `search(type: ISSUE)` page of pull requests
+   * with edge cursors, alongside `issueCount` — GitHub's true repository-wide
+   * match count for `searchQuery`, distinct from this page's loaded entry
+   * count. Mirrors `listMaintainerPullRequests`'s structure; unlike that
+   * method, `scope` is required here because the search query string alone
+   * does not tell the adapter whether the caller is browsing open or merged
+   * pull requests, and `parseMaintainerPullRequest` needs it to set
+   * `summary.isOpen`.
+   */
+  async searchMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly searchQuery: string;
+    readonly scope: InboxScope;
+    readonly pageSize: InboxPageSize;
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
+    const host = input.profile.githubHost;
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${maintainerInboxSearchQuery}`,
+        "-F",
+        `search=${input.searchQuery}`,
+        "-F",
+        `first=${input.pageSize}`,
+        ...(input.cursor === undefined ? [] : ["-f", `cursor=${input.cursor}`]),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure("search_maintainer_prs", response.error, host);
+    const parsed = v.safeParse(
+      maintainerInboxSearchResponseSchema,
+      response.value,
+    );
+    if (!parsed.success) return invalid("search_maintainer_prs");
+    const rateLimit = parsed.output.data.rateLimit;
+    if (rateLimit !== undefined) {
+      const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
+      if (resumeAt._tag === "ok")
+        this.rateLimitByHost.set(host, {
+          remaining: rateLimit.remaining,
+          resetAt: resumeAt.value,
+        });
+    }
+    const connection = parsed.output.data.search;
+    if (
+      connection.pageInfo.hasNextPage &&
+      (connection.pageInfo.endCursor === null ||
+        connection.pageInfo.endCursor === undefined)
+    )
+      return invalid("search_maintainer_prs");
+    const entries = [];
+    for (const edge of connection.edges) {
+      const projected = parseMaintainerPullRequest(
+        edge.node,
+        host,
+        input.repo.owner,
+        input.repo.repo,
+        input.scope,
+      );
+      if (projected._tag === "err") return invalid("search_maintainer_prs");
+      entries.push({ cursor: edge.cursor, pullRequest: projected.value });
+    }
+    const endCursorField =
+      connection.pageInfo.endCursor === null ||
+      connection.pageInfo.endCursor === undefined
+        ? {}
+        : { endCursor: connection.pageInfo.endCursor };
+    return ok({
+      entries,
+      hasNextPage: connection.pageInfo.hasNextPage,
+      issueCount: connection.issueCount,
       ...endCursorField,
     });
   }
