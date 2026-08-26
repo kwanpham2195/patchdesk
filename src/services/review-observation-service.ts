@@ -14,7 +14,7 @@ import type {
 } from "../adapters/storage/review-remote-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
-import type { GitHubMergeEvidence } from "../domain/github-context";
+import { toMergeEvidence } from "../domain/github-context";
 import {
   parseGitHubLogin,
   type IsoTimestamp,
@@ -1004,16 +1004,4 @@ function nextTimestamp(
   const next = new Date(milliseconds).toISOString();
   // SAFETY: both inputs are parsed timestamps; this arithmetic always produces ISO.
   return next as IsoTimestamp;
-}
-
-function toMergeEvidence(
-  policy: NonNullable<ReviewRemoteSnapshot["mergePolicy"]>,
-  evidence?: NonNullable<ReviewRemoteSnapshot["mergeEvidence"]>["policy"],
-): GitHubMergeEvidence {
-  const base = {
-    mergeable: policy.mergeability,
-    mergeStateStatus: policy.mergeStateStatus ?? "unavailable",
-    reviewDecision: policy.reviewDecision,
-  };
-  return evidence === undefined ? base : { ...base, policy: evidence };
 }

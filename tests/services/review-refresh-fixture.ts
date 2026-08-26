@@ -38,7 +38,6 @@ import { parseStoredReviewSession } from "../../src/adapters/storage/review-sess
 import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import type { ReviewRefreshDependencies } from "../../src/services/review-refresh-service";
 import type { PrepareReviewSessionFailure } from "../../src/services/review-session-preparation";
-import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import type { ReviewWorkbenchProjection } from "../../src/services/review-workbench-projection";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
@@ -128,7 +127,6 @@ export type ReviewRefreshFixtureOptions = {
   /** Forces `preparation.prepare` to fail instead of returning a session. */
   readonly preparationFailure?: PrepareReviewSessionFailure;
   readonly pendingReviewReconcileResult?: PendingReviewReconcileResult;
-  readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   readonly projectionOutcome?: "success" | "failure";
   readonly avatarSyncFailure?: boolean;
   readonly now?: IsoTimestamp;
@@ -368,7 +366,6 @@ export function createReviewRefreshFixture(
     },
     operationCoordinator: new ReviewOperationCoordinator(),
     recentWrites: {
-      load: async () => ok(options.recentWrites ?? []),
       clear: async (profileId, reviewId) => {
         calls.clearedRecentWrites.push({ profileId, reviewId });
         return ok(undefined);

@@ -245,10 +245,10 @@ function parseRecentWriteEntries(
       // Pre-existing bug fixed here: this branch previously fell into the
       // final `else` below and was stamped `_tag: "LabelChange"` on read,
       // silently reclassifying every persisted assignee-change entry. Since
-      // `withoutRecentAssigneeChanges` and `containsRecentWrites` both key
-      // off `entry._tag === "AssigneeChange"`, a reloaded assignee write
-      // would never be recognized as one, and would instead have been read
-      // back as (and stripped like) a label change with the wrong names.
+      // consumers key off `entry._tag === "AssigneeChange"`, a reloaded
+      // assignee write would never be recognized as one, and would instead
+      // have been read back as (and stripped like) a label change with the
+      // wrong names.
       entries.push({
         _tag: "AssigneeChange",
         added: entry.added,

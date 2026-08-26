@@ -586,9 +586,9 @@ describe("ReviewWorkbenchController", () => {
   });
 
   it("dedupes a LabelChange entry the durable journal and the request both carry", async () => {
-    // Exercises this file's own copy of recentWriteDedupeKey (duplicated
-    // from review-refresh-service.ts): missing the LabelChange case here
-    // would let an identical durable+requested pair through as two entries.
+    // Exercises domain/recent-review-write.ts's recentWriteDedupeKey: missing
+    // the LabelChange case there would let an identical durable+requested
+    // pair through as two entries.
     const observe = vi.fn(async () =>
       ok({ _tag: "Reconciled", detectedAt: at }),
     );

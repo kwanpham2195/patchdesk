@@ -19,7 +19,10 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewRefreshService } from "./review-refresh-service";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
+import {
+  unionRecentWrites,
+  type RecentReviewWrite,
+} from "../domain/recent-review-write";
 import type { ReviewObservationService } from "./review-observation-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewCommitService } from "./review-commit-service";
@@ -668,49 +671,4 @@ function isRestartableStorageFailure(failure: StorageFailure): boolean {
     failure.reason === "invalid_json" ||
     failure.reason === "invalid_stored_value"
   );
-}
-
-/**
- * Combine the durable own-write journal with the renderer's optimistic
- * in-memory array. Duplicates are harmless to `containsRecentWrites`'s
- * set-based logic, but de-duplicating keeps the union from growing needlessly.
- */
-function unionRecentWrites(
-  durable: ReadonlyArray<RecentReviewWrite>,
-  requested: ReadonlyArray<RecentReviewWrite>,
-): ReadonlyArray<RecentReviewWrite> {
-  const seen = new Set<string>();
-  const union: Array<RecentReviewWrite> = [];
-  for (const entry of [...durable, ...requested]) {
-    const key = recentWriteDedupeKey(entry);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    union.push(entry);
-  }
-  return union;
-}
-
-function recentWriteDedupeKey(entry: RecentReviewWrite): string {
-  switch (entry._tag) {
-    case "Comment":
-      return `Comment:${entry.commentId}`;
-    case "ThreadState":
-      return `ThreadState:${entry.threadId}:${entry.state}`;
-    case "PendingThread":
-      return `PendingThread:${entry.threadId}`;
-    case "DirectSummaryReview":
-      return `DirectSummaryReview:${entry.reviewId}`;
-    case "LabelChange":
-      // Two label writes are the same write only if they touched the exact
-      // same label names; sort so key order doesn't depend on call order.
-      return `LabelChange:${[...entry.added].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
-    case "AssigneeChange":
-      // Mirrors LabelChange: two assignee writes are the same write only if
-      // they touched the exact same logins.
-      return `AssigneeChange:${[...entry.added].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
-    case "ReviewerChange":
-      // Mirrors AssigneeChange: two reviewer writes are the same write only
-      // if they touched the exact same logins.
-      return `ReviewerChange:${[...entry.requested].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
-  }
 }

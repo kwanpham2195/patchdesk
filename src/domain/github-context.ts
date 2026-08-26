@@ -182,6 +182,21 @@ export type MergePolicySnapshot = {
     | "mapping";
 };
 
+/** Derive aggregate merge evidence from a policy read, folding in optional policy evidence when present. */
+export function toMergeEvidence(
+  policy: MergePolicySnapshot,
+  policyEvidence?: GitHubMergePolicyEvidence,
+): GitHubMergeEvidence {
+  const evidenceBase = {
+    mergeable: policy.mergeability,
+    mergeStateStatus: policy.mergeStateStatus ?? "unavailable",
+    reviewDecision: policy.reviewDecision,
+  };
+  return policyEvidence === undefined
+    ? evidenceBase
+    : { ...evidenceBase, policy: policyEvidence };
+}
+
 export type PullRequestCommit = {
   readonly sha: GitSha;
   readonly message: string;
