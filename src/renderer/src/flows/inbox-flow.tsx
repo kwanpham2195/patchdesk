@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   MaintainerInbox,
   type InboxLabelActions,
-  type ReviewInitialSection,
 } from "../components/maintainer-inbox";
 import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
@@ -107,10 +106,7 @@ export function InboxFlow({
   readonly onPreviousInboxPage?: () => void;
   readonly onNextInboxPage?: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
-  readonly onOpenWorkbench: (
-    workbench: WorkbenchPayload,
-    initialSection?: ReviewInitialSection,
-  ) => void;
+  readonly onOpenWorkbench: (workbench: WorkbenchPayload) => void;
 }): React.JSX.Element {
   const [openedPr, setOpenedPr] = useState<string>();
   const [openError, setOpenError] = useState<string>();
@@ -149,7 +145,6 @@ export function InboxFlow({
   const openPullRequest = useCallback(
     async (
       pr: PrRef,
-      initialSection?: ReviewInitialSection,
       profileId = dashboard?.profile.id,
       endpoint:
         | "/v1/reviews/open"
@@ -173,7 +168,7 @@ export function InboxFlow({
           if (parsed === undefined)
             throw new Error("Invalid workbench projection");
           setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
-          onOpenWorkbench(parsed, initialSection);
+          onOpenWorkbench(parsed);
         } catch (cause: unknown) {
           // Mirrors the dashboard's `github_auth` copy above, adapted from
           // refreshing pull requests to opening one: the generic "auth" API
@@ -305,10 +300,9 @@ export function InboxFlow({
       onPreviousInboxPage={onPreviousInboxPage}
       onNextInboxPage={onNextInboxPage}
       onSettings={onSettings}
-      onOpenReview={(row, initialSection) =>
+      onOpenReview={(row) =>
         void openPullRequest(
           row.identity,
-          initialSection,
           undefined,
           row.recommendedAction.kind === "open_merged_review"
             ? "/v1/reviews/open-merged"
@@ -384,10 +378,7 @@ function InboxScreen({
   readonly onNextInboxPage: () => void;
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
   readonly onSettings: (section?: SettingsSection) => void;
-  readonly onOpenReview: (
-    row: InboxResponse["inbox"]["rows"][number],
-    initialSection?: ReviewInitialSection,
-  ) => void;
+  readonly onOpenReview: (row: InboxResponse["inbox"]["rows"][number]) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
   readonly openedPr?: string;
   readonly openError?: string;

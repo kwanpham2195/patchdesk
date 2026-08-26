@@ -1119,24 +1119,12 @@ export function App({
         >
           <LazyReviewWorkbench
             workbench={workbench}
-            {...(destination.kind === "workbench" &&
-            (destination.initialSection === "diff" ||
-              destination.initialSection === "checks")
-              ? { initialSection: destination.initialSection }
-              : {})}
             {...(restoredWorkbenchUi.current !== undefined &&
             restoredWorkbenchUi.current.reviewId === workbench.review.id
               ? { initialUiState: restoredWorkbenchUi.current.state }
               : {})}
             onUiStateChange={(state) =>
               saveWorkbenchUiState(workbench.review.id, state)
-            }
-            onNavigate={(initialSection) =>
-              navigate({
-                kind: "workbench",
-                reviewId: workbench.review.id,
-                initialSection,
-              })
             }
             onWorkbenchPatch={(patch) =>
               setWorkbench((current) => {
@@ -1222,14 +1210,11 @@ export function App({
         onPreviousInboxPage={previousInboxPage}
         onNextInboxPage={nextInboxPage}
         onSettings={(section) => openSettings(undefined, section)}
-        onOpenWorkbench={(next, initialSection) => {
+        onOpenWorkbench={(next) => {
           setWorkbench(next);
-          const initialSectionField =
-            initialSection === undefined ? {} : { initialSection };
           navigate({
             kind: "workbench",
             reviewId: next.review?.id ?? next.session.id,
-            ...initialSectionField,
           });
         }}
       />

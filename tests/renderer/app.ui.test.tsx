@@ -166,10 +166,7 @@ describe("App Review route loading", () => {
   it("loads a restored Review through InboxFlow and keeps route callbacks", async () => {
     const deferred = promise<React.ComponentType<ReviewWorkbenchFlowProps>>();
     let received: ReviewWorkbenchFlowProps | undefined;
-    window.localStorage.setItem(
-      "patchdesk.destination",
-      "workbench:review-42:diff",
-    );
+    window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
     window.localStorage.setItem(
       "patchdesk.workbench-ui.v1.review-42",
       JSON.stringify({
@@ -199,9 +196,6 @@ describe("App Review route loading", () => {
           >
             Dirty
           </button>
-          <button type="button" onClick={() => props.onNavigate("checks")}>
-            Checks
-          </button>
           <button
             type="button"
             onClick={() =>
@@ -225,17 +219,14 @@ describe("App Review route loading", () => {
       );
     });
     expect(await screen.findByText("Review")).not.toBeNull();
-    expect(received?.initialSection).toBe("diff");
     expect(received?.initialUiState).toEqual({
       activeTab: "diff",
       section: "files",
       selectedPath: "src/a.ts",
     });
-    fireEvent.click(screen.getByRole("button", { name: "Checks" }));
     expect(window.localStorage.getItem("patchdesk.destination")).toBe(
-      "workbench:review-42:diff",
+      "workbench:review-42",
     );
-    expect(screen.getByText("Review")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Save position" }));
     expect(
       JSON.parse(

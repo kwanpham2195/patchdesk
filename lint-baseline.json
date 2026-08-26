@@ -1,4 +1,4 @@
 {
-  "findings": 173,
+  "findings": 172,
   "note": "Repo-wide Oxlint finding count, counted from `npx oxlint --deny-warnings --format=json`'s `diagnostics` array. scripts/check-changed-source.mjs (pnpm lint:changed) fails if the count rises above this value. Lower this number as legacy findings are fixed; see CONTRIBUTING.md."
 }

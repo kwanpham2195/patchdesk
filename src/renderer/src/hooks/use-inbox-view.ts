@@ -14,9 +14,6 @@ import {
   saveInboxViewPreferences,
 } from "@/inbox-view-preferences";
 
-/** Which workbench tab a triggered Review action should land on. */
-export type ReviewInitialSection = "overview" | "diff" | "checks";
-
 type InboxViewState = {
   readonly inspectorOpen: boolean;
   readonly selectedKey?: string;
@@ -52,7 +49,7 @@ function inboxViewReducer(
 
 function requestAction(
   row: InboxRow,
-  onOpenReview: (row: InboxRow, initialSection?: ReviewInitialSection) => void,
+  onOpenReview: (row: InboxRow) => void,
   onOpenReviewId: (reviewId: string) => void,
 ): void {
   switch (row.recommendedAction.kind) {
@@ -89,10 +86,7 @@ function isNarrowViewport(): boolean {
 export function useInboxView(params: {
   readonly profileId: string;
   readonly rows: ReadonlyArray<InboxRow>;
-  readonly onOpenReview: (
-    row: InboxRow,
-    initialSection?: ReviewInitialSection,
-  ) => void;
+  readonly onOpenReview: (row: InboxRow) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
 }) {
   const { profileId, rows, onOpenReview, onOpenReviewId } = params;

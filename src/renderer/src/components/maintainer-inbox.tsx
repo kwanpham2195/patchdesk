@@ -24,10 +24,7 @@ import {
   type RepositoryLabelReadState,
 } from "@/github-read-failure-copy";
 import { LabelChip } from "./label-chip";
-import {
-  useInboxView,
-  type ReviewInitialSection,
-} from "../hooks/use-inbox-view";
+import { useInboxView } from "../hooks/use-inbox-view";
 import {
   formatInboxAge,
   type inboxFreshnessLabel,
@@ -83,8 +80,6 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
-
-export type { ReviewInitialSection } from "../hooks/use-inbox-view";
 
 /**
  * Feeds the label filter popover the Selected repository's real,
@@ -165,10 +160,7 @@ type MaintainerInboxProps = {
     readonly refreshedAt?: string | undefined;
   };
   readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
-  readonly onOpenReview: (
-    row: InboxRow,
-    initialSection?: ReviewInitialSection,
-  ) => void;
+  readonly onOpenReview: (row: InboxRow) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
 };
 

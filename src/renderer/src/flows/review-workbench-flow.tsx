@@ -27,14 +27,12 @@ export type { ReviewWorkbenchPatch } from "./use-review-observation";
 
 export type ReviewWorkbenchFlowProps = {
   readonly workbench: WorkbenchResponse;
-  readonly initialSection?: "diff" | "checks";
   readonly initialUiState?: ReviewWorkbenchInitialState;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
   readonly onNavigationStateChange: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
-  readonly onNavigate: (section: "diff" | "checks") => void;
   /** Reports in-screen position changes so a reload can restore them. */
   readonly onUiStateChange?: (state: {
     readonly activeTab: "conversation" | "diff" | "insights";
@@ -46,16 +44,12 @@ export type ReviewWorkbenchFlowProps = {
 /** Owns loopback calls and replacement of the one canonical Review projection. */
 export function ReviewWorkbenchFlow({
   workbench,
-  initialSection,
   initialUiState,
   onWorkbenchReplace,
   onWorkbenchPatch,
   onNavigationStateChange,
-  onNavigate,
   onUiStateChange,
 }: ReviewWorkbenchFlowProps): React.JSX.Element {
-  void initialSection;
-  void onNavigate;
   const {
     refreshing,
     refreshError,

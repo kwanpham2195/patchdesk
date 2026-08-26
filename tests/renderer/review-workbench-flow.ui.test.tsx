@@ -135,7 +135,6 @@ function mount(
       onWorkbenchReplace={replace}
       onWorkbenchPatch={patch}
       onNavigationStateChange={onNavigationStateChange}
-      onNavigate={vi.fn()}
     />,
   );
   return { replace, patch, view };
@@ -1243,7 +1242,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         onWorkbenchReplace={replace}
         onWorkbenchPatch={patch}
         onNavigationStateChange={vi.fn()}
-        onNavigate={vi.fn()}
       />,
     );
     await act(async () => {
@@ -1294,7 +1292,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         onWorkbenchReplace={vi.fn()}
         onWorkbenchPatch={secondPatch}
         onNavigationStateChange={vi.fn()}
-        onNavigate={vi.fn()}
       />,
     );
     await act(async () => {
