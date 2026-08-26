@@ -3,14 +3,8 @@ import type {
   GitHubLabel,
   PullRequestSummary,
 } from "./github-context";
-import {
-  createReviewId,
-  type GitSha,
-  type IsoTimestamp,
-  type ReviewId,
-} from "./ids";
+import type { GitSha, IsoTimestamp, ReviewId } from "./ids";
 import type { PullRequestRef } from "./pull-request";
-import type { ReviewSession } from "./review-session";
 
 /** The only page sizes the main process accepts. */
 export const INBOX_PAGE_SIZES = [10, 25, 50] as const;
@@ -113,50 +107,6 @@ export type MaintainerInboxRow = {
   readonly recommendedAction: InboxRecommendedAction;
   readonly dataFreshness: "fresh" | "cached";
 };
-
-/**
- * One entry in the Local review listing (ADR 0031): a maintainer's Review
- * session for the Selected repository, read whole from `ReviewSessionStore`
- * and never paginated. Unlike `MaintainerInboxRow`, this survives a pull
- * request GitHub can no longer return — deleted, transferred, made private,
- * or simply outside the current Repository listing filter — because it is
- * built from the session alone, never matched against a loaded GitHub page.
- */
-export type MaintainerInboxLocalReview = {
-  readonly reviewId: ReviewId;
-  readonly identity: PullRequestRef;
-  /** Absent when the session predates `prContext`, or the pull request's
-   * title was never captured; render the identity instead. */
-  readonly title?: string;
-  readonly pinnedHeadSha: GitSha;
-  readonly updatedAt: IsoTimestamp;
-};
-
-/** Projects one Review session into a Local review listing entry. The
- * review id is derived the same way `latestReviewFor` derives it for a
- * matched row — from the pull request's identity, not the session's own
- * (head-scoped) id — so opening either surface's entry reaches the same
- * saved review. */
-export function projectMaintainerInboxLocalReview(
-  session: ReviewSession,
-): MaintainerInboxLocalReview {
-  const titleField =
-    session.prContext?.title === undefined
-      ? {}
-      : { title: session.prContext.title };
-  return {
-    reviewId: createReviewId(session.key),
-    identity: {
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
-      number: session.key.prNumber,
-    },
-    pinnedHeadSha: session.key.headSha,
-    updatedAt: session.updatedAt,
-    ...titleField,
-  };
-}
 
 /** Project one PR into overlapping queue categories and one truthful primary action. */
 export function projectMaintainerInboxRow(input: {

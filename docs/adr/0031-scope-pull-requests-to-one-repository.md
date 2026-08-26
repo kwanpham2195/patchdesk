@@ -7,6 +7,15 @@
 > in `.agents/research/2026-08-25-github-pr-search-capabilities.md` — both
 > are local working notes under a gitignored path, not in the repository.
 
+> **Local review listing removed.** The **Local review listing** described
+> below was built (commit `151162c`) and then removed at the maintainer's
+> request. The Repository listing is now the screen's only source. The
+> cost: a saved Review is not visible on this screen when GitHub does not
+> return its pull request — deleted, transferred, made private, or simply
+> off the current filter and page. The saved review itself is not lost and
+> still opens normally once its pull request is reachable again; only this
+> screen's separate listing of it is gone.
+
 The Pull requests screen scans every watched repository of a workspace
 profile at once. `MaintainerInboxService.list` reads one GraphQL page
 from each repo concurrently, merges the results, sorts them into one

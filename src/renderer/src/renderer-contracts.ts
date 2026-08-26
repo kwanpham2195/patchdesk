@@ -96,18 +96,6 @@ const inboxRowSchema = v.strictObject({
   dataFreshness: v.picklist(["fresh", "cached"]),
 });
 
-// One entry in the Local review listing (ADR 0031): a Review session for
-// the Selected repository, read whole and never paginated. `title` is
-// optional — a session can predate `prContext` — so the renderer must have
-// an identity-based fallback for its label.
-const localReviewSchema = v.strictObject({
-  reviewId: v.pipe(v.string(), v.minLength(1)),
-  identity: pullRequestRefSchema,
-  title: v.optional(v.pipe(v.string(), v.minLength(1))),
-  pinnedHeadSha: v.pipe(v.string(), v.minLength(7)),
-  updatedAt: v.pipe(v.string(), v.isoTimestamp()),
-});
-
 const repoOutcomeSchema = v.object({
   repo: v.object({
     host: v.pipe(v.string(), v.minLength(1)),
@@ -156,13 +144,6 @@ const inboxResponseSchema = v.strictObject({
     nextPageToken: v.optional(v.pipe(v.string(), v.minLength(1))),
     rows: v.array(inboxRowSchema),
     repositories: v.array(repoOutcomeSchema),
-    // The Local review listing (ADR 0031) — the maintainer's own saved
-    // Review sessions for the Selected repository, never a slice of `rows`.
-    // Optional here (unlike `rows`, which the service always sends) only
-    // because `inbox` is a plain `v.object`: an unlisted key here is
-    // silently dropped at this boundary rather than rejected, so this
-    // field must stay declared for the wire response to survive parsing.
-    localReviews: v.optional(v.array(localReviewSchema)),
     /** GitHub's repository-wide match count for the current filter, absent on a cached or failed read that cannot know it. Never the loaded page's row count. */
     matchCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
     dataFreshness: v.picklist(["fresh", "cached"]),
@@ -183,10 +164,6 @@ const inboxResponseSchema = v.strictObject({
 
 export type InboxResponse = v.InferOutput<typeof inboxResponseSchema>;
 export type InboxRow = InboxResponse["inbox"]["rows"][number];
-/** One entry in the Local review listing; see `localReviewSchema`. */
-export type LocalReviewEntry = NonNullable<
-  InboxResponse["inbox"]["localReviews"]
->[number];
 
 /** Parses the local API's JSON-safe inbox projection before renderer state owns it. */
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
