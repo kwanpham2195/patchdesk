@@ -144,6 +144,29 @@ const firstInboxRequest: InboxRequestState = {
   previousPageTokens: [],
 };
 
+/**
+ * Guesses the request to build the very first inbox fetch from, before the
+ * true active profile is confirmed. `profiles[0]` matches the main
+ * process's own fallback (`DashboardController.activeProfile`) whenever no
+ * profile has ever been explicitly selected — the common case, and the only
+ * one this needs to get right up front. A wrong guess (an explicitly
+ * selected, non-first profile) still self-corrects once the real active
+ * profile is confirmed — see the `dashboard?.profile.id` effect below — so
+ * getting it wrong here costs one extra refetch, not incorrect data. The
+ * repository is deliberately left unset: sending one that turns out not to
+ * belong to the true active profile's watchlist fails the whole request
+ * server-side (`DashboardController.inboxForActiveProfile`), which a wrong
+ * page-size guess never does.
+ */
+function firstInboxRequestFor(
+  profiles: ReadonlyArray<Profile>,
+): InboxRequestState {
+  const profileId = profiles[0]?.id;
+  if (profileId === undefined) return firstInboxRequest;
+  const { scope, pageSize } = loadInboxViewPreferences(profileId);
+  return { scope, pageSize, previousPageTokens: [] };
+}
+
 /** Builds the renderer-owned inbox URL without decoding the opaque page token. */
 function inboxRequestPath(request: InboxRequestState): string {
   const query = new URLSearchParams({
@@ -437,18 +460,33 @@ export function App({
     dispatchWorkspace({ _tag: "loading" });
     let profilePayload: unknown;
     let inboxPayload: unknown;
+    let nextProfiles: ReadonlyArray<Profile> = [];
     try {
       profilePayload = await api("/v1/profiles");
-      inboxPayload = await api(inboxRequestPath(inboxRequestRef.current));
+      nextProfiles = Array.isArray(profilePayload)
+        ? profilePayload.filter(isProfile)
+        : [];
+      // The bootstrap request (`firstInboxRequest`) never knows the saved
+      // page size or scope up front. Guessing them from the just-fetched
+      // profile list here — instead of always requesting the default and
+      // correcting afterward once the real active profile is confirmed —
+      // is what keeps a cold start to one `/v1/inbox` call instead of two.
+      // A reload that already has a real request in flight (profile switch
+      // mid-flight aside) is left untouched, so this never clobbers an
+      // in-progress pagination or filter state.
+      const initialRequest =
+        inboxRequestRef.current === firstInboxRequest
+          ? firstInboxRequestFor(nextProfiles)
+          : inboxRequestRef.current;
+      if (initialRequest !== inboxRequestRef.current)
+        updateInboxRequest(initialRequest);
+      inboxPayload = await api(inboxRequestPath(initialRequest));
     } catch {
       if (generation === workspaceGeneration.current)
         dispatchWorkspace({ _tag: "failed", screen: "error" });
       return;
     }
     if (generation !== workspaceGeneration.current) return;
-    const nextProfiles = Array.isArray(profilePayload)
-      ? profilePayload.filter(isProfile)
-      : [];
     const loadedInbox = parseInboxResponse(inboxPayload);
     if (loadedInbox === undefined) {
       if (initialState === undefined)
@@ -465,7 +503,7 @@ export function App({
     });
     activeInboxProfileId.current = currentDashboard.profile.id;
     activeInboxRepositoryRef.current = currentDashboard.profile.repos?.[0];
-  }, [initialState]);
+  }, [initialState, updateInboxRequest]);
   const refreshInbox = useCallback(
     async (
       request: InboxRequestState = inboxRequestRef.current,

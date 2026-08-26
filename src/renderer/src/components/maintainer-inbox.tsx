@@ -13,8 +13,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
-  Save,
-  Trash2,
 } from "lucide-react";
 
 import {
@@ -30,7 +28,6 @@ import {
   type ReviewInitialSection,
 } from "../hooks/use-inbox-view";
 import { inboxQueues } from "@/inbox-queues";
-import type { InboxSort, SavedInboxView } from "@/inbox-view-preferences";
 import { formatInboxAge } from "@/inbox-refresh-scheduler";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
@@ -38,16 +35,6 @@ import {
   INBOX_PAGE_SIZES,
   type InboxPageSize,
 } from "../../../domain/maintainer-inbox";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,20 +47,10 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { Label } from "@/components/ui/label";
 import {
   Pagination,
   PaginationContent,
@@ -189,34 +166,18 @@ export function MaintainerInbox({
   const {
     view,
     search,
-    sort,
-    selectedRepos,
     selectedLabels,
     queueOpen,
     inspectorOpen,
-    savedViews,
-    saveViewOpen,
-    setSaveViewOpen,
-    savedViewName,
-    setSavedViewName,
-    deleteView,
-    setDeleteView,
     narrow,
     listRef,
-    repoItems,
     labelItems,
     visibleRows,
-    multipleRepositories,
     selected,
     triggerAction,
     selectView,
-    selectSavedView,
-    saveCurrentView,
-    removeSavedView,
     selectRow,
     changeSearch,
-    changeSort,
-    changeSelectedRepos,
     changeSelectedLabels,
     toggleQueue,
     toggleInspector,
@@ -248,14 +209,9 @@ export function MaintainerInbox({
         onToggleQueue={toggleQueue}
         search={search}
         onSearchChange={changeSearch}
-        repoItems={repoItems}
-        selectedRepos={selectedRepos}
-        onRepositoriesChange={changeSelectedRepos}
         labelItems={labelItems}
         selectedLabels={selectedLabels}
         onLabelChange={changeSelectedLabels}
-        sort={sort}
-        onSortChange={changeSort}
         visibleCount={visibleRows.length}
         scope={scope}
         listPending={listPending}
@@ -266,7 +222,6 @@ export function MaintainerInbox({
         listRef={listRef}
         visibleRows={visibleRows}
         selected={selected}
-        multipleRepositories={multipleRepositories}
         scope={scope}
         listPending={listPending}
         onKeyDown={onListKeyDown}
@@ -314,14 +269,9 @@ export function MaintainerInbox({
         <QueueRail
           rows={effectiveRows}
           view={view}
-          savedViews={savedViews}
-          selectedRepos={selectedRepos}
           selectedLabels={selectedLabels}
           open={queueOpen}
           onSelect={selectView}
-          onSelectSaved={selectSavedView}
-          onSaveCurrent={() => setSaveViewOpen(true)}
-          onDeleteSaved={setDeleteView}
           onToggle={toggleQueue}
         />
       ) : null}
@@ -337,21 +287,6 @@ export function MaintainerInbox({
         onAction={() =>
           selected === undefined ? undefined : triggerAction(selected)
         }
-      />
-      <SaveViewDialog
-        open={saveViewOpen}
-        onOpenChange={setSaveViewOpen}
-        profileLabel={profileLabel}
-        name={savedViewName}
-        onNameChange={setSavedViewName}
-        onSave={saveCurrentView}
-      />
-      <DeleteViewAlertDialog
-        deleteView={deleteView}
-        onOpenChange={(open) => {
-          if (!open) setDeleteView(undefined);
-        }}
-        onConfirm={removeSavedView}
       />
     </div>
   );
@@ -476,14 +411,9 @@ function InboxFiltersBar({
   onToggleQueue,
   search,
   onSearchChange,
-  repoItems,
-  selectedRepos,
-  onRepositoriesChange,
   labelItems,
   selectedLabels,
   onLabelChange,
-  sort,
-  onSortChange,
   visibleCount,
   scope,
   listPending,
@@ -494,21 +424,15 @@ function InboxFiltersBar({
   readonly onToggleQueue: () => void;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
-  readonly repoItems: ReadonlyArray<{ label: string; value: string }>;
-  readonly selectedRepos: ReadonlyArray<string>;
-  readonly onRepositoriesChange: (value: ReadonlyArray<string>) => void;
   readonly labelItems: ReadonlyArray<{ label: string; value: string }>;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onLabelChange: (value: ReadonlyArray<string>) => void;
-  readonly sort: InboxSort;
-  readonly onSortChange: (value: InboxSort) => void;
   readonly visibleCount: number;
   readonly scope: "open" | "merged";
   readonly listPending: boolean;
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
 }): React.JSX.Element {
-  const selectedRepoSet = new Set(selectedRepos);
   const selectedLabelSet = new Set(selectedLabels);
   return (
     <section
@@ -536,62 +460,6 @@ function InboxFiltersBar({
           aria-label="Filter pull requests"
         />
       </InputGroup>
-      {repoItems.length > 0 ? (
-        <Popover>
-          <PopoverTrigger
-            render={
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-w-28 max-w-40 justify-start text-xs"
-                aria-label="Filter by repository"
-              >
-                <span className="truncate">
-                  {repoFilterTriggerText(selectedRepos)}
-                </span>
-              </Button>
-            }
-          />
-          <PopoverContent align="start">
-            {selectedRepos.length > 0 ? (
-              <Button
-                variant="ghost"
-                size="xs"
-                className="mb-1 w-full justify-start"
-                onClick={() => onRepositoriesChange([])}
-              >
-                Clear
-              </Button>
-            ) : null}
-            <div className="max-h-64 overflow-y-auto">
-              <ul className="flex flex-col gap-0.5" aria-label="Repositories">
-                {repoItems.map((item) => {
-                  const checked = selectedRepoSet.has(item.value);
-                  return (
-                    <li key={item.value}>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs hover:bg-muted/50">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() =>
-                            onRepositoriesChange(
-                              checked
-                                ? selectedRepos.filter(
-                                    (value) => value !== item.value,
-                                  )
-                                : [...selectedRepos, item.value],
-                            )
-                          }
-                        />
-                        {item.label}
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </PopoverContent>
-        </Popover>
-      ) : null}
       {labelItems.length > 0 ? (
         <Popover>
           <PopoverTrigger
@@ -648,43 +516,6 @@ function InboxFiltersBar({
           </PopoverContent>
         </Popover>
       ) : null}
-      <Select
-        value={sort}
-        items={[
-          { label: "Priority", value: "priority" },
-          { label: "Last updated", value: "updated" },
-          { label: "Repository", value: "repository" },
-          { label: "Change size", value: "size" },
-        ]}
-        onValueChange={(value) => {
-          const next = inboxSortFrom(value);
-          if (next !== undefined) onSortChange(next);
-        }}
-      >
-        <SelectTrigger
-          size="sm"
-          className="min-w-28 text-xs"
-          aria-label="Sort pull requests"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectItem value="priority" className="text-xs">
-              Priority
-            </SelectItem>
-            <SelectItem value="updated" className="text-xs">
-              Last updated
-            </SelectItem>
-            <SelectItem value="repository" className="text-xs">
-              Repository
-            </SelectItem>
-            <SelectItem value="size" className="text-xs">
-              Change size
-            </SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
       <span className="text-[11px] tabular-nums text-muted-foreground">
         {listPending
           ? "Loading…"
@@ -712,13 +543,6 @@ function labelFilterTriggerText(selected: ReadonlyArray<string>): string {
   return `${selected.length} labels`;
 }
 
-/** Trigger copy for the repository filter: names the single selection, or a count once more than one is picked. */
-function repoFilterTriggerText(selected: ReadonlyArray<string>): string {
-  if (selected.length === 0) return "All repositories";
-  if (selected.length === 1) return selected[0] ?? "All repositories";
-  return `${selected.length} repositories`;
-}
-
 /** Placeholder row count shown by {@link InboxRowsPanel} while `listPending`
  * is true, matching the row-skeleton density the initial-load skeleton
  * (`maintainer-inbox-skeleton.tsx`) uses for the same purpose. */
@@ -735,7 +559,6 @@ function InboxRowsPanel({
   listRef,
   visibleRows,
   selected,
-  multipleRepositories,
   scope,
   listPending,
   onKeyDown,
@@ -745,7 +568,6 @@ function InboxRowsPanel({
   readonly listRef: React.RefObject<HTMLDivElement | null>;
   readonly visibleRows: ReadonlyArray<InboxRow>;
   readonly selected: InboxRow | undefined;
-  readonly multipleRepositories: boolean;
   readonly scope: "open" | "merged";
   readonly listPending: boolean;
   readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
@@ -798,7 +620,6 @@ function InboxRowsPanel({
                   key={key}
                   row={row}
                   selected={active}
-                  showRepository={multipleRepositories}
                   onSelect={() => onSelectRow(row)}
                   onAction={() => onActionRow(row)}
                 />
@@ -983,81 +804,6 @@ function ReviewDetailsPanel({
   );
 }
 
-function SaveViewDialog({
-  open,
-  onOpenChange,
-  profileLabel,
-  name,
-  onNameChange,
-  onSave,
-}: {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly profileLabel: string;
-  readonly name: string;
-  readonly onNameChange: (value: string) => void;
-  readonly onSave: () => void;
-}): React.JSX.Element {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Save current view</DialogTitle>
-          <DialogDescription>
-            Save the queue, filter, and sort locally for {profileLabel}.
-          </DialogDescription>
-        </DialogHeader>
-        <Label htmlFor="saved-view-name">View name</Label>
-        <Input
-          id="saved-view-name"
-          value={name}
-          onChange={(event) => onNameChange(event.target.value)}
-          placeholder="e.g. Waiting on customer"
-          autoFocus
-        />
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={onSave} disabled={name.trim().length === 0}>
-            <Save /> Save view
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function DeleteViewAlertDialog({
-  deleteView,
-  onOpenChange,
-  onConfirm,
-}: {
-  readonly deleteView: SavedInboxView | undefined;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly onConfirm: () => void;
-}): React.JSX.Element {
-  return (
-    <AlertDialog open={deleteView !== undefined} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete saved view?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This removes only the local shortcut. Pull requests and reviews are
-            unchanged.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={onConfirm}>
-            Delete view
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
 function InboxFreshness({
   snapshot,
   status,
@@ -1118,26 +864,16 @@ function InboxFreshness({
 function QueueRail({
   rows,
   view,
-  savedViews,
-  selectedRepos,
   selectedLabels,
   open,
   onSelect,
-  onSelectSaved,
-  onSaveCurrent,
-  onDeleteSaved,
   onToggle,
 }: {
   readonly rows: ReadonlyArray<InboxRow>;
   readonly view: InboxView;
-  readonly savedViews: ReadonlyArray<SavedInboxView>;
-  readonly selectedRepos: ReadonlyArray<string>;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly open: boolean;
   readonly onSelect: (view: InboxView) => void;
-  readonly onSelectSaved: (view: SavedInboxView) => void;
-  readonly onSaveCurrent: () => void;
-  readonly onDeleteSaved: (view: SavedInboxView) => void;
   readonly onToggle: () => void;
 }): React.JSX.Element {
   if (!open)
@@ -1199,53 +935,11 @@ function QueueRail({
               variant="outline"
               className="ml-2 h-4 min-w-4 px-1 text-[10px]"
             >
-              {viewCount(rows, item.id, selectedRepos, selectedLabels)}
+              {viewCount(rows, item.id, selectedLabels)}
             </Badge>
           </Button>
         ))}
       </nav>
-      <Separator className="my-1.5" />
-      <div className="flex items-center justify-between px-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          Saved views
-        </p>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={onSaveCurrent}
-          aria-label="Save current view"
-        >
-          <Save />
-        </Button>
-      </div>
-      <div className="space-y-0.5 px-2 pb-2">
-        {savedViews.length === 0 ? (
-          <p className="px-2 py-1 text-xs text-muted-foreground">
-            No saved views
-          </p>
-        ) : (
-          savedViews.map((item) => (
-            <div key={item.id} className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 min-w-0 flex-1 justify-start truncate text-xs"
-                onClick={() => onSelectSaved(item)}
-              >
-                {item.name}
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`Delete ${item.name} saved view`}
-                onClick={() => onDeleteSaved(item)}
-              >
-                <Trash2 />
-              </Button>
-            </div>
-          ))
-        )}
-      </div>
     </aside>
   );
 }
@@ -1253,13 +947,11 @@ function QueueRail({
 function InboxRowItem({
   row,
   selected,
-  showRepository,
   onSelect,
   onAction,
 }: {
   readonly row: InboxRow;
   readonly selected: boolean;
-  readonly showRepository: boolean;
   readonly onSelect: () => void;
   readonly onAction: () => void;
 }): React.JSX.Element {
@@ -1302,14 +994,6 @@ function InboxRowItem({
                 </Badge>
               ) : null}
             </div>
-            {showRepository ? (
-              <p
-                className="truncate text-[11px] leading-4 text-muted-foreground"
-                title={`${row.identity.owner}/${row.identity.repo}`}
-              >
-                {row.identity.owner}/{row.identity.repo}
-              </p>
-            ) : null}
             <PullRequestLabelColumn
               labels={row.labels}
               className="mt-1 min-[1280px]:hidden"
@@ -1582,10 +1266,9 @@ function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
 function viewCount(
   rows: ReadonlyArray<InboxRow>,
   view: InboxView,
-  selectedRepos: ReadonlyArray<string>,
   selectedLabels: ReadonlyArray<string>,
 ): number {
-  return filterRows(rows, view, "", selectedRepos, selectedLabels).length;
+  return filterRows(rows, view, "", selectedLabels).length;
 }
 function queueIndicatorClass(view: InboxView): string {
   switch (view) {
@@ -1622,15 +1305,6 @@ function relativeTime(iso: string): string {
   if (minutes < 60) return `${minutes}m`;
   if (minutes < 1_440) return `${Math.round(minutes / 60)}h`;
   return `${Math.round(minutes / 1_440)}d`;
-}
-const inboxSorts: ReadonlyArray<InboxSort> = [
-  "priority",
-  "updated",
-  "repository",
-  "size",
-];
-function inboxSortFrom(value: string | null): InboxSort | undefined {
-  return inboxSorts.find((sort) => sort === value);
 }
 function inboxPageSizeFrom(value: string | null): InboxPageSize | undefined {
   return INBOX_PAGE_SIZES.find((size) => String(size) === value);

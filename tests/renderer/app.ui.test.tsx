@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { parseContentHash } from "../../src/domain/ids";
 import { App, type ReviewWorkbenchLoader } from "../../src/renderer/src/app";
+import { saveInboxViewPreferences } from "../../src/renderer/src/inbox-view-preferences";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchFlowProps } from "../../src/renderer/src/flows/review-workbench-flow";
 
@@ -133,6 +134,43 @@ describe("App Review route loading", () => {
     await waitFor(() =>
       expect(paths.at(-1)).toBe("/v1/inbox?state=open&pageSize=10"),
     );
+  });
+
+  it("requests the saved page size once on mount, without a default-size fetch first", async () => {
+    saveInboxViewPreferences("profile", { pageSize: 10 });
+    const paths: string[] = [];
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async (input: { readonly path?: string }) => {
+          if (input.path?.startsWith("/v1/inbox")) paths.push(input.path);
+          return {
+            ok: true,
+            status: 200,
+            correlationId: "test",
+            body:
+              input.path === "/v1/profiles"
+                ? [
+                    {
+                      id: "profile",
+                      label: "Profile",
+                      githubHost: "github.com",
+                      ghAccount: "fixture",
+                    },
+                  ]
+                : input.path?.startsWith("/v1/inbox")
+                  ? { ...inbox(), inbox: { ...inbox().inbox, pageSize: 10 } }
+                  : {},
+          };
+        },
+        onNavigate: () => () => undefined,
+      },
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    // Exactly one request, already sized from the saved preference — not the
+    // default-size bootstrap request followed by a corrective refetch.
+    expect(paths).toEqual(["/v1/inbox?state=open&pageSize=10"]);
   });
 
   it("loads a restored Review through InboxFlow and keeps route callbacks", async () => {
