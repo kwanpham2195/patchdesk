@@ -1,8 +1,9 @@
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute, resolve, win32 } from "node:path";
 
 import { err, ok, type Result } from "../domain/result";
 import { isPathContained } from "../adapters/storage/path-containment";
+import { writeAtomicFile } from "../adapters/storage/json-file";
 
 export const MAX_ANALYSIS_INSPECTION_CALLS = 8;
 export const MAX_GIT_SHOW_BYTES = 512 * 1024;
@@ -182,11 +183,10 @@ export class ReviewInspector {
     } catch {
       /* Context owns the initial diagnostic artifact. */
     }
-    await writeFile(
+    await writeAtomicFile(
       this.input.debugPath,
       JSON.stringify({ ...this.debug(), profileRuleLoadFailureCount }, null, 2),
-      "utf8",
-    ).catch(() => undefined);
+    );
   }
 }
 

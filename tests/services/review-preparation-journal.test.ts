@@ -4,7 +4,6 @@ import {
   mkdtemp,
   readFile,
   rm,
-  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -102,13 +101,18 @@ async function writePersistedJournal(
   content: {
     readonly profileId: string;
     readonly sessionId: string;
-    readonly stagingRoot: string;
     readonly targets: ReadonlyArray<string>;
     readonly state?: "preparing" | "committing";
     readonly worktree?: {
       readonly path: string;
       readonly repositoryPath: string;
     };
+    // Only ever set by the "pre-existing on-disk journal" upgrade-path test
+    // below: `stagingRoot` was removed from `JournalContent` and its schema
+    // in M5, but a real journal written before that fix can still have this
+    // key on disk, and `journalContentSchema`'s `v.looseObject` must keep
+    // tolerating it rather than failing the whole journal closed.
+    readonly stagingRoot?: string;
   },
 ): Promise<void> {
   await mkdir(join(filePath, ".."), { recursive: true });
@@ -248,7 +252,6 @@ describe("ReviewPreparationJournal", () => {
     await writePersistedJournal(subject.journalFile, {
       profileId: subject.profileId,
       sessionId: subject.sessionId,
-      stagingRoot: join(subject.sessionDirectory, ".staging"),
       targets: [sentinel],
     });
 
@@ -267,7 +270,6 @@ describe("ReviewPreparationJournal", () => {
     await writePersistedJournal(subject.journalFile, {
       profileId: subject.profileId,
       sessionId: subject.sessionId,
-      stagingRoot: join(subject.sessionDirectory, ".staging"),
       targets: [
         join(
           subject.sessionDirectory,
@@ -290,49 +292,28 @@ describe("ReviewPreparationJournal", () => {
     await expectPresent(subject.journalFile);
   });
 
-  it("preserves a symlinked staging root and its outside sentinel", async () => {
+  it("reads and recovers a pre-existing on-disk journal that still has the removed stagingRoot field", async () => {
+    // M5 removed `stagingRoot` from `JournalContent` and its schema, but a
+    // real journal written before that fix can still have this key on disk
+    // after an upgrade. `journalContentSchema` uses `v.looseObject`, which
+    // tolerates the unrecognized key instead of failing the whole journal
+    // closed, so this journal must still read and recover exactly like one
+    // written in the current shape (no `schemaVersion` bump was needed).
     const subject = await fixture();
-    const sentinelDirectory = join(subject.root, "outside-symlink-sentinel");
-    const sentinel = join(sentinelDirectory, "sentinel");
-    await mkdir(sentinelDirectory, { recursive: true });
-    await writeFile(sentinel, "keep", "utf8");
-    await mkdir(subject.sessionDirectory, { recursive: true });
-    await symlink(
-      sentinelDirectory,
-      join(subject.sessionDirectory, ".staging"),
-    );
     await writePersistedJournal(subject.journalFile, {
       profileId: subject.profileId,
       sessionId: subject.sessionId,
+      targets: [],
+      // Legacy field: a real pre-upgrade journal would have this. The new
+      // code never reads it and must not choke on its presence.
       stagingRoot: join(subject.sessionDirectory, ".staging"),
-      targets: [],
     });
 
     await expect(
       ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
-    ).resolves.toEqual({ recovered: 0, failed: 1 });
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
 
-    await expectPresent(sentinel);
-    await expectPresent(subject.journalFile);
-  });
-
-  it("preserves an outside sentinel when the persisted staging root differs from the derived root", async () => {
-    const subject = await fixture();
-    const sentinel = join(subject.root, "outside-staging-sentinel");
-    await writeFile(sentinel, "keep", "utf8");
-    await writePersistedJournal(subject.journalFile, {
-      profileId: subject.profileId,
-      sessionId: subject.sessionId,
-      stagingRoot: sentinel,
-      targets: [],
-    });
-
-    await expect(
-      ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
-    ).resolves.toEqual({ recovered: 0, failed: 1 });
-
-    await expectPresent(sentinel);
-    await expectPresent(subject.journalFile);
+    await expect(access(subject.journalFile)).rejects.toThrow();
   });
 
   it("recovers an interrupted preparation by deleting only its derived Session paths", async () => {
@@ -344,30 +325,40 @@ describe("ReviewPreparationJournal", () => {
         subject.sessionId,
       ),
     );
-    const staged = join(journal.stagingRoot, "artifact.tmp");
     const target = subject.paths.preparedContextFile(
       subject.profileId,
       subject.sessionId,
     );
-    await mkdir(join(staged, ".."), { recursive: true });
+    // A `.staging` directory is never written by this file (confirmed by
+    // `git log -S`), and nothing derives or sweeps it anymore since M5
+    // removed `stagingRoot`. Creating one by hand here, alongside the
+    // recorded `target`, proves recovery leaves it alone rather than
+    // silently continuing to clean it up.
+    const untrackedStagingLeftover = join(
+      subject.sessionDirectory,
+      ".staging",
+      "artifact.tmp",
+    );
+    await mkdir(join(untrackedStagingLeftover, ".."), { recursive: true });
     await mkdir(join(target, ".."), { recursive: true });
-    await writeFile(staged, "staged", "utf8");
+    await writeFile(untrackedStagingLeftover, "staged", "utf8");
     await writeFile(target, "target", "utf8");
     expect((await journal.record(target))._tag).toBe("ok");
     expect(
       JSON.parse(await readFile(subject.journalFile, "utf8")),
-    ).toMatchObject({
-      stagingRoot: journal.stagingRoot,
-      targets: [target],
-    });
+    ).toMatchObject({ targets: [target] });
+    expect(
+      JSON.parse(await readFile(subject.journalFile, "utf8")),
+    ).not.toHaveProperty("stagingRoot");
 
     await expect(
       ReviewPreparationJournal.recover(subject.paths, worktrees(subject.paths)),
     ).resolves.toEqual({ recovered: 1, failed: 0 });
 
     await expect(access(target)).rejects.toThrow();
-    await expect(access(journal.stagingRoot)).rejects.toThrow();
     await expect(access(subject.journalFile)).rejects.toThrow();
+    // Not tracked as a deletion target, so recovery leaves it in place.
+    await expectPresent(untrackedStagingLeftover);
   });
 
   it("removes a committed journal while retaining its prepared artifacts", async () => {
@@ -431,7 +422,6 @@ describe("ReviewPreparationJournal", () => {
     await writePersistedJournal(subject.journalFile, {
       profileId: subject.profileId,
       sessionId: subject.sessionId,
-      stagingRoot: join(subject.sessionDirectory, ".staging"),
       targets: [target],
       state: "committing",
       worktree: { path: worktreePath, repositoryPath },
@@ -518,7 +508,6 @@ describe("ReviewPreparationJournal", () => {
         profileId: subject.profileId,
         sessionId: subject.sessionId,
         state: "preparing",
-        stagingRoot: join(subject.sessionDirectory, ".staging"),
         targets: [],
       }),
       "utf8",

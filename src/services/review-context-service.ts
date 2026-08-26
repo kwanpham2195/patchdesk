@@ -1,10 +1,13 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
 import { err, ok, type Result } from "../domain/result";
-import { containsSensitiveData } from "../adapters/storage/json-file";
+import {
+  containsSensitiveData,
+  writeAtomicFile,
+} from "../adapters/storage/json-file";
 
 export type ReviewContextFailure = { readonly _tag: "ReviewContextFailed" };
 type ProjectReviewCriterion = {
@@ -15,6 +18,16 @@ type ProjectReviewCriterion = {
 type LoadedProjectReviewCriteria = {
   readonly criteria: ReadonlyArray<ProjectReviewCriterion>;
   readonly failureCount: number;
+};
+
+type PackageSummary = {
+  readonly name?: string;
+  readonly packageManager?: string;
+};
+/** Mutable draft of `PackageSummary`, built in statements so each optional
+ * field is added only when present. */
+type MutablePackageSummary = {
+  -readonly [K in keyof PackageSummary]: PackageSummary[K];
 };
 
 const MAX_RULE_BYTES = 128 * 1024;
@@ -45,10 +58,7 @@ type ContextInput = {
 };
 
 /** Keeps the longest prefix of items whose compact JSON fits one byte budget. */
-function fitPrefix<T>(
-  items: ReadonlyArray<T>,
-  maxBytes: number,
-): { readonly kept: ReadonlyArray<T>; readonly dropped: number } {
+function fitPrefix<T>(items: ReadonlyArray<T>, maxBytes: number) {
   let bytes = 0;
   const kept: Array<T> = [];
   for (const item of items) {
@@ -150,13 +160,18 @@ export class ReviewContextService {
       const contextPath = join(input.preparedDirectory, "context.json");
       const reviewInputPath = join(input.preparedDirectory, "review-input.md");
       const debugPath = join(input.preparedDirectory, "debug.json");
-      await writeFile(contextPath, rendered, "utf8");
-      await writeFile(
+      const wroteContext = await writeAtomicFile(contextPath, rendered);
+      if (wroteContext._tag === "err")
+        return err({ _tag: "ReviewContextFailed" });
+      const wroteReviewInput = await writeAtomicFile(
         reviewInputPath,
         `# PR review input\n\nPR: ${input.pr.title}\nHead: ${input.pr.headSha}\nChanged files: ${input.changedFiles.length}\n`,
-        "utf8",
       );
-      await writeFile(
+      if (wroteReviewInput._tag === "err")
+        return err({ _tag: "ReviewContextFailed" });
+      // Best-effort, matching the pre-atomic-write behavior: a debug.json
+      // failure never fails preparation.
+      await writeAtomicFile(
         debugPath,
         JSON.stringify(
           {
@@ -168,8 +183,7 @@ export class ReviewContextService {
           null,
           2,
         ),
-        "utf8",
-      ).catch(() => undefined);
+      );
       return ok({
         contextPath,
         reviewInputPath,
@@ -222,21 +236,21 @@ export class ReviewContextService {
     return { criteria, failureCount };
   }
 
-  private async packageSummary(
-    worktreePath: string,
-  ): Promise<{ readonly name?: string; readonly packageManager?: string }> {
+  private async packageSummary(worktreePath: string): Promise<PackageSummary> {
     try {
       const raw: unknown = JSON.parse(
         await readFile(join(worktreePath, "package.json"), "utf8"),
       );
       if (typeof raw !== "object" || raw === null) return {};
+      // SAFETY: only `name` and `packageManager` are ever read off `item`,
+      // and each is type-checked below before use; an unexpected shape just
+      // means both stay absent from the returned summary.
       const item = raw as { name?: unknown; packageManager?: unknown };
-      return {
-        ...(typeof item.name === "string" ? { name: item.name } : {}),
-        ...(typeof item.packageManager === "string"
-          ? { packageManager: item.packageManager }
-          : {}),
-      };
+      const summary: MutablePackageSummary = {};
+      if (typeof item.name === "string") summary.name = item.name;
+      if (typeof item.packageManager === "string")
+        summary.packageManager = item.packageManager;
+      return summary;
     } catch {
       return {};
     }

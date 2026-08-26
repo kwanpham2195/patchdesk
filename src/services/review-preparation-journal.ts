@@ -57,7 +57,6 @@ type ValidatedDeletionSet = {
   readonly profileId: WorkspaceProfileId;
   readonly sessionId: ReviewSessionId;
   readonly journalFile: string;
-  readonly stagingRoot: string;
   readonly targets: ReadonlyArray<string>;
   readonly worktree?: JournalWorktree;
 };
@@ -79,7 +78,6 @@ type JournalContent = {
   readonly profileId: string;
   readonly sessionId: string;
   readonly state: "preparing" | "committing";
-  readonly stagingRoot: string;
   readonly targets: ReadonlyArray<string>;
   readonly worktree?: JournalWorktree;
 };
@@ -92,6 +90,13 @@ type JournalContent = {
  * already on disk: an unknown field never invalidated the journal before
  * this schema existed, and it still doesn't now, though only the fields
  * named below ever survive into a parsed `JournalContent`.
+ *
+ * This tolerance is also what lets a pre-existing on-disk journal written
+ * before `stagingRoot` was removed (M5) keep parsing today: `looseObject`
+ * ignores the now-unlisted `stagingRoot` key rather than rejecting it, and
+ * `toJournalContent` below never copies it into the narrower
+ * `JournalContent` shape, so the stale key is dropped the next time this
+ * journal is rewritten. No `schemaVersion` bump was needed for this removal.
  */
 const journalWorktreeSchema = v.looseObject({
   path: v.string(),
@@ -103,7 +108,6 @@ const journalContentSchema = v.looseObject({
   profileId: v.string(),
   sessionId: v.string(),
   state: v.picklist(["preparing", "committing"]),
-  stagingRoot: v.string(),
   targets: v.array(v.string()),
   worktree: v.optional(journalWorktreeSchema),
 });
@@ -132,7 +136,6 @@ function toJournalContent(
     profileId: parsed.profileId,
     sessionId: parsed.sessionId,
     state: parsed.state,
-    stagingRoot: parsed.stagingRoot,
     targets: parsed.targets,
   };
   if (worktree !== undefined) content.worktree = worktree;
@@ -173,22 +176,15 @@ export class ReviewPreparationJournal {
         _tag: "PreparationJournalFailed",
         reason: "journal_exists",
       });
-    const sessionDirectory = paths.sessionDirectory(profileId, sessionId);
-    const stagingRoot = join(sessionDirectory, ".staging");
     const journal = new ReviewPreparationJournal(paths, filePath, {
       schemaVersion: 1,
       profileId,
       sessionId,
       state: "preparing",
-      stagingRoot,
       targets: [],
     });
     const written = await journal.write();
     return written._tag === "ok" ? ok(journal) : written;
-  }
-
-  get stagingRoot(): string {
-    return this.content.stagingRoot;
   }
 
   get profileId(): WorkspaceProfileId {
@@ -316,9 +312,6 @@ export class ReviewPreparationJournal {
   async complete(): Promise<void> {
     const deletion = await this.validatedDeletionSet();
     if (deletion === undefined) return;
-    await rm(deletion.stagingRoot, { recursive: true, force: true }).catch(
-      () => undefined,
-    );
     await rm(deletion.journalFile, { force: true }).catch(() => undefined);
   }
 
@@ -340,11 +333,6 @@ export class ReviewPreparationJournal {
         failed = true;
       });
     }
-    await rm(deletion.stagingRoot, { recursive: true, force: true }).catch(
-      () => {
-        failed = true;
-      },
-    );
     if (
       deletion.worktree !== undefined &&
       (await exists(deletion.worktree.path))
@@ -559,27 +547,31 @@ export class ReviewPreparationJournal {
    * an `io` read failure, or a credential-shaped payload `readJsonFile`
    * refuses to hand back — so a later `begin()` retry (or a later
    * `recover()` sweep) is not permanently blocked by a file this process
-   * can never make sense of. Also removes that session's derived `.staging`
-   * directory: it is orphaned scratch space the same crash that corrupted
-   * the journal would have left behind, and its path is derivable from the
-   * profile/session ids without reading the journal's contents at all.
+   * can never make sense of.
    *
-   * Both deleted paths are reconstructed from ids parsed out of `filePath`'s
+   * This no longer also sweeps a `.staging` directory (M5 removed that).
+   * Code did once write there: commits `d7436e5` and `3da5372` passed
+   * `stagingDirectory: journal.stagingRoot` into
+   * `ReviewComparisonService.persist`, which wrote four artifacts under it
+   * (`review-comparison-service.ts:121`). That writer was removed in
+   * `e982d0d`, before this sweep was ever added, and this repo has no
+   * release tags — so no shipped build ever wrote there, and no user's
+   * disk can hold anything under `.staging` today.
+   *
+   * The deleted path is reconstructed from ids parsed out of `filePath`'s
    * own directory structure — the same derivation
    * `recordRecoveredJournalDiagnostic` uses — never from the unreadable
    * file's contents. If the derived ids don't reconstruct back to exactly
-   * `filePath`, or either path fails the containment check, nothing is
-   * deleted: an orphaned unreadable journal is a smaller problem than a
-   * wrong delete.
+   * `filePath`, or it fails the containment check, nothing is deleted: an
+   * orphaned unreadable journal is a smaller problem than a wrong delete.
    *
    * Trade-off: deleting a journal this process cannot parse means
    * discarding the record of which staged and final artifacts that
-   * preparation attempt had already written. Any of those already on disk
-   * (beyond `.staging`, whose path is safe to reclaim on derivation alone)
-   * are left in place, orphaned rather than tracked for cleanup. That is
-   * weighed against the alternative this fix replaces: a pull request that
-   * opens fine on `main` becoming permanently unopenable until a human
-   * deletes `preparation.journal.json` by hand.
+   * preparation attempt had already written. Those already on disk are left
+   * in place, orphaned rather than tracked for cleanup. That is weighed
+   * against the alternative this fix replaces: a pull request that opens
+   * fine on `main` becoming permanently unopenable until a human deletes
+   * `preparation.journal.json` by hand.
    */
   private static async recoverUnreadableJournal(
     paths: PatchdeskPaths,
@@ -593,16 +585,11 @@ export class ReviewPreparationJournal {
       ids.profileId,
       ids.sessionId,
     );
-    const stagingRoot = join(sessionDirectory, ".staging");
     if (
       !(await isSafeOwnedPath(paths.dataDirectory(), sessionDirectory, true)) ||
-      !(await isSafeOwnedPath(sessionDirectory, filePath, true)) ||
-      !(await isSafeOwnedPath(sessionDirectory, stagingRoot))
+      !(await isSafeOwnedPath(sessionDirectory, filePath, true))
     )
       return false;
-    await rm(stagingRoot, { recursive: true, force: true }).catch(
-      () => undefined,
-    );
     try {
       await rm(filePath, { force: true });
       return true;
@@ -640,12 +627,7 @@ export class ReviewPreparationJournal {
       profileId.value,
       sessionId.value,
     );
-    const expectedStagingRoot = join(sessionDirectory, ".staging");
-    if (
-      this.filePath !== expectedJournalFile ||
-      this.content.stagingRoot !== expectedStagingRoot
-    )
-      return undefined;
+    if (this.filePath !== expectedJournalFile) return undefined;
 
     if (
       !(await isSafeOwnedPath(
@@ -656,8 +638,6 @@ export class ReviewPreparationJournal {
     )
       return undefined;
     if (!(await isSafeOwnedPath(sessionDirectory, expectedJournalFile, true)))
-      return undefined;
-    if (!(await isSafeOwnedPath(sessionDirectory, expectedStagingRoot)))
       return undefined;
 
     const allowedTargets = new Set([
@@ -689,7 +669,6 @@ export class ReviewPreparationJournal {
       profileId: profileId.value,
       sessionId: sessionId.value,
       journalFile: expectedJournalFile,
-      stagingRoot: expectedStagingRoot,
       targets: this.content.targets,
     };
     if (this.content.worktree !== undefined)

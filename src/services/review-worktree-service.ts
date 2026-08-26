@@ -232,6 +232,22 @@ export class ReviewWorktreeService {
       }
       try {
         await mkdir(path, { recursive: true });
+        // Deliberately not `writeAtomicFile` (M5): this marker lives inside a
+        // git worktree, where `git worktree remove` refuses to run over any
+        // untracked file. This code already knows to `unlink(joinMetadata(path))`
+        // by its fixed name before removing the worktree; a temp-then-rename
+        // write would risk leaving a randomly-named `.tmp` sibling behind on a
+        // crash that this cleanup path can't find by name, newly blocking
+        // `git worktree remove` in a way plain `writeFile` never could. A
+        // write that throws here is already handled: `matchesMetadata`'s
+        // JSON.parse fails closed, and the `catch` below calls
+        // `removeCreatedWorktree`/`cleanup` to tear down the whole worktree.
+        // A crash mid-write is not the same case: nothing runs to tear the
+        // worktree down then. Atomicity would not help there either -- a
+        // crash during the write itself leaves no marker under either
+        // scheme -- and it would add a new failure mode of its own: an
+        // orphaned `.tmp` file in a directory that must stay clean of
+        // anything Git doesn't expect.
         await writeFile(
           joinMetadata(path),
           JSON.stringify({
@@ -346,6 +362,10 @@ export class ReviewWorktreeService {
     if (removed._tag === "ok") return ok(undefined);
     // Keep recovery able to prove ownership if Git could not remove the
     // worktree this time. The next cleanup attempt removes the marker again.
+    // Deliberately not `writeAtomicFile` (M5): same reasoning as the marker
+    // write in `register` above — this rewrites the same in-worktree file,
+    // and a stray temp file here would carry the identical
+    // `git worktree remove` risk.
     try {
       await writeFile(
         joinMetadata(input.targetPath),

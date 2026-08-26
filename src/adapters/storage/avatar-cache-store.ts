@@ -1,9 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 import type { WorkspaceProfileId } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
+import { writeAtomicFile } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
 export type AvatarCacheFailure = {
@@ -63,31 +63,10 @@ export async function writeAvatar(
   bytes: Uint8Array,
 ): Promise<Result<void, AvatarCacheFailure>> {
   const path = paths.avatarFile(profileId, avatarHash);
-  const directory = dirname(path);
-  const temporaryPath = join(
-    directory,
-    `.${basename(path)}.${randomUUID()}.tmp`,
-  );
-  let handle: Awaited<ReturnType<typeof open>> | undefined;
-  try {
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    handle = await open(temporaryPath, "wx", 0o600);
-    await handle.writeFile(bytes);
-    await handle.close();
-    handle = undefined;
-    await rename(temporaryPath, path);
-    return ok(undefined);
-  } catch {
-    if (handle !== undefined) {
-      await handle.close().catch(() => undefined);
-    }
-    await rm(temporaryPath, { force: true }).catch(() => undefined);
-    return err({
-      _tag: "AvatarCacheFailure",
-      operation: "write",
-      reason: "io",
-    });
-  }
+  const written = await writeAtomicFile(path, bytes);
+  return written._tag === "ok"
+    ? ok(undefined)
+    : err({ _tag: "AvatarCacheFailure", operation: "write", reason: "io" });
 }
 
 /**

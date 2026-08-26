@@ -1,10 +1,10 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import {
   createFetchedDiffRefs,
   type GitHubReader,
 } from "../adapters/github/github-adapter";
+import { writeAtomicFile } from "../adapters/storage/json-file";
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
@@ -471,14 +471,11 @@ export class ReviewSessionPreparation {
         _tag: "SessionStorageUnavailable",
       });
     const normalizedPatch = normalizeReviewPatch(diff.value);
-    try {
-      await mkdir(dirname(patchPath), { recursive: true });
-      await writeFile(patchPath, normalizedPatch, "utf8");
-    } catch {
+    const wrotePatch = await writeAtomicFile(patchPath, normalizedPatch);
+    if (wrotePatch._tag === "err")
       return await this.abort(input.journal, {
         _tag: "PreparationUnavailable",
       });
-    }
     // The canonical hash always comes from GitHub's compare rendering: when
     // there is no worktree, `diff` already is that rendering; otherwise it
     // is the extra `canonical` fetch above. A failed fetch or an unparsable

@@ -743,10 +743,11 @@ describe("ReviewSessionPreparation", () => {
     );
     const journalFile = join(sessionDirectory, "preparation.journal.json");
     await mkdir(sessionDirectory, { recursive: true });
-    // A journal whose `stagingRoot` doesn't match its derived location fails
-    // `validatedDeletionSet`, so recovery can never clear it (mirrors a
-    // journal recovery cannot fix, rather than one it legitimately clears).
-    // `begin()` must still see this file and refuse to overwrite it.
+    // A journal whose recorded target isn't one of the Session's known
+    // artifact paths fails `validatedDeletionSet`'s `allowedTargets` check,
+    // so recovery can never clear it (mirrors a journal recovery cannot fix,
+    // rather than one it legitimately clears). `begin()` must still see
+    // this file and refuse to overwrite it.
     await writeFile(
       journalFile,
       JSON.stringify({
@@ -754,8 +755,7 @@ describe("ReviewSessionPreparation", () => {
         profileId,
         sessionId,
         state: "preparing",
-        stagingRoot: join(sessionDirectory, "not-the-real-staging-root"),
-        targets: [],
+        targets: [join(sessionDirectory, "not-an-allowed-target")],
       }),
       "utf8",
     );
@@ -772,7 +772,7 @@ describe("ReviewSessionPreparation", () => {
     // The unrecoverable journal is still exactly what was written: the
     // retry gave up rather than looping or overwriting it.
     expect(await readFile(journalFile, "utf8")).toContain(
-      "not-the-real-staging-root",
+      "not-an-allowed-target",
     );
   });
 

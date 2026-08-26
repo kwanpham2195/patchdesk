@@ -51,6 +51,22 @@ export async function writeAtomicJson(
     return err(storageFailure("write", "invalid_stored_value"));
   }
 
+  return writeAtomicFile(path, `${serialized}\n`);
+}
+
+/**
+ * Persist raw contents to `path` through the same temp-file, fsync, rename,
+ * directory-fsync sequence every Patchdesk artifact write uses (per
+ * `docs/architecture.md`'s "Writes are atomic" promise): write to a
+ * sibling `.tmp` file, fsync the handle, rename it over the target, then
+ * best-effort fsync the containing directory so the rename itself survives
+ * a crash. The temp file is removed on any failure so a partial write never
+ * shows up as a stray sibling of `path`.
+ */
+export async function writeAtomicFile(
+  path: string,
+  contents: Uint8Array | string,
+): Promise<Result<void, StorageFailure>> {
   const directory = dirname(path);
   const temporaryPath = join(
     directory,
@@ -61,7 +77,11 @@ export async function writeAtomicJson(
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await chmod(directory, 0o700);
     handle = await open(temporaryPath, "wx", 0o600);
-    await handle.writeFile(`${serialized}\n`, "utf8");
+    if (typeof contents === "string") {
+      await handle.writeFile(contents, "utf8");
+    } else {
+      await handle.writeFile(contents);
+    }
     await syncBestEffort(handle);
     await handle.close();
     handle = undefined;

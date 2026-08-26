@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { open } from "node:fs/promises";
+import { join } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
+import { writeAtomicFile } from "../adapters/storage/json-file";
 import { err, ok, type Result } from "../domain/result";
 import {
   parseWorkspaceProfileId,
@@ -24,6 +25,12 @@ import {
 
 export type ReviewDiagnosticFailure = {
   readonly _tag: "ReviewDiagnosticStorageFailed";
+};
+
+/** Mutable draft of `ReviewSupportBundle`, built in statements so the
+ * optional `sessionId`/`metadata` fields are added only when present. */
+type MutableReviewSupportBundle = {
+  -readonly [K in keyof ReviewSupportBundle]: ReviewSupportBundle[K];
 };
 
 export type ReviewDiagnosticServiceOptions = {
@@ -137,16 +144,15 @@ export class ReviewDiagnosticService {
                 ? undefined
                 : parseReviewDiagnosticMetadata({ title });
             })();
-      return ok({
+      const bundle: MutableReviewSupportBundle = {
         schemaVersion: 1,
         generatedAt: this.now(),
         profileId: input.profileId,
-        ...(input.sessionId === undefined
-          ? {}
-          : { sessionId: input.sessionId }),
-        ...(metadata === undefined ? {} : { metadata }),
         events: events.value.slice(-this.maxEvents),
-      });
+      };
+      if (input.sessionId !== undefined) bundle.sessionId = input.sessionId;
+      if (metadata !== undefined) bundle.metadata = metadata;
+      return ok(bundle);
     });
   }
 
@@ -159,20 +165,14 @@ export class ReviewDiagnosticService {
     const loaded = await this.loadEvents(profileId.value);
     if (loaded._tag === "err") return loaded;
     const events = [...loaded.value, event].slice(-this.maxEvents);
-    try {
-      const path = diagnosticFile(this.paths, profileId.value);
-      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-      const temporaryPath = `${path}.${randomUUID()}.tmp`;
-      await writeFile(
-        temporaryPath,
-        `${events.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
-        { encoding: "utf8", mode: 0o600 },
-      );
-      await rename(temporaryPath, path);
-      return ok(event);
-    } catch {
-      return err({ _tag: "ReviewDiagnosticStorageFailed" });
-    }
+    const path = diagnosticFile(this.paths, profileId.value);
+    const written = await writeAtomicFile(
+      path,
+      `${events.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+    );
+    return written._tag === "ok"
+      ? ok(event)
+      : err({ _tag: "ReviewDiagnosticStorageFailed" });
   }
 
   private async loadEvents(
