@@ -6,6 +6,15 @@ import { INBOX_CACHE_REFUSE_AFTER_MS } from "../../src/domain/inbox-freshness-po
 import type { MaintainerInboxCache } from "../../src/adapters/storage/maintainer-inbox-cache-store";
 import type { StorageFailure } from "../../src/adapters/storage/json-file";
 
+// SAFETY: MaintainerInboxService reads only host/owner/repo off the
+// repository parameter; the plain strings stand in for the branded GitHub
+// identity types these fixtures never need to parse.
+const repository = {
+  host: "github.com",
+  owner: "centraldigital",
+  repo: "patchdesk",
+} as never;
+
 describe("MaintainerInboxService", () => {
   it("uses saved Review identity as the action authority", async () => {
     // SAFETY: test fixture narrows a partial mock (only the members
@@ -56,13 +65,7 @@ describe("MaintainerInboxService", () => {
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
-      service.list({
-        id: "cfw",
-        ghAccount: "fixture",
-        repos: [
-          { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-        ],
-      } as never),
+      service.list({ id: "cfw", ghAccount: "fixture" } as never, repository),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: { rows: [{ recommendedAction: { kind: "run_review" } }] },
@@ -127,14 +130,8 @@ describe("MaintainerInboxService", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     const result = await service.list(
-      {
-        id: "cfw",
-        ghAccount: "fixture",
-        repos: [
-          { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-        ],
-        // SAFETY: this minimal profile supplies exactly the fields list() reads.
-      } as never,
+      { id: "cfw", ghAccount: "fixture" } as never,
+      repository,
       { scope: "merged", pageSize: 25 },
     );
 
@@ -181,13 +178,7 @@ describe("MaintainerInboxService rate-limited reads", () => {
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
-      service.list({
-        id: "cfw",
-        ghAccount: "fixture",
-        repos: [
-          { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-        ],
-      } as never),
+      service.list({ id: "cfw", ghAccount: "fixture" } as never, repository),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
@@ -224,13 +215,10 @@ describe("MaintainerInboxService rate-limited reads", () => {
     );
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
-    const result = await service.list({
-      id: "cfw",
-      ghAccount: "fixture",
-      repos: [
-        { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-      ],
-    } as never);
+    const result = await service.list(
+      { id: "cfw", ghAccount: "fixture" } as never,
+      repository,
+    );
     expect(result).toMatchObject({
       _tag: "ok",
       value: { repositories: [{ state: "github_rate_limited" }] },
@@ -266,18 +254,20 @@ describe("MaintainerInboxService forbidden reads (plan 009)", () => {
     );
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
+    // SAFETY: this fixture repository matches the forbidden-owner profile
+    // this test exercises; plain strings stand in for branded GitHub types.
+    const forbiddenRepository = {
+      host: "github.com",
+      owner: "OmisePayments",
+      repo: "dynamic-onboarding-service",
+    } as never;
+    // SAFETY: test fixture narrows a partial profile mock to
+    // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
-      service.list({
-        id: "cfw",
-        ghAccount: "fixture",
-        repos: [
-          {
-            host: "github.com",
-            owner: "OmisePayments",
-            repo: "dynamic-onboarding-service",
-          },
-        ],
-      } as never),
+      service.list(
+        { id: "cfw", ghAccount: "fixture" } as never,
+        forbiddenRepository,
+      ),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
@@ -293,11 +283,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
   const now = "2026-08-01T04:00:00.000Z";
   // SAFETY: test fixture narrows a partial profile mock to
   // WorkspaceProfileConfig; only the fields the service reads are set.
-  const profile = {
-    id: "cfw",
-    ghAccount: "fixture",
-    repos: [{ host: "github.com", owner: "centraldigital", repo: "patchdesk" }],
-  } as never;
+  const profile = { id: "cfw", ghAccount: "fixture" } as never;
 
   function serviceWithCache(cache: {
     readonly read: () => Promise<Result<MaintainerInboxCache, StorageFailure>>;
@@ -327,10 +313,15 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
     ).toISOString();
     const service = serviceWithCache({
       read: async () =>
-        ok({ schemaVersion: 1, refreshedAt, rows: [], repositories: [] }),
+        ok({
+          schemaVersion: 1,
+          refreshedAt,
+          rows: [],
+          repository: { identity: repository, state: "ready", complete: true },
+        }),
       save: async () => ok(undefined),
     });
-    await expect(service.list(profile)).resolves.toMatchObject({
+    await expect(service.list(profile, repository)).resolves.toMatchObject({
       _tag: "ok",
       value: { snapshot: { state: "failed_cached" } },
     });
@@ -342,10 +333,15 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
     ).toISOString();
     const service = serviceWithCache({
       read: async () =>
-        ok({ schemaVersion: 1, refreshedAt, rows: [], repositories: [] }),
+        ok({
+          schemaVersion: 1,
+          refreshedAt,
+          rows: [],
+          repository: { identity: repository, state: "ready", complete: true },
+        }),
       save: async () => ok(undefined),
     });
-    await expect(service.list(profile)).resolves.toMatchObject({
+    await expect(service.list(profile, repository)).resolves.toMatchObject({
       _tag: "ok",
       value: { snapshot: { state: "stale_cached" } },
     });
@@ -361,7 +357,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
         }),
       save: async () => ok(undefined),
     });
-    await expect(service.list(profile)).resolves.toMatchObject({
+    await expect(service.list(profile, repository)).resolves.toMatchObject({
       _tag: "ok",
       value: { snapshot: { state: "unavailable" } },
     });
@@ -394,13 +390,10 @@ describe("MaintainerInboxService page token validation", () => {
     );
 
     // SAFETY: the minimal profile contains every field read by list().
-    const result = await service.list({
-      id: "cfw",
-      ghAccount: "fixture",
-      repos: [
-        { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-      ],
-    } as never);
+    const result = await service.list(
+      { id: "cfw", ghAccount: "fixture" } as never,
+      repository,
+    );
 
     expect(result._tag).toBe("ok");
     if (result._tag === "err") return;
@@ -410,14 +403,12 @@ describe("MaintainerInboxService page token validation", () => {
         "utf8",
       ),
     );
-    expect(token.repositories).toEqual([
-      {
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        cursor: "cursor-after-empty-page",
-      },
-    ]);
+    expect(token.repository).toEqual({
+      host: "github.com",
+      owner: "centraldigital",
+      repo: "patchdesk",
+    });
+    expect(token.cursor).toBe("cursor-after-empty-page");
   });
 
   it("rejects malformed tokens before reading GitHub", async () => {
@@ -442,15 +433,10 @@ describe("MaintainerInboxService page token validation", () => {
 
     await expect(
       service.list(
-        // SAFETY: the malformed-token path only reads the profile id, account,
-        // and watched repository identity supplied by this focused fixture.
-        {
-          id: "cfw",
-          ghAccount: "fixture",
-          repos: [
-            { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-          ],
-        } as never,
+        // SAFETY: the malformed-token path only reads the profile id and
+        // account supplied by this focused fixture.
+        { id: "cfw", ghAccount: "fixture" } as never,
+        repository,
         { scope: "open", pageSize: 25, pageToken: "not-a-page-token" },
       ),
     ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
@@ -476,15 +462,9 @@ describe("MaintainerInboxService page token validation", () => {
       { now: () => "2026-08-01T00:00:00.000Z" as never },
     );
 
-    // SAFETY: the malformed-token path only reads the profile id, account,
-    // and watched repository identity supplied by this focused fixture.
-    const profile = {
-      id: "cfw",
-      ghAccount: "fixture",
-      repos: [
-        { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-      ],
-    } as never;
+    // SAFETY: the malformed-token path only reads the profile id and account
+    // supplied by this focused fixture.
+    const profile = { id: "cfw", ghAccount: "fixture" } as never;
 
     // Mint a token by hand that records a size of 10, then request it back
     // at size 25 — the mismatch must be rejected before any GitHub read.
@@ -493,35 +473,86 @@ describe("MaintainerInboxService page token validation", () => {
         scope: "open",
         page: 2,
         size: 10,
-        repositories: [
-          { host: "github.com", owner: "centraldigital", repo: "patchdesk" },
-        ],
+        repository: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
       }),
     ).toString("base64url");
 
     await expect(
-      service.list(profile, {
+      service.list(profile, repository, {
         scope: "open",
         pageSize: 25,
         pageToken: tokenForSizeTen,
       }),
     ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
   });
+
+  it("rejects a page token minted for a different repository before any GitHub call", async () => {
+    const listMaintainerPullRequests = async (): Promise<never> => {
+      throw new Error(
+        "GitHub must not receive a token minted for a different repository",
+      );
+    };
+    // SAFETY: test fixture narrows partial collaborators to the exact
+    // dependency surface exercised before wrong-repository token rejection.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        listMaintainerPullRequests,
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: the wrong-repository-token path only reads the profile id and
+    // account supplied by this focused fixture.
+    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+
+    // Mint a token for a different repository than the one being requested.
+    const tokenForAnotherRepository = Buffer.from(
+      JSON.stringify({
+        scope: "open",
+        page: 2,
+        size: 25,
+        repository: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "some-other-repo",
+        },
+      }),
+    ).toString("base64url");
+
+    await expect(
+      service.list(profile, repository, {
+        scope: "open",
+        pageSize: 25,
+        pageToken: tokenForAnotherRepository,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+  });
 });
 
 describe("MaintainerInboxService page size", () => {
-  it("uses the requested page size as the global page limit when merging repository pages", async () => {
-    function summaryAt(
-      owner: string,
-      repo: string,
-      number: number,
-      updatedAt: string,
-    ) {
+  it("bounds the returned page to the requested page size", async () => {
+    function summaryAt(number: number, updatedAt: string) {
       return {
-        cursor: `${owner}-${repo}-${number}`,
+        cursor: `patchdesk-${number}`,
         pullRequest: {
           summary: {
-            ref: { host: "github.com", owner, repo, number },
+            ref: {
+              host: "github.com",
+              owner: "centraldigital",
+              repo: "patchdesk",
+              number,
+            },
             title: `PR ${number}`,
             author: "other",
             headSha: "a".repeat(40),
@@ -544,19 +575,15 @@ describe("MaintainerInboxService page size", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests: async (input: {
-          readonly repo: { readonly repo: string };
-        }) =>
+        listMaintainerPullRequests: async () =>
           ok({
-            // 6 rows per repository, newest first, so two watched
-            // repositories together offer 12 rows — more than any
-            // requested page size below.
-            entries: Array.from({ length: 6 }, (_, index) =>
+            // 12 fixture rows from the one Selected repository — more than
+            // the requested page size, proving the service still bounds the
+            // page rather than trusting the reader to honor pageSize.
+            entries: Array.from({ length: 12 }, (_, index) =>
               summaryAt(
-                "centraldigital",
-                input.repo.repo,
                 index + 1,
-                `2026-08-${String(9 - index).padStart(2, "0")}T00:00:00.000Z`,
+                `2026-08-${String(12 - index).padStart(2, "0")}T00:00:00.000Z`,
               ),
             ),
             hasNextPage: false,
@@ -571,26 +598,18 @@ describe("MaintainerInboxService page size", () => {
     );
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads;
-    // two watched repositories each return 6 fixture rows above.
-    const profile = {
-      id: "cfw",
-      ghAccount: "fixture",
-      repos: [
-        { host: "github.com", owner: "centraldigital", repo: "one" },
-        { host: "github.com", owner: "centraldigital", repo: "two" },
-      ],
-    } as never;
+    // the one Selected repository returns 12 fixture rows above.
+    const profile = { id: "cfw", ghAccount: "fixture" } as never;
 
-    const result = await service.list(profile, {
+    const result = await service.list(profile, repository, {
       scope: "open",
       pageSize: 10,
     });
 
     expect(result._tag).toBe("ok");
     if (result._tag !== "ok") return;
-    // 12 fixture rows across the two repositories, truncated to the
-    // requested page size of 10 rather than the old fixed 50 or the
-    // default 25.
+    // 12 fixture rows from the repository, truncated to the requested page
+    // size of 10 rather than the reader's own count.
     expect(result.value.rows).toHaveLength(10);
     expect(result.value.nextPageToken).toBeDefined();
     const token = JSON.parse(

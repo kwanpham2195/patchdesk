@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
 import {
@@ -378,6 +378,50 @@ describe("profile settings and dashboard services", () => {
         _tag: "ok",
         value: { state: "available" },
       });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns an empty ok inbox for an empty watchlist without reading GitHub (first-run screen)", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-inbox-empty-watchlist-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      const emptyWatchlistProfile = mustParse(
+        parseWorkspaceProfileConfig({ ...profile, repos: [] }),
+      );
+      await store.save(emptyWatchlistProfile);
+      const listMaintainerPullRequests = vi.fn(async (): Promise<never> => {
+        throw new Error("GitHub must not be read for an empty watchlist");
+      });
+      const controller = new DashboardController(
+        store,
+        // SAFETY: an empty watchlist has no repository to read, so
+        // inboxForActiveProfile must return before reaching any member of
+        // this fixture other than the one it deliberately throws from.
+        { listMaintainerPullRequests } as never,
+        undefined,
+        paths,
+      );
+
+      const result = await controller.inboxForActiveProfile({
+        scope: "open",
+        pageSize: 25,
+      });
+
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: {
+          inbox: {
+            rows: [],
+            repositories: [],
+            dataFreshness: "fresh",
+            snapshot: { state: "current" },
+          },
+        },
+      });
+      expect(listMaintainerPullRequests).not.toHaveBeenCalled();
     } finally {
       await rm(root, { recursive: true, force: true });
     }

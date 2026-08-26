@@ -256,7 +256,32 @@ export class DashboardController {
   > {
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
-    const inbox = await this.inboxRefresh.refresh(profile.value, input);
+    // Glue until slice 6 exposes the repository parameter on `GET /v1/inbox`:
+    // the Selected repository is the first watched repository. An empty
+    // watchlist has no repository to read. That must stay a successful,
+    // empty inbox rather than a failure: the renderer's first-run setup
+    // checklist (`inbox-flow.tsx`) only renders on screen state "empty",
+    // which requires an `ok` response, and a brand-new profile with no
+    // watched repositories is exactly the state that screen exists for.
+    // No GitHub call is made — there is no repository to read.
+    const repository = profile.value.repos[0];
+    if (repository === undefined)
+      return ok({
+        profile: profile.value,
+        inbox: {
+          scope: input.scope,
+          pageSize: input.pageSize,
+          rows: [],
+          repositories: [],
+          dataFreshness: "fresh",
+          snapshot: { state: "current" },
+        },
+      });
+    const inbox = await this.inboxRefresh.refresh(
+      profile.value,
+      repository,
+      input,
+    );
     if (inbox._tag === "err") return failure("invalid_input");
     return ok({ profile: profile.value, inbox: inbox.value });
   }

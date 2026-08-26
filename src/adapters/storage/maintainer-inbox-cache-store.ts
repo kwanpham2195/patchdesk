@@ -1,3 +1,5 @@
+import { dirname, join } from "node:path";
+
 import * as v from "valibot";
 
 import {
@@ -45,7 +47,7 @@ export type MaintainerInboxCache = {
   readonly schemaVersion: 1;
   readonly refreshedAt: string;
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
-  readonly repositories: ReadonlyArray<InboxCacheRepository>;
+  readonly repository: InboxCacheRepository;
 };
 
 const checkSchema = v.strictObject({
@@ -147,43 +149,65 @@ const cacheSchema = v.strictObject({
   schemaVersion: v.literal(1),
   refreshedAt: v.string(),
   rows: v.array(rowSchema),
-  repositories: v.array(
-    v.strictObject({
-      identity: v.strictObject({
-        host: v.string(),
-        owner: v.string(),
-        repo: v.string(),
-      }),
-      state: v.picklist([
-        "ready",
-        "github_auth",
-        "github_read",
-        "github_rate_limited",
-        "github_forbidden",
-        "no_open_prs",
-      ]),
-      complete: v.boolean(),
+  repository: v.strictObject({
+    identity: v.strictObject({
+      host: v.string(),
+      owner: v.string(),
+      repo: v.string(),
     }),
-  ),
+    state: v.picklist([
+      "ready",
+      "github_auth",
+      "github_read",
+      "github_rate_limited",
+      "github_forbidden",
+      "no_open_prs",
+    ]),
+    complete: v.boolean(),
+  }),
 });
 
-/** Persists only parsed, JSON-safe inbox reads; it never stores source, paths, credentials, or raw GitHub output. */
+/**
+ * Persists only parsed, JSON-safe inbox reads; it never stores source, paths,
+ * credentials, or raw GitHub output.
+ *
+ * One cache entry belongs to one profile and one watched repository — a
+ * single-repository read must not clobber another repository's cached rows —
+ * so the file name folds the repository identity in alongside the profile
+ * directory, as `inbox-v1__<host>__<owner>__<repo>.json`. `host`, `owner`,
+ * and `repo` are already validated path-safe slugs (see
+ * `parseGitHubOwner`/`parseGitHubRepoName` in `domain/ids.ts`), and `__` is
+ * the same repository-identity separator `reviewIdSyntax`/`sessionIdSyntax`
+ * already use elsewhere in this codebase.
+ */
 export class MaintainerInboxCacheStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
   async read(
     profileId: WorkspaceProfileId,
+    repository: Pick<PullRequestRef, "host" | "owner" | "repo">,
   ): Promise<Result<MaintainerInboxCache, StorageFailure>> {
-    const raw = await readJsonFile(this.paths.inboxCacheFile(profileId));
+    const raw = await readJsonFile(this.cacheFile(profileId, repository));
     if (raw._tag === "err") return raw;
     return parseMaintainerInboxCache(raw.value);
   }
 
   async save(
     profileId: WorkspaceProfileId,
+    repository: Pick<PullRequestRef, "host" | "owner" | "repo">,
     cache: MaintainerInboxCache,
   ): Promise<Result<void, StorageFailure>> {
-    return await writeAtomicJson(this.paths.inboxCacheFile(profileId), cache);
+    return await writeAtomicJson(this.cacheFile(profileId, repository), cache);
+  }
+
+  private cacheFile(
+    profileId: WorkspaceProfileId,
+    repository: Pick<PullRequestRef, "host" | "owner" | "repo">,
+  ): string {
+    return join(
+      dirname(this.paths.inboxCacheFile(profileId)),
+      `inbox-v1__${repository.host}__${repository.owner}__${repository.repo}.json`,
+    );
   }
 }
 
@@ -203,21 +227,17 @@ export function parseMaintainerInboxCache(
     if (parsed._tag === "err") return invalidCache();
     rows.push(parsed.value);
   }
-  const repositories: Array<InboxCacheRepository> = [];
-  for (const repository of raw.output.repositories) {
-    const identity = parseRepositoryIdentity(repository.identity);
-    if (identity._tag === "err") return invalidCache();
-    repositories.push({
-      identity: identity.value,
-      state: repository.state,
-      complete: repository.complete,
-    });
-  }
+  const identity = parseRepositoryIdentity(raw.output.repository.identity);
+  if (identity._tag === "err") return invalidCache();
   return ok({
     schemaVersion: 1,
     refreshedAt: refreshedAt.value,
     rows,
-    repositories,
+    repository: {
+      identity: identity.value,
+      state: raw.output.repository.state,
+      complete: raw.output.repository.complete,
+    },
   });
 }
 
