@@ -23,7 +23,7 @@ const dashboard = {
     githubHost: "github.com",
     ghAccount: "patchdesk",
   },
-  dashboard: { rows: [], repos: [] },
+  dashboard: { repos: [] },
 };
 
 afterEach(() => {

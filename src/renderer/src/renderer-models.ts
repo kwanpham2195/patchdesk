@@ -33,27 +33,9 @@ export type RepoOutcome = {
   readonly forbiddenReason?: string;
 };
 
-export type PrRow = {
-  readonly summary: {
-    readonly ref: {
-      readonly host: string;
-      readonly owner: string;
-      readonly repo: string;
-      readonly number: number;
-    };
-    readonly title: string;
-    readonly description?: string;
-    readonly author: string;
-    readonly checkSummary?: { readonly overall: string };
-  };
-  readonly priority: string;
-  readonly badges: ReadonlyArray<string>;
-};
-
 export type Dashboard = {
   readonly profile: Profile;
   readonly dashboard: {
-    readonly rows: ReadonlyArray<PrRow>;
     readonly repos: ReadonlyArray<RepoOutcome>;
   };
 };

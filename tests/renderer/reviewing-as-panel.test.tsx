@@ -334,7 +334,7 @@ function renderSettings(
 ): void {
   render(
     <SettingsFlow
-      dashboard={{ profile: activeProfile, dashboard: { rows: [], repos: [] } }}
+      dashboard={{ profile: activeProfile, dashboard: { repos: [] } }}
       appearance="system"
       onAppearanceChange={() => undefined}
       diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}

@@ -7,7 +7,6 @@ import {
 } from "../components/maintainer-inbox";
 import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -16,24 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
 import { Skeleton } from "../components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import { useBusy } from "../hooks/use-busy";
 import {
@@ -51,7 +33,6 @@ import type { SettingsSection } from "./settings-flow";
 import type {
   Dashboard,
   DashboardScreenState,
-  PrRow,
   RepoOutcome,
   WorkbenchPayload,
 } from "../renderer-models";
@@ -290,15 +271,11 @@ export function InboxFlow({
     return state === "loading" ? (
       <MaintainerInboxSkeleton />
     ) : (
-      <Pending
+      <BootstrapOutcome
         state={state}
-        {...(dashboard === undefined ? {} : { dashboard })}
-        {...(inbox === undefined ? {} : { inbox })}
-        {...(openedPr === undefined ? {} : { openedPr })}
-        {...(openError === undefined ? {} : { openError })}
-        onOpenRow={(pr) => void openPullRequest(pr)}
         onRefresh={onRefresh}
         onSettings={onSettings}
+        {...(openError === undefined ? {} : { openError })}
       />
     );
 
@@ -483,39 +460,36 @@ function InboxScreen({
   );
 }
 
-function Pending({
+/**
+ * Renders before the first inbox load has ever succeeded: the bootstrap
+ * failure ("no local API", the initial fetch throwing, or an unparsable
+ * response) and the first-run empty state. `dashboard` and `inbox` are
+ * always undefined here — `workspaceReducer`'s `loaded`/`refreshSucceeded`/
+ * `cleared` actions only ever set both together, so the gate that reaches
+ * this branch (`inbox === undefined || dashboard === undefined`, guarded
+ * against `state === "loading"`) can only be true when both are undefined.
+ */
+function BootstrapOutcome({
   state,
-  dashboard,
-  inbox,
   onRefresh,
   onSettings,
-  onOpenRow,
-  openedPr,
   openError,
 }: {
   readonly state: DashboardScreenState;
-  readonly dashboard?: Dashboard;
-  readonly inbox?: InboxResponse;
   readonly onRefresh: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
-  readonly onOpenRow: (pr: {
-    readonly host?: string;
-    readonly owner: string;
-    readonly repo: string;
-    readonly number: number;
-  }) => void;
-  readonly openedPr?: string;
+  /** Still reachable here: `InboxFlow` renders unkeyed at a stable position,
+   * so this locally-owned state survives a `cleared` dispatch that clears
+   * `dashboard`/`inbox`. A later `failed` dispatch only changes `screen`, so
+   * a stale error from before a profile switch can still be showing when
+   * this branch renders. */
   readonly openError?: string;
 }): React.JSX.Element {
-  const [selected, setSelected] = useState<PrRow | undefined>();
-  const [launchOpen, setLaunchOpen] = useState(false);
   return (
     <div className="mx-auto max-w-[112rem]">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">
-            {dashboard?.profile.label ?? "First run"}
-          </p>
+          <p className="text-sm text-muted-foreground">First run</p>
           <h1 className="text-2xl font-semibold tracking-tight">
             Maintainer inbox
           </h1>
@@ -532,168 +506,18 @@ function Pending({
           Refresh
         </Button>
       </header>
-      {openedPr ? (
-        <Alert className="mt-4">
-          <AlertTitle>Review opened</AlertTitle>
-          <AlertDescription>{openedPr}</AlertDescription>
-        </Alert>
-      ) : null}
-      {openError ? (
+      {openError === undefined ? null : (
         <Alert variant="destructive" className="mt-4">
           <AlertTitle>Could not open review</AlertTitle>
           <AlertDescription>{openError}</AlertDescription>
         </Alert>
-      ) : null}
-      {inbox?.inbox.dataFreshness === "cached" ? (
-        <Alert className="mt-4">
-          <AlertTitle>Cached inbox data</AlertTitle>
-          <AlertDescription>
-            GitHub could not be refreshed. Merge-oriented actions stay disabled
-            until current data is available.
-          </AlertDescription>
-        </Alert>
-      ) : null}
+      )}
       <Outcome
         state={state}
-        repos={dashboard?.dashboard.repos ?? []}
+        repos={[]}
         onRetry={onRefresh}
         onSettings={onSettings}
       />
-      <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="min-w-0">
-          <Table>
-            <TableCaption className="sr-only">
-              Pending pull requests in the active watchlist
-            </TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pull request</TableHead>
-                <TableHead>Repository</TableHead>
-                <TableHead>Author</TableHead>
-                <TableHead>Checks</TableHead>
-                <TableHead>Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {dashboard?.dashboard.rows.map((row) => (
-                <TableRow
-                  key={`${row.summary.ref.owner}/${row.summary.ref.repo}#${row.summary.ref.number}`}
-                  data-state={selected === row ? "selected" : undefined}
-                  className="cursor-pointer"
-                  onClick={() => setSelected(row)}
-                >
-                  <TableCell>
-                    <Button
-                      variant="link"
-                      className="h-auto min-h-6 justify-start p-0 text-left"
-                      onClick={() => setSelected(row)}
-                    >
-                      #{row.summary.ref.number} {row.summary.title}
-                    </Button>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.summary.ref.owner}/{row.summary.ref.repo}
-                  </TableCell>
-                  <TableCell>{row.summary.author}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {row.summary.checkSummary?.overall ?? "unknown"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">
-                      {row.badges[0] ?? row.priority}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>Review inspector</CardTitle>
-            <CardDescription>
-              Select a pull request to verify its exact identity before launch.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {selected === undefined ? (
-              <p className="text-sm text-muted-foreground">
-                No pull request selected.
-              </p>
-            ) : (
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Pull request
-                  </p>
-                  <p className="mt-1 font-medium">
-                    {selected.summary.ref.owner}/{selected.summary.ref.repo}#
-                    {selected.summary.ref.number}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Title
-                  </p>
-                  <p className="mt-1">{selected.summary.title}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {selected.badges.map((badge) => (
-                    <Badge key={badge} variant="secondary">
-                      {badge}
-                    </Badge>
-                  ))}
-                </div>
-                <Button className="w-full" onClick={() => setLaunchOpen(true)}>
-                  Run Analysis
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Analysis runs locally as evidence. GitHub writes remain
-                  separately confirmed.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-      <Dialog open={launchOpen} onOpenChange={setLaunchOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Run Analysis</DialogTitle>
-            <DialogDescription>
-              Confirm the exact pull request. Analysis produces evidence and
-              does not write to GitHub.
-            </DialogDescription>
-          </DialogHeader>
-          {selected === undefined ? null : (
-            <div className="rounded-lg border bg-muted p-4 text-sm">
-              <p className="font-medium">
-                {selected.summary.ref.owner}/{selected.summary.ref.repo}#
-                {selected.summary.ref.number}
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                {selected.summary.title}
-              </p>
-              <p className="mt-3">Profile: {dashboard?.profile.label}</p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLaunchOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (selected !== undefined) onOpenRow(selected.summary.ref);
-                setLaunchOpen(false);
-              }}
-            >
-              Start Analysis
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

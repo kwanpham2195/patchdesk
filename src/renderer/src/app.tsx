@@ -14,6 +14,7 @@ import { AppShell } from "./components/app-shell";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
 import { SettingsModal } from "./components/settings-modal";
+import { screenStateForInbox } from "./screen-state-for-inbox";
 import type {
   Dashboard,
   DashboardScreenState,
@@ -1410,16 +1411,6 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
       ...reposField,
     },
     dashboard: {
-      rows: inbox.inbox.rows.map((row) => ({
-        summary: {
-          ref: row.identity,
-          title: row.title,
-          author: row.author,
-          checkSummary: row.checks,
-        },
-        priority: row.categories[0] ?? "review",
-        badges: row.categories,
-      })),
       repos: inbox.inbox.repositories.map((outcome) => {
         const resumeAtField =
           outcome.resumeAt === undefined ? {} : { resumeAt: outcome.resumeAt };
@@ -1440,25 +1431,4 @@ function dashboardFromInbox(inbox: InboxResponse): Dashboard {
       }),
     },
   };
-}
-
-function screenStateForInbox(
-  inbox: InboxResponse,
-  dashboard: Dashboard,
-): DashboardScreenState {
-  const outcomes = dashboard.dashboard.repos.map((item) => item.state);
-  if (
-    outcomes.includes("github_auth") ||
-    outcomes.includes("github_read") ||
-    outcomes.includes("github_rate_limited") ||
-    outcomes.includes("github_forbidden")
-  )
-    return "error";
-  if (
-    inbox.inbox.state === "open" &&
-    outcomes.includes("no_open_prs") &&
-    dashboard.dashboard.rows.length === 0
-  )
-    return "no_open_prs";
-  return dashboard.dashboard.rows.length === 0 ? "empty" : "success";
 }

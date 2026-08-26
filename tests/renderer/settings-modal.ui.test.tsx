@@ -18,7 +18,7 @@ const profile = {
   rulePaths: ["/workspace/cfw/AGENTS.md"],
 };
 
-const dashboard = { profile, dashboard: { rows: [], repos: [] } };
+const dashboard = { profile, dashboard: { repos: [] } };
 
 afterEach(() => {
   cleanup();

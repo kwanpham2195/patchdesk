@@ -53,7 +53,7 @@ const dashboard: Dashboard = {
     githubHost: "github.com",
     ghAccount: "fixture",
   },
-  dashboard: { rows: [], repos: [] },
+  dashboard: { repos: [] },
 };
 
 const inbox = {
@@ -274,7 +274,6 @@ describe("InboxFlow rate-limited repo outcome", () => {
     const rateLimitedDashboard: Dashboard = {
       ...dashboard,
       dashboard: {
-        rows: [],
         repos: [
           {
             repo: { host: "github.com", owner: "owner", repo: "repo" },
@@ -314,7 +313,6 @@ describe("InboxFlow rate-limited repo outcome", () => {
     const rateLimitedDashboard: Dashboard = {
       ...dashboard,
       dashboard: {
-        rows: [],
         repos: [
           {
             repo: { host: "github.com", owner: "owner", repo: "repo" },
@@ -352,7 +350,6 @@ describe("InboxFlow forbidden repo outcome (plan 009)", () => {
     const forbiddenDashboard: Dashboard = {
       ...dashboard,
       dashboard: {
-        rows: [],
         repos: [
           {
             repo: {
@@ -396,7 +393,6 @@ describe("InboxFlow forbidden repo outcome (plan 009)", () => {
     const forbiddenDashboard: Dashboard = {
       ...dashboard,
       dashboard: {
-        rows: [],
         repos: [
           {
             repo: { host: "github.com", owner: "owner", repo: "repo" },
@@ -451,7 +447,6 @@ describe("InboxFlow settings targeting", () => {
     const authDashboard: Dashboard = {
       ...dashboard,
       dashboard: {
-        rows: [],
         repos: [
           {
             repo: { host: "github.com", owner: "owner", repo: "repo" },
@@ -604,5 +599,81 @@ describe("InboxFlow setup checklist", () => {
     // One from the "Confirm GitHub access" check, one from "Check local tools" —
     // each fetches its own state from a different endpoint.
     expect(guidance.length).toBe(2);
+  });
+});
+
+describe("InboxFlow bootstrap outcome open-error alert", () => {
+  it("keeps showing a stale 'Could not open review' error after the active profile clears and its reload fails", async () => {
+    const runReviewRow = {
+      ...savedRow,
+      recommendedAction: {
+        kind: "run_review" as const,
+        label: "Run review" as const,
+      },
+    };
+    // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
+    const runReviewInbox = {
+      ...inbox,
+      inbox: { ...inbox.inbox, rows: [runReviewRow] },
+    } as never;
+    Object.defineProperty(window, "patchdesk", {
+      configurable: true,
+      value: {
+        request: async (input: { readonly path: string }) => {
+          if (input.path === "/v1/reviews/open")
+            return {
+              ok: false,
+              status: 500,
+              correlationId: "open-fail",
+              body: { error: "unavailable" },
+            };
+          return { ok: true, status: 200, correlationId: input.path, body: {} };
+        },
+      },
+    });
+
+    const { rerender } = renderInboxFlow(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={dashboard}
+        inbox={runReviewInbox}
+        state="success"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("option"));
+
+    const expectedCopy =
+      "Could not prepare owner/repo#1. The requested service is currently unavailable.";
+    // Confirms the error landed in `InboxFlow`'s local `openError` state
+    // while `InboxScreen` (dashboard/inbox still defined) is what renders it.
+    await screen.findByText(expectedCopy);
+
+    // Simulates the profile switch that follows in the real app: a `cleared`
+    // dispatch clears `dashboard`/`inbox` and forces `screen: "loading"`,
+    // then a `failed` dispatch (the new profile's `loadWorkspace()` throwing)
+    // moves `screen` off `loading` without ever touching `openError` — it is
+    // `InboxFlow`-local state that survives because `InboxFlow` renders
+    // unkeyed at a stable position across this rerender.
+    rerender(
+      <BusyProvider>
+        <InboxFlow
+          destination="dashboard"
+          state="error"
+          refreshStatus="Current"
+          onRefresh={vi.fn()}
+          onSettings={vi.fn()}
+          onOpenWorkbench={vi.fn()}
+        />
+      </BusyProvider>,
+    );
+
+    expect(await screen.findByText("First run")).toBeTruthy();
+    expect(screen.getByText("Could not open review")).toBeTruthy();
+    expect(screen.getByText(expectedCopy)).toBeTruthy();
   });
 });
