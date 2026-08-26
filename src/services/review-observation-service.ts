@@ -144,7 +144,7 @@ export class ReviewObservationService {
     );
   }
 
-  /** Replay an interrupted observation without performing a new GitHub read. */
+  /** Replay an interrupted observation without a new GitHub read. */
   async recover(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
@@ -199,8 +199,7 @@ export class ReviewObservationService {
         review.updatedAt,
       );
       if (saved._tag === "err") return err({ reason: "storage" });
-      // Best effort: no further reconciliation will read the journal once a
-      // review is terminal; a clear failure must not fail this observation.
+      // Best effort, as above: a clear failure must not fail this observation.
       await this.dependencies.recentWrites.clear(
         input.profileId,
         input.reviewId,
@@ -515,7 +514,8 @@ export class ReviewObservationService {
       : err({ reason: "storage" });
   }
 
-  private async recoverUnlocked(input: {
+  /** Same recovery as `recover`, for a caller already holding `open`'s coordinator lock — retaking it here would deadlock (`withReviewLock` isn't re-entrant). */
+  async recoverUnlocked(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
   }): Promise<Result<ReviewObservation, ReviewObservationFailure>> {

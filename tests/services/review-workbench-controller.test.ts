@@ -80,6 +80,12 @@ function fixture(
     ),
   };
   const project = { loadRepresented: vi.fn(async () => ok(projection)) };
+  // `refreshUnlocked`/`recoverUnlocked` alias the same mock as their locked
+  // sibling by default: `open()`'s tree calls the Unlocked name (see
+  // review-workbench-controller.ts), everything else calls the locked name,
+  // and most tests don't care which was invoked, only that it was.
+  const refreshFn = vi.fn(async () => ok(projection));
+  const recoverFn = vi.fn(async () => ok(undefined));
   const lifecycle = {
     reviews: {
       load: vi.fn(async () => ok(review)),
@@ -95,9 +101,10 @@ function fixture(
     remote: { load: vi.fn(async () => ok(snapshot)) },
     journals: { load: vi.fn(async () => ok(undefined)) },
     recentWrites: { load: vi.fn(async () => ok([])) },
-    refresh: { refresh: vi.fn(async () => ok(projection)) },
+    refresh: { refresh: refreshFn, refreshUnlocked: refreshFn },
     observation: {
-      recover: vi.fn(async () => ok(undefined)),
+      recover: recoverFn,
+      recoverUnlocked: recoverFn,
       observe: vi.fn(async () => ok(undefined)),
     },
     coordinator: {
@@ -221,10 +228,6 @@ describe("ReviewWorkbenchController", () => {
   it("starts fresh automatically when an upgrade left the current session unavailable", async () => {
     let storedReview = review;
     let sessionAvailable = false;
-    let observedPreflight: (() => void) | undefined;
-    const preflight = new Promise<void>((resolve) => {
-      observedPreflight = resolve;
-    });
     const reviews = {
       async load() {
         return ok(storedReview);
@@ -236,7 +239,6 @@ describe("ReviewWorkbenchController", () => {
     };
     const sessions = {
       async load() {
-        observedPreflight?.();
         return sessionAvailable
           ? ok({ id: sessionId })
           : err({
@@ -252,20 +254,16 @@ describe("ReviewWorkbenchController", () => {
       ),
       quarantineReview: vi.fn(async () => ok({ entryName: "review.backup" })),
     };
-    const refresh = {
-      async refresh() {
-        storedReview = review;
-        return ok(projection);
-      },
-    };
-    const coordinator = new ReviewOperationCoordinator();
-    expect(coordinator.acquire(`${profileId}:${reviewId}`)).toBe(true);
+    const refreshFn = vi.fn(async () => {
+      storedReview = review;
+      return ok(projection);
+    });
+    const refresh = { refresh: refreshFn, refreshUnlocked: refreshFn };
     const value = fixture({
       reviews,
       sessions,
       artifacts,
       refresh,
-      coordinator,
     });
     value.preparation.prepare.mockImplementation(async () => {
       sessionAvailable = true;
@@ -286,9 +284,6 @@ describe("ReviewWorkbenchController", () => {
       repo: "patchdesk",
       number: 42,
     });
-    await preflight;
-    expect(artifacts.quarantineReview).not.toHaveBeenCalled();
-    coordinator.release(`${profileId}:${reviewId}`);
 
     await expect(opened).resolves.toEqual({ _tag: "ok", value: projection });
     expect(artifacts.quarantineIfPresent).toHaveBeenCalledWith(
@@ -347,15 +342,14 @@ describe("ReviewWorkbenchController", () => {
         return ok(undefined);
       }),
     };
-    const refresh = {
-      refresh: vi.fn(async () => {
-        storedReview = {
-          ...storedReview,
-          representedRemote,
-        };
-        return ok(projection);
-      }),
-    };
+    const refreshFn = vi.fn(async () => {
+      storedReview = {
+        ...storedReview,
+        representedRemote,
+      };
+      return ok(projection);
+    });
+    const refresh = { refresh: refreshFn, refreshUnlocked: refreshFn };
     const value = fixture({ sessions, artifacts, reviews, refresh });
     value.preparation.prepare.mockImplementation(async () => {
       savedSessions.set(replacementSession.id, replacementSession);
@@ -512,7 +506,8 @@ describe("ReviewWorkbenchController", () => {
   });
 
   it("requires terminal refresh before openMerged can return an existing writable Review", async () => {
-    const refresh = { refresh: vi.fn(async () => err({ reason: "terminal" })) };
+    const refreshFn = vi.fn(async () => err({ reason: "terminal" }));
+    const refresh = { refresh: refreshFn, refreshUnlocked: refreshFn };
     const value = fixture({ refresh });
 
     await expect(
@@ -651,4 +646,176 @@ describe("ReviewWorkbenchController", () => {
     });
     expect(value.lifecycle.reviews.load).not.toHaveBeenCalled();
   });
+
+  it("open() and refresh() serialize through the coordinator's own lock table, not a second open-only lock", async () => {
+    // Regression for the two-lock-table bug: on `main`, `open()` serializes
+    // through its own `openLocks` map while `refresh()` serializes through
+    // `ReviewOperationCoordinator`. Those are different tables over the same
+    // key, so a `refresh()` call concurrent with a blocked `open()` was free
+    // to proceed. Fixed, both go through the one coordinator lock.
+    const coordinator = new ReviewOperationCoordinator();
+    let releaseSave: (() => void) | undefined;
+    const savePending = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    let observedSaveEntered: (() => void) | undefined;
+    const saveEntered = new Promise<void>((resolve) => {
+      observedSaveEntered = resolve;
+    });
+    let created = false;
+    const reviews = {
+      load: vi.fn(async () =>
+        created ? ok(review) : err({ reason: "not_found" }),
+      ),
+      save: vi.fn(async () => {
+        observedSaveEntered?.();
+        await savePending;
+        created = true;
+        return ok(undefined);
+      }),
+    };
+    // Mirrors production wiring: `ReviewRefreshService.refresh` takes the
+    // same `ReviewOperationCoordinator` the controller does. This fake's
+    // locked `refresh` re-enters that same coordinator on the same key, so a
+    // concurrent `refresh()` call's first store read only runs once `open()`
+    // releases the lock.
+    const firstStoreRead = vi.fn(async () => ok(undefined));
+    const refresh = {
+      refresh: vi.fn(async (input: { profileId: string; reviewId: string }) =>
+        coordinator.withReviewLock(
+          input.profileId,
+          input.reviewId,
+          async () => {
+            await firstStoreRead();
+            return ok(projection);
+          },
+        ),
+      ),
+      refreshUnlocked: vi.fn(async () => ok(projection)),
+    };
+    const value = fixture({ reviews, refresh, coordinator });
+
+    const opened = value.controller.open({
+      profileId,
+      host: "github.com",
+      owner: "centraldigital",
+      repo: "patchdesk",
+      number: 42,
+    });
+    // open() is now blocked inside reviews.save, still holding the
+    // coordinator lock for this Review.
+    await saveEntered;
+
+    const refreshed = value.controller.refresh({ profileId, reviewId });
+    // Give a not-actually-blocked continuation room to run: every mock here
+    // resolves immediately, so a handful of microtask ticks is enough for
+    // refresh()'s first store read to fire if it were not queued behind
+    // open()'s held lock.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(firstStoreRead).not.toHaveBeenCalled();
+
+    releaseSave?.();
+    await opened;
+    await refreshed;
+    expect(firstStoreRead).toHaveBeenCalledOnce();
+  });
+
+  it("open() never re-enters its own coordinator lock while recovering, restarting, refreshing, or projecting", async () => {
+    // Safety net beyond the two lock sites the plan names: every method
+    // `open()`'s tree reaches (recoverObservation, restartUnusableReview,
+    // initializeSnapshot's refresh, projectStable) has an Unlocked sibling.
+    // Each "locked" fake below re-enters the *same* real coordinator on the
+    // same key `open()` already holds, so calling the wrong (locked)
+    // sibling from inside open()'s tree would hang this test rather than
+    // fail an assertion — the timeout race turns that hang into a fast,
+    // loud failure instead of stalling the suite.
+    const coordinator = new ReviewOperationCoordinator();
+    const recoverBody = vi.fn(async () =>
+      ok({ _tag: "Unchanged", detectedAt: at }),
+    );
+    const observation = {
+      observe: vi.fn(async () => ok(undefined)),
+      recover: vi.fn(async (input: { profileId: string; reviewId: string }) =>
+        coordinator.withReviewLock(input.profileId, input.reviewId, () =>
+          recoverBody(),
+        ),
+      ),
+      recoverUnlocked: vi.fn(async () => recoverBody()),
+    };
+    const refreshBody = vi.fn(async () => ok(projection));
+    const refresh = {
+      refresh: vi.fn(async (input: { profileId: string; reviewId: string }) =>
+        coordinator.withReviewLock(input.profileId, input.reviewId, () =>
+          refreshBody(),
+        ),
+      ),
+      refreshUnlocked: vi.fn(async () => refreshBody()),
+    };
+    // The current session is unreadable the first time (forces
+    // restartUnusableReview), then available once a fresh one is prepared.
+    let sessionAvailable = false;
+    const sessions = {
+      load: vi.fn(async () =>
+        sessionAvailable
+          ? ok({ id: sessionId })
+          : err({
+              _tag: "StorageFailure" as const,
+              operation: "read" as const,
+              reason: "not_found" as const,
+            }),
+      ),
+    };
+    const artifacts = {
+      quarantineIfPresent: vi.fn(async () =>
+        ok({ entryName: "session.backup" }),
+      ),
+      quarantineReview: vi.fn(async () => ok({ entryName: "review.backup" })),
+    };
+    // A journal is present only for open()'s own initial recovery check;
+    // restartOrKeepReview's and projectStableUnlocked's own journal checks
+    // (later calls) must see it already cleared.
+    const journals = {
+      load: vi
+        .fn()
+        .mockResolvedValueOnce(ok({ operation: "observe" }))
+        .mockResolvedValue(ok(undefined)),
+    };
+    const value = fixture({
+      observation,
+      refresh,
+      sessions,
+      artifacts,
+      journals,
+      coordinator,
+    });
+    value.preparation.prepare.mockImplementation(async () => {
+      sessionAvailable = true;
+      return ok({
+        session: { id: sessionId, key: { headSha, baseSha }, createdAt: at },
+      });
+    });
+
+    const timeout = new Promise<"timeout">((resolve) => {
+      setTimeout(() => resolve("timeout"), 1000);
+    });
+    const opened = value.controller.open({
+      profileId,
+      host: "github.com",
+      owner: "centraldigital",
+      repo: "patchdesk",
+      number: 42,
+    });
+    const winner = await Promise.race([
+      opened.then(() => "opened" as const),
+      timeout,
+    ]);
+
+    expect(winner).toBe("opened");
+    expect(recoverBody).toHaveBeenCalledOnce();
+    expect(refreshBody).toHaveBeenCalledOnce();
+    expect(observation.recover).not.toHaveBeenCalled();
+    expect(refresh.refresh).not.toHaveBeenCalled();
+  }, 2000);
 });

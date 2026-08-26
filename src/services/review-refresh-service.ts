@@ -460,284 +460,282 @@ export class ReviewRefreshService {
     /** Terminal-only opening requires merged evidence at the final authoritative read. */
     readonly expectedTerminalState?: "merged";
   }): Promise<Result<unknown, ReviewRefreshFailure>> {
-    return this.serialized<unknown>(
-      input.profileId,
-      input.reviewId,
-      async () => {
-        const loaded = await this.loadReview(input.profileId, input.reviewId);
-        if (loaded._tag === "err") return loaded;
-        const { review, profile } = loaded.value;
-        if (review.status._tag === "Terminal")
-          return err({ reason: "terminal" });
-        const currentSession = await this.dependencies.sessions.load(
-          input.profileId,
-          review.currentSessionId,
-        );
-        if (currentSession._tag === "err") {
-          return currentSession.error.reason === "not_found"
-            ? err({ reason: "not_found" })
-            : err({ reason: "storage" });
-        }
-        if (currentSession.value.id !== review.currentSessionId)
-          return err({ reason: "storage" });
-        if (
-          currentSession.value.key.profileId !== review.identity.profileId ||
-          currentSession.value.key.host !== review.identity.host ||
-          currentSession.value.key.owner !== review.identity.owner ||
-          currentSession.value.key.repo !== review.identity.repo ||
-          currentSession.value.key.prNumber !== review.identity.prNumber
-        ) {
-          return err({ reason: "storage" });
-        }
-        if (currentSession.value.key.headSha !== review.currentHeadSha)
-          return err({ reason: "head_changed" });
-        const pullRequest = ref(review);
-        const current = await this.dependencies.github.getPullRequest({
-          profile,
-          pr: pullRequest,
-        });
-        if (current._tag === "err") return err({ reason: "github_read" });
-        if (input.expectedTerminalState === "merged" && current.value.isOpen)
-          return err({ reason: "terminal" });
-        const currentRevision = reviewRevisionOf(current.value);
-        if (currentRevision === undefined)
-          return err({ reason: "github_read" });
-        const [
-          comments,
-          commits,
-          checks,
-          conversation,
-          mergePolicy,
-          publishedFeedback,
-          policyEvidence,
-        ] = await Promise.all([
-          this.dependencies.github.getPullRequestComments({
-            profile,
-            pr: pullRequest,
-          }),
-          this.dependencies.github.getPullRequestCommits({
-            profile,
-            pr: pullRequest,
-          }),
-          this.dependencies.github.getPullRequestChecks({
-            profile,
-            pr: pullRequest,
-            headSha: current.value.headSha,
-          }),
-          this.dependencies.github.loadConversation({
-            profile,
-            pr: pullRequest,
-          }),
-          this.dependencies.github.getMergePolicy({
-            profile,
-            pr: pullRequest,
-            expectedHeadSha: current.value.headSha,
-          }),
-          this.dependencies.github.getPullRequestPublishedFeedback === undefined
-            ? Promise.resolve(ok(undefined))
-            : this.dependencies.github.getPullRequestPublishedFeedback({
-                profile,
-                pr: pullRequest,
-              }),
-          this.dependencies.github.getMergePolicyEvidence === undefined
-            ? Promise.resolve(ok(undefined))
-            : this.dependencies.github.getMergePolicyEvidence({
-                profile,
-                pr: pullRequest,
-                branch: current.value.baseBranch,
-              }),
-        ]);
-        if (
-          comments._tag === "err" ||
-          commits._tag === "err" ||
-          checks._tag === "err" ||
-          conversation._tag === "err" ||
-          mergePolicy._tag === "err" ||
-          publishedFeedback._tag === "err"
-        )
-          return err({ reason: "github_read" });
-        const verified = await this.dependencies.github.getPullRequest({
-          profile,
-          pr: pullRequest,
-        });
-        if (verified._tag === "err") return err({ reason: "github_read" });
-        const verifiedRevision = reviewRevisionOf(verified.value);
-        if (
-          verifiedRevision === undefined ||
-          !sameReviewRevision(verifiedRevision, currentRevision)
-        )
-          return err({ reason: "head_changed" });
-        if (input.expectedTerminalState === "merged" && verified.value.isOpen)
-          return err({ reason: "terminal" });
-        const expectedTerminal =
-          input.expectedTerminalState === "merged"
-            ? await this.authoritativeMergedTerminalState(profile, pullRequest)
-            : undefined;
-        if (expectedTerminal?._tag === "err") return expectedTerminal;
-        const candidateBase = {
-          schemaVersion: 1 as const,
-          pullRequest: current.value,
-          comments: comments.value,
-          commits: commits.value,
-          checks: checks.value,
-          conversation: conversation.value,
-          mergePolicy: mergePolicy.value,
-          mergeEvidence: toMergeEvidence(
-            mergePolicy.value,
-            policyEvidence._tag === "ok" ? policyEvidence.value : undefined,
-          ),
-        };
-        const candidate: ReviewRemoteSnapshot =
-          publishedFeedback.value === undefined
-            ? candidateBase
-            : { ...candidateBase, publishedFeedback: publishedFeedback.value };
-        const savedCandidate = await this.dependencies.remote.saveCandidate({
-          profileId: input.profileId,
-          reviewId: input.reviewId,
-          snapshot: candidate,
-        });
-        if (savedCandidate._tag === "err") {
-          const saveFailureMeta =
-            savedCandidate.error.issuePath === undefined
-              ? {
-                  reviewId: input.reviewId,
-                  operation: savedCandidate.error.operation,
-                  reason: savedCandidate.error.reason,
-                }
-              : {
-                  reviewId: input.reviewId,
-                  operation: savedCandidate.error.operation,
-                  reason: savedCandidate.error.reason,
-                  issuePath: savedCandidate.error.issuePath,
-                };
-          this.dependencies.log?.write({
-            process: "main",
-            level: "error",
-            topic: "review-refresh",
-            message:
-              "remote candidate save failed; reported to caller as storage",
-            profileId: input.profileId,
-            meta: saveFailureMeta,
-          });
-          return err({ reason: "storage" });
-        }
-        // Best effort, always: a slow, failed, or offline avatar fetch must
-        // never fail this refresh. AvatarSyncService already swallows every
-        // per-avatar failure internally; the try/catch here is defense in
-        // depth against a misbehaving injected dependency.
-        try {
-          await this.dependencies.avatars?.syncCommentAuthors({
-            profileId: input.profileId,
-            snapshot: candidate,
-          });
-        } catch {
-          // Decorative only; ignored.
-        }
-        let sessionId = review.currentSessionId;
-        let selectedSession = currentSession.value;
-        if (!sameReviewRevision(currentSession.value.key, currentRevision)) {
-          const prepared = await this.dependencies.preparation.prepare(
-            input.expectedTerminalState === undefined
-              ? { profileId: input.profileId, pullRequest }
-              : {
-                  profileId: input.profileId,
-                  pullRequest,
-                  expectedPullRequestState: "non_open",
-                },
-          );
-          if (prepared._tag === "err")
-            return mapPreparationFailure(
-              prepared.error._tag,
-              this.dependencies.log,
-            );
-          if (!sameReviewRevision(prepared.value.session.key, currentRevision))
-            return err({ reason: "head_changed" });
-          const persisted = await this.dependencies.sessions.save(
-            prepared.value.session,
-          );
-          if (persisted._tag === "err") return err({ reason: "storage" });
-          sessionId = prepared.value.session.id;
-          selectedSession = prepared.value.session;
-        }
-        const representedRemote = {
-          headSha: current.value.headSha,
-          pullRequestUpdatedAt: latestRepresentedMoment(
-            current.value,
-            comments.value,
-            publishedFeedback.value,
-          ),
-          snapshotHash: savedCandidate.value.snapshotHash,
-          refreshedAt: this.dependencies.now(),
-        };
-        const advanced = moveReviewToSession(review, {
-          sessionId,
-          headSha: current.value.headSha,
-          representedRemote,
-          updatedAt: representedRemote.refreshedAt,
-        });
-        if (advanced._tag === "err") return err({ reason: "terminal" });
-        const terminalState =
-          expectedTerminal === undefined && !current.value.isOpen
-            ? await this.authoritativeTerminalState(profile, pullRequest)
-            : undefined;
-        if (terminalState?._tag === "err")
-          return err({ reason: "github_read" });
-        const authoritative =
-          expectedTerminal !== undefined
-            ? markReviewTerminal(
-                advanced.value,
-                expectedTerminal.value,
-                representedRemote.refreshedAt,
-              )
-            : terminalState?.value === undefined
-              ? advanced.value
-              : markReviewTerminal(
-                  advanced.value,
-                  terminalState.value,
-                  representedRemote.refreshedAt,
-                );
-        const savedReview = await this.dependencies.reviews.save(
-          authoritative,
-          review.updatedAt,
-        );
-        if (savedReview._tag === "err") return err({ reason: "storage" });
-        // Best effort: an explicit refresh always fully re-baselines
-        // representedRemote, so the own-write journal has nothing left to
-        // protect. A clear failure must not fail the refresh itself.
-        await this.dependencies.recentWrites.clear(
-          input.profileId,
-          input.reviewId,
-        );
-        if (this.dependencies.project === undefined)
-          return ok({ review: authoritative, sessionId, snapshot: candidate });
-        // Explicit refresh reconciles the viewer's pending review; a failed read
-        // is unavailable in the projection, never a claim that none exists.
-        const reconciled =
-          await this.dependencies.pendingReview.reconcileWithinReviewLock({
-            profileId: input.profileId,
-            reviewId: input.reviewId,
-          });
-        // SAFETY: `{ _tag: "None" }` is a literal, complete member of the
-        // PendingReviewState union (no other fields required).
-        const noPendingReview = { _tag: "None" } as PendingReviewState;
-        const pendingReview = {
-          state:
-            reconciled._tag === "ok"
-              ? reconciled.value.state
-              : (selectedSession.pendingReview ?? noPendingReview),
-          unavailable: reconciled._tag !== "ok" || reconciled.value.unavailable,
-        };
-        const projected = await this.dependencies.project({
-          profileId: input.profileId,
-          sessionId,
-          snapshot: candidate,
-          freshness: authoritative.freshness,
-          refreshedAt: representedRemote.refreshedAt,
-          pendingReview,
-        });
-        return projected._tag === "ok" ? projected : err({ reason: "storage" });
-      },
+    return this.serialized<unknown>(input.profileId, input.reviewId, () =>
+      this.refreshUnlocked(input),
     );
+  }
+
+  /** Same refresh as `refresh`, for a caller already holding `open`'s coordinator lock — retaking it here would deadlock (`withReviewLock` isn't re-entrant). */
+  async refreshUnlocked(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly expectedTerminalState?: "merged";
+  }): Promise<Result<unknown, ReviewRefreshFailure>> {
+    const loaded = await this.loadReview(input.profileId, input.reviewId);
+    if (loaded._tag === "err") return loaded;
+    const { review, profile } = loaded.value;
+    if (review.status._tag === "Terminal") return err({ reason: "terminal" });
+    const currentSession = await this.dependencies.sessions.load(
+      input.profileId,
+      review.currentSessionId,
+    );
+    if (currentSession._tag === "err") {
+      return currentSession.error.reason === "not_found"
+        ? err({ reason: "not_found" })
+        : err({ reason: "storage" });
+    }
+    if (currentSession.value.id !== review.currentSessionId)
+      return err({ reason: "storage" });
+    if (
+      currentSession.value.key.profileId !== review.identity.profileId ||
+      currentSession.value.key.host !== review.identity.host ||
+      currentSession.value.key.owner !== review.identity.owner ||
+      currentSession.value.key.repo !== review.identity.repo ||
+      currentSession.value.key.prNumber !== review.identity.prNumber
+    ) {
+      return err({ reason: "storage" });
+    }
+    if (currentSession.value.key.headSha !== review.currentHeadSha)
+      return err({ reason: "head_changed" });
+    const pullRequest = ref(review);
+    const current = await this.dependencies.github.getPullRequest({
+      profile,
+      pr: pullRequest,
+    });
+    if (current._tag === "err") return err({ reason: "github_read" });
+    if (input.expectedTerminalState === "merged" && current.value.isOpen)
+      return err({ reason: "terminal" });
+    const currentRevision = reviewRevisionOf(current.value);
+    if (currentRevision === undefined) return err({ reason: "github_read" });
+    const [
+      comments,
+      commits,
+      checks,
+      conversation,
+      mergePolicy,
+      publishedFeedback,
+      policyEvidence,
+    ] = await Promise.all([
+      this.dependencies.github.getPullRequestComments({
+        profile,
+        pr: pullRequest,
+      }),
+      this.dependencies.github.getPullRequestCommits({
+        profile,
+        pr: pullRequest,
+      }),
+      this.dependencies.github.getPullRequestChecks({
+        profile,
+        pr: pullRequest,
+        headSha: current.value.headSha,
+      }),
+      this.dependencies.github.loadConversation({
+        profile,
+        pr: pullRequest,
+      }),
+      this.dependencies.github.getMergePolicy({
+        profile,
+        pr: pullRequest,
+        expectedHeadSha: current.value.headSha,
+      }),
+      this.dependencies.github.getPullRequestPublishedFeedback === undefined
+        ? Promise.resolve(ok(undefined))
+        : this.dependencies.github.getPullRequestPublishedFeedback({
+            profile,
+            pr: pullRequest,
+          }),
+      this.dependencies.github.getMergePolicyEvidence === undefined
+        ? Promise.resolve(ok(undefined))
+        : this.dependencies.github.getMergePolicyEvidence({
+            profile,
+            pr: pullRequest,
+            branch: current.value.baseBranch,
+          }),
+    ]);
+    if (
+      comments._tag === "err" ||
+      commits._tag === "err" ||
+      checks._tag === "err" ||
+      conversation._tag === "err" ||
+      mergePolicy._tag === "err" ||
+      publishedFeedback._tag === "err"
+    )
+      return err({ reason: "github_read" });
+    const verified = await this.dependencies.github.getPullRequest({
+      profile,
+      pr: pullRequest,
+    });
+    if (verified._tag === "err") return err({ reason: "github_read" });
+    const verifiedRevision = reviewRevisionOf(verified.value);
+    if (
+      verifiedRevision === undefined ||
+      !sameReviewRevision(verifiedRevision, currentRevision)
+    )
+      return err({ reason: "head_changed" });
+    if (input.expectedTerminalState === "merged" && verified.value.isOpen)
+      return err({ reason: "terminal" });
+    const expectedTerminal =
+      input.expectedTerminalState === "merged"
+        ? await this.authoritativeMergedTerminalState(profile, pullRequest)
+        : undefined;
+    if (expectedTerminal?._tag === "err") return expectedTerminal;
+    const candidateBase = {
+      schemaVersion: 1 as const,
+      pullRequest: current.value,
+      comments: comments.value,
+      commits: commits.value,
+      checks: checks.value,
+      conversation: conversation.value,
+      mergePolicy: mergePolicy.value,
+      mergeEvidence: toMergeEvidence(
+        mergePolicy.value,
+        policyEvidence._tag === "ok" ? policyEvidence.value : undefined,
+      ),
+    };
+    const candidate: ReviewRemoteSnapshot =
+      publishedFeedback.value === undefined
+        ? candidateBase
+        : { ...candidateBase, publishedFeedback: publishedFeedback.value };
+    const savedCandidate = await this.dependencies.remote.saveCandidate({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      snapshot: candidate,
+    });
+    if (savedCandidate._tag === "err") {
+      const saveFailureMeta =
+        savedCandidate.error.issuePath === undefined
+          ? {
+              reviewId: input.reviewId,
+              operation: savedCandidate.error.operation,
+              reason: savedCandidate.error.reason,
+            }
+          : {
+              reviewId: input.reviewId,
+              operation: savedCandidate.error.operation,
+              reason: savedCandidate.error.reason,
+              issuePath: savedCandidate.error.issuePath,
+            };
+      this.dependencies.log?.write({
+        process: "main",
+        level: "error",
+        topic: "review-refresh",
+        message: "remote candidate save failed; reported to caller as storage",
+        profileId: input.profileId,
+        meta: saveFailureMeta,
+      });
+      return err({ reason: "storage" });
+    }
+    // Best effort, always: a slow, failed, or offline avatar fetch must
+    // never fail this refresh. AvatarSyncService already swallows every
+    // per-avatar failure internally; the try/catch here is defense in
+    // depth against a misbehaving injected dependency.
+    try {
+      await this.dependencies.avatars?.syncCommentAuthors({
+        profileId: input.profileId,
+        snapshot: candidate,
+      });
+    } catch {
+      // Decorative only; ignored.
+    }
+    let sessionId = review.currentSessionId;
+    let selectedSession = currentSession.value;
+    if (!sameReviewRevision(currentSession.value.key, currentRevision)) {
+      const prepared = await this.dependencies.preparation.prepare(
+        input.expectedTerminalState === undefined
+          ? { profileId: input.profileId, pullRequest }
+          : {
+              profileId: input.profileId,
+              pullRequest,
+              expectedPullRequestState: "non_open",
+            },
+      );
+      if (prepared._tag === "err")
+        return mapPreparationFailure(
+          prepared.error._tag,
+          this.dependencies.log,
+        );
+      if (!sameReviewRevision(prepared.value.session.key, currentRevision))
+        return err({ reason: "head_changed" });
+      const persisted = await this.dependencies.sessions.save(
+        prepared.value.session,
+      );
+      if (persisted._tag === "err") return err({ reason: "storage" });
+      sessionId = prepared.value.session.id;
+      selectedSession = prepared.value.session;
+    }
+    const representedRemote = {
+      headSha: current.value.headSha,
+      pullRequestUpdatedAt: latestRepresentedMoment(
+        current.value,
+        comments.value,
+        publishedFeedback.value,
+      ),
+      snapshotHash: savedCandidate.value.snapshotHash,
+      refreshedAt: this.dependencies.now(),
+    };
+    const advanced = moveReviewToSession(review, {
+      sessionId,
+      headSha: current.value.headSha,
+      representedRemote,
+      updatedAt: representedRemote.refreshedAt,
+    });
+    if (advanced._tag === "err") return err({ reason: "terminal" });
+    const terminalState =
+      expectedTerminal === undefined && !current.value.isOpen
+        ? await this.authoritativeTerminalState(profile, pullRequest)
+        : undefined;
+    if (terminalState?._tag === "err") return err({ reason: "github_read" });
+    const authoritative =
+      expectedTerminal !== undefined
+        ? markReviewTerminal(
+            advanced.value,
+            expectedTerminal.value,
+            representedRemote.refreshedAt,
+          )
+        : terminalState?.value === undefined
+          ? advanced.value
+          : markReviewTerminal(
+              advanced.value,
+              terminalState.value,
+              representedRemote.refreshedAt,
+            );
+    const savedReview = await this.dependencies.reviews.save(
+      authoritative,
+      review.updatedAt,
+    );
+    if (savedReview._tag === "err") return err({ reason: "storage" });
+    // Best effort: an explicit refresh always fully re-baselines
+    // representedRemote, so the own-write journal has nothing left to
+    // protect. A clear failure must not fail the refresh itself.
+    await this.dependencies.recentWrites.clear(input.profileId, input.reviewId);
+    if (this.dependencies.project === undefined)
+      return ok({ review: authoritative, sessionId, snapshot: candidate });
+    // Explicit refresh reconciles the viewer's pending review; a failed read
+    // is unavailable in the projection, never a claim that none exists.
+    const reconciled =
+      await this.dependencies.pendingReview.reconcileWithinReviewLock({
+        profileId: input.profileId,
+        reviewId: input.reviewId,
+      });
+    // SAFETY: `{ _tag: "None" }` is a literal, complete member of the
+    // PendingReviewState union (no other fields required).
+    const noPendingReview = { _tag: "None" } as PendingReviewState;
+    const pendingReview = {
+      state:
+        reconciled._tag === "ok"
+          ? reconciled.value.state
+          : (selectedSession.pendingReview ?? noPendingReview),
+      unavailable: reconciled._tag !== "ok" || reconciled.value.unavailable,
+    };
+    const projected = await this.dependencies.project({
+      profileId: input.profileId,
+      sessionId,
+      snapshot: candidate,
+      freshness: authoritative.freshness,
+      refreshedAt: representedRemote.refreshedAt,
+      pendingReview,
+    });
+    return projected._tag === "ok" ? projected : err({ reason: "storage" });
   }
 
   private async authoritativeTerminalState(

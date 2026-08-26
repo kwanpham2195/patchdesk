@@ -57,8 +57,6 @@ export type { ReviewWorkbenchProjection };
  * snapshot fetch; later remote changes still require explicit refresh.
  */
 export class ReviewWorkbenchController {
-  private readonly openLocks = new Map<string, Promise<void>>();
-
   constructor(
     private readonly preparation: ReviewSessionPreparation,
     private readonly projection: ReviewWorkbenchProjectionService,
@@ -75,7 +73,7 @@ export class ReviewWorkbenchController {
       readonly refresh: ReviewRefreshService;
       readonly observation: Pick<
         ReviewObservationService,
-        "observe" | "recover"
+        "observe" | "recover" | "recoverUnlocked"
       >;
       readonly coordinator: Pick<ReviewOperationCoordinator, "withReviewLock">;
       readonly commits: ReviewCommitService;
@@ -91,9 +89,11 @@ export class ReviewWorkbenchController {
     const identity = parseReviewIdentity(input);
     if (identity === undefined) return err({ reason: "invalid_input" });
     const reviewId = createReviewId(identity);
-    return this.serializedOpen(identity.profileId, reviewId, async () => {
-      return this.openUnlocked(identity);
-    });
+    return this.lifecycle.coordinator.withReviewLock(
+      identity.profileId,
+      reviewId,
+      () => this.openUnlocked(identity),
+    );
   }
 
   /** Opens only a currently merged pull request and never returns a writable Review. */
@@ -104,8 +104,10 @@ export class ReviewWorkbenchController {
     const identity = parseReviewIdentity(input);
     if (identity === undefined) return err({ reason: "invalid_input" });
     const reviewId = createReviewId(identity);
-    return this.serializedOpen(identity.profileId, reviewId, async () =>
-      this.openUnlocked(identity, "merged"),
+    return this.lifecycle.coordinator.withReviewLock(
+      identity.profileId,
+      reviewId,
+      () => this.openUnlocked(identity, "merged"),
     );
   }
 
@@ -114,7 +116,7 @@ export class ReviewWorkbenchController {
     expectedTerminalState?: "merged",
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const reviewId = createReviewId(identity);
-    const recovered = await this.recoverObservation(
+    const recovered = await this.recoverObservationUnlocked(
       identity.profileId,
       reviewId,
     );
@@ -158,10 +160,10 @@ export class ReviewWorkbenchController {
           return this.restartUnusableReview(identity, expectedTerminalState);
         }
         if (expectedTerminalState === undefined)
-          return this.projectStable(existing.value);
+          return this.projectStableUnlocked(existing.value);
         if (existing.value.status._tag === "Terminal")
           return existing.value.status.state === "merged"
-            ? this.projectStable(existing.value)
+            ? this.projectStableUnlocked(existing.value)
             : err({ reason: "terminal" });
         const initialized = await this.initializeSnapshot(
           identity.profileId,
@@ -170,7 +172,7 @@ export class ReviewWorkbenchController {
         );
         return initialized._tag === "err"
           ? initialized
-          : this.projectStable(initialized.value);
+          : this.projectStableUnlocked(initialized.value);
       }
       const initialized = await this.initializeSnapshot(
         identity.profileId,
@@ -178,7 +180,7 @@ export class ReviewWorkbenchController {
         expectedTerminalState,
       );
       if (initialized._tag === "err") return initialized;
-      return this.projectStable(initialized.value);
+      return this.projectStableUnlocked(initialized.value);
     }
     return this.openFresh(identity, expectedTerminalState);
   }
@@ -200,7 +202,7 @@ export class ReviewWorkbenchController {
     );
     return initialized._tag === "err"
       ? initialized
-      : this.projectStable(initialized.value);
+      : this.projectStableUnlocked(initialized.value);
   }
 
   private async createFreshReview(
@@ -233,119 +235,25 @@ export class ReviewWorkbenchController {
     return saved._tag === "ok" ? ok(created) : err({ reason: "storage" });
   }
 
+  /**
+   * Rebuilds a Review whose current session (or its represented snapshot) is
+   * unreadable. Both callers (`openUnlocked`) already run inside `open`'s
+   * coordinator lock for this Review, so this method — and the
+   * `restartOrKeepReview` helper it calls — never takes that lock itself;
+   * doing so would deadlock behind the lock the caller already holds.
+   */
   private async restartUnusableReview(
     identity: ReviewIdentity,
     expectedTerminalState?: "merged",
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const reviewId = createReviewId(identity);
-    const reset = await this.lifecycle.coordinator.withReviewLock(
-      identity.profileId,
-      reviewId,
-      async (): Promise<
-        Result<
-          { readonly review: Review; readonly restarted: boolean },
-          ReviewWorkbenchFailure
-        >
-      > => {
-        const journal = await this.lifecycle.journals.load(
-          identity.profileId,
-          reviewId,
-        );
-        if (journal._tag === "err" || journal.value !== undefined)
-          return err({ reason: "storage" });
-        const current = await this.lifecycle.reviews.load(
-          identity.profileId,
-          reviewId,
-        );
-        if (current._tag === "err") {
-          if (current.error.reason !== "not_found")
-            return err({ reason: "storage" });
-          const created = await this.createFreshReview(
-            identity,
-            expectedTerminalState,
-          );
-          return created._tag === "err"
-            ? created
-            : ok({ review: created.value, restarted: true });
-        }
-        const session = await this.lifecycle.sessions.load(
-          identity.profileId,
-          current.value.currentSessionId,
-        );
-        if (
-          session._tag === "err" &&
-          !isRestartableStorageFailure(session.error)
-        )
-          return err({ reason: "storage" });
-        let restart = session._tag === "err";
-        if (!restart && current.value.representedRemote !== undefined) {
-          const represented = await this.lifecycle.remote.load({
-            profileId: identity.profileId,
-            reviewId,
-            snapshotHash: current.value.representedRemote.snapshotHash,
-          });
-          if (
-            represented._tag === "err" &&
-            !isRestartableStorageFailure(represented.error)
-          )
-            return err({ reason: "storage" });
-          restart = represented._tag === "err";
-        }
-        if (!restart) return ok({ review: current.value, restarted: false });
-        const quarantinedSession =
-          await this.lifecycle.artifacts.quarantineIfPresent(
-            identity.profileId,
-            current.value.currentSessionId,
-          );
-        if (quarantinedSession._tag === "err")
-          return err({ reason: "storage" });
-        const quarantinedReview =
-          await this.lifecycle.artifacts.quarantineReview(
-            identity.profileId,
-            reviewId,
-          );
-        if (quarantinedReview._tag === "err") {
-          this.lifecycle.logs?.write({
-            process: "main",
-            level: "error",
-            topic: "review-workbench",
-            message:
-              "quarantining the unusable review failed; reported to caller as storage",
-            profileId: identity.profileId,
-            meta: {
-              reviewId,
-              ...(quarantinedReview.error._tag === "StorageFailure"
-                ? {
-                    operation: quarantinedReview.error.operation,
-                    reason: quarantinedReview.error.reason,
-                  }
-                : { tag: quarantinedReview.error._tag }),
-            },
-          });
-          return err({ reason: "storage" });
-        }
-        const created = await this.createFreshReview(
-          identity,
-          expectedTerminalState,
-        );
-        return created._tag === "err"
-          ? created
-          : ok({ review: created.value, restarted: true });
-      },
+    const reset = await this.restartOrKeepReview(
+      identity,
+      expectedTerminalState,
     );
     if (reset._tag === "err") return reset;
-    if (!reset.value.restarted) {
-      if (reset.value.review.representedRemote !== undefined)
-        return this.projectStable(reset.value.review);
-      const initialized = await this.initializeSnapshot(
-        identity.profileId,
-        reviewId,
-        expectedTerminalState,
-      );
-      return initialized._tag === "err"
-        ? initialized
-        : this.projectStable(initialized.value);
-    }
+    if (!reset.value.restarted && reset.value.review.representedRemote)
+      return this.projectStableUnlocked(reset.value.review);
     const initialized = await this.initializeSnapshot(
       identity.profileId,
       reviewId,
@@ -353,15 +261,113 @@ export class ReviewWorkbenchController {
     );
     return initialized._tag === "err"
       ? initialized
-      : this.projectStable(initialized.value);
+      : this.projectStableUnlocked(initialized.value);
   }
 
+  /** Decides whether the existing Review can be kept or must be quarantined and rebuilt fresh; see `restartUnusableReview`'s lock note. */
+  private async restartOrKeepReview(
+    identity: ReviewIdentity,
+    expectedTerminalState?: "merged",
+  ): Promise<
+    Result<
+      { readonly review: Review; readonly restarted: boolean },
+      ReviewWorkbenchFailure
+    >
+  > {
+    const reviewId = createReviewId(identity);
+    const journal = await this.lifecycle.journals.load(
+      identity.profileId,
+      reviewId,
+    );
+    if (journal._tag === "err" || journal.value !== undefined)
+      return err({ reason: "storage" });
+    const current = await this.lifecycle.reviews.load(
+      identity.profileId,
+      reviewId,
+    );
+    if (current._tag === "err") {
+      if (current.error.reason !== "not_found")
+        return err({ reason: "storage" });
+      const created = await this.createFreshReview(
+        identity,
+        expectedTerminalState,
+      );
+      return created._tag === "err"
+        ? created
+        : ok({ review: created.value, restarted: true });
+    }
+    const session = await this.lifecycle.sessions.load(
+      identity.profileId,
+      current.value.currentSessionId,
+    );
+    if (session._tag === "err" && !isRestartableStorageFailure(session.error))
+      return err({ reason: "storage" });
+    let restart = session._tag === "err";
+    if (!restart && current.value.representedRemote !== undefined) {
+      const represented = await this.lifecycle.remote.load({
+        profileId: identity.profileId,
+        reviewId,
+        snapshotHash: current.value.representedRemote.snapshotHash,
+      });
+      if (
+        represented._tag === "err" &&
+        !isRestartableStorageFailure(represented.error)
+      )
+        return err({ reason: "storage" });
+      restart = represented._tag === "err";
+    }
+    if (!restart) return ok({ review: current.value, restarted: false });
+    const quarantinedSession =
+      await this.lifecycle.artifacts.quarantineIfPresent(
+        identity.profileId,
+        current.value.currentSessionId,
+      );
+    if (quarantinedSession._tag === "err") return err({ reason: "storage" });
+    const quarantinedReview = await this.lifecycle.artifacts.quarantineReview(
+      identity.profileId,
+      reviewId,
+    );
+    if (quarantinedReview._tag === "err") {
+      this.lifecycle.logs?.write({
+        process: "main",
+        level: "error",
+        topic: "review-workbench",
+        message:
+          "quarantining the unusable review failed; reported to caller as storage",
+        profileId: identity.profileId,
+        meta: {
+          reviewId,
+          ...(quarantinedReview.error._tag === "StorageFailure"
+            ? {
+                operation: quarantinedReview.error.operation,
+                reason: quarantinedReview.error.reason,
+              }
+            : { tag: quarantinedReview.error._tag }),
+        },
+      });
+      return err({ reason: "storage" });
+    }
+    const created = await this.createFreshReview(
+      identity,
+      expectedTerminalState,
+    );
+    return created._tag === "err"
+      ? created
+      : ok({ review: created.value, restarted: true });
+  }
+
+  /**
+   * Always called from inside `open`'s tree (`openUnlocked`, `openFresh`,
+   * `restartUnusableReview`), which already holds `open`'s coordinator lock
+   * for this Review — so this calls `refreshUnlocked`, never `refresh`
+   * (which would retake that same lock and deadlock).
+   */
   private async initializeSnapshot(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
     expectedTerminalState?: "merged",
   ): Promise<Result<Review, ReviewWorkbenchFailure>> {
-    const initialRefresh = await this.lifecycle.refresh.refresh(
+    const initialRefresh = await this.lifecycle.refresh.refreshUnlocked(
       expectedTerminalState === undefined
         ? { profileId, reviewId }
         : { profileId, reviewId, expectedTerminalState },
@@ -462,6 +468,7 @@ export class ReviewWorkbenchController {
     return this.projectStable(review.value);
   }
 
+  /** Used only by `load`, which does not hold `open`'s coordinator lock. */
   private async recoverObservation(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -470,6 +477,25 @@ export class ReviewWorkbenchController {
     if (journal._tag === "err") return err({ reason: "storage" });
     if (journal.value === undefined) return ok(undefined);
     const recovered = await this.lifecycle.observation.recover({
+      profileId,
+      reviewId,
+    });
+    return recovered._tag === "ok" ? ok(undefined) : err({ reason: "storage" });
+  }
+
+  /**
+   * Same recovery as `recoverObservation`, for `openUnlocked`, which already
+   * holds `open`'s coordinator lock for this Review — calls `recoverUnlocked`,
+   * never `recover` (which would retake that same lock and deadlock).
+   */
+  private async recoverObservationUnlocked(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<void, ReviewWorkbenchFailure>> {
+    const journal = await this.lifecycle.journals.load(profileId, reviewId);
+    if (journal._tag === "err") return err({ reason: "storage" });
+    if (journal.value === undefined) return ok(undefined);
+    const recovered = await this.lifecycle.observation.recoverUnlocked({
       profileId,
       reviewId,
     });
@@ -555,27 +581,6 @@ export class ReviewWorkbenchController {
     return refreshed._tag === "err"
       ? err({ reason: refreshed.error.reason })
       : refreshed;
-  }
-
-  private async serializedOpen<T>(
-    profileId: WorkspaceProfileId,
-    reviewId: ReviewId,
-    operation: () => Promise<Result<T, ReviewWorkbenchFailure>>,
-  ): Promise<Result<T, ReviewWorkbenchFailure>> {
-    const key = `${profileId}:${reviewId}`;
-    const predecessor = this.openLocks.get(key);
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.openLocks.set(key, current);
-    if (predecessor !== undefined) await predecessor;
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.openLocks.get(key) === current) this.openLocks.delete(key);
-    }
   }
 }
 
