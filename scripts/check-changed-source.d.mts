@@ -9,6 +9,7 @@ export type CheckChangedSourceOptions = {
     cwd: string,
   ) => Promise<CommandResult>;
   readonly fileExists?: (path: string) => Promise<boolean>;
+  readonly readFile?: (path: string) => Promise<string>;
   readonly output: CommandOutput;
 };
 

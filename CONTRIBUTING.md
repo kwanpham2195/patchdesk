@@ -85,6 +85,13 @@ Repo-wide `pnpm lint` remains a diagnostic while untouched legacy findings are
 migrated. Every staged source file must be clean, but untouched findings do
 not block focused changes.
 
+`pnpm lint:changed` also enforces a ratchet: it runs Oxlint over the whole
+repository and compares the finding count with the baseline recorded in
+`lint-baseline.json`. If the count rose, the check fails and names both
+numbers. If the count fell, the check passes and prints the new number, so
+you can lower the baseline deliberately. To lower it, edit the `findings`
+value in `lint-baseline.json` to match the new, smaller count.
+
 Do not silence findings by weakening rules, adding casts, or faking
 `SAFETY:` comments. Genuine I/O boundaries keep `unknown` via targeted
 per-file overrides in `.oxlintrc.json` with a boundary contract comment

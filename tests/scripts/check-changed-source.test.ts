@@ -20,6 +20,14 @@ type HarnessOptions = {
   readonly existingPaths?: ReadonlySet<string>;
   readonly toolResults?: ReadonlyMap<string, CommandResult>;
   readonly diffResult?: CommandResult;
+  /** `lint-baseline.json`'s `findings` value. Defaults to 0. */
+  readonly baselineFindings?: number;
+  /** Raw `lint-baseline.json` content. Overrides `baselineFindings`. */
+  readonly baselineContent?: string;
+  /** Diagnostic count the repo-wide ratchet run reports. Defaults to 0. */
+  readonly ratchetDiagnosticsCount?: number;
+  /** Raw ratchet Oxlint result. Overrides `ratchetDiagnosticsCount`. */
+  readonly ratchetResult?: CommandResult;
 };
 
 const cwd = "/fixture/project";
@@ -48,12 +56,27 @@ const failure = (stderr: string, status = 1): CommandResult => ({
   stderr,
 });
 
+const baselinePath = `${cwd}/lint-baseline.json`;
+
 function createHarness(options: HarnessOptions = {}) {
   const calls: Array<CommandCall> = [];
   const stdout: string[] = [];
   const stderr: string[] = [];
   const existingPaths = options.existingPaths ?? new Set(["src/example.ts"]);
   const toolResults = options.toolResults ?? new Map<string, CommandResult>();
+  const baselineContent =
+    options.baselineContent ??
+    JSON.stringify({ findings: options.baselineFindings ?? 0 });
+  const ratchetResult =
+    options.ratchetResult ??
+    success(
+      JSON.stringify({
+        diagnostics: Array.from(
+          { length: options.ratchetDiagnosticsCount ?? 0 },
+          () => ({}),
+        ),
+      }),
+    );
 
   const run = async (
     command: string,
@@ -77,6 +100,8 @@ function createHarness(options: HarnessOptions = {}) {
     const tool = command.startsWith(`${cwd}/node_modules/.bin/`)
       ? command.slice(`${cwd}/node_modules/.bin/`.length)
       : command;
+    if (tool === "oxlint" && args.includes("--format=json"))
+      return ratchetResult;
     return toolResults.get(tool) ?? success();
   };
 
@@ -94,6 +119,10 @@ function createHarness(options: HarnessOptions = {}) {
           return PINNED_TOOLS.has(relative);
         return existingPaths.has(path) || existingPaths.has(relative);
       },
+      readFile: async (path: string): Promise<string> => {
+        if (path === baselinePath) return baselineContent;
+        throw new Error(`ENOENT: no such file, open '${path}'`);
+      },
       output: {
         stdout: (text: string) => stdout.push(text),
         stderr: (text: string) => stderr.push(text),
@@ -110,7 +139,7 @@ describe("checkChangedSource", () => {
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(0);
-    expect(harness.calls).toHaveLength(3);
+    expect(harness.calls).toHaveLength(4);
     expect(harness.calls[2]?.args).toEqual([
       "diff",
       "--name-only",
@@ -232,5 +261,122 @@ describe("checkChangedSource", () => {
     ).toBe(false);
     expect(harness.calls[3]?.args).toContain("--check");
     expect(harness.calls[4]?.args).not.toContain("--fix");
+  });
+
+  it("fails the lint ratchet when repo-wide findings rise above the baseline", async () => {
+    const harness = createHarness({
+      baselineFindings: 5,
+      ratchetDiagnosticsCount: 6,
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "Repo-wide Oxlint findings rose from 5 to 6",
+    );
+  });
+
+  it("passes the lint ratchet when repo-wide findings equal the baseline", async () => {
+    const harness = createHarness({
+      baselineFindings: 3,
+      ratchetDiagnosticsCount: 3,
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.stdout.join("")).toContain(
+      "Repo-wide Oxlint findings unchanged at 3",
+    );
+  });
+
+  it("passes and reports the lint ratchet when repo-wide findings fall below the baseline", async () => {
+    const harness = createHarness({
+      baselineFindings: 10,
+      ratchetDiagnosticsCount: 4,
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.stdout.join("")).toContain(
+      "Repo-wide Oxlint findings fell from 10 to 4",
+    );
+    expect(harness.stdout.join("")).toContain('Lower "findings"');
+  });
+
+  it("fails the lint ratchet when lint-baseline.json cannot be read", async () => {
+    const harness = createHarness();
+
+    await expect(
+      checkChangedSource({
+        ...harness.options,
+        readFile: async () => {
+          throw new Error("EACCES: permission denied");
+        },
+      }),
+    ).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "Could not read lint-baseline.json: EACCES: permission denied",
+    );
+  });
+
+  it("fails the lint ratchet when lint-baseline.json is not valid JSON", async () => {
+    const harness = createHarness({ baselineContent: "not json" });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "lint-baseline.json is not valid JSON",
+    );
+  });
+
+  it("fails the lint ratchet when the findings field is not a non-negative integer", async () => {
+    const invalidBaselines = [
+      JSON.stringify({}),
+      JSON.stringify({ findings: "5" }),
+      JSON.stringify({ findings: -1 }),
+      JSON.stringify({ findings: 1.5 }),
+    ];
+
+    for (const baselineContent of invalidBaselines) {
+      const harness = createHarness({ baselineContent });
+
+      await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+      expect(harness.stderr.join("")).toContain(
+        'lint-baseline.json must have a non-negative integer "findings" field.',
+      );
+    }
+  });
+
+  it("fails the lint ratchet when Oxlint's repo-wide output is not parseable JSON", async () => {
+    const harness = createHarness({ ratchetResult: success("not json") });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "Oxlint (repo-wide) did not return parseable JSON",
+    );
+  });
+
+  it("fails the lint ratchet when Oxlint's repo-wide JSON has no diagnostics array", async () => {
+    const harness = createHarness({
+      ratchetResult: success(JSON.stringify({ notDiagnostics: [] })),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "Oxlint (repo-wide) JSON output is missing a diagnostics array.",
+    );
+  });
+
+  it("fails the lint ratchet when Oxlint exits via a signal", async () => {
+    const harness = createHarness({
+      ratchetResult: {
+        status: null,
+        signal: "SIGSEGV",
+        stdout: "",
+        stderr: "core dumped",
+      },
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "Oxlint (repo-wide) exited via signal SIGSEGV.",
+    );
+    expect(harness.stderr.join("")).toContain("core dumped");
   });
 });
