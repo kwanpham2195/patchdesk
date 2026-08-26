@@ -601,6 +601,99 @@ describe("GET /v1/inbox page size boundary", () => {
   });
 });
 
+describe("GET /v1/inbox/labels", () => {
+  async function startWithWatchedProfile() {
+    const adapter = new FakeGitHubAdapter({
+      authenticatedAccount: { host: "github.com", account: "fixture" },
+      repositoryLabels: {
+        labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+        totalCount: 1,
+      },
+    });
+    const listRepositoryLabels = vi.spyOn(adapter, "listRepositoryLabels");
+    const api = await start({ github: adapter });
+    if (root === undefined) throw new Error("test root was not created");
+    const paths = PatchdeskPaths.forTest(root);
+    expect(
+      (
+        await new ProfileStore(paths).save(
+          must(
+            parseWorkspaceProfileConfig({
+              id: "profile",
+              label: "Profile",
+              githubHost: "github.com",
+              ghAccount: "fixture",
+              ownerFilters: [],
+              workspaceRoots: [],
+              rulePaths: [],
+              repos: [
+                {
+                  host: "github.com",
+                  owner: "centraldigital",
+                  repo: "patchdesk",
+                },
+              ],
+            }),
+          ),
+        )
+      )._tag,
+    ).toBe("ok");
+    return { api, listRepositoryLabels };
+  }
+
+  // Mirrors "GET /v1/inbox page size boundary"'s "rejects a repository the
+  // active profile does not watch" test above: the label filter's read is
+  // repository-scoped the same way the inbox listing itself is, and must
+  // reject a repository outside the watchlist before any GitHub call —
+  // without this a renderer could read labels from any repository the
+  // active token can see, not just a watched one.
+  it("rejects a repository the active profile does not watch, with no GitHub read", async () => {
+    const { api, listRepositoryLabels } = await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL(
+        "v1/inbox/labels?host=github.com&owner=some-other-org&repo=some-other-repo",
+        api.url,
+      ),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid_input",
+    });
+    expect(listRepositoryLabels).not.toHaveBeenCalled();
+  });
+
+  it("accepts a watched repository and returns its GitHub-read labels", async () => {
+    const { api, listRepositoryLabels } = await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL(
+        "v1/inbox/labels?host=github.com&owner=centraldigital&repo=patchdesk",
+        api.url,
+      ),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      state: "ready",
+      labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
+      totalCount: 1,
+    });
+    expect(listRepositoryLabels).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repo: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+      }),
+    );
+  });
+});
+
 function must<T>(
   result: { readonly _tag: "ok"; readonly value: T } | { readonly _tag: "err" },
 ): T {

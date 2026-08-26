@@ -306,6 +306,42 @@ export class DashboardController {
     return ok({ profile: profile.value, inbox: inbox.value });
   }
 
+  /**
+   * Resolves the active profile and its target repository for a
+   * repository-scoped local-API read that is not `GET /v1/inbox` itself
+   * (currently `GET /v1/inbox/labels`) — the same fallback-to-first-watched
+   * and watchlist-membership rules `inboxForActiveProfile` applies, so a
+   * repository outside the watchlist is rejected before any GitHub call the
+   * same way it is there. `repository` absent from the result (rather than
+   * the whole call failing) means the watchlist itself is empty; the caller
+   * decides what an empty watchlist means for its own read.
+   */
+  async activeProfileRepository(
+    repository: InboxRepositoryRef | undefined,
+  ): Promise<
+    Result<
+      {
+        readonly profile: WorkspaceProfileConfig;
+        readonly repository?: InboxRepositoryRef;
+      },
+      DashboardControllerFailure
+    >
+  > {
+    const profile = await this.activeProfile();
+    if (profile._tag === "err") return profile;
+    if (
+      repository !== undefined &&
+      !isWatchedRepository(profile.value, repository)
+    )
+      return failure("invalid_input");
+    const target = repository ?? profile.value.repos[0];
+    return ok(
+      target === undefined
+        ? { profile: profile.value }
+        : { profile: profile.value, repository: target },
+    );
+  }
+
   /** Refreshes one persisted repo while leaving other watchlist reads untouched. */
   async refreshWatchlistRepo(
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser (via `repoRef`) for repo-scoped watchlist requests; there is no earlier boundary to run it at.

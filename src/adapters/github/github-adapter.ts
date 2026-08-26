@@ -203,7 +203,7 @@ export interface GitHubReader {
   /** Bounded list of labels available in the repository, for populating a label picker. */
   listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>>;
   /** Bounded list of repository collaborators eligible for assignment, for populating an assignee picker. `query` filters server-side by login/name substring. */
   listAssignableUsers(input: {
@@ -1002,7 +1002,7 @@ export class GitHubAdapter
   /** Fetches up to 100 repository labels in one bounded page; `totalCount` reveals truncation beyond that. */
   async listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
     const host = input.profile.githubHost;
     const response = await this.ghJson(input.profile, {

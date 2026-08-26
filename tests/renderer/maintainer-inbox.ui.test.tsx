@@ -410,6 +410,14 @@ describe("MaintainerInbox", () => {
   it("sends the label filter to GitHub instead of filtering loaded rows locally", async () => {
     const user = userEvent.setup();
     const onLabelsChange = vi.fn();
+    const fetchLabels = vi.fn(async () => ({
+      state: "ready" as const,
+      labels: [
+        { id: "LA_bug", name: "bug", color: "d73a4a" },
+        { id: "LA_enhancement", name: "enhancement", color: "a2eeef" },
+      ],
+      totalCount: 2,
+    }));
     const bugRow: InboxRow = {
       ...row,
       identity: { ...row.identity, number: 1 },
@@ -430,6 +438,7 @@ describe("MaintainerInbox", () => {
         freshness="fresh"
         refreshStatus="Current"
         onLabelsChange={onLabelsChange}
+        labelActions={{ fetchLabels }}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -447,6 +456,90 @@ describe("MaintainerInbox", () => {
     expect(onLabelsChange).toHaveBeenCalledWith(["bug"]);
     expect(screen.getAllByText(/Bug fix/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/New feature/).length).toBeGreaterThan(0);
+  });
+
+  it("offers a label that appears on no loaded row, fed from the repository-wide read instead of `rows`", async () => {
+    const user = userEvent.setup();
+    const onLabelsChange = vi.fn();
+    // Only "bug" is attached to the one loaded row; "wontfix" exists only in
+    // the repository-wide read `fetchLabels` stands in for. Deriving options
+    // from `rows` (the pre-slice-10 defect) could never offer it.
+    const fetchLabels = vi.fn(async () => ({
+      state: "ready" as const,
+      labels: [
+        { id: "LA_bug", name: "bug", color: "d73a4a" },
+        { id: "LA_wontfix", name: "wontfix", color: "ffffff" },
+      ],
+      totalCount: 2,
+    }));
+    const bugRow: InboxRow = {
+      ...row,
+      identity: { ...row.identity, number: 1 },
+      title: "Bug fix",
+      labels: [{ name: "bug", color: "d73a4a" }],
+    };
+    render(
+      <MaintainerInbox
+        profileId="label-filter-offpage"
+        profileLabel="P"
+        rows={[bugRow]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onLabelsChange={onLabelsChange}
+        labelActions={{ fetchLabels }}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Filter by label" }));
+    const wontfixCheckbox = await screen.findByRole("checkbox", {
+      name: "wontfix",
+    });
+    await user.click(wontfixCheckbox);
+    expect(onLabelsChange).toHaveBeenCalledWith(["wontfix"]);
+  });
+
+  it("shows the read failure instead of an empty list when the label read fails", async () => {
+    const user = userEvent.setup();
+    const fetchLabels = vi.fn(async () => undefined);
+    render(
+      <MaintainerInbox
+        profileId="label-filter-failed"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        labelActions={{ fetchLabels }}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Filter by label" }));
+    expect(
+      await screen.findByText(
+        "Patchdesk could not load this repository's labels. Reopen this menu to retry.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("does not render the label filter trigger before a repository is selected", () => {
+    render(
+      <MaintainerInbox
+        profileId="label-filter-none"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Filter by label" }),
+    ).toBeNull();
   });
 
   it("reserves the review-details grid column while the inspector is open", () => {

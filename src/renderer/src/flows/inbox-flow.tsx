@@ -2,6 +2,7 @@ import { CheckCircle2, CircleAlert, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
   MaintainerInbox,
+  type InboxLabelActions,
   type ReviewInitialSection,
 } from "../components/maintainer-inbox";
 import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
@@ -38,6 +39,7 @@ import { useBusy } from "../hooks/use-busy";
 import {
   parseEnvironmentCheckResponse,
   parseGitHubAccessCheckResponse,
+  parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
 } from "../renderer-contracts";
 import type { inboxFreshnessLabel } from "../inbox-refresh-scheduler";
@@ -56,6 +58,7 @@ import type {
 import type {
   EnvironmentCheckResponse,
   InboxResponse,
+  RepositoryLabelListResponse,
 } from "../renderer-contracts";
 
 export function InboxFlow({
@@ -128,6 +131,28 @@ export function InboxFlow({
   const [openError, setOpenError] = useState<string>();
   const dashboardProfileId = dashboard?.profile.id;
   const { runBusy } = useBusy();
+
+  // Feeds the label filter popover the Selected repository's real,
+  // repository-wide labels (`GET /v1/inbox/labels`) rather than deriving
+  // them from the loaded page — mirrors `useReviewMetadataActions.fetchLabels`
+  // for the same read. Undefined only before a repository is selected; the
+  // popover withholds its trigger entirely in that case.
+  const fetchInboxLabels = useCallback(async (): Promise<
+    RepositoryLabelListResponse | undefined
+  > => {
+    if (selectedRepository === undefined) return undefined;
+    const query = new URLSearchParams({
+      host: selectedRepository.host,
+      owner: selectedRepository.owner,
+      repo: selectedRepository.repo,
+    });
+    const value = await requestJson(`/v1/inbox/labels?${query.toString()}`);
+    return parseRepositoryLabelListResponse(value);
+  }, [selectedRepository]);
+  const labelActions: InboxLabelActions | undefined =
+    selectedRepository === undefined
+      ? undefined
+      : { fetchLabels: fetchInboxLabels };
 
   type PrRef = {
     readonly host?: string;
@@ -291,6 +316,7 @@ export function InboxFlow({
       onInboxPageSizeChange={onInboxPageSizeChange}
       selectedLabels={selectedLabels}
       onInboxLabelsChange={onInboxLabelsChange}
+      {...(labelActions === undefined ? {} : { labelActions })}
       {...(selectedRepository === undefined ? {} : { selectedRepository })}
       onRepositoryChange={onRepositoryChange}
       onPreviousInboxPage={onPreviousInboxPage}
@@ -337,6 +363,7 @@ function InboxScreen({
   onInboxPageSizeChange,
   selectedLabels,
   onInboxLabelsChange,
+  labelActions,
   selectedRepository,
   onRepositoryChange,
   onPreviousInboxPage,
@@ -361,6 +388,7 @@ function InboxScreen({
   readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
+  readonly labelActions?: InboxLabelActions;
   readonly selectedRepository?: { host: string; owner: string; repo: string };
   readonly onRepositoryChange: (repository: {
     host: string;
@@ -425,6 +453,7 @@ function InboxScreen({
           listPending={listPending}
           selectedLabels={selectedLabels}
           onLabelsChange={onInboxLabelsChange}
+          {...(labelActions === undefined ? {} : { labelActions })}
           {...(inbox.inbox.matchCount === undefined
             ? {}
             : { matchCount: inbox.inbox.matchCount })}

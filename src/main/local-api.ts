@@ -57,8 +57,10 @@ import type {
   GitHubMergeWriter,
   GitHubPendingReviewGateway,
   GitHubReader,
+  GitHubReadFailure,
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
+import type { RepositoryLabelListing } from "../domain/github-context";
 import type { OriginFinder } from "../services/dashboard-service";
 import { DashboardController } from "../services/dashboard-controller";
 import {
@@ -915,6 +917,39 @@ export async function startLocalApiServer(
       if (result._tag === "err")
         await recordProfileReloadFailure("profile-reload-inbox");
       return response(context, result);
+    }),
+  );
+  // Repository-scoped, never Review-scoped: `GET /v1/reviews/labels` cannot
+  // serve the Pull requests screen's label filter because it resolves the
+  // repository through a Review session (`requireCurrentSession`), and the
+  // screen has no `reviewId`. This route reads `github.listRepositoryLabels`
+  // directly rather than through `LabelService` — labels for a filter
+  // picker never need that service's write gate or its resolved permission,
+  // and the inbox is read-only.
+  app.get("/v1/inbox/labels", async (context) =>
+    runWithRequestAbortSignal(context.req.raw.signal, async () => {
+      const repository = parseInboxRepositoryQuery(
+        context.req.query("host"),
+        context.req.query("owner"),
+        context.req.query("repo"),
+      );
+      if (repository === "invalid")
+        return response(context, err({ reason: "invalid_input" }));
+      // Validated against the active profile's watchlist before any GitHub
+      // call, exactly as `GET /v1/inbox` validates its own `repository`
+      // query params — without this a renderer could read labels from any
+      // repository the active token can see, not just a watched one.
+      const resolved = await dashboard.activeProfileRepository(repository);
+      if (resolved._tag === "err") return response(context, resolved);
+      if (resolved.value.repository === undefined)
+        return context.json({ state: "ready", labels: [], totalCount: 0 });
+      return repositoryLabelListResponse(
+        context,
+        await github.listRepositoryLabels({
+          profile: resolved.value.profile,
+          repo: resolved.value.repository,
+        }),
+      );
     }),
   );
   app.post("/v1/watchlist", async (context) =>
@@ -2177,6 +2212,40 @@ async function labelResponse(
             ? 503
             : 400;
   return context.json({ error: result.error }, status);
+}
+
+/**
+ * Shapes a repository-wide label read directly from `GitHubReadFailure` for
+ * `GET /v1/inbox/labels` — this route reads through
+ * `github.listRepositoryLabels` directly rather than a service, so there is
+ * no review-resolution half to fail outright, unlike `labelListResponse`
+ * below. `permission` is omitted: the inbox's label filter is read-only and
+ * never resolves it.
+ */
+function repositoryLabelListResponse(
+  context: Context,
+  result: Result<RepositoryLabelListing, GitHubReadFailure>,
+): Response {
+  if (result._tag === "ok")
+    return context.json({
+      state: "ready",
+      labels: result.value.labels,
+      totalCount: result.value.totalCount,
+    });
+  const failure = result.error;
+  if (failure._tag === "GitHubRateLimited") {
+    const resumeAtField =
+      failure.resumeAt === undefined ? {} : { resumeAt: failure.resumeAt };
+    return context.json({ state: "github_rate_limited", ...resumeAtField });
+  }
+  if (failure._tag === "GitHubForbidden")
+    return context.json({
+      state: "github_forbidden",
+      forbiddenReason: failure.reason,
+    });
+  if (failure._tag === "GitHubAuthenticationFailed")
+    return context.json({ state: "github_auth" });
+  return context.json({ state: "github_read" });
 }
 
 /**

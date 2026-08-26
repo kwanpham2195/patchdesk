@@ -50,20 +50,6 @@ function inboxViewReducer(
   }
 }
 
-/** Every label present on the loaded page, for the filter bar's label
- * popover. Sourced from `rows` rather than a repository-wide listing — this
- * is deliberately incomplete (a label used only on pull requests off this
- * page cannot appear), and stays that way until the label picker is fed
- * from `listRepositoryLabels` instead. */
-function labelItemsFrom(
-  rows: ReadonlyArray<InboxRow>,
-): ReadonlyArray<{ label: string; value: string }> {
-  const seen = new Map<string, string>();
-  for (const row of rows)
-    for (const label of row.labels) seen.set(label.name, label.color);
-  return [...seen.keys()].sort().map((name) => ({ label: name, value: name }));
-}
-
 function requestAction(
   row: InboxRow,
   onOpenReview: (row: InboxRow, initialSection?: ReviewInitialSection) => void,
@@ -141,8 +127,6 @@ export function useInboxView(params: {
     });
   }, [profileId]);
 
-  const labelItems = useMemo(() => labelItemsFrom(rows), [rows]);
-
   const selected =
     rows.find((row) => inboxIdentityKey(row) === selectedKey) ?? rows[0];
 
@@ -200,7 +184,6 @@ export function useInboxView(params: {
     inspectorOpen,
     narrow,
     listRef,
-    labelItems,
     selected,
     triggerAction,
     selectRow,

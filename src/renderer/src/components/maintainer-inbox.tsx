@@ -1,4 +1,4 @@
-import { type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -14,6 +14,7 @@ import {
   inboxIdentityKey,
   type InboxRow,
   type LocalReviewEntry,
+  type RepositoryLabelListResponse,
 } from "@/renderer-contracts";
 import { recoveryActionLabel } from "@/review-copy";
 import { LabelChip } from "./label-chip";
@@ -61,6 +62,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -81,6 +83,20 @@ import {
 import { cn } from "@/lib/utils";
 
 export type { ReviewInitialSection } from "../hooks/use-inbox-view";
+
+/**
+ * Feeds the label filter popover the Selected repository's real,
+ * repository-wide labels (`GET /v1/inbox/labels`) rather than deriving them
+ * from `rows` (one loaded page) — mirrors `LabelPickerActions`
+ * (label-picker.tsx) for the same read, minus write actions this filter
+ * never performs. `undefined` only before the screen has a Selected
+ * repository to read labels from (slice 7c bootstrap); the picker withholds
+ * its trigger entirely in that case, the same way `LabelPicker` does for
+ * `actions === undefined`.
+ */
+export type InboxLabelActions = {
+  readonly fetchLabels: () => Promise<RepositoryLabelListResponse | undefined>;
+};
 
 /** Stable option value for the repository picker's `Select`. */
 function repositoryKey(repo: {
@@ -112,6 +128,9 @@ type MaintainerInboxProps = {
    * local, in-page filter (ADR 0031/0032). App owns the request transition. */
   readonly selectedLabels?: ReadonlyArray<string>;
   readonly onLabelsChange?: (labels: ReadonlyArray<string>) => void;
+  /** Absent only before the screen has a Selected repository to read labels
+   * from (slice 7c bootstrap). See {@link InboxLabelActions}. */
+  readonly labelActions?: InboxLabelActions;
   readonly onPageSizeChange?: (pageSize: InboxPageSize) => void;
   readonly onPreviousPage?: () => void;
   readonly onNextPage?: () => void;
@@ -168,6 +187,7 @@ export function MaintainerInbox({
   onScopeChange = () => undefined,
   selectedLabels = [],
   onLabelsChange = () => undefined,
+  labelActions,
   onPageSizeChange = () => undefined,
   onPreviousPage = () => undefined,
   onNextPage = () => undefined,
@@ -193,7 +213,6 @@ export function MaintainerInbox({
     inspectorOpen,
     narrow,
     listRef,
-    labelItems,
     selected,
     triggerAction,
     selectRow,
@@ -226,7 +245,7 @@ export function MaintainerInbox({
       <InboxFiltersBar
         scope={scope}
         onScopeChange={onScopeChange}
-        labelItems={labelItems}
+        {...(labelActions === undefined ? {} : { labelActions })}
         selectedLabels={selectedLabels}
         onLabelChange={onLabelsChange}
         rowCount={effectiveRows.length}
@@ -507,7 +526,7 @@ function InboxHeader({
 function InboxFiltersBar({
   scope,
   onScopeChange,
-  labelItems,
+  labelActions,
   selectedLabels,
   onLabelChange,
   rowCount,
@@ -518,7 +537,10 @@ function InboxFiltersBar({
 }: {
   readonly scope: "open" | "merged";
   readonly onScopeChange: (scope: "open" | "merged") => void;
-  readonly labelItems: ReadonlyArray<{ label: string; value: string }>;
+  /** Absent only before the screen has a Selected repository to read labels
+   * from (slice 7c bootstrap); the label filter trigger withholds itself in
+   * that case, the same way `LabelPicker` does for `actions === undefined`. */
+  readonly labelActions?: InboxLabelActions;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onLabelChange: (value: ReadonlyArray<string>) => void;
   readonly rowCount: number;
@@ -527,7 +549,6 @@ function InboxFiltersBar({
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
 }): React.JSX.Element {
-  const selectedLabelSet = new Set(selectedLabels);
   return (
     <section
       className="sticky top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur"
@@ -567,62 +588,13 @@ function InboxFiltersBar({
           </SelectGroup>
         </SelectContent>
       </Select>
-      {labelItems.length > 0 ? (
-        <Popover>
-          <PopoverTrigger
-            render={
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-w-28 max-w-40 justify-start text-xs"
-                aria-label="Filter by label"
-              >
-                <span className="truncate">
-                  {labelFilterTriggerText(selectedLabels)}
-                </span>
-              </Button>
-            }
-          />
-          <PopoverContent align="start">
-            {selectedLabels.length > 0 ? (
-              <Button
-                variant="ghost"
-                size="xs"
-                className="mb-1 w-full justify-start"
-                onClick={() => onLabelChange([])}
-              >
-                Clear
-              </Button>
-            ) : null}
-            <div className="max-h-64 overflow-y-auto">
-              <ul className="flex flex-col gap-0.5" aria-label="Labels">
-                {labelItems.map((item) => {
-                  const checked = selectedLabelSet.has(item.value);
-                  return (
-                    <li key={item.value}>
-                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs hover:bg-muted/50">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() =>
-                            onLabelChange(
-                              checked
-                                ? selectedLabels.filter(
-                                    (name) => name !== item.value,
-                                  )
-                                : [...selectedLabels, item.value],
-                            )
-                          }
-                        />
-                        {item.label}
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </PopoverContent>
-        </Popover>
-      ) : null}
+      {labelActions === undefined ? null : (
+        <LabelFilterPopover
+          fetchLabels={labelActions.fetchLabels}
+          selectedLabels={selectedLabels}
+          onLabelChange={onLabelChange}
+        />
+      )}
       <span
         className="ml-auto text-[11px] tabular-nums text-muted-foreground"
         aria-live="polite"
@@ -661,6 +633,248 @@ function labelFilterTriggerText(selected: ReadonlyArray<string>): string {
   if (selected.length === 0) return "All labels";
   if (selected.length === 1) return selected[0] ?? "All labels";
   return `${selected.length} labels`;
+}
+
+/** The label filter popover's read state, mirroring `LabelPicker`'s
+ * `ReadState` (label-picker.tsx) but without `permission` — this picker is
+ * read-only, so it never resolves write permission. */
+type LabelFilterReadState =
+  | { readonly _tag: "loading" }
+  | {
+      readonly _tag: "ready";
+      readonly labels: ReadonlyArray<{ readonly name: string }>;
+      readonly totalCount: number;
+    }
+  | { readonly _tag: "github_auth" }
+  | { readonly _tag: "github_read" }
+  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
+  | {
+      readonly _tag: "github_forbidden";
+      readonly reason?:
+        | "ip_allow_list"
+        | "saml"
+        | "insufficient_scopes"
+        | "unknown";
+    };
+
+function projectLabelFilterReadState(
+  response: RepositoryLabelListResponse | undefined,
+): LabelFilterReadState {
+  if (response === undefined) return { _tag: "github_read" };
+  if (response.state === "ready") {
+    const labels = response.labels ?? [];
+    return {
+      _tag: "ready",
+      labels,
+      totalCount: response.totalCount ?? labels.length,
+    };
+  }
+  if (response.state === "github_rate_limited") {
+    const resumeAtField =
+      response.resumeAt === undefined ? {} : { resumeAt: response.resumeAt };
+    return { _tag: "github_rate_limited", ...resumeAtField };
+  }
+  if (response.state === "github_forbidden") {
+    const reasonField =
+      response.forbiddenReason === undefined
+        ? {}
+        : { reason: response.forbiddenReason };
+    return { _tag: "github_forbidden", ...reasonField };
+  }
+  return { _tag: response.state };
+}
+
+/**
+ * The Pull requests screen's label filter: fed from the Selected
+ * repository's real, repository-wide labels (`GET /v1/inbox/labels`), never
+ * from `rows` — a label used only on a pull request off the loaded page is
+ * still offered here. Fetches on open, the same lazy-on-demand shape
+ * `LabelPicker` uses for the same read (label-picker.tsx), so opening the
+ * inbox never pays for a label read nobody asked for.
+ */
+function LabelFilterPopover({
+  fetchLabels,
+  selectedLabels,
+  onLabelChange,
+}: {
+  readonly fetchLabels: () => Promise<RepositoryLabelListResponse | undefined>;
+  readonly selectedLabels: ReadonlyArray<string>;
+  readonly onLabelChange: (value: ReadonlyArray<string>) => void;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [readState, setReadState] = useState<LabelFilterReadState>({
+    _tag: "loading",
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setReadState({ _tag: "loading" });
+    fetchLabels()
+      .then((response) => {
+        if (!cancelled) setReadState(projectLabelFilterReadState(response));
+      })
+      .catch(() => {
+        if (!cancelled) setReadState({ _tag: "github_read" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, fetchLabels]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-w-28 max-w-40 justify-start text-xs"
+            aria-label="Filter by label"
+          >
+            <span className="truncate">
+              {labelFilterTriggerText(selectedLabels)}
+            </span>
+          </Button>
+        }
+      />
+      <PopoverContent align="start">
+        {selectedLabels.length > 0 ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="mb-1 w-full justify-start"
+            onClick={() => onLabelChange([])}
+          >
+            Clear
+          </Button>
+        ) : null}
+        <LabelFilterList
+          readState={readState}
+          selectedLabels={selectedLabels}
+          onLabelChange={onLabelChange}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** The label filter popover's body: its read state's message, or its list
+ * of toggleable repository labels. A GitHub read failure (auth/rate-limit/
+ * forbidden) says exactly what went wrong, rather than rendering as an
+ * empty list — an empty list here only ever means the ready, zero-label
+ * case (`readState.labels.length === 0`), never a failed read. */
+function LabelFilterList({
+  readState,
+  selectedLabels,
+  onLabelChange,
+}: {
+  readonly readState: LabelFilterReadState;
+  readonly selectedLabels: ReadonlyArray<string>;
+  readonly onLabelChange: (value: ReadonlyArray<string>) => void;
+}): React.JSX.Element {
+  if (readState._tag === "loading")
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Spinner className="size-3" /> Loading labels…
+      </p>
+    );
+  if (readState._tag === "github_auth")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        GitHub authentication is required before Patchdesk can list this
+        repository&apos;s labels.
+      </p>
+    );
+  if (readState._tag === "github_read")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        Patchdesk could not load this repository&apos;s labels. Reopen this menu
+        to retry.
+      </p>
+    );
+  if (readState._tag === "github_rate_limited")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        {labelFilterRateLimitedCopy(readState.resumeAt)}
+      </p>
+    );
+  if (readState._tag === "github_forbidden")
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        {labelFilterForbiddenCopy(readState.reason)}
+      </p>
+    );
+  if (readState.labels.length === 0)
+    return (
+      <p className="text-xs text-muted-foreground">
+        This repository has no labels.
+      </p>
+    );
+  const selectedLabelSet = new Set(selectedLabels);
+  return (
+    <div className="max-h-64 overflow-y-auto">
+      <ul className="flex flex-col gap-0.5" aria-label="Labels">
+        {readState.labels.map((label) => {
+          const checked = selectedLabelSet.has(label.name);
+          return (
+            <li key={label.name}>
+              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs hover:bg-muted/50">
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={() =>
+                    onLabelChange(
+                      checked
+                        ? selectedLabels.filter((name) => name !== label.name)
+                        : [...selectedLabels, label.name],
+                    )
+                  }
+                />
+                {label.name}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      {readState.totalCount > readState.labels.length ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Showing {readState.labels.length} of {readState.totalCount} labels.
+          Some repository labels aren&apos;t shown.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function labelFilterRateLimitedCopy(resumeAt: string | undefined): string {
+  const resumeAtMs = resumeAt === undefined ? Number.NaN : Date.parse(resumeAt);
+  if (Number.isNaN(resumeAtMs))
+    return "GitHub rate-limited this account. Try again once the limit clears.";
+  const formatted = new Date(resumeAtMs).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `GitHub rate-limited this account. Try again at ${formatted}.`;
+}
+
+function labelFilterForbiddenCopy(
+  reason:
+    | "ip_allow_list"
+    | "saml"
+    | "insufficient_scopes"
+    | "unknown"
+    | undefined,
+): string {
+  switch (reason) {
+    case "ip_allow_list":
+      return "GitHub blocked this read: an IP allow list is enabled and this network is not on it.";
+    case "saml":
+      return "GitHub blocked this read: this account's token needs SAML single sign-on authorization.";
+    case "insufficient_scopes":
+      return "GitHub blocked this read: this account's token lacks the scopes this repository requires.";
+    default:
+      return "GitHub blocked this read and did not say why.";
+  }
 }
 
 /** Placeholder row count shown by {@link InboxRowsPanel} while `listPending`

@@ -122,7 +122,7 @@ export class FakeGitHubAdapter
 
   async listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;
-    readonly repo: PullRequestRef;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
     void input;
     return this.values.repositoryLabels === undefined
