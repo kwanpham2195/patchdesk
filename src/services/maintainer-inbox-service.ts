@@ -21,7 +21,9 @@ import {
   type InboxPageSize,
   type InboxScope,
   projectMaintainerInboxRow,
+  projectMaintainerInboxLocalReview,
   type InboxReviewSummary,
+  type MaintainerInboxLocalReview,
   type MaintainerInboxRow,
 } from "../domain/maintainer-inbox";
 // `list()` extracts `filter.state` once into a plain `InboxScope` and
@@ -91,6 +93,23 @@ export type MaintainerInbox = {
   readonly nextPageToken?: string;
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
   readonly repositories: ReadonlyArray<MaintainerInboxRepository>;
+  /**
+   * The Local review listing (ADR 0031): every Review session for the
+   * Selected repository, read whole from `ReviewSessionStore` and never
+   * paginated or sliced to `rows`' page. Exactly counted — its length is
+   * the number of sessions, not the number of rows on screen — and present
+   * regardless of `dataFreshness`, since it never depends on a live GitHub
+   * read. A session whose pull request `rows` does not carry (deleted,
+   * transferred, made private, or simply off the current filter) still
+   * appears here.
+   *
+   * Optional the same way `matchCount` is: every branch `list()` actually
+   * returns from sets this, but callers that build a `MaintainerInbox`
+   * outside `list()` (a bootstrap fixture with no repository selected,
+   * an older test double) are not required to know about it, and an
+   * absent listing renders as empty rather than as a type error.
+   */
+  readonly localReviews?: ReadonlyArray<MaintainerInboxLocalReview>;
   readonly refreshedAt?: IsoTimestamp;
   readonly dataFreshness: "fresh" | "cached";
   /**
@@ -151,6 +170,21 @@ export class MaintainerInboxService {
     const labels = normalizeInboxLabels(request.filter.labels);
     const pageToken = decodeInboxPageToken(request, repository, scope, labels);
     if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
+
+    // The Local review listing is read whole here, before the GitHub call
+    // and independently of its outcome — it is the maintainer's own saved
+    // state, never a slice of a GitHub page, so it is scoped to the
+    // Selected repository and exactly counted regardless of whether GitHub
+    // is reachable at all (see the `localReviews` doc on `MaintainerInbox`).
+    const sessions = await this.sessions.listSessions(profile.id);
+    const allSessions = sessions._tag === "ok" ? sessions.value : [];
+    const repositorySessions = allSessions.filter((session) =>
+      sameRepository(session.key, repository),
+    );
+    const localReviews = repositorySessions
+      .map(projectMaintainerInboxLocalReview)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+
     const authenticated =
       await this.github.resolveAuthenticatedAccount(profile);
     if (authenticated._tag === "err")
@@ -160,11 +194,15 @@ export class MaintainerInboxService {
             repository,
             scope,
             request.pageSize,
+            localReviews,
           )
-        : this.unavailablePage(repository, scope, request.pageSize);
+        : this.unavailablePage(
+            repository,
+            scope,
+            request.pageSize,
+            localReviews,
+          );
 
-    const sessions = await this.sessions.listSessions(profile.id);
-    const localSessions = sessions._tag === "ok" ? sessions.value : [];
     const read = await this.readRepository(
       profile,
       repository,
@@ -172,7 +210,7 @@ export class MaintainerInboxService {
       labels,
       request.pageSize,
       pageToken.cursor,
-      localSessions,
+      repositorySessions,
     );
     const visible = read.entries.slice(0, request.pageSize);
     const hasNextPage =
@@ -212,6 +250,7 @@ export class MaintainerInboxService {
           ? visible.map((entry) => entry.row)
           : visible.map((entry) => toCachedRow(entry.row)),
       repositories: [read.repository],
+      localReviews,
       refreshedAt,
       dataFreshness,
       snapshot: { state: complete ? "current" : "partial", refreshedAt },
@@ -306,14 +345,15 @@ export class MaintainerInboxService {
     repository: InboxRepositoryRef,
     scope: InboxScope,
     pageSize: InboxPageSize,
+    localReviews: ReadonlyArray<MaintainerInboxLocalReview>,
   ): Promise<Result<MaintainerInbox, never>> {
     if (scope === "merged")
-      return this.unavailablePage(repository, scope, pageSize);
+      return this.unavailablePage(repository, scope, pageSize, localReviews);
     const cached = await this.cache.read(profile.id, repository);
     if (cached._tag === "ok") {
       const refreshedAt = parseIsoTimestamp(cached.value.refreshedAt);
       if (refreshedAt._tag === "err")
-        return this.unavailablePage(repository, scope, pageSize);
+        return this.unavailablePage(repository, scope, pageSize, localReviews);
       const snapshotState = isInboxCacheStale(
         Date.parse(this.clock.now()) - Date.parse(refreshedAt.value),
       )
@@ -334,6 +374,7 @@ export class MaintainerInboxService {
             complete: false,
           },
         ],
+        localReviews,
         refreshedAt: refreshedAt.value,
         dataFreshness: "cached",
         snapshot: {
@@ -342,13 +383,14 @@ export class MaintainerInboxService {
         },
       });
     }
-    return this.unavailablePage(repository, scope, pageSize);
+    return this.unavailablePage(repository, scope, pageSize, localReviews);
   }
 
   private unavailablePage(
     repository: InboxRepositoryRef,
     scope: InboxScope,
     pageSize: InboxPageSize,
+    localReviews: ReadonlyArray<MaintainerInboxLocalReview>,
   ): Result<MaintainerInbox, never> {
     return ok({
       scope,
@@ -365,6 +407,7 @@ export class MaintainerInboxService {
           complete: false,
         },
       ],
+      localReviews,
       dataFreshness: "cached",
       snapshot: { state: "unavailable" },
     });

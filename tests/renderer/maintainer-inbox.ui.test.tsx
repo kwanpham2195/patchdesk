@@ -9,7 +9,10 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
-import type { InboxRow } from "../../src/renderer/src/renderer-contracts";
+import type {
+  InboxRow,
+  LocalReviewEntry,
+} from "../../src/renderer/src/renderer-contracts";
 
 afterEach(() => {
   cleanup();
@@ -529,6 +532,104 @@ describe("MaintainerInbox", () => {
     );
     expect(screen.getByText("1 on this page")).toBeTruthy();
     expect(screen.queryByText("0 open")).toBeNull();
-    expect(screen.queryByText(/^0$/)).toBeNull();
+    // Scoped to the filter bar itself (not the whole document): the Local
+    // review listing (ADR 0031, slice 8b) legitimately renders its own "0"
+    // badge here — zero saved sessions is an honest, exact count, not the
+    // dishonest match-count placeholder this test guards against.
+    expect(
+      within(screen.getByLabelText("Inbox filters")).queryByText(/^0$/),
+    ).toBeNull();
+  });
+});
+
+// The Local review listing (ADR 0031, slice 8b): the maintainer's own
+// Review sessions for the Selected repository, distinct from and rendered
+// beside the Repository listing above. A screen with no saved sessions —
+// the common case for a new maintainer — must still read cleanly.
+describe("MaintainerInbox local review listing", () => {
+  const localReview: LocalReviewEntry = {
+    reviewId: "review-42",
+    identity: { host: "github.com", owner: "owner", repo: "repo", number: 42 },
+    title: "Fix the flaky retry loop",
+    pinnedHeadSha: "b".repeat(40),
+    updatedAt: "2026-08-13T00:00:00.000Z",
+  };
+
+  it("renders an entry whose pull request is not in the Repository listing", () => {
+    render(
+      <MaintainerInbox
+        profileId="local-reviews"
+        profileLabel="P"
+        rows={[]}
+        localReviews={[localReview]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Local reviews")).toBeTruthy();
+    expect(screen.getByText(/Fix the flaky retry loop/)).toBeTruthy();
+  });
+
+  it("counts the Local review listing exactly, independent of the loaded rows", () => {
+    render(
+      <MaintainerInbox
+        profileId="local-reviews-count"
+        profileLabel="P"
+        rows={[row]}
+        localReviews={[
+          localReview,
+          {
+            ...localReview,
+            reviewId: "review-7",
+            identity: { ...localReview.identity, number: 7 },
+          },
+        ]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(
+      within(screen.getByLabelText("Local reviews")).getByText("2"),
+    ).toBeTruthy();
+  });
+
+  it("opens the saved review by id when its Open button is clicked", () => {
+    const open = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="local-reviews-open"
+        profileLabel="P"
+        rows={[]}
+        localReviews={[localReview]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={open}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(open).toHaveBeenCalledWith("review-42");
+  });
+
+  it("stays readable with no saved sessions, the common case for a new maintainer", () => {
+    render(
+      <MaintainerInbox
+        profileId="local-reviews-empty"
+        profileLabel="P"
+        rows={[]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(
+      within(screen.getByLabelText("Local reviews")).getByText("0"),
+    ).toBeTruthy();
+    expect(screen.getByText("No local reviews yet")).toBeTruthy();
   });
 });

@@ -5,6 +5,7 @@ import { err, ok, type Result } from "../../src/domain/result";
 import { INBOX_CACHE_REFUSE_AFTER_MS } from "../../src/domain/inbox-freshness-policy";
 import type { MaintainerInboxCache } from "../../src/adapters/storage/maintainer-inbox-cache-store";
 import type { StorageFailure } from "../../src/adapters/storage/json-file";
+import type { ReviewSession } from "../../src/domain/review-session";
 
 // SAFETY: MaintainerInboxService reads only host/owner/repo off the
 // repository parameter; the plain strings stand in for the branded GitHub
@@ -14,6 +15,34 @@ const repository = {
   owner: "centraldigital",
   repo: "patchdesk",
 } as never;
+
+function localSessionFixture(input: {
+  readonly owner?: string;
+  readonly repo?: string;
+  readonly prNumber: number;
+  readonly headSha?: string;
+  readonly updatedAt: string;
+  readonly title?: string;
+}): ReviewSession {
+  const titleField =
+    input.title === undefined ? {} : { prContext: { title: input.title } };
+  // SAFETY: only the fields `projectMaintainerInboxLocalReview` reads
+  // (`key`, `updatedAt`, and an optional `prContext.title`) are ever set;
+  // this fixture stands in for the full `ReviewSession` shape.
+  return {
+    key: {
+      profileId: "cfw",
+      host: "github.com",
+      owner: input.owner ?? "centraldigital",
+      repo: input.repo ?? "patchdesk",
+      prNumber: input.prNumber,
+      headSha: input.headSha ?? "a".repeat(40),
+      baseSha: "b".repeat(40),
+    },
+    updatedAt: input.updatedAt,
+    ...titleField,
+  } as never;
+}
 
 describe("MaintainerInboxService", () => {
   it("uses saved Review identity as the action authority", async () => {
@@ -822,3 +851,230 @@ describe("MaintainerInboxService page size", () => {
     expect(token.size).toBe(10);
   });
 });
+
+// ADR 0031's Local review listing: the maintainer's Review sessions for the
+// Selected repository, read whole and never sliced to the Repository
+// listing's page. `MaintainerInboxService.list` must build it from
+// `sessions.listSessions`, not from the loaded GitHub rows — the four
+// tests below are exactly the four acceptance criteria in slice 8b.
+describe("MaintainerInboxService local review listing", () => {
+  function serviceWithSessions(input: {
+    readonly sessions: ReadonlyArray<ReviewSession>;
+    readonly entries?: ReadonlyArray<{
+      readonly cursor: string;
+      readonly pullRequest: unknown;
+    }>;
+    readonly hasNextPage?: boolean;
+  }): MaintainerInboxService {
+    // SAFETY: this fixture implements only the GitHub reader, session
+    // reader, and cache seams `list()` actually calls.
+    return new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async () =>
+          ok({
+            entries: input.entries ?? [],
+            hasNextPage: input.hasNextPage ?? false,
+            issueCount: (input.entries ?? []).length,
+          }),
+      } as never,
+      { listSessions: async () => ok(input.sessions) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+  }
+
+  // SAFETY: this minimal profile supplies exactly the fields list() reads.
+  const profile = { id: "cfw", ghAccount: "fixture" } as never;
+
+  it("criterion 1 — complete: every saved session appears, not just one page's worth", async () => {
+    // 12 saved sessions — more than the smallest configured page size (10),
+    // the smallest bound the Repository listing's own page can be cut to.
+    const sessions = Array.from({ length: 12 }, (_, index) =>
+      localSessionFixture({
+        prNumber: index + 1,
+        updatedAt: `2026-07-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+      }),
+    );
+    // The Repository listing's own page holds no rows this time and reports
+    // more pages waiting — the Local review listing must not inherit that
+    // cursor or that page size.
+    const service = serviceWithSessions({
+      sessions,
+      entries: [],
+      hasNextPage: true,
+    });
+
+    const result = await service.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 10,
+    });
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.localReviews).toHaveLength(12);
+    expect(
+      result.value.localReviews
+        ?.map((entry) => entry.identity.number)
+        .sort((a, b) => a - b),
+    ).toEqual(Array.from({ length: 12 }, (_, index) => index + 1));
+  });
+
+  it("criterion 2 — exactly counted: its count is the session count, not the loaded row count", async () => {
+    const sessions = Array.from({ length: 5 }, (_, index) =>
+      localSessionFixture({
+        prNumber: index + 1,
+        updatedAt: `2026-07-0${index + 1}T00:00:00.000Z`,
+      }),
+    );
+    // Repository listing: only 2 rows loaded, GitHub reports 100 total
+    // matches. Neither number is the Local review listing's count.
+    const service = serviceWithSessions({
+      sessions,
+      entries: [
+        {
+          cursor: "c1",
+          pullRequest: prSummaryFixture(1, "2026-07-01T00:00:00.000Z"),
+        },
+        {
+          cursor: "c2",
+          pullRequest: prSummaryFixture(2, "2026-07-02T00:00:00.000Z"),
+        },
+      ],
+      hasNextPage: true,
+    });
+
+    const result = await service.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 10,
+    });
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.rows).toHaveLength(2);
+    expect(result.value.localReviews).toHaveLength(5);
+  });
+
+  it("criterion 3 — scoped: sessions for another repository do not appear", async () => {
+    const sessions = [
+      localSessionFixture({
+        prNumber: 1,
+        updatedAt: "2026-07-01T00:00:00.000Z",
+      }),
+      localSessionFixture({
+        owner: "other-org",
+        repo: "other-repo",
+        prNumber: 1,
+        updatedAt: "2026-07-01T00:00:00.000Z",
+      }),
+      localSessionFixture({
+        owner: "other-org",
+        repo: "other-repo",
+        prNumber: 2,
+        updatedAt: "2026-07-02T00:00:00.000Z",
+      }),
+    ];
+    const service = serviceWithSessions({ sessions });
+
+    const result = await service.list(profile, repository);
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.localReviews).toHaveLength(1);
+    expect(result.value.localReviews?.[0]?.identity).toMatchObject({
+      owner: "centraldigital",
+      repo: "patchdesk",
+      number: 1,
+    });
+  });
+
+  it("criterion 4 — survives GitHub: a session whose pull request GitHub does not return still appears", async () => {
+    // GitHub's search page for this filter comes back with no matching pull
+    // requests at all — deleted, transferred, made private, or simply
+    // outside the current filter — yet the saved session for #42 must not
+    // vanish.
+    const session = localSessionFixture({
+      prNumber: 42,
+      updatedAt: "2026-07-15T00:00:00.000Z",
+      title: "Fix the flaky retry loop",
+    });
+    const service = serviceWithSessions({
+      sessions: [session],
+      entries: [],
+      hasNextPage: false,
+    });
+
+    const result = await service.list(profile, repository, {
+      filter: { state: "open" },
+      pageSize: 25,
+    });
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.rows).toHaveLength(0);
+    expect(result.value.localReviews).toHaveLength(1);
+    expect(result.value.localReviews?.[0]).toMatchObject({
+      identity: { owner: "centraldigital", repo: "patchdesk", number: 42 },
+      title: "Fix the flaky retry loop",
+      pinnedHeadSha: "a".repeat(40),
+      updatedAt: "2026-07-15T00:00:00.000Z",
+    });
+  });
+
+  it("still appears when GitHub authentication fails entirely (cachedOrUnavailable path)", async () => {
+    const session = localSessionFixture({
+      prNumber: 7,
+      updatedAt: "2026-07-20T00:00:00.000Z",
+    });
+    // SAFETY: this fixture implements only the seams `list()` calls before
+    // falling back to `cachedOrUnavailable`/`unavailablePage`.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () => ({
+          _tag: "err",
+          error: { _tag: "GitHubAuthenticationFailed" },
+        }),
+      } as never,
+      { listSessions: async () => ok([session]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    const result = await service.list(profile, repository);
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.localReviews).toHaveLength(1);
+  });
+});
+
+function prSummaryFixture(number: number, updatedAt: string) {
+  return {
+    summary: {
+      ref: {
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number,
+      },
+      title: `PR ${number}`,
+      author: "other",
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40),
+      isOpen: true,
+      isDraft: false,
+      reviewState: "none",
+      mergeability: "mergeable",
+      labels: [],
+      updatedAt,
+    },
+    checks: { overall: "passing", checks: [] },
+  };
+}

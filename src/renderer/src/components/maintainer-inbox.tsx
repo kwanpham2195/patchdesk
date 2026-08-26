@@ -10,7 +10,11 @@ import {
   GitPullRequest,
 } from "lucide-react";
 
-import { inboxIdentityKey, type InboxRow } from "@/renderer-contracts";
+import {
+  inboxIdentityKey,
+  type InboxRow,
+  type LocalReviewEntry,
+} from "@/renderer-contracts";
 import { recoveryActionLabel } from "@/review-copy";
 import { LabelChip } from "./label-chip";
 import {
@@ -39,6 +43,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import {
   Pagination,
   PaginationContent,
@@ -106,6 +116,12 @@ type MaintainerInboxProps = {
   readonly onPreviousPage?: () => void;
   readonly onNextPage?: () => void;
   readonly rows: ReadonlyArray<InboxRow>;
+  /** The Local review listing (ADR 0031): the maintainer's own Review
+   * sessions for the Selected repository, read whole and never paginated —
+   * not a slice of `rows`. A session whose pull request is not in `rows`
+   * (GitHub cannot return it, or it is simply off the current filter) still
+   * appears here, rather than vanishing. */
+  readonly localReviews?: ReadonlyArray<LocalReviewEntry>;
   /** GitHub's true repository-wide match count for the current filter.
    * Absent on a cached or failed read that cannot know it — render that
    * absence honestly, never as 0. Never the loaded page's row count. */
@@ -156,6 +172,7 @@ export function MaintainerInbox({
   onPreviousPage = () => undefined,
   onNextPage = () => undefined,
   rows,
+  localReviews = [],
   matchCount,
   repos,
   selectedRepository,
@@ -198,6 +215,10 @@ export function MaintainerInbox({
         onRepositoryChange={onRepositoryChange}
         refreshStatus={refreshStatus}
         {...(snapshot === undefined ? {} : { snapshot })}
+      />
+      <LocalReviewsPanel
+        localReviews={localReviews}
+        onOpenReviewId={onOpenReviewId}
       />
       {refreshStatus === "Stale" && snapshot?.refreshedAt !== undefined ? (
         <StaleInboxBanner refreshedAt={snapshot.refreshedAt} />
@@ -284,6 +305,108 @@ function StaleInboxBanner({
         reconnect.
       </AlertDescription>
     </Alert>
+  );
+}
+
+/** Label for a Local review entry whose session predates `prContext`, or
+ * never captured a title — falls back to the identity a maintainer already
+ * recognizes from GitHub. */
+function localReviewLabel(entry: LocalReviewEntry): string {
+  if (entry.title !== undefined) return entry.title;
+  return `${entry.identity.owner}/${entry.identity.repo}`;
+}
+
+/**
+ * The Local review listing (ADR 0031): every Review session for the
+ * Selected repository, read whole and never paginated — distinct from, and
+ * always beside, the Repository listing below it. A session here can
+ * outlive its pull request on GitHub (deleted, transferred, made private,
+ * or simply off the current filter), so it never depends on `rows`.
+ */
+function LocalReviewsPanel({
+  localReviews,
+  onOpenReviewId,
+}: {
+  readonly localReviews: ReadonlyArray<LocalReviewEntry>;
+  readonly onOpenReviewId: (reviewId: string) => void;
+}): React.JSX.Element {
+  return (
+    <section
+      aria-label="Local reviews"
+      className="border-b px-3 py-2.5"
+      data-slot="local-reviews-panel"
+    >
+      <div className="flex items-center gap-2">
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Local reviews
+        </h2>
+        <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+          {localReviews.length}
+        </Badge>
+      </div>
+      <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+        Reviews you have open for this repository, kept even when GitHub cannot
+        show their pull request.
+      </p>
+      <Separator className="mt-2" />
+      {localReviews.length === 0 ? (
+        <Empty className="min-h-0 gap-1.5 border-none p-2 py-3">
+          <EmptyHeader className="max-w-none gap-1">
+            <EmptyTitle className="text-xs">No local reviews yet</EmptyTitle>
+            <EmptyDescription className="text-[11px] leading-4">
+              Start a review from the pull requests below and it appears here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <ScrollArea className="mt-2 max-h-48 w-full">
+          <ul className="flex flex-col gap-1.5 pr-2">
+            {localReviews.map((entry) => (
+              <li key={entry.reviewId}>
+                <LocalReviewCard
+                  entry={entry}
+                  onOpen={() => onOpenReviewId(entry.reviewId)}
+                />
+              </li>
+            ))}
+          </ul>
+        </ScrollArea>
+      )}
+    </section>
+  );
+}
+
+function LocalReviewCard({
+  entry,
+  onOpen,
+}: {
+  readonly entry: LocalReviewEntry;
+  readonly onOpen: () => void;
+}): React.JSX.Element {
+  const label = localReviewLabel(entry);
+  return (
+    <Card className="flex-row items-center gap-2 px-2.5 py-2">
+      <div className="min-w-0 flex-1">
+        <p
+          className="truncate text-xs leading-4 font-medium"
+          title={`#${entry.identity.number} ${label}`}
+        >
+          #{entry.identity.number} {label}
+        </p>
+        <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+          Updated {relativeTime(entry.updatedAt)} ·{" "}
+          {shortSha(entry.pinnedHeadSha)}
+        </p>
+      </div>
+      <Button
+        size="xs"
+        variant="outline"
+        className="h-6 shrink-0 text-[11px]"
+        onClick={onOpen}
+      >
+        Open
+      </Button>
+    </Card>
   );
 }
 

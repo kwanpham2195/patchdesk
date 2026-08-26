@@ -132,6 +132,26 @@ describe("parseInboxResponse", () => {
       // field is silently dropped at parse time if it is ever removed from
       // the schema — that trap is exactly what this test guards.
       matchCount: 237,
+      // The Local review listing (ADR 0031, slice 8b). `inbox` is a plain
+      // `v.object`, not a `v.strictObject`, so an undeclared key here is
+      // silently dropped rather than rejected — the same trap `matchCount`
+      // guards above, just via omission instead of a schema error. See
+      // "delete it and watch this fail" in slice 8b's report.
+      localReviews: [
+        {
+          reviewId:
+            "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456",
+          identity: {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "patchdesk",
+            number: 42,
+          },
+          title: "Fix the flaky retry loop",
+          pinnedHeadSha: "2222222222222222222222222222222222222222",
+          updatedAt: "2026-07-18T00:00:00.000Z",
+        },
+      ],
     },
   };
 
@@ -149,6 +169,55 @@ describe("parseInboxResponse", () => {
     });
     expect(parsed).toBeDefined();
     expect(parsed?.inbox.matchCount).toBeUndefined();
+  });
+
+  // The Local review listing entry: identity, review id, pinned head, and
+  // last-updated time, per slice 8b of the pull-requests-screen plan. This
+  // is the field that is silently dropped at the IPC boundary if it is
+  // ever removed from `inboxResponseSchema` — see the report's "break the
+  // fix" proof.
+  it("carries the Local review listing across the IPC boundary", () => {
+    const parsed = parseInboxResponse(response);
+    expect(parsed?.inbox.localReviews).toEqual(response.inbox.localReviews);
+  });
+
+  it("accepts a Local review entry with no title, and omits matchCount and localReviews together when both are absent", () => {
+    const { matchCount, localReviews, ...bare } = response.inbox;
+    void matchCount;
+    void localReviews;
+    const parsed = parseInboxResponse({
+      ...response,
+      inbox: {
+        ...bare,
+        localReviews: [
+          {
+            reviewId:
+              "github.com__centraldigital__patchdesk__pr-7__review-abcdef123456",
+            identity: {
+              host: "github.com",
+              owner: "centraldigital",
+              repo: "patchdesk",
+              number: 7,
+            },
+            pinnedHeadSha: "3333333333333333333333333333333333333333",
+            updatedAt: "2026-07-19T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    expect(parsed).toBeDefined();
+    expect(parsed?.inbox.localReviews?.[0]?.title).toBeUndefined();
+  });
+
+  it("omits localReviews when the source response has none, rather than inventing an empty list", () => {
+    const { localReviews, ...inboxWithoutLocalReviews } = response.inbox;
+    void localReviews;
+    const parsed = parseInboxResponse({
+      ...response,
+      inbox: inboxWithoutLocalReviews,
+    });
+    expect(parsed).toBeDefined();
+    expect(parsed?.inbox.localReviews).toBeUndefined();
   });
 });
 

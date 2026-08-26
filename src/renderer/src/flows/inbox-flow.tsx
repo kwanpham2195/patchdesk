@@ -428,6 +428,9 @@ function InboxScreen({
           {...(inbox.inbox.matchCount === undefined
             ? {}
             : { matchCount: inbox.inbox.matchCount })}
+          {...(inbox.inbox.localReviews === undefined
+            ? {}
+            : { localReviews: inbox.inbox.localReviews })}
           pageSize={pageSize}
           hasPreviousPage={hasPreviousPage}
           hasNextPage={hasNextPage}
