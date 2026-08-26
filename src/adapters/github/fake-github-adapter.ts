@@ -7,6 +7,7 @@ import type {
   GitHubPublishedFeedback,
   MergePolicySnapshot,
   MaintainerPullRequestPage,
+  MaintainerPullRequestSearchPage,
   PullRequestCommit,
   PullRequestReviewerListing,
   PullRequestSummary,
@@ -87,6 +88,35 @@ export class FakeGitHubAdapter
         },
       })),
       hasNextPage: false,
+    });
+  }
+
+  async searchMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly searchQuery: string;
+    readonly scope: InboxScope;
+    readonly pageSize: InboxPageSize;
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
+    void input;
+    if (this.values.maintainerPullRequestsSearch !== undefined)
+      return ok(this.values.maintainerPullRequestsSearch);
+    if (this.values.listOpenPullRequests === undefined)
+      return missing("search_maintainer_prs");
+    // Fallback fixture built off `listOpenPullRequests`: issueCount equals
+    // the entry count here, unlike `maintainerPullRequestsSearch`, which a
+    // test sets explicitly to prove the two can differ.
+    return ok({
+      entries: this.values.listOpenPullRequests.map((summary, index) => ({
+        cursor: `fixture-${index}`,
+        pullRequest: {
+          summary,
+          checks: this.values.checks ?? { overall: "unknown", checks: [] },
+        },
+      })),
+      hasNextPage: false,
+      issueCount: this.values.listOpenPullRequests.length,
     });
   }
 
@@ -647,6 +677,8 @@ export class FakeGitHubAdapter
 export type FakeGitHubAdapterValues = {
   readonly listOpenPullRequests: ReadonlyArray<PullRequestSummary>;
   readonly maintainerPullRequests: MaintainerPullRequestPage;
+  /** `searchMaintainerPullRequests` fixture. Set `issueCount` independently of `entries.length` to test the repository-wide count diverging from the loaded page. */
+  readonly maintainerPullRequestsSearch: MaintainerPullRequestSearchPage;
   readonly repositoryLabels: RepositoryLabelListing;
   readonly assignableUsers: AssignableUserListing;
   readonly pullRequestReviewers: PullRequestReviewerListing;

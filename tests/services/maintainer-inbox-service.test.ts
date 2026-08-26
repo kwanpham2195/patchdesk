@@ -24,7 +24,7 @@ describe("MaintainerInboxService", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests: async () =>
+        searchMaintainerPullRequests: async () =>
           ok({
             entries: [
               {
@@ -53,6 +53,7 @@ describe("MaintainerInboxService", () => {
               },
             ],
             hasNextPage: false,
+            issueCount: 1,
           }),
       } as never,
       { listSessions: async () => ok([]) } as never,
@@ -74,15 +75,18 @@ describe("MaintainerInboxService", () => {
 
   it("reads the merged scope and returns only the terminal action", async () => {
     const scopes: Array<string | undefined> = [];
+    const searchQueries: Array<string> = [];
     // SAFETY: these narrow fixtures implement exactly the service seams under test.
     const service = new MaintainerInboxService(
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests: async (input: {
+        searchMaintainerPullRequests: async (input: {
           readonly scope?: string;
+          readonly searchQuery: string;
         }) => {
           scopes.push(input.scope);
+          searchQueries.push(input.searchQuery);
           return ok({
             entries: [
               {
@@ -113,6 +117,7 @@ describe("MaintainerInboxService", () => {
               },
             ],
             hasNextPage: false,
+            issueCount: 1,
           });
         },
         // SAFETY: this fixture implements only the GitHub reader members list() calls.
@@ -136,6 +141,9 @@ describe("MaintainerInboxService", () => {
     );
 
     expect(scopes).toEqual(["merged"]);
+    expect(searchQueries).toEqual([
+      "repo:centraldigital/patchdesk is:pr is:merged",
+    ]);
     expect(result).toMatchObject({
       _tag: "ok",
       value: {
@@ -152,6 +160,113 @@ describe("MaintainerInboxService", () => {
   });
 });
 
+describe("MaintainerInboxService search query", () => {
+  it("requests the open-scope search query when no scope is given", async () => {
+    const searchQueries: Array<string> = [];
+    // SAFETY: this fixture implements only the GitHub reader members list() calls.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async (input: {
+          readonly searchQuery: string;
+        }) => {
+          searchQueries.push(input.searchQuery);
+          return ok({ entries: [], hasNextPage: false, issueCount: 0 });
+        },
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: this minimal profile supplies exactly the fields list() reads.
+    await service.list(
+      { id: "cfw", ghAccount: "fixture" } as never,
+      repository,
+    );
+
+    expect(searchQueries).toEqual([
+      "repo:centraldigital/patchdesk is:pr is:open",
+    ]);
+  });
+});
+
+// The defect this whole plan targets: a maintainer inbox header reading
+// "10 merged" because only ten rows are loaded, when the repository
+// actually has 237 matches. `searchMaintainerPullRequests`'s `issueCount`
+// is GitHub's true repository-wide count; the service must report that,
+// not the loaded page's row count.
+describe("MaintainerInboxService match count", () => {
+  it("reports GitHub's issueCount, not the loaded page's row count, when they differ", async () => {
+    function summaryAt(number: number) {
+      return {
+        cursor: `patchdesk-${number}`,
+        pullRequest: {
+          summary: {
+            ref: {
+              host: "github.com",
+              owner: "centraldigital",
+              repo: "patchdesk",
+              number,
+            },
+            title: `PR ${number}`,
+            author: "other",
+            headSha: "a".repeat(40),
+            baseSha: "b".repeat(40),
+            isOpen: true,
+            isDraft: false,
+            reviewState: "none",
+            mergeability: "mergeable",
+            labels: [],
+            updatedAt: "2026-08-01T00:00:00.000Z",
+          },
+          checks: { overall: "passing", checks: [] },
+        },
+      };
+    }
+    // SAFETY: this fixture implements only the GitHub reader members list() calls.
+    const service = new MaintainerInboxService(
+      {
+        resolveAuthenticatedAccount: async () =>
+          ok({ host: "github.com", account: "fixture" }),
+        searchMaintainerPullRequests: async () =>
+          ok({
+            // The repository-wide search matches 237 pull requests, but
+            // only a page of 10 rows is ever loaded.
+            entries: Array.from({ length: 10 }, (_, index) =>
+              summaryAt(index + 1),
+            ),
+            hasNextPage: true,
+            endCursor: "cursor-11",
+            issueCount: 237,
+          }),
+      } as never,
+      { listSessions: async () => ok([]) } as never,
+      {
+        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
+        save: async () => ok(undefined),
+      } as never,
+      { now: () => "2026-08-01T00:00:00.000Z" as never },
+    );
+
+    // SAFETY: this minimal profile supplies exactly the fields list() reads.
+    const result = await service.list(
+      { id: "cfw", ghAccount: "fixture" } as never,
+      repository,
+      { scope: "merged", pageSize: 10 },
+    );
+
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value.rows).toHaveLength(10);
+    expect(result.value.matchCount).toBe(237);
+  });
+});
+
 describe("MaintainerInboxService rate-limited reads", () => {
   it("maps a GitHubRateLimited read failure to the github_rate_limited state and carries resumeAt", async () => {
     // SAFETY: test fixture narrows a partial mock (only the members
@@ -161,7 +276,7 @@ describe("MaintainerInboxService rate-limited reads", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests: async () =>
+        searchMaintainerPullRequests: async () =>
           err({
             _tag: "GitHubRateLimited",
             operation: "list_maintainer_prs",
@@ -200,7 +315,7 @@ describe("MaintainerInboxService rate-limited reads", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests: async () =>
+        searchMaintainerPullRequests: async () =>
           err({
             _tag: "GitHubRateLimited",
             operation: "list_maintainer_prs",
@@ -238,7 +353,7 @@ describe("MaintainerInboxService forbidden reads (plan 009)", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests: async () =>
+        searchMaintainerPullRequests: async () =>
           err({
             _tag: "GitHubForbidden",
             operation: "list_maintainer_prs",
@@ -298,8 +413,8 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
           _tag: "err",
           error: { _tag: "GitHubAuthenticationFailed" },
         }),
-        listMaintainerPullRequests: async () =>
-          ok({ entries: [], hasNextPage: false }),
+        searchMaintainerPullRequests: async () =>
+          ok({ entries: [], hasNextPage: false, issueCount: 0 }),
       } as never,
       { listSessions: async () => ok([]) } as never,
       cache as never,
@@ -371,11 +486,12 @@ describe("MaintainerInboxService page token validation", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests: async () =>
+        searchMaintainerPullRequests: async () =>
           ok({
             entries: [],
             hasNextPage: true,
             endCursor: "cursor-after-empty-page",
+            issueCount: 0,
           }),
       } as never,
       // SAFETY: list() requires only the session-list seam from this fixture.
@@ -412,7 +528,7 @@ describe("MaintainerInboxService page token validation", () => {
   });
 
   it("rejects malformed tokens before reading GitHub", async () => {
-    const listMaintainerPullRequests = async (): Promise<never> => {
+    const searchMaintainerPullRequests = async (): Promise<never> => {
       throw new Error("GitHub must not receive malformed inbox tokens");
     };
     // SAFETY: test fixture narrows partial collaborators to the exact
@@ -421,7 +537,7 @@ describe("MaintainerInboxService page token validation", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests,
+        searchMaintainerPullRequests,
       } as never,
       { listSessions: async () => ok([]) } as never,
       {
@@ -443,7 +559,7 @@ describe("MaintainerInboxService page token validation", () => {
   });
 
   it("rejects a page token whose recorded size does not match the requested size", async () => {
-    const listMaintainerPullRequests = async (): Promise<never> => {
+    const searchMaintainerPullRequests = async (): Promise<never> => {
       throw new Error("GitHub must not receive a size-mismatched inbox token");
     };
     // SAFETY: test fixture narrows partial collaborators to the exact
@@ -452,7 +568,7 @@ describe("MaintainerInboxService page token validation", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests,
+        searchMaintainerPullRequests,
       } as never,
       { listSessions: async () => ok([]) } as never,
       {
@@ -491,7 +607,7 @@ describe("MaintainerInboxService page token validation", () => {
   });
 
   it("rejects a page token minted for a different repository before any GitHub call", async () => {
-    const listMaintainerPullRequests = async (): Promise<never> => {
+    const searchMaintainerPullRequests = async (): Promise<never> => {
       throw new Error(
         "GitHub must not receive a token minted for a different repository",
       );
@@ -502,7 +618,7 @@ describe("MaintainerInboxService page token validation", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests,
+        searchMaintainerPullRequests,
       } as never,
       { listSessions: async () => ok([]) } as never,
       {
@@ -575,7 +691,7 @@ describe("MaintainerInboxService page size", () => {
       {
         resolveAuthenticatedAccount: async () =>
           ok({ host: "github.com", account: "fixture" }),
-        listMaintainerPullRequests: async () =>
+        searchMaintainerPullRequests: async () =>
           ok({
             // 12 fixture rows from the one Selected repository — more than
             // the requested page size, proving the service still bounds the
@@ -587,6 +703,7 @@ describe("MaintainerInboxService page size", () => {
               ),
             ),
             hasNextPage: false,
+            issueCount: 12,
           }),
       } as never,
       { listSessions: async () => ok([]) } as never,

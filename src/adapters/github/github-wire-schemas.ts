@@ -388,83 +388,14 @@ export const threadCommentsResponseSchema = v.looseObject({
   }),
 });
 
-export const maintainerInboxResponseSchema = v.looseObject({
-  data: v.looseObject({
-    rateLimit: v.optional(
-      v.looseObject({
-        remaining: v.pipe(v.number(), v.integer(), v.minValue(0)),
-        resetAt: v.string(),
-      }),
-    ),
-    repository: v.looseObject({
-      pullRequests: v.looseObject({
-        edges: v.array(
-          v.looseObject({
-            cursor: v.pipe(v.string(), v.minLength(1)),
-            node: v.looseObject({
-              number: v.pipe(v.number(), v.integer(), v.minValue(1)),
-              title: v.string(),
-              isDraft: v.boolean(),
-              headRefName: v.string(),
-              headRefOid: v.string(),
-              baseRefName: v.string(),
-              baseRefOid: v.optional(v.string()),
-              author: v.nullish(v.looseObject({ login: v.string() })),
-              updatedAt: v.string(),
-              mergeable: v.string(),
-              reviewDecision: v.nullish(v.string()),
-              additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-              deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-              changedFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
-              labels: v.looseObject({
-                totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
-                nodes: v.array(
-                  v.looseObject({ name: v.string(), color: v.string() }),
-                ),
-                pageInfo: v.looseObject({ hasNextPage: v.boolean() }),
-              }),
-              reviewRequests: v.looseObject({
-                nodes: v.array(
-                  v.looseObject({
-                    requestedReviewer: v.nullish(
-                      v.looseObject({ login: v.optional(v.string()) }),
-                    ),
-                  }),
-                ),
-              }),
-              assignees: v.looseObject({
-                nodes: v.array(v.looseObject({ login: v.string() })),
-              }),
-              commits: v.looseObject({
-                nodes: v.array(
-                  v.looseObject({
-                    commit: v.looseObject({
-                      statusCheckRollup: v.nullish(
-                        v.looseObject({ state: v.string() }),
-                      ),
-                    }),
-                  }),
-                ),
-              }),
-            }),
-          }),
-        ),
-        pageInfo: v.looseObject({
-          hasNextPage: v.boolean(),
-          endCursor: v.nullish(v.string()),
-        }),
-      }),
-    }),
-  }),
-});
-
-// Structurally identical node shape to maintainerInboxResponseSchema's
-// `pullRequests.edges[].node` above (deliberately duplicated, not shared,
-// per plan slice 4: the two queries are independent reads and this slice
-// only adds, never refactors, the existing schema). Keeping the fields
-// identical is what lets `parseMaintainerPullRequest` accept either node
-// unchanged.
-const maintainerInboxSearchNodeSchema = v.looseObject({
+// Shared pull-request node shape for both `maintainerInboxQuery`'s
+// `repository.pullRequests.edges[].node` and `maintainerInboxSearchQuery`'s
+// `search.edges[].node` — the two queries select identical PullRequest
+// fields, so one schema serves both and `parseMaintainerPullRequest` accepts
+// either node unchanged. (Collapsed from two deliberately-duplicated copies
+// per plan slice 5b; the copies had not drifted — same fields, same order,
+// only incidental line-wrapping differed.)
+const maintainerInboxNodeSchema = v.looseObject({
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),
   title: v.string(),
   isDraft: v.boolean(),
@@ -507,6 +438,31 @@ const maintainerInboxSearchNodeSchema = v.looseObject({
   }),
 });
 
+export const maintainerInboxResponseSchema = v.looseObject({
+  data: v.looseObject({
+    rateLimit: v.optional(
+      v.looseObject({
+        remaining: v.pipe(v.number(), v.integer(), v.minValue(0)),
+        resetAt: v.string(),
+      }),
+    ),
+    repository: v.looseObject({
+      pullRequests: v.looseObject({
+        edges: v.array(
+          v.looseObject({
+            cursor: v.pipe(v.string(), v.minLength(1)),
+            node: maintainerInboxNodeSchema,
+          }),
+        ),
+        pageInfo: v.looseObject({
+          hasNextPage: v.boolean(),
+          endCursor: v.nullish(v.string()),
+        }),
+      }),
+    }),
+  }),
+});
+
 /** Response shape for `maintainerInboxSearchQuery`: `search(type: ISSUE)` plus the top-level `rateLimit`, mirroring `maintainerInboxResponseSchema` but keyed by `issueCount`, GitHub's true repository-wide match count, rather than the `repository.pullRequests` connection. */
 export const maintainerInboxSearchResponseSchema = v.looseObject({
   data: v.looseObject({
@@ -521,7 +477,7 @@ export const maintainerInboxSearchResponseSchema = v.looseObject({
       edges: v.array(
         v.looseObject({
           cursor: v.pipe(v.string(), v.minLength(1)),
-          node: maintainerInboxSearchNodeSchema,
+          node: maintainerInboxNodeSchema,
         }),
       ),
       pageInfo: v.looseObject({

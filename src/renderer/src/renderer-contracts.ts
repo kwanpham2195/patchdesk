@@ -137,6 +137,8 @@ const inboxResponseSchema = v.strictObject({
     nextPageToken: v.optional(v.pipe(v.string(), v.minLength(1))),
     rows: v.array(inboxRowSchema),
     repositories: v.array(repoOutcomeSchema),
+    /** GitHub's repository-wide match count for the current filter, absent on a cached or failed read that cannot know it. Never the loaded page's row count. */
+    matchCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
     dataFreshness: v.picklist(["fresh", "cached"]),
     snapshot: v.optional(
       v.strictObject({

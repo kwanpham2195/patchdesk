@@ -80,6 +80,13 @@ export type MaintainerInbox = {
   readonly repositories: ReadonlyArray<MaintainerInboxRepository>;
   readonly refreshedAt?: IsoTimestamp;
   readonly dataFreshness: "fresh" | "cached";
+  /**
+   * GitHub's true repository-wide match count for the current scope's
+   * search filter (`issueCount`), not this page's loaded row count. Present
+   * only when the repository was just freshly read through the
+   * search-backed query; absent for cached, unavailable, or failed reads.
+   */
+  readonly matchCount?: number;
   readonly snapshot: {
     readonly state:
       | "current"
@@ -106,6 +113,8 @@ type RepositoryRead = {
   /** Advances an empty GraphQL page without skipping a non-emitted inbox row. */
   readonly emptyPageEndCursor?: string;
   readonly repository: MaintainerInboxRepository;
+  /** GitHub's `issueCount` for the search query just read; absent on a failed read. */
+  readonly issueCount?: number;
 };
 
 /** Reads one Selected repository's maintainer inbox page and keeps its GitHub cursor inside an opaque token. */
@@ -176,6 +185,8 @@ export class MaintainerInboxService {
           cursor === undefined ? baseNextToken : { ...baseNextToken, cursor },
         )
       : undefined;
+    const matchCountField =
+      read.issueCount === undefined ? {} : { matchCount: read.issueCount };
     const value: MaintainerInbox = {
       scope: request.scope,
       pageSize: request.pageSize,
@@ -187,6 +198,7 @@ export class MaintainerInboxService {
       refreshedAt,
       dataFreshness,
       snapshot: { state: complete ? "current" : "partial", refreshedAt },
+      ...matchCountField,
     };
     if (
       request.scope === "open" &&
@@ -228,13 +240,15 @@ export class MaintainerInboxService {
       owner: repository.owner,
       repo: repository.repo,
     };
-    const listed = await this.github.listMaintainerPullRequests(
+    const searchQuery = buildInboxSearchQuery(repo, scope);
+    const searched = await this.github.searchMaintainerPullRequests(
       cursor === undefined
-        ? { profile, repo, scope, pageSize }
-        : { profile, repo, scope, pageSize, cursor },
+        ? { profile, repo, searchQuery, scope, pageSize }
+        : { profile, repo, searchQuery, scope, pageSize, cursor },
     );
-    if (listed._tag === "err") return failedRepositoryRead(repo, listed.error);
-    const entries = listed.value.entries.map(
+    if (searched._tag === "err")
+      return failedRepositoryRead(repo, searched.error);
+    const entries = searched.value.entries.map(
       ({ cursor: entryCursor, pullRequest }) => {
         const latestReview = latestReviewFor(pullRequest.summary, sessions);
         const input = {
@@ -251,16 +265,17 @@ export class MaintainerInboxService {
       },
     );
     const emptyPageEndCursor =
-      entries.length === 0 && listed.value.hasNextPage
-        ? listed.value.endCursor
+      entries.length === 0 && searched.value.hasNextPage
+        ? searched.value.endCursor
         : undefined;
     const read: RepositoryRead = {
       entries,
-      hasNextPage: listed.value.hasNextPage,
+      hasNextPage: searched.value.hasNextPage,
+      issueCount: searched.value.issueCount,
       repository: {
         repo,
         state: entries.length === 0 ? "no_open_prs" : "ready",
-        complete: !listed.value.hasNextPage,
+        complete: !searched.value.hasNextPage,
       },
     };
     return emptyPageEndCursor === undefined
@@ -336,6 +351,22 @@ export class MaintainerInboxService {
       snapshot: { state: "unavailable" },
     });
   }
+}
+
+/**
+ * Builds the GitHub search qualifier string for one repository and scope:
+ * `repo:OWNER/NAME is:pr is:open` or `...is:merged`. The sole place that
+ * builds this string, so slice 8's user-chosen filters extend it here
+ * rather than through ad hoc concatenation elsewhere — and so GitHub's
+ * 256-character, five-boolean-operator search cap has one place to be
+ * enforced once filters can grow the string.
+ */
+function buildInboxSearchQuery(
+  repo: InboxRepositoryRef,
+  scope: InboxScope,
+): string {
+  const state = scope === "merged" ? "is:merged" : "is:open";
+  return `repo:${repo.owner}/${repo.repo} is:pr ${state}`;
 }
 
 function failedRepositoryRead(

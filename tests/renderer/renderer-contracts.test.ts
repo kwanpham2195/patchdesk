@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseCallFlowResponse,
   parseCommitDiffResponse,
+  parseInboxResponse,
   parseInsightProviderCatalog,
   parseModelCatalog,
   parseRepositoryLabelListResponse,
@@ -111,6 +112,45 @@ const reviewProjection = {
   checks: { overall: "passing", checks: [] },
   mergeReadiness: { _tag: "Blocked", blockers: ["stale_head"], warnings: [] },
 };
+
+describe("parseInboxResponse", () => {
+  const response = {
+    profile: {
+      id: "cfw",
+      label: "Profile",
+      githubHost: "github.com",
+      ghAccount: "fixture",
+    },
+    inbox: {
+      scope: "merged" as const,
+      pageSize: 25 as const,
+      rows: [],
+      repositories: [],
+      dataFreshness: "fresh" as const,
+      // GitHub's repository-wide match count (`issueCount`), distinct from
+      // `rows.length`. `inboxResponseSchema` is a `v.strictObject`, so this
+      // field is silently dropped at parse time if it is ever removed from
+      // the schema — that trap is exactly what this test guards.
+      matchCount: 237,
+    },
+  };
+
+  it("carries matchCount, GitHub's repository-wide match count, across the IPC boundary", () => {
+    const parsed = parseInboxResponse(response);
+    expect(parsed?.inbox.matchCount).toBe(237);
+  });
+
+  it("omits matchCount when the source response has none, rather than inventing a value", () => {
+    const { matchCount, ...inboxWithoutMatchCount } = response.inbox;
+    void matchCount;
+    const parsed = parseInboxResponse({
+      ...response,
+      inbox: inboxWithoutMatchCount,
+    });
+    expect(parsed).toBeDefined();
+    expect(parsed?.inbox.matchCount).toBeUndefined();
+  });
+});
 
 describe("parseRepositoryLabelListResponse", () => {
   it("reaches the renderer with a successful fetch's labels and total intact", () => {

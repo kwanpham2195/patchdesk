@@ -181,6 +181,25 @@ export interface GitHubReader {
     /** Opaque repository continuation from the inbox service, never renderer input. */
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>>;
+  /**
+   * Reads one repository-wide `search(type: ISSUE)` page of pull requests,
+   * alongside `issueCount` — GitHub's true repository-wide match count for
+   * `searchQuery`, distinct from this page's loaded entry count. `scope` is
+   * required because the search query string alone does not tell the
+   * adapter whether the caller is browsing open or merged pull requests, and
+   * `parseMaintainerPullRequest` needs it to set `summary.isOpen`.
+   */
+  searchMaintainerPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    /** GitHub search qualifier string, e.g. `repo:OWNER/NAME is:pr is:open`. */
+    readonly searchQuery: string;
+    readonly scope: InboxScope;
+    /** Requested page size; becomes the GraphQL `first` value. */
+    readonly pageSize: InboxPageSize;
+    /** Opaque repository continuation from the inbox service, never renderer input. */
+    readonly cursor?: string;
+  }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>>;
   /** Bounded list of labels available in the repository, for populating a label picker. */
   listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;

@@ -445,11 +445,15 @@ describe("GET /v1/inbox page size boundary", () => {
   async function startWithWatchedProfile() {
     const adapter = new FakeGitHubAdapter({
       authenticatedAccount: { host: "github.com", account: "fixture" },
-      maintainerPullRequests: { entries: [], hasNextPage: false },
+      maintainerPullRequestsSearch: {
+        entries: [],
+        hasNextPage: false,
+        issueCount: 0,
+      },
     });
-    const listMaintainerPullRequests = vi.spyOn(
+    const searchMaintainerPullRequests = vi.spyOn(
       adapter,
-      "listMaintainerPullRequests",
+      "searchMaintainerPullRequests",
     );
     const api = await start({ github: adapter });
     if (root === undefined) throw new Error("test root was not created");
@@ -478,11 +482,12 @@ describe("GET /v1/inbox page size boundary", () => {
         )
       )._tag,
     ).toBe("ok");
-    return { api, listMaintainerPullRequests };
+    return { api, searchMaintainerPullRequests };
   }
 
   it("rejects an unlisted pageSize as a normal parse failure with no GitHub read", async () => {
-    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?pageSize=100", api.url), {
       headers: headers(),
@@ -492,11 +497,12 @@ describe("GET /v1/inbox page size boundary", () => {
     await expect(response.json()).resolves.toEqual({
       error: "invalid_input",
     });
-    expect(listMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
   });
 
   it("rejects a non-numeric, zero, negative, or float pageSize the same way", async () => {
-    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
 
     for (const value of ["abc", "0", "-10", "25.0"]) {
       const response = await fetch(
@@ -505,31 +511,33 @@ describe("GET /v1/inbox page size boundary", () => {
       );
       expect(response.status, value).toBe(400);
     }
-    expect(listMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
   });
 
   it("defaults to page size 25 when pageSize is omitted", async () => {
-    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox", api.url), {
       headers: headers(),
     });
 
     expect(response.status).toBe(200);
-    expect(listMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
       expect.objectContaining({ pageSize: 25 }),
     );
   });
 
   it("accepts an explicitly listed pageSize and forwards it to GitHub", async () => {
-    const { api, listMaintainerPullRequests } = await startWithWatchedProfile();
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?pageSize=10", api.url), {
       headers: headers(),
     });
 
     expect(response.status).toBe(200);
-    expect(listMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
       expect.objectContaining({ pageSize: 10 }),
     );
   });
