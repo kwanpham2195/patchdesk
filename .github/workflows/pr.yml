@@ -56,6 +56,9 @@ jobs:
           "${{ github.event.pull_request.base.sha }}"
           "${{ github.event.pull_request.head.sha }}"
 
+      - name: Lint the whole repository
+        run: pnpm lint
+
       - name: Run typecheck
         run: pnpm typecheck
 

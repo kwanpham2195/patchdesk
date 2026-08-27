@@ -2,19 +2,25 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import * as v from "valibot";
+
 import { generatedPiAiCatalog } from "../adapters/pi/pi-ai-catalog.generated";
 
 const FLUE_VERSION = "2.0.3";
 const PI_VERSION = "0.84.1";
 const NODE_FLOOR = ">=22.19.0";
 
-type RuntimeManifest = {
-  readonly flueVersion: string;
-  readonly piVersion: string;
-  readonly catalogDigest: string;
-  readonly nodeFloor: string;
-  readonly lockDigest: string;
-};
+/** The staged runtime's own manifest, as it is read back off disk. */
+const runtimeManifestSchema = v.object({
+  flueVersion: v.string(),
+  piVersion: v.string(),
+  catalogDigest: v.string(),
+  nodeFloor: v.string(),
+  lockDigest: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
+});
+
+/** Only the one field this module reads out of the generated Pi catalog. */
+const catalogDigestSchema = v.object({ digest: v.string() });
 
 export type InsightRuntime = {
   readonly root: string;
@@ -58,18 +64,22 @@ function validManifest(
   readFile: (path: string) => string,
 ): boolean {
   try {
-    const manifest = JSON.parse(readFile(manifestPath)) as RuntimeManifest;
+    const manifest = v.safeParse(
+      runtimeManifestSchema,
+      JSON.parse(readFile(manifestPath)),
+    );
     if (
-      manifest.flueVersion !== FLUE_VERSION ||
-      manifest.piVersion !== PI_VERSION ||
-      manifest.catalogDigest !== catalogDigest() ||
-      manifest.nodeFloor !== NODE_FLOOR ||
-      !/^[a-f0-9]{64}$/.test(manifest.lockDigest)
+      !manifest.success ||
+      manifest.output.flueVersion !== FLUE_VERSION ||
+      manifest.output.piVersion !== PI_VERSION ||
+      manifest.output.catalogDigest !== catalogDigest() ||
+      manifest.output.nodeFloor !== NODE_FLOOR
     )
       return false;
     const lock = readFile(join(root, "pnpm-lock.yaml"));
     return (
-      createHash("sha256").update(lock).digest("hex") === manifest.lockDigest
+      createHash("sha256").update(lock).digest("hex") ===
+      manifest.output.lockDigest
     );
   } catch {
     return false;
@@ -77,8 +87,6 @@ function validManifest(
 }
 
 function catalogDigest(): string | undefined {
-  if (typeof generatedPiAiCatalog !== "object" || generatedPiAiCatalog === null)
-    return undefined;
-  const digest = (generatedPiAiCatalog as { readonly digest?: unknown }).digest;
-  return typeof digest === "string" ? digest : undefined;
+  const parsed = v.safeParse(catalogDigestSchema, generatedPiAiCatalog);
+  return parsed.success ? parsed.output.digest : undefined;
 }

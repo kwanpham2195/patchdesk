@@ -19,6 +19,7 @@ import {
   LocalPiRuntimeModelCatalog,
   canonicalModelId,
 } from "../../src/adapters/pi/pi-runtime-model-catalog";
+import type { RawJsonValue } from "../../src/domain/json";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -28,7 +29,7 @@ afterEach(async () => {
 });
 
 async function fixture(
-  settings: unknown,
+  settings: RawJsonValue,
   environment: Record<string, string | undefined>,
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-pi-catalog-"));

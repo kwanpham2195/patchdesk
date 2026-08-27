@@ -4,7 +4,10 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 
-import { runPatchdeskChild } from "./patchdesk-insight-runner";
+import {
+  runPatchdeskChild,
+  type PatchdeskChildResult,
+} from "./patchdesk-insight-runner";
 
 const walkthrough = {
   citationVersion: 2,
@@ -32,8 +35,16 @@ const analysis = {
   assumptions: [],
 };
 
+/** The four child outcomes one package smoke run reports on stdout. */
+type PackageSmokeReport = {
+  readonly walkthrough: PatchdeskChildResult;
+  readonly analysis: PatchdeskChildResult;
+  readonly analysisCallNineDenied: boolean;
+  readonly cancellation: PatchdeskChildResult;
+};
+
 /** Runs fixed faux fixtures. Production runner never imports this entry or accepts smoke selection. */
-export async function runPackageSmoke(): Promise<unknown> {
+export async function runPackageSmoke(): Promise<PackageSmokeReport> {
   assertNoProviderCredentials();
   const walkthroughProvider = fauxProvider({
     provider: "patchdesk-smoke",

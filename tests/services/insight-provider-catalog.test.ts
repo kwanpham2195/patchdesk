@@ -65,12 +65,12 @@ describe("InsightProviderCatalog", () => {
 
   it("loads live Codex models only through explicit activation and validates exact choices", async () => {
     let listed = 0;
-    const client = {
+    const client: Pick<CodexAppServerClient, "listModels"> = {
       async listModels() {
         listed += 1;
         return ok(codexModels);
       },
-    } as unknown as CodexAppServerClient;
+    };
     const catalog = new InsightProviderCatalog(
       pi,
       () => client,

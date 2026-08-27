@@ -51,14 +51,6 @@ type HarnessOptions = {
    * name at base. Defaults to no renames.
    */
   readonly renameMap?: ReadonlyMap<string, string>;
-  /**
-   * Paths the commit under test holds, as `git ls-tree <head> -- <path>`
-   * reports them. The count ratchet's configuration rule asks git this rather
-   * than reading the changed-path list, because a file carried through a
-   * change unchanged produces no diff entry. Defaults to a committed
-   * `lint-baseline.json`.
-   */
-  readonly treePaths?: ReadonlySet<string>;
 };
 
 const cwd = "/fixture/project";
@@ -113,7 +105,6 @@ function createHarness(options: HarnessOptions = {}) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const existingPaths = options.existingPaths ?? new Set(["src/example.ts"]);
-  const treePaths = options.treePaths ?? new Set(["lint-baseline.json"]);
   const toolResults = options.toolResults ?? new Map<string, CommandResult>();
   const baselineResult =
     options.baselineResult ??
@@ -151,10 +142,13 @@ function createHarness(options: HarnessOptions = {}) {
       return success("irrelevant-but-valid\n");
     }
     if (command === "git" && args[0] === "ls-tree") {
-      const path = args[args.length - 1];
-      return path !== undefined && treePaths.has(path)
-        ? success(`100644 blob ${"0".repeat(40)}\t${path}\n`)
-        : success("");
+      // Real `git ls-tree <head> -- lint-baseline.json` prints a tree entry
+      // for a tracked file whether or not the commit under test touches it,
+      // so the only honest answer here is "yes, always" -- which is exactly
+      // why the configuration rule cannot be built on it. Throwing keeps any
+      // regression that reaches for it visible instead of letting a fake
+      // "yes" or "no" decide the gate.
+      throw new Error("the configuration rule must not ask git ls-tree");
     }
     if (
       command === "git" &&
@@ -430,7 +424,6 @@ describe("checkChangedSource", () => {
     const harness = createHarness({
       diffOutput: ".oxlintrc.json\0",
       existingPaths: new Set(),
-      treePaths: new Set(),
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(1);
@@ -444,10 +437,11 @@ describe("checkChangedSource", () => {
     ).toBe(false);
   });
 
-  it("passes an .oxlintrc.json change that moves no count when the baseline is committed at head", async () => {
-    // The configuration rule is keyed on the baseline being part of the
-    // change, not on its content differing, so a config edit with nothing to
-    // recount is committable.
+  it("fails an .oxlintrc.json change whose commit pair does not touch the baseline", async () => {
+    // The CI half of the same defect. `git ls-tree <head> -- lint-baseline.json`
+    // reports the tracked baseline at every commit, so keying the rule on it
+    // made this scenario pass; keying it on the commit pair's own diff makes
+    // it the rejection it always claimed to be.
     const harness = createHarness({
       diffOutput: ".oxlintrc.json\0",
       existingPaths: new Set(),
@@ -455,15 +449,35 @@ describe("checkChangedSource", () => {
       ratchetDiagnosticsCount: 2,
     });
 
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      ".oxlintrc.json changed but lint-baseline.json is not committed in this change.",
+    );
+    expect(harness.stderr.join("")).toContain(
+      "Committing lint-baseline.json unchanged does not count",
+    );
+    expect(
+      harness.calls.some(({ args }) => args.includes("--format=json")),
+    ).toBe(false);
+  });
+
+  it("passes an .oxlintrc.json change committed together with the baseline", async () => {
+    const harness = createHarness({
+      diffOutput: ".oxlintrc.json\0lint-baseline.json\0",
+      existingPaths: new Set(),
+      baselineFindings: 2,
+      ratchetDiagnosticsCount: 2,
+    });
+
     await expect(checkChangedSource(harness.options)).resolves.toBe(0);
     expect(harness.stderr.join("")).toBe("");
+    // The rule reads the commit pair's diff, never `ls-tree`: the harness
+    // throws if anything asks git whether the baseline is merely tracked.
     expect(
       harness.calls.some(
-        ({ command, args }) =>
-          command === "git" &&
-          args.join(" ") === `ls-tree ${resolvedHead} -- lint-baseline.json`,
+        ({ command, args }) => command === "git" && args[0] === "ls-tree",
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("puts a deleted Oxlint plugin file through the configuration rule", async () => {
@@ -472,7 +486,6 @@ describe("checkChangedSource", () => {
     const harness = createHarness({
       diffOutput: "tools/oxlint/anti-slop/rules/no-drift.ts\0",
       existingPaths: new Set(),
-      treePaths: new Set(),
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(1);

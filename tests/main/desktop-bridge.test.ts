@@ -3,11 +3,19 @@ import type { IpcMainInvokeEvent } from "electron";
 import { describe, expect, it } from "vitest";
 
 import { installDesktopRequestBridge } from "../../src/main/desktop-bridge";
-import type { DesktopResponse } from "../../src/main/ipc-contract";
+import type {
+  DesktopRequest,
+  DesktopResponse,
+} from "../../src/main/ipc-contract";
+
+import * as v from "valibot";
+
+/** A listening TCP server address, as `Server.address()` reports it. */
+const tcpAddressSchema = v.looseObject({ port: v.number() });
 
 type BridgeHandler = (
   event: IpcMainInvokeEvent,
-  input: unknown,
+  input: DesktopRequest,
 ) => Promise<DesktopResponse>;
 
 describe("desktop request bridge", () => {
@@ -65,14 +73,14 @@ async function startFailureServer(): Promise<{
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
+  const address = v.safeParse(tcpAddressSchema, server.address());
+  if (!address.success) {
     await closeServer(server);
     throw new Error("Failure server did not expose a TCP address");
   }
   return {
     server,
-    url: new URL(`http://127.0.0.1:${address.port}/`),
+    url: new URL(`http://127.0.0.1:${address.output.port}/`),
   };
 }
 

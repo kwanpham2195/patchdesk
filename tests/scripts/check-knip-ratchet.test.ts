@@ -28,14 +28,6 @@ type HarnessOptions = {
   /** Raw Knip result. Overrides `knipIssueCount`. */
   readonly knipResult?: CommandResult;
   readonly installedTools?: ReadonlySet<string>;
-  /**
-   * Paths the change under test holds, as `git ls-files --stage` (index) or
-   * `git ls-tree <head>` (commit) reports them. The configuration rule asks
-   * git this rather than reading the changed-path list, because a file
-   * carried through a change unchanged produces no diff entry. Defaults to a
-   * tracked `knip-baseline.json`.
-   */
-  readonly carriedPaths?: ReadonlySet<string>;
 };
 
 const cwd = "/fixture/project";
@@ -87,7 +79,6 @@ function createHarness(options: HarnessOptions = {}) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const installedTools = options.installedTools ?? PINNED_TOOLS;
-  const carriedPaths = options.carriedPaths ?? new Set(["knip-baseline.json"]);
   const baselineResult =
     options.baselineResult ??
     success(
@@ -113,10 +104,11 @@ function createHarness(options: HarnessOptions = {}) {
       command === "git" &&
       (args[0] === "ls-files" || args[0] === "ls-tree")
     ) {
-      const path = args[args.length - 1];
-      return path !== undefined && carriedPaths.has(path)
-        ? success(`100644 blob ${"0".repeat(40)}\t${path}\n`)
-        : success("");
+      // Both commands report a TRACKED file whether or not the change under
+      // test touches it, so the only honest answer here is "yes, always" --
+      // which is exactly why the configuration rule cannot be built on
+      // either. Throwing keeps any regression that reaches for one visible.
+      throw new Error(`the configuration rule must not ask git ${args[0]}`);
     }
     if (command === "git" && args[0] === "show") return baselineResult;
     if (command === "git" && args[0] === "diff")
@@ -219,10 +211,9 @@ describe("checkKnipCount", () => {
     );
   });
 
-  it("fails when knip.json changed and knip-baseline.json is not in the index", async () => {
+  it("fails when knip.json changed and knip-baseline.json is not in the change", async () => {
     const harness = createHarness({
       changedOutput: "knip.json\0",
-      carriedPaths: new Set(),
       baselineIssues: 5,
       knipIssueCount: 5,
     });
@@ -247,25 +238,29 @@ describe("checkKnipCount", () => {
     expect(harness.stderr.join("")).toBe("");
   });
 
-  it("passes a knip.json change that moves no count, with the tracked baseline staged unchanged", async () => {
-    // The configuration rule is keyed on the baseline being in the index, not
-    // on its content differing, so a config edit with nothing to recount is
-    // committable rather than needing a cosmetic baseline edit.
+  it("does not accept the tracked baseline, left untouched, as part of the change", async () => {
+    // The same defect the Oxlint ratchet had, on the same shared code path:
+    // asking `git ls-files`/`ls-tree` whether the baseline is tracked always
+    // answers yes, so the rule never fired. It is keyed on the change's own
+    // path list now, and the harness throws if anything asks git which files
+    // are merely tracked.
     const harness = createHarness({
       changedOutput: "knip.json\0",
       baselineIssues: 5,
       knipIssueCount: 5,
     });
 
-    await expect(checkKnipCount(harness.options)).resolves.toBe(0);
-    expect(harness.stderr.join("")).toBe("");
+    await expect(checkKnipCount(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "Staging knip-baseline.json unchanged does not count",
+    );
     expect(
       harness.calls.some(
         ({ command, args }) =>
           command === "git" &&
-          args.join(" ") === "ls-files --stage -- knip-baseline.json",
+          (args[0] === "ls-files" || args[0] === "ls-tree"),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("fails when knip-baseline.json is absent from the change under test", async () => {

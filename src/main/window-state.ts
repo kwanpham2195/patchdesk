@@ -1,5 +1,7 @@
 import { join } from "node:path";
 
+import * as v from "valibot";
+
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 
@@ -12,14 +14,26 @@ export type WindowBounds = {
 
 const defaultBounds: WindowBounds = { x: 80, y: 80, width: 1280, height: 840 };
 
+const coordinate = v.pipe(v.number(), v.finite());
+const extent = v.pipe(v.number(), v.finite(), v.gtValue(0));
+/** The on-disk window-state record; extra keys from older versions are ignored. */
+const windowBoundsSchema = v.object({
+  x: coordinate,
+  y: coordinate,
+  width: extent,
+  height: extent,
+});
+
 export async function loadWindowBounds(
   workAreas: ReadonlyArray<WindowBounds>,
 ): Promise<WindowBounds> {
   const stored = await readJsonFile(windowStatePath());
+  const parsed =
+    stored._tag === "ok"
+      ? v.safeParse(windowBoundsSchema, stored.value)
+      : undefined;
   return clampWindowBounds(
-    stored._tag === "ok" && isWindowBounds(stored.value)
-      ? stored.value
-      : defaultBounds,
+    parsed !== undefined && parsed.success ? parsed.output : defaultBounds,
     workAreas,
   );
 }
@@ -60,21 +74,6 @@ export function clampWindowBounds(
 
 function windowStatePath(): string {
   return join(PatchdeskPaths.default().configDirectory(), "window-state.json");
-}
-
-function isWindowBounds(value: unknown): value is WindowBounds {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    ["x", "y", "width", "height"].every(
-      (key) =>
-        typeof candidate[key] === "number" && Number.isFinite(candidate[key]),
-    ) &&
-    typeof candidate.width === "number" &&
-    typeof candidate.height === "number" &&
-    candidate.width > 0 &&
-    candidate.height > 0
-  );
 }
 
 function intersectionArea(left: WindowBounds, right: WindowBounds): number {

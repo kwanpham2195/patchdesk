@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import * as v from "valibot";
 
+import type { RawJsonValue } from "../../domain/json";
+
 import { generatedPiAiCatalog } from "./pi-ai-catalog.generated";
 
 const modelSchema = v.strictObject({
@@ -22,7 +24,7 @@ const artifactSchema = v.strictObject({
 type PiAiModel = v.InferOutput<typeof modelSchema>;
 
 /** Generated from runtime/flue's exact Pi catalog; this root module never imports Pi. */
-function parseGeneratedCatalog(input: unknown): ReadonlyArray<{
+function parseGeneratedCatalog(input: RawJsonValue): ReadonlyArray<{
   readonly provider: string;
   readonly models: ReadonlyArray<PiAiModel>;
 }> {

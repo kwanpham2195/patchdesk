@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, win32 } from "node:path";
 
+import * as v from "valibot";
+
 import { ReviewInspector } from "./review-inspector";
 import { composeReviewPrompt } from "./review-rubric";
 
@@ -9,6 +11,23 @@ const MAX_SNAPSHOT_TOTAL_BYTES = 4 * 1024 * 1024;
 /** Hard bound for one composed Analysis prompt; mirrors the child protocol prompt cap. */
 export const MAX_ANALYSIS_PROMPT_BYTES = 6 * 1024 * 1024;
 const GIT_SHA = /^[a-f0-9]{40,64}$/;
+
+/** The one field this module reads out of a stored review context document. */
+const contextHeadShaSchema = v.looseObject({
+  pr: v.looseObject({ headSha: v.pipe(v.string(), v.regex(GIT_SHA)) }),
+});
+/** Only the changed-file list; non-string entries are dropped, not rejected. */
+const contextChangedFilesSchema = v.looseObject({
+  changedFiles: v.pipe(
+    v.array(v.unknown()),
+    v.transform((entries) =>
+      entries.flatMap((entry) => {
+        const path = v.safeParse(v.string(), entry);
+        return path.success ? [path.output] : [];
+      }),
+    ),
+  ),
+});
 
 export type PreparedModelReview = {
   readonly prompt: string;
@@ -132,26 +151,16 @@ function parseBlobByteLength(raw: string): number | undefined {
 }
 function reviewHeadSha(context: string): string | undefined {
   try {
-    const parsed: unknown = JSON.parse(context);
-    const head =
-      typeof parsed === "object" && parsed !== null
-        ? (parsed as { pr?: { headSha?: unknown } }).pr?.headSha
-        : undefined;
-    return typeof head === "string" && GIT_SHA.test(head) ? head : undefined;
+    const parsed = v.safeParse(contextHeadShaSchema, JSON.parse(context));
+    return parsed.success ? parsed.output.pr.headSha : undefined;
   } catch {
     return undefined;
   }
 }
 function changedFiles(context: string): ReadonlyArray<string> {
   try {
-    const parsed: unknown = JSON.parse(context);
-    const files =
-      typeof parsed === "object" && parsed !== null
-        ? (parsed as { changedFiles?: unknown }).changedFiles
-        : undefined;
-    return Array.isArray(files)
-      ? files.filter((path): path is string => typeof path === "string")
-      : [];
+    const parsed = v.safeParse(contextChangedFilesSchema, JSON.parse(context));
+    return parsed.success ? parsed.output.changedFiles : [];
   } catch {
     return [];
   }

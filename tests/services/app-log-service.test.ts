@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { AppLogService, readLogFile } from "../../src/services/app-log-service";
 
+import * as v from "valibot";
+
+/** Only the sequence number rotated log lines are checked for. */
+const rotatedSeqSchema = v.looseObject({ seq: v.number() });
+
 const roots: Array<string> = [];
 
 afterEach(async () => {
@@ -109,8 +114,8 @@ describe("AppLogService", () => {
         await readFile(join(paths.logsDirectory(), name), "utf8")
       ).split("\n")) {
         if (line.trim().length === 0) continue;
-        const parsed = JSON.parse(line) as { seq?: unknown };
-        if (typeof parsed.seq === "number") seqs.add(parsed.seq);
+        const parsed = v.safeParse(rotatedSeqSchema, JSON.parse(line));
+        if (parsed.success) seqs.add(parsed.output.seq);
       }
     }
     expect(Math.max(...seqs)).toBe(199);

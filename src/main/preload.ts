@@ -5,6 +5,7 @@ import {
   DESKTOP_REQUEST_CHANNEL,
   type DesktopDestination,
   type DesktopRequest,
+  type DesktopResponse,
   type PatchdeskDesktopApi,
 } from "./ipc-contract";
 
@@ -17,18 +18,20 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
     return await ipcRenderer.invoke(DESKTOP_REQUEST_CHANNEL, input);
   },
   async openExternalHttps(url: string): Promise<boolean> {
-    const response = await ipcRenderer.invoke(DESKTOP_REQUEST_CHANNEL, {
-      operation: "openExternalHttps",
-      url,
-    } satisfies DesktopRequest);
-    if (
-      !response.ok ||
-      typeof response.body !== "object" ||
-      response.body === null
-    ) {
-      return false;
-    }
-    return "opened" in response.body && response.body.opened === true;
+    const response: DesktopResponse = await ipcRenderer.invoke(
+      DESKTOP_REQUEST_CHANNEL,
+      {
+        operation: "openExternalHttps",
+        url,
+      } satisfies DesktopRequest,
+    );
+    const body = response.body;
+    return (
+      response.ok &&
+      body instanceof Object &&
+      "opened" in body &&
+      body.opened === true
+    );
   },
   onNavigate(listener: (destination: DesktopDestination) => void) {
     const handler = (

@@ -55,7 +55,11 @@ function InputGroupAddon({
       data-align={align}
       className={cn(inputGroupAddonVariants({ align }), className)}
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest("button")) {
+        // `Element`, not `HTMLElement`: an addon holds icons, and an `<svg>`
+        // is an `SVGElement`. `closest` is declared on `Element`, so both
+        // reach it, and narrowing to `HTMLElement` would silently stop
+        // matching a button that was clicked through its icon.
+        if (e.target instanceof Element && e.target.closest("button")) {
           return;
         }
         e.currentTarget.parentElement?.querySelector("input")?.focus();

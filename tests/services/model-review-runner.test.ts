@@ -31,7 +31,7 @@ function gitBlobReader(
     if (object === undefined) return "";
     const fixture = blobs[object];
     if (fixture === undefined) return "";
-    const entry = typeof fixture === "string" ? { contents: fixture } : fixture;
+    const entry = fixture instanceof Object ? fixture : { contents: fixture };
     if (argv.includes("ls-tree")) return `${entry.mode ?? "100644"}\n`;
     if (argv.includes("-t")) return `${entry.type ?? "blob"}\n`;
     if (argv.includes("-s")) return `${Buffer.byteLength(entry.contents)}\n`;

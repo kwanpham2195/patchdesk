@@ -58,14 +58,6 @@ type HarnessOptions = {
   readonly ratchetResult?: CommandResult;
   /** Makes `HEAD` unresolvable, the way an unborn branch does. */
   readonly unbornHead?: boolean;
-  /**
-   * Paths the index holds, as `git ls-files --stage -- <path>` reports them.
-   * The count ratchet's configuration rule asks git this, rather than reading
-   * the changed-path list, because staging an unchanged file leaves no diff
-   * entry behind. Defaults to a tracked `lint-baseline.json`, which is the
-   * ordinary state of this repository.
-   */
-  readonly indexedPaths?: ReadonlySet<string>;
 };
 
 const cwd = "/fixture/project";
@@ -142,7 +134,6 @@ function createHarness(options: HarnessOptions = {}) {
   const installedTools = options.installedTools ?? PINNED_TOOLS;
   const partiallyStagedPaths =
     options.partiallyStagedPaths ?? new Set<string>();
-  const indexedPaths = options.indexedPaths ?? new Set(["lint-baseline.json"]);
   const toolResults = options.toolResults ?? new Map<string, CommandResult>();
   const baselineResult =
     options.baselineResult ??
@@ -177,10 +168,13 @@ function createHarness(options: HarnessOptions = {}) {
     if (command === "git" && args[0] === "hash-object")
       return success(`${EMPTY_TREE}\n`);
     if (command === "git" && args[0] === "ls-files") {
-      const path = args[args.length - 1];
-      return path !== undefined && indexedPaths.has(path)
-        ? success(`100644 ${"0".repeat(40)} 0\t${path}\n`)
-        : success("");
+      // Real `git ls-files --stage -- lint-baseline.json` prints an index
+      // entry for a tracked file whether or not this change touches it, so
+      // the only honest answer here is "yes, always" -- which is exactly why
+      // the configuration rule cannot be built on it. Throwing keeps any
+      // regression that reaches for it visible instead of letting a fake
+      // "yes" or "no" decide the gate.
+      throw new Error("the configuration rule must not ask git ls-files");
     }
     if (
       command === "git" &&
@@ -529,14 +523,13 @@ describe("lintStaged", () => {
     ).toBe(false);
   });
 
-  it("fails when .oxlintrc.json is staged and lint-baseline.json is not in the index", async () => {
+  it("fails when .oxlintrc.json is staged and lint-baseline.json is not in the change", async () => {
     // Loosening a rule lowers the repo-wide count on its own. Without this
     // gate the count ratchet would read the lower number as an improvement
     // and accept it as the new truth.
     const harness = createHarness({
       stagedOutput: ".oxlintrc.json\0",
       existingPaths: new Set(),
-      indexedPaths: new Set(),
     });
 
     await expect(lintStaged(harness.options)).resolves.toBe(1);
@@ -553,13 +546,12 @@ describe("lintStaged", () => {
     ).toBe(false);
   });
 
-  it("fails when an Oxlint plugin source is staged and lint-baseline.json is not in the index", async () => {
+  it("fails when an Oxlint plugin source is staged and lint-baseline.json is not in the change", async () => {
     // A rule written in plugin JavaScript can be weakened exactly the way a
     // rule written in .oxlintrc.json can.
     const harness = createHarness({
       stagedOutput: "tools/oxlint/anti-slop/index.ts\0",
       existingPaths: new Set(),
-      indexedPaths: new Set(),
     });
 
     await expect(lintStaged(harness.options)).resolves.toBe(1);
@@ -583,15 +575,12 @@ describe("lintStaged", () => {
     );
   });
 
-  it("passes an .oxlintrc.json change that moves no count, with the tracked baseline staged unchanged", async () => {
-    // Adding a rule nothing violates, or editing tools/oxlint/LICENSE, leaves
-    // the count where it was, so there is nothing to write into
-    // lint-baseline.json and the file produces no diff entry however it is
-    // staged. Keying the rule on a CONTENT DIFFERENCE made that change
-    // uncommittable: its own advice ("set findings to the new number") was
-    // already satisfied, and the only ways past were a cosmetic edit to an
-    // unused field or --no-verify. The rule is keyed on the baseline being
-    // in the index instead.
+  it("fails an .oxlintrc.json change staged alone, with the tracked baseline left untouched", async () => {
+    // THE CASE THE RULE EXISTS FOR, and the one it used to let through. An
+    // earlier form asked `git ls-files --stage -- lint-baseline.json` whether
+    // the baseline was PRESENT. A tracked file is present unconditionally, so
+    // that answer was "yes" for every change: three anti-slop rules could be
+    // switched off, staged alone, and committed with every check green.
     const harness = createHarness({
       stagedOutput: ".oxlintrc.json\0",
       existingPaths: new Set(),
@@ -599,21 +588,28 @@ describe("lintStaged", () => {
       ratchetDiagnosticsCount: 7,
     });
 
-    await expect(lintStaged(harness.options)).resolves.toBe(0);
-    expect(harness.stderr.join("")).toBe("");
-    expect(harness.stdout.join("")).toContain(
-      "Repo-wide Oxlint findings unchanged at 7",
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      ".oxlintrc.json changed but lint-baseline.json is not staged in this change.",
     );
+    expect(harness.stderr.join("")).toContain(
+      "Staging lint-baseline.json unchanged does not count",
+    );
+    // It fails before paying for a repo-wide Oxlint run.
+    expect(
+      harness.calls.some(({ args }) => args.includes("--format=json")),
+    ).toBe(false);
   });
 
-  it("asks git for the baseline's index entry rather than reading the changed-path list", async () => {
-    // Staging an unchanged file and never touching it are the same index to
-    // git, so a diff-derived path list cannot tell them apart. Only the index
-    // itself can be asked, and it is asked with an explicit `--` separator so
-    // a baseline path is never read as a revision.
+  it("reads the changed-path list rather than asking git whether the baseline is tracked", async () => {
+    // The changed-path list is `git diff --cached --name-only`, the change
+    // itself. `ls-files`/`ls-tree` answer "is this file tracked", whose
+    // answer never varies; the harness throws if anything reaches for one.
     const harness = createHarness({
-      stagedOutput: ".oxlintrc.json\0",
+      stagedOutput: ".oxlintrc.json\0lint-baseline.json\0",
       existingPaths: new Set(),
+      baselineFindings: 7,
+      ratchetDiagnosticsCount: 7,
     });
 
     await expect(lintStaged(harness.options)).resolves.toBe(0);
@@ -621,9 +617,12 @@ describe("lintStaged", () => {
       harness.calls.some(
         ({ command, args }) =>
           command === "git" &&
-          args.join(" ") === "ls-files --stage -- lint-baseline.json",
+          (args[0] === "ls-files" || args[0] === "ls-tree"),
       ),
-    ).toBe(true);
+    ).toBe(false);
+    expect(harness.stdout.join("")).toContain(
+      "Repo-wide Oxlint findings unchanged at 7",
+    );
   });
 
   it("does not catch a config change whose findings net back to the same count", async () => {
@@ -654,7 +653,6 @@ describe("lintStaged", () => {
     const harness = createHarness({
       stagedOutput: "tools/oxlint/anti-slop/rules/no-drift.ts\0",
       existingPaths: new Set(),
-      indexedPaths: new Set(),
     });
 
     await expect(lintStaged(harness.options)).resolves.toBe(1);

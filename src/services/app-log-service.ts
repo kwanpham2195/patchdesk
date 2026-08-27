@@ -25,6 +25,12 @@ export type AppLogServiceOptions = {
   readonly stdoutMirror?: boolean;
 };
 
+/** One page of the in-memory log tail, with the cursor to resume from. */
+type LogTailPage = {
+  readonly entries: ReadonlyArray<LogEntry>;
+  readonly nextAfter?: number;
+};
+
 export const APP_LOG_DEFAULT_BUFFER_SIZE = 2_000;
 export const APP_LOG_DEFAULT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const APP_LOG_DEFAULT_ROTATED_FILES_TO_KEEP = 3;
@@ -96,13 +102,7 @@ export class AppLogService {
    * entry written after a poll. It is omitted when the request had no cursor
    * and the stream was empty.
    */
-  tail(
-    after?: number,
-    limit?: number,
-  ): {
-    readonly entries: ReadonlyArray<LogEntry>;
-    readonly nextAfter?: number;
-  } {
+  tail(after?: number, limit?: number): LogTailPage {
     const safeLimit = Math.min(this.bufferSize, Math.max(1, limit ?? 500));
     let slice: LogEntry[];
     if (after === undefined) {
@@ -194,7 +194,7 @@ export async function readLogFile(
     if (line.trim().length === 0) continue;
     let parsedInput: unknown;
     try {
-      parsedInput = JSON.parse(line) as unknown;
+      parsedInput = JSON.parse(line);
     } catch {
       continue;
     }

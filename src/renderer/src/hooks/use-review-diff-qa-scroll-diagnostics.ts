@@ -2,6 +2,29 @@ import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
+/** One element's scroll geometry as the QA snapshot records it. */
+type ScrollGeometry = {
+  readonly scrollTop: number;
+  readonly scrollHeight: number;
+  readonly clientHeight: number;
+  readonly clientWidth?: number;
+};
+
+/** The QA-only wheel snapshot the browser suite reads back off `window`. */
+type ReviewDiffScrollDiagnostic = {
+  readonly wheelTarget: string | undefined;
+  readonly composedPath: ReadonlyArray<string>;
+  readonly viewer: ScrollGeometry;
+  readonly outer: ScrollGeometry | undefined;
+  readonly codeViewScrollHeight: number | undefined;
+};
+
+declare global {
+  interface Window {
+    __patchdeskScrollDiagnostic?: ReviewDiffScrollDiagnostic;
+  }
+}
+
 /**
  * Captures passive, QA-only scroll evidence without altering native wheel or
  * trackpad delivery. Production builds leave this hook dormant.
@@ -33,10 +56,7 @@ export function useReviewDiffQaScrollDiagnostics<T>(
             entry.tagName.toLowerCase() +
             (entry.id.length === 0 ? "" : `#${entry.id}`),
         );
-      const qaWindow = window as Window & {
-        __patchdeskScrollDiagnostic?: Record<string, unknown>;
-      };
-      qaWindow.__patchdeskScrollDiagnostic = {
+      window.__patchdeskScrollDiagnostic = {
         wheelTarget: target?.tagName.toLowerCase(),
         composedPath: path,
         viewer: {

@@ -74,8 +74,19 @@ function deferred<T>(): Deferred<T> {
 }
 
 type RequestInput = { readonly path: string; readonly body?: unknown };
+
+/** The Insight run record the faux `/run` and poll routes hand back. */
+type InsightRunFixture = {
+  readonly runId: string;
+  readonly type: string;
+  readonly status: string;
+};
+
+/** Every response body the faux desktop bridge returns in this suite. */
+type BridgeBody = InsightRunFixture | WorkbenchResponse;
+
 function installBridge(
-  handler: (input: RequestInput) => Promise<unknown> | unknown,
+  handler: (input: RequestInput) => Promise<BridgeBody> | BridgeBody,
 ): RequestInput[] {
   const calls: RequestInput[] = [];
   Object.defineProperty(window, "patchdesk", {
@@ -102,13 +113,13 @@ const started = {
 };
 
 afterEach(() => {
-  delete (window as unknown as { patchdesk?: unknown }).patchdesk;
+  Reflect.deleteProperty(window, "patchdesk");
 });
 
 describe("useInsightRun", () => {
   it("accepts one run and gives it one polling owner", async () => {
-    const start = deferred<unknown>();
-    const poll = deferred<unknown>();
+    const start = deferred<InsightRunFixture>();
+    const poll = deferred<InsightRunFixture>();
     const calls = installBridge((input) => {
       if (input.path.endsWith("/run")) return start.promise;
       if (input.path.includes("/runs/")) return poll.promise;
@@ -136,8 +147,8 @@ describe("useInsightRun", () => {
   });
 
   it("delivers terminal completion to the latest callback once", async () => {
-    const start = deferred<unknown>();
-    const load = deferred<unknown>();
+    const start = deferred<InsightRunFixture>();
+    const load = deferred<WorkbenchResponse>();
     const calls = installBridge((input) => {
       if (input.path.endsWith("/run")) return start.promise;
       if (input.path.includes("/runs/"))
@@ -185,14 +196,16 @@ describe("useInsightRun", () => {
   });
 
   it("suppresses an old poll and terminal reload after Review identity changes", async () => {
-    const start = deferred<unknown>();
-    const poll = deferred<unknown>();
+    const start = deferred<InsightRunFixture>();
+    const poll = deferred<InsightRunFixture>();
     let pollCount = 0;
     const calls = installBridge((input) => {
       if (input.path.endsWith("/run")) return start.promise;
       if (input.path.includes("/runs/")) {
         pollCount += 1;
-        return pollCount === 1 ? poll.promise : new Promise(() => undefined);
+        return pollCount === 1
+          ? poll.promise
+          : new Promise<BridgeBody>(() => undefined);
       }
       throw new Error(input.path);
     });
@@ -226,8 +239,8 @@ describe("useInsightRun", () => {
   });
 
   it("suppresses a late poll and terminal reload after unmount", async () => {
-    const start = deferred<unknown>();
-    const poll = deferred<unknown>();
+    const start = deferred<InsightRunFixture>();
+    const poll = deferred<InsightRunFixture>();
     const calls = installBridge((input) => {
       if (input.path.endsWith("/run")) return start.promise;
       if (input.path.includes("/runs/")) return poll.promise;
@@ -260,10 +273,10 @@ describe("useInsightRun", () => {
   });
 
   it("does not let an old run overwrite a newer active run", async () => {
-    const oldStart = deferred<unknown>();
-    const newStart = deferred<unknown>();
-    const oldPoll = deferred<unknown>();
-    const newPoll = deferred<unknown>();
+    const oldStart = deferred<InsightRunFixture>();
+    const newStart = deferred<InsightRunFixture>();
+    const oldPoll = deferred<InsightRunFixture>();
+    const newPoll = deferred<InsightRunFixture>();
     let runNumber = 0;
     let pollNumber = 0;
     const calls = installBridge((input) => {
@@ -327,7 +340,7 @@ describe("useInsightRun", () => {
   });
 
   it("keeps cancellation errors visible without fabricated completion", async () => {
-    const start = deferred<unknown>();
+    const start = deferred<InsightRunFixture>();
     const completed: Array<boolean> = [];
     const calls = installBridge((input) => {
       if (input.path.endsWith("/run")) return start.promise;

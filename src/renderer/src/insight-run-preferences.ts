@@ -1,3 +1,5 @@
+import * as v from "valibot";
+
 import type {
   InsightProvider,
   InsightReasoning,
@@ -12,36 +14,24 @@ export type InsightRunPreference = {
 
 const VERSION = 1;
 
+/** The stored preference record, as `localStorage` hands it back. */
+const storedPreferenceSchema = v.object({
+  provider: v.picklist(["pi", "codex-cli-account"]),
+  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
+});
+
 /** Loads one profile/type Insight preference, rejecting corrupt local storage. */
 export function loadInsightRunPreference(
   profileId: string,
   type: InsightPreferenceType,
 ): InsightRunPreference | undefined {
   try {
-    const raw: unknown = JSON.parse(
-      window.localStorage.getItem(key(profileId, type)) ?? "null",
+    const parsed = v.safeParse(
+      storedPreferenceSchema,
+      JSON.parse(window.localStorage.getItem(key(profileId, type)) ?? "null"),
     );
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw))
-      return undefined;
-    const provider = "provider" in raw ? raw.provider : undefined;
-    const model = "model" in raw ? raw.model : undefined;
-    const reasoning = "reasoning" in raw ? raw.reasoning : undefined;
-    if (
-      (provider !== "pi" && provider !== "codex-cli-account") ||
-      typeof model !== "string" ||
-      model.length < 1 ||
-      model.length > 200
-    )
-      return undefined;
-    if (
-      reasoning !== "minimal" &&
-      reasoning !== "low" &&
-      reasoning !== "medium" &&
-      reasoning !== "high" &&
-      reasoning !== "xhigh"
-    )
-      return undefined;
-    return { provider, model, reasoning };
+    return parsed.success ? parsed.output : undefined;
   } catch {
     return undefined;
   }

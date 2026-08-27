@@ -38,10 +38,23 @@ export type InvalidPullRequestInput = {
   readonly _tag: "InvalidPullRequestInput";
 };
 
+/**
+ * The built-in host, branded through the same parser every other host goes
+ * through, so no call site has to assert the brand onto a bare string.
+ */
+const GITHUB_DOT_COM: GitHubHost = brandedGitHubHost("github.com");
+
+function brandedGitHubHost(value: string): GitHubHost {
+  const parsed = parseGitHubHost(value);
+  if (parsed._tag !== "ok")
+    throw new Error(`Built-in GitHub host is not parseable: ${value}`);
+  return parsed.value;
+}
+
 /** Parse direct URL or compact owner/repo#number input at the UI boundary. */
 export function parsePullRequestInput(
   input: unknown,
-  defaultHost: GitHubHost = "github.com" as GitHubHost,
+  defaultHost: GitHubHost = GITHUB_DOT_COM,
 ): Result<PullRequestRef, InvalidPullRequestInput> {
   if (typeof input !== "string") {
     return err({ _tag: "InvalidPullRequestInput" });

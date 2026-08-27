@@ -87,14 +87,16 @@ never changes the index or working tree. If it blocks, run
 `pnpm exec oxlint --fix --deny-warnings <files>`, review the changes, and
 stage the intended files explicitly.
 
-Repo-wide `pnpm lint` remains a diagnostic while untouched legacy findings are
-migrated. Every staged source file must be clean, but untouched findings do
-not block focused changes.
+Repo-wide `pnpm lint` is clean and blocking. The repository reports zero
+Oxlint findings, and the pull request gates run `pnpm lint` over the whole
+tree, so a finding anywhere fails the build, not only one in a file the change
+happens to touch. There is no legacy backlog left to work around.
 
 ### The count ratchet
 
 The count ratchet runs Oxlint over the whole repository and compares the
-finding count with the baseline recorded in `lint-baseline.json`. Three rules:
+finding count with the baseline recorded in `lint-baseline.json`, which is now
+`0`. Three rules:
 
 - The count rose. The check fails and names both numbers. Fix the new
   finding, or raise `findings` deliberately when the increase is reviewed.
@@ -103,10 +105,14 @@ finding count with the baseline recorded in `lint-baseline.json`. Three rules:
   records is a drop that can drift back up unnoticed.
 - `.oxlintrc.json` (or an Oxlint plugin under `tools/oxlint/`) changed while
   `lint-baseline.json` is not part of the change at all. The check fails
-  before Oxlint even runs. This rule is keyed on the baseline being staged,
-  not on its content differing: a config edit that moves no count has nothing
-  to write into the baseline, and demanding a content change there would make
-  such an edit uncommittable. Deleting a config file counts as changing it.
+  before Oxlint even runs. "Part of the change" is read off the change's own
+  path list — `git diff --cached --name-only` on a commit, the base/head diff
+  in CI — so **staging `lint-baseline.json` unchanged does not satisfy this
+  rule**: it leaves no diff entry, and nothing then tells that change apart
+  from one that never touched the file. A config edit that moves no count
+  must still write something into the baseline; say so in its `note`
+  ("recounted after X, still 0"). Deleting a config file counts as changing
+  it.
 
   This rule does not catch a change that loosens some findings away and adds
   the same number of new ones. The count nets back to the baseline, so the
@@ -117,6 +123,26 @@ finding count with the baseline recorded in `lint-baseline.json`. Three rules:
 The baseline is read with `git show <revision>:lint-baseline.json`, out of
 the commit under test rather than the working tree, so an edit you never
 staged still reads as the old number.
+
+At a baseline of `0`, a blocking `pnpm lint` already covers the first rule and
+empties the second: a new finding fails lint, and the count cannot fall below
+zero. The third rule is why the ratchet stays. A green `pnpm lint` proves only
+that nothing violates the rules that are switched on; it says nothing about
+which rules those are. Turn a rule off, or add a per-file override, and the
+count stays at zero and lint stays green. The config gate is the only check
+that makes such a change announce itself, by refusing any `.oxlintrc.json` or
+`tools/oxlint/` edit that does not change `lint-baseline.json` alongside it.
+It also runs on every commit, where CI runs only on a pull request. `pnpm
+lint` guards the findings; the ratchet guards the rules.
+
+This claim was tested rather than assumed, both directions, with a real
+pre-commit hook in a throwaway worktree: three anti-slop rules switched off
+and `.oxlintrc.json` staged alone is **rejected**, and the same edit staged
+together with an updated `lint-baseline.json` is **accepted**. An earlier form
+of the gate asked `git ls-files --stage` / `git ls-tree` whether the baseline
+was present, which reports a tracked file unconditionally — so it answered
+"yes" for every change and the gate never fired. `tests/scripts/` now covers
+both directions.
 
 Oxlint reads the whole working tree, uncommitted edits included. If unstaged
 work moved the number, commit or set that work aside rather than moving the
@@ -130,8 +156,9 @@ gets switched off. It runs in `pnpm check` and in the pull request gates.
 
 Do not silence findings by weakening rules, adding casts, or faking
 `SAFETY:` comments. Genuine I/O boundaries keep `unknown` via targeted
-per-file overrides in `.oxlintrc.json` with a boundary contract comment
-(see `AGENTS.md`, "Anti-slop migration").
+per-file overrides listed file by file in `.oxlintrc.json`'s `overrides`
+array, never by a directory glob, and a `SAFETY:` comment must state the
+invariant the surrounding code checked, not restate what the code does.
 
 ## Verifying before pushing
 
@@ -158,13 +185,16 @@ Pull requests targeting `main` run the `Pull request gates` workflow on
 - `pnpm lint:changed -- <base> <head>` for changed JavaScript and TypeScript
   files only, plus the Oxlint count ratchet;
 - `pnpm knip:ratchet -- <base> <head>`;
+- `pnpm lint` over the whole repository;
 - `pnpm typecheck`;
 - `pnpm test:all`, including the root suite and separate `runtime/flue` suite;
 - `pnpm test:bundle`; and
 - `pnpm test:e2e`.
 
-CI checks changed-file formatting and lint only while untouched repo-wide
-legacy findings remain. It does not run package smoke or release operations.
+`pnpm lint:changed` also checks formatting, which is why it stays beside the
+repo-wide `pnpm lint`: one covers the shape of the changed files, the other
+covers every finding in the tree. CI does not run package smoke or release
+operations.
 
 ## Release package
 

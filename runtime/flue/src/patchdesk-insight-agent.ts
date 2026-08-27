@@ -100,11 +100,11 @@ export type InspectorOperations = {
   ) => Promise<{ readonly content: string } | { readonly denied: true }>;
 };
 
-export type AgentExecutionState = {
+type AgentExecutionState = {
   readonly duplicateSubmissionAttempted: () => boolean;
 };
 
-export type AgentCapabilityReport = {
+type AgentCapabilityReport = {
   readonly customTools: ReadonlyArray<string>;
   readonly usesSkill: boolean;
   readonly usesSandbox: false;
@@ -153,9 +153,12 @@ export async function loadPatchdeskReviewSkill(
   return defineSkill({ name: name.trim(), description, instructions });
 }
 
-function createResultTool<
-  TSchema extends v.GenericSchema<Record<string, unknown>>,
->(
+/** The one result schema each agent submits through `submit_patchdesk_result`. */
+type PatchdeskResultSchema =
+  | typeof modelReviewResultSchema
+  | typeof walkthroughResultSchema;
+
+function createResultTool<TSchema extends PatchdeskResultSchema>(
   schema: TSchema,
   write: (value: v.InferOutput<TSchema>) => void,
   state: { submitted: boolean; duplicate: boolean },
@@ -250,16 +253,19 @@ function inspectorTools(
   ];
 }
 
+/** One invocation-scoped agent, with the state and capabilities it was built with. */
+export type CreatedInsightAgent = {
+  readonly agent: Agent;
+  readonly state: AgentExecutionState;
+  readonly capabilities: AgentCapabilityReport;
+};
+
 /** Creates an invocation-scoped Analysis agent with only four inspectors and result submission. */
 export function createAnalysisAgent(
   input: AnalysisInvocation,
   operations: InspectorOperations,
   skill: ReturnType<typeof defineSkill>,
-): {
-  readonly agent: Agent;
-  readonly state: AgentExecutionState;
-  readonly capabilities: AgentCapabilityReport;
-} {
+): CreatedInsightAgent {
   const state = { submitted: false, duplicate: false };
   function PatchdeskAnalysisAgent() {
     useModel(input.model, { thinkingLevel: input.reasoning });
@@ -291,11 +297,9 @@ export function createAnalysisAgent(
 }
 
 /** Creates an invocation-scoped Walkthrough agent with only result submission. */
-export function createWalkthroughAgent(input: WalkthroughInvocation): {
-  readonly agent: Agent;
-  readonly state: AgentExecutionState;
-  readonly capabilities: AgentCapabilityReport;
-} {
+export function createWalkthroughAgent(
+  input: WalkthroughInvocation,
+): CreatedInsightAgent {
   const state = { submitted: false, duplicate: false };
   function PatchdeskWalkthroughAgent() {
     useModel(input.model, { thinkingLevel: input.reasoning });

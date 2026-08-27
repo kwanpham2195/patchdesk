@@ -46,7 +46,10 @@ export type InsightProviderCatalogFailure = {
     | "invalid_result";
 };
 
-type CodexClientFactory = (executablePath: string) => CodexAppServerClient;
+/** The catalog only ever lists models, so it asks for only that one method. */
+type CodexClientFactory = (
+  executablePath: string,
+) => Pick<CodexAppServerClient, "listModels">;
 
 /** Coordinates passive status, explicit Codex discovery, and exact run validation. */
 export class InsightProviderCatalog {

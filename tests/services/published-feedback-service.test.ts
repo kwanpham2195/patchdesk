@@ -15,11 +15,19 @@ const session = {
     headSha: "a".repeat(40),
   },
 } as never;
-const gate = {
+// `review` and `snapshot` are placeholders, in the same `as never` style the
+// `profile` and `session` fixtures above already use: PublishedFeedbackService
+// reads neither field, and building a real `Review` and `ReviewRemoteSnapshot`
+// would add branded-id parsing this suite never asserts on. The annotation on
+// `gate` is what earns its keep -- it checks the object's KEYS, which the
+// `as unknown as` it replaced did not, and that is how the missing `snapshot`
+// was found. Each `as never` still launders one value; the count went 26 -> 27.
+const snapshot = {} as never;
+const gate: Pick<ReviewWriteGate, "requireFresh"> = {
   async requireFresh() {
-    return ok({ profile, review: {}, session });
+    return ok({ profile, review: {} as never, session, snapshot });
   },
-} as unknown as Pick<ReviewWriteGate, "requireFresh">;
+};
 
 describe("PublishedFeedbackService", () => {
   it("requires confirmation for deletion and rechecks the head after comment ownership", async () => {

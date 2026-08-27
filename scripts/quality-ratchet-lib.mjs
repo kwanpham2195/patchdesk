@@ -110,8 +110,10 @@ export async function checkKnipRatchet(options) {
  *    what makes "update the baseline in the same commit" an enforceable rule
  *    rather than advice.
  * 2. Changing the tool's configuration while the baseline file is absent from
- *    the change under test fails, before the tool is paid for. See
- *    `checkConfigChange` for what this rule does and does not catch.
+ *    the change under test fails, before the tool is paid for. "Absent" is
+ *    read off the change's own path list, so staging the baseline unchanged
+ *    does not satisfy it. See `checkConfigChange` for what this rule does and
+ *    does not catch.
  * 3. A count above the baseline fails (new findings). A count BELOW the
  *    baseline also fails, and asks for the baseline to be lowered to match.
  *    A drop that nobody records is a drop that can drift back up unnoticed.
@@ -131,11 +133,7 @@ async function runCountRatchet(
   spec,
   { cwd, run, revision, changedPaths, fileExists = defaultFileExists, output },
 ) {
-  const configResult = await checkConfigChange(spec, revision, changedPaths, {
-    cwd,
-    run,
-    output,
-  });
+  const configResult = checkConfigChange(spec, revision, changedPaths, output);
   if (configResult !== 0) return configResult;
 
   const baseline = await readBaselineAtRevision(spec, revision, {
@@ -171,88 +169,57 @@ async function runCountRatchet(
  * configuration while the baseline file is absent from the change under test
  * is rejected before the tool is paid for.
  *
- * The rule is keyed on the baseline being PRESENT in the change (staged in
- * the index, or in the tree at the commit under test), not on its content
- * DIFFERING from the previous revision. Keying it on a content difference
- * made part of the repository uncommittable: an `.oxlintrc.json` edit that
- * moves no count -- a rule nothing violates, a `tools/oxlint/LICENSE` line --
- * has nothing to write into the baseline, so the gate's own advice ("set the
- * field to the new number") was already satisfied and the only ways past it
- * were a cosmetic edit to an unused field or `--no-verify`.
+ * "Absent from the change" is decided from `changedPaths`, which is the
+ * change itself: `git diff --cached --name-only` for the staged shape and
+ * `git diff --name-only <base>...<head>` for the commit shape. Asking the
+ * change is the only question with an answer that varies. An earlier form
+ * asked `git ls-files --stage` / `git ls-tree` whether the baseline was
+ * PRESENT, reasoning that "staged unchanged" and "never touched" look alike
+ * to git -- but a tracked file is present unconditionally, so that test was
+ * true for every change and the gate never fired. It could only reject a
+ * change that DELETED the baseline from the repository, which is not what a
+ * rule-loosening change does.
+ *
+ * The price of asking the change is that staging the baseline unchanged no
+ * longer satisfies the rule, because it leaves no diff entry to see. A
+ * configuration edit that moves no count -- a rule nothing violates, a
+ * `tools/oxlint/LICENSE` line -- must therefore still write something into
+ * the baseline file. That is deliberate: the baseline carries a `note`
+ * describing what its number counts, and an edit that changes which rules
+ * produce that number changes what the note describes. Recording "recounted,
+ * still N" there is the reviewable act this rule exists to force, and it is
+ * cheaper than a gate that cannot fire.
  *
  * What this rule does NOT catch, and cannot: a change that loosens five
  * findings away and adds five new ones nets to the same count, so the
  * baseline is genuinely correct and rule 3 passes it. A count is a count; no
  * gate reading one number can tell netting from no change. Catching that
- * needs a baseline of finding identities, not of finding totals. The old
- * content-difference form did not catch it either -- one character in an
- * unused field satisfied it -- so nothing was lost here, but nothing should
- * be claimed either.
+ * needs a baseline of finding identities, not of finding totals.
  *
  * @param {RatchetSpec} spec
  * @param {string} revision
  * @param {ReadonlyArray<string>} changedPaths
- * @param {{
- *   readonly cwd: string;
- *   readonly run: RunCommand;
- *   readonly output: CommandOutput;
- * }} context
- * @returns {Promise<number>} A process-style exit code.
+ * @param {CommandOutput} output
+ * @returns {number} A process-style exit code.
  */
-async function checkConfigChange(spec, revision, changedPaths, context) {
+function checkConfigChange(spec, revision, changedPaths, output) {
   const paths = changedPaths.filter((path) => path.length > 0);
   if (!paths.some(spec.isConfigPath)) return 0;
-
-  const present = await baselineIsInChange(spec, revision, context);
-  if (present === undefined) return 1;
-  if (present) return 0;
+  if (paths.includes(spec.baselineFile)) return 0;
 
   const carried = revision === "" ? "staged" : "committed";
-  context.output.stderr(
+  output.stderr(
     `${spec.configLabel} changed but ${spec.baselineFile} is not ${carried} in this change.\n` +
       `Loosening a rule silently lowers the ${spec.subject} count, and the ratchet ` +
       `would then accept the new lower number as the truth. ` +
       `Recount, set "${spec.baselineField}" in ${spec.baselineFile} to the new number, ` +
       `and ${carried === "staged" ? "stage" : "commit"} ${spec.baselineFile} in this same change ` +
-      `so the two are reviewed together.\n`,
+      `so the two are reviewed together.\n` +
+      `${carried === "staged" ? "Staging" : "Committing"} ${spec.baselineFile} unchanged does not count: ` +
+      `it leaves no diff entry, so nothing tells this change apart from one that never touched the file. ` +
+      `When the recount lands on the same number, say so in the "note" field.\n`,
   );
   return 1;
-}
-
-/**
- * Whether the baseline file is part of the change under test: an index entry
- * when `revision` is `""` (the staged change), or a tree entry at that commit
- * otherwise. Asks git rather than reading the changed-path list, because that
- * list names a file only when its content moved -- and "the developer staged
- * the baseline unchanged" and "the developer never touched it" are the same
- * index to git, so presence is the only thing that can honestly be tested.
- *
- * @param {RatchetSpec} spec
- * @param {string} revision
- * @param {{
- *   readonly cwd: string;
- *   readonly run: RunCommand;
- *   readonly output: CommandOutput;
- * }} context
- * @returns {Promise<boolean | undefined>} `undefined` means git itself
- *   failed, already reported to `output`.
- */
-async function baselineIsInChange(spec, revision, { cwd, run, output }) {
-  const args =
-    revision === ""
-      ? ["ls-files", "--stage", "--", spec.baselineFile]
-      : ["ls-tree", revision, "--", spec.baselineFile];
-  const result = await execute(run, "git", args, cwd, output);
-  if (result === undefined) return undefined;
-  if (!hasExit(result, 0)) {
-    output.stderr(
-      `git could not look up ${spec.baselineFile} at ${describeRevision(revision)} ` +
-        `(status=${String(result.status)}).\n`,
-    );
-    if (result.stderr.length > 0) output.stderr(result.stderr);
-    return undefined;
-  }
-  return result.stdout.trim().length > 0;
 }
 
 /**

@@ -38,12 +38,13 @@ export type WalkthroughLifecycleKey =
   | "failed"
   | "stale";
 
-const WALKTHROUGH_COPY: Readonly<
-  Record<
-    WalkthroughLifecycleKey,
-    { readonly headline: string; readonly reassurance: string }
-  >
-> = {
+/** The two strings every walkthrough lifecycle state shows. */
+type WalkthroughCopy = {
+  readonly headline: string;
+  readonly reassurance: string;
+};
+
+const WALKTHROUGH_COPY = {
   idle: {
     headline: "Generate Walkthrough",
     reassurance:
@@ -69,28 +70,23 @@ const WALKTHROUGH_COPY: Readonly<
     reassurance:
       "The stored patch changed. Generate a new walkthrough for the current snapshot.",
   },
-};
+} satisfies Record<WalkthroughLifecycleKey, WalkthroughCopy>;
 
 /** Return the friendly walkthrough copy for a stable lifecycle key. */
-export function walkthroughCopy(key: WalkthroughLifecycleKey): {
-  readonly headline: string;
-  readonly reassurance: string;
-} {
+export function walkthroughCopy(key: WalkthroughLifecycleKey): WalkthroughCopy {
   return WALKTHROUGH_COPY[key];
 }
 
 export type CleanupActionKey = "clear_cache" | "clear_local_review_data";
 
-const CLEANUP_COPY: Readonly<
-  Record<
-    CleanupActionKey,
-    {
-      readonly title: string;
-      readonly body: string;
-      readonly confirmLabel: string;
-    }
-  >
-> = {
+/** The three strings every cleanup confirmation shows. */
+type CleanupCopy = {
+  readonly title: string;
+  readonly body: string;
+  readonly confirmLabel: string;
+};
+
+const CLEANUP_COPY = {
   clear_cache: {
     title: "Clear cache?",
     body: "This removes rebuildable local files. Your saved reviews and diagnostic reports stay.",
@@ -101,14 +97,10 @@ const CLEANUP_COPY: Readonly<
     body: "This removes completed and failed local reviews. An active review and diagnostic reports stay.",
     confirmLabel: "Clear local data",
   },
-};
+} satisfies Record<CleanupActionKey, CleanupCopy>;
 
 /** Return the friendly cleanup confirmation copy for a stable action key. */
-export function cleanupCopy(key: CleanupActionKey): {
-  readonly title: string;
-  readonly body: string;
-  readonly confirmLabel: string;
-} {
+export function cleanupCopy(key: CleanupActionKey): CleanupCopy {
   return CLEANUP_COPY[key];
 }
 

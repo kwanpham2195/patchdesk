@@ -8,6 +8,7 @@ import * as v from "valibot";
 
 import { CommandRunner } from "../../../src/adapters/github/command-runner";
 import { PatchdeskPaths } from "../../../src/adapters/storage/patchdesk-paths";
+import type { RawJsonValue } from "../../../src/domain/json";
 import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
@@ -76,7 +77,7 @@ export type PatchdeskChildResult =
 
 /** Parses one bounded stdin protocol object. */
 export function parsePatchdeskChildInvocation(
-  input: unknown,
+  input: RawJsonValue,
 ): PatchdeskChildInvocation | undefined {
   const parsed = v.safeParse(childProtocolSchema, input);
   return parsed.success ? parsed.output : undefined;
@@ -184,9 +185,9 @@ export async function runPatchdeskChildProcess(
     writeProtocolOutput(output, { ok: false, reason: "invalid_input" });
     return;
   }
-  let decoded: unknown;
+  let decoded: RawJsonValue;
   try {
-    decoded = JSON.parse(raw) as unknown;
+    decoded = JSON.parse(raw);
   } catch {
     writeProtocolOutput(output, { ok: false, reason: "invalid_input" });
     return;
@@ -218,7 +219,7 @@ export async function runPatchdeskChildProcess(
 }
 
 function parseProductionInvocation(
-  input: unknown,
+  input: RawJsonValue,
 ): ProductionChildInvocation | undefined {
   const parsed = v.safeParse(productionProtocolSchema, input);
   return parsed.success ? parsed.output : undefined;
@@ -397,9 +398,7 @@ function writeProtocolOutput(
 function isSingleJsonObject(value: string): boolean {
   try {
     const parsed: unknown = JSON.parse(value);
-    return (
-      typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-    );
+    return parsed instanceof Object && !Array.isArray(parsed);
   } catch {
     return false;
   }

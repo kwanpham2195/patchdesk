@@ -27,17 +27,20 @@ export type DesktopLifecycleDependencies = {
 };
 
 /** Result from attempting to start the desktop workbench. */
-export type DesktopStartResult =
+type DesktopStartResult =
   | { readonly _tag: "started" }
   | { readonly _tag: "local-api-unavailable" };
+
+/** The desktop lifecycle handle `createDesktopLifecycle` hands its caller. */
+export type DesktopLifecycle = {
+  start(): Promise<DesktopStartResult>;
+  stop(): Promise<void>;
+};
 
 /** Owns local API startup, health verification, workbench display, and shutdown ordering. */
 export function createDesktopLifecycle(
   dependencies: DesktopLifecycleDependencies,
-): {
-  start(): Promise<DesktopStartResult>;
-  stop(): Promise<void>;
-} {
+): DesktopLifecycle {
   let activeServer: StartedLocalApi | undefined;
 
   return {
