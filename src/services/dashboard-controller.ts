@@ -24,11 +24,7 @@ import type {
   WorkspaceProfileConfig,
 } from "../domain/workspace-profile";
 import { parseWorkspaceProfileConfig } from "../domain/workspace-profile";
-import {
-  DashboardService,
-  type DashboardPrList,
-  type DiscoveredRepo,
-} from "./dashboard-service";
+import { DashboardService, type DiscoveredRepo } from "./dashboard-service";
 import {
   MaintainerInboxService,
   type InboxRepositoryRef,
@@ -111,7 +107,7 @@ export class DashboardController {
     private readonly commands: CommandRunner = new CommandRunner(),
   ) {
     this.settings = new ProfileSettingsService(profiles);
-    this.dashboard = new DashboardService(github, origins);
+    this.dashboard = new DashboardService(origins);
     this.inbox = new MaintainerInboxService(
       github,
       new ReviewSessionStore(paths),
@@ -228,24 +224,6 @@ export class DashboardController {
     return saved._tag === "ok" ? ok(profile.value) : failure("storage");
   }
 
-  async dashboardForActiveProfile(): Promise<
-    Result<
-      {
-        readonly profile: WorkspaceProfileConfig;
-        readonly dashboard: DashboardPrList;
-      },
-      DashboardControllerFailure
-    >
-  > {
-    const profile = await this.activeProfile();
-    if (profile._tag === "err") return profile;
-    const dashboard = await this.dashboard.listPendingPullRequests(
-      profile.value,
-    );
-    if (dashboard._tag === "err") return failure("storage");
-    return ok({ profile: profile.value, dashboard: dashboard.value });
-  }
-
   /**
    * Returns one parsed read-only maintainer inbox page without starting a
    * review, for the given repository and structured filter.
@@ -341,29 +319,6 @@ export class DashboardController {
         ? { profile: profile.value }
         : { profile: profile.value, repository: target },
     );
-  }
-
-  /** Refreshes one persisted repo while leaving other watchlist reads untouched. */
-  async refreshWatchlistRepo(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser (via `repoRef`) for repo-scoped watchlist requests; there is no earlier boundary to run it at.
-    input: unknown,
-  ): Promise<Result<DashboardPrList, DashboardControllerFailure>> {
-    const profile = await this.activeProfile();
-    if (profile._tag === "err") return profile;
-    const ref = repoRef(input);
-    if (ref._tag === "err") return ref;
-    const target = profile.value.repos.find(
-      (repo) =>
-        repo.host === ref.value.host &&
-        repo.owner === ref.value.owner &&
-        repo.repo === ref.value.repo,
-    );
-    if (target === undefined) return failure("not_found");
-    const refreshed = await this.dashboard.refreshRepository(
-      profile.value,
-      target,
-    );
-    return refreshed._tag === "ok" ? refreshed : failure("storage");
   }
 
   async addWatchlistRepo(
@@ -478,10 +433,10 @@ export class DashboardController {
     const profile = await this.activeProfile(true);
     if (profile._tag === "err") return profile;
     // Consult authentication directly rather than inferring it from
-    // per-repo dashboard state: on an empty watchlist `listPendingPullRequests`
-    // has no repos to attach an auth failure to, so its `repos` array is `[]`
-    // regardless of whether `gh` is authenticated. That would report a false
-    // "available" on first run, before any repo has been added.
+    // per-repo read state: on an empty watchlist there is no repo to attach
+    // an auth failure to, regardless of whether `gh` is authenticated. That
+    // would report a false "available" on first run, before any repo has
+    // been added.
     const auth = await this.github.resolveAuthenticatedAccount(profile.value);
     return ok({ state: auth._tag === "err" ? "github_auth" : "available" });
   }

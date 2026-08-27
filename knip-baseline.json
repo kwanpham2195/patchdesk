@@ -1,4 +1,4 @@
 {
-  "issues": 123,
+  "issues": 119,
   "note": "Repo-wide Knip issue count, counted from `pnpm exec knip --reporter json --no-exit-code` by adding up every issue array in every `issues` entry. scripts/check-knip-ratchet.mjs (pnpm knip:ratchet) fails when the count moves in either direction, so a rise has to be fixed and a fall has to be recorded here. Lower this number as unused files, exports, and types are removed; see CONTRIBUTING.md."
 }

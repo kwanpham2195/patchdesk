@@ -19,11 +19,7 @@ import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
-  parseGitSha,
-  parseIsoTimestamp,
-  parsePullRequestNumber,
 } from "../../src/domain/ids";
-import type { PullRequestSummary } from "../../src/domain/github-context";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { err, ok, type Result } from "../../src/domain/result";
 import { DashboardService } from "../../src/services/dashboard-service";
@@ -83,36 +79,7 @@ const profile = mustParse(
 const ids = {
   host: mustParse(parseGitHubHost("github.com")),
   owner: mustParse(parseGitHubOwner("centraldigital")),
-  repo: mustParse(parseGitHubRepoName("patchdesk")),
-  sha: mustParse(parseGitSha("abcdef1234567890abcdef1234567890abcdef12")),
-  updated: mustParse(parseIsoTimestamp("2026-07-16T00:00:00.000Z")),
 };
-
-function summary(
-  number: number,
-  overrides: Partial<PullRequestSummary> = {},
-): PullRequestSummary {
-  return {
-    ref: {
-      host: ids.host,
-      owner: ids.owner,
-      repo: ids.repo,
-      number: mustParse(parsePullRequestNumber(number)),
-    },
-    title: `PR ${number}`,
-    author: "another-user",
-    headBranch: "feature",
-    baseBranch: "sit",
-    headSha: ids.sha,
-    isDraft: false,
-    isOpen: true,
-    reviewState: "none",
-    mergeability: "mergeable",
-    labels: [],
-    updatedAt: ids.updated,
-    ...overrides,
-  };
-}
 
 describe("profile settings and dashboard services", () => {
   it("persists editable owner filters and rule paths while preserving watched repositories", async () => {
@@ -343,10 +310,9 @@ describe("profile settings and dashboard services", () => {
         paths,
       );
 
-      // With no watched repos, `listPendingPullRequests` has nothing to
-      // attach an auth failure to and its `repos` array is always `[]` —
-      // testGitHubAccess must consult authentication directly instead of
-      // inferring it from that empty per-repo list.
+      // With no watched repos there is no repo to attach an auth failure
+      // to, so testGitHubAccess must consult authentication directly
+      // instead of inferring it from an empty per-repo list.
       expect(await controller.testGitHubAccess()).toEqual({
         _tag: "ok",
         value: { state: "github_auth" },
@@ -486,46 +452,8 @@ class BlockingFirstConfigSaveStore extends ProfileStore {
 }
 
 describe("dashboard service", () => {
-  it("sorts review-requested, assigned, recent, then draft/authored PRs and keeps missing paths degraded", async () => {
-    const adapter = new FakeGitHubAdapter({
-      listOpenPullRequests: [
-        summary(4, { isDraft: true }),
-        summary(3, { author: "pmquan2cfw" }),
-        summary(2, { assignees: ["pmquan2cfw"] }),
-        summary(1, { requestedReviewers: ["pmquan2cfw"] }),
-      ],
-      authenticatedAccount: { host: "github.com", account: "pmquan2cfw" },
-    });
-    const service = new DashboardService(adapter);
-    const result = await service.listPendingPullRequests(profile);
-
-    expect(result).toMatchObject({
-      _tag: "ok",
-      value: {
-        rows: [
-          { summary: { ref: { number: 1 } }, priority: "review_requested" },
-          { summary: { ref: { number: 2 } }, priority: "assigned" },
-          { summary: { ref: { number: 3 } }, priority: "recently_updated" },
-          { summary: { ref: { number: 4 } }, priority: "draft" },
-        ],
-      },
-    });
-  });
-
-  it("returns repo-level auth failure while preserving direct PR entry", async () => {
-    const service = new DashboardService(new FakeGitHubAdapter({}));
-    const result = await service.listPendingPullRequests(profile);
-    expect(result).toEqual({
-      _tag: "ok",
-      value: {
-        rows: [],
-        repos: [{ repo: profile.repos[0], state: "github_auth" }],
-      },
-    });
-  });
-
   it("discovers git-origin suggestions with their local checkout paths", async () => {
-    const service = new DashboardService(new FakeGitHubAdapter({}), {
+    const service = new DashboardService({
       async findOrigins() {
         return [
           {

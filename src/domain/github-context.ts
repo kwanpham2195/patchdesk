@@ -441,7 +441,7 @@ export type PullRequestSummary = PullRequestSnapshot & {
   readonly labels: ReadonlyArray<GitHubLabel>;
   /** Total labels on the pull request when the read source reports it; undefined when not applicable (e.g. the REST reader, which never truncates). Compare against `labels.length` to detect truncation. */
   readonly labelCount?: number;
-  /** GitHub metadata used for dashboard priority; labels are never interpreted as assignment state. */
+  /** GitHub's own assignment signals; labels are never interpreted as assignment state. */
   readonly requestedReviewers?: ReadonlyArray<string>;
   readonly assignees?: ReadonlyArray<string>;
   readonly updatedAt: IsoTimestamp;

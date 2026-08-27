@@ -1,8 +1,3 @@
-import type {
-  GitHubReadFailure,
-  GitHubReader,
-} from "../adapters/github/github-adapter";
-import type { PullRequestSummary } from "../domain/github-context";
 import {
   parseAbsolutePath,
   parseGitHubHost,
@@ -10,39 +5,11 @@ import {
   parseGitHubRepoName,
   type AbsolutePath,
 } from "../domain/ids";
-import type {
-  WatchedRepoConfig,
-  WorkspaceProfileConfig,
-} from "../domain/workspace-profile";
+import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { ok, type Result } from "../domain/result";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { WatchedRepoRef } from "./profile-service";
 
-export type PendingPrPriority =
-  | "review_requested"
-  | "assigned"
-  | "recently_updated"
-  | "draft"
-  | "authored_by_active_account";
-export type DashboardRepoState =
-  | "ready"
-  | "github_auth"
-  | "github_read"
-  | "no_open_prs";
-export type DashboardRow = {
-  readonly summary: PullRequestSummary;
-  readonly priority: PendingPrPriority;
-  readonly badges: ReadonlyArray<"draft" | "authored">;
-  readonly repo: WatchedRepoConfig;
-};
-export type DashboardRepo = {
-  readonly repo: WatchedRepoConfig;
-  readonly state: DashboardRepoState;
-};
-export type DashboardPrList = {
-  readonly rows: ReadonlyArray<DashboardRow>;
-  readonly repos: ReadonlyArray<DashboardRepo>;
-};
 export type DiscoveredRepo = WatchedRepoRef & {
   readonly localPath: AbsolutePath;
 };
@@ -56,72 +23,9 @@ export type OriginFinder = {
   ): Promise<ReadonlyArray<DiscoveredWorkspaceOrigin>>;
 };
 
-/** Presents only watchlisted GitHub reads and turns dependency failure into row-level dashboard state. */
+/** Suggests watchlist candidates from the git origins found under the profile's workspace roots, skipping repositories it already watches. */
 export class DashboardService {
-  constructor(
-    private readonly github: GitHubReader,
-    private readonly origins?: OriginFinder,
-  ) {}
-
-  async listPendingPullRequests(
-    profile: WorkspaceProfileConfig,
-  ): Promise<Result<DashboardPrList, never>> {
-    const activeRepos = profile.repos;
-    const auth = await this.github.resolveAuthenticatedAccount(profile);
-    if (auth._tag === "err")
-      return ok({
-        rows: [],
-        repos: [
-          ...activeRepos.map((repo) => ({
-            repo,
-            state: mapFailure(auth.error),
-          })),
-        ],
-      });
-
-    const results = await mapConcurrent(
-      activeRepos,
-      4,
-      async (
-        repo,
-      ): Promise<{
-        readonly rows: ReadonlyArray<DashboardRow>;
-        readonly repo: DashboardRepo;
-      }> => {
-        const list = await this.github.listOpenPullRequests({
-          profile,
-          repo: { host: repo.host, owner: repo.owner, repo: repo.repo },
-        });
-        if (list._tag === "err") {
-          return { rows: [], repo: { repo, state: mapFailure(list.error) } };
-        }
-        return {
-          rows: list.value.map((summary) =>
-            projectRow(summary, repo, profile.ghAccount),
-          ),
-          repo: {
-            repo,
-            state: list.value.length === 0 ? "no_open_prs" : "ready",
-          },
-        };
-      },
-    );
-    const rows = results.flatMap((result) => result.rows);
-    const repos = results.map((result) => result.repo);
-    rows.sort(
-      (left, right) =>
-        priorityRank(left.priority) - priorityRank(right.priority),
-    );
-    return ok({ rows, repos });
-  }
-
-  /** Refreshes one explicit watchlist repo without reading its siblings. */
-  async refreshRepository(
-    profile: WorkspaceProfileConfig,
-    repo: WatchedRepoConfig,
-  ): Promise<Result<DashboardPrList, never>> {
-    return await this.listPendingPullRequests({ ...profile, repos: [repo] });
-  }
+  constructor(private readonly origins?: OriginFinder) {}
 
   async discoverWorkspaceRepos(
     profile: WorkspaceProfileConfig,
@@ -141,65 +45,6 @@ export class DashboardService {
     }
     return ok(discovered);
   }
-}
-
-async function mapConcurrent<T, R>(
-  items: ReadonlyArray<T>,
-  concurrency: number,
-  map: (item: T) => Promise<R>,
-): Promise<ReadonlyArray<R>> {
-  const values: Array<R> = [];
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    const index = next++;
-    const item = items[index];
-    if (item === undefined) return;
-    values[index] = await map(item);
-    return worker();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return values;
-}
-
-function projectRow(
-  summary: PullRequestSummary,
-  repo: WatchedRepoConfig,
-  account: string,
-): DashboardRow {
-  const badges: Array<"draft" | "authored"> = [];
-  if (summary.isDraft) badges.push("draft");
-  if (summary.author === account) badges.push("authored");
-  return { summary, repo, priority: priorityFor(summary, account), badges };
-}
-
-function priorityFor(
-  summary: PullRequestSummary,
-  account: string,
-): PendingPrPriority {
-  if (summary.requestedReviewers?.includes(account)) return "review_requested";
-  if (summary.assignees?.includes(account)) return "assigned";
-  if (summary.isDraft) return "draft";
-  if (summary.author === account) return "recently_updated";
-  return "recently_updated";
-}
-
-function priorityRank(priority: PendingPrPriority): number {
-  return {
-    review_requested: 0,
-    assigned: 1,
-    recently_updated: 2,
-    draft: 3,
-    authored_by_active_account: 4,
-  }[priority];
-}
-
-function mapFailure(failure: GitHubReadFailure): DashboardRepoState {
-  return failure._tag === "GitHubAuthenticationFailed" ||
-    failure.operation === "auth_status"
-    ? "github_auth"
-    : "github_read";
 }
 
 function parseGitOrigin(
