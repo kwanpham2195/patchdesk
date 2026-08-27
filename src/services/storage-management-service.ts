@@ -6,6 +6,8 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { ReviewSession } from "../domain/review-session";
+import { isDirectSummaryReviewLocked } from "../domain/direct-summary-review";
+import { isPendingReviewLocked } from "../domain/pending-review";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -253,10 +255,8 @@ export class StorageManagementService {
     )
       return ok(true);
     if (
-      session.pendingReview?._tag === "WriteInFlight" ||
-      session.pendingReview?._tag === "OutcomeUnknown" ||
-      session.directSummaryReview?._tag === "WriteInFlight" ||
-      session.directSummaryReview?._tag === "OutcomeUnknown"
+      isPendingReviewLocked(session.pendingReview) ||
+      isDirectSummaryReviewLocked(session.directSummaryReview)
     )
       return ok(true);
     return ok(merge._tag === "ok" && merge.value.state._tag !== "Rejected");

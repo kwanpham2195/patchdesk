@@ -49,6 +49,19 @@ export type InvalidDirectSummaryReviewState = {
   readonly _tag: "InvalidDirectSummaryReviewState";
 };
 
+/**
+ * Whether a direct-summary-review state carries an uncertain write lock —
+ * the sibling of `isPendingReviewLocked` for this union. The two unions
+ * spell the lock with the same two tags but are otherwise unrelated, so
+ * each keeps its own exhaustively-typed predicate rather than sharing one
+ * loosely typed over `{ _tag: string }`.
+ */
+export function isDirectSummaryReviewLocked(
+  state: DirectSummaryReviewState | undefined,
+): boolean {
+  return state?._tag === "WriteInFlight" || state?._tag === "OutcomeUnknown";
+}
+
 const operationSchema = v.strictObject({
   requestId: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
   event: v.picklist(GITHUB_REVIEW_EVENTS),

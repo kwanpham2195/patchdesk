@@ -157,9 +157,16 @@ export type InvalidPendingReview = {
   readonly _tag: "InvalidPendingReview";
 };
 
-/** Whether a pending-review state carries an uncertain write lock. */
-export function isPendingReviewLocked(state: PendingReviewState): boolean {
-  return state._tag === "WriteInFlight" || state._tag === "OutcomeUnknown";
+/**
+ * Whether a pending-review state carries an uncertain write lock. Absent
+ * state is not locked — a session that has never opened a pending review
+ * holds no recovery evidence — so callers holding an optional state pass it
+ * straight in rather than repeating the two-tag test themselves.
+ */
+export function isPendingReviewLocked(
+  state: PendingReviewState | undefined,
+): boolean {
+  return state?._tag === "WriteInFlight" || state?._tag === "OutcomeUnknown";
 }
 /**
  * Adopt the authenticated viewer's authoritative remote draft only when no

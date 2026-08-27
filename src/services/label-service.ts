@@ -2,11 +2,8 @@ import { repositoryLabelPermission } from "../adapters/github/github-adapter";
 import type {
   GitHubReader,
   GitHubReviewWriter,
-  GitHubReadFailure,
 } from "../adapters/github/github-adapter";
-import type { ForbiddenReason } from "../adapters/github/command-runner";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
-import type { GitHubWriteFailure } from "../domain/github-write";
 import type {
   RepositoryLabel,
   RepositoryLabelPermission,
@@ -15,12 +12,20 @@ import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type {
-  ReviewWriteGate,
-  ReviewWriteGateFailure,
-} from "./review-write-gate";
+import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
+import {
+  mapGitHubReadFailure,
+  mapGitHubWriteFailure,
+  mapMetadataGateFailure,
+  pullRequestRefForSession,
+  resolvePullRequestWritePermission,
+  runGuardedMetadataWrite,
+  type PullRequestMetadataListFailure,
+  type PullRequestMetadataReadFailure,
+  type PullRequestMetadataWriteFailure,
+} from "./pull-request-metadata-write";
 
 /** One label to add or remove; `name` travels alongside `id` purely so a confirmed write can journal a human-legible own-write fingerprint without a second lookup. */
 type LabelRef = {
@@ -36,15 +41,8 @@ export type LabelReceipt =
   | { readonly _tag: "LabelsAdded"; readonly added: ReadonlyArray<string> }
   | { readonly _tag: "LabelsRemoved"; readonly removed: ReadonlyArray<string> };
 
-export type LabelWriteFailure =
-  | "invalid_input"
-  | "not_found"
-  | "permission_denied"
-  | "forbidden"
-  | "github_read_failed"
-  | "github_write_failed"
-  | "rate_limited"
-  | "review_write_in_progress";
+/** Labels add no reason of their own to the shared metadata-write vocabulary. */
+export type LabelWriteFailure = PullRequestMetadataWriteFailure;
 
 /**
  * Outcome of listing a repository's available labels for one current Review.
@@ -68,13 +66,10 @@ export type LabelListOutcome =
        */
       readonly permission: RepositoryLabelPermission;
     }
-  | { readonly _tag: "github_auth" }
-  | { readonly _tag: "github_read" }
-  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: IsoTimestamp }
-  | { readonly _tag: "github_forbidden"; readonly reason: ForbiddenReason };
+  | PullRequestMetadataReadFailure;
 
 /** Only the review-resolution half can fail the request outright; a GitHub read failure is conveyed as a `LabelListOutcome` instead. */
-export type LabelListFailure = "not_found" | "permission_denied";
+export type LabelListFailure = PullRequestMetadataListFailure;
 
 type Gateway = Pick<
   GitHubReader,
@@ -110,27 +105,16 @@ export class LabelService {
     readonly reviewId: ReviewId;
     readonly command: LabelCommand;
   }): Promise<Result<LabelReceipt, LabelWriteFailure>> {
-    const localValidation = validateLocalCommand(input.command);
-    if (localValidation._tag === "err") return localValidation;
-    const key = `${input.profileId}:${input.reviewId}`;
-    if (!this.writeCoordinator.acquire(key))
-      return err("review_write_in_progress");
-    try {
-      const result = await this.executeUnlocked(input);
-      if (result._tag === "ok") {
-        // Best effort: the GitHub write already succeeded, so a durable
-        // journal failure here must not fail the confirmed command.
-        await this.recentWrites.append(
-          input.profileId,
-          input.reviewId,
-          journalEntryFor(result.value),
-          this.now(),
-        );
-      }
-      return result;
-    } finally {
-      this.writeCoordinator.release(key);
-    }
+    return await runGuardedMetadataWrite({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      coordinator: this.writeCoordinator,
+      recentWrites: this.recentWrites,
+      now: this.now,
+      validate: () => validateLocalCommand(input.command),
+      write: () => this.executeUnlocked(input),
+      journalEntry: journalEntryFor,
+    });
   }
 
   /**
@@ -148,23 +132,9 @@ export class LabelService {
       input.profileId,
       input.reviewId,
     );
-    // Reuses `mapGateFailure`'s exact reason mapping, but that function is
-    // typed to `LabelWriteFailure` (a strictly wider union than
-    // `LabelListFailure`), so the two-value read result is spelled out here
-    // rather than widening the read failure type to match it.
     if (current._tag === "err")
-      return err(
-        current.error.reason === "not_found" ||
-          current.error.reason === "storage"
-          ? "not_found"
-          : "permission_denied",
-      );
-    const pr = {
-      host: current.value.session.key.host,
-      owner: current.value.session.key.owner,
-      repo: current.value.session.key.repo,
-      number: current.value.session.key.prNumber,
-    };
+      return err(mapMetadataGateFailure(current.error));
+    const pr = pullRequestRefForSession(current.value.session.key);
     const [listed, permission] = await Promise.all([
       this.github.listRepositoryLabels({
         profile: current.value.profile,
@@ -180,34 +150,27 @@ export class LabelService {
             totalCount: listed.value.totalCount,
             permission,
           }
-        : mapReadFailure(listed.error),
+        : mapGitHubReadFailure(listed.error),
     );
   }
 
   /**
-   * Resolves the real three-state label-write permission for one profile's
-   * pull request, shared by `execute`'s write gate and `list`'s read
-   * projection so the picker sees the same signal the write path enforces.
-   * `getRepositoryPermission` is an optional adapter read; when it is
-   * unavailable, or the resolved account does not match the configured
-   * profile account, the answer is `unknown` — never `permitted`.
+   * The label-specific half of permission resolution: label management is
+   * what GitHub's `triage` role grants without pull-request write, so this
+   * projects the shared evidence through `repositoryLabelPermission` rather
+   * than the pull-request-write projection its sibling services use. See
+   * ADR "The conversation rail owns pull request metadata writes".
    */
   private async resolveLabelPermission(
     profile: WorkspaceProfileConfig,
     pr: PullRequestRef,
   ): Promise<RepositoryLabelPermission> {
-    const account = await this.github.resolveAuthenticatedAccount(profile);
-    const permissionEvidence =
-      account._tag === "ok" &&
-      account.value.account === profile.ghAccount &&
-      this.github.getRepositoryPermission !== undefined
-        ? await this.github.getRepositoryPermission({
-            profile,
-            pr,
-            account: account.value.account,
-          })
-        : undefined;
-    return repositoryLabelPermission(permissionEvidence);
+    return await resolvePullRequestWritePermission({
+      github: this.github,
+      profile,
+      pr,
+      project: repositoryLabelPermission,
+    });
   }
 
   private async executeUnlocked(input: {
@@ -219,13 +182,9 @@ export class LabelService {
       input.profileId,
       input.reviewId,
     );
-    if (current._tag === "err") return err(mapGateFailure(current.error));
-    const pr = {
-      host: current.value.session.key.host,
-      owner: current.value.session.key.owner,
-      repo: current.value.session.key.repo,
-      number: current.value.session.key.prNumber,
-    };
+    if (current._tag === "err")
+      return err(mapMetadataGateFailure(current.error));
+    const pr = pullRequestRefForSession(current.value.session.key);
 
     // A write attempted without `permitted` is refused here, not only in the
     // UI. `unknown` (missing/failed evidence) must never be treated as
@@ -256,7 +215,7 @@ export class LabelService {
         labelIds,
       });
       return written._tag === "err"
-        ? err(mapWriteFailure(written.error))
+        ? err(mapGitHubWriteFailure(written.error))
         : ok({ _tag: "LabelsAdded", added: labelNames });
     }
     if (this.github.removeLabelsFromLabelable === undefined)
@@ -267,39 +226,9 @@ export class LabelService {
       labelIds,
     });
     return written._tag === "err"
-      ? err(mapWriteFailure(written.error))
+      ? err(mapGitHubWriteFailure(written.error))
       : ok({ _tag: "LabelsRemoved", removed: labelNames });
   }
-}
-
-function mapGateFailure(failure: ReviewWriteGateFailure): LabelWriteFailure {
-  if (failure.reason === "not_found" || failure.reason === "storage")
-    return "not_found";
-  // "terminal": the Review is closed/merged. "stale"/"not_fresh": the stored
-  // session no longer matches the Review's own identity, an inconsistency
-  // this write must refuse rather than act on. Neither invents new
-  // vocabulary; both collapse into the closed taxonomy's `permission_denied`.
-  return "permission_denied";
-}
-
-function mapWriteFailure(failure: GitHubWriteFailure): LabelWriteFailure {
-  if (failure.category === "rate_limited") return "rate_limited";
-  if (failure.category === "forbidden") return "forbidden";
-  return "github_write_failed";
-}
-
-/** Keeps a forbidden or rate-limited label read specific instead of collapsing it to a generic read failure. */
-function mapReadFailure(failure: GitHubReadFailure): LabelListOutcome {
-  if (failure._tag === "GitHubRateLimited") {
-    const resumeAtField =
-      failure.resumeAt === undefined ? {} : { resumeAt: failure.resumeAt };
-    return { _tag: "github_rate_limited", ...resumeAtField };
-  }
-  if (failure._tag === "GitHubForbidden")
-    return { _tag: "github_forbidden", reason: failure.reason };
-  if (failure._tag === "GitHubAuthenticationFailed")
-    return { _tag: "github_auth" };
-  return { _tag: "github_read" };
 }
 
 function journalEntryFor(receipt: LabelReceipt): RecentReviewWrite {

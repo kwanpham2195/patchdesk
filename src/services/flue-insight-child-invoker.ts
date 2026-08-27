@@ -12,6 +12,7 @@ import {
   type ModelReviewResult,
 } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
+import { ANALYSIS_RUN_TIMEOUT_MS } from "./child-invocation";
 import { readObjectField } from "./read-object-field";
 import {
   parseWalkthroughOutput,
@@ -64,7 +65,7 @@ export class FlueInsightChildInvoker {
   ): Promise<Result<ModelReviewResult, FlueInsightChildFailure>> {
     const result = await this.invoke(
       { type: "analysis", input },
-      10 * 60_000,
+      ANALYSIS_RUN_TIMEOUT_MS,
       options?.signal,
     );
     if (result._tag === "err") return result;

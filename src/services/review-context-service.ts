@@ -3,6 +3,9 @@ import { lstat, mkdir, open, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
+import * as v from "valibot";
+
+import { definedProps } from "../domain/defined-props";
 import { err, ok, type Result } from "../domain/result";
 import {
   containsSensitiveData,
@@ -25,11 +28,31 @@ type PackageSummary = {
   readonly name?: string;
   readonly packageManager?: string;
 };
-/** Mutable draft of `PackageSummary`, built in statements so each optional
- * field is added only when present. */
-type MutablePackageSummary = {
-  -readonly [K in keyof PackageSummary]: PackageSummary[K];
-};
+
+/**
+ * Boundary schema for a reviewed repository's `package.json`.
+ *
+ * Both halves of ADR "Choose a validation style by data boundary" are
+ * answered here, and they are answered separately:
+ *
+ * - Whose payload is it? A reviewed repository's own manifest, which
+ *   Patchdesk does not control and npm lets carry any number of keys
+ *   Patchdesk does not model. So `looseObject`. `strictObject` would reject
+ *   every real manifest — measured: it blanks the summary for this repo's
+ *   own `package.json` and for `runtime/flue`'s.
+ * - Should one invalid piece fail the whole record? No. This summary is
+ *   advisory context handed to the model; it has no error channel of its
+ *   own — the only outcome short of success is a silently emptier summary —
+ *   so each field falls back independently and a `name` that is not a
+ *   string never costs a `packageManager` that is one.
+ *
+ * Together these accept and reject exactly what the hand-written
+ * `typeof … === "string"` pair this replaced did.
+ */
+const packageSummarySchema = v.looseObject({
+  name: v.fallback(v.optional(v.string()), undefined),
+  packageManager: v.fallback(v.optional(v.string()), undefined),
+});
 
 const MAX_RULE_BYTES = 128 * 1024;
 const MAX_TOTAL_RULE_BYTES = 512 * 1024;
@@ -239,19 +262,15 @@ export class ReviewContextService {
 
   private async packageSummary(worktreePath: string): Promise<PackageSummary> {
     try {
-      const raw: unknown = JSON.parse(
-        await readFile(join(worktreePath, "package.json"), "utf8"),
+      const parsed = v.safeParse(
+        packageSummarySchema,
+        JSON.parse(await readFile(join(worktreePath, "package.json"), "utf8")),
       );
-      if (typeof raw !== "object" || raw === null) return {};
-      // SAFETY: only `name` and `packageManager` are ever read off `item`,
-      // and each is type-checked below before use; an unexpected shape just
-      // means both stay absent from the returned summary.
-      const item = raw as { name?: unknown; packageManager?: unknown };
-      const summary: MutablePackageSummary = {};
-      if (typeof item.name === "string") summary.name = item.name;
-      if (typeof item.packageManager === "string")
-        summary.packageManager = item.packageManager;
-      return summary;
+      if (!parsed.success) return {};
+      return definedProps({
+        name: parsed.output.name,
+        packageManager: parsed.output.packageManager,
+      });
     } catch {
       return {};
     }

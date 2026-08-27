@@ -12,16 +12,7 @@ import {
   writeAvatar,
 } from "../../src/adapters/storage/avatar-cache-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
-import {
-  parseGitHubHost,
-  parseGitHubOwner,
-  parseGitHubRepoName,
-  parseGitSha,
-  parsePullRequestNumber,
-  parseReviewId,
-  parseWorkspaceProfileId,
-} from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
+import { ok } from "../../src/domain/result";
 import { AvatarSyncService } from "../../src/services/avatar-sync-service";
 
 // The avatar fan-out cap is written out here rather than imported from the
@@ -30,11 +21,6 @@ import { AvatarSyncService } from "../../src/services/avatar-sync-service";
 const MAX_AVATARS_PER_SYNC = 24;
 
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-
-const must = <T>(result: Result<T, unknown>): T => {
-  if (result._tag === "ok") return result.value;
-  throw new Error("fixture");
-};
 
 // Real temp `PatchdeskPaths`, mirroring `avatar-cache-store.test.ts` and
 // `avatar-sync-service.test.ts`: avatar resolution reads real bytes off
@@ -51,37 +37,13 @@ async function avatarPaths(): Promise<PatchdeskPaths> {
   return PatchdeskPaths.forTest(root);
 }
 
-const profileId = must(parseWorkspaceProfileId("cfw"));
-const reviewId = must(
-  parseReviewId("cfw__centraldigital__patchdesk__pr-42__review-abcdef123456"),
-);
-const headSha = must(parseGitSha("1".repeat(40)));
-const sessionKey = {
+import {
+  makeGate,
+  makeRecentWrites,
+  now,
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
-  repo: must(parseGitHubRepoName("patchdesk")),
-  prNumber: must(parsePullRequestNumber(42)),
-  headSha,
-};
-
-/** Minimal current-session gate: every command passes against the fixture review. */
-const makeGate = () => ({
-  requireCurrentSession: vi.fn(async () =>
-    // SAFETY: the service only reads `session.key` and `profile.ghAccount`
-    // from this stub; `review` is forwarded opaquely and never read.
-    ok({
-      profile: { ghAccount: "octocat" },
-      review: {},
-      session: { key: sessionKey },
-    } as never),
-  ),
-});
-
-// SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
-// branded IsoTimestamp contract the service's `now` dependency expects.
-const now = () => "2026-01-01T00:00:00.000Z" as never;
-const makeRecentWrites = () => ({ append: vi.fn(async () => ok(undefined)) });
+  reviewId,
+} from "./pull-request-metadata-fixtures";
 
 function command(overrides: Partial<AssigneeCommand> = {}): AssigneeCommand {
   // SAFETY: `overrides` can switch `_tag` to any AssigneeCommand variant;

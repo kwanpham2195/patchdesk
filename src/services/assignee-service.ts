@@ -2,15 +2,12 @@ import { pullRequestWritePermission } from "../adapters/github/github-adapter";
 import type {
   GitHubReader,
   GitHubReviewWriter,
-  GitHubReadFailure,
 } from "../adapters/github/github-adapter";
-import type { ForbiddenReason } from "../adapters/github/command-runner";
 import {
   resolveAvatarDataUris,
   withAvatarDataUri,
 } from "../adapters/storage/avatar-cache-store";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
-import type { GitHubWriteFailure } from "../domain/github-write";
 import type {
   AssignableUser,
   PullRequestAssigneePermission,
@@ -20,12 +17,20 @@ import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { AvatarRailDependencies } from "./avatar-sync-service";
-import type {
-  ReviewWriteGate,
-  ReviewWriteGateFailure,
-} from "./review-write-gate";
+import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
+import {
+  mapGitHubReadFailure,
+  mapGitHubWriteFailure,
+  mapMetadataGateFailure,
+  pullRequestRefForSession,
+  resolvePullRequestWritePermission,
+  runGuardedMetadataWrite,
+  type PullRequestMetadataListFailure,
+  type PullRequestMetadataReadFailure,
+  type PullRequestMetadataWriteFailure,
+} from "./pull-request-metadata-write";
 
 /** GitHub's documented per-pull-request assignee limit; not independently reconfirmed against a live API call in this change. */
 const MAX_ASSIGNEES = 10;
@@ -60,15 +65,9 @@ export type AssigneeReceipt =
       readonly removed: ReadonlyArray<string>;
     };
 
+/** The shared metadata-write vocabulary plus the one reason only assignment can produce. */
 export type AssigneeWriteFailure =
-  | "invalid_input"
-  | "not_found"
-  | "permission_denied"
-  | "forbidden"
-  | "github_read_failed"
-  | "github_write_failed"
-  | "rate_limited"
-  | "review_write_in_progress"
+  | PullRequestMetadataWriteFailure
   | "assignee_cap_exceeded";
 
 /**
@@ -92,13 +91,10 @@ export type AssigneeListOutcome =
        */
       readonly permission: PullRequestAssigneePermission;
     }
-  | { readonly _tag: "github_auth" }
-  | { readonly _tag: "github_read" }
-  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: IsoTimestamp }
-  | { readonly _tag: "github_forbidden"; readonly reason: ForbiddenReason };
+  | PullRequestMetadataReadFailure;
 
 /** Only the review-resolution half can fail the request outright; a GitHub read failure is conveyed as an `AssigneeListOutcome` instead. */
-export type AssigneeListFailure = "not_found" | "permission_denied";
+export type AssigneeListFailure = PullRequestMetadataListFailure;
 
 /**
  * `GitHubReader.listAssignableUsers`'s input, declared mutable here so the
@@ -149,27 +145,16 @@ export class AssigneeService {
     readonly reviewId: ReviewId;
     readonly command: AssigneeCommand;
   }): Promise<Result<AssigneeReceipt, AssigneeWriteFailure>> {
-    const localValidation = validateLocalCommand(input.command);
-    if (localValidation._tag === "err") return localValidation;
-    const key = `${input.profileId}:${input.reviewId}`;
-    if (!this.writeCoordinator.acquire(key))
-      return err("review_write_in_progress");
-    try {
-      const result = await this.executeUnlocked(input);
-      if (result._tag === "ok") {
-        // Best effort: the GitHub write already succeeded, so a durable
-        // journal failure here must not fail the confirmed command.
-        await this.recentWrites.append(
-          input.profileId,
-          input.reviewId,
-          journalEntryFor(result.value),
-          this.now(),
-        );
-      }
-      return result;
-    } finally {
-      this.writeCoordinator.release(key);
-    }
+    return await runGuardedMetadataWrite({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      coordinator: this.writeCoordinator,
+      recentWrites: this.recentWrites,
+      now: this.now,
+      validate: () => validateLocalCommand(input.command),
+      write: () => this.executeUnlocked(input),
+      journalEntry: journalEntryFor,
+    });
   }
 
   /**
@@ -186,23 +171,9 @@ export class AssigneeService {
       input.profileId,
       input.reviewId,
     );
-    // Reuses `mapGateFailure`'s exact reason mapping, but that function is
-    // typed to `AssigneeWriteFailure` (a strictly wider union than
-    // `AssigneeListFailure`), so the two-value read result is spelled out
-    // here rather than widening the read failure type to match it.
     if (current._tag === "err")
-      return err(
-        current.error.reason === "not_found" ||
-          current.error.reason === "storage"
-          ? "not_found"
-          : "permission_denied",
-      );
-    const pr = {
-      host: current.value.session.key.host,
-      owner: current.value.session.key.owner,
-      repo: current.value.session.key.repo,
-      number: current.value.session.key.prNumber,
-    };
+      return err(mapMetadataGateFailure(current.error));
+    const pr = pullRequestRefForSession(current.value.session.key);
     // Built in statements rather than by spreading a conditional empty
     // object: the search term is omitted entirely when the caller supplied
     // none, so GitHub's `query:` argument stays unset instead of being sent
@@ -216,7 +187,7 @@ export class AssigneeService {
       this.github.listAssignableUsers(listInput),
       this.resolvePermission(current.value.profile, pr),
     ]);
-    if (listed._tag !== "ok") return ok(mapReadFailure(listed.error));
+    if (listed._tag !== "ok") return ok(mapGitHubReadFailure(listed.error));
     const users = await this.withResolvedAvatars(
       input.profileId,
       current.value.profile,
@@ -302,18 +273,12 @@ export class AssigneeService {
     profile: WorkspaceProfileConfig,
     pr: PullRequestRef,
   ): Promise<PullRequestAssigneePermission> {
-    const account = await this.github.resolveAuthenticatedAccount(profile);
-    const permissionEvidence =
-      account._tag === "ok" &&
-      account.value.account === profile.ghAccount &&
-      this.github.getRepositoryPermission !== undefined
-        ? await this.github.getRepositoryPermission({
-            profile,
-            pr,
-            account: account.value.account,
-          })
-        : undefined;
-    return pullRequestWritePermission(permissionEvidence);
+    return await resolvePullRequestWritePermission({
+      github: this.github,
+      profile,
+      pr,
+      project: pullRequestWritePermission,
+    });
   }
 
   /**
@@ -352,13 +317,9 @@ export class AssigneeService {
       input.profileId,
       input.reviewId,
     );
-    if (current._tag === "err") return err(mapGateFailure(current.error));
-    const pr = {
-      host: current.value.session.key.host,
-      owner: current.value.session.key.owner,
-      repo: current.value.session.key.repo,
-      number: current.value.session.key.prNumber,
-    };
+    if (current._tag === "err")
+      return err(mapMetadataGateFailure(current.error));
+    const pr = pullRequestRefForSession(current.value.session.key);
 
     // A write attempted without `permitted` is refused here, not only in the
     // UI. `unknown` (missing/failed evidence) must never be treated as
@@ -411,7 +372,7 @@ export class AssigneeService {
         assigneeIds,
       });
       return written._tag === "err"
-        ? err(mapWriteFailure(written.error))
+        ? err(mapGitHubWriteFailure(written.error))
         : ok({ _tag: "AssigneesAdded", added: assigneeLogins });
     }
     if (this.github.removeAssigneesFromAssignable === undefined)
@@ -422,39 +383,9 @@ export class AssigneeService {
       assigneeIds,
     });
     return written._tag === "err"
-      ? err(mapWriteFailure(written.error))
+      ? err(mapGitHubWriteFailure(written.error))
       : ok({ _tag: "AssigneesRemoved", removed: assigneeLogins });
   }
-}
-
-function mapGateFailure(failure: ReviewWriteGateFailure): AssigneeWriteFailure {
-  if (failure.reason === "not_found" || failure.reason === "storage")
-    return "not_found";
-  // "terminal": the Review is closed/merged. "stale"/"not_fresh": the stored
-  // session no longer matches the Review's own identity, an inconsistency
-  // this write must refuse rather than act on. Neither invents new
-  // vocabulary; both collapse into the closed taxonomy's `permission_denied`.
-  return "permission_denied";
-}
-
-function mapWriteFailure(failure: GitHubWriteFailure): AssigneeWriteFailure {
-  if (failure.category === "rate_limited") return "rate_limited";
-  if (failure.category === "forbidden") return "forbidden";
-  return "github_write_failed";
-}
-
-/** Keeps a forbidden or rate-limited assignee read specific instead of collapsing it to a generic read failure. */
-function mapReadFailure(failure: GitHubReadFailure): AssigneeListOutcome {
-  if (failure._tag === "GitHubRateLimited") {
-    const resumeAtField =
-      failure.resumeAt === undefined ? {} : { resumeAt: failure.resumeAt };
-    return { _tag: "github_rate_limited", ...resumeAtField };
-  }
-  if (failure._tag === "GitHubForbidden")
-    return { _tag: "github_forbidden", reason: failure.reason };
-  if (failure._tag === "GitHubAuthenticationFailed")
-    return { _tag: "github_auth" };
-  return { _tag: "github_read" };
 }
 
 function journalEntryFor(receipt: AssigneeReceipt): RecentReviewWrite {

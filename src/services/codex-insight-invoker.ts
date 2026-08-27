@@ -17,12 +17,9 @@ import { err } from "../domain/result";
 import { composeReviewPrompt } from "./review-rubric";
 import { prepareWalkthroughPrompt } from "./walkthrough-operation";
 import {
-  readWalkthroughArtifactSizes,
-  walkthroughTimeoutMs,
-} from "./walkthrough-timeout";
-
-/** Matches FlueInsightChildInvoker.invokeAnalysis's Analysis run bound. */
-const ANALYSIS_RUN_TIMEOUT_MS = 10 * 60_000;
+  ANALYSIS_RUN_TIMEOUT_MS,
+  resolveWalkthroughTimeoutMs,
+} from "./child-invocation";
 
 /** Narrow seam for checking the represented worktree's immutable Git head. */
 export type WorktreeHeadReader = (
@@ -113,11 +110,9 @@ export class CodexInsightInvoker implements InsightInvoker {
       if (prompt._tag === "err")
         return err({ reason: "execution_failed" as const });
       // Match the Flue path: scale the run bound with the patch instead of a flat five minutes.
-      const runTimeoutMs = walkthroughTimeoutMs(
-        await readWalkthroughArtifactSizes(
-          { contextPath, patchPath },
-          options.signal,
-        ).catch(() => ({ patchBytes: 0, contextBytes: 0, hunkCount: 0 })),
+      const runTimeoutMs = await resolveWalkthroughTimeoutMs(
+        { contextPath, patchPath },
+        options.signal,
       );
       const result = await this.clientFactory(this.executablePath).run(
         {

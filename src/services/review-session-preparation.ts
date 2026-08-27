@@ -27,6 +27,7 @@ import {
   type ReviewSession,
 } from "../domain/review-session";
 import { KeyedMutex } from "../domain/keyed-mutex";
+import { sameRepositoryIdentity } from "../domain/repository-identity";
 import { err, ok, type Result } from "../domain/result";
 import { tokenizeUnifiedPatch } from "../domain/unified-patch";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -276,11 +277,8 @@ export class ReviewSessionPreparation {
       !sameReviewRevision(currentRevision, revision)
     )
       return await this.abort(journal, { _tag: "HeadChanged" });
-    const matchingRepo = profile.repos.find(
-      (candidate) =>
-        candidate.host === input.pullRequest.host &&
-        candidate.owner === input.pullRequest.owner &&
-        candidate.repo === input.pullRequest.repo,
+    const matchingRepo = profile.repos.find((candidate) =>
+      sameRepositoryIdentity(candidate, input.pullRequest),
     );
     const worktreePath = this.dependencies.paths.worktreeDirectory(
       input.profileId,

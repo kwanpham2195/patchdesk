@@ -2,15 +2,12 @@ import { pullRequestWritePermission } from "../adapters/github/github-adapter";
 import type {
   GitHubReader,
   GitHubReviewWriter,
-  GitHubReadFailure,
 } from "../adapters/github/github-adapter";
-import type { ForbiddenReason } from "../adapters/github/command-runner";
 import {
   resolveAvatarDataUris,
   withAvatarDataUri,
 } from "../adapters/storage/avatar-cache-store";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
-import type { GitHubWriteFailure } from "../domain/github-write";
 import type {
   AssignableUser,
   PullRequestAssigneePermission,
@@ -25,12 +22,20 @@ import {
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { AvatarRailDependencies } from "./avatar-sync-service";
-import type {
-  ReviewWriteGate,
-  ReviewWriteGateFailure,
-} from "./review-write-gate";
+import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
+import {
+  mapGitHubReadFailure,
+  mapGitHubWriteFailure,
+  mapMetadataGateFailure,
+  pullRequestRefForSession,
+  resolvePullRequestWritePermission,
+  runGuardedMetadataWrite,
+  type PullRequestMetadataListFailure,
+  type PullRequestMetadataReadFailure,
+  type PullRequestMetadataWriteFailure,
+} from "./pull-request-metadata-write";
 
 /** One reviewer to request or un-request; `login` travels alongside `id` for the same reason `AssigneeRef.login` does in `assignee-service.ts` — a confirmed write can journal a human-legible own-write fingerprint without a second lookup, and the subtractive REST un-request identifies people by login regardless of `id`. */
 type ReviewerRef = {
@@ -58,15 +63,8 @@ export type ReviewerReceipt =
       readonly removed: ReadonlyArray<string>;
     };
 
-export type ReviewerWriteFailure =
-  | "invalid_input"
-  | "not_found"
-  | "permission_denied"
-  | "forbidden"
-  | "github_read_failed"
-  | "github_write_failed"
-  | "rate_limited"
-  | "review_write_in_progress";
+/** Review requests add no reason of their own to the shared metadata-write vocabulary. */
+export type ReviewerWriteFailure = PullRequestMetadataWriteFailure;
 
 /**
  * Outcome of listing one current Review's reviewer state: every reviewer's
@@ -94,13 +92,10 @@ export type ReviewerListOutcome =
        */
       readonly permission: PullRequestAssigneePermission;
     }
-  | { readonly _tag: "github_auth" }
-  | { readonly _tag: "github_read" }
-  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: IsoTimestamp }
-  | { readonly _tag: "github_forbidden"; readonly reason: ForbiddenReason };
+  | PullRequestMetadataReadFailure;
 
 /** Only the review-resolution half can fail the request outright; a GitHub read failure is conveyed as a `ReviewerListOutcome` instead. */
-export type ReviewerListFailure = "not_found" | "permission_denied";
+export type ReviewerListFailure = PullRequestMetadataListFailure;
 
 /**
  * `GitHubReader.listAssignableUsers`'s input, declared mutable here so the
@@ -150,27 +145,16 @@ export class ReviewerService {
     readonly reviewId: ReviewId;
     readonly command: ReviewerCommand;
   }): Promise<Result<ReviewerReceipt, ReviewerWriteFailure>> {
-    const localValidation = validateLocalCommand(input.command);
-    if (localValidation._tag === "err") return localValidation;
-    const key = `${input.profileId}:${input.reviewId}`;
-    if (!this.writeCoordinator.acquire(key))
-      return err("review_write_in_progress");
-    try {
-      const result = await this.executeUnlocked(input);
-      if (result._tag === "ok") {
-        // Best effort: the GitHub write already succeeded, so a durable
-        // journal failure here must not fail the confirmed command.
-        await this.recentWrites.append(
-          input.profileId,
-          input.reviewId,
-          journalEntryFor(result.value),
-          this.now(),
-        );
-      }
-      return result;
-    } finally {
-      this.writeCoordinator.release(key);
-    }
+    return await runGuardedMetadataWrite({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      coordinator: this.writeCoordinator,
+      recentWrites: this.recentWrites,
+      now: this.now,
+      validate: () => validateLocalCommand(input.command),
+      write: () => this.executeUnlocked(input),
+      journalEntry: journalEntryFor,
+    });
   }
 
   /**
@@ -191,24 +175,9 @@ export class ReviewerService {
       input.profileId,
       input.reviewId,
     );
-    // Reuses `mapGateFailure`'s exact reason mapping, but that function is
-    // typed to `ReviewerWriteFailure` (a strictly wider union than
-    // `ReviewerListFailure`), so the two-value read result is spelled out
-    // here rather than widening the read failure type to match it — mirrors
-    // `AssigneeService.list`.
     if (current._tag === "err")
-      return err(
-        current.error.reason === "not_found" ||
-          current.error.reason === "storage"
-          ? "not_found"
-          : "permission_denied",
-      );
-    const pr = {
-      host: current.value.session.key.host,
-      owner: current.value.session.key.owner,
-      repo: current.value.session.key.repo,
-      number: current.value.session.key.prNumber,
-    };
+      return err(mapMetadataGateFailure(current.error));
+    const pr = pullRequestRefForSession(current.value.session.key);
     // The represented revision's own head — not a fresh GitHub read of the
     // pull request's current head — is what a Revision-bound review verdict
     // is judged against; see `deriveReviewVerdicts`.
@@ -229,8 +198,10 @@ export class ReviewerService {
     // The reviewer read is the data this list exists to surface; a
     // candidate-list failure is real but secondary, so the reviewer read's
     // failure takes priority when both fail.
-    if (reviewers._tag === "err") return ok(mapReadFailure(reviewers.error));
-    if (candidates._tag === "err") return ok(mapReadFailure(candidates.error));
+    if (reviewers._tag === "err")
+      return ok(mapGitHubReadFailure(reviewers.error));
+    if (candidates._tag === "err")
+      return ok(mapGitHubReadFailure(candidates.error));
     const verdictRows = deriveReviewVerdicts(
       reviewers.value,
       representedHeadSha,
@@ -326,18 +297,12 @@ export class ReviewerService {
     profile: WorkspaceProfileConfig,
     pr: PullRequestRef,
   ): Promise<PullRequestAssigneePermission> {
-    const account = await this.github.resolveAuthenticatedAccount(profile);
-    const permissionEvidence =
-      account._tag === "ok" &&
-      account.value.account === profile.ghAccount &&
-      this.github.getRepositoryPermission !== undefined
-        ? await this.github.getRepositoryPermission({
-            profile,
-            pr,
-            account: account.value.account,
-          })
-        : undefined;
-    return pullRequestWritePermission(permissionEvidence);
+    return await resolvePullRequestWritePermission({
+      github: this.github,
+      profile,
+      pr,
+      project: pullRequestWritePermission,
+    });
   }
 
   private async executeUnlocked(input: {
@@ -349,13 +314,9 @@ export class ReviewerService {
       input.profileId,
       input.reviewId,
     );
-    if (current._tag === "err") return err(mapGateFailure(current.error));
-    const pr = {
-      host: current.value.session.key.host,
-      owner: current.value.session.key.owner,
-      repo: current.value.session.key.repo,
-      number: current.value.session.key.prNumber,
-    };
+    if (current._tag === "err")
+      return err(mapMetadataGateFailure(current.error));
+    const pr = pullRequestRefForSession(current.value.session.key);
 
     // A write attempted without `permitted` is refused here, not only in
     // the UI. `unknown` (missing/failed evidence) must never be treated as
@@ -388,7 +349,7 @@ export class ReviewerService {
         userIds: reviewerIds,
       });
       return written._tag === "err"
-        ? err(mapWriteFailure(written.error))
+        ? err(mapGitHubWriteFailure(written.error))
         : ok({ _tag: "ReviewersRequested", requested: reviewerLogins });
     }
     if (this.github.removeRequestedReviewers === undefined)
@@ -399,40 +360,9 @@ export class ReviewerService {
       logins: reviewerLogins,
     });
     return written._tag === "err"
-      ? err(mapWriteFailure(written.error))
+      ? err(mapGitHubWriteFailure(written.error))
       : ok({ _tag: "ReviewersRemoved", removed: reviewerLogins });
   }
-}
-
-function mapGateFailure(failure: ReviewWriteGateFailure): ReviewerWriteFailure {
-  if (failure.reason === "not_found" || failure.reason === "storage")
-    return "not_found";
-  // "terminal": the Review is closed/merged. "stale"/"not_fresh": the stored
-  // session no longer matches the Review's own identity, an inconsistency
-  // this write must refuse rather than act on. Neither invents new
-  // vocabulary; both collapse into the closed taxonomy's `permission_denied`
-  // — mirrors `AssigneeService`'s `mapGateFailure`.
-  return "permission_denied";
-}
-
-function mapWriteFailure(failure: GitHubWriteFailure): ReviewerWriteFailure {
-  if (failure.category === "rate_limited") return "rate_limited";
-  if (failure.category === "forbidden") return "forbidden";
-  return "github_write_failed";
-}
-
-/** Keeps a forbidden or rate-limited reviewer read specific instead of collapsing it to a generic read failure. */
-function mapReadFailure(failure: GitHubReadFailure): ReviewerListOutcome {
-  if (failure._tag === "GitHubRateLimited") {
-    const resumeAtField =
-      failure.resumeAt === undefined ? {} : { resumeAt: failure.resumeAt };
-    return { _tag: "github_rate_limited", ...resumeAtField };
-  }
-  if (failure._tag === "GitHubForbidden")
-    return { _tag: "github_forbidden", reason: failure.reason };
-  if (failure._tag === "GitHubAuthenticationFailed")
-    return { _tag: "github_auth" };
-  return { _tag: "github_read" };
 }
 
 function journalEntryFor(receipt: ReviewerReceipt): RecentReviewWrite {

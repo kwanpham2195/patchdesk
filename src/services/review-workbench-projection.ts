@@ -69,6 +69,7 @@ import {
   type DirectSummaryReviewProjection,
 } from "./direct-summary-review-service";
 import { projectPendingReview } from "./pending-review-service";
+import { isPendingReviewLocked } from "../domain/pending-review";
 import type { PendingReviewState } from "../domain/pending-review";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
@@ -761,9 +762,7 @@ function projectAnalysisReviewActions(input: {
     input.patchHash === undefined
   )
     return { findings: {}, canFinishWithAnalysisSummary: false };
-  const locked =
-    input.pendingReview?._tag === "WriteInFlight" ||
-    input.pendingReview?._tag === "OutcomeUnknown";
+  const locked = isPendingReviewLocked(input.pendingReview);
   const receipts = input.session.findingReviewReceipts ?? [];
   const findings: Record<string, AnalysisFindingReviewStatus> = {};
   for (const finding of retained.value.findings) {

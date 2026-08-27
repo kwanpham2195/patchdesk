@@ -11,6 +11,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ReviewContextService } from "../../src/services/review-context-service";
 
+/** The slice of a rendered `context.json` the package-summary cases read. */
+type RenderedContext = {
+  readonly packageSummary: {
+    readonly name?: string;
+    readonly packageManager?: string;
+  };
+};
+
 describe("ReviewContextService", () => {
   it("loads bounded root and configured rules as safely labeled project criteria", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-context-"));
@@ -77,6 +85,89 @@ describe("ReviewContextService", () => {
       expect(serializedDebug).not.toContain(configuredRulePath);
       expect(serializedDebug).not.toContain("Check changed error paths.");
       expect(serializedDebug).not.toContain("Prefer a regression test.");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  // The two cases below pin the `package.json` boundary schema's two
+  // independent choices. Each fails if the other choice is made: reading
+  // the manifest with `strictObject` empties the first summary, and failing
+  // the whole payload instead of falling back per field empties the second.
+  it("summarizes a package.json carrying keys it does not model", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-context-"));
+    try {
+      const worktree = join(root, "worktree");
+      const attempt = join(root, "attempt");
+      await mkdir(worktree);
+      await mkdir(attempt);
+      await writeFile(
+        join(worktree, "package.json"),
+        JSON.stringify({
+          name: "unmodelled",
+          version: "1.2.3",
+          packageManager: "pnpm@8",
+          scripts: { build: "tsc" },
+          dependencies: { valibot: "^1.1.0" },
+        }),
+        "utf8",
+      );
+      const service = new ReviewContextService();
+      const result = await service.prepare({
+        worktreePath: worktree,
+        preparedDirectory: attempt,
+        pr: { title: "Fixture PR", headSha: "abcdef" },
+        comments: { threads: [] },
+        checks: { overall: "passing", checks: [] },
+        changedFiles: ["src/a.ts"],
+        patch: { path: "patch.diff", sha256: "a".repeat(64) },
+        rulePaths: [],
+      });
+      expect(result._tag).toBe("ok");
+      // SAFETY: the bundle the service just wrote on the line above.
+      const context = JSON.parse(
+        await readFile(join(attempt, "context.json"), "utf8"),
+      ) as RenderedContext;
+      expect(context.packageSummary).toEqual({
+        name: "unmodelled",
+        packageManager: "pnpm@8",
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the package manager when the package name is not a string", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-context-"));
+    try {
+      const worktree = join(root, "worktree");
+      const attempt = join(root, "attempt");
+      await mkdir(worktree);
+      await mkdir(attempt);
+      await writeFile(
+        join(worktree, "package.json"),
+        JSON.stringify({ name: 123, packageManager: "pnpm@8" }),
+        "utf8",
+      );
+      const service = new ReviewContextService();
+      const result = await service.prepare({
+        worktreePath: worktree,
+        preparedDirectory: attempt,
+        pr: { title: "Fixture PR", headSha: "abcdef" },
+        comments: { threads: [] },
+        checks: { overall: "passing", checks: [] },
+        changedFiles: ["src/a.ts"],
+        patch: { path: "patch.diff", sha256: "a".repeat(64) },
+        rulePaths: [],
+      });
+      expect(result._tag).toBe("ok");
+      // SAFETY: the bundle the service just wrote on the line above.
+      const context = JSON.parse(
+        await readFile(join(attempt, "context.json"), "utf8"),
+      ) as RenderedContext;
+      // Exact, not partial: the non-string name must be absent from the
+      // summary, not merely different from what was written.
+      expect(context.packageSummary).toEqual({ packageManager: "pnpm@8" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

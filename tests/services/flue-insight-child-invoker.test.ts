@@ -7,6 +7,7 @@ import {
   type CommandRequest,
 } from "../../src/adapters/github/command-runner";
 import { FlueInsightChildInvoker } from "../../src/services/flue-insight-child-invoker";
+import { ANALYSIS_RUN_TIMEOUT_MS } from "../../src/services/child-invocation";
 
 const sessionId =
   "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__0123456789ab";
@@ -26,6 +27,15 @@ const walkthrough = {
       ],
     },
   ],
+};
+const analysisResult = {
+  changeSummary: "Fixture change summary.",
+  // No findings, so the consistent verdict is `approve`.
+  verdict: "approve",
+  summary: "Fixture summary.",
+  findings: [],
+  validationPlan: ["Fixture validation plan."],
+  assumptions: ["Fixture assumption."],
 };
 const originalDeepSeekKey = process.env.DEEPSEEK_API_KEY;
 
@@ -97,6 +107,39 @@ describe("FlueInsightChildInvoker", () => {
         }),
       }),
     ]);
+  });
+
+  // The Codex invoker's own test pins the same constant on its side
+  // (`codex-insight-invoker.test.ts`). This is the Flue half: without it the
+  // shared bound is only observed through one of the two invokers that
+  // spend it.
+  it("bounds an analysis run by the shared analysis timeout", async () => {
+    process.env.DEEPSEEK_API_KEY = "selected-provider-secret";
+    const executor = new RecordingExecutor({
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true, value: analysisResult }),
+      stderr: "",
+    });
+    const invoker = new FlueInsightChildInvoker(
+      new CommandRunner(executor),
+      "/workspace/patchdesk",
+      "/runtime/node",
+      "/runtime/child.mjs",
+    );
+    const result = await invoker.invokeAnalysis({
+      profileId: "profile",
+      sessionId,
+      contextPath: "/app/context",
+      reviewInputPath: "/app/review-input",
+      patchPath: "/app/patch",
+      worktreePath: "/app/worktree",
+      model: "deepseek/deepseek-v4-flash",
+      reasoning: "low",
+    });
+    expect(result._tag).toBe("ok");
+    expect(executor.requests[0]?.timeoutMs).toBe(ANALYSIS_RUN_TIMEOUT_MS);
+    expect(executor.requests[0]?.timeoutMs).toBe(10 * 60_000);
   });
 
   it("fails closed for invalid child protocol, crash, overflow-sized input, and cancellation", async () => {

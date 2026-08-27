@@ -41,10 +41,7 @@ import { loggableMetaValue } from "../domain/log-entry";
 import { err } from "../domain/result";
 import { FlueInsightChildInvoker } from "../services/flue-insight-child-invoker";
 import { resolveInsightRuntime } from "./insight-runtime";
-import {
-  readWalkthroughArtifactSizes,
-  walkthroughTimeoutMs,
-} from "../services/walkthrough-timeout";
+import { invokeWalkthroughWithResolvedTimeout } from "../services/child-invocation";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
@@ -300,7 +297,8 @@ function createInsightCoordinator(
         return err({ reason: "execution_failed" as const });
       if (insightInvoker === undefined)
         return err({ reason: "runtime_unavailable" as const });
-      return insightInvoker.invokeWalkthrough(
+      return invokeWalkthroughWithResolvedTimeout(
+        insightInvoker,
         {
           profileId: input.profileId,
           sessionId: input.sessionId,
@@ -309,7 +307,6 @@ function createInsightCoordinator(
           model: input.model,
           reasoning: input.reasoning,
         },
-        await walkthroughTimeout(input),
         options,
       );
     },
@@ -325,19 +322,6 @@ function createInsightCoordinator(
     undefined,
     diagnostics,
     providerCatalog,
-  );
-}
-
-async function walkthroughTimeout(input: {
-  readonly patchPath: string;
-  readonly contextPath: string;
-}): Promise<number> {
-  return walkthroughTimeoutMs(
-    await readWalkthroughArtifactSizes(input).catch(() => ({
-      patchBytes: 0,
-      contextBytes: 0,
-      hunkCount: 0,
-    })),
   );
 }
 
