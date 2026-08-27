@@ -55,6 +55,7 @@ import {
   type NarrativeWalkthrough,
 } from "../domain/narrative-walkthrough";
 import {
+  deriveCheckReasons,
   evaluateMergeReadiness,
   type MergeReadiness,
 } from "../domain/merge-readiness";
@@ -179,6 +180,7 @@ type ProjectRemoteInput = {
   readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
   readonly conversation: Awaited<ReturnType<GitHubReader["loadConversation"]>>;
   readonly commits?: ReadonlyArray<PullRequestCommit>;
+  /** Whichever check read classified `required`; see `loadRepresented`. */
   readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
   readonly mergeEvidence?: GitHubMergeEvidence;
 };
@@ -223,7 +225,14 @@ export class ReviewWorkbenchProjectionService {
       current: { _tag: "ok", value: input.snapshot.pullRequest },
       conversation: ok(input.snapshot.conversation),
       commits: input.snapshot.commits,
-      checks: { _tag: "ok", value: input.snapshot.checks },
+      // Only a complete merge policy says which checks GitHub requires, and
+      // the merge gate reads that same field, so badge and gate cannot
+      // disagree. An incomplete read classified nothing and may be truncated.
+      checks: ok(
+        input.snapshot.mergePolicy?.complete === true
+          ? input.snapshot.mergePolicy.checks
+          : input.snapshot.checks,
+      ),
     };
     if (input.snapshot.mergeEvidence !== undefined)
       remote.mergeEvidence = input.snapshot.mergeEvidence;
@@ -905,10 +914,8 @@ function deriveMergeReasons(
   // `branches/{branch}/protection` endpoint legitimately 404s, so a
   // ruleset-sourced count is the more direct evidence when both exist.
   const requiredCount = rulesetCount ?? classicCount;
-  const requiredCountSource =
-    rulesetCount !== undefined
-      ? ("ruleset_configuration" as const)
-      : ("branch_protection" as const);
+  const requiredCountSource: MergeDisplayReason["source"] =
+    rulesetCount === undefined ? "branch_protection" : "ruleset_configuration";
 
   const policyReadable =
     branchProtection?.state === "available" ||
@@ -990,14 +997,7 @@ function deriveMergeReasons(
       openOnGitHub: false,
     });
 
-  if (checks.overall === "failing")
-    reasons.push({
-      code: "checks",
-      message: "Required checks have not passed.",
-      source: "checks",
-      availability: "available",
-      openOnGitHub: false,
-    });
+  reasons.push(...deriveCheckReasons(checks));
 
   // `has_hooks` and `unstable` are both mergeable states per GitHub's own
   // `MergeStateStatus` semantics, so neither contributes a reason here.

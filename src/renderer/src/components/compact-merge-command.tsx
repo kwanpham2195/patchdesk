@@ -107,7 +107,7 @@ export function CompactMergeCommand(props: {
           <ul className="mt-1 list-disc pl-5">
             {props.mergeReasons?.length
               ? props.mergeReasons.map((reason) => (
-                  <li key={reason.code}>
+                  <li key={`${reason.code}-${reason.source}-${reason.message}`}>
                     {reason.message}
                     {reason.openOnGitHub && props.pullRequest !== undefined ? (
                       <Button

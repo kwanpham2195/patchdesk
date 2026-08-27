@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompactMergeCommand } from "../../src/renderer/src/components/compact-merge-command";
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { deriveCheckReasons } from "../../src/domain/merge-readiness";
 
 afterEach(() => {
   cleanup();
@@ -245,6 +246,63 @@ describe("compact merge command", () => {
     expect((mergingButton as HTMLButtonElement).disabled).toBe(true);
     resolveMerge?.({ mergeCommitSha: "abcdef" });
     expect(await screen.findByText("Merged abcdef.")).toBeTruthy();
+  });
+
+  it("keeps a failed and an unfinished required check as two separately identified rows", () => {
+    const reasons = deriveCheckReasons({
+      overall: "failing",
+      checks: [
+        {
+          name: "build",
+          required: true,
+          status: "completed",
+          conclusion: "failure",
+        },
+        { name: "lint", required: true, status: "in_progress" },
+      ],
+    });
+    // Both reasons carry `code: "checks"`, so a key taken from the code alone
+    // gives two list rows the same React identity.
+    expect(reasons).toHaveLength(2);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      render(
+        <CompactMergeCommand
+          readiness={{
+            _tag: "Blocked",
+            blockers: ["required_check"],
+            warnings: [],
+          }}
+          mergeReasons={reasons}
+          context={{
+            repo: "centraldigital/patchdesk",
+            prNumber: 42,
+            title: "Protect review writes",
+            base: "sit",
+            head: "feat/review",
+            headSha: "abcdef1234567890",
+          }}
+          methods={["squash"]}
+          onMerge={async () => ({})}
+        />,
+      );
+
+      expect(
+        screen.getByText("Required check build did not pass."),
+      ).toBeTruthy();
+      expect(
+        screen.getByText("Required check lint has not finished."),
+      ).toBeTruthy();
+      expect(
+        consoleError.mock.calls
+          .map((call) => call.map((argument) => String(argument)).join(" "))
+          .join("\n"),
+      ).not.toContain("same key");
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });
 

@@ -541,7 +541,7 @@ function readinessBlockerLabel(blocker: string): string {
     case "mergeability_unknown":
       return "GitHub merge status is unavailable.";
     case "required_check":
-      return "Required checks have not passed.";
+      return "A required check has not succeeded.";
     case "failing_check":
       return "A check on this pull request did not pass.";
     case "github_review":

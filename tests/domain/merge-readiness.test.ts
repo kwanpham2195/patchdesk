@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateMergeReadiness } from "../../src/domain/merge-readiness";
+import {
+  deriveCheckReasons,
+  evaluateMergeReadiness,
+} from "../../src/domain/merge-readiness";
 
 const passing = {
   overall: "passing" as const,
@@ -203,5 +206,179 @@ describe("merge readiness", () => {
         hasFailingChecks: true,
       }),
     ).toEqual({ _tag: "Blocked", blockers: ["failing_check"], warnings: [] });
+  });
+});
+
+describe("check reasons", () => {
+  // The panel and the badge must not disagree about checks. `required_check`
+  // is emitted by `evaluateMergeReadiness`; the matching panel text is
+  // emitted here. Both read the same predicate, so the two can only ever
+  // appear together.
+  it("names the required checks that failed and the ones that have not finished", () => {
+    expect(
+      deriveCheckReasons({
+        overall: "pending",
+        checks: [
+          { name: "unit", required: true, status: "in_progress" },
+          {
+            name: "lint",
+            required: true,
+            status: "completed",
+            conclusion: "failure",
+          },
+          {
+            name: "docs",
+            required: false,
+            status: "completed",
+            conclusion: "failure",
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        code: "checks",
+        message: "Required check lint did not pass.",
+        source: "checks",
+        availability: "available",
+        openOnGitHub: false,
+      },
+      {
+        code: "checks",
+        message: "Required check unit has not finished.",
+        source: "checks",
+        availability: "available",
+        openOnGitHub: false,
+      },
+    ]);
+  });
+
+  // A required context GitHub named but no run ever reported reaches the
+  // projection as `status: "unknown"`. That is a known fact about the policy,
+  // not an undeterminable state, so it is reported as unfinished rather than
+  // as a failure.
+  it("reports a required context that never reported as unfinished, not failed", () => {
+    expect(
+      deriveCheckReasons({
+        overall: "pending",
+        checks: [{ name: "e2e", required: true, status: "unknown" }],
+      }),
+    ).toEqual([
+      {
+        code: "checks",
+        message: "Required check e2e has not finished.",
+        source: "checks",
+        availability: "available",
+        openOnGitHub: false,
+      },
+    ]);
+  });
+
+  // A repository with no branch-protection policy answers the protection
+  // endpoint with 404, so every check comes back `required: false`. Claiming
+  // "required checks have not passed" there asserts a requirement Patchdesk
+  // can see is absent, which ADR 0027 forbids.
+  it("does not claim a requirement when a red rollup carries nothing required", () => {
+    expect(
+      deriveCheckReasons({
+        overall: "failing",
+        checks: [
+          {
+            name: "lint",
+            required: false,
+            status: "completed",
+            conclusion: "failure",
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        code: "checks",
+        message: "A check on this pull request did not pass.",
+        source: "checks",
+        availability: "available",
+        openOnGitHub: false,
+      },
+    ]);
+  });
+
+  it("says nothing about checks that are green or unclassified", () => {
+    expect(
+      deriveCheckReasons({
+        overall: "passing",
+        checks: [
+          {
+            name: "unit",
+            required: true,
+            status: "completed",
+            conclusion: "success",
+          },
+        ],
+      }),
+    ).toEqual([]);
+    expect(
+      deriveCheckReasons({
+        overall: "unknown",
+        checks: [{ name: "unit", required: "unknown", status: "queued" }],
+      }),
+    ).toEqual([]);
+  });
+
+  it("lists at most three names and counts the rest", () => {
+    expect(
+      deriveCheckReasons({
+        overall: "pending",
+        checks: ["a", "b", "c", "d"].map((name) => ({
+          name,
+          required: true as const,
+          status: "queued" as const,
+        })),
+      })[0]?.message,
+    ).toBe("Required checks a, b, c and 1 more have not finished.");
+  });
+
+  // The tripwire, closed by construction: over every check shape the domain
+  // types admit, a `required_check` blocker always comes with at least one
+  // reason to render under it. Nothing here is hand-picked, so no fixture can
+  // silently stop driving the branch it names.
+  it("never blocks on required_check without a reason to show", () => {
+    const statuses = ["queued", "in_progress", "completed", "unknown"] as const;
+    const conclusions = [
+      undefined,
+      "success",
+      "failure",
+      "cancelled",
+      "timed_out",
+      "skipped",
+      "neutral",
+    ] as const;
+    const requireds = [true, false, "unknown"] as const;
+    const overalls = [
+      "passing",
+      "failing",
+      "pending",
+      "skipped",
+      "unknown",
+    ] as const;
+    let blocked = 0;
+    for (const status of statuses)
+      for (const conclusion of conclusions)
+        for (const required of requireds)
+          for (const overall of overalls) {
+            const check =
+              conclusion === undefined
+                ? { name: "unit", required, status }
+                : { name: "unit", required, status, conclusion };
+            const summary = { overall, checks: [check] };
+            const readiness = evaluateMergeReadiness({
+              ...neutral,
+              checks: summary,
+            });
+            if (!readiness.blockers.includes("required_check")) continue;
+            blocked += 1;
+            expect(deriveCheckReasons(summary).length).toBeGreaterThan(0);
+          }
+    // Guards the loop itself: if the fixture space stopped producing the
+    // blocker, every assertion above would vacuously pass.
+    expect(blocked).toBeGreaterThan(0);
   });
 });

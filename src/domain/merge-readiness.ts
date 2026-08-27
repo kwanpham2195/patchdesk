@@ -1,4 +1,8 @@
-import type { CheckSummary } from "./github-context";
+import type {
+  CheckRunSummary,
+  CheckSummary,
+  MergeDisplayReason,
+} from "./github-context";
 import type { AnalysisMergePolicy } from "./workspace-profile";
 
 export type MergeReadiness = {
@@ -96,9 +100,70 @@ export function evaluateMergeReadiness(input: {
 // red rollup anyway ask for it with `hasFailingChecks`, which reports the
 // separate `failing_check` blocker rather than claiming a check is required.
 function hasBlockingRequiredCheck(checks: CheckSummary): boolean {
-  return checks.checks.some(
+  return blockingRequiredChecks(checks).length > 0;
+}
+
+function blockingRequiredChecks(
+  checks: CheckSummary,
+): ReadonlyArray<CheckRunSummary> {
+  return checks.checks.filter(
     (check) =>
       check.required === true &&
       (check.status !== "completed" || check.conclusion !== "success"),
   );
+}
+
+/**
+ * The checks half of the merge-readiness rule, written as panel reasons.
+ *
+ * It reads the same `blockingRequiredChecks` predicate the `required_check`
+ * blocker reads, and returns at least one reason whenever that predicate
+ * matches anything. So a Blocked badge carrying `required_check` can never
+ * sit above a panel with nothing to say about checks — the empty-panel case
+ * the ADR "Derive merge readiness from applied rules" rules out is closed by
+ * construction rather than by matching two independent conditions.
+ */
+export function deriveCheckReasons(
+  checks: CheckSummary,
+): ReadonlyArray<MergeDisplayReason> {
+  const blocking = blockingRequiredChecks(checks);
+  const failed = blocking.filter((check) => check.status === "completed");
+  const unfinished = blocking.filter((check) => check.status !== "completed");
+  const reasons: Array<MergeDisplayReason> = [];
+  // A required check GitHub has not finished running is a known fact about
+  // the policy, not an undeterminable one, so it is stated plainly — but as
+  // "has not finished", never as a failure it has not suffered.
+  if (failed.length > 0)
+    reasons.push(checkReason(`Required ${nameList(failed)} did not pass.`));
+  if (unfinished.length > 0)
+    reasons.push(
+      checkReason(
+        `Required ${nameList(unfinished)} ${unfinished.length === 1 ? "has" : "have"} not finished.`,
+      ),
+    );
+  // A red rollup with nothing required is `unstable` in GitHub's own terms —
+  // mergeable with a non-passing commit status — so this must not claim a
+  // requirement it can see is absent. It is still reported, because the badge
+  // reports the same rollup as `failing_check`.
+  if (reasons.length === 0 && checks.overall === "failing")
+    reasons.push(checkReason("A check on this pull request did not pass."));
+  return reasons;
+}
+
+function nameList(checks: ReadonlyArray<CheckRunSummary>): string {
+  const names = checks.map((check) => check.name);
+  const label = names.length === 1 ? "check" : "checks";
+  const shown = names.slice(0, 3).join(", ");
+  const rest = names.length - 3;
+  return rest > 0 ? `${label} ${shown} and ${rest} more` : `${label} ${shown}`;
+}
+
+function checkReason(message: string): MergeDisplayReason {
+  return {
+    code: "checks",
+    message,
+    source: "checks",
+    availability: "available",
+    openOnGitHub: false,
+  };
 }
