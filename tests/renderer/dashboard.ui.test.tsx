@@ -47,7 +47,7 @@ describe("dashboard renderer", () => {
             };
           return { ok: true, status: 200, body: {}, correlationId: "x" };
         },
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
       },
     });
     render(<App />);

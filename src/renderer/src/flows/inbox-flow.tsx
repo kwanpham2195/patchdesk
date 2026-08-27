@@ -27,7 +27,7 @@ import {
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
 } from "../renderer-contracts";
-import type { InboxFreshnessLabel } from "../inbox-refresh-scheduler";
+import type { InboxFreshnessLabel } from "../inbox-freshness";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxPageSize,

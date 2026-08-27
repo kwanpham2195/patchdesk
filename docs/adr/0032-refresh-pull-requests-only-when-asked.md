@@ -14,8 +14,8 @@
 > it does not weaken this ADR — the badge never refreshes itself, it only lets
 > the maintainer ask.
 
-The Pull requests screen polls. `InboxRefreshScheduler`
-(`src/renderer/src/inbox-refresh-scheduler.ts`) refreshes every sixty seconds
+The Pull requests screen polls. `InboxRefreshScheduler` (in the module now
+named `src/renderer/src/inbox-freshness.ts`) refreshes every sixty seconds
 while the window has focus, backs off through a `[60s, 120s, 240s, 300s]`
 ladder after failures, waits out a rate limit until a learned resume time, and
 suspends itself when the window loses focus. `app.tsx` feeds it

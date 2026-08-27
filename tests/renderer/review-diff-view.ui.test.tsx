@@ -51,7 +51,7 @@ describe("review diff hydration", () => {
       value: {
         request,
         openExternalHttps: async () => true,
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
         qaScrollDiagnosticsEnabled: false,
       },
     });

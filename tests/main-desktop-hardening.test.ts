@@ -66,8 +66,22 @@ describe("desktop hardening", () => {
   });
 
   it("uses native macOS application roles and keeps developer roles out of production", () => {
-    const production = createDesktopMenuTemplate("darwin", "Patchdesk", false);
-    const development = createDesktopMenuTemplate("darwin", "Patchdesk", true);
+    const noActions = {
+      openSettings: () => undefined,
+      refresh: () => undefined,
+    };
+    const production = createDesktopMenuTemplate(
+      "darwin",
+      "Patchdesk",
+      false,
+      noActions,
+    );
+    const development = createDesktopMenuTemplate(
+      "darwin",
+      "Patchdesk",
+      true,
+      noActions,
+    );
 
     expect(production[0]).toMatchObject({ label: "Patchdesk" });
     expect(JSON.stringify(production)).toContain('"role":"about"');
@@ -152,7 +166,10 @@ describe("desktop hardening", () => {
 
   it("uses a File menu on non-macOS platforms", () => {
     expect(
-      createDesktopMenuTemplate("linux", "Patchdesk", false)[0],
+      createDesktopMenuTemplate("linux", "Patchdesk", false, {
+        openSettings: () => undefined,
+        refresh: () => undefined,
+      })[0],
     ).toMatchObject({
       label: "File",
     });

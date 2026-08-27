@@ -335,7 +335,7 @@ async function installBridgeStub(page: Page): Promise<void> {
             return { ok: true, status: 200, body: [], correlationId: "keys" };
           return { ok: true, status: 200, body: {}, correlationId: "keys" };
         },
-        onNavigate() {
+        onMenuAction() {
           return () => undefined;
         },
       },

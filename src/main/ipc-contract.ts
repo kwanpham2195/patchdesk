@@ -7,8 +7,15 @@ export const APP_CAPABILITY_HEADER = "X-Patchdesk-Capability";
 export type AppCapability = string;
 
 export const DESKTOP_REQUEST_CHANNEL = "patchdesk:request";
-export const DESKTOP_NAVIGATE_CHANNEL = "patchdesk:navigate";
-export type DesktopDestination = "settings" | "refresh";
+/**
+ * The one channel the native menu uses to reach the renderer. Both halves —
+ * `sendMenuAction` in the main process and `subscribeToMenuActions` in
+ * preload, both in `desktop-menu-channel.ts` — read this constant, so the
+ * literal below is written exactly once in the repository. A menu action is
+ * not navigation: "refresh" re-reads the screen the maintainer is already on.
+ */
+export const DESKTOP_MENU_ACTION_CHANNEL = "patchdesk:menu-action";
+export type DesktopMenuAction = "openSettings" | "refresh";
 
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
@@ -59,7 +66,7 @@ export type DesktopResponse = {
 export type PatchdeskDesktopApi = {
   request(input: DesktopRequest): Promise<DesktopResponse>;
   openExternalHttps(url: string): Promise<boolean>;
-  onNavigate(listener: (destination: DesktopDestination) => void): () => void;
+  onMenuAction(listener: (action: DesktopMenuAction) => void): () => void;
   /** QA-only structural diagnostics are enabled by a main-process argument. */
   readonly qaScrollDiagnosticsEnabled: boolean;
 };

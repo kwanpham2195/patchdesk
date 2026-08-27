@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { parseContentHash } from "../../src/domain/ids";
+import type { DesktopMenuAction } from "../../src/main/ipc-contract";
 import { App, type ReviewWorkbenchLoader } from "../../src/renderer/src/app";
 import {
   loadInboxViewPreferences,
@@ -71,8 +72,8 @@ describe("App Review route loading", () => {
     await screen.findByRole("heading", { name: "Maintainer inbox" });
     // There is no header refresh control (ADR 0032): the menu's View →
     // Refresh is the only manual trigger, reaching the renderer through the
-    // desktop navigate channel exercised here.
-    desktop.navigate("refresh");
+    // desktop menu-action channel exercised here.
+    desktop.sendMenuAction("refresh");
     expect(await screen.findByText("GitHub: Refreshing")).toBeTruthy();
     refreshFailure.resolve();
     // `inboxFreshnessLabel` returns "Refreshing" whenever the refreshing
@@ -112,7 +113,7 @@ describe("App Review route loading", () => {
                   : {},
           };
         },
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
       },
     });
     render(<App />);
@@ -154,7 +155,7 @@ describe("App Review route loading", () => {
                   : {},
           };
         },
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
       },
     });
     render(<App />);
@@ -311,7 +312,7 @@ describe("App inbox state switch", () => {
           }
           return { ok: true, status: 200, correlationId: "test", body: {} };
         },
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
       },
     });
     render(<App />);
@@ -636,11 +637,11 @@ function stateFilteredInbox(
   };
 }
 
-/** Test double for the desktop navigate channel: lets a test fire the same
- * "refresh"/"settings" destinations the View menu sends over IPC, without a
+/** Test double for the desktop menu-action channel: lets a test fire the same
+ * "refresh"/"openSettings" actions the View menu sends over IPC, without a
  * real Electron main process. */
-type DesktopNavigateDouble = {
-  readonly navigate: (destination: "settings" | "refresh") => void;
+type DesktopMenuActionDouble = {
+  readonly sendMenuAction: (action: DesktopMenuAction) => void;
 };
 
 function installDesktop(
@@ -648,11 +649,9 @@ function installDesktop(
     readonly failInboxRefresh?: boolean;
     readonly inboxRefreshGate?: Promise<void>;
   } = {},
-): DesktopNavigateDouble {
+): DesktopMenuActionDouble {
   let inboxRequests = 0;
-  let navigateListener:
-    | ((destination: "settings" | "refresh") => void)
-    | undefined;
+  let menuActionListener: ((action: DesktopMenuAction) => void) | undefined;
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
     value: {
@@ -686,16 +685,16 @@ function installDesktop(
                   : {},
         };
       },
-      onNavigate: (listener: (destination: "settings" | "refresh") => void) => {
-        navigateListener = listener;
+      onMenuAction: (listener: (action: DesktopMenuAction) => void) => {
+        menuActionListener = listener;
         return () => {
-          navigateListener = undefined;
+          menuActionListener = undefined;
         };
       },
     },
   });
   return {
-    navigate: (destination) => navigateListener?.(destination),
+    sendMenuAction: (action) => menuActionListener?.(action),
   };
 }
 
@@ -834,7 +833,7 @@ function installRepoDesktop(
             : repoInboxResponse(repo, watchlist, { nextPageToken: "page-1" });
         return { ok: true, status: 200, correlationId: "test", body };
       },
-      onNavigate: () => () => undefined,
+      onMenuAction: () => () => undefined,
     },
   });
   return { paths };

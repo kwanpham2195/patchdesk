@@ -24,7 +24,8 @@ import {
   openAllowedExternalUrl,
 } from "./external-navigation";
 import { createAppCapability } from "./app-capability";
-import { DESKTOP_NAVIGATE_CHANNEL } from "./ipc-contract";
+import { sendMenuAction } from "./desktop-menu-channel";
+import type { DesktopMenuAction } from "./ipc-contract";
 import {
   healthCheckLocalApi,
   startLocalApiServer,
@@ -380,8 +381,8 @@ function registerDesktopEvents(): void {
           app.name,
           !app.isPackaged,
           {
-            openSettings: () => requestRendererNavigation("settings"),
-            refresh: () => requestRendererNavigation("refresh"),
+            openSettings: () => raiseWindowAndSendMenuAction("openSettings"),
+            refresh: () => raiseWindowAndSendMenuAction("refresh"),
           },
         ),
       ]),
@@ -633,10 +634,16 @@ function focusWindow(window: BrowserWindow): void {
   window.focus();
 }
 
-function requestRendererNavigation(destination: "settings" | "refresh"): void {
+/**
+ * The window-aware wrapper around `sendMenuAction`: a menu item can fire while
+ * the workbench is behind another app, so the action is delivered and the
+ * window is brought forward. The channel itself lives in
+ * `desktop-menu-channel.ts`, which preload reads from too.
+ */
+function raiseWindowAndSendMenuAction(action: DesktopMenuAction): void {
   const window = mainWindow;
   if (window === undefined || window.isDestroyed()) return;
-  window.webContents.send(DESKTOP_NAVIGATE_CHANNEL, destination);
+  sendMenuAction(window.webContents, action);
   focusWindow(window);
 }
 

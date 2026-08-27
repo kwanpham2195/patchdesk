@@ -1,9 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+import { subscribeToMenuActions } from "./desktop-menu-channel";
 import {
-  DESKTOP_NAVIGATE_CHANNEL,
   DESKTOP_REQUEST_CHANNEL,
-  type DesktopDestination,
+  type DesktopMenuAction,
   type DesktopRequest,
   type DesktopResponse,
   type PatchdeskDesktopApi,
@@ -33,13 +33,8 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
       body.opened === true
     );
   },
-  onNavigate(listener: (destination: DesktopDestination) => void) {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      destination: DesktopDestination,
-    ): void => listener(destination);
-    ipcRenderer.on(DESKTOP_NAVIGATE_CHANNEL, handler);
-    return () => ipcRenderer.off(DESKTOP_NAVIGATE_CHANNEL, handler);
+  onMenuAction(listener: (action: DesktopMenuAction) => void) {
+    return subscribeToMenuActions(ipcRenderer, listener);
   },
   qaScrollDiagnosticsEnabled,
 });

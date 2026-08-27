@@ -1,5 +1,16 @@
 import type { InboxSnapshotState } from "../../domain/maintainer-inbox";
 
+/**
+ * The maintainer-facing copy for how current the inbox rows are. This is
+ * presentation, not policy: every value below is English shown in a badge,
+ * and the two-minute "Aged" cutoff is a wording threshold, not a rule about
+ * what Patchdesk will serve. The rules live in
+ * `src/domain/inbox-freshness-policy.ts` — `isInboxCacheDegraded` and
+ * `isInboxCacheStale` — which the main-process service also imports, and
+ * which this module deliberately does not join: moving user-visible copy
+ * there would put renderer strings in a module the main process loads.
+ */
+
 /** The freshness badge text the inbox shows for how current its rows are. */
 export type InboxFreshnessLabel =
   | "Refreshing"

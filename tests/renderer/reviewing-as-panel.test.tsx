@@ -366,7 +366,7 @@ function installDesktopApi(
   );
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
-    value: { request, onNavigate: () => () => undefined },
+    value: { request, onMenuAction: () => () => undefined },
   });
 }
 

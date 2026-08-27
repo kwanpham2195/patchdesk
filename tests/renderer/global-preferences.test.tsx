@@ -254,7 +254,7 @@ function installDesktopApi(
     configurable: true,
     value: {
       request,
-      onNavigate: () => () => undefined,
+      onMenuAction: () => () => undefined,
       qaScrollDiagnosticsEnabled: false,
     },
   });

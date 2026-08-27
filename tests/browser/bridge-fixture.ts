@@ -54,7 +54,7 @@ export async function installTestDesktopBridge(
               correlationId: "browser-test",
             };
           },
-          onNavigate() {
+          onMenuAction() {
             return () => undefined;
           },
         },

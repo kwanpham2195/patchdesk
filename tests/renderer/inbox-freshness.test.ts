@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatInboxAge,
   inboxFreshnessLabel,
-} from "../../src/renderer/src/inbox-refresh-scheduler";
+} from "../../src/renderer/src/inbox-freshness";
 
 describe("inboxFreshnessLabel", () => {
   it("returns Stale for a hard-refused cached snapshot", () => {

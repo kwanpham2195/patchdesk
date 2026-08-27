@@ -22,7 +22,7 @@ describe("renderer API boundary", () => {
           correlationId: "corr-refresh",
         }),
         openExternalHttps: async () => false,
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
         qaScrollDiagnosticsEnabled: false,
       },
     });
@@ -54,7 +54,7 @@ describe("renderer API boundary", () => {
           correlationId: "corr-forbidden",
         }),
         openExternalHttps: async () => false,
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
         qaScrollDiagnosticsEnabled: false,
       },
     });
@@ -87,7 +87,7 @@ describe("renderer API boundary", () => {
           correlationId: "corr-merge-in-progress",
         }),
         openExternalHttps: async () => false,
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
         qaScrollDiagnosticsEnabled: false,
       },
     });
@@ -118,7 +118,7 @@ describe("renderer API boundary", () => {
           correlationId: "corr-assignee-cap",
         }),
         openExternalHttps: async () => false,
-        onNavigate: () => () => undefined,
+        onMenuAction: () => () => undefined,
         qaScrollDiagnosticsEnabled: false,
       },
     });

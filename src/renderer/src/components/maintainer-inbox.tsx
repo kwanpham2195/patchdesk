@@ -25,10 +25,7 @@ import {
 } from "@/github-read-failure-copy";
 import { LabelChip } from "./label-chip";
 import { useInboxView } from "../hooks/use-inbox-view";
-import {
-  formatInboxAge,
-  type InboxFreshnessLabel,
-} from "@/inbox-refresh-scheduler";
+import { formatInboxAge, type InboxFreshnessLabel } from "@/inbox-freshness";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
   DEFAULT_INBOX_PAGE_SIZE,

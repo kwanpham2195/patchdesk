@@ -34,6 +34,7 @@ import {
 } from "./components/ui/alert-dialog";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { BusyProvider } from "./hooks/use-busy";
+import { useDesktopMenuActions } from "./hooks/use-desktop-menu-actions";
 import type { AppDestination } from "./routes";
 import { destinationKey, parseDestination } from "./routes";
 import {
@@ -61,7 +62,7 @@ import {
   type InboxPageSize,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
-import { inboxFreshnessLabel } from "./inbox-refresh-scheduler";
+import { inboxFreshnessLabel } from "./inbox-freshness";
 import {
   applyAppearance,
   clearAppearancePreference,
@@ -810,13 +811,7 @@ export function App({
     updateInboxRequest(request);
     await refreshInbox(request);
   }, [refreshInbox, updateInboxRequest]);
-  useEffect(() => {
-    if (fixtureMode || window.patchdesk?.onNavigate === undefined) return;
-    return window.patchdesk.onNavigate((next) => {
-      if (next === "settings") openSettings();
-      else if (next === "refresh") void refreshDashboard();
-    });
-  }, [fixtureMode, openSettings, refreshDashboard]);
+  useDesktopMenuActions(!fixtureMode, openSettings, refreshDashboard);
   const changeInboxState = useCallback(
     (nextState: InboxRequestState["state"]): void => {
       const request = nextInboxRequest(inboxRequestRef.current, {

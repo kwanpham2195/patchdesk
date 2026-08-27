@@ -6,22 +6,21 @@ export function createDesktopMenuTemplate(
   applicationName: string,
   development: boolean,
   actions: {
-    readonly openSettings?: () => void;
-    readonly refresh?: () => void;
-  } = {},
+    readonly openSettings: () => void;
+    readonly refresh: () => void;
+  },
 ): ReadonlyArray<MenuItemConstructorOptions> {
-  const applicationSettingsItem: MenuItemConstructorOptions = {
+  const settingsItem: MenuItemConstructorOptions = {
     label: "Settings…",
     accelerator: "CommandOrControl+,",
+    click: actions.openSettings,
   };
-  if (actions.openSettings !== undefined)
-    applicationSettingsItem.click = actions.openSettings;
   const applicationMenu: MenuItemConstructorOptions = {
     label: applicationName,
     submenu: [
       { role: "about" },
       { type: "separator" },
-      applicationSettingsItem,
+      settingsItem,
       { type: "separator" },
       { role: "services" },
       { type: "separator" },
@@ -32,16 +31,10 @@ export function createDesktopMenuTemplate(
       { role: "quit" },
     ],
   };
-  const fileSettingsItem: MenuItemConstructorOptions = {
-    label: "Settings…",
-    accelerator: "CommandOrControl+,",
-  };
-  if (actions.openSettings !== undefined)
-    fileSettingsItem.click = actions.openSettings;
   const fileMenu: MenuItemConstructorOptions = {
     label: "File",
     submenu: [
-      fileSettingsItem,
+      settingsItem,
       { type: "separator" },
       { role: "close" },
       { type: "separator" },
@@ -60,13 +53,12 @@ export function createDesktopMenuTemplate(
       { role: "selectAll" },
     ],
   };
-  const refreshItem: MenuItemConstructorOptions = {
-    label: "Refresh",
-    accelerator: "CommandOrControl+R",
-  };
-  if (actions.refresh !== undefined) refreshItem.click = actions.refresh;
   const viewItems: MenuItemConstructorOptions[] = [
-    refreshItem,
+    {
+      label: "Refresh",
+      accelerator: "CommandOrControl+R",
+      click: actions.refresh,
+    },
     { type: "separator" },
     ...(development
       ? ([

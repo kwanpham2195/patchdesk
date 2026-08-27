@@ -49,7 +49,7 @@ function installBridge(
   });
   Object.defineProperty(window, "patchdesk", {
     configurable: true,
-    value: { request, onNavigate: () => () => undefined },
+    value: { request, onMenuAction: () => () => undefined },
   });
   return request;
 }
