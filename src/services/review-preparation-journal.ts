@@ -355,11 +355,18 @@ export class ReviewPreparationJournal {
    * Delete artifacts recorded by interrupted preparations. A `preparing`
    * journal loses every recorded target; a `committing` journal already owns a
    * persisted Session, so only the journal itself is removed.
+   *
+   * `sessions` is required, not optional. A `committing` journal is only safe
+   * to clean up once a store has said no matching Session is on disk, so an
+   * absent store must not be expressible here: omitting it once meant "delete
+   * the patch file, the worktree, and the journal" for every `committing`
+   * journal on the machine, which is the most destructive outcome this class
+   * has rather than the fail-safe one.
    */
   static async recover(
     paths: PatchdeskPaths,
     worktrees: ReviewWorktreeService,
-    sessions?: Pick<ReviewSessionStore, "load">,
+    sessions: Pick<ReviewSessionStore, "load">,
     lifecycleGate?: ReviewLifecycleGate,
     diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
@@ -417,6 +424,10 @@ export class ReviewPreparationJournal {
    * in this codebase (see `domain/ids.ts`) — but it forces a new call site
    * to name the precondition instead of silently missing it, and it makes
    * every call site claiming the precondition findable with one grep.
+   *
+   * `sessions` is required here for the same reason it is on `recover`: the
+   * journal this clears can be `committing`, and without a store to ask, that
+   * state cleans up the Session's artifacts instead of leaving them alone.
    */
   static async recoverSession(
     paths: PatchdeskPaths,
@@ -424,7 +435,7 @@ export class ReviewPreparationJournal {
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,
     _profileLockHeld: "profile-lock-held",
-    sessions?: Pick<ReviewSessionStore, "load">,
+    sessions: Pick<ReviewSessionStore, "load">,
     diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ): Promise<boolean> {
     const result = await ReviewPreparationJournal.recoverJournalFile(
@@ -448,16 +459,22 @@ export class ReviewPreparationJournal {
    * A `committing` journal means the Session save it was guarding may or may
    * not have completed before the crash: when a matching Session is on disk,
    * that save won, and only the journal itself is removed (the Session keeps
-   * its artifacts). Otherwise — no `sessions` store to check, the load fails,
-   * or the loaded Session's id doesn't match — the save never landed, so this
-   * falls through to the same `cleanup(worktrees)` a `preparing` journal
-   * gets, removing every artifact it recorded.
+   * its artifacts). Otherwise — the load fails, or the loaded Session's id
+   * doesn't match — the save never landed, so this falls through to the same
+   * `cleanup(worktrees)` a `preparing` journal gets, removing every artifact
+   * it recorded.
+   *
+   * Those two are the only fall-through conditions, and both are the store
+   * answering. "There is no store" is deliberately not a third one: `sessions`
+   * is non-optional all the way down from the two public entry points, so the
+   * question is always asked of something and the destructive branch can never
+   * be reached by a caller that simply forgot an argument.
    */
   private static async recoverJournalFile(
     paths: PatchdeskPaths,
     worktrees: ReviewWorktreeService,
     filePath: string,
-    sessions: Pick<ReviewSessionStore, "load"> | undefined,
+    sessions: Pick<ReviewSessionStore, "load">,
     lifecycleGate: ReviewLifecycleGate | undefined,
     diagnostics: Pick<ReviewDiagnosticService, "record"> | undefined,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
@@ -504,11 +521,11 @@ export class ReviewPreparationJournal {
       const deletion = await journal.validatedDeletionSet();
       if (deletion === undefined) return false;
       if (content.state === "committing") {
-        const session =
-          sessions === undefined
-            ? undefined
-            : await sessions.load(deletion.profileId, deletion.sessionId);
-        if (session?._tag === "ok" && session.value.id === deletion.sessionId) {
+        const session = await sessions.load(
+          deletion.profileId,
+          deletion.sessionId,
+        );
+        if (session._tag === "ok" && session.value.id === deletion.sessionId) {
           return await rm(deletion.journalFile, { force: true })
             .then(() => true)
             .catch(() => false);
