@@ -1090,13 +1090,13 @@ describe("GitHubAdapter Published feedback capabilities", () => {
       {
         _tag: "Exited",
         exitCode: 0,
-        stdout: JSON.stringify({ role_name: "write" }),
+        stdout: JSON.stringify(pullRequestPayload()),
         stderr: "",
       },
       {
         _tag: "Exited",
         exitCode: 0,
-        stdout: JSON.stringify(pullRequestPayload()),
+        stdout: JSON.stringify({ role_name: "write" }),
         stderr: "",
       },
       {
@@ -1148,13 +1148,13 @@ describe("GitHubAdapter Published feedback capabilities", () => {
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify({ role_name: "write" }),
+            stdout: JSON.stringify(pullRequestPayload()),
             stderr: "",
           },
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify(pullRequestPayload()),
+            stdout: JSON.stringify({ role_name: "write" }),
             stderr: "",
           },
           {
@@ -1201,13 +1201,13 @@ describe("GitHubAdapter Published feedback capabilities", () => {
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify({ permission: "owner" }),
+            stdout: JSON.stringify(pullRequestPayload()),
             stderr: "",
           },
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify(pullRequestPayload()),
+            stdout: JSON.stringify({ permission: "owner" }),
             stderr: "",
           },
         ]),
@@ -1260,13 +1260,13 @@ describe("GitHubAdapter Published feedback capabilities", () => {
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify({ role_name: "write" }),
+            stdout: JSON.stringify(pullRequestPayload()),
             stderr: "",
           },
           {
             _tag: "Exited",
             exitCode: 0,
-            stdout: JSON.stringify(pullRequestPayload()),
+            stdout: JSON.stringify({ role_name: "write" }),
             stderr: "",
           },
           {

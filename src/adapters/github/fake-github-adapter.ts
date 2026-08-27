@@ -51,7 +51,10 @@ import {
   type PendingReviewComment,
   type RepositoryPermissionEvidence,
 } from "./github-adapter";
-import { samePullRequest } from "./github-wire-projections";
+import {
+  assembleConversationEntries,
+  samePullRequest,
+} from "./github-wire-projections";
 import { missing } from "./github-write-failures";
 
 /** A fixture-oriented GitHubReader with no process, filesystem, or network behavior. */
@@ -638,39 +641,9 @@ export class FakeGitHubAdapter
       reviews: [],
       comments: [],
     };
-    const entries: Conversation["entries"][number][] = [];
-    for (const review of feedback.reviews) {
-      entries.push({ _tag: "ReviewSummary" as const, review });
-    }
-    for (const comment of feedback.comments) {
-      entries.push({ _tag: "IssueComment" as const, comment });
-    }
-    for (const thread of threads.threads) {
-      if (thread.location !== undefined) continue;
-      entries.push({ _tag: "GeneralThread" as const, thread });
-    }
-    entries.sort((a, b) => {
-      const at =
-        a._tag === "ReviewSummary"
-          ? a.review.submittedAt
-          : a._tag === "IssueComment"
-            ? a.comment.createdAt
-            : a._tag === "GeneralThread"
-              ? (a.thread.comments[0]?.createdAt ?? "")
-              : "";
-      const bt =
-        b._tag === "ReviewSummary"
-          ? b.review.submittedAt
-          : b._tag === "IssueComment"
-            ? b.comment.createdAt
-            : b._tag === "GeneralThread"
-              ? (b.thread.comments[0]?.createdAt ?? "")
-              : "";
-      return at.localeCompare(bt);
-    });
     return ok({
       prDescription,
-      entries,
+      entries: assembleConversationEntries(feedback, threads),
       complete: feedback.complete !== false && threads.complete !== false,
     });
   }

@@ -105,3 +105,36 @@ export const mergePolicyQuery =
   "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefOid baseRefName mergeable mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 export const maxMergePolicyPages = 3;
 export const maxPullRequestCommits = 250;
+/**
+ * Appends one inline thread to an existing pending review. `side` is baked
+ * into the document rather than passed as a variable because it is a GraphQL
+ * enum (`DiffSide`), and `gh api graphql -F side=RIGHT` sends enums as
+ * strings, which the schema rejects. `pageInfo` belongs inside the `comments`
+ * connection: `PullRequestReviewThread` has no `pageInfo` field of its own,
+ * and GitHub fails the mutation at schema validation — before executing it —
+ * when the selection asks for one, so the read-back never runs.
+ */
+export function addPendingReviewThreadMutation(side: "LEFT" | "RIGHT"): string {
+  return `mutation($reviewId:ID!,$path:String!,$line:Int!,$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$reviewId,path:$path,line:$line,side:${side},body:$body}){thread{id path line startLine diffSide comments(first:100){nodes{id body} pageInfo{hasNextPage}}}}}`;
+}
+/**
+ * A thread reply also submits its own COMMENTED review; `pullRequestReview
+ * { id }` exposes that review id so the write journal can exclude it from
+ * update detection.
+ */
+export const addThreadReplyMutation =
+  "mutation($threadId:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId,body:$body}){comment{id pullRequestReview{id}}}}";
+/**
+ * Resolve and unresolve are separate GraphQL fields over one identical input
+ * and selection, so the domain state picks the field name rather than a
+ * variable. `thread { id }` is the smallest selection either field allows.
+ */
+export function reviewThreadStateMutation(state: "resolved" | "open"): string {
+  const field =
+    state === "resolved" ? "resolveReviewThread" : "unresolveReviewThread";
+  return `mutation($threadId:ID!){${field}(input:{threadId:$threadId}){thread{id}}}`;
+}
+export const updateThreadCommentMutation =
+  "mutation($commentId:ID!,$body:String!){updatePullRequestReviewComment(input:{pullRequestReviewCommentId:$commentId,body:$body}){pullRequestReviewComment{id}}}";
+export const deleteThreadCommentMutation =
+  "mutation($commentId:ID!){deletePullRequestReviewComment(input:{id:$commentId}){clientMutationId}}";

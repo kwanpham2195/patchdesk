@@ -6,14 +6,16 @@ import type {
   AssignableUser,
   CheckRunSummary,
   CheckSummary,
+  ConversationEntry,
   GitHubAppliedRulesetEvidence,
   GitHubAppliedRulesetPullRequestParameters,
   GitHubClassicBranchProtectionEvidence,
   GitHubComment,
+  GitHubComments,
   GitHubMergePolicyEvidence,
   GitHubMergeStateStatus,
+  GitHubPublishedFeedback,
   MergePolicySnapshot,
-  MaintainerPullRequest,
   PullRequestReviewEntry,
   PullRequestReviewerListing,
   PullRequestSummary,
@@ -32,7 +34,6 @@ import {
   type GitHubRepoName,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
-import type { InboxStateFilter } from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { PendingReviewAnchor } from "../../domain/pending-review";
 import type { GitHubReviewEvent } from "../../domain/pending-review";
@@ -53,7 +54,6 @@ import {
   type checkRunsSchema,
   type commitStatusesSchema,
   type directSummaryReceiptSchema,
-  type maintainerInboxResponseSchema,
   mergeEvidenceBranchProtectionSchema,
   type mergeOutcomeSchema,
   type MergePolicyContext,
@@ -68,59 +68,6 @@ import {
   type ReviewReceipt,
   type threadResponseSchema,
 } from "./github-wire-schemas";
-
-export function parseMaintainerPullRequest(
-  input: v.InferOutput<
-    typeof maintainerInboxResponseSchema
-  >["data"]["repository"]["pullRequests"]["edges"][number]["node"],
-  host: GitHubHost,
-  owner: GitHubOwner,
-  repo: GitHubRepoName,
-  state: InboxStateFilter,
-): Result<MaintainerPullRequest, { readonly _tag: "Invalid" }> {
-  const number = parsePullRequestNumber(input.number);
-  const headSha = parseGitSha(input.headRefOid);
-  const baseSha =
-    input.baseRefOid === undefined ? undefined : parseGitSha(input.baseRefOid);
-  const updatedAt = parseGitHubTimestamp(input.updatedAt);
-  if (
-    number._tag === "err" ||
-    headSha._tag === "err" ||
-    (baseSha !== undefined && baseSha._tag === "err") ||
-    updatedAt._tag === "err"
-  )
-    return err({ _tag: "Invalid" });
-  let summary: PullRequestSummary = {
-    ref: { host, owner, repo, number: number.value },
-    title: input.title,
-    author: input.author?.login ?? "ghost",
-    headBranch: input.headRefName,
-    baseBranch: input.baseRefName,
-    headSha: headSha.value,
-    isDraft: input.isDraft,
-    isOpen: state === "open",
-    reviewState: mapReviewDecision(input.reviewDecision),
-    mergeability: mapMergeability(input.mergeable),
-    labels: input.labels.nodes.map((label) => ({
-      name: label.name,
-      color: label.color,
-    })),
-    labelCount: input.labels.totalCount,
-    requestedReviewers: input.reviewRequests.nodes.flatMap((request) =>
-      request.requestedReviewer?.login === undefined
-        ? []
-        : [request.requestedReviewer.login],
-    ),
-    assignees: input.assignees.nodes.map((assignee) => assignee.login),
-    updatedAt: updatedAt.value,
-    additions: input.additions,
-    deletions: input.deletions,
-    changedFileCount: input.changedFiles,
-  };
-  if (baseSha !== undefined) summary = { ...summary, baseSha: baseSha.value };
-  const rollup = input.commits.nodes[0]?.commit.statusCheckRollup?.state;
-  return ok({ summary, checks: rollupCheckSummary(rollup) });
-}
 
 export function parseRepositoryLabel(
   input: v.InferOutput<
@@ -284,39 +231,6 @@ export function matchesPullRequest(
 /** Fixture counterpart of `matchesPullRequest`: identical membership semantics. */
 export function samePullRequest(a: PullRequestRef, b: PullRequestRef): boolean {
   return a.owner === b.owner && a.repo === b.repo && a.number === b.number;
-}
-
-function mapReviewDecision(
-  value: string | null | undefined,
-): PullRequestSummary["reviewState"] {
-  switch (value) {
-    case "APPROVED":
-      return "approved";
-    case "CHANGES_REQUESTED":
-      return "changes_requested";
-    case "REVIEW_REQUIRED":
-      return "review_pending";
-    case null:
-    case undefined:
-      return "none";
-    default:
-      return "unknown";
-  }
-}
-
-function rollupCheckSummary(value: string | undefined): CheckSummary {
-  switch (value) {
-    case "SUCCESS":
-      return { overall: "passing", checks: [] };
-    case "FAILURE":
-    case "ERROR":
-    case "EXPECTED":
-      return { overall: "failing", checks: [] };
-    case "PENDING":
-      return { overall: "pending", checks: [] };
-    default:
-      return { overall: "unknown", checks: [] };
-  }
 }
 
 export function parseMergePolicyPage(
@@ -686,7 +600,7 @@ export function toCommitStatusSummary(
   return url === undefined ? concluded : { ...concluded, url };
 }
 
-function mapMergeability(
+export function mapMergeability(
   value: string | undefined,
 ): PullRequestSummary["mergeability"] {
   if (value === "clean" || value === "MERGEABLE") return "mergeable";
@@ -1020,4 +934,55 @@ export function parseDirectSummaryReceipt(
         headSha: headSha.value,
         submittedAt: submittedAt.value,
       };
+}
+
+/**
+ * Orders one Conversation timeline: every published review summary, every
+ * published issue comment, and the review threads GitHub returned with no
+ * code anchor. Threads that DO carry a `location` are deliberately absent —
+ * they belong to `Conversation.inline` and are placed against the diff
+ * instead (ADR 0028, "Show only conversation threads the diff can place"), so
+ * the caller owns that split and this function owns the timeline.
+ *
+ * The real adapter and `FakeGitHubAdapter` share this ordering so a fixture
+ * timeline cannot drift from the one GitHub produces.
+ */
+export function assembleConversationEntries(
+  feedback: GitHubPublishedFeedback,
+  comments: GitHubComments,
+): ReadonlyArray<ConversationEntry> {
+  const entries: ConversationEntry[] = [
+    ...feedback.reviews.map((review) => ({
+      _tag: "ReviewSummary" as const,
+      review,
+    })),
+    ...feedback.comments.map((comment) => ({
+      _tag: "IssueComment" as const,
+      comment,
+    })),
+    ...comments.threads
+      .filter((thread) => thread.location === undefined)
+      .map((thread) => ({ _tag: "GeneralThread" as const, thread })),
+  ];
+  return entries.sort((a, b) =>
+    conversationEntryOrder(a).localeCompare(conversationEntryOrder(b)),
+  );
+}
+
+/**
+ * The timestamp each entry kind is stamped with. A `GeneralThread` with no
+ * comments, and the `PrDescription` entry this assembly never produces, both
+ * sort as `""` — ahead of everything dated.
+ */
+function conversationEntryOrder(entry: ConversationEntry): string {
+  switch (entry._tag) {
+    case "ReviewSummary":
+      return entry.review.submittedAt;
+    case "IssueComment":
+      return entry.comment.createdAt;
+    case "GeneralThread":
+      return entry.thread.comments[0]?.createdAt ?? "";
+    default:
+      return "";
+  }
 }

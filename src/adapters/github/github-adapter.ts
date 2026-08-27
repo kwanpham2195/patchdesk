@@ -68,8 +68,11 @@ import type { GitHubReviewCoordinates } from "../../domain/patch";
 import {
   addAssigneesToAssignableMutation,
   addLabelsToLabelableMutation,
+  addPendingReviewThreadMutation,
+  addThreadReplyMutation,
   assignableUsersQuery,
   confirmCreatedCommentThreadQuery,
+  deleteThreadCommentMutation,
   maintainerInboxQuery,
   maintainerInboxSearchQuery,
   maxMergePolicyPages,
@@ -86,10 +89,13 @@ import {
   repositoryLabelsQuery,
   requestReviewsMutation,
   reviewCommentTargetQuery,
+  reviewThreadStateMutation,
   reviewThreadTargetQuery,
   threadCommentsQuery,
   threadQuery,
+  updateThreadCommentMutation,
 } from "./github-graphql-queries";
+import { parseMaintainerPullRequestPage } from "./github-maintainer-inbox-projections";
 import {
   addedReviewThreadSchema,
   addedThreadReplySchema,
@@ -101,6 +107,7 @@ import {
   directSummaryReceiptSchema,
   maintainerInboxResponseSchema,
   maintainerInboxSearchResponseSchema,
+  type MaintainerRateLimit,
   mergeOutcomeSchema,
   type MergePolicyPage,
   mergePolicyResponseSchema,
@@ -123,6 +130,7 @@ import {
   writtenNodeSchema,
 } from "./github-wire-schemas";
 import {
+  assembleConversationEntries,
   completeMergePolicy,
   digestReviewBody,
   directSummaryEvent,
@@ -135,7 +143,6 @@ import {
   parseDirectSummaryReceipt,
   parseGitHubTimestamp,
   parseLocation,
-  parseMaintainerPullRequest,
   parseMergeOutcome,
   parseMergePolicyPage,
   parseOptionalPolicyResponse,
@@ -719,7 +726,12 @@ type GhCommandRequest = Omit<
  * Read operations and explicit review writes live in the main process; renderer code never reaches this adapter.
  */
 export class GitHubAdapter
-  implements GitHubReader, GitHubReviewWriter, GitHubMergeWriter
+  implements
+    GitHubReader,
+    GitHubReviewWriter,
+    GitHubMergeWriter,
+    GitHubDirectSummaryGateway,
+    GitHubPendingReviewGateway
 {
   /**
    * Last-observed rateLimit { remaining, resetAt } per GitHub host, learned
@@ -878,44 +890,15 @@ export class GitHubAdapter
       return this.commandFailure("list_maintainer_prs", response.error, host);
     const parsed = v.safeParse(maintainerInboxResponseSchema, response.value);
     if (!parsed.success) return invalid("list_maintainer_prs");
-    const rateLimit = parsed.output.data.rateLimit;
-    if (rateLimit !== undefined) {
-      const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
-      if (resumeAt._tag === "ok")
-        this.rateLimitByHost.set(host, {
-          remaining: rateLimit.remaining,
-          resetAt: resumeAt.value,
-        });
-    }
-    const connection = parsed.output.data.repository.pullRequests;
-    if (
-      connection.pageInfo.hasNextPage &&
-      (connection.pageInfo.endCursor === null ||
-        connection.pageInfo.endCursor === undefined)
-    )
-      return invalid("list_maintainer_prs");
-    const entries = [];
-    for (const edge of connection.edges) {
-      const projected = parseMaintainerPullRequest(
-        edge.node,
-        host,
-        input.repo.owner,
-        input.repo.repo,
-        input.state ?? "open",
-      );
-      if (projected._tag === "err") return invalid("list_maintainer_prs");
-      entries.push({ cursor: edge.cursor, pullRequest: projected.value });
-    }
-    const endCursorField =
-      connection.pageInfo.endCursor === null ||
-      connection.pageInfo.endCursor === undefined
-        ? {}
-        : { endCursor: connection.pageInfo.endCursor };
-    return ok({
-      entries,
-      hasNextPage: connection.pageInfo.hasNextPage,
-      ...endCursorField,
-    });
+    this.recordRateLimit(host, parsed.output.data.rateLimit);
+    const page = parseMaintainerPullRequestPage(
+      parsed.output.data.repository.pullRequests,
+      host,
+      input.repo.owner,
+      input.repo.repo,
+      input.state ?? "open",
+    );
+    return page === undefined ? invalid("list_maintainer_prs") : ok(page);
   }
 
   /**
@@ -961,45 +944,36 @@ export class GitHubAdapter
       response.value,
     );
     if (!parsed.success) return invalid("search_maintainer_prs");
-    const rateLimit = parsed.output.data.rateLimit;
-    if (rateLimit !== undefined) {
-      const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
-      if (resumeAt._tag === "ok")
-        this.rateLimitByHost.set(host, {
-          remaining: rateLimit.remaining,
-          resetAt: resumeAt.value,
-        });
-    }
+    this.recordRateLimit(host, parsed.output.data.rateLimit);
     const connection = parsed.output.data.search;
-    if (
-      connection.pageInfo.hasNextPage &&
-      (connection.pageInfo.endCursor === null ||
-        connection.pageInfo.endCursor === undefined)
-    )
-      return invalid("search_maintainer_prs");
-    const entries = [];
-    for (const edge of connection.edges) {
-      const projected = parseMaintainerPullRequest(
-        edge.node,
-        host,
-        input.repo.owner,
-        input.repo.repo,
-        input.state,
-      );
-      if (projected._tag === "err") return invalid("search_maintainer_prs");
-      entries.push({ cursor: edge.cursor, pullRequest: projected.value });
-    }
-    const endCursorField =
-      connection.pageInfo.endCursor === null ||
-      connection.pageInfo.endCursor === undefined
-        ? {}
-        : { endCursor: connection.pageInfo.endCursor };
-    return ok({
-      entries,
-      hasNextPage: connection.pageInfo.hasNextPage,
-      issueCount: connection.issueCount,
-      ...endCursorField,
-    });
+    const page = parseMaintainerPullRequestPage(
+      connection,
+      host,
+      input.repo.owner,
+      input.repo.repo,
+      input.state,
+    );
+    return page === undefined
+      ? invalid("search_maintainer_prs")
+      : ok({ ...page, issueCount: connection.issueCount });
+  }
+
+  /**
+   * Caches the reset time `maintainerInboxQuery` and `maintainerInboxSearchQuery`
+   * both carry for free at the top level of a successful response, so a later
+   * rate-limited command on the same host can name a resume time instead of
+   * falling back to a conservative guess (ADR 0023). An unparseable `resetAt`
+   * leaves the previous observation in place: a stale-but-real reset time is
+   * better evidence than none.
+   */
+  private recordRateLimit(host: string, rateLimit: MaintainerRateLimit): void {
+    if (rateLimit === undefined) return;
+    const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
+    if (resumeAt._tag === "ok")
+      this.rateLimitByHost.set(host, {
+        remaining: rateLimit.remaining,
+        resetAt: resumeAt.value,
+      });
   }
 
   /** Fetches up to 100 repository labels in one bounded page; `totalCount` reveals truncation beyond that. */
@@ -1514,7 +1488,7 @@ export class GitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
-    const [reviews, comments, account] = await Promise.all([
+    const [reviews, comments, account, pullRequest] = await Promise.all([
       this.ghJson(input.profile, {
         argv: [
           "gh",
@@ -1536,6 +1510,13 @@ export class GitHubAdapter
         timeoutMs: commandTimeoutMs,
       }),
       this.resolveAuthenticatedAccount(input.profile),
+      // The base branch this read needs for branch protection. It was already
+      // fetched unconditionally, so joining the batch costs nothing and drops
+      // one sequential round trip from every Conversation load. The gh call
+      // order is now reviews, comments, `auth status`, pull request, then the
+      // sequential permission and branch-protection reads — the positional
+      // fixtures in `tests/adapters/github-adapter.test.ts` are in that order.
+      this.getPullRequest({ profile: input.profile, pr: input.pr }),
     ]);
     if (reviews._tag === "err")
       return this.commandFailure(
@@ -1557,10 +1538,6 @@ export class GitHubAdapter
             account: account.value.account,
           })
         : undefined;
-    const pullRequest = await this.getPullRequest({
-      profile: input.profile,
-      pr: input.pr,
-    });
     const protection =
       permission?._tag === "ok" && pullRequest._tag === "ok"
         ? await this.getBranchProtection({
@@ -2477,11 +2454,9 @@ export class GitHubAdapter
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
   }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
-    const side = input.anchor.side === "new" ? "RIGHT" : "LEFT";
-    // pageInfo belongs inside the comments connection: PullRequestReviewThread
-    // has no pageInfo field, and GitHub rejects the mutation at schema
-    // validation before executing it. The read-back never runs in that case.
-    const appendQuery = `mutation($reviewId:ID!,$path:String!,$line:Int!,$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$reviewId,path:$path,line:$line,side:${side},body:$body}){thread{id path line startLine diffSide comments(first:100){nodes{id body} pageInfo{hasNextPage}}}}}`;
+    const appendQuery = addPendingReviewThreadMutation(
+      input.anchor.side === "new" ? "RIGHT" : "LEFT",
+    );
     const appended = await this.ghJson(input.profile, {
       argv: [
         "gh",
@@ -2777,7 +2752,7 @@ export class GitHubAdapter
         "--hostname",
         input.profile.githubHost,
         "-f",
-        "query=mutation($threadId:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId,body:$body}){comment{id pullRequestReview{id}}}}",
+        `query=${addThreadReplyMutation}`,
         "-F",
         `threadId=${input.threadId}`,
         "-f",
@@ -2812,10 +2787,6 @@ export class GitHubAdapter
     readonly threadId: GitHubThreadId;
     readonly state: "resolved" | "open";
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const mutation =
-      input.state === "resolved"
-        ? "resolveReviewThread"
-        : "unresolveReviewThread";
     const response = await this.ghJson(input.profile, {
       argv: [
         "gh",
@@ -2824,9 +2795,46 @@ export class GitHubAdapter
         "--hostname",
         input.profile.githubHost,
         "-f",
-        `query=mutation($threadId:ID!){${mutation}(input:{threadId:$threadId}){thread{id}}}`,
+        `query=${reviewThreadStateMutation(input.state)}`,
         "-F",
         `threadId=${input.threadId}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
+  /**
+   * Runs one `gh api graphql` mutation whose whole variable set is a subject
+   * node id plus a list of node ids — the shape every label, assignee, and
+   * reviewer mutation on this adapter has. The list rides as one repeated
+   * `-F 'name[]=<id>'` pair per element, which is how `gh` sends a real
+   * GraphQL list (verified live on gh 2.96.0; see the note on
+   * `addLabelsToLabelableMutation`). Every such mutation returns only
+   * `clientMutationId`, so a succeeding command is the whole result.
+   */
+  private async runIdListMutation(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly mutation: string;
+    readonly subjectVariable: string;
+    readonly subjectId: string;
+    readonly idsVariable: string;
+    readonly ids: ReadonlyArray<string>;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${input.mutation}`,
+        "-F",
+        `${input.subjectVariable}=${input.subjectId}`,
+        ...input.ids.flatMap((id) => ["-F", `${input.idsVariable}[]=${id}`]),
       ],
       timeoutMs: commandTimeoutMs,
     });
@@ -2840,24 +2848,14 @@ export class GitHubAdapter
     readonly labelableId: string;
     readonly labelIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${addLabelsToLabelableMutation}`,
-        "-F",
-        `labelableId=${input.labelableId}`,
-        ...input.labelIds.flatMap((labelId) => ["-F", `labelIds[]=${labelId}`]),
-      ],
-      timeoutMs: commandTimeoutMs,
+    return this.runIdListMutation({
+      profile: input.profile,
+      mutation: addLabelsToLabelableMutation,
+      subjectVariable: "labelableId",
+      subjectId: input.labelableId,
+      idsVariable: "labelIds",
+      ids: input.labelIds,
     });
-    return response._tag === "err"
-      ? err(writeFailure(response.error))
-      : ok(undefined);
   }
 
   async removeLabelsFromLabelable(input: {
@@ -2865,24 +2863,14 @@ export class GitHubAdapter
     readonly labelableId: string;
     readonly labelIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${removeLabelsFromLabelableMutation}`,
-        "-F",
-        `labelableId=${input.labelableId}`,
-        ...input.labelIds.flatMap((labelId) => ["-F", `labelIds[]=${labelId}`]),
-      ],
-      timeoutMs: commandTimeoutMs,
+    return this.runIdListMutation({
+      profile: input.profile,
+      mutation: removeLabelsFromLabelableMutation,
+      subjectVariable: "labelableId",
+      subjectId: input.labelableId,
+      idsVariable: "labelIds",
+      ids: input.labelIds,
     });
-    return response._tag === "err"
-      ? err(writeFailure(response.error))
-      : ok(undefined);
   }
 
   async addAssigneesToAssignable(input: {
@@ -2890,27 +2878,14 @@ export class GitHubAdapter
     readonly assignableId: string;
     readonly assigneeIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${addAssigneesToAssignableMutation}`,
-        "-F",
-        `assignableId=${input.assignableId}`,
-        ...input.assigneeIds.flatMap((assigneeId) => [
-          "-F",
-          `assigneeIds[]=${assigneeId}`,
-        ]),
-      ],
-      timeoutMs: commandTimeoutMs,
+    return this.runIdListMutation({
+      profile: input.profile,
+      mutation: addAssigneesToAssignableMutation,
+      subjectVariable: "assignableId",
+      subjectId: input.assignableId,
+      idsVariable: "assigneeIds",
+      ids: input.assigneeIds,
     });
-    return response._tag === "err"
-      ? err(writeFailure(response.error))
-      : ok(undefined);
   }
 
   async removeAssigneesFromAssignable(input: {
@@ -2918,27 +2893,14 @@ export class GitHubAdapter
     readonly assignableId: string;
     readonly assigneeIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${removeAssigneesFromAssignableMutation}`,
-        "-F",
-        `assignableId=${input.assignableId}`,
-        ...input.assigneeIds.flatMap((assigneeId) => [
-          "-F",
-          `assigneeIds[]=${assigneeId}`,
-        ]),
-      ],
-      timeoutMs: commandTimeoutMs,
+    return this.runIdListMutation({
+      profile: input.profile,
+      mutation: removeAssigneesFromAssignableMutation,
+      subjectVariable: "assignableId",
+      subjectId: input.assignableId,
+      idsVariable: "assigneeIds",
+      ids: input.assigneeIds,
     });
-    return response._tag === "err"
-      ? err(writeFailure(response.error))
-      : ok(undefined);
   }
 
   async requestReviews(input: {
@@ -2946,24 +2908,14 @@ export class GitHubAdapter
     readonly pullRequestId: string;
     readonly userIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${requestReviewsMutation}`,
-        "-F",
-        `pullRequestId=${input.pullRequestId}`,
-        ...input.userIds.flatMap((userId) => ["-F", `userIds[]=${userId}`]),
-      ],
-      timeoutMs: commandTimeoutMs,
+    return this.runIdListMutation({
+      profile: input.profile,
+      mutation: requestReviewsMutation,
+      subjectVariable: "pullRequestId",
+      subjectId: input.pullRequestId,
+      idsVariable: "userIds",
+      ids: input.userIds,
     });
-    return response._tag === "err"
-      ? err(writeFailure(response.error))
-      : ok(undefined);
   }
 
   /**
@@ -3013,7 +2965,7 @@ export class GitHubAdapter
         "--hostname",
         input.profile.githubHost,
         "-f",
-        "query=mutation($commentId:ID!,$body:String!){updatePullRequestReviewComment(input:{pullRequestReviewCommentId:$commentId,body:$body}){pullRequestReviewComment{id}}}",
+        `query=${updateThreadCommentMutation}`,
         "-F",
         `commentId=${input.commentId}`,
         "-f",
@@ -3038,7 +2990,7 @@ export class GitHubAdapter
         "--hostname",
         input.profile.githubHost,
         "-f",
-        "query=mutation($commentId:ID!){deletePullRequestReviewComment(input:{id:$commentId}){clientMutationId}}",
+        `query=${deleteThreadCommentMutation}`,
         "-F",
         `commentId=${input.commentId}`,
       ],
@@ -3235,22 +3187,16 @@ export class GitHubAdapter
     );
   }
 
+  /**
+   * Splits one loaded pull request into its two conversation halves: the
+   * timeline `assembleConversationEntries` orders, and the anchored threads
+   * the diff places (ADR 0028).
+   */
   private assembleConversation(
     prDescription: string,
     feedback: GitHubPublishedFeedback,
     comments: GitHubComments,
   ): Conversation {
-    const entries: Conversation["entries"][number][] = [];
-    for (const review of feedback.reviews) {
-      entries.push({ _tag: "ReviewSummary" as const, review });
-    }
-    for (const comment of feedback.comments) {
-      entries.push({ _tag: "IssueComment" as const, comment });
-    }
-    for (const thread of comments.threads) {
-      if (thread.location !== undefined) continue;
-      entries.push({ _tag: "GeneralThread" as const, thread });
-    }
     let inline: GitHubComments = {
       threads: comments.threads.filter(
         (thread) => thread.location !== undefined,
@@ -3260,28 +3206,9 @@ export class GitHubAdapter
       inline = { ...inline, complete: comments.complete };
     if (comments.incompleteReason !== undefined)
       inline = { ...inline, incompleteReason: comments.incompleteReason };
-    entries.sort((a, b) => {
-      const at =
-        a._tag === "ReviewSummary"
-          ? a.review.submittedAt
-          : a._tag === "IssueComment"
-            ? a.comment.createdAt
-            : a._tag === "GeneralThread"
-              ? (a.thread.comments[0]?.createdAt ?? "")
-              : "";
-      const bt =
-        b._tag === "ReviewSummary"
-          ? b.review.submittedAt
-          : b._tag === "IssueComment"
-            ? b.comment.createdAt
-            : b._tag === "GeneralThread"
-              ? (b.thread.comments[0]?.createdAt ?? "")
-              : "";
-      return at.localeCompare(bt);
-    });
     return {
       prDescription,
-      entries,
+      entries: assembleConversationEntries(feedback, comments),
       inline,
       complete: feedback.complete !== false && comments.complete !== false,
     };

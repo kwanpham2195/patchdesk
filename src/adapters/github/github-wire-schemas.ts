@@ -463,6 +463,21 @@ export const maintainerInboxResponseSchema = v.looseObject({
   }),
 });
 
+/**
+ * The cursor-carrying page both maintainer pull-request queries return.
+ * `maintainerInboxSearchResponseSchema`'s `search` connection adds
+ * `issueCount` and is otherwise this exact shape, so both parse through one
+ * `parseMaintainerPullRequestPage`.
+ */
+export type MaintainerPullRequestConnection = v.InferOutput<
+  typeof maintainerInboxResponseSchema
+>["data"]["repository"]["pullRequests"];
+
+/** The `rateLimit { remaining resetAt }` field both maintainer queries carry at the top level. */
+export type MaintainerRateLimit = v.InferOutput<
+  typeof maintainerInboxResponseSchema
+>["data"]["rateLimit"];
+
 /** Response shape for `maintainerInboxSearchQuery`: `search(type: ISSUE)` plus the top-level `rateLimit`, mirroring `maintainerInboxResponseSchema` but keyed by `issueCount`, GitHub's true repository-wide match count, rather than the `repository.pullRequests` connection. */
 export const maintainerInboxSearchResponseSchema = v.looseObject({
   data: v.looseObject({
