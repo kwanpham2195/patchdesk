@@ -112,7 +112,7 @@ Beyond `pnpm check`:
 - `pnpm knip` finds unused files, exports, and dependencies. Not yet part of
   `pnpm check`; run it directly.
 - For desktop or renderer changes: `pnpm build`, then the focused browser
-  suite (`pnpm test:e2e` or `pnpm test:a11y`, `pnpm test:performance`).
+  suite (`pnpm test:e2e` or `pnpm test:performance`).
 
 Pull requests targeting `main` run the `Pull request gates` workflow on
 `macos-14`. It runs these named checks in order:
