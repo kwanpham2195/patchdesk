@@ -14,6 +14,18 @@ const passing = {
   ],
 };
 
+// Every axis except the checks summary held at its non-blocking value, so a
+// blocker in these cases can only have come from the checks rules.
+const neutral = {
+  isCurrentHead: true,
+  isOpen: true,
+  isDraft: false,
+  mergeability: "mergeable" as const,
+  hasGitHubReviewBlocker: false,
+  hasRequestChanges: false,
+  hasHighSeverityFinding: false,
+};
+
 describe("merge readiness", () => {
   it("reports all hard blockers and requires acknowledgement for request-changes and P0/P1 warnings", () => {
     expect(
@@ -137,28 +149,59 @@ describe("merge readiness", () => {
     ).toMatchObject({ _tag: "Blocked", blockers: ["analysis_finding"] });
   });
 
-  it("fails closed when required-check classification is unknown", () => {
+  it("treats an unclassified check as neutral and blocks only on a required check that has not passed", () => {
+    const unclassified = {
+      name: "unit",
+      required: "unknown" as const,
+      status: "completed" as const,
+    };
+    // GitHub did not say whether this check is required. Per ADR 0027 that is
+    // an undeterminable state, not a failure, so it must not block on its own.
     expect(
       evaluateMergeReadiness({
-        isCurrentHead: true,
-        isOpen: true,
-        isDraft: false,
-        mergeability: "mergeable",
+        ...neutral,
         checks: {
           overall: "unknown",
-          checks: [
-            {
-              name: "unit",
-              required: "unknown",
-              status: "completed",
-              conclusion: "success",
-            },
-          ],
+          checks: [{ ...unclassified, conclusion: "success" }],
         },
-        hasGitHubReviewBlocker: false,
-        hasRequestChanges: false,
-        hasHighSeverityFinding: false,
+      }),
+    ).toMatchObject({ _tag: "Ready", blockers: [] });
+    // A required check that has not finished blocks whatever the overall says.
+    expect(
+      evaluateMergeReadiness({
+        ...neutral,
+        checks: {
+          overall: "pending",
+          checks: [{ name: "unit", required: true, status: "in_progress" }],
+        },
       }),
     ).toMatchObject({ _tag: "Blocked", blockers: ["required_check"] });
+  });
+
+  // The merge gate never passes `hasFailingChecks`, so this pins that a check
+  // GitHub does not require cannot refuse a merge, however red it is; the
+  // Workbench badge passes it and gets its own, differently named blocker.
+  it("blocks on a failing check that is not required only when the caller asks for that signal", () => {
+    const redButOptional = {
+      overall: "failing" as const,
+      checks: [
+        {
+          name: "lint",
+          required: false as const,
+          status: "completed" as const,
+          conclusion: "failure" as const,
+        },
+      ],
+    };
+    expect(
+      evaluateMergeReadiness({ ...neutral, checks: redButOptional }),
+    ).toEqual({ _tag: "Ready", blockers: [], warnings: [] });
+    expect(
+      evaluateMergeReadiness({
+        ...neutral,
+        checks: redButOptional,
+        hasFailingChecks: true,
+      }),
+    ).toEqual({ _tag: "Blocked", blockers: ["failing_check"], warnings: [] });
   });
 });

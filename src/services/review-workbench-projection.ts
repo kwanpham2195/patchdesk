@@ -54,7 +54,10 @@ import {
   normalizeNarrativeWalkthrough,
   type NarrativeWalkthrough,
 } from "../domain/narrative-walkthrough";
-import type { MergeReadiness } from "../domain/merge-readiness";
+import {
+  evaluateMergeReadiness,
+  type MergeReadiness,
+} from "../domain/merge-readiness";
 import type {
   InsightFindingDismissal,
   InsightRecord,
@@ -392,19 +395,34 @@ export class ReviewWorkbenchProjectionService {
           ? ("updates_available" as const)
           : ("unavailable" as const);
     const refreshedAt = representedAt;
+    // One aggregate feeds both the readiness verdict and the reasons panel.
+    const mergeAggregate = aggregateMergeEvidence(
+      current?._tag === "ok" ? current.value : undefined,
+      remote?.mergeEvidence,
+    );
     const mergeReadiness =
-      current?._tag === "ok" && remote?.checks?._tag === "ok"
-        ? evaluateReadiness(current.value, remote.checks.value, session)
+      current?._tag === "ok" &&
+      remote?.checks?._tag === "ok" &&
+      mergeAggregate !== undefined
+        ? evaluateMergeReadiness({
+            isCurrentHead: current.value.headSha === session.key.headSha,
+            isOpen: current.value.isOpen,
+            isDraft: current.value.isDraft,
+            mergeability: readinessMergeability(mergeAggregate),
+            checks,
+            hasFailingChecks: checks.overall === "failing",
+            hasGitHubReviewBlocker:
+              mergeAggregate.reviewDecision === "review_required",
+            hasRequestChanges:
+              mergeAggregate.reviewDecision === "changes_requested",
+            hasHighSeverityFinding: false,
+          })
         : {
             _tag: "Blocked" as const,
             blockers: ["stale_head" as const],
             warnings: [],
           };
-    const mergeReasons = deriveMergeReasons(
-      current?._tag === "ok" ? current.value : undefined,
-      remote?.mergeEvidence,
-      checks,
-    );
+    const mergeReasons = deriveMergeReasons(mergeAggregate, checks);
     const analysis = projectStoredInsight(
       storedInsights.value.analysis,
       session,
@@ -850,31 +868,13 @@ function projectLocalCheckoutWarning(
 // Ordering: most-actionable-first. A maintainer reading this list top to
 // bottom sees the reasons whose next action is on them (get another review,
 // address feedback, resolve a named rule, update the branch, resolve
-// conflicts, wait on a check) before reasons that are purely informational
-// (has_hooks, unstable) or, worse, admittedly vague (the generic blocked
-// fallback). The fallback is pushed last and only when nothing more specific
-// was already collected, so it never buries a real answer under a vague one.
+// conflicts, wait on a check) before the admittedly vague generic blocked
+// fallback, which is pushed last and only when nothing more specific was
+// already collected, so it never buries a real answer under a vague one.
 function deriveMergeReasons(
-  current: PullRequestSummary | undefined,
-  evidence: GitHubMergeEvidence | undefined,
+  aggregate: GitHubMergeEvidence | undefined,
   checks: CheckSummary,
 ): ReadonlyArray<MergeDisplayReason> {
-  const aggregate =
-    evidence ??
-    (current === undefined
-      ? undefined
-      : {
-          mergeable: current.mergeability,
-          mergeStateStatus: "unavailable" as const,
-          reviewDecision:
-            current.reviewState === "approved"
-              ? ("approved" as const)
-              : current.reviewState === "changes_requested"
-                ? ("changes_requested" as const)
-                : current.reviewState === "review_pending"
-                  ? ("review_required" as const)
-                  : ("unknown" as const),
-        });
   if (aggregate === undefined) return [];
 
   const branchProtection = aggregate.policy?.branchProtection;
@@ -920,15 +920,12 @@ function deriveMergeReasons(
   const reasons: MergeDisplayReason[] = [];
 
   // `reviewDecision` reconciliation: GraphQL `reviewDecision` stays the gate
-  // for whether a review is outstanding at all. It reflects live
-  // approval/dismissal state that no static ruleset field can express, and a
-  // live probe found it can under-report on a ruleset-governed repo (null,
-  // mapped to "unknown", on a PR that already had a genuine approving review
-  // from a non-last-pusher) — never over-report a requirement ruleset config
-  // says doesn't exist. So ruleset evidence never invents a review
-  // requirement by itself (this branch is still gated strictly on
-  // `reviewDecision === "review_required"`) and never overrides an
-  // "approved" decision; it only supplies a higher-confidence count/source
+  // for whether a review is outstanding at all, because it reflects live
+  // approval state no static ruleset field can express. It can under-report
+  // (null, mapped to "unknown", on a ruleset-governed repo whose PR already
+  // had a genuine approval) but never over-report, so ruleset evidence never
+  // invents a requirement by itself — this branch stays gated strictly on
+  // `review_required` — and only supplies a higher-confidence count/source
   // once the gate already says a review is outstanding.
   if (aggregate.reviewDecision === "review_required") {
     reasons.push({
@@ -1003,12 +1000,8 @@ function deriveMergeReasons(
     });
 
   // `has_hooks` and `unstable` are both mergeable states per GitHub's own
-  // `MergeStateStatus` semantics (HAS_HOOKS: "Mergeable with passing commit
-  // status and pre-receive hooks"; UNSTABLE: "Mergeable with non-passing
-  // commit status" — i.e. only non-required checks are failing). Neither is
-  // a blocker, so neither contributes a reason here; surfacing them as
-  // informational content (not a blocker) is a display concern for a later
-  // slice.
+  // `MergeStateStatus` semantics, so neither contributes a reason here.
+  // Surfacing them as information is a display concern for a later slice.
 
   // The generic fallback only fires when GitHub reports blocked and nothing
   // above already explained why — including the two named rules above, but
@@ -1028,33 +1021,40 @@ function deriveMergeReasons(
   return reasons;
 }
 
-function evaluateReadiness(
-  current: PullRequestSummary,
-  checks: CheckSummary,
-  session: ReviewSession,
-): MergeReadiness {
-  const blockers: MergeReadiness["blockers"][number][] = [];
-  if (current.headSha !== session.key.headSha) blockers.push("stale_head");
-  if (!current.isOpen) blockers.push("closed");
-  if (current.isDraft) blockers.push("draft");
-  if (current.mergeability === "conflicting") blockers.push("conflicting");
-  if (current.mergeability === "blocked") blockers.push("merge_blocked");
-  if (current.mergeability === "unknown") blockers.push("mergeability_unknown");
-  if (checks.overall === "failing") blockers.push("required_check");
-  if (current.reviewState === "review_pending") blockers.push("github_review");
-  const warnings: MergeReadiness["warnings"][number][] = [];
-  if (current.reviewState === "changes_requested")
-    warnings.push("request_changes");
+// A Review projected without a merge-policy read falls back to the pull
+// request summary's own review verdict. `unavailable` is the honest value for
+// the missing aggregate field: it is not a merge-state claim.
+function aggregateMergeEvidence(
+  current: PullRequestSummary | undefined,
+  evidence: GitHubMergeEvidence | undefined,
+): GitHubMergeEvidence | undefined {
+  if (evidence !== undefined) return evidence;
+  if (current === undefined) return undefined;
   return {
-    _tag:
-      blockers.length > 0
-        ? "Blocked"
-        : warnings.length > 0
-          ? "NeedsAcknowledgement"
-          : "Ready",
-    blockers,
-    warnings,
+    mergeable: current.mergeability,
+    mergeStateStatus: "unavailable",
+    reviewDecision:
+      current.reviewState === "approved"
+        ? "approved"
+        : current.reviewState === "changes_requested"
+          ? "changes_requested"
+          : current.reviewState === "review_pending"
+            ? "review_required"
+            : "unknown",
   };
+}
+
+// `mergeable` answers only "does this branch apply cleanly"; the rule-level
+// verdict lives in `mergeStateStatus`. Folding both into the one mergeability
+// the rule reads means every state that earns a reason card earns a blocker.
+function readinessMergeability(
+  aggregate: GitHubMergeEvidence,
+): "mergeable" | "conflicting" | "blocked" | "unknown" {
+  const { mergeable, mergeStateStatus: status } = aggregate;
+  if (mergeable === "conflicting" || status === "dirty") return "conflicting";
+  if (mergeable === "blocked" || status === "blocked" || status === "behind")
+    return "blocked";
+  return mergeable;
 }
 
 type StoredInsightRecords = {

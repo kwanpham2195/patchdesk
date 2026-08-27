@@ -11,6 +11,7 @@ export type MergeReadiness = {
     | "merge_blocked"
     | "mergeability_unknown"
     | "required_check"
+    | "failing_check"
     | "github_review"
     | "analysis_finding"
   >;
@@ -26,6 +27,13 @@ export function evaluateMergeReadiness(input: {
   readonly isDraft: boolean;
   readonly mergeability: "mergeable" | "conflicting" | "blocked" | "unknown";
   readonly checks: CheckSummary;
+  /**
+   * Opt-in: block because the check rollup is red, whether or not GitHub says
+   * any of those checks is required. Only the Workbench projection asks for
+   * this, so that the merge badge cannot read "Ready" above a red checks card.
+   * The merge gate leaves it unset — see `hasBlockingRequiredCheck` below.
+   */
+  readonly hasFailingChecks?: boolean;
   readonly hasGitHubReviewBlocker: boolean;
   readonly hasRequestChanges: boolean;
   readonly hasHighSeverityFinding: boolean;
@@ -41,6 +49,7 @@ export function evaluateMergeReadiness(input: {
   if (input.mergeability === "blocked") blockers.push("merge_blocked");
   if (input.mergeability === "unknown") blockers.push("mergeability_unknown");
   if (hasBlockingRequiredCheck(input.checks)) blockers.push("required_check");
+  if (input.hasFailingChecks === true) blockers.push("failing_check");
   if (input.hasGitHubReviewBlocker) blockers.push("github_review");
   const analysisFindingCount = input.analysisFindingCount ?? 0;
   const analysisPolicy = input.analysisMergePolicy ?? "advisory";
@@ -70,11 +79,26 @@ export function evaluateMergeReadiness(input: {
   };
 }
 
+// Only a check GitHub names as required, and has not passed, refuses a merge.
+//
+// A check whose required/not-required classification GitHub did not disclose
+// is not, by itself, a blocker: per the ADR "Derive merge readiness from
+// applied rules", a state Patchdesk cannot determine gets a neutral
+// treatment, not the destructive one. A merge policy that could not be read
+// completely already blocks through `mergeability: "unknown"`, so nothing is
+// let through by treating unclassified checks as neutral here.
+//
+// A red check that GitHub does not require is not a blocker either. On a
+// repository with no classic required-status-checks policy every check comes
+// back `required: false`, and GitHub itself calls that pull request mergeable
+// (`unstable`, "Mergeable with non-passing commit status"). The same ADR
+// names that a mergeable state, not a blocker. Callers that want to surface a
+// red rollup anyway ask for it with `hasFailingChecks`, which reports the
+// separate `failing_check` blocker rather than claiming a check is required.
 function hasBlockingRequiredCheck(checks: CheckSummary): boolean {
   return checks.checks.some(
     (check) =>
-      check.required === "unknown" ||
-      (check.required === true &&
-        (check.status !== "completed" || check.conclusion !== "success")),
+      check.required === true &&
+      (check.status !== "completed" || check.conclusion !== "success"),
   );
 }

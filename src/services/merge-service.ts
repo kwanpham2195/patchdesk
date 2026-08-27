@@ -97,9 +97,13 @@ export async function mergePullRequest(input: {
     isDraft: policy.value.isDraft,
     mergeability: policy.value.complete ? policy.value.mergeability : "unknown",
     checks: policy.value.checks,
-    hasGitHubReviewBlocker:
-      policy.value.reviewDecision === "review_required" ||
-      policy.value.reviewDecision === "unknown",
+    // Only an explicit `review_required` is evidence that a review is
+    // outstanding. Per the ADR "Derive merge readiness from applied rules",
+    // `reviewDecision` is `null` — mapped to `unknown` — on a repository with
+    // no classic required-reviews rule, including one whose pull request
+    // already carries a genuine approval, so treating unknown as a blocker
+    // would refuse every merge in such a repository.
+    hasGitHubReviewBlocker: policy.value.reviewDecision === "review_required",
     hasRequestChanges: policy.value.reviewDecision === "changes_requested",
     hasHighSeverityFinding: (input.result?.findings ?? []).some(
       (finding) => finding.severity === "P0" || finding.severity === "P1",

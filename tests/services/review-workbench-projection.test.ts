@@ -660,6 +660,122 @@ describe("ReviewWorkbenchProjectionService", () => {
     });
   });
 
+  describe("mergeReadiness (via loadRepresented's mergeEvidence)", () => {
+    // Each fixture below deliberately sets `pullRequest.reviewState` to the
+    // OPPOSITE verdict from `mergeEvidence.reviewDecision`. `deriveMergeReasons`
+    // reads the summary's `reviewState` only when no `mergeEvidence` is
+    // present, so a result that matches the evidence and contradicts the
+    // summary proves the assertion drove the evidence branch, not the
+    // fallback.
+    function snapshotWithReview(
+      reviewDecision: "unknown" | "review_required",
+      reviewState: "review_pending" | "approved",
+    ) {
+      // SAFETY: see the file-level note above `const snapshotData`; this
+      // helper only swaps in the two review fields under test.
+      return {
+        ...snapshotData,
+        pullRequest: { ...snapshotData.pullRequest, reviewState },
+        mergeEvidence: {
+          mergeable: "mergeable",
+          mergeStateStatus: "clean",
+          reviewDecision,
+        },
+      } as never;
+    }
+
+    it("projects Ready when GitHub reports no review decision and checks pass", async () => {
+      const value = fixture();
+      const result = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        // `review_pending` here would map to `review_required` through the
+        // summary fallback, so Ready can only come from the evidence.
+        snapshot: snapshotWithReview("unknown", "review_pending"),
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: {
+          mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+          mergeReasons: [],
+        },
+      });
+    });
+
+    it("projects Blocked with github_review when GitHub requires a review", async () => {
+      const value = fixture();
+      const result = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        // `approved` here would clear the blocker through the summary
+        // fallback, so a `github_review` blocker can only come from the
+        // evidence.
+        snapshot: snapshotWithReview("review_required", "approved"),
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: {
+          mergeReadiness: {
+            _tag: "Blocked",
+            blockers: ["github_review"],
+            warnings: [],
+          },
+          mergeReasons: [{ code: "review_required" }],
+        },
+      });
+    });
+
+    // The gate stays out of this: the domain rule blocks on checks only for a
+    // check GitHub says is required, and the merge gate never passes
+    // `hasFailingChecks`. The badge does, so it cannot read Ready above the
+    // red checks card the panel shows here.
+    it("projects Blocked with failing_check when the checks are red but nothing is required", async () => {
+      const value = fixture();
+      const result = await value.service.loadRepresented({
+        profileId,
+        sessionId,
+        // SAFETY: see the file-level note above `const snapshotData`; this
+        // only swaps the checks summary and the matching merge state.
+        snapshot: {
+          ...snapshotData,
+          checks: {
+            overall: "failing",
+            checks: [
+              {
+                name: "lint",
+                required: false,
+                status: "completed",
+                conclusion: "failure",
+              },
+            ],
+          },
+          mergeEvidence: {
+            mergeable: "mergeable",
+            mergeStateStatus: "unstable",
+            reviewDecision: "approved",
+          },
+        } as never,
+        refreshedAt: at,
+        freshness: { _tag: "Fresh" },
+      });
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: {
+          mergeReadiness: {
+            _tag: "Blocked",
+            blockers: ["failing_check"],
+            warnings: [],
+          },
+          mergeReasons: [{ code: "checks" }],
+        },
+      });
+    });
+  });
+
   it("never falls back to session-only context when the represented snapshot is complete", async () => {
     const value = fixture();
     const result = await value.service.loadRepresented({
