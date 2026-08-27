@@ -366,7 +366,13 @@ export type InvalidPendingReviewState = {
   readonly _tag: "InvalidPendingReviewState";
 };
 
-const anchorSchema = v.strictObject({
+/**
+ * The stored shape of one review anchor. Exported because
+ * `src/main/local-api.ts` builds the pending-review route's request
+ * schema from these same entries, so the wire shape and the durable
+ * shape cannot drift apart.
+ */
+export const anchorSchema = v.strictObject({
   path: v.string(),
   startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
   line: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -397,7 +403,11 @@ const reviewSchema = v.strictObject({
   updatedAt: v.string(),
 });
 
-const findingSourceSchema = v.strictObject({
+/**
+ * The stored shape of one Analysis Finding's write authorization.
+ * Exported alongside `anchorSchema` and for the same reason.
+ */
+export const findingSourceSchema = v.strictObject({
   analysisRunId: v.string(),
   findingId: v.string(),
   sessionId: v.string(),
@@ -589,7 +599,7 @@ function parseComment(
   const reviewCommentId = parseGitHubReviewCommentId(input.reviewCommentId);
   const threadId = parseGitHubThreadId(input.threadId);
   const createdAt = parseIsoTimestamp(input.createdAt);
-  const anchor = parseAnchor(input.anchor);
+  const anchor = parsePendingReviewAnchorFields(input.anchor);
   if (
     reviewCommentId._tag === "err" ||
     threadId._tag === "err" ||
@@ -607,7 +617,13 @@ function parseComment(
   });
 }
 
-function parseAnchor(
+/**
+ * Brands one already shape-checked anchor, rejecting a path outside the
+ * repository and a range whose end precedes its start. Callers supply the
+ * shape check themselves — `anchorSchema` here, the route's own request
+ * schema in `src/main/local-api.ts` — so both reach the same anchor rules.
+ */
+export function parsePendingReviewAnchorFields(
   input: v.InferOutput<typeof anchorSchema>,
 ): PendingReviewAnchor | undefined {
   const path = parseRepoRelativePath(input.path);
@@ -620,31 +636,41 @@ function parseAnchor(
   };
 }
 
+/**
+ * Brands one already shape-checked Finding write authorization. The
+ * companion to `parsePendingReviewAnchorFields`: the caller owns the shape
+ * check, this owns the identifier rules.
+ */
+export function parseFindingReviewSourceFields(
+  input: v.InferOutput<typeof findingSourceSchema>,
+): FindingReviewSource | undefined {
+  const analysisRunId = parseInsightRunId(input.analysisRunId);
+  const findingId = parseFindingId(input.findingId);
+  const sessionId = parseReviewSessionId(input.sessionId);
+  const headSha = parseGitSha(input.headSha);
+  const patchHash = parseContentHash(input.patchHash);
+  return analysisRunId._tag === "err" ||
+    findingId._tag === "err" ||
+    sessionId._tag === "err" ||
+    headSha._tag === "err" ||
+    patchHash._tag === "err"
+    ? undefined
+    : {
+        analysisRunId: analysisRunId.value,
+        findingId: findingId.value,
+        sessionId: sessionId.value,
+        headSha: headSha.value,
+        patchHash: patchHash.value,
+      };
+}
+
 function parseFindingReviewSource(
   input: unknown,
 ): Result<FindingReviewSource, InvalidPendingReviewState> {
   const raw = v.safeParse(findingSourceSchema, input);
   if (!raw.success) return invalidPendingReviewState();
-  const analysisRunId = parseInsightRunId(raw.output.analysisRunId);
-  const findingId = parseFindingId(raw.output.findingId);
-  const sessionId = parseReviewSessionId(raw.output.sessionId);
-  const headSha = parseGitSha(raw.output.headSha);
-  const patchHash = parseContentHash(raw.output.patchHash);
-  if (
-    analysisRunId._tag === "err" ||
-    findingId._tag === "err" ||
-    sessionId._tag === "err" ||
-    headSha._tag === "err" ||
-    patchHash._tag === "err"
-  )
-    return invalidPendingReviewState();
-  return ok({
-    analysisRunId: analysisRunId.value,
-    findingId: findingId.value,
-    sessionId: sessionId.value,
-    headSha: headSha.value,
-    patchHash: patchHash.value,
-  });
+  const source = parseFindingReviewSourceFields(raw.output);
+  return source === undefined ? invalidPendingReviewState() : ok(source);
 }
 
 function parseOperation(
@@ -683,7 +709,7 @@ function parseOperation(
           });
   }
   const reviewId = parseGitHubReviewNodeId(input.reviewId);
-  const anchor = parseAnchor(input.anchor);
+  const anchor = parsePendingReviewAnchorFields(input.anchor);
   const finding =
     input.finding === undefined
       ? ok(undefined)

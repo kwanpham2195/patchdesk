@@ -4,7 +4,9 @@ import {
   optional,
   array,
   boolean,
+  check,
   safeParse,
+  literal,
   minLength,
   number,
   integer,
@@ -18,6 +20,7 @@ import {
   strictObject,
   unknown,
   variant,
+  type InferOutput,
 } from "valibot";
 
 import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
@@ -50,6 +53,7 @@ import {
 import { listAuthenticatedGitHubAccounts } from "../adapters/github/github-auth-accounts";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import { discoverExecutable } from "../adapters/process/executable-discovery";
+import { systemNow } from "../adapters/process/system-clock";
 import type {
   GitHubDirectSummaryGateway,
   GitHubMergeWriter,
@@ -93,10 +97,15 @@ import {
   projectPendingReview,
   type PendingReviewProjection,
 } from "../services/pending-review-service";
-import type {
-  FindingReviewSource,
-  PendingReviewAnchor,
+import {
+  anchorSchema,
+  findingSourceSchema,
+  parseFindingReviewSourceFields,
+  parsePendingReviewAnchorFields,
+  type FindingReviewSource,
+  type PendingReviewAnchor,
 } from "../domain/pending-review";
+import { definedProps } from "../domain/defined-props";
 import {
   DirectSummaryReviewService,
   projectDirectSummaryReview,
@@ -151,7 +160,6 @@ import {
   parseGitHubThreadId,
   parseGitSha,
   parseInsightRunId,
-  parseRepoRelativePath,
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
@@ -497,12 +505,7 @@ export async function startLocalApiServer(
     remoteReviews,
     observationJournals,
   );
-  const storageArtifacts = new ReviewArtifactStorage(
-    paths,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    () => new Date().toISOString() as never,
-  );
+  const storageArtifacts = new ReviewArtifactStorage(paths, systemNow);
   const lifecycleGate =
     configuration.lifecycleGate ?? new ReviewLifecycleGate();
   const insights = new InsightStore(paths);
@@ -517,9 +520,7 @@ export async function startLocalApiServer(
     lifecycleGate,
     diagnostics,
     git: configuration.readOnlyGit ?? readOnlyGit,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    now: () => new Date().toISOString() as never,
+    now: systemNow,
   };
   const storageManagement = new StorageManagementService(
     configuration.trash === undefined
@@ -543,23 +544,16 @@ export async function startLocalApiServer(
   const reviewOperations =
     configuration.reviewOperations ?? new ReviewOperationCoordinator();
 
-  const recovery = new ReviewRecoveryService(
-    profiles,
-    sessions,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    () => new Date().toISOString() as never,
-    {
-      paths,
-      artifacts: storageArtifacts,
-      diagnostics,
-      lifecycleGate,
-      mergeOperations: new MergeOperationStore(paths),
-      reviews,
-      operationCoordinator: reviewOperations,
-      github,
-    },
-  );
+  const recovery = new ReviewRecoveryService(profiles, sessions, systemNow, {
+    paths,
+    artifacts: storageArtifacts,
+    diagnostics,
+    lifecycleGate,
+    mergeOperations: new MergeOperationStore(paths),
+    reviews,
+    operationCoordinator: reviewOperations,
+    github,
+  });
   const dashboard = new DashboardController(
     profiles,
     github,
@@ -572,9 +566,7 @@ export async function startLocalApiServer(
     sessions,
     github,
     paths,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    now: () => new Date().toISOString() as never,
+    now: systemNow,
     worktrees: new ReviewWorktreeService(
       paths,
       readOnlyGit,
@@ -582,12 +574,7 @@ export async function startLocalApiServer(
       resolveGitHubCli,
     ),
     context: new ReviewContextService(),
-    artifacts: new ReviewArtifactStorage(
-      paths,
-      // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-      // instant, satisfying the branded IsoTimestamp contract this callback fills.
-      () => new Date().toISOString() as never,
-    ),
+    artifacts: new ReviewArtifactStorage(paths, systemNow),
     lifecycleGate,
     diagnostics,
   });
@@ -602,18 +589,14 @@ export async function startLocalApiServer(
     reviewWriteGate,
     github,
     reviewOperations,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    () => new Date().toISOString() as never,
+    systemNow,
     recentWriteJournals,
   );
   const labelWrites = new LabelService(
     reviewWriteGate,
     github,
     reviewOperations,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    () => new Date().toISOString() as never,
+    systemNow,
     recentWriteJournals,
   );
   // Shared with `reviewRefresh` below: one `AvatarSyncService` per profile
@@ -629,9 +612,7 @@ export async function startLocalApiServer(
     reviewWriteGate,
     github,
     reviewOperations,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    () => new Date().toISOString() as never,
+    systemNow,
     recentWriteJournals,
     avatarRailDependencies,
   );
@@ -639,9 +620,7 @@ export async function startLocalApiServer(
     reviewWriteGate,
     github,
     reviewOperations,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    () => new Date().toISOString() as never,
+    systemNow,
     recentWriteJournals,
     avatarRailDependencies,
   );
@@ -654,10 +633,7 @@ export async function startLocalApiServer(
           reviewWriteGate,
           sessions,
           pendingReviewGateway,
-          // SAFETY: Date.prototype.toISOString() always returns a valid ISO
-          // 8601 instant, satisfying the branded IsoTimestamp contract this
-          // callback fills.
-          () => new Date().toISOString() as never,
+          systemNow,
           reviewOperations,
           recentWriteJournals,
         )
@@ -674,10 +650,7 @@ export async function startLocalApiServer(
           github as GitHubDirectSummaryGateway &
             GitHubPendingReviewGateway &
             GitHubReader,
-          // SAFETY: Date.prototype.toISOString() always returns a valid ISO
-          // 8601 instant, satisfying the branded IsoTimestamp contract this
-          // callback fills.
-          () => new Date().toISOString() as never,
+          systemNow,
           reviewOperations,
           recentWriteJournals,
         )
@@ -689,9 +662,7 @@ export async function startLocalApiServer(
     remote: remoteReviews,
     github,
     preparation: reviewPreparation,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    now: () => new Date().toISOString() as never,
+    now: systemNow,
     operationCoordinator: reviewOperations,
     pendingReview: pendingReviews,
     recentWrites: recentWriteJournals,
@@ -729,9 +700,7 @@ export async function startLocalApiServer(
     github: pendingReviewGateway,
     pendingReview: pendingReviews,
     coordinator: reviewOperations,
-    // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601
-    // instant, satisfying the branded IsoTimestamp contract this callback fills.
-    now: () => new Date().toISOString() as never,
+    now: systemNow,
     project: ({
       profileId,
       sessionId,
@@ -822,10 +791,7 @@ export async function startLocalApiServer(
             mergePullRequest: merger.mergePullRequest.bind(merger),
           },
           ["squash", "merge", "rebase"],
-          // SAFETY: Date.prototype.toISOString() always returns a valid ISO
-          // 8601 instant, satisfying the branded IsoTimestamp contract this
-          // callback fills.
-          () => new Date().toISOString() as never,
+          systemNow,
           new MergeOperationStore(paths),
           reviewWriteGate,
           reviews,
@@ -1815,8 +1781,82 @@ async function directSummaryRecoverResponse(
       );
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-function parseDirectSummaryCommand(body: unknown):
+const reviewWriteExpectationSchema = object({
+  sessionId: string(),
+  headSha: string(),
+  patchHash: string(),
+});
+
+/**
+ * The wire shapes of the two pending-review payloads that also live in a
+ * durable artifact. Both take their fields from the domain's own schemas so
+ * route and stored record cannot drift apart, and both relax `strictObject`
+ * to `object`: a request body may carry keys this route does not read, which
+ * the field-by-field reads they replaced ignored.
+ */
+const pendingReviewAnchorSchema = object(anchorSchema.entries);
+const findingReviewSourceSchema = object(findingSourceSchema.entries);
+
+const reviewEventSchema = picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]);
+
+/**
+ * A comment body has to hold something other than whitespace. The trim is
+ * only the test — the body is stored exactly as the client sent it.
+ */
+const commentBodySchema = pipe(
+  string(),
+  check((value) => value.trim().length > 0),
+);
+
+const directSummaryCommandSchema = object({
+  profileId: string(),
+  reviewId: string(),
+  expected: reviewWriteExpectationSchema,
+  event: reviewEventSchema,
+  body: commentBodySchema,
+});
+
+const pendingReviewCommandSchema = object({
+  profileId: string(),
+  reviewId: string(),
+  command: variant("_tag", [
+    object({
+      _tag: literal("Start"),
+      expected: reviewWriteExpectationSchema,
+      anchor: pendingReviewAnchorSchema,
+      body: commentBodySchema,
+      finding: optional(findingReviewSourceSchema),
+    }),
+    object({
+      _tag: literal("AddThread"),
+      expected: reviewWriteExpectationSchema,
+      pendingReviewNodeId: string(),
+      anchor: pendingReviewAnchorSchema,
+      body: commentBodySchema,
+      finding: optional(findingReviewSourceSchema),
+    }),
+    object({
+      _tag: literal("Submit"),
+      expected: reviewWriteExpectationSchema,
+      event: reviewEventSchema,
+      // No emptiness rule, unlike a comment body: a review verdict may be
+      // submitted with no summary at all.
+      summaryBody: string(),
+    }),
+    object({
+      _tag: literal("Discard"),
+      expected: reviewWriteExpectationSchema,
+      // Discard is destructive: the command must carry the explicit
+      // confirmation, so `false` is as invalid as an absent field.
+      confirmation: literal(true),
+    }),
+  ]),
+});
+
+function parseDirectSummaryCommand(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema parsing on the raw body immediately.
+  body: unknown,
+):
   | {
       readonly profileId: WorkspaceProfileId;
       readonly reviewId: ReviewId;
@@ -1825,172 +1865,108 @@ function parseDirectSummaryCommand(body: unknown):
       readonly body: string;
     }
   | undefined {
-  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
-  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
-  const expected = parseReviewWriteExpectation(
-    readObjectField(body, "expected"),
-  );
-  const event = readObjectField(body, "event");
-  const summary = readObjectField(body, "body");
-  if (
-    profileId._tag === "err" ||
+  const parsed = safeParse(directSummaryCommandSchema, body);
+  if (!parsed.success) return undefined;
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const expected = parseReviewWriteExpectation(parsed.output.expected);
+  return profileId._tag === "err" ||
     reviewId._tag === "err" ||
-    expected === undefined ||
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof summary !== "string" ||
-    summary.trim().length === 0 ||
-    (event !== "APPROVE" && event !== "COMMENT" && event !== "REQUEST_CHANGES")
-  )
-    return undefined;
-  return {
-    profileId: profileId.value,
-    reviewId: reviewId.value,
-    expected,
-    event,
-    body: summary,
-  };
+    expected === undefined
+    ? undefined
+    : {
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        expected,
+        event: parsed.output.event,
+        body: parsed.output.body,
+      };
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-function parsePendingReviewCommand(body: unknown):
+function parsePendingReviewCommand(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema parsing on the raw body immediately.
+  body: unknown,
+):
   | {
       readonly profileId: WorkspaceProfileId;
       readonly reviewId: ReviewId;
       readonly command: PendingReviewCommandDto;
     }
   | undefined {
-  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
-  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
-  const raw = readObjectField(body, "command");
-  const tag = readObjectField(raw, "_tag");
-  const expected = parseReviewWriteExpectation(
-    readObjectField(raw, "expected"),
-  );
+  const parsed = safeParse(pendingReviewCommandSchema, body);
+  if (!parsed.success) return undefined;
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  const expected = parseReviewWriteExpectation(parsed.output.command.expected);
   if (
     profileId._tag === "err" ||
     reviewId._tag === "err" ||
-    tag === undefined ||
     expected === undefined
   )
     return undefined;
-  if (tag === "Start" || tag === "AddThread") {
-    const anchor = parsePendingReviewAnchor(readObjectField(raw, "anchor"));
-    const bodyValue = readObjectField(raw, "body");
-    if (
-      anchor === undefined ||
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-      typeof bodyValue !== "string" ||
-      bodyValue.trim().length === 0
-    )
-      return undefined;
-    const finding = readObjectField(raw, "finding");
-    const parsedFinding =
-      finding === undefined ? undefined : parseFindingReviewSource(finding);
-    if (finding !== undefined && parsedFinding === undefined) return undefined;
-    if (tag === "Start")
-      return {
-        profileId: profileId.value,
-        reviewId: reviewId.value,
-        command:
-          parsedFinding === undefined
-            ? { _tag: "Start", expected, anchor, body: bodyValue }
-            : {
-                _tag: "Start",
-                expected,
-                anchor,
-                body: bodyValue,
-                finding: parsedFinding,
-              },
-      };
-    const pendingReviewNodeId = readObjectField(raw, "pendingReviewNodeId");
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    if (typeof pendingReviewNodeId !== "string") return undefined;
-    const parsedNodeId = parseGitHubReviewNodeId(pendingReviewNodeId);
-    if (parsedNodeId._tag === "err") return undefined;
-    return {
-      profileId: profileId.value,
-      reviewId: reviewId.value,
-      command:
-        parsedFinding === undefined
-          ? {
-              _tag: "AddThread",
-              expected,
-              pendingReviewNodeId: parsedNodeId.value,
-              anchor,
-              body: bodyValue,
-            }
-          : {
-              _tag: "AddThread",
-              expected,
-              pendingReviewNodeId: parsedNodeId.value,
-              anchor,
-              body: bodyValue,
-              finding: parsedFinding,
-            },
-    };
-  }
-  if (tag === "Submit") {
-    const event = readObjectField(raw, "event");
-    const summaryBody = readObjectField(raw, "summaryBody");
-    if (
-      (event !== "APPROVE" &&
-        event !== "COMMENT" &&
-        event !== "REQUEST_CHANGES") ||
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-      typeof summaryBody !== "string"
-    )
-      return undefined;
-    return {
-      profileId: profileId.value,
-      reviewId: reviewId.value,
-      command: { _tag: "Submit", expected, event, summaryBody },
-    };
-  }
-  if (tag === "Discard") {
-    // Discard is destructive: the DTO must carry the explicit confirmation.
-    if (readObjectField(raw, "confirmation") !== true) return undefined;
-    return {
-      profileId: profileId.value,
-      reviewId: reviewId.value,
-      command: { _tag: "Discard", expected, confirmation: true },
-    };
-  }
-  return undefined;
+  const command = parsePendingReviewCommandDto(parsed.output.command, expected);
+  return command === undefined
+    ? undefined
+    : { profileId: profileId.value, reviewId: reviewId.value, command };
 }
 
-function parseFindingReviewSource(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-  raw: unknown,
-): FindingReviewSource | undefined {
-  const analysisRunId = parseInsightRunId(
-    readObjectField(raw, "analysisRunId"),
-  );
-  const findingId = parseFindingId(readObjectField(raw, "findingId"));
-  const sessionId = parseReviewSessionId(readObjectField(raw, "sessionId"));
-  const headSha = parseGitSha(readObjectField(raw, "headSha"));
-  const patchHash = parseContentHash(readObjectField(raw, "patchHash"));
-  return analysisRunId._tag === "err" ||
-    findingId._tag === "err" ||
-    sessionId._tag === "err" ||
-    headSha._tag === "err" ||
-    patchHash._tag === "err"
+/**
+ * Turns one shape-checked pending-review command into its DTO, applying the
+ * identifier rules the schema cannot express. `Submit` and `Discard` carry
+ * none; the two thread-writing commands share an anchor and an optional
+ * Finding authorization, so they share this parse.
+ */
+function parsePendingReviewCommandDto(
+  command: InferOutput<typeof pendingReviewCommandSchema>["command"],
+  expected: ReviewWriteExpectation,
+): PendingReviewCommandDto | undefined {
+  if (command._tag === "Submit")
+    return {
+      _tag: "Submit",
+      expected,
+      event: command.event,
+      summaryBody: command.summaryBody,
+    };
+  if (command._tag === "Discard")
+    return { _tag: "Discard", expected, confirmation: true };
+  const anchor = parsePendingReviewAnchorFields(command.anchor);
+  const finding =
+    command.finding === undefined
+      ? undefined
+      : parseFindingReviewSourceFields(command.finding);
+  if (
+    anchor === undefined ||
+    (command.finding !== undefined && finding === undefined)
+  )
+    return undefined;
+  const authorization = definedProps({ finding });
+  if (command._tag === "Start")
+    return {
+      _tag: "Start",
+      expected,
+      anchor,
+      body: command.body,
+      ...authorization,
+    };
+  const nodeId = parseGitHubReviewNodeId(command.pendingReviewNodeId);
+  return nodeId._tag === "err"
     ? undefined
     : {
-        analysisRunId: analysisRunId.value,
-        findingId: findingId.value,
-        sessionId: sessionId.value,
-        headSha: headSha.value,
-        patchHash: patchHash.value,
+        _tag: "AddThread",
+        expected,
+        pendingReviewNodeId: nodeId.value,
+        anchor,
+        body: command.body,
+        ...authorization,
       };
 }
 
 function parseReviewWriteExpectation(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-  raw: unknown,
+  input: InferOutput<typeof reviewWriteExpectationSchema>,
 ): ReviewWriteExpectation | undefined {
-  const sessionId = parseReviewSessionId(readObjectField(raw, "sessionId"));
-  const headSha = parseGitSha(readObjectField(raw, "headSha"));
-  const patchHash = parseContentHash(readObjectField(raw, "patchHash"));
+  const sessionId = parseReviewSessionId(input.sessionId);
+  const headSha = parseGitSha(input.headSha);
+  const patchHash = parseContentHash(input.patchHash);
   return sessionId._tag === "err" ||
     headSha._tag === "err" ||
     patchHash._tag === "err"
@@ -2002,31 +1978,59 @@ function parseReviewWriteExpectation(
       };
 }
 
-function parsePendingReviewAnchor(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-  raw: unknown,
-): PendingReviewAnchor | undefined {
-  const path = readObjectField(raw, "path");
-  const startLine = readObjectField(raw, "startLine");
-  const line = readObjectField(raw, "line");
-  const side = readObjectField(raw, "side");
-  if (
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof path !== "string" ||
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof startLine !== "number" ||
-    !Number.isInteger(startLine) ||
-    startLine < 1 ||
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof line !== "number" ||
-    !Number.isInteger(line) ||
-    line < startLine ||
-    (side !== "new" && side !== "old")
-  )
-    return undefined;
-  const parsedPath = parseRepoRelativePath(path);
-  if (parsedPath._tag === "err") return undefined;
-  return { path: parsedPath.value, startLine, line, side };
+/**
+ * The eight write-failure reasons every review write route shares.
+ * `LabelWriteFailure`, `AssigneeWriteFailure`, `ReviewerWriteFailure` and
+ * `DirectConversationFailure` all contain exactly these; each service's own
+ * extra reasons stay out of this union and travel in `overrides` instead.
+ */
+type ReviewWriteFailureReason =
+  | "invalid_input"
+  | "not_found"
+  | "permission_denied"
+  | "forbidden"
+  | "github_read_failed"
+  | "github_write_failed"
+  | "rate_limited"
+  | "review_write_in_progress";
+
+/** The HTTP statuses a refused review write answers with. */
+type ReviewWriteFailureStatus = 400 | 403 | 404 | 409 | 503;
+
+type SharedReviewWriteFailureStatuses = {
+  readonly [Reason in ReviewWriteFailureReason]: ReviewWriteFailureStatus;
+};
+
+const sharedReviewWriteFailureStatus: SharedReviewWriteFailureStatuses = {
+  not_found: 404,
+  // `forbidden` is GitHub refusing the account; `permission_denied` is this
+  // Review's own write gate refusing the attempt (see each service's
+  // `mapGateFailure`), a conflict refreshing clears — hence 409, not 403.
+  forbidden: 403,
+  permission_denied: 409,
+  review_write_in_progress: 409,
+  github_read_failed: 503,
+  github_write_failed: 503,
+  rate_limited: 503,
+  // A rule the service enforces locally, before contacting GitHub at all.
+  invalid_input: 400,
+};
+
+/**
+ * Maps one review write failure to its status, so the four write routes
+ * answer the shared reasons identically. `overrides` carries the reasons only
+ * one service can report; the compiler demands an entry for every reason the
+ * caller's union holds beyond the shared eight, so a new reason on any of
+ * those services fails the build here instead of falling through to 400.
+ */
+function mapReviewWriteFailureStatus<Extra extends string = never>(
+  // `NoInfer` reads `Extra` off `overrides` alone; inferring it from the
+  // reason would let an unlisted reason widen `Extra` to itself and pass.
+  reason: ReviewWriteFailureReason | NoInfer<Extra>,
+  overrides: Readonly<Record<Extra, ReviewWriteFailureStatus>>,
+): ReviewWriteFailureStatus {
+  const statuses = { ...sharedReviewWriteFailureStatus, ...overrides };
+  return statuses[reason];
 }
 
 async function inlineConversationResponse(
@@ -2038,23 +2042,16 @@ async function inlineConversationResponse(
     return context.json({ error: "invalid_input" }, 400);
   const result = await service.execute(parsed);
   if (result._tag === "ok") return context.json(result.value);
-  const status =
-    result.error === "not_found"
-      ? 404
-      : result.error === "forbidden"
-        ? 403
-        : result.error === "not_fresh" ||
-            result.error === "permission_denied" ||
-            result.error === "confirmation_required" ||
-            result.error === "pending_review" ||
-            result.error === "review_write_in_progress"
-          ? 409
-          : result.error === "github_read_failed" ||
-              result.error === "github_write_failed" ||
-              result.error === "rate_limited"
-            ? 503
-            : 400;
-  return context.json({ error: result.error }, status);
+  return context.json(
+    { error: result.error },
+    // The three conversation-only reasons are all conflicts with the state
+    // the client wrote against.
+    mapReviewWriteFailureStatus(result.error, {
+      not_fresh: 409,
+      pending_review: 409,
+      confirmation_required: 409,
+    }),
+  );
 }
 type ParsedInlineConversationCommand = {
   readonly profileId: WorkspaceProfileId;
@@ -2105,71 +2102,62 @@ function parseInlineConversationCommand(
     headSha: headSha.value,
     patchHash: patchHash.value,
   };
-  const value = (name: string): string | undefined => {
-    const candidate = readObjectField(raw, name);
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    return typeof candidate === "string" ? candidate : undefined;
+  const parsed = safeParse(inlineConversationCommandSchema, raw);
+  if (!parsed.success) return undefined;
+  const command = parsed.output;
+  // The one rule left that no schema can state: a thread identifier has to be
+  // one GitHub can address.
+  if (
+    (command._tag === "Reply" || command._tag === "SetThreadState") &&
+    parseGitHubThreadId(command.threadId)._tag === "err"
+  )
+    return undefined;
+  return {
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    command: { ...command, expected },
   };
-  let command: DirectConversationCommand | undefined;
-  if (tag === "CreateComment") {
-    const anchor = readObjectField(raw, "anchor");
-    const path = readObjectField(anchor, "path");
-    const startLine = readObjectField(anchor, "startLine");
-    const line = readObjectField(anchor, "line");
-    const side = readObjectField(anchor, "side");
-    const bodyValue = value("body");
-    if (
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-      typeof path === "string" &&
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-      typeof startLine === "number" &&
-      Number.isInteger(startLine) &&
-      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-      typeof line === "number" &&
-      Number.isInteger(line) &&
-      (side === "new" || side === "old") &&
-      bodyValue !== undefined
-    )
-      command = {
-        _tag: "CreateComment",
-        expected,
-        anchor: { path, startLine, line, side },
-        body: bodyValue,
-      };
-  } else if (tag === "Reply") {
-    const threadId = value("threadId");
-    const bodyValue = value("body");
-    if (
-      threadId !== undefined &&
-      parseGitHubThreadId(threadId)._tag === "ok" &&
-      bodyValue !== undefined
-    )
-      command = { _tag: "Reply", expected, threadId, body: bodyValue };
-  } else if (tag === "SetThreadState") {
-    const threadId = value("threadId");
-    const state = readObjectField(raw, "state");
-    if (
-      threadId !== undefined &&
-      parseGitHubThreadId(threadId)._tag === "ok" &&
-      (state === "open" || state === "resolved")
-    )
-      command = { _tag: "SetThreadState", expected, threadId, state };
-  } else if (tag === "EditComment") {
-    const commentId = value("commentId");
-    const bodyValue = value("body");
-    if (commentId !== undefined && bodyValue !== undefined)
-      command = { _tag: "EditComment", expected, commentId, body: bodyValue };
-  } else if (tag === "DeleteComment") {
-    const commentId = value("commentId");
-    const confirmation = readObjectField(raw, "confirmation");
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    if (commentId !== undefined && typeof confirmation === "boolean")
-      command = { _tag: "DeleteComment", expected, commentId, confirmation };
-  }
-  return command === undefined
-    ? undefined
-    : { profileId: profileId.value, reviewId: reviewId.value, command };
 }
+
+/**
+ * Looser than `pendingReviewAnchorSchema`: this route places a comment
+ * against whatever line pair the client read off the diff, without the
+ * pending review's `startLine >= 1` and `line >= startLine` rules, and keeps
+ * the plain-string path `DirectConversationCommand` declares.
+ */
+const inlineConversationAnchorSchema = object({
+  path: string(),
+  startLine: pipe(number(), integer()),
+  line: pipe(number(), integer()),
+  side: picklist(["new", "old"]),
+});
+
+/**
+ * `expected` is absent from every member on purpose: the caller reads and
+ * brands it first, so it can report which field failed before this runs.
+ */
+const inlineConversationCommandSchema = variant("_tag", [
+  object({
+    _tag: literal("CreateComment"),
+    anchor: inlineConversationAnchorSchema,
+    body: string(),
+  }),
+  object({ _tag: literal("Reply"), threadId: string(), body: string() }),
+  object({
+    _tag: literal("SetThreadState"),
+    threadId: string(),
+    state: picklist(["open", "resolved"]),
+  }),
+  object({ _tag: literal("EditComment"), commentId: string(), body: string() }),
+  object({
+    _tag: literal("DeleteComment"),
+    commentId: string(),
+    // Any boolean, not only `true`: unlike a pending-review discard, this
+    // route answers an unconfirmed delete with `confirmation_required`
+    // rather than refusing the command as malformed.
+    confirmation: boolean(),
+  }),
+]);
 
 async function labelResponse(
   context: Context,
@@ -2190,20 +2178,11 @@ async function labelResponse(
     command,
   });
   if (result._tag === "ok") return context.json(result.value);
-  const status =
-    result.error === "not_found"
-      ? 404
-      : result.error === "forbidden"
-        ? 403
-        : result.error === "permission_denied" ||
-            result.error === "review_write_in_progress"
-          ? 409
-          : result.error === "github_read_failed" ||
-              result.error === "github_write_failed" ||
-              result.error === "rate_limited"
-            ? 503
-            : 400;
-  return context.json({ error: result.error }, status);
+  // `LabelWriteFailure` is exactly the shared eight, so no overrides.
+  return context.json(
+    { error: result.error },
+    mapReviewWriteFailureStatus(result.error, {}),
+  );
 }
 
 /**
@@ -2296,24 +2275,12 @@ async function assigneeResponse(
     command,
   });
   if (result._tag === "ok") return context.json(result.value);
-  const status =
-    result.error === "not_found"
-      ? 404
-      : result.error === "forbidden"
-        ? 403
-        : result.error === "permission_denied" ||
-            result.error === "review_write_in_progress"
-          ? 409
-          : result.error === "github_read_failed" ||
-              result.error === "github_write_failed" ||
-              result.error === "rate_limited"
-            ? 503
-            : // "invalid_input" and "assignee_cap_exceeded" both land here: each
-              // is a locally-detected rule violation the service checks before
-              // ever contacting GitHub, not a GitHub-reported conflict, so
-              // neither belongs in the 409 bucket above.
-              400;
-  return context.json({ error: result.error }, status);
+  return context.json(
+    { error: result.error },
+    // "assignee_cap_exceeded" joins "invalid_input" at 400: another rule the
+    // service enforces locally, not a GitHub-reported conflict.
+    mapReviewWriteFailureStatus(result.error, { assignee_cap_exceeded: 400 }),
+  );
 }
 
 /**
@@ -2372,23 +2339,12 @@ async function reviewerResponse(
     command,
   });
   if (result._tag === "ok") return context.json(result.value);
-  const status =
-    result.error === "not_found"
-      ? 404
-      : result.error === "forbidden"
-        ? 403
-        : result.error === "permission_denied" ||
-            result.error === "review_write_in_progress"
-          ? 409
-          : result.error === "github_read_failed" ||
-              result.error === "github_write_failed" ||
-              result.error === "rate_limited"
-            ? 503
-            : // "invalid_input" is the only locally-detected rule violation
-              // left in this union (no reviewer cap exists to enforce), so
-              // it is the sole member of this last bucket.
-              400;
-  return context.json({ error: result.error }, status);
+  // `ReviewerWriteFailure` is exactly the shared eight: no reviewer cap
+  // exists to enforce, so unlike assignees there is nothing to override.
+  return context.json(
+    { error: result.error },
+    mapReviewWriteFailureStatus(result.error, {}),
+  );
 }
 
 /**
@@ -2861,29 +2817,60 @@ function storageResponse(
   return context.json({ error: "storage" }, 503);
 }
 
-function statusForReason(
-  reason: string,
-): 400 | 401 | 403 | 404 | 409 | 422 | 500 | 502 | 503 {
-  if (reason === "not_found" || reason.endsWith("_not_found")) return 404;
-  if (reason.includes("auth")) return 401;
-  if (reason.includes("forbidden")) return 403;
-  if (
-    reason === "revision_conflict" ||
-    reason === "stale_head" ||
-    reason === "head_changed" ||
-    reason === "terminal" ||
-    reason === "not_fresh" ||
-    reason === "merge_outcome_unknown" ||
-    reason.endsWith("_in_progress")
-  )
-    return 409;
-  if (reason === "github_rejected") return 422;
-  if (reason.includes("ambiguous")) return 502;
-  if (reason === "github_read" || reason === "storage") return 503;
-  if (reason.includes("storage")) return 503;
-  if (reason.includes("unavailable")) return 503;
-  if (reason.includes("rate_limited")) return 503;
-  return 400;
+/** The statuses `response` answers a failed result with. */
+type ResponseFailureStatus = 400 | 401 | 403 | 404 | 409 | 503;
+
+/**
+ * Every failure reason `response` can put on the wire, and the status it
+ * answers with. Enumerated from the thirty `response(...)` call sites and
+ * the error types their producers declare. A table rather than the substring
+ * ladder it replaces, because that ladder decided several of these by
+ * accident — `merge_forbidden` reached 403 by containing "forbidden" — so
+ * renaming a reason silently moved its status. Every status below is the one
+ * that ladder produced.
+ */
+const responseFailureStatus = new Map<string, ResponseFailureStatus>([
+  ["not_found", 404],
+  ["github_auth", 401],
+  ["authentication_required", 401],
+  ["merge_forbidden", 403],
+  // Conflicts with state the client wrote against, or with a write already
+  // running. `revision_conflict` is declared by `ReviewWorkbenchFailure` and
+  // constructed nowhere; it stays so producing it later keeps this status.
+  ["head_changed", 409],
+  ["merge_in_progress", 409],
+  ["merge_outcome_unknown", 409],
+  ["not_fresh", 409],
+  ["revision_conflict", 409],
+  ["stale_head", 409],
+  ["terminal", 409],
+  ["github_read", 503],
+  ["merge_rate_limited", 503],
+  ["rate_limited", 503],
+  ["runtime_unavailable", 503],
+  ["storage", 503],
+  ["storage_failed", 503],
+  // Reported as a malformed request today, and only `invalid_input` belongs
+  // here: `stale` is the conflict its sibling `stale_head` answers with 409,
+  // `merge_blocked` and `merge_acknowledgement_required` are refusals,
+  // `invalid_result` and `merge_failed` are upstream failures, and
+  // `timed_out` never reaches the renderer's 504 branch. Correcting any of
+  // them changes what the renderer shows, so each needs its own change.
+  ["invalid_input", 400],
+  ["invalid_result", 400],
+  ["merge_acknowledgement_required", 400],
+  ["merge_blocked", 400],
+  ["merge_failed", 400],
+  ["stale", 400],
+  ["timed_out", 400],
+]);
+
+/**
+ * The default answers a reason no producer declares — `MergeWriteController`
+ * types its failure as a bare `string`, so this cannot be a total function.
+ */
+function statusForReason(reason: string): ResponseFailureStatus {
+  return responseFailureStatus.get(reason) ?? 400;
 }
 
 /** Checks the health route through the same capability boundary used by preload callers. */
