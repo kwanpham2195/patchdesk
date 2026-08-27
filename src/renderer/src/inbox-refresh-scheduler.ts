@@ -1,23 +1,22 @@
-export function inboxFreshnessLabel(input: {
-  readonly remote?:
-    | "current"
-    | "partial"
-    | "failed_cached"
-    | "stale_cached"
-    | "unavailable"
-    | undefined;
-  readonly refreshing: boolean;
-  readonly refreshFailed?: boolean;
-  readonly refreshedAt?: string | undefined;
-  readonly now?: number;
-}):
+import type { InboxSnapshotState } from "../../domain/maintainer-inbox";
+
+/** The freshness badge text the inbox shows for how current its rows are. */
+export type InboxFreshnessLabel =
   | "Refreshing"
   | "Current"
   | "Aged"
   | "Partial"
   | "Cached after refresh failure"
   | "Stale"
-  | "Unavailable" {
+  | "Unavailable";
+
+export function inboxFreshnessLabel(input: {
+  readonly remote?: InboxSnapshotState | undefined;
+  readonly refreshing: boolean;
+  readonly refreshFailed?: boolean;
+  readonly refreshedAt?: string | undefined;
+  readonly now?: number;
+}): InboxFreshnessLabel {
   if (input.refreshing) return "Refreshing";
   if (input.refreshFailed === true) return "Cached after refresh failure";
   if (input.remote === "partial") return "Partial";

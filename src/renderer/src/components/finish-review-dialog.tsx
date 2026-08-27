@@ -19,11 +19,12 @@ import {
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 import type { PendingReviewProjection } from "../renderer-contracts";
+import type { GitHubReviewEvent } from "../../../domain/pending-review";
 
 type FinishReviewActions = {
   readonly busy: boolean;
   readonly onSubmit: (
-    event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+    event: GitHubReviewEvent,
     summaryBody: string,
   ) => Promise<void>;
   readonly onDiscard: () => Promise<void>;
@@ -60,9 +61,7 @@ function FinishReviewDialogContent({
   readonly initialSummary?: string;
 }): React.JSX.Element {
   const [summary, setSummary] = useState(initialSummary ?? "");
-  const [event, setEvent] = useState<"COMMENT" | "APPROVE" | "REQUEST_CHANGES">(
-    "COMMENT",
-  );
+  const [event, setEvent] = useState<GitHubReviewEvent>("COMMENT");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
   const [discardArmed, setDiscardArmed] = useState(false);
@@ -190,7 +189,7 @@ function FinishReviewDialogContent({
               }))}
               onValueChange={(value) => {
                 // SAFETY: The catalog contains only the three review events.
-                setEvent(value as "COMMENT" | "APPROVE" | "REQUEST_CHANGES");
+                setEvent(value as GitHubReviewEvent);
               }}
             >
               <SelectTrigger

@@ -10,6 +10,7 @@ import {
 } from "./ids";
 import type { GitHubReviewEvent } from "./pending-review";
 import { err, ok, type Result } from "./result";
+import { GITHUB_REVIEW_EVENTS } from "./pending-review";
 
 type DirectSummaryReviewOperation = {
   readonly requestId: string;
@@ -50,7 +51,7 @@ export type InvalidDirectSummaryReviewState = {
 
 const operationSchema = v.strictObject({
   requestId: v.pipe(v.string(), v.minLength(1), v.maxLength(128)),
-  event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+  event: v.picklist(GITHUB_REVIEW_EVENTS),
   bodyDigest: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
   headSha: v.string(),
   baselineReviewIds: v.array(v.string()),
@@ -70,7 +71,7 @@ const stateSchema = v.variant("_tag", [
     _tag: v.literal("Confirmed"),
     receipt: v.strictObject({
       reviewId: v.string(),
-      event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+      event: v.picklist(GITHUB_REVIEW_EVENTS),
       headSha: v.string(),
       submittedAt: v.string(),
     }),

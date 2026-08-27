@@ -10,8 +10,11 @@
  * domain -> adapter import; `command-runner.ts` re-exports this type for
  * its existing importers.
  */
-export type ForbiddenReason =
-  | "ip_allow_list"
-  | "saml"
-  | "insufficient_scopes"
-  | "unknown";
+export const FORBIDDEN_REASONS = [
+  "ip_allow_list",
+  "saml",
+  "insufficient_scopes",
+  "unknown",
+] as const;
+
+export type ForbiddenReason = (typeof FORBIDDEN_REASONS)[number];

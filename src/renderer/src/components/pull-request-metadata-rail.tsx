@@ -33,6 +33,7 @@ import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Spinner } from "./ui/spinner";
+import type { ForbiddenReason } from "../../../domain/github-forbidden-reason";
 
 /**
  * One topic section inside `PullRequestMetadataRail`. Exported so a later
@@ -128,11 +129,7 @@ type ReviewerSectionReadState =
   | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
   | {
       readonly _tag: "github_forbidden";
-      readonly reason?:
-        | "ip_allow_list"
-        | "saml"
-        | "insufficient_scopes"
-        | "unknown";
+      readonly reason?: ForbiddenReason;
     };
 
 function projectReviewerSectionReadState(

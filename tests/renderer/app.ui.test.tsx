@@ -18,6 +18,7 @@ import {
 } from "../../src/renderer/src/inbox-view-preferences";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchFlowProps } from "../../src/renderer/src/flows/review-workbench-flow";
+import type { InboxStateFilter } from "../../src/domain/maintainer-inbox";
 
 const sha = "a".repeat(40);
 const patchHash = contentHashFixture("b".repeat(64));
@@ -579,7 +580,7 @@ describe("App repository picker", () => {
 /** A single-row inbox response for the given state, valid against
  * `parseInboxResponse`'s schema. */
 function stateFilteredInbox(
-  state: "open" | "merged",
+  state: InboxStateFilter,
   number: number,
   title: string,
 ) {

@@ -11,9 +11,24 @@ import * as v from "valibot";
 const WORKBENCH_UI_KEY_PREFIX = "patchdesk.workbench-ui.v1.";
 const SETTINGS_RESTORE_KEY = "patchdesk.settings.v1";
 
+/** The workbench's top-level tabs, in the order the tab strip shows them. */
+const WORKBENCH_ACTIVE_TABS = ["conversation", "diff", "insights"] as const;
+export type WorkbenchActiveTab = (typeof WORKBENCH_ACTIVE_TABS)[number];
+
+/** Every navigator section the workbench can restore to. */
+const WORKBENCH_SECTIONS = ["files", "commits", "insights", "threads"] as const;
+export type WorkbenchSection = (typeof WORKBENCH_SECTIONS)[number];
+
+/** One committed, restorable workbench position: tab, navigator section, file. */
+export type WorkbenchPosition = {
+  readonly activeTab: WorkbenchActiveTab;
+  readonly section: Exclude<WorkbenchSection, "insights">;
+  readonly selectedPath?: string;
+};
+
 export type WorkbenchUiState = {
-  activeTab?: "conversation" | "diff" | "insights";
-  section?: "files" | "commits" | "insights" | "threads";
+  activeTab?: WorkbenchActiveTab;
+  section?: WorkbenchSection;
   selectedPath?: string;
 };
 
@@ -81,13 +96,8 @@ export function clearSettingsRestore(): void {
   window.sessionStorage.removeItem(SETTINGS_RESTORE_KEY);
 }
 
-const activeTabSchema = v.picklist(["conversation", "diff", "insights"]);
-const sectionNameSchema = v.picklist([
-  "files",
-  "commits",
-  "insights",
-  "threads",
-]);
+const activeTabSchema = v.picklist(WORKBENCH_ACTIVE_TABS);
+const sectionNameSchema = v.picklist(WORKBENCH_SECTIONS);
 const selectedPathSchema = v.pipe(
   v.string(),
   v.minLength(1),

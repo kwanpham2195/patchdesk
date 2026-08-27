@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { screenStateForInbox } from "../../src/renderer/src/screen-state-for-inbox";
 import type { InboxResponse } from "../../src/renderer/src/renderer-contracts";
 import type { Dashboard } from "../../src/renderer/src/renderer-models";
+import type { InboxStateFilter } from "../../src/domain/maintainer-inbox";
 
 /**
  * `screenStateForInbox` decides the whole screen's state ("error",
@@ -16,7 +17,7 @@ import type { Dashboard } from "../../src/renderer/src/renderer-models";
  * `checks`, `recommendedAction`, ...) that this function never reads; adding
  * them here would only obscure which fields the branches actually depend on.
  */
-function inboxWith(state: "open" | "merged", rowCount: number): InboxResponse {
+function inboxWith(state: InboxStateFilter, rowCount: number): InboxResponse {
   // SAFETY: test fixture narrows a partial InboxResponse mock to the
   // stricter renderer-contracts type; `screenStateForInbox` reads only
   // `inbox.state` and `inbox.rows.length`, so the rest of the real shape is

@@ -18,7 +18,13 @@ type FindingCategory =
   | "performance"
   | "maintainability"
   | "docs";
-type FindingMappingStatus = "mapped" | "unmapped" | "invalid_line";
+/** Whether a finding could be tied to a real hunk in the reviewed patch. */
+export const FINDING_MAPPING_STATUSES = [
+  "mapped",
+  "unmapped",
+  "invalid_line",
+] as const;
+export type FindingMappingStatus = (typeof FINDING_MAPPING_STATUSES)[number];
 type FindingDisposition = "open" | "dismissed";
 type ReviewConfidence = "high" | "medium" | "low";
 type ReviewCalloutCategory =
@@ -164,7 +170,7 @@ const reviewResultSchema = v.strictObject({
   findings: v.array(
     v.strictObject({
       ...findingSchema,
-      mappingStatus: v.picklist(["mapped", "unmapped", "invalid_line"]),
+      mappingStatus: v.picklist(FINDING_MAPPING_STATUSES),
     }),
   ),
   validationPlan: v.pipe(

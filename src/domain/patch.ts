@@ -1,4 +1,6 @@
 import { definedProps } from "./defined-props";
+import type { FindingMappingStatus } from "./review-result";
+import { tokenizeUnifiedPatch, type UnifiedPatchToken } from "./unified-patch";
 
 export type ParsedPatchFile = {
   readonly oldPath: string;
@@ -17,7 +19,7 @@ export type FindingLocationInput = {
   readonly diffSide?: "new" | "old";
 };
 export type FindingLocation = {
-  readonly mappingStatus: "mapped" | "unmapped" | "invalid_line";
+  readonly mappingStatus: FindingMappingStatus;
   readonly postable: boolean;
   readonly path?: string;
   readonly side?: "new" | "old";
@@ -56,55 +58,35 @@ export function extractFindingEvidenceHunk(
 ): FindingEvidenceHunk | undefined {
   if (anchor.startLine < 1 || anchor.line < anchor.startLine) return undefined;
   const lines = patch.split("\n");
-  let fileStart = -1;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    const fileMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-    if (fileMatch !== null) {
-      fileStart = index;
+  const tokens = tokenizeUnifiedPatch(patch);
+  let file: Extract<UnifiedPatchToken, { kind: "file_header" }> | undefined;
+  for (const token of tokens) {
+    if (token.kind === "file_header") {
+      file = token;
       continue;
     }
-    if (fileStart < 0) continue;
-    if (
-      line === "GIT binary patch" ||
-      line.startsWith("Binary files ") ||
-      line.includes("diff too large")
-    ) {
-      fileStart = -1;
+    if (file === undefined) continue;
+    if (token.kind === "binary" || token.kind === "omitted") {
+      file = undefined;
       continue;
     }
-    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (hunk === null) continue;
-    let oldLine = Number(hunk[1]);
-    let newLine = Number(hunk[3]);
-    let hunkEnd = index + 1;
+    if (token.kind !== "hunk_header") continue;
+    let hunkEnd = token.index + 1;
     let containsStart = false;
     let containsEnd = false;
-    for (; hunkEnd < lines.length; hunkEnd += 1) {
-      const hunkLine = lines[hunkEnd] ?? "";
-      if (hunkLine.startsWith("diff --git ") || hunkLine.startsWith("@@ "))
-        break;
-      if (hunkLine.startsWith("\\")) continue;
-      const lineNumber = anchor.side === "new" ? newLine : oldLine;
-      const present =
-        anchor.side === "new"
-          ? !hunkLine.startsWith("-")
-          : !hunkLine.startsWith("+");
-      if (present && lineNumber === anchor.startLine) containsStart = true;
-      if (present && lineNumber === anchor.line) containsEnd = true;
-      if (!hunkLine.startsWith("+")) oldLine += 1;
-      if (!hunkLine.startsWith("-")) newLine += 1;
+    for (; hunkEnd < tokens.length; hunkEnd += 1) {
+      const body = tokens[hunkEnd];
+      if (body === undefined) break;
+      if (body.kind === "file_header" || body.raw.startsWith("@@ ")) break;
+      if (body.kind !== "body" || body.marker === "no_newline") continue;
+      const lineNumber = anchor.side === "new" ? body.newLine : body.oldLine;
+      if (lineNumber === anchor.startLine) containsStart = true;
+      if (lineNumber === anchor.line) containsEnd = true;
     }
     if (!containsStart || !containsEnd) continue;
-    const header = lines.slice(fileStart, index);
-    const paths = /^diff --git a\/(.+) b\/(.+)$/.exec(header[0] ?? "");
-    if (
-      paths === null ||
-      (paths[1] !== anchor.path && paths[2] !== anchor.path)
-    )
-      continue;
+    if (file.oldPath !== anchor.path && file.newPath !== anchor.path) continue;
     return {
-      patch: [...header, ...lines.slice(index, hunkEnd)].join("\n"),
+      patch: lines.slice(file.index, hunkEnd).join("\n"),
       path: anchor.path,
       selectedRange: {
         start: anchor.startLine,
@@ -130,16 +112,12 @@ export function parseUnifiedPatch(
     deletions: number;
   }> = [];
   let current: (typeof files)[number] | undefined;
-  let oldLine = 0;
-  let newLine = 0;
-  let inHunk = false;
-  for (const line of patch.split("\n")) {
-    const header = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-    if (header !== null) {
+  for (const token of tokenizeUnifiedPatch(patch)) {
+    if (token.kind === "file_header") {
       const next = {
-        oldPath: header[1] ?? "",
-        newPath: header[2] ?? "",
-        kind: "modified" as const,
+        oldPath: token.oldPath ?? "",
+        newPath: token.newPath ?? "",
+        kind: "modified" as const satisfies ParsedPatchFile["kind"],
         oldLines: new Set<number>(),
         newLines: new Set<number>(),
         additions: 0,
@@ -147,54 +125,23 @@ export function parseUnifiedPatch(
       };
       current = next;
       files.push(next);
-      inHunk = false;
       continue;
     }
     if (current === undefined) continue;
-    if (line.startsWith("Binary files ")) {
-      current.kind = "binary";
-      inHunk = false;
-      continue;
-    }
-    if (line.startsWith("rename from ")) {
-      current.oldPath = line.slice("rename from ".length);
+    if (token.kind === "binary") current.kind = "binary";
+    else if (token.kind === "omitted") current.kind = "omitted";
+    else if (token.kind === "rename_from") {
+      current.oldPath = token.path;
       current.kind = "renamed";
-      continue;
-    }
-    if (line.startsWith("rename to ")) {
-      current.newPath = line.slice("rename to ".length);
+    } else if (token.kind === "rename_to") {
+      current.newPath = token.path;
       current.kind = "renamed";
-      continue;
+    } else if (token.kind === "body" && token.marker !== "no_newline") {
+      if (token.oldLine !== undefined) current.oldLines.add(token.oldLine);
+      if (token.newLine !== undefined) current.newLines.add(token.newLine);
+      if (token.marker === "removed") current.deletions += 1;
+      if (token.marker === "added") current.additions += 1;
     }
-    if (line === "GIT binary patch" || line.includes("diff too large")) {
-      current.kind = "omitted";
-      inHunk = false;
-      continue;
-    }
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-    if (hunk !== null) {
-      oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
-      inHunk = true;
-      continue;
-    }
-    if (!inHunk || line.startsWith("\\")) continue;
-    if (line.startsWith("-")) {
-      current.oldLines.add(oldLine);
-      current.deletions += 1;
-      oldLine += 1;
-      continue;
-    }
-    if (line.startsWith("+")) {
-      current.newLines.add(newLine);
-      current.additions += 1;
-      newLine += 1;
-      continue;
-    }
-    current.oldLines.add(oldLine);
-    current.newLines.add(newLine);
-    oldLine += 1;
-    newLine += 1;
   }
   return files;
 }

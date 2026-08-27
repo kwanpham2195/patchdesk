@@ -23,10 +23,11 @@ import {
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
 } from "../renderer-contracts";
-import type { inboxFreshnessLabel } from "../inbox-refresh-scheduler";
+import type { InboxFreshnessLabel } from "../inbox-refresh-scheduler";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxPageSize,
+  type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
 import type { SettingsSection } from "./settings-flow";
 import type {
@@ -73,13 +74,13 @@ export function InboxFlow({
   readonly dashboard?: Dashboard;
   readonly inbox?: InboxResponse;
   readonly state: DashboardScreenState;
-  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
+  readonly refreshStatus: InboxFreshnessLabel;
   readonly onRefresh: () => void;
   /** The requested pull-request state filter — named `inboxState` here only
    * because this component already carries a screen-level `state`. Only App
    * owns its request transition; the toggle reflects this immediately, and
    * `listPending` says whether `inbox`'s rows have caught up to it yet. */
-  readonly inboxState?: "open" | "merged";
+  readonly inboxState?: InboxStateFilter;
   /** True while `inbox`'s confirmed state filter has not caught up to the
    * requested one (a change is still in flight). The row list,
    * row count, and details panel must hold a loading state instead of
@@ -89,7 +90,7 @@ export function InboxFlow({
   readonly pageSize?: InboxPageSize;
   readonly hasPreviousPage?: boolean;
   readonly hasNextPage?: boolean;
-  readonly onInboxStateChange?: (state: "open" | "merged") => void;
+  readonly onInboxStateChange?: (state: InboxStateFilter) => void;
   readonly onInboxPageSizeChange?: (pageSize: InboxPageSize) => void;
   /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — never a
    * local, in-page filter. Only App owns its request transition. */
@@ -360,12 +361,12 @@ function InboxScreen({
   readonly onRefresh: () => void;
   /** The requested pull-request state filter; see `InboxFlow`'s `inboxState`
    * for why it is not simply `state` here. */
-  readonly inboxState: "open" | "merged";
+  readonly inboxState: InboxStateFilter;
   readonly listPending: boolean;
   readonly pageSize: InboxPageSize;
   readonly hasPreviousPage: boolean;
   readonly hasNextPage: boolean;
-  readonly onInboxStateChange: (state: "open" | "merged") => void;
+  readonly onInboxStateChange: (state: InboxStateFilter) => void;
   readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
@@ -376,7 +377,7 @@ function InboxScreen({
   readonly onRepositoryChange: (repository: RepositoryIdentity) => void;
   readonly onPreviousInboxPage: () => void;
   readonly onNextInboxPage: () => void;
-  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
+  readonly refreshStatus: InboxFreshnessLabel;
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenReview: (row: InboxResponse["inbox"]["rows"][number]) => void;
   readonly onOpenReviewId: (reviewId: string) => void;

@@ -1,16 +1,14 @@
 import { useCallback } from "react";
 
 import { parseGitHubThreadId } from "../../../domain/ids";
-import type { RecentReviewWrite } from "../../../domain/recent-review-write";
 import { requestJson } from "../api-client";
 import type { LocalCommentAuthoringSaveInput } from "../components/review-diff-view";
 import { parseDirectConversationReceipt } from "./review-workbench-receipts";
 import type { WorkbenchResponse } from "../renderer-contracts";
-
-type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
-type AppendRecentWrites = (
-  entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>,
-) => void;
+import type {
+  RunDirectCommand,
+  AppendRecentWrites,
+} from "./use-review-observation";
 
 export type DirectConversationActions = {
   readonly saveInlineComment: (

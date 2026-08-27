@@ -17,6 +17,7 @@ import type {
   RepositoryLabelPermission,
 } from "../../domain/github-context";
 import type { RepositoryLabelListResponse } from "./renderer-contracts";
+import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
 
 /** What a repository-label read resolved to: a list, or a named failure. */
 export type RepositoryLabelReadState =
@@ -40,11 +41,7 @@ export type RepositoryLabelReadState =
   | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
   | {
       readonly _tag: "github_forbidden";
-      readonly reason?:
-        | "ip_allow_list"
-        | "saml"
-        | "insufficient_scopes"
-        | "unknown";
+      readonly reason?: ForbiddenReason;
     };
 
 export function projectRepositoryLabelReadState(
@@ -88,14 +85,7 @@ export function rateLimitedCopy(resumeAt: string | undefined): string {
   return `GitHub rate-limited this account. Try again at ${formatted}.`;
 }
 
-export function forbiddenCopy(
-  reason:
-    | "ip_allow_list"
-    | "saml"
-    | "insufficient_scopes"
-    | "unknown"
-    | undefined,
-): string {
+export function forbiddenCopy(reason: ForbiddenReason | undefined): string {
   switch (reason) {
     case "ip_allow_list":
       return "GitHub blocked this read: an IP allow list is enabled and this network is not on it.";

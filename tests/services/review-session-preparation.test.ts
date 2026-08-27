@@ -372,6 +372,36 @@ describe("ReviewSessionPreparation", () => {
     expect(session.pr.baseSha).toBe(baseSha);
   });
 
+  it("lists a git-quoted changed path in the prepared context", async () => {
+    // Git C-quotes any path with a non-ASCII byte, so the `+++ b/` prefix test
+    // this list used to run never matched one and the file went unlisted.
+    const quotedPatch = [
+      'diff --git "a/src/caf\\303\\251.ts" "b/src/caf\\303\\251.ts"',
+      '--- "a/src/caf\\303\\251.ts"',
+      '+++ "b/src/caf\\303\\251.ts"',
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "",
+    ].join("\n");
+    const fixture = await setup({ diffFor: () => quotedPatch });
+
+    const prepared = await fixture.preparation.prepare({
+      profileId,
+      pullRequest,
+    });
+
+    expect(prepared._tag).toBe("ok");
+    if (prepared._tag === "err") return;
+    const context = JSON.parse(
+      await readFile(
+        fixture.paths.preparedContextFile(profileId, prepared.value.session.id),
+        "utf8",
+      ),
+    );
+    expect(context).toMatchObject({ changedFiles: ["src/café.ts"] });
+  });
+
   it("saves a metadata-only session when the managed head fetch fails", async () => {
     const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
     roots.push(localRepo);

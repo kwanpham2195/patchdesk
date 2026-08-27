@@ -38,6 +38,8 @@ import type {
   ReviewContextStatus,
 } from "@/review-context-control";
 import { type GitHubThreadId } from "../../../domain/ids";
+import { definedProps } from "../../../domain/defined-props";
+import { tokenizeUnifiedPatch } from "../../../domain/unified-patch";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
 import {
   ConversationThreadCard,
@@ -1351,46 +1353,34 @@ function AccessiblePatch({
 }
 
 function parseAccessibleLines(patch: string): ReadonlyArray<AccessibleLine> {
-  let oldLine: number | undefined;
-  let newLine: number | undefined;
   let path: string | undefined;
-  return patch.split("\n").map((content, sourceLine) => {
-    const key = `source-line-${sourceLine}`;
-    const file = /^diff --git a\/(.+) b\/(.+)$/.exec(content);
-    if (file !== null) {
-      path = file[2];
-      oldLine = undefined;
-      newLine = undefined;
-      const contextLine = { key, content, kind: "Context" as const };
-      return path === undefined ? contextLine : { ...contextLine, path };
+  return tokenizeUnifiedPatch(patch).map((token) => {
+    const base = { key: `source-line-${token.index}`, content: token.raw };
+    if (token.kind === "file_header") {
+      path = token.newPath;
+      return { ...base, kind: "Context" as const, ...definedProps({ path }) };
     }
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(content);
-    if (hunk !== null) {
-      oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
-      const hunkLine = { key, content, kind: "Hunk" as const };
-      return path === undefined ? hunkLine : { ...hunkLine, path };
-    }
-    if (
-      oldLine === undefined ||
-      newLine === undefined ||
-      content.startsWith("\\ No newline")
-    ) {
-      return { key, content, kind: "Context" };
-    }
-    if (content.startsWith("+") && !content.startsWith("+++")) {
-      const line = { key, content, kind: "Added" as const, newLine };
-      newLine += 1;
-      return path === undefined ? line : { ...line, path };
-    }
-    if (content.startsWith("-") && !content.startsWith("---")) {
-      const line = { key, content, kind: "Deleted" as const, oldLine };
-      oldLine += 1;
-      return path === undefined ? line : { ...line, path };
-    }
-    const line = { key, content, kind: "Context" as const, oldLine, newLine };
-    oldLine += 1;
-    newLine += 1;
-    return path === undefined ? line : { ...line, path };
+    const withPath = { ...base, ...definedProps({ path }) };
+    if (token.kind === "hunk_header")
+      return { ...withPath, kind: "Hunk" as const };
+    if (token.kind !== "body" || token.marker === "no_newline")
+      return { ...withPath, kind: "Context" as const };
+    if (token.marker === "added")
+      return {
+        ...withPath,
+        kind: "Added" as const,
+        ...definedProps({ newLine: token.newLine }),
+      };
+    if (token.marker === "removed")
+      return {
+        ...withPath,
+        kind: "Deleted" as const,
+        ...definedProps({ oldLine: token.oldLine }),
+      };
+    return {
+      ...withPath,
+      kind: "Context" as const,
+      ...definedProps({ oldLine: token.oldLine, newLine: token.newLine }),
+    };
   });
 }

@@ -12,11 +12,14 @@ import {
   parseReviewId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
-import type {
-  InboxCategory,
-  InboxRecommendedAction,
-  InboxReviewSummary,
-  MaintainerInboxRow,
+import {
+  INBOX_DATA_FRESHNESS,
+  INBOX_REPOSITORY_OUTCOMES,
+  type InboxRepositoryOutcome,
+  type InboxCategory,
+  type InboxRecommendedAction,
+  type InboxReviewSummary,
+  type MaintainerInboxRow,
 } from "../../domain/maintainer-inbox";
 import type {
   CheckSummary,
@@ -33,13 +36,7 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
 
 export type InboxCacheRepository = {
   readonly identity: Omit<PullRequestRef, "number">;
-  readonly state:
-    | "ready"
-    | "github_auth"
-    | "github_read"
-    | "github_rate_limited"
-    | "github_forbidden"
-    | "no_open_prs";
+  readonly state: InboxRepositoryOutcome;
   readonly complete: boolean;
 };
 
@@ -142,7 +139,7 @@ const rowSchema = v.strictObject({
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
   recommendedAction: actionSchema,
-  dataFreshness: v.picklist(["fresh", "cached"]),
+  dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
 
 const cacheSchema = v.strictObject({
@@ -155,14 +152,7 @@ const cacheSchema = v.strictObject({
       owner: v.string(),
       repo: v.string(),
     }),
-    state: v.picklist([
-      "ready",
-      "github_auth",
-      "github_read",
-      "github_rate_limited",
-      "github_forbidden",
-      "no_open_prs",
-    ]),
+    state: v.picklist(INBOX_REPOSITORY_OUTCOMES),
     complete: v.boolean(),
   }),
 });

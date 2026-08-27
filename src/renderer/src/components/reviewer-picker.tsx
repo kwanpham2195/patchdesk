@@ -25,6 +25,7 @@ import {
   PopoverTrigger,
 } from "./ui/popover";
 import { Spinner } from "./ui/spinner";
+import type { ForbiddenReason } from "../../../domain/github-forbidden-reason";
 
 /** Mirrors `assignee-picker.tsx`'s `SEARCH_DEBOUNCE_MS`; kept as its own constant here rather than a shared import since each search-enabled picker owns its own debounce timing. */
 const SEARCH_DEBOUNCE_MS = 200;
@@ -70,11 +71,7 @@ type ReadState =
   | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
   | {
       readonly _tag: "github_forbidden";
-      readonly reason?:
-        | "ip_allow_list"
-        | "saml"
-        | "insufficient_scopes"
-        | "unknown";
+      readonly reason?: ForbiddenReason;
     };
 
 /** Honest, Patchdesk-authored copy for why GitHub suggested this person —

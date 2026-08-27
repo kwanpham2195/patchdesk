@@ -4,12 +4,13 @@ import {
   INBOX_PAGE_SIZES,
   MAX_INBOX_FILTER_LABELS,
   MAX_INBOX_FILTER_LABEL_LENGTH,
+  INBOX_STATE_FILTER_VALUES,
   type InboxPageSize,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
 import type { RepositoryIdentity } from "../../domain/repository-identity";
 
-const inboxStateFilterSchema = v.picklist(["open", "merged"]);
+const inboxStateFilterSchema = v.picklist(INBOX_STATE_FILTER_VALUES);
 
 const inboxPageSizeSchema = v.picklist(INBOX_PAGE_SIZES);
 

@@ -16,12 +16,13 @@ import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
+import type { WorkbenchSection } from "../lib/screen-restore";
 
 const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
 });
 
-export type ReviewNavigatorSection = "files" | "commits" | "threads";
+export type ReviewNavigatorSection = Exclude<WorkbenchSection, "insights">;
 
 type ReviewNavigatorProps = {
   readonly patch: string;

@@ -99,6 +99,12 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import type { GitHubReviewEvent } from "../../../domain/pending-review";
+import type {
+  WorkbenchActiveTab,
+  WorkbenchPosition,
+  WorkbenchSection,
+} from "../lib/screen-restore";
 
 /** Mutable draft of `ConversationThreadCardData`, built in statements so
  * each optional callback is added only when its action is wired, instead of
@@ -316,7 +322,7 @@ export type ReviewWorkbenchActions = {
     readonly approvalCapability: "allowed" | "blocked_author" | "unknown";
     readonly error?: string;
     readonly onSubmit: (
-      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+      event: GitHubReviewEvent,
       body: string,
     ) => Promise<DirectSummaryReviewProjection>;
     readonly onRecover: () => Promise<DirectSummaryReviewProjection>;
@@ -330,7 +336,7 @@ export type ReviewWorkbenchActions = {
     readonly onOpenFinishDialog: () => void;
     readonly onCloseFinishDialog: () => void;
     readonly onSubmit: (
-      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+      event: GitHubReviewEvent,
       summaryBody: string,
     ) => Promise<void>;
     readonly onDiscard: () => Promise<void>;
@@ -363,8 +369,8 @@ export type ReviewWorkbenchSlots = {
 };
 
 export type ReviewWorkbenchInitialState = {
-  readonly activeTab?: "conversation" | "diff" | "insights";
-  readonly section?: ReviewNavigatorSection | "insights";
+  readonly activeTab?: WorkbenchActiveTab;
+  readonly section?: WorkbenchSection;
   readonly selectedPath?: string;
   readonly selectedCommitSha?: string;
   readonly overviewOpen?: boolean;
@@ -394,11 +400,7 @@ export function ReviewWorkbench({
   readonly slots: ReviewWorkbenchSlots;
   readonly initialState?: ReviewWorkbenchInitialState;
   /** Reports a visible navigation command so reloads can restore it. */
-  readonly onPositionCommitted?: (state: {
-    readonly activeTab: "conversation" | "diff" | "insights";
-    readonly section: ReviewNavigatorSection;
-    readonly selectedPath?: string;
-  }) => void;
+  readonly onPositionCommitted?: (state: WorkbenchPosition) => void;
 }): React.JSX.Element {
   const terminal = model.review.status !== "open";
   const mergeStatus = terminal
@@ -471,9 +473,7 @@ export function ReviewWorkbench({
       ? "files"
       : (initialState?.section ?? "files"),
   );
-  const [activeTab, setActiveTab] = useState<
-    "conversation" | "diff" | "insights"
-  >(
+  const [activeTab, setActiveTab] = useState<WorkbenchActiveTab>(
     initialState?.activeTab ??
       (initialState?.section === "insights" ? "insights" : "diff"),
   );
@@ -497,11 +497,7 @@ export function ReviewWorkbench({
     SelectedDiffRange | undefined
   >(undefined);
   const commitWorkbenchPosition = useCallback(
-    (next: {
-      readonly activeTab: "conversation" | "diff" | "insights";
-      readonly section: ReviewNavigatorSection;
-      readonly selectedPath?: string;
-    }): void => {
+    (next: WorkbenchPosition): void => {
       setActiveTab(next.activeTab);
       setSection(next.section);
       setSelectedPath(next.selectedPath);

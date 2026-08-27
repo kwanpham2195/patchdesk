@@ -14,6 +14,11 @@ import {
   type WorkspaceProfileId,
 } from "./ids";
 import { err, ok, type Result } from "./result";
+import {
+  tokenizeUnifiedPatchLines,
+  type UnifiedHunkRange,
+  type UnifiedPatchToken,
+} from "./unified-patch";
 
 /** The immutable identity that binds a walkthrough to one stored patch. */
 export type NarrativeSnapshot = {
@@ -103,6 +108,7 @@ const MAX_HUNK_RAW_LENGTH = 200_000;
 /** Keeps patch file metadata safe and aligned with the renderer projection boundary. */
 const MAX_NARRATIVE_FILE_PREFIX_LENGTH = 8_192;
 const HUNK_ALIAS_SYNTAX = /^h[1-9]\d*$/;
+const NO_NEWLINE_MARKER = "\\ No newline at end of file";
 
 const boundedText = (maxLength: number) =>
   v.pipe(v.string(), v.maxLength(maxLength));
@@ -138,13 +144,6 @@ const rawWalkthroughSchema = v.object({
 });
 
 type RawWalkthrough = v.InferOutput<typeof rawWalkthroughSchema>;
-type HunkRange = {
-  readonly oldStart: number;
-  readonly oldLines: number;
-  readonly newStart: number;
-  readonly newLines: number;
-};
-
 type ParsedHunk = NarrativeHunk & {
   readonly filePrefix: string;
 };
@@ -232,27 +231,24 @@ function normalizeText(value: string): string {
 function parseDiffPath(
   value: string,
 ): Result<RepoRelativePath, NarrativeWalkthroughError> {
-  const normalized =
-    value === "/dev/null"
-      ? "dev/null"
-      : value.replace(/^a\//, "").replace(/^b\//, "");
-  const path = parseRepoRelativePath(normalized);
+  const path = parseRepoRelativePath(
+    value === "/dev/null" ? "dev/null" : value,
+  );
   return path._tag === "err" ? invalid("invalid_patch") : ok(path.value);
 }
 
-function parseHunkHeader(line: string): HunkRange | undefined {
-  const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
-  if (match === null) return undefined;
-  const oldStart = Number(match[1]);
-  const oldLines = Number(match[2] ?? "1");
-  const newStart = Number(match[3]);
-  const newLines = Number(match[4] ?? "1");
-  if (![oldStart, oldLines, newStart, newLines].every(Number.isSafeInteger))
-    return undefined;
-  if (!validRange(oldStart, oldLines) || !validRange(newStart, newLines)) {
-    return undefined;
-  }
-  return { oldStart, oldLines, newStart, newLines };
+function validHunkRange(range: UnifiedHunkRange): boolean {
+  const coordinates = [
+    range.oldStart,
+    range.oldLines,
+    range.newStart,
+    range.newLines,
+  ];
+  if (!coordinates.every(Number.isSafeInteger)) return false;
+  return (
+    validRange(range.oldStart, range.oldLines) &&
+    validRange(range.newStart, range.newLines)
+  );
 }
 
 function validRange(start: number, lines: number): boolean {
@@ -268,7 +264,7 @@ function validRange(start: number, lines: number): boolean {
 }
 
 function countHunkBody(
-  lines: ReadonlyArray<string>,
+  tokens: ReadonlyArray<UnifiedPatchToken>,
   start: number,
   end: number,
 ): { readonly oldLines: number; readonly newLines: number } | undefined {
@@ -276,41 +272,27 @@ function countHunkBody(
   let newLines = 0;
   let sawContent = false;
   for (let index = start; index < end; index += 1) {
-    const line = lines[index];
-    if (line === undefined) return undefined;
-    if (line === "\\ No newline at end of file") {
-      if (!sawContent) return undefined;
+    const token = tokens[index];
+    if (token === undefined || token.kind !== "body") return undefined;
+    if (token.marker === "no_newline") {
+      if (token.raw !== NO_NEWLINE_MARKER || !sawContent) return undefined;
       continue;
     }
-    const marker = line[0];
-    if (marker === " ") {
-      oldLines += 1;
-      newLines += 1;
-      sawContent = true;
-      continue;
-    }
-    if (marker === "-") {
-      oldLines += 1;
-      sawContent = true;
-      continue;
-    }
-    if (marker === "+") {
-      newLines += 1;
-      sawContent = true;
-      continue;
-    }
-    return undefined;
+    if (token.marker === "other") return undefined;
+    if (token.marker !== "added") oldLines += 1;
+    if (token.marker !== "removed") newLines += 1;
+    sawContent = true;
   }
   return { oldLines, newLines };
 }
 
 function validHunkBody(
-  lines: ReadonlyArray<string>,
+  tokens: ReadonlyArray<UnifiedPatchToken>,
   start: number,
   end: number,
-  range: HunkRange,
+  range: UnifiedHunkRange,
 ): boolean {
-  const counted = countHunkBody(lines, start, end);
+  const counted = countHunkBody(tokens, start, end);
   return (
     counted !== undefined &&
     counted.oldLines === range.oldLines &&
@@ -323,6 +305,7 @@ function parseNarrativePatch(
 ): Result<ParsedPatch, NarrativeWalkthroughError> {
   if (patch.length === 0) return invalid("invalid_patch");
   const lines = (patch.endsWith("\n") ? patch.slice(0, -1) : patch).split("\n");
+  const tokens = tokenizeUnifiedPatchLines(lines);
   const files: Array<{
     readonly start: number;
     prefixEnd: number | undefined;
@@ -330,7 +313,7 @@ function parseNarrativePatch(
       readonly start: number;
       end: number;
       header: string;
-      range: HunkRange;
+      range: UnifiedHunkRange;
       path: RepoRelativePath;
     }>;
   }> = [];
@@ -346,12 +329,9 @@ function parseNarrativePatch(
     )
       return true;
     const header = lines[currentHunkStart];
-    if (header === undefined) return false;
-    const range = parseHunkHeader(header);
-    if (
-      range === undefined ||
-      !validHunkBody(lines, currentHunkStart + 1, end, range)
-    )
+    const opener = tokens[currentHunkStart];
+    if (header === undefined || opener?.kind !== "hunk_header") return false;
+    if (!validHunkBody(tokens, currentHunkStart + 1, end, opener.range))
       return false;
     const raw = lines.slice(currentHunkStart, end).join("\n");
     if (raw.length > MAX_HUNK_RAW_LENGTH) return false;
@@ -359,21 +339,19 @@ function parseNarrativePatch(
       start: currentHunkStart,
       end,
       header,
-      range,
+      range: opener.range,
       path: currentPath,
     });
     currentHunkStart = undefined;
     return true;
   };
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    const fileHeader = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-    if (fileHeader !== null) {
-      if (!finishHunk(index)) return invalid("invalid_patch");
-      const path = parseDiffPath(fileHeader[2] ?? "");
+  for (const token of tokens) {
+    if (token.kind === "file_header") {
+      if (!finishHunk(token.index)) return invalid("invalid_patch");
+      const path = parseDiffPath(token.newPath ?? "");
       if (path._tag === "err") return path;
-      current = { start: index, prefixEnd: undefined, hunks: [] };
+      current = { start: token.index, prefixEnd: undefined, hunks: [] };
       files.push(current);
       currentPath = path.value;
       continue;
@@ -381,26 +359,19 @@ function parseNarrativePatch(
     // Git emits bare submodule-change lines without a diff header (for example
     // "Submodule yim-proto-hub 00000000...4619420d (new submodule)"). They are
     // metadata, not hunk body; close any open hunk and skip the line.
-    if (
-      /^Submodule [^\s]+ [0-9a-f]+\.{2,3}[0-9a-f]+(?: \([^)]*\))?$/.test(line)
-    ) {
-      if (!finishHunk(index)) return invalid("invalid_patch");
+    if (token.kind === "submodule") {
+      if (!finishHunk(token.index)) return invalid("invalid_patch");
       continue;
     }
     if (current === undefined) continue;
-    const hunkRange = parseHunkHeader(line);
-    if (line.startsWith("@@ ") && hunkRange === undefined)
-      return invalid("invalid_patch");
-    if (hunkRange !== undefined) {
-      if (!finishHunk(index)) return invalid("invalid_patch");
-      current.prefixEnd ??= index;
-      currentHunkStart = index;
+    if (token.kind === "hunk_header") {
+      if (!validHunkRange(token.range)) return invalid("invalid_patch");
+      if (!finishHunk(token.index)) return invalid("invalid_patch");
+      current.prefixEnd ??= token.index;
+      currentHunkStart = token.index;
       continue;
     }
-    if (currentHunkStart !== undefined && line.startsWith("diff --git ")) {
-      if (!finishHunk(index)) return invalid("invalid_patch");
-    }
-    if (currentPath === undefined) continue;
+    if (token.raw.startsWith("@@ ")) return invalid("invalid_patch");
   }
   if (!finishHunk(lines.length)) return invalid("invalid_patch");
 

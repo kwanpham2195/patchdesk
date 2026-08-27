@@ -1,5 +1,6 @@
 import type { RepoRelativePath } from "./ids";
 import type { PendingReviewAnchor } from "./pending-review";
+import { tokenizeUnifiedPatch } from "./unified-patch";
 
 /** Exact current-diff context that validates one explicit inline command. */
 export type ReviewAnchorFingerprint = {
@@ -57,83 +58,43 @@ function patchLines(patch: string): ReadonlyArray<PatchLine> {
   const lines: PatchLine[] = [];
   let oldPath: string | undefined;
   let newPath: string | undefined;
-  let oldLine = 0;
-  let newLine = 0;
   let hunk = 0;
-  for (const raw of patch.split("\n")) {
-    const fileHeader = /^diff --git a\/(.+) b\/(.+)$/.exec(raw);
-    if (fileHeader !== null) {
-      oldPath = fileHeader[1];
-      newPath = fileHeader[2];
+  for (const token of tokenizeUnifiedPatch(patch)) {
+    if (token.kind === "file_header") {
+      oldPath = token.oldPath;
+      newPath = token.newPath;
       continue;
     }
-    if (raw.startsWith("--- ")) {
-      oldPath = patchPath(raw.slice(4));
+    if (token.kind === "old_file_path") {
+      oldPath = token.path;
       continue;
     }
-    if (raw.startsWith("+++ ")) {
-      newPath = patchPath(raw.slice(4));
+    if (token.kind === "new_file_path") {
+      newPath = token.path;
       continue;
     }
-    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
-    if (header !== null) {
-      oldLine = Number(header[1]);
-      newLine = Number(header[2]);
+    if (token.kind === "hunk_header") {
       hunk += 1;
       continue;
     }
-    if (
-      hunk === 0 ||
-      raw.startsWith("\\") ||
-      oldPath === undefined ||
-      newPath === undefined
-    )
-      continue;
-    if (raw.startsWith("-")) {
-      if (oldPath !== "/dev/null")
-        lines.push({
-          path: oldPath,
-          side: "old",
-          line: oldLine,
-          text: raw.slice(1),
-          hunk,
-        });
-      oldLine += 1;
-    } else if (raw.startsWith("+")) {
-      if (newPath !== "/dev/null")
-        lines.push({
-          path: newPath,
-          side: "new",
-          line: newLine,
-          text: raw.slice(1),
-          hunk,
-        });
-      newLine += 1;
-    } else if (raw.startsWith(" ")) {
-      if (oldPath !== "/dev/null")
-        lines.push({
-          path: oldPath,
-          side: "old",
-          line: oldLine,
-          text: raw.slice(1),
-          hunk,
-        });
-      if (newPath !== "/dev/null")
-        lines.push({
-          path: newPath,
-          side: "new",
-          line: newLine,
-          text: raw.slice(1),
-          hunk,
-        });
-      oldLine += 1;
-      newLine += 1;
-    }
+    if (token.kind !== "body" || token.marker === "no_newline") continue;
+    if (oldPath === undefined || newPath === undefined) continue;
+    if (token.oldLine !== undefined && oldPath !== "/dev/null")
+      lines.push({
+        path: oldPath,
+        side: "old",
+        line: token.oldLine,
+        text: token.text,
+        hunk,
+      });
+    if (token.newLine !== undefined && newPath !== "/dev/null")
+      lines.push({
+        path: newPath,
+        side: "new",
+        line: token.newLine,
+        text: token.text,
+        hunk,
+      });
   }
   return lines;
-}
-
-function patchPath(value: string): string {
-  const path = value.split("\t", 1)[0] ?? value;
-  return path === "/dev/null" ? path : path.replace(/^[ab]\//, "");
 }

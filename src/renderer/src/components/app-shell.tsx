@@ -13,7 +13,10 @@ import {
   destinationTitle,
   primaryDestinations,
 } from "@/routes";
-import { INBOX_STATE_FILTERS } from "../../../domain/maintainer-inbox";
+import {
+  INBOX_STATE_FILTERS,
+  type InboxStateFilter,
+} from "../../../domain/maintainer-inbox";
 import { BrandMark } from "@/components/brand-mark";
 import { BusyIndicator } from "@/components/busy-indicator";
 import { Button } from "@/components/ui/button";
@@ -78,7 +81,7 @@ export function AppShell({
    * call, so the state change reaches it directly. Absent before the inbox
    * screen exists (fixture routes, first paint) — the "Inbox" command group
    * hides itself in that case rather than dispatching into nothing. */
-  readonly onInboxStateChange?: (state: "open" | "merged") => void;
+  readonly onInboxStateChange?: (state: InboxStateFilter) => void;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
@@ -124,7 +127,7 @@ export function AppShell({
     setCommandOpen(false);
     onNavigate(next);
   };
-  const chooseInboxState = (state: "open" | "merged"): void => {
+  const chooseInboxState = (state: InboxStateFilter): void => {
     setCommandOpen(false);
     onNavigate({ kind: "dashboard" });
     onInboxStateChange?.(state);

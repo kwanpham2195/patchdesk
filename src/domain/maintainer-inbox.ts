@@ -18,7 +18,33 @@ export const DEFAULT_INBOX_PAGE_SIZE: InboxPageSize = 25;
 /** The pull-request state an inbox listing is filtered to; maps to the only
  * GraphQL pull-request states Patchdesk requests. Named for `InboxFilter.state`,
  * the one spelling the domain, the route, and the renderer all use. */
-export type InboxStateFilter = "open" | "merged";
+export const INBOX_STATE_FILTER_VALUES = ["open", "merged"] as const;
+export type InboxStateFilter = (typeof INBOX_STATE_FILTER_VALUES)[number];
+
+/** Whether an inbox payload came from a live GitHub read or the on-disk cache. */
+export const INBOX_DATA_FRESHNESS = ["fresh", "cached"] as const;
+export type InboxDataFreshness = (typeof INBOX_DATA_FRESHNESS)[number];
+
+/** How current the inbox rows on screen are, relative to GitHub. */
+export const INBOX_SNAPSHOT_STATES = [
+  "current",
+  "partial",
+  "failed_cached",
+  "stale_cached",
+  "unavailable",
+] as const;
+export type InboxSnapshotState = (typeof INBOX_SNAPSHOT_STATES)[number];
+
+/** How one repository's slice of an inbox read finished. */
+export const INBOX_REPOSITORY_OUTCOMES = [
+  "ready",
+  "no_open_prs",
+  "github_auth",
+  "github_read",
+  "github_rate_limited",
+  "github_forbidden",
+] as const;
+export type InboxRepositoryOutcome = (typeof INBOX_REPOSITORY_OUTCOMES)[number];
 
 /** The only repository label filter GitHub's search API and Patchdesk's 256-character query cap can absorb; see `buildInboxSearchQuery`. */
 export const MAX_INBOX_FILTER_LABELS = 5;
@@ -114,7 +140,7 @@ export type MaintainerInboxRow = {
   readonly labelCount?: number;
   readonly categories: ReadonlyArray<InboxCategory>;
   readonly recommendedAction: InboxRecommendedAction;
-  readonly dataFreshness: "fresh" | "cached";
+  readonly dataFreshness: InboxDataFreshness;
 };
 
 /** Project one PR into overlapping queue categories and one truthful primary action. */
@@ -123,7 +149,7 @@ export function projectMaintainerInboxRow(input: {
   readonly checks: CheckSummary;
   readonly activeAccount: string;
   readonly latestReview?: InboxReviewSummary;
-  readonly dataFreshness: "fresh" | "cached";
+  readonly dataFreshness: InboxDataFreshness;
 }): MaintainerInboxRow {
   if (!input.summary.isOpen) return projectMergedMaintainerInboxRow(input);
   const categories: Array<InboxCategory> = [];
@@ -192,7 +218,7 @@ export function projectMaintainerInboxRow(input: {
 function projectMergedMaintainerInboxRow(input: {
   readonly summary: PullRequestSummary;
   readonly checks: CheckSummary;
-  readonly dataFreshness: "fresh" | "cached";
+  readonly dataFreshness: InboxDataFreshness;
 }): MaintainerInboxRow {
   const additionsField =
     input.summary.additions === undefined
@@ -238,7 +264,7 @@ function projectMergedMaintainerInboxRow(input: {
 function recommendedActionFor(input: {
   readonly categories: ReadonlyArray<InboxCategory>;
   readonly review?: InboxReviewSummary;
-  readonly dataFreshness: "fresh" | "cached";
+  readonly dataFreshness: InboxDataFreshness;
 }): InboxRecommendedAction {
   if (
     input.review !== undefined &&

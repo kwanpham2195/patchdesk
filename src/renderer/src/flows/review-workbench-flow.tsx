@@ -6,7 +6,6 @@ import {
 import type { AssigneesSectionActions } from "../components/assignee-picker";
 import type { LabelPickerActions } from "../components/label-picker";
 import type { ReviewerPickerActions } from "../components/reviewer-picker";
-import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
@@ -22,6 +21,7 @@ import {
   useReviewObservation,
   type ReviewWorkbenchPatch,
 } from "./use-review-observation";
+import type { WorkbenchPosition } from "../lib/screen-restore";
 
 export type { ReviewWorkbenchPatch } from "./use-review-observation";
 
@@ -34,11 +34,7 @@ export type ReviewWorkbenchFlowProps = {
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
   /** Reports in-screen position changes so a reload can restore them. */
-  readonly onUiStateChange?: (state: {
-    readonly activeTab: "conversation" | "diff" | "insights";
-    readonly section: ReviewNavigatorSection;
-    readonly selectedPath?: string;
-  }) => void;
+  readonly onUiStateChange?: (state: WorkbenchPosition) => void;
 };
 
 /** Owns loopback calls and replacement of the one canonical Review projection. */

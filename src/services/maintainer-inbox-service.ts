@@ -19,10 +19,13 @@ import {
   INBOX_PAGE_SIZES,
   type InboxPageRequest,
   type InboxPageSize,
+  INBOX_STATE_FILTER_VALUES,
   type InboxStateFilter,
   projectMaintainerInboxRow,
   type InboxReviewSummary,
   type MaintainerInboxRow,
+  type InboxDataFreshness,
+  type InboxSnapshotState,
 } from "../domain/maintainer-inbox";
 import type { PullRequestRef } from "../domain/pull-request";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
@@ -48,7 +51,7 @@ export type InboxRepositoryRef = Pick<
 >;
 
 const inboxPageTokenSchema = v.strictObject({
-  state: v.picklist(["open", "merged"]),
+  state: v.picklist(INBOX_STATE_FILTER_VALUES),
   page: v.pipe(v.number(), v.integer(), v.minValue(2)),
   /** The page size the token's cursor was cut at; a mismatched request is rejected as malformed. */
   size: v.picklist(INBOX_PAGE_SIZES),
@@ -92,7 +95,7 @@ export type MaintainerInbox = {
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
   readonly repositories: ReadonlyArray<MaintainerInboxRepository>;
   readonly refreshedAt?: IsoTimestamp;
-  readonly dataFreshness: "fresh" | "cached";
+  readonly dataFreshness: InboxDataFreshness;
   /**
    * GitHub's true repository-wide match count for the current state's
    * search filter (`issueCount`), not this page's loaded row count. Present
@@ -101,12 +104,7 @@ export type MaintainerInbox = {
    */
   readonly matchCount?: number;
   readonly snapshot: {
-    readonly state:
-      | "current"
-      | "partial"
-      | "failed_cached"
-      | "stale_cached"
-      | "unavailable";
+    readonly state: InboxSnapshotState;
     readonly refreshedAt?: IsoTimestamp;
   };
 };
@@ -210,7 +208,7 @@ export class MaintainerInboxService {
     const hasNextPage =
       read.entries.length > visible.length || read.hasNextPage;
     const complete = !hasNextPage && read.repository.complete;
-    const dataFreshness: "fresh" | "cached" =
+    const dataFreshness: InboxDataFreshness =
       read.repository.state === "ready" ||
       read.repository.state === "no_open_prs"
         ? "fresh"

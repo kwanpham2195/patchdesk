@@ -7,8 +7,7 @@ import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
 } from "../renderer-contracts";
-
-type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
+import type { RunDirectCommand } from "./use-review-observation";
 
 export type AnalysisFinding = NonNullable<
   WorkbenchResponse["insights"]["analysis"]["retained"]

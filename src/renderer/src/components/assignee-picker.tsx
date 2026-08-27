@@ -25,6 +25,7 @@ import {
   PopoverTrigger,
 } from "./ui/popover";
 import { Spinner } from "./ui/spinner";
+import type { ForbiddenReason } from "../../../domain/github-forbidden-reason";
 
 /** How long the search box waits after the last keystroke before it re-queries the server-side filter — long enough to absorb normal typing cadence, short enough to still feel live. */
 const SEARCH_DEBOUNCE_MS = 200;
@@ -83,11 +84,7 @@ type ReadState =
   | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
   | {
       readonly _tag: "github_forbidden";
-      readonly reason?:
-        | "ip_allow_list"
-        | "saml"
-        | "insufficient_scopes"
-        | "unknown";
+      readonly reason?: ForbiddenReason;
     };
 
 /**

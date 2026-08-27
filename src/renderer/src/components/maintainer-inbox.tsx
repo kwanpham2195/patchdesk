@@ -27,7 +27,7 @@ import { LabelChip } from "./label-chip";
 import { useInboxView } from "../hooks/use-inbox-view";
 import {
   formatInboxAge,
-  type inboxFreshnessLabel,
+  type InboxFreshnessLabel,
 } from "@/inbox-refresh-scheduler";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
@@ -35,6 +35,9 @@ import {
   INBOX_PAGE_SIZES,
   INBOX_STATE_FILTERS,
   type InboxPageSize,
+  type InboxDataFreshness,
+  type InboxSnapshotState,
+  type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -101,7 +104,7 @@ type MaintainerInboxProps = {
   /** Requested state; App owns remote state transitions. The filter bar's
    * state `Select` reflects this immediately, even before `listPending`
    * clears. */
-  readonly state?: "open" | "merged";
+  readonly state?: InboxStateFilter;
   /** True while `rows` still belongs to the previous request (a filter
    * change is in flight). The row list, row count, and details panel hold a
    * loading state instead of rendering that data under the newly requested
@@ -111,7 +114,7 @@ type MaintainerInboxProps = {
   readonly pageSize?: InboxPageSize;
   readonly hasPreviousPage?: boolean;
   readonly hasNextPage?: boolean;
-  readonly onStateChange?: (state: "open" | "merged") => void;
+  readonly onStateChange?: (state: InboxStateFilter) => void;
   /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — never a
    * local, in-page filter (ADR 0031/0032). App owns the request transition. */
   readonly selectedLabels?: ReadonlyArray<string>;
@@ -143,17 +146,12 @@ type MaintainerInboxProps = {
   /** The screen's root state (ADR 0031); App owns its request transition. */
   readonly selectedRepository?: RepositoryIdentity;
   readonly onRepositoryChange?: (repository: RepositoryIdentity) => void;
-  readonly freshness: "fresh" | "cached";
+  readonly freshness: InboxDataFreshness;
   readonly snapshot?: {
-    readonly state:
-      | "current"
-      | "partial"
-      | "failed_cached"
-      | "stale_cached"
-      | "unavailable";
+    readonly state: InboxSnapshotState;
     readonly refreshedAt?: string | undefined;
   };
-  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
+  readonly refreshStatus: InboxFreshnessLabel;
   readonly onOpenReview: (row: InboxRow) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
 };
@@ -328,15 +326,10 @@ function InboxHeader({
   readonly repos?: ReadonlyArray<RepositoryIdentity>;
   readonly selectedRepository?: RepositoryIdentity;
   readonly onRepositoryChange: (repository: RepositoryIdentity) => void;
-  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
+  readonly refreshStatus: InboxFreshnessLabel;
   readonly onRefresh: () => void;
   readonly snapshot?: {
-    readonly state:
-      | "current"
-      | "partial"
-      | "failed_cached"
-      | "stale_cached"
-      | "unavailable";
+    readonly state: InboxSnapshotState;
     readonly refreshedAt?: string | undefined;
   };
 }): React.JSX.Element {
@@ -418,8 +411,8 @@ function InboxFiltersBar({
   inspectorOpen,
   onToggleInspector,
 }: {
-  readonly state: "open" | "merged";
-  readonly onStateChange: (state: "open" | "merged") => void;
+  readonly state: InboxStateFilter;
+  readonly onStateChange: (state: InboxStateFilter) => void;
   /** Absent only before the screen has a Selected repository to read labels
    * from (absent only during bootstrap); the label filter trigger withholds itself in
    * that case, the same way `LabelPicker` does for `actions === undefined`. */
@@ -518,7 +511,7 @@ function InboxFiltersBar({
  * narrow `Select` — the command palette uses the full `option.label`
  * ("Open pull requests") where space isn't constrained; this trigger is
  * `w-28`. */
-function stateFilterShortLabel(state: "open" | "merged"): string {
+function stateFilterShortLabel(state: InboxStateFilter): string {
   return state === "open" ? "Open" : "Merged";
 }
 
@@ -707,7 +700,7 @@ const pendingRowPlaceholders = [
  * excludes everything from must not read the same as one with nothing open
  * at all — see ADR 0031. */
 function emptyRowsMessage(
-  state: "open" | "merged",
+  state: InboxStateFilter,
   matchCount: number | undefined,
   hasLabelFilter: boolean,
 ): string {
@@ -734,7 +727,7 @@ function InboxRowsPanel({
   readonly listRef: React.RefObject<HTMLDivElement | null>;
   readonly rows: ReadonlyArray<InboxRow>;
   readonly selected: InboxRow | undefined;
-  readonly state: "open" | "merged";
+  readonly state: InboxStateFilter;
   readonly listPending: boolean;
   readonly matchCount?: number;
   readonly hasLabelFilter: boolean;
@@ -823,7 +816,7 @@ function InboxFooter({
   readonly pageSize: InboxPageSize;
   readonly hasPreviousPage: boolean;
   readonly hasNextPage: boolean;
-  readonly refreshStatus: ReturnType<typeof inboxFreshnessLabel>;
+  readonly refreshStatus: InboxFreshnessLabel;
   readonly onPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly onPreviousPage: () => void;
   readonly onNextPage: () => void;
@@ -914,7 +907,7 @@ function ReviewDetailsPanel({
   readonly inspectorOpen: boolean;
   readonly narrow: boolean;
   readonly selected: InboxRow | undefined;
-  readonly freshness: "fresh" | "cached";
+  readonly freshness: InboxDataFreshness;
   readonly onToggleInspector: () => void;
   readonly onAction: () => void;
 }): React.JSX.Element {
@@ -969,15 +962,10 @@ function InboxFreshness({
   onRefresh,
 }: {
   readonly snapshot?: {
-    readonly state:
-      | "current"
-      | "partial"
-      | "failed_cached"
-      | "stale_cached"
-      | "unavailable";
+    readonly state: InboxSnapshotState;
     readonly refreshedAt?: string | undefined;
   };
-  readonly status: ReturnType<typeof inboxFreshnessLabel>;
+  readonly status: InboxFreshnessLabel;
   readonly onRefresh: () => void;
 }): React.JSX.Element {
   const stable = status === "Current";
@@ -1139,7 +1127,7 @@ function Inspector({
   onAction,
 }: {
   readonly row?: InboxRow;
-  readonly freshness: "fresh" | "cached";
+  readonly freshness: InboxDataFreshness;
   readonly onAction: () => void | undefined;
 }): React.JSX.Element {
   if (row === undefined)

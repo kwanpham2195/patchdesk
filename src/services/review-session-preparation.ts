@@ -28,6 +28,7 @@ import {
 } from "../domain/review-session";
 import { KeyedMutex } from "../domain/keyed-mutex";
 import { err, ok, type Result } from "../domain/result";
+import { tokenizeUnifiedPatch } from "../domain/unified-patch";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewContextService } from "./review-context-service";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
@@ -595,8 +596,16 @@ function reviewRevisionOf(input: {
     : { headSha: input.headSha, baseSha: input.baseSha };
 }
 
+/**
+ * Reads the new-side paths through the shared tokenizer rather than a `+++ b/`
+ * prefix test, which silently dropped every git-quoted path (a space, a quote,
+ * or a non-ASCII byte is enough) and would have read a hunk body line beginning
+ * with `+++ b/` as a file.
+ */
 function changedFiles(diff: string): ReadonlyArray<string> {
-  return diff
-    .split("\n")
-    .flatMap((line) => (line.startsWith("+++ b/") ? [line.slice(6)] : []));
+  return tokenizeUnifiedPatch(diff).flatMap((token) =>
+    token.kind === "new_file_path" && token.path !== "/dev/null"
+      ? [token.path]
+      : [],
+  );
 }

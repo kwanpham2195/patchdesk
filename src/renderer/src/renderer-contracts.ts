@@ -1,7 +1,19 @@
 import * as v from "valibot";
 
+import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
-import { INBOX_PAGE_SIZES } from "../../domain/maintainer-inbox";
+import { FINDING_MAPPING_STATUSES } from "../../domain/review-result";
+import {
+  INBOX_DATA_FRESHNESS,
+  INBOX_PAGE_SIZES,
+  INBOX_REPOSITORY_OUTCOMES,
+  INBOX_SNAPSHOT_STATES,
+  INBOX_STATE_FILTER_VALUES,
+} from "../../domain/maintainer-inbox";
+import { GITHUB_REVIEW_EVENTS } from "../../domain/pending-review";
+
+/** The one renderer-side spelling of the domain's closed forbidden-reason set. */
+const forbiddenReasonSchema = v.optional(v.picklist(FORBIDDEN_REASONS));
 
 const pullRequestRefSchema = v.strictObject({
   host: v.pipe(v.string(), v.minLength(1)),
@@ -54,7 +66,7 @@ const actionSchema = v.variant("kind", [
 ]);
 
 const inboxRowSchema = v.strictObject({
-  remoteState: v.picklist(["open", "merged"]),
+  remoteState: v.picklist(INBOX_STATE_FILTER_VALUES),
   identity: pullRequestRefSchema,
   title: v.pipe(v.string(), v.minLength(1)),
   author: v.pipe(v.string(), v.minLength(1)),
@@ -89,7 +101,7 @@ const inboxRowSchema = v.strictObject({
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
   recommendedAction: actionSchema,
-  dataFreshness: v.picklist(["fresh", "cached"]),
+  dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
 
 const repoOutcomeSchema = v.object({
@@ -98,18 +110,9 @@ const repoOutcomeSchema = v.object({
     owner: v.pipe(v.string(), v.minLength(1)),
     repo: v.pipe(v.string(), v.minLength(1)),
   }),
-  state: v.picklist([
-    "ready",
-    "no_open_prs",
-    "github_auth",
-    "github_read",
-    "github_rate_limited",
-    "github_forbidden",
-  ]),
+  state: v.picklist(INBOX_REPOSITORY_OUTCOMES),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
-  forbiddenReason: v.optional(
-    v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
-  ),
+  forbiddenReason: forbiddenReasonSchema,
 });
 
 const inboxResponseSchema = v.strictObject({
@@ -142,23 +145,17 @@ const inboxResponseSchema = v.strictObject({
     ),
   }),
   inbox: v.object({
-    state: v.picklist(["open", "merged"]),
+    state: v.picklist(INBOX_STATE_FILTER_VALUES),
     pageSize: v.picklist(INBOX_PAGE_SIZES),
     nextPageToken: v.optional(v.pipe(v.string(), v.minLength(1))),
     rows: v.array(inboxRowSchema),
     repositories: v.array(repoOutcomeSchema),
     /** GitHub's repository-wide match count for the current filter, absent on a cached or failed read that cannot know it. Never the loaded page's row count. */
     matchCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-    dataFreshness: v.picklist(["fresh", "cached"]),
+    dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
     snapshot: v.optional(
       v.strictObject({
-        state: v.picklist([
-          "current",
-          "partial",
-          "failed_cached",
-          "stale_cached",
-          "unavailable",
-        ]),
+        state: v.picklist(INBOX_SNAPSHOT_STATES),
         refreshedAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
       }),
     ),
@@ -288,9 +285,7 @@ const repositoryLabelListResponseSchema = v.strictObject({
   // write). See `LabelListOutcome` in `src/services/label-service.ts`.
   permission: v.optional(v.picklist(["permitted", "denied", "unknown"])),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
-  forbiddenReason: v.optional(
-    v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
-  ),
+  forbiddenReason: forbiddenReasonSchema,
 });
 
 export type RepositoryLabelListResponse = v.InferOutput<
@@ -340,9 +335,7 @@ const assignableUserListResponseSchema = v.strictObject({
   // write). See `AssigneeListOutcome` in `src/services/assignee-service.ts`.
   permission: v.optional(v.picklist(["permitted", "denied", "unknown"])),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
-  forbiddenReason: v.optional(
-    v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
-  ),
+  forbiddenReason: forbiddenReasonSchema,
 });
 
 export type AssignableUserListResponse = v.InferOutput<
@@ -428,9 +421,7 @@ const reviewerListResponseSchema = v.strictObject({
   // write). See `ReviewerListOutcome` in `src/services/reviewer-service.ts`.
   permission: v.optional(v.picklist(["permitted", "denied", "unknown"])),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
-  forbiddenReason: v.optional(
-    v.picklist(["ip_allow_list", "saml", "insufficient_scopes", "unknown"]),
-  ),
+  forbiddenReason: forbiddenReasonSchema,
 });
 
 export type ReviewerListResponse = v.InferOutput<
@@ -578,7 +569,7 @@ const reviewResultSchema = v.strictObject({
       affectedScenario: v.optional(v.pipe(v.string(), v.minLength(1))),
       whyItMatters: v.optional(v.pipe(v.string(), v.minLength(1))),
       suggestedChange: v.optional(v.pipe(v.string(), v.minLength(1))),
-      mappingStatus: v.picklist(["mapped", "unmapped", "invalid_line"]),
+      mappingStatus: v.picklist(FINDING_MAPPING_STATUSES),
       disposition: v.optional(v.picklist(["open", "added", "dismissed"])),
     }),
   ),
@@ -843,7 +834,7 @@ const directSummaryReviewProjectionSchema = v.variant("state", [
     state: v.literal("confirmed"),
     receipt: v.strictObject({
       reviewId: v.pipe(v.string(), v.minLength(1)),
-      event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+      event: v.picklist(GITHUB_REVIEW_EVENTS),
     }),
   }),
   v.strictObject({

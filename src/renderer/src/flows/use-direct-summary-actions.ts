@@ -6,12 +6,12 @@ import {
   type DirectSummaryReviewProjection,
   type WorkbenchResponse,
 } from "../renderer-contracts";
-import type { RecentReviewWrite } from "../../../domain/recent-review-write";
+import type { GitHubReviewEvent } from "../../../domain/pending-review";
+import type {
+  RunDirectCommand,
+  AppendRecentWrites,
+} from "./use-review-observation";
 
-type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
-type AppendRecentWrites = (
-  entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>,
-) => void;
 type ObserveConfirmedDirectSummary = (reviewId: string) => Promise<void>;
 
 type DirectSummaryPanel = {
@@ -28,7 +28,7 @@ type DirectSummaryPanel = {
   readonly approvalCapability: "allowed" | "blocked_author" | "unknown";
   readonly error?: string;
   readonly onSubmit: (
-    event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+    event: GitHubReviewEvent,
     body: string,
   ) => Promise<DirectSummaryReviewProjection>;
   readonly onRecover: () => Promise<DirectSummaryReviewProjection>;
@@ -120,7 +120,7 @@ export function useDirectSummaryActions({
 
   const submitDirectSummary = useCallback(
     async (
-      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+      event: GitHubReviewEvent,
       body: string,
     ): Promise<DirectSummaryReviewProjection> => {
       const patchHash = workbench.revision.patchHash;

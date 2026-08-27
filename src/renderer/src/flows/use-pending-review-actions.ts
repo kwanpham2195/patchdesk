@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import * as v from "valibot";
 
 import { parseGitHubThreadId, type GitHubThreadId } from "../../../domain/ids";
-import type { RecentReviewWrite } from "../../../domain/recent-review-write";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import type { PendingReviewComposerActions } from "../components/review-diff-view";
 import {
@@ -12,16 +11,15 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import type { ReviewWorkbenchPatch } from "./use-review-observation";
+import type { GitHubReviewEvent } from "../../../domain/pending-review";
+import type {
+  RunDirectCommand,
+  AppendRecentWrites,
+} from "./use-review-observation";
 
 const pendingReviewEnvelopeSchema = v.looseObject({
   pendingReview: v.optional(v.unknown()),
 });
-
-type AppendRecentWrites = (
-  entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>,
-) => void;
-
-type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
 
 type PendingReviewCommand =
   | {
@@ -37,7 +35,7 @@ type PendingReviewCommand =
     }
   | {
       readonly _tag: "Submit";
-      readonly event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
+      readonly event: GitHubReviewEvent;
       readonly summaryBody: string;
     }
   | {
@@ -53,7 +51,7 @@ type PendingReviewPanel = {
   readonly onOpenFinishDialog: () => void;
   readonly onCloseFinishDialog: () => void;
   readonly onSubmit: (
-    event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+    event: GitHubReviewEvent,
     summaryBody: string,
   ) => Promise<void>;
   readonly onDiscard: () => Promise<void>;
@@ -388,7 +386,7 @@ export function usePendingReviewActions({
     onOpenFinishDialog,
     onCloseFinishDialog,
     onSubmit: async (
-      event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+      event: GitHubReviewEvent,
       summaryBody: string,
     ): Promise<void> => {
       try {

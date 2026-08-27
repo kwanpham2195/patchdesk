@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 
-import type { RecentReviewWrite } from "../../../domain/recent-review-write";
 import { requestJson } from "../api-client";
 import {
   parseAssignableUserListResponse,
@@ -16,11 +15,10 @@ import {
   parseLabelReceipt,
   parseReviewerReceipt,
 } from "./review-workbench-receipts";
-
-type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
-type AppendRecentWrites = (
-  entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>,
-) => void;
+import type {
+  RunDirectCommand,
+  AppendRecentWrites,
+} from "./use-review-observation";
 
 export type ReviewMetadataActions = {
   readonly fetchLabels: () => Promise<RepositoryLabelListResponse | undefined>;

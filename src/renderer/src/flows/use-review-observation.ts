@@ -16,6 +16,14 @@ export type ReviewWorkbenchPatch = Omit<
   readonly insights?: Partial<WorkbenchResponse["insights"]>;
 };
 
+/** Runs one renderer-issued write through the observation queue. */
+export type RunDirectCommand = <T>(operation: () => Promise<T>) => Promise<T>;
+
+/** Records writes the renderer just made so the next read can confirm them. */
+export type AppendRecentWrites = (
+  entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>,
+) => void;
+
 export type ReviewObservationInput = {
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
@@ -28,13 +36,11 @@ export type ReviewObservationResult = {
   readonly runDetect: () => Promise<void>;
   readonly refresh: () => Promise<void>;
   readonly replaceWorkbench: (workbench: WorkbenchResponse) => void;
-  readonly runDirectCommand: <T>(operation: () => Promise<T>) => Promise<T>;
+  readonly runDirectCommand: RunDirectCommand;
   readonly observeConfirmedReviewWrite: (
     recentWrites?: ReadonlyArray<RecentReviewWrite>,
   ) => Promise<void>;
-  readonly appendRecentWrites: (
-    entries: RecentReviewWrite | ReadonlyArray<RecentReviewWrite>,
-  ) => void;
+  readonly appendRecentWrites: AppendRecentWrites;
 };
 
 const DETECT_INTERVAL_MS = 90_000;

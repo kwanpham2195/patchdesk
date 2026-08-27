@@ -12,6 +12,11 @@ import * as v from "valibot";
 import { requestJson } from "@/api-client";
 import type { ReviewContextStatus } from "@/review-context-control";
 import type { RawJsonValue } from "../../../domain/json";
+import {
+  isUnifiedFileHeader,
+  matchUnifiedFileHeader,
+  tokenizeUnifiedPatchLines,
+} from "../../../domain/unified-patch";
 
 const HYDRATION_CONCURRENCY = 2;
 
@@ -157,7 +162,7 @@ export function useReviewDiffHydration({
       if (
         sourceProfileId === undefined ||
         sourceSessionId === undefined ||
-        !rawFilePatch.startsWith("diff --git ")
+        !isUnifiedFileHeader(rawFilePatch)
       ) {
         unavailableHydrationPaths.current.add(path);
         return Promise.resolve(false);
@@ -287,9 +292,13 @@ export function selectPatch(
 }
 
 function splitPatch(patch: string): ReadonlyArray<string> {
-  return patch
-    .split(/(?=^diff --git )/m)
-    .filter((value) => value.startsWith("diff --git "));
+  const lines = patch.split("\n");
+  const starts = tokenizeUnifiedPatchLines(lines).flatMap((token) =>
+    token.kind === "file_header" ? [token.index] : [],
+  );
+  return starts.map((start, order) =>
+    lines.slice(start, starts[order + 1] ?? lines.length).join("\n"),
+  );
 }
 
 function indexPatchPaths(
@@ -297,12 +306,10 @@ function indexPatchPaths(
 ): ReadonlyMap<string, string> {
   const indexed = new Map<string, string>();
   for (const patch of patches) {
-    const header = /^diff --git a\/(.+) b\/(.+)$/m.exec(patch);
-    if (header === null) continue;
-    const oldPath = header[1];
-    const newPath = header[2];
-    if (oldPath !== undefined) indexed.set(oldPath, patch);
-    if (newPath !== undefined) indexed.set(newPath, patch);
+    const header = matchUnifiedFileHeader(patch.split("\n", 1)[0] ?? "");
+    if (header === undefined) continue;
+    indexed.set(header.oldPath, patch);
+    indexed.set(header.newPath, patch);
   }
   return indexed;
 }

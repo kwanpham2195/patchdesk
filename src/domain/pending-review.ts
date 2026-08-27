@@ -37,7 +37,12 @@ import type { PullRequestRef } from "./pull-request";
 import { err, ok, type Result } from "./result";
 
 /** The GitHub review verdict submitted with a pending review. */
-export type GitHubReviewEvent = "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
+export const GITHUB_REVIEW_EVENTS = [
+  "APPROVE",
+  "COMMENT",
+  "REQUEST_CHANGES",
+] as const;
+export type GitHubReviewEvent = (typeof GITHUB_REVIEW_EVENTS)[number];
 
 /** A side-aware line or range in one repository-relative file. */
 export type PendingReviewAnchor = {
@@ -428,7 +433,7 @@ const operationSchema = v.variant("_tag", [
     _tag: v.literal("Submit"),
     requestId: v.string(),
     reviewId: v.string(),
-    event: v.picklist(["APPROVE", "COMMENT", "REQUEST_CHANGES"]),
+    event: v.picklist(GITHUB_REVIEW_EVENTS),
   }),
   v.strictObject({
     _tag: v.literal("Discard"),
