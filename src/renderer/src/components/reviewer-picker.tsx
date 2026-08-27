@@ -269,12 +269,10 @@ export function ReviewerPicker({
         )}
         <FieldGroup>
           <Field>
-            <FieldLabel className="sr-only" htmlFor="reviewer-search">
-              Search reviewer candidates
-            </FieldLabel>
             <Input
               id="reviewer-search"
               type="search"
+              aria-label="Search reviewer candidates"
               placeholder="Search people…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}

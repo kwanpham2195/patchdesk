@@ -157,7 +157,7 @@ Codex runs against the immutable represented worktree only, through a read-only 
 
 The Conversation screen's rail owns the pull request's Reviewers, Assignees, and Labels. Every write gates on the current session (not diff freshness), resolves permission per write type, fails closed, and journals so a maintainer's own change never reads back as remote activity.
 
-- `automated:` `tests/browser/conversation-rail.spec.ts` (the rail's sections, pickers, empty states, permission rendering, narrow-window stacking, terminal read-only), `tests/services/label-service.test.ts`, `tests/services/assignee-service.test.ts` (ten-assignee cap, self-assign), `tests/services/reviewer-service.test.ts` (subtractive removal, additive request), `tests/domain/review-verdicts.test.ts` (the verdict union, dropped drafts, outdated marking), `tests/browser/accessibility.spec.ts` (rail controls from the keyboard).
+- `automated:` `tests/browser/conversation-rail.spec.ts` (the rail's sections, pickers, empty states, permission rendering, narrow-window stacking, terminal read-only), `tests/services/label-service.test.ts`, `tests/services/assignee-service.test.ts` (ten-assignee cap, self-assign), `tests/services/reviewer-service.test.ts` (subtractive removal, additive request), `tests/domain/review-verdicts.test.ts` (the verdict union, dropped drafts, outdated marking).
 - `manual:`
   - Apply and remove a label from the rail against a real PR: GitHub must show the change, and the next refresh must not report it as remote activity.
   - Assign and unassign a person, and use the empty state's self-assign shortcut: GitHub must show the change.
@@ -167,11 +167,11 @@ The Conversation screen's rail owns the pull request's Reviewers, Assignees, and
   - Sign in as a triage-only account: labels must stay editable while the reviewer and assignee controls report that the account cannot make the change.
 - `run when:` anything changes in `label-service.ts`, `assignee-service.ts`, `reviewer-service.ts`, `review-verdicts.ts`, `pull-request-metadata-rail.tsx`, the three pickers, or the rail's routes in `local-api.ts`.
 
-## Browser, accessibility, performance, and package
+## Browser, performance, and package
 
 The built app is the outermost boundary.
 
-- `automated:` `tests/browser/review-workbench.spec.ts` (workbench surfaces, diff stream), `tests/browser/protected-loopback-workflow.spec.ts` (loopback API through the bridge), `tests/browser/accessibility.spec.ts`, `tests/browser/performance.spec.ts` (1,000 files, ~10 MB patch), package smoke (`pnpm test:package-smoke`), bundle check (`pnpm test:bundle`).
+- `automated:` `tests/browser/review-workbench.spec.ts` (workbench surfaces, diff stream), `tests/browser/protected-loopback-workflow.spec.ts` (loopback API through the bridge), `tests/browser/performance.spec.ts` (1,000 files, ~10 MB patch), package smoke (`pnpm test:package-smoke`), bundle check (`pnpm test:bundle`).
 - `manual:`
   - Package a build (`pnpm package:mac`) and run the packaged app against a real PR: open, refresh, analysis, walkthrough, and one write flow.
   - In the packaged app, open the performance fixture and confirm the diff stays responsive.

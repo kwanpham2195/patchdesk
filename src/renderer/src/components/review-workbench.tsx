@@ -937,11 +937,6 @@ export function ReviewWorkbench({
               </Button>
             )}
           </div>
-          <p className="sr-only" aria-live="polite">
-            {hasUpdates
-              ? "Remote updates are available. Refresh before publishing or merging."
-              : "Review state is current."}
-          </p>
         </header>
 
         <div

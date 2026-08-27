@@ -261,12 +261,10 @@ export function AssigneePicker({
         )}
         <FieldGroup>
           <Field>
-            <FieldLabel className="sr-only" htmlFor="assignee-search">
-              Search assignable people
-            </FieldLabel>
             <Input
               id="assignee-search"
               type="search"
+              aria-label="Search assignable people"
               placeholder="Search people…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}

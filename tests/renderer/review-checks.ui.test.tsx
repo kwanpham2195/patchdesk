@@ -9,7 +9,7 @@ import { ReviewChecks } from "../../src/renderer/src/components/review-checks";
 
 afterEach(() => {
   cleanup();
-  delete (window as unknown as { patchdesk?: unknown }).patchdesk;
+  delete (window as { patchdesk?: unknown }).patchdesk;
 });
 
 describe("review checks", () => {
@@ -88,7 +88,7 @@ describe("review checks", () => {
     expect(screen.getAllByText("Passed")).toHaveLength(6);
   });
 
-  it("keeps the compact section keyboard-collapsible and hides noisy requirement text", async () => {
+  it("keeps the compact section keyboard-collapsible", async () => {
     const user = userEvent.setup();
     render(
       <ReviewChecks
@@ -106,9 +106,6 @@ describe("review checks", () => {
       />,
     );
 
-    expect(
-      screen.getByText("No requirement metadata", { selector: ".sr-only" }),
-    ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Collapse checks" }));
     expect(
       screen.queryByRole("list", { name: "Pull request checks" }),

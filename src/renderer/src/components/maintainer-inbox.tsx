@@ -71,13 +71,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
 
@@ -498,10 +492,7 @@ function InboxFiltersBar({
           onLabelChange={onLabelChange}
         />
       )}
-      <span
-        className="ml-auto text-[11px] tabular-nums text-muted-foreground"
-        aria-live="polite"
-      >
+      <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
         {listPending
           ? "Loading…"
           : matchCount === undefined
@@ -764,14 +755,6 @@ function InboxRowsPanel({
         <span>CI</span>
         <span className="text-right">Updated</span>
       </div>
-      {/* Announces the busy-to-loaded transition; the listbox below stays
-       * `aria-hidden` skeleton rows without this, nothing tells assistive
-       * technology loading finished. */}
-      <div role="status" aria-live="polite" className="sr-only">
-        {listPending
-          ? "Loading pull requests…"
-          : `${rows.length} pull request${rows.length === 1 ? "" : "s"} loaded.`}
-      </div>
       <div
         ref={listRef}
         role="listbox"
@@ -962,12 +945,6 @@ function ReviewDetailsPanel({
           side="right"
           className="w-[min(24rem,calc(100vw-1rem))] p-0 min-[1280px]:hidden"
         >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Review details</SheetTitle>
-            <SheetDescription>
-              Selected pull request details and actions.
-            </SheetDescription>
-          </SheetHeader>
           <Inspector
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
@@ -1306,7 +1283,6 @@ function CheckIcon({
   return (
     <span className="inline-flex items-center" title={`Checks ${overall}`}>
       {icon}
-      <span className="sr-only">Checks {overall}</span>
     </span>
   );
 }

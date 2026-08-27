@@ -102,8 +102,6 @@ type InsightDocumentProps = {
   readonly retainedDescription: string | undefined;
   readonly retainedReader: React.ReactNode;
   readonly currentRevision: string;
-  readonly analysisRun: InsightRunController;
-  readonly walkthroughRun: InsightRunController;
   readonly runDialogType: InsightRunDialogType | null;
   readonly runDialogAction: "run" | "retry" | "regenerate";
   readonly model: string | null;
@@ -634,8 +632,6 @@ export function InsightsSlot({
       retainedDescription={retainedDescription}
       retainedReader={retainedReader}
       currentRevision={currentRevision}
-      analysisRun={analysisRun}
-      walkthroughRun={walkthroughRun}
       runDialogType={runDialogType}
       runDialogAction={runDialogAction}
       model={model}
@@ -667,8 +663,6 @@ function InsightDocument({
   retainedDescription,
   retainedReader,
   currentRevision,
-  analysisRun,
-  walkthroughRun,
   runDialogType,
   runDialogAction,
   model,
@@ -855,9 +849,6 @@ function InsightDocument({
           )}
         </article>
       </div>
-      <p className="sr-only" aria-live="polite">
-        {insightLiveStatus(analysisRun.status, walkthroughRun.status)}
-      </p>
       {runDialogType === null ? null : (
         <InsightRunDialog
           open
@@ -1226,13 +1217,6 @@ function InsightEmpty({
       </Button>
     </div>
   );
-}
-
-function insightLiveStatus(analysis: string, walkthrough: string): string {
-  const active = [analysis, walkthrough].filter((status) => status !== "idle");
-  return active.length === 0
-    ? ""
-    : `Analysis ${analysis}; Walkthrough ${walkthrough}`;
 }
 
 function insightStatusLabel(status: string): string {

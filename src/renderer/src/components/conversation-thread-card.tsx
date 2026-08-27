@@ -4,7 +4,7 @@ import type { GitHubThreadId } from "../../../domain/ids";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
@@ -95,11 +95,9 @@ function ConversationCommentRow({
               data-invalid={error !== undefined || undefined}
               data-disabled={saving || undefined}
             >
-              <FieldLabel className="sr-only" htmlFor={editorId}>
-                Edit comment
-              </FieldLabel>
               <Textarea
                 id={editorId}
+                aria-label="Edit comment"
                 aria-invalid={error !== undefined || undefined}
                 aria-describedby={error === undefined ? undefined : errorId}
                 value={editBody}
@@ -388,11 +386,9 @@ export function ConversationThreadCard({
             data-invalid={replyError !== undefined || undefined}
             data-disabled={replying || undefined}
           >
-            <FieldLabel className="sr-only" htmlFor={replyEditorId}>
-              Reply
-            </FieldLabel>
             <Textarea
               id={replyEditorId}
+              aria-label="Reply"
               aria-invalid={replyError !== undefined || undefined}
               aria-describedby={
                 replyError === undefined ? undefined : replyErrorId

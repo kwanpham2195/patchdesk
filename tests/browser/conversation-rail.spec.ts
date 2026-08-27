@@ -774,8 +774,7 @@ function origin(server: Server): string {
   // SAFETY: `Server#address()` returns `string | AddressInfo | null`; the
   // check above rules out `null` and rules out the `string` (pipe/socket
   // path) branch, since a JS string wrapper never carries a `port` property.
-  // Only the `AddressInfo` branch remains. Same reasoning as
-  // `tests/browser/accessibility.spec.ts`.
+  // Only the `AddressInfo` branch remains.
   return `http://127.0.0.1:${(address as AddressInfo).port}`;
 }
 function close(server: Server): Promise<void> {

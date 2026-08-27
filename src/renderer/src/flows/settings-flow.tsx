@@ -39,7 +39,6 @@ import {
   Field,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
   FieldSet,
 } from "../components/ui/field";
 import { ModelCombobox } from "../components/model-combobox";
@@ -505,9 +504,6 @@ function GeneralSection({
         </CardHeader>
         <CardContent>
           <FieldSet>
-            <FieldLegend variant="label" className="sr-only">
-              Diff theme
-            </FieldLegend>
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel
@@ -716,9 +712,6 @@ function ReviewPreferences({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <FieldSet>
-          <FieldLegend variant="label" className="sr-only">
-            Review defaults
-          </FieldLegend>
           <FieldGroup>
             <Field data-disabled={catalogUnavailable || undefined}>
               <FieldLabel htmlFor="default-model">Default model</FieldLabel>

@@ -251,11 +251,6 @@ export function ReviewWorkbenchFlow({
           readable.
         </p>
       ) : null}
-      {refreshing ? (
-        <span className="sr-only" role="status">
-          Refreshing Review state
-        </span>
-      ) : null}
     </>
   );
 }

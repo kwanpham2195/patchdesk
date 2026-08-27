@@ -26,7 +26,6 @@
     "build:icon": "node scripts/build-app-icon.mjs",
     "verify:icon": "node scripts/verify-app-icon.mjs",
     "package:mac": "pnpm build && pnpm stage:flue-runtime && pnpm verify:icon && electron-builder --mac",
-    "test:a11y": "pnpm build && playwright test tests/browser/accessibility.spec.ts",
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
     "test:package-smoke": "node scripts/package-smoke.mjs",
     "test:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && pnpm build && node scripts/check-renderer-bundles.mjs",
@@ -60,7 +59,6 @@
     "valibot": "^1.1.0"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.12.1",
     "@oxlint/plugins": "1.78.0",
     "@swc/core": "^1.15.3",
     "@tailwindcss/vite": "^4.1.12",

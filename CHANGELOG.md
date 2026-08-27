@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Removed screen reader support, along with the reduced motion and high contrast display settings. Patchdesk is for people who read code on screen with a keyboard and a mouse.
 - Fixed a pull request becoming impossible to open after a crash during preparation; a leftover or damaged preparation record is now cleaned up and the review opens again.
 - Fixed opening a review and refreshing it running at the same time, which could leave the review showing stale state.
 - Fixed avatars and prepared review files being written without the crash-safe sequence the rest of the app uses; a crash mid-write can no longer leave a half-written file.

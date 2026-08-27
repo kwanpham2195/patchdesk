@@ -1,6 +1,6 @@
 # Target sighted keyboard-and-mouse users
 
-> **Status: Accepted. Not yet implemented.**
+> **Status: Accepted. Implemented.**
 
 Patchdesk is a desktop tool for maintainers who read code diffs on screen. Its
 user can see, can read code, and works with a keyboard and a mouse. The app

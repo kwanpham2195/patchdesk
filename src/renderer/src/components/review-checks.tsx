@@ -311,7 +311,6 @@ function CheckRow({
       <span className="min-w-0 flex-1 truncate" title={check.name}>
         {check.name}
       </span>
-      <span className="sr-only">{requirementLabel(check.required)}</span>
       <span className={cn("shrink-0 text-sm", result.treatment)}>
         {result.label}
       </span>
@@ -339,14 +338,6 @@ function checkPriority(check: CheckRunSummary): number {
   if (kind === "pending") return 2;
   if (check.required === true) return 3;
   return 4;
-}
-
-function requirementLabel(required: CheckRunSummary["required"]): string {
-  return required === true
-    ? "Required"
-    : required === false
-      ? "Optional"
-      : "No requirement metadata";
 }
 
 function overallLabel(

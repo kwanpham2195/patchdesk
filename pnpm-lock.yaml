@@ -70,9 +70,6 @@ dependencies:
     version: 1.4.2(typescript@5.9.3)
 
 devDependencies:
-  '@axe-core/playwright':
-    specifier: ^4.12.1
-    version: 4.12.1(playwright-core@1.61.1)
   '@oxlint/plugins':
     specifier: 1.78.0
     version: 1.78.0
@@ -199,15 +196,6 @@ packages:
 
   /@astrojs/compiler@4.0.0:
     resolution: {integrity: sha512-eouss7G8ygdZqHuke033VMcVw5HTZUu+PXd/h06DGDUg/jt5btPYPqh66ENWw/mU78rBrf/oeC4oqoBwMtDMNA==}
-    dev: true
-
-  /@axe-core/playwright@4.12.1(playwright-core@1.61.1):
-    resolution: {integrity: sha512-rMd7xriptqKpP+w5265i4Hdkv2X5kbu6uiBi/B2I7uf3hieRBM3qDCfaKPtxfiYb2mKXfF+yLODJwIx+Jv1GDw==}
-    peerDependencies:
-      playwright-core: '>= 1.0.0'
-    dependencies:
-      axe-core: 4.12.1
-      playwright-core: 1.61.1
     dev: true
 
   /@babel/code-frame@7.29.7:
@@ -4478,11 +4466,6 @@ packages:
 
   /aws4@1.13.2:
     resolution: {integrity: sha512-lHe62zvbTB5eEABUVi/AwVh0ZKY9rMMDhmm+eeyuuUQbQ3+J+fONVQOZyj+DdrvD4BY33uYniyRJ4UJIaSKAfw==}
-    dev: true
-
-  /axe-core@4.12.1:
-    resolution: {integrity: sha512-s7iGf5GaVMxEG0ENN9x+xTr7GFZCb1ZP/1uATUpCEK2X78nDB3RwbtFCo9pGAf9ru+VwoQ464DkaLEeRM08wJA==}
-    engines: {node: '>=4'}
     dev: true
 
   /balanced-match@1.0.2:

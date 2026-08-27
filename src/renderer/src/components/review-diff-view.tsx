@@ -744,39 +744,18 @@ function ReviewDiffRenderSite({
       localComposerAnnotation?.localComposer !== undefined ? (
         <InlineCommentComposer {...localComposerAnnotation.localComposer} />
       ) : null}
-      {contextStatus === "loading" ? (
-        <p className="sr-only" aria-live="polite">
-          Loading unchanged context for {selectedPath}.
-        </p>
-      ) : contextStatus === "unavailable" ? (
-        <p className="sr-only" aria-live="polite">
-          Additional unchanged context is unavailable for {selectedPath}.
-        </p>
-      ) : null}
       {fileNavBoundary === undefined ? null : (
-        <p
-          className="sr-only"
-          aria-live="polite"
-          data-review-diff-file-nav-boundary
-        >
+        <p hidden data-review-diff-file-nav-boundary>
           {fileNavBoundary}
         </p>
       )}
       {hunkNavBoundary === undefined ? null : (
-        <p
-          className="sr-only"
-          aria-live="polite"
-          data-review-diff-hunk-nav-boundary
-        >
+        <p hidden data-review-diff-hunk-nav-boundary>
           {hunkNavBoundary}
         </p>
       )}
       {commentNavStatus === undefined ? null : (
-        <p
-          className="sr-only"
-          aria-live="polite"
-          data-review-diff-comment-nav-status
-        >
+        <p hidden data-review-diff-comment-nav-status>
           {commentNavStatus}
         </p>
       )}

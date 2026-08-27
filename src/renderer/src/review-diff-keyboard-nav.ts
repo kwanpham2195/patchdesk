@@ -170,7 +170,7 @@ export function adjacentCommentAnchor(
 }
 
 /**
- * The aria-live text a `{`/`}` press announces, covering all three outcomes
+ * The status text a `{`/`}` press reports, covering all three outcomes
  * a press can produce: the diff has no unresolved comments at all, the press
  * landed on one (with a "N of M" position counter -- the point of the
  * counter is answering "am I done yet", not just "where am I"), or the press

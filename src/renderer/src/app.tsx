@@ -1243,7 +1243,6 @@ function RouteLoadingFallback({
     <div
       className="flex min-h-0 flex-1 items-center justify-center p-6"
       role="status"
-      aria-live="polite"
     >
       {label}
     </div>

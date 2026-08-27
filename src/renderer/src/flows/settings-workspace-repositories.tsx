@@ -163,11 +163,7 @@ export function WatchlistToggleStatus({
   }
   if (feedback !== undefined) {
     return (
-      <p
-        role="status"
-        aria-live="polite"
-        className="text-xs text-muted-foreground"
-      >
+      <p role="status" className="text-xs text-muted-foreground">
         {feedback}
       </p>
     );
