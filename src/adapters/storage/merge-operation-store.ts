@@ -8,6 +8,7 @@ import {
 } from "../../domain/merge-operation";
 import { err, ok, type Result } from "../../domain/result";
 import {
+  isNotFound,
   readJsonFile,
   writeAtomicJson,
   type StorageFailure,
@@ -122,13 +123,4 @@ export class MergeOperationStore {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
   }
-}
-
-function isNotFound(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "ENOENT"
-  );
 }

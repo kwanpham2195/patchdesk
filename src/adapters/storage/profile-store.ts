@@ -13,6 +13,7 @@ import {
   type WorkspaceProfileId,
 } from "../../domain/ids";
 import {
+  isNotFound,
   readJsonFile,
   type StorageFailure,
   writeAtomicJson,
@@ -98,12 +99,7 @@ export class ProfileStore {
     try {
       names = await readdir(`${this.paths.configDirectory()}/profiles`);
     } catch (cause: unknown) {
-      if (
-        typeof cause === "object" &&
-        cause !== null &&
-        "code" in cause &&
-        cause.code === "ENOENT"
-      ) {
+      if (isNotFound(cause)) {
         return { _tag: "ok", value: [] };
       }
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });

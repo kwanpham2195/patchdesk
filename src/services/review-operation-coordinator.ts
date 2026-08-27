@@ -1,3 +1,5 @@
+import { KeyedMutex } from "../domain/keyed-mutex";
+
 /**
  * One in-process owner for every operation that can change or reconcile one
  * Review. `withReviewLock` queues read reconciliation after an active write;
@@ -6,8 +8,8 @@
  */
 /** Serializes every mutation or reconciliation for one Review. */
 export class ReviewOperationCoordinator {
-  private readonly latest = new Map<string, LockEntry>();
-  private readonly acquired = new Map<string, LockEntry>();
+  private readonly locks = new KeyedMutex();
+  private readonly acquired = new Map<string, () => void>();
 
   /** Run after any existing operation for the same Review completes. */
   async withReviewLock<T>(
@@ -15,17 +17,7 @@ export class ReviewOperationCoordinator {
     reviewId: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const key = `${profileId}:${reviewId}`;
-    const predecessor = this.latest.get(key);
-    const current = deferred();
-    this.latest.set(key, current);
-    if (predecessor !== undefined) await predecessor.done;
-    try {
-      return await operation();
-    } finally {
-      current.release();
-      if (this.latest.get(key) === current) this.latest.delete(key);
-    }
+    return this.locks.run(`${profileId}:${reviewId}`, operation);
   }
 
   /**
@@ -34,34 +26,16 @@ export class ReviewOperationCoordinator {
    * refresh, observation, and recovery.
    */
   acquire(key: string): boolean {
-    if (this.latest.has(key)) return false;
-    const entry = deferred();
-    this.latest.set(key, entry);
-    this.acquired.set(key, entry);
+    const release = this.locks.tryEnter(key);
+    if (release === undefined) return false;
+    this.acquired.set(key, release);
     return true;
   }
 
   release(key: string): void {
-    const entry = this.acquired.get(key);
-    if (entry === undefined) return;
+    const release = this.acquired.get(key);
+    if (release === undefined) return;
     this.acquired.delete(key);
-    entry.release();
-    if (this.latest.get(key) === entry) this.latest.delete(key);
+    release();
   }
-}
-
-type LockEntry = {
-  readonly done: Promise<void>;
-  release(): void;
-};
-
-function deferred(): LockEntry {
-  let release: (() => void) | undefined;
-  const done = new Promise<void>((complete) => {
-    release = complete;
-  });
-  return {
-    done,
-    release: () => release?.(),
-  };
 }

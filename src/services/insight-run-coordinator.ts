@@ -56,6 +56,7 @@ import {
 import type { InsightProviderCatalog } from "./insight-provider-catalog";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { contentHash } from "./review-artifact-hash";
+import { mapConcurrent } from "../domain/map-concurrent";
 import { err, ok, type Result } from "../domain/result";
 import { readObjectField } from "./read-object-field";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
@@ -1170,27 +1171,6 @@ export class InsightRunCoordinator {
       // Diagnostics are best effort and never become an unhandled rejection.
     }
   }
-}
-
-async function mapConcurrent<T, R>(
-  items: ReadonlyArray<T>,
-  concurrency: number,
-  map: (item: T) => Promise<R>,
-): Promise<ReadonlyArray<R>> {
-  const values: Array<R> = [];
-  let nextIndex = 0;
-  const worker = async (): Promise<void> => {
-    const index = nextIndex;
-    nextIndex += 1;
-    const item = items[index];
-    if (item === undefined) return;
-    values[index] = await map(item);
-    return worker();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return values;
 }
 
 /** Renders the invoker's bounded phase label; never provider text. */

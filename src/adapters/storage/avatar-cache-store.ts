@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import type { WorkspaceProfileId } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
-import { writeAtomicFile } from "./json-file";
+import { isNotFound, writeAtomicFile } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
 export type AvatarCacheFailure = {
@@ -179,8 +179,4 @@ function sniffImageContentType(bytes: Uint8Array): string {
   )
     return "image/webp";
   return "image/png";
-}
-
-function isNotFound(cause: unknown): boolean {
-  return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
 }

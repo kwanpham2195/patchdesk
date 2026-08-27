@@ -20,6 +20,7 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
+import { mapConcurrent } from "../domain/map-concurrent";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewWorktreeService } from "./review-worktree-service";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -798,27 +799,6 @@ async function findJournals(
   return candidates.flatMap((candidate, index) =>
     exists[index] ? [candidate] : [],
   );
-}
-
-async function mapConcurrent<T, R>(
-  items: ReadonlyArray<T>,
-  concurrency: number,
-  map: (item: T) => Promise<R>,
-): Promise<ReadonlyArray<R>> {
-  const values: Array<R> = [];
-  let nextIndex = 0;
-  const worker = async (): Promise<void> => {
-    const index = nextIndex;
-    nextIndex += 1;
-    const item = items[index];
-    if (item === undefined) return;
-    values[index] = await map(item);
-    return worker();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return values;
 }
 
 function groupJournalPaths(

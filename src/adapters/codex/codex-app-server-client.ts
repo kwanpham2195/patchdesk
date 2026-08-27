@@ -12,6 +12,7 @@ import { err, ok, type Result } from "../../domain/result";
 import type { InsightReasoning } from "../../domain/insight-provider";
 import type { RepresentedReviewWorktree } from "../../domain/represented-review-worktree";
 import type { InsightFailureCategory } from "../../domain/insight-record";
+import { isNotFound } from "../storage/json-file";
 import { isPathContained } from "../storage/path-containment";
 
 const CLIENT_NAME = "patchdesk";
@@ -990,8 +991,7 @@ function finalAgentMessageText(
 }
 
 function classifyThrownFailure(cause: unknown): InsightFailureCategory {
-  if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
-    return "runtime_unavailable";
+  if (isNotFound(cause)) return "runtime_unavailable";
   return "execution_failed";
 }
 function classifyRpcFailure(

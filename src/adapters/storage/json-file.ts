@@ -103,7 +103,15 @@ function storageFailure(
   return { _tag: "StorageFailure", operation, reason };
 }
 
-function isNotFound(cause: unknown): boolean {
+/**
+ * The one `ENOENT` predicate for every caught filesystem rejection: "this
+ * path is simply not there", as opposed to a real I/O failure. It reads
+ * `code` off any object rather than requiring `instanceof Error`, so a
+ * `node:fs` rejection that crossed a realm boundary (an Electron utility
+ * process, a worker thread, a `vm` context) is still recognised as missing
+ * instead of being reported as an I/O error.
+ */
+export function isNotFound(cause: unknown): boolean {
   return (
     typeof cause === "object" &&
     cause !== null &&

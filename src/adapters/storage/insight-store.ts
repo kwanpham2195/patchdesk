@@ -21,6 +21,7 @@ import type {
   RetainedInsight,
   WalkthroughProgress,
 } from "../../domain/insight-record";
+import { KeyedMutex } from "../../domain/keyed-mutex";
 import { err, ok, type Result } from "../../domain/result";
 import {
   readJsonFile,
@@ -134,7 +135,7 @@ export function parseInsightRecord(
 
 /** Owns serialized Insight records and serializes mutations per profile/review/type. */
 export class InsightStore {
-  private readonly locks = new Map<string, Promise<void>>();
+  private readonly locks = new KeyedMutex();
 
   constructor(private readonly paths: PatchdeskPaths) {}
 
@@ -219,7 +220,7 @@ export class InsightStore {
     ) => Result<InsightRecord<unknown>, InsightMutationFailure>;
   }): Promise<Result<InsightRecord<unknown>, InsightStoreFailure>> {
     const key = `${input.profileId}\n${input.reviewId}\n${input.type}`;
-    return this.withLock(key, async () => {
+    return this.locks.run(key, async () => {
       const loaded = await this.load(
         input.profileId,
         input.reviewId,
@@ -244,25 +245,6 @@ export class InsightStore {
       if (saved._tag === "err") return saved;
       return this.load(input.profileId, input.reviewId, input.type);
     });
-  }
-
-  private async withLock<T>(
-    key: string,
-    operation: () => Promise<Result<T, InsightStoreFailure>>,
-  ): Promise<Result<T, InsightStoreFailure>> {
-    const previous = this.locks.get(key);
-    let release: () => void = () => undefined;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.locks.set(key, current);
-    if (previous !== undefined) await previous;
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.locks.get(key) === current) this.locks.delete(key);
-    }
   }
 }
 

@@ -1,4 +1,5 @@
 import type { WorkspaceProfileId } from "../domain/ids";
+import { KeyedMutex } from "../domain/keyed-mutex";
 
 /**
  * Serializes durable review lifecycle mutations per workspace profile.
@@ -10,26 +11,13 @@ import type { WorkspaceProfileId } from "../domain/ids";
  * `tests/services/review-lock-order.test.ts` asserts the order.
  */
 export class ReviewLifecycleGate {
-  private readonly locks = new Map<string, Promise<void>>();
+  private readonly locks = new KeyedMutex();
 
   /** Run one profile-scoped mutation after all earlier mutations finish. */
   async withProfileLock<T>(
     profileId: WorkspaceProfileId,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const key = String(profileId);
-    const predecessor = this.locks.get(key);
-    let release: (() => void) | undefined;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.locks.set(key, current);
-    await predecessor;
-    try {
-      return await operation();
-    } finally {
-      release?.();
-      if (this.locks.get(key) === current) this.locks.delete(key);
-    }
+    return this.locks.run(String(profileId), operation);
   }
 }

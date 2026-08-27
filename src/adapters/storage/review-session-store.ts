@@ -24,9 +24,12 @@ import {
   type PendingReviewState,
 } from "../../domain/pending-review";
 import { parseDirectSummaryReviewState } from "../../domain/direct-summary-review";
+import { KeyedMutex } from "../../domain/keyed-mutex";
+import { mapConcurrent } from "../../domain/map-concurrent";
 import type { ReviewSession } from "../../domain/review-session";
 import { err, ok, type Result } from "../../domain/result";
 import {
+  isNotFound,
   readJsonFile,
   type StorageFailure,
   writeAtomicJson,
@@ -85,7 +88,7 @@ export type SessionEntryScan = {
 
 /** Owns one strict current session schema and its profile-scoped persistence. */
 export class ReviewSessionStore {
-  private readonly saveLocks = new Map<string, Promise<void>>();
+  private readonly saveLocks = new KeyedMutex();
 
   constructor(private readonly paths: PatchdeskPaths) {}
 
@@ -98,7 +101,7 @@ export class ReviewSessionStore {
     if (parsed._tag === "err") return invalidWrite();
     const value = parsed.value;
     const key = `${value.key.profileId}:${value.id}`;
-    return this.withSaveLock(key, async () => {
+    return this.saveLocks.run(key, async () => {
       const current = await this.load(value.key.profileId, value.id);
       if (current._tag === "err") {
         if (
@@ -144,7 +147,7 @@ export class ReviewSessionStore {
     try {
       entries = await readdir(root);
     } catch (cause: unknown) {
-      if (isMissing(cause)) return ok({ sessions: [], invalidEntries: [] });
+      if (isNotFound(cause)) return ok({ sessions: [], invalidEntries: [] });
       return storageListFailure();
     }
     const candidates = entries.flatMap((entry, index) => {
@@ -191,46 +194,6 @@ export class ReviewSessionStore {
     const scanned = await this.scanSessionEntries(profileId);
     return scanned._tag === "ok" ? ok(scanned.value.sessions) : scanned;
   }
-
-  private async withSaveLock<T>(
-    key: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const predecessor = this.saveLocks.get(key);
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.saveLocks.set(key, current);
-    if (predecessor !== undefined) await predecessor;
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.saveLocks.get(key) === current) this.saveLocks.delete(key);
-    }
-  }
-}
-
-async function mapConcurrent<T, R>(
-  items: ReadonlyArray<T>,
-  concurrency: number,
-  map: (item: T) => Promise<R>,
-): Promise<ReadonlyArray<R>> {
-  const values: Array<R> = [];
-  let nextIndex = 0;
-  const worker = async (): Promise<void> => {
-    const index = nextIndex;
-    nextIndex += 1;
-    const item = items[index];
-    if (item === undefined) return;
-    values[index] = await map(item);
-    return worker();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return values;
 }
 
 /** Mutable draft of `ReviewSession`, built in statements so each optional
@@ -442,16 +405,6 @@ export function parseStoredReviewSession(
   if (directSummaryReview.value !== undefined)
     session.directSummaryReview = directSummaryReview.value;
   return ok(session);
-}
-
-function isMissing(cause: unknown): boolean {
-  return (
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a caught exception of unknown shape at this exact I/O boundary predicate; no earlier parser exists for a thrown value.
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "ENOENT"
-  );
 }
 
 function storageListFailure(): Result<never, StorageFailure> {

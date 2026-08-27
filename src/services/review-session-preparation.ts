@@ -26,6 +26,7 @@ import {
   type ReviewRevision,
   type ReviewSession,
 } from "../domain/review-session";
+import { KeyedMutex } from "../domain/keyed-mutex";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewContextService } from "./review-context-service";
@@ -132,7 +133,7 @@ type PreparationDependencies = {
 
 /** Prepares one full revision and never adopts prior local draft or comparison state. */
 export class ReviewSessionPreparation {
-  private readonly locks = new Map<string, Promise<void>>();
+  private readonly locks = new KeyedMutex();
 
   constructor(private readonly dependencies: PreparationDependencies) {}
 
@@ -563,20 +564,7 @@ export class ReviewSessionPreparation {
     sessionId: ReviewSessionId,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const key = `${profileId}:${sessionId}`;
-    const predecessor = this.locks.get(key);
-    let release: (() => void) | undefined;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.locks.set(key, current);
-    await predecessor;
-    try {
-      return await operation();
-    } finally {
-      release?.();
-      if (this.locks.get(key) === current) this.locks.delete(key);
-    }
+    return this.locks.run(`${profileId}:${sessionId}`, operation);
   }
 }
 

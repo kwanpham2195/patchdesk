@@ -6,9 +6,11 @@ import type {
   WorkspaceProfileId,
 } from "../../domain/ids";
 import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
+import { KeyedMutex } from "../../domain/keyed-mutex";
 import { err, ok, type Result } from "../../domain/result";
 import { parseReview, type Review } from "../../domain/review";
 import {
+  isNotFound,
   readJsonFile,
   writeAtomicJson,
   type StorageFailure,
@@ -24,7 +26,7 @@ export type ReviewStoreFailure = StorageFailure | ReviewStoreConflict;
 
 /** Owns one durable Review aggregate per workspace profile and pull request. */
 export class ReviewStore {
-  private readonly saveLocks = new Map<string, Promise<void>>();
+  private readonly saveLocks = new KeyedMutex();
 
   constructor(private readonly paths: PatchdeskPaths) {}
 
@@ -61,7 +63,7 @@ export class ReviewStore {
 
     const value = parsed.value;
     const key = `${value.identity.profileId}\n${value.id}`;
-    return this.withLock(key, async () => {
+    return this.saveLocks.run(key, async () => {
       const current = await this.load(value.identity.profileId, value.id);
       if (current._tag === "err") {
         if (current.error.reason !== "not_found") return current;
@@ -144,26 +146,6 @@ export class ReviewStore {
     );
     return ok(reviews);
   }
-
-  private async withLock<T>(
-    key: string,
-    operation: () => Promise<Result<T, ReviewStoreFailure>>,
-  ): Promise<Result<T, ReviewStoreFailure>> {
-    const previous = this.saveLocks.get(key);
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.saveLocks.set(key, current);
-
-    if (previous !== undefined) await previous;
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.saveLocks.get(key) === current) this.saveLocks.delete(key);
-    }
-  }
 }
 
 function invalidRead(): Result<never, StorageFailure> {
@@ -188,13 +170,4 @@ function staleConflict(): Result<never, ReviewStoreConflict> {
 
 function terminalConflict(): Result<never, ReviewStoreConflict> {
   return err({ _tag: "ReviewConflict", reason: "terminal" });
-}
-
-function isNotFound(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "ENOENT"
-  );
 }

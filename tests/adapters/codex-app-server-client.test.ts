@@ -284,6 +284,37 @@ describe("CodexAppServerClient", () => {
     });
     expect(child?.killed).toBe(true);
   });
+
+  // `classifyThrownFailure` reads ENOENT with the shared `isNotFound`, which
+  // takes `code` off any object rather than requiring `instanceof Error`. A
+  // spawn failure that crossed a realm boundary — an Electron utility process,
+  // a worker thread, a `vm` context — arrives ENOENT-shaped but not an `Error`
+  // of this realm, and still means "the Codex binary is not there".
+  it("reports a non-Error ENOENT from the spawn as runtime_unavailable", async () => {
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () => {
+        throw { code: "ENOENT" };
+      },
+    });
+
+    await expect(client.listModels()).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "runtime_unavailable", phase: "initialize" },
+    });
+  });
+
+  it("reports a non-Error spawn failure under another code as execution_failed", async () => {
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () => {
+        throw { code: "EACCES" };
+      },
+    });
+
+    await expect(client.listModels()).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "execution_failed", phase: "initialize" },
+    });
+  });
 });
 
 describe("buildCodexAnalysisPrompt", () => {

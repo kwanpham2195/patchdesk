@@ -3,7 +3,8 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
-import { writeAtomicFile } from "../adapters/storage/json-file";
+import { isNotFound, writeAtomicFile } from "../adapters/storage/json-file";
+import { KeyedMutex } from "../domain/keyed-mutex";
 import { err, ok, type Result } from "../domain/result";
 import {
   parseWorkspaceProfileId,
@@ -40,7 +41,8 @@ export type ReviewDiagnosticServiceOptions = {
   readonly mirror?: (event: ReviewDiagnosticEvent) => void;
 };
 
-const processProfileLocks = new Map<string, Promise<void>>();
+/** Process-wide, so two service instances still serialize one profile. */
+const processProfileLocks = new KeyedMutex();
 
 export type SupportBundleInput = {
   readonly profileId: WorkspaceProfileId;
@@ -208,20 +210,7 @@ export class ReviewDiagnosticService {
     profileId: WorkspaceProfileId,
     operation: () => Promise<Result<T, ReviewDiagnosticFailure>>,
   ): Promise<Result<T, ReviewDiagnosticFailure>> {
-    const previous = processProfileLocks.get(profileId);
-    let release: (() => void) | undefined;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    processProfileLocks.set(profileId, current);
-    await previous;
-    try {
-      return await operation();
-    } finally {
-      release?.();
-      if (processProfileLocks.get(profileId) === current)
-        processProfileLocks.delete(profileId);
-    }
+    return processProfileLocks.run(profileId, operation);
   }
 }
 
@@ -247,13 +236,4 @@ function diagnosticFile(
   profileId: WorkspaceProfileId,
 ): string {
   return join(paths.profileReviewsDirectory(profileId), "diagnostics.jsonl");
-}
-
-function isNotFound(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "ENOENT"
-  );
 }

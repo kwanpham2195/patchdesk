@@ -13,6 +13,7 @@ import { err, ok, type Result } from "../../domain/result";
 import type { RecentReviewWrite } from "../../domain/recent-review-write";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
+  isNotFound,
   readJsonFile,
   type StorageFailure,
   writeAtomicJson,
@@ -163,7 +164,7 @@ export class RecentWriteJournalStore {
       await rm(this.paths.recentWriteJournalFile(profileId, reviewId));
       return ok(undefined);
     } catch (cause: unknown) {
-      if (isMissing(cause)) return ok(undefined);
+      if (isNotFound(cause)) return ok(undefined);
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
   }
@@ -276,10 +277,6 @@ function withinCeiling(writtenAt: IsoTimestamp, referenceMs: number): boolean {
   return (
     referenceMs - Date.parse(writtenAt) <= RECENT_WRITE_JOURNAL_AGE_CEILING_MS
   );
-}
-
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
 }
 
 function invalidRead(): Result<never, StorageFailure> {

@@ -15,6 +15,7 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
+import { KeyedMutex } from "../domain/keyed-mutex";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSession } from "../domain/review-session";
 import type { GitHubReviewEvent } from "../domain/pending-review";
@@ -23,7 +24,13 @@ import type {
   ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import { withReviewSessionMutationLock } from "./review-session-mutation-lock";
+
+/**
+ * Serializes every durable mutation for one profile/session, including draft
+ * edits and Analysis transitions. Process-wide, so two service instances
+ * still queue behind each other for the same session.
+ */
+const sessionMutationLocks = new KeyedMutex();
 
 export type DirectSummaryReviewFailure =
   | "invalid_input"
@@ -336,7 +343,7 @@ export class DirectSummaryReviewService {
     session: ReviewSession,
     state: DirectSummaryReviewState | undefined,
   ): Promise<boolean> {
-    return withReviewSessionMutationLock(
+    return sessionMutationLocks.run(
       `${session.key.profileId}:${session.id}`,
       async () => {
         const current = await this.sessions.load(

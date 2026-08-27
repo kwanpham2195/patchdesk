@@ -7,6 +7,7 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import { mapConcurrent } from "../domain/map-concurrent";
 import { markReviewTerminal } from "../domain/review";
 import type { MergeOperation } from "../domain/merge-operation";
 import type { GitHubReader } from "../adapters/github/github-adapter";
@@ -266,25 +267,4 @@ export class ReviewRecoveryService {
       /* Quarantine is durable even when diagnostics fail. */
     }
   }
-}
-
-async function mapConcurrent<T, R>(
-  items: ReadonlyArray<T>,
-  concurrency: number,
-  map: (item: T) => Promise<R>,
-): Promise<ReadonlyArray<R>> {
-  const values: Array<R> = [];
-  let nextIndex = 0;
-  const worker = async (): Promise<void> => {
-    const index = nextIndex;
-    nextIndex += 1;
-    const item = items[index];
-    if (item === undefined) return;
-    values[index] = await map(item);
-    return worker();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return values;
 }

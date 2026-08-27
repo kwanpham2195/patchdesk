@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 
+import { mapConcurrent } from "../../domain/map-concurrent";
 import { err, ok, type Result } from "../../domain/result";
 import { isPathContained } from "./path-containment";
 import {
@@ -11,7 +12,7 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
-import type { StorageFailure } from "./json-file";
+import { isNotFound, type StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
 /**
@@ -583,35 +584,6 @@ async function removePath(path: string): Promise<Result<void, StorageFailure>> {
     if (isNotFound(cause)) return ok(undefined);
     return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
   }
-}
-
-function isNotFound(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "ENOENT"
-  );
-}
-
-async function mapConcurrent<T, R>(
-  items: ReadonlyArray<T>,
-  concurrency: number,
-  map: (item: T) => Promise<R>,
-): Promise<ReadonlyArray<R>> {
-  const values: Array<R> = [];
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    const index = next++;
-    const item = items[index];
-    if (item === undefined) return;
-    values[index] = await map(item);
-    return worker();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return values;
 }
 
 type LimitedIo = <T>(work: () => Promise<T>) => Promise<T>;

@@ -4,6 +4,7 @@ import type {
   DiscoveredWorkspaceOrigin,
   OriginFinder,
 } from "../../services/dashboard-service";
+import { mapConcurrent } from "../../domain/map-concurrent";
 import type { CommandRunner } from "./command-runner";
 
 /** Main-process-only discovery of Git remotes below explicitly configured workspace roots. */
@@ -57,24 +58,4 @@ export class WorkspaceOriginFinder implements OriginFinder {
     }
     return [...origins].map(([origin, localPath]) => ({ origin, localPath }));
   }
-}
-
-async function mapConcurrent<T, R>(
-  items: ReadonlyArray<T>,
-  concurrency: number,
-  map: (item: T) => Promise<R>,
-): Promise<ReadonlyArray<R>> {
-  const values: Array<R> = [];
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    const index = next++;
-    const item = items[index];
-    if (item === undefined) return;
-    values[index] = await map(item);
-    return worker();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return values;
 }

@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { err, ok, type Result } from "../domain/result";
 import {
   containsSensitiveData,
+  isNotFound,
   writeAtomicFile,
 } from "../adapters/storage/json-file";
 
@@ -293,13 +294,4 @@ async function readRuleFile(
   } catch (cause: unknown) {
     return { criterion: undefined, missing: isNotFound(cause) };
   }
-}
-
-function isNotFound(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "ENOENT"
-  );
 }

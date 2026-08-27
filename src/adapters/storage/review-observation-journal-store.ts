@@ -3,6 +3,7 @@ import { readdir, rm } from "node:fs/promises";
 import * as v from "valibot";
 
 import { definedProps } from "../../domain/defined-props";
+import { mapConcurrent } from "../../domain/map-concurrent";
 import {
   parseContentHash,
   parseIsoTimestamp,
@@ -26,6 +27,7 @@ import {
 import { err, ok, type Result } from "../../domain/result";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
+  isNotFound,
   readJsonFile,
   type StorageFailure,
   writeAtomicJson,
@@ -120,7 +122,7 @@ export class ReviewObservationJournalStore {
         this.paths.profileWorkbenchesDirectory(profileId),
       );
     } catch (cause: unknown) {
-      if (isMissing(cause)) return ok([]);
+      if (isNotFound(cause)) return ok([]);
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
     }
     const reviewIds = entries.flatMap((entry) => {
@@ -152,30 +154,10 @@ export class ReviewObservationJournalStore {
       await rm(this.paths.reviewObservationJournalFile(profileId, reviewId));
       return ok(undefined);
     } catch (cause: unknown) {
-      if (isMissing(cause)) return ok(undefined);
+      if (isNotFound(cause)) return ok(undefined);
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
   }
-}
-
-async function mapConcurrent<T, R>(
-  items: ReadonlyArray<T>,
-  concurrency: number,
-  map: (item: T) => Promise<R>,
-): Promise<ReadonlyArray<R>> {
-  const values: Array<R> = [];
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    const index = next++;
-    const item = items[index];
-    if (item === undefined) return;
-    values[index] = await map(item);
-    return worker();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, worker),
-  );
-  return values;
 }
 
 /** Parse a persisted journal before any recovery code can replay it. */
@@ -258,15 +240,6 @@ function parseReviewObservationJournal(
     }),
     createdAt: createdAt.value,
   });
-}
-
-function isMissing(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "ENOENT"
-  );
 }
 
 function invalidRead(): Result<never, StorageFailure> {
