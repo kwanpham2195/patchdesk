@@ -8,8 +8,9 @@ import {
   ReviewDiffView,
   type ReviewInlineAnnotation,
 } from "./review-diff-view";
-import { filterNarrativePatchToHunks } from "../../../domain/narrative-walkthrough";
+import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId } from "../../../domain/ids";
+import { filterNarrativePatchToHunks } from "../../../domain/narrative-walkthrough";
 import {
   citedHunkRelation,
   type ReadOnlyConversationAnnotation,
@@ -125,9 +126,7 @@ export function NarrativeWalkthroughDiff({
             conversationThread: {
               target: { _tag: "thread" as const, id: threadId.value },
               state: annotation.state,
-              ...(annotation.complete === undefined
-                ? {}
-                : { complete: annotation.complete }),
+              ...definedProps({ complete: annotation.complete }),
               comments: annotation.comments,
             },
           },

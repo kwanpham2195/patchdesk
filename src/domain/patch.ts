@@ -1,3 +1,5 @@
+import { definedProps } from "./defined-props";
+
 export type ParsedPatchFile = {
   readonly oldPath: string;
   readonly newPath: string;
@@ -221,9 +223,10 @@ export function mapFindingLocation(
       path: side === "new" ? file.newPath : file.oldPath,
       side,
       line: end,
-      ...(finding.lineEnd === undefined
-        ? {}
-        : { startLine: finding.lineStart }),
+      ...definedProps({
+        startLine:
+          finding.lineEnd === undefined ? undefined : finding.lineStart,
+      }),
     };
   return {
     mappingStatus: "mapped",
@@ -231,7 +234,9 @@ export function mapFindingLocation(
     path: side === "new" ? file.newPath : file.oldPath,
     side,
     line: end,
-    ...(finding.lineEnd === undefined ? {} : { startLine: finding.lineStart }),
+    ...definedProps({
+      startLine: finding.lineEnd === undefined ? undefined : finding.lineStart,
+    }),
   };
 }
 

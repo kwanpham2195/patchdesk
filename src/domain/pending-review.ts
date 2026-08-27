@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
 import {
   parseGitHubHost,
   parseGitHubLogin,
@@ -217,10 +218,13 @@ export function beginPendingReviewWrite(
   }
   return ok({
     _tag: "WriteInFlight",
-    ...(state._tag === "Pending" ? { review: state.review } : {}),
-    ...(state._tag === "Pending" && state.unresolvedFinding !== undefined
-      ? { unresolvedFinding: state.unresolvedFinding }
-      : {}),
+    ...definedProps({
+      review: state._tag === "Pending" ? state.review : undefined,
+      unresolvedFinding:
+        state._tag === "Pending" && state.unresolvedFinding !== undefined
+          ? state.unresolvedFinding
+          : undefined,
+    }),
     operation,
     startedAt,
   });
@@ -237,9 +241,7 @@ export function confirmPendingReviewWrite(
     : ok({
         _tag: "Pending",
         review: nextReview,
-        ...(state.unresolvedFinding === undefined
-          ? {}
-          : { unresolvedFinding: state.unresolvedFinding }),
+        ...definedProps({ unresolvedFinding: state.unresolvedFinding }),
       });
 }
 
@@ -256,9 +258,7 @@ export function rejectPendingReviewWrite(
     : ok({
         _tag: "Pending",
         review: state.review,
-        ...(state.unresolvedFinding === undefined
-          ? {}
-          : { unresolvedFinding: state.unresolvedFinding }),
+        ...definedProps({ unresolvedFinding: state.unresolvedFinding }),
       });
 }
 
@@ -269,10 +269,10 @@ export function markPendingReviewOutcomeUnknown(
   if (state._tag !== "WriteInFlight") return invalidPendingReview();
   return ok({
     _tag: "OutcomeUnknown",
-    ...(state.review === undefined ? {} : { review: state.review }),
-    ...(state.unresolvedFinding === undefined
-      ? {}
-      : { unresolvedFinding: state.unresolvedFinding }),
+    ...definedProps({
+      review: state.review,
+      unresolvedFinding: state.unresolvedFinding,
+    }),
     operation: state.operation,
     startedAt: state.startedAt,
   });
@@ -363,7 +363,7 @@ function pendingOwner(
   return {
     _tag: "Pending",
     review,
-    ...(unresolvedFinding === undefined ? {} : { unresolvedFinding }),
+    ...definedProps({ unresolvedFinding }),
   };
 }
 
@@ -509,9 +509,7 @@ export function parsePendingReviewState(
       : ok({
           _tag: "Pending",
           review: review.value,
-          ...(unresolvedFinding.value === undefined
-            ? {}
-            : { unresolvedFinding: unresolvedFinding.value }),
+          ...definedProps({ unresolvedFinding: unresolvedFinding.value }),
         });
   }
   if (operation.value === undefined || startedAt.value === undefined) {
@@ -524,10 +522,10 @@ export function parsePendingReviewState(
   if (unresolvedFinding._tag === "err") return unresolvedFinding;
   return ok({
     _tag: raw.output._tag,
-    ...(review.value === undefined ? {} : { review: review.value }),
-    ...(unresolvedFinding.value === undefined
-      ? {}
-      : { unresolvedFinding: unresolvedFinding.value }),
+    ...definedProps({
+      review: review.value,
+      unresolvedFinding: unresolvedFinding.value,
+    }),
     operation: operation.value,
     startedAt: startedAt.value,
   });
@@ -669,7 +667,7 @@ function parseOperation(
       : ok({
           _tag: "Start",
           requestId: requestId.value,
-          ...(finding.value === undefined ? {} : { finding: finding.value }),
+          ...definedProps({ finding: finding.value }),
         });
   }
   if (input._tag === "Submit" || input._tag === "Discard") {
@@ -704,7 +702,7 @@ function parseOperation(
         requestId: requestId.value,
         reviewId: reviewId.value,
         anchor,
-        ...(finding.value === undefined ? {} : { finding: finding.value }),
+        ...definedProps({ finding: finding.value }),
       });
 }
 

@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
+import { definedProps } from "../../domain/defined-props";
 import { err, ok, type Result } from "../../domain/result";
 import { PI_AI_CATALOG } from "./pi-ai-catalog";
 import {
@@ -106,16 +107,18 @@ function snapshot(
 ): Result<PiRuntimeModelCatalogSnapshot, PiRuntimeModelCatalogUnavailable> {
   return ok({
     models,
-    ...(defaultModel === undefined ? {} : { defaultModel }),
+    ...definedProps({ defaultModel }),
     providers: providers.providers,
     configured: providers.configured,
   });
 }
 
-function readPreferences(raw: string | undefined): {
+type ModelPreferences = {
   enabledModels: ReadonlyArray<string>;
   defaultModel?: string;
-} {
+};
+
+function readPreferences(raw: string | undefined): ModelPreferences {
   if (raw === undefined) return { enabledModels: [] };
   let decoded: unknown;
   try {
@@ -127,9 +130,7 @@ function readPreferences(raw: string | undefined): {
   return parsed.success
     ? {
         enabledModels: parsed.output.enabledModels ?? [],
-        ...(parsed.output.defaultModel === undefined
-          ? {}
-          : { defaultModel: parsed.output.defaultModel }),
+        ...definedProps({ defaultModel: parsed.output.defaultModel }),
       }
     : { enabledModels: [] };
 }

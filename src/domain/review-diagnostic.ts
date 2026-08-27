@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
 import { parseWorkspaceProfileId, type WorkspaceProfileId } from "./ids";
 
 const diagnosticCategorySchema = v.picklist([
@@ -96,14 +97,17 @@ export function sanitizeReviewDiagnosticEvent(
       category: parsed.category,
       phase: sanitizeDiagnosticField(parsed.phase, 80),
       profileId: expectedProfileId,
-      ...(parsed.sessionId === undefined
-        ? {}
-        : { sessionId: sanitizeDiagnosticIdentifier(parsed.sessionId, 180) }),
+      ...definedProps({
+        sessionId:
+          parsed.sessionId === undefined
+            ? undefined
+            : sanitizeDiagnosticIdentifier(parsed.sessionId, 180),
+      }),
       retryable: parsed.retryable,
-      ...(parsed.durationMs === undefined
-        ? {}
-        : { durationMs: parsed.durationMs }),
-      ...(parsed.detail === undefined ? {} : { detail: parsed.detail }),
+      ...definedProps({
+        durationMs: parsed.durationMs,
+        detail: parsed.detail,
+      }),
     },
     maxDetailLength,
   );
@@ -191,13 +195,19 @@ export function normalizeReviewDiagnostic(
     category: input.category,
     phase: sanitizeDiagnosticField(input.phase, 80),
     profileId: input.profileId.slice(0, 160),
-    ...(input.sessionId === undefined
-      ? {}
-      : { sessionId: sanitizeDiagnosticIdentifier(input.sessionId, 180) }),
+    ...definedProps({
+      sessionId:
+        input.sessionId === undefined
+          ? undefined
+          : sanitizeDiagnosticIdentifier(input.sessionId, 180),
+    }),
     retryable: input.retryable,
-    ...(input.durationMs === undefined
-      ? {}
-      : { durationMs: Math.max(0, Math.min(input.durationMs, 86_400_000)) }),
-    ...(detail === undefined ? {} : { detail }),
+    ...definedProps({
+      durationMs:
+        input.durationMs === undefined
+          ? undefined
+          : Math.max(0, Math.min(input.durationMs, 86_400_000)),
+      detail,
+    }),
   };
 }

@@ -1,5 +1,8 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
+import { rawJsonValueSchema, type RawJsonValue } from "./json";
+
 /**
  * Unified local log stream entry. Unlike diagnostics (bounded, whole-line
  * redaction, support-bundle oriented), log entries are machine-local debug
@@ -18,7 +21,7 @@ const logEntrySchema = v.strictObject({
   level: logLevelSchema,
   topic: v.pipe(v.string(), v.minLength(1), v.maxLength(48)),
   message: v.pipe(v.string(), v.minLength(1), v.maxLength(512)),
-  meta: v.optional(v.record(v.string(), v.unknown())),
+  meta: v.optional(v.record(v.string(), rawJsonValueSchema)),
   profileId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
   sessionId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(180))),
   correlationId: v.optional(
@@ -30,12 +33,26 @@ export type LogLevel = v.InferOutput<typeof logLevelSchema>;
 export type LogProcess = v.InferOutput<typeof logProcessSchema>;
 export type LogEntry = v.InferOutput<typeof logEntrySchema>;
 
+/**
+ * Diagnostic detail a caller attaches to a log entry. Values are the JSON
+ * value grammar, because the entry is persisted to the log file as JSON and
+ * anything outside that grammar cannot survive the round trip. A caller with
+ * nothing for a key passes `undefined`; the key is dropped on the way in.
+ */
+export type LogMetaInput = Readonly<Record<string, RawJsonValue | undefined>>;
+
+/**
+ * Meta after sanitizing: sensitive keys dropped, credential shapes masked,
+ * depth and string length bounded. Every surviving key holds a JSON value.
+ */
+export type LogMeta = Readonly<Record<string, RawJsonValue>>;
+
 export type LogEntryInput = {
   readonly process: LogProcess;
   readonly level: LogLevel;
   readonly topic: string;
   readonly message: string;
-  readonly meta?: Readonly<Record<string, unknown>>;
+  readonly meta?: LogMetaInput;
   readonly profileId?: string;
   readonly sessionId?: string;
   readonly correlationId?: string;
@@ -89,21 +106,24 @@ export function normalizeLogEntry(
     level: input.level,
     topic: sanitizeLogField(input.topic, LOG_MAX_TOPIC_LENGTH),
     message: sanitizeLogField(input.message, LOG_MAX_MESSAGE_LENGTH),
-    ...(input.meta === undefined ? {} : { meta: sanitizeLogMeta(input.meta) }),
-    ...(input.profileId === undefined
-      ? {}
-      : { profileId: sanitizeLogIdentifier(input.profileId) }),
-    ...(input.sessionId === undefined
-      ? {}
-      : { sessionId: sanitizeLogIdentifier(input.sessionId) }),
-    ...(input.correlationId === undefined
-      ? {}
-      : {
-          correlationId: sanitizeLogIdentifier(
-            input.correlationId,
-            LOG_MAX_CORRELATION_ID_LENGTH,
-          ),
-        }),
+    ...definedProps({
+      meta: sanitizeLogMeta(input.meta),
+      profileId:
+        input.profileId === undefined
+          ? undefined
+          : sanitizeLogIdentifier(input.profileId),
+      sessionId:
+        input.sessionId === undefined
+          ? undefined
+          : sanitizeLogIdentifier(input.sessionId),
+      correlationId:
+        input.correlationId === undefined
+          ? undefined
+          : sanitizeLogIdentifier(
+              input.correlationId,
+              LOG_MAX_CORRELATION_ID_LENGTH,
+            ),
+    }),
   };
 }
 
@@ -116,12 +136,12 @@ export function sanitizeLogEntry(input: LogEntry): LogEntry {
     level: input.level,
     topic: input.topic,
     message: input.message,
-    ...(input.meta === undefined ? {} : { meta: input.meta }),
-    ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
-    ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-    ...(input.correlationId === undefined
-      ? {}
-      : { correlationId: input.correlationId }),
+    ...definedProps({
+      meta: input.meta,
+      profileId: input.profileId,
+      sessionId: input.sessionId,
+      correlationId: input.correlationId,
+    }),
   });
 }
 
@@ -157,11 +177,22 @@ function sanitizeLogIdentifier(
   return safe.replace(/[^A-Za-z0-9._:-]/g, "_");
 }
 
+/**
+ * Decode one arbitrary value — a thrown exception, a rejection reason, any
+ * value a caller was handed — into the JSON grammar log meta is made of.
+ * Call it where such a value enters, so `LogMetaInput` stays a JSON contract
+ * instead of every caller's `unknown` leaking through it. Returns `undefined`
+ * for a value with no JSON representation, so the key can be dropped.
+ */
+export function loggableMetaValue(value: unknown): RawJsonValue | undefined {
+  return sanitizeMetaValue(value, 0);
+}
+
 /** Recursively sanitize meta: drop sensitive keys, mask secrets, bound depth and string length. */
 export function sanitizeLogMeta(
   input: unknown,
   depth = 0,
-): Record<string, unknown> | undefined {
+): LogMeta | undefined {
   if (
     typeof input !== "object" ||
     input === null ||
@@ -170,7 +201,7 @@ export function sanitizeLogMeta(
   ) {
     return undefined;
   }
-  const output: Record<string, unknown> = {};
+  const output: Record<string, RawJsonValue> = {};
   for (const [key, value] of Object.entries(input)) {
     if (SENSITIVE_META_KEY.test(key)) continue;
     const sanitized = sanitizeMetaValue(value, depth);
@@ -179,25 +210,30 @@ export function sanitizeLogMeta(
   return Object.keys(output).length === 0 ? undefined : output;
 }
 
-function sanitizeMetaValue(value: unknown, depth: number): unknown {
+function sanitizeMetaValue(
+  value: unknown,
+  depth: number,
+): RawJsonValue | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
-  if (typeof value === "string") {
-    const collapsed = maskLogSecrets(value).replace(/\s+/g, " ").trim();
-    return collapsed.slice(0, LOG_MAX_META_STRING_LENGTH);
-  }
+  if (typeof value === "string") return sanitizeMetaString(value);
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (typeof value === "object") {
     if (value instanceof Error) {
-      return {
+      // `instanceof Error` proves nothing about `name`, `message` and `stack`.
+      // They are declared `string`, but anything can be thrown and anything
+      // can reject a promise, so `electron-main.ts`'s two crash handlers reach
+      // this branch holding whatever the process handed them. Each field is
+      // decoded rather than assumed, so recording a crash cannot itself throw.
+      const { stack } = value;
+      return definedProps({
         name: sanitizeMetaValue(value.name, depth + 1),
         message: sanitizeMetaValue(value.message, depth + 1),
-        ...(value.stack === undefined
-          ? {}
-          : {
-              stack: sanitizeMetaValue(value.stack.slice(0, 1_000), depth + 1),
-            }),
-      };
+        stack:
+          typeof stack === "string"
+            ? sanitizeMetaString(stack.slice(0, 1_000))
+            : sanitizeMetaValue(stack, depth + 1),
+      });
     }
     if (Array.isArray(value)) {
       return value
@@ -208,4 +244,10 @@ function sanitizeMetaValue(value: unknown, depth: number): unknown {
     return sanitizeLogMeta(value, depth + 1);
   }
   return undefined;
+}
+
+/** Collapse whitespace, mask credential shapes, and bound one meta string. */
+function sanitizeMetaString(value: string): string {
+  const collapsed = maskLogSecrets(value).replace(/\s+/g, " ").trim();
+  return collapsed.slice(0, LOG_MAX_META_STRING_LENGTH);
 }

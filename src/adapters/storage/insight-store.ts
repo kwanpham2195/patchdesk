@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "../../domain/defined-props";
 import {
   parseContentHash,
   parseFindingId,
@@ -170,18 +171,12 @@ export class InsightStore {
         reviewId: loaded.value.reviewId,
         type: loaded.value.type,
         nextToken: loaded.value.nextToken,
-        ...(loaded.value.dismissals === undefined
-          ? {}
-          : { dismissals: loaded.value.dismissals }),
-        ...(loaded.value.walkthroughProgress === undefined
-          ? {}
-          : { walkthroughProgress: loaded.value.walkthroughProgress }),
-        ...(loaded.value.activeRun === undefined
-          ? {}
-          : { activeRun: loaded.value.activeRun }),
-        ...(loaded.value.replacementFailure === undefined
-          ? {}
-          : { replacementFailure: loaded.value.replacementFailure }),
+        ...definedProps({
+          dismissals: loaded.value.dismissals,
+          walkthroughProgress: loaded.value.walkthroughProgress,
+          activeRun: loaded.value.activeRun,
+          replacementFailure: loaded.value.replacementFailure,
+        }),
         updatedAt: loaded.value.updatedAt,
       });
     }
@@ -289,11 +284,11 @@ function parseV2Record(
   if (retained?._tag === "err") return invalidRead();
   return ok({
     ...common.value,
-    ...(retained === undefined ? {} : { retained: retained.value }),
-    ...(activeRun === undefined ? {} : { activeRun: activeRun.value }),
-    ...(replacementFailure === undefined
-      ? {}
-      : { replacementFailure: replacementFailure.value }),
+    ...definedProps({
+      retained: retained?.value,
+      activeRun: activeRun?.value,
+      replacementFailure: replacementFailure?.value,
+    }),
   });
 }
 
@@ -332,10 +327,10 @@ function parseCommonRecord(input: {
     reviewId: reviewId.value,
     type: input.type,
     nextToken: input.nextToken,
-    ...(dismissals === undefined ? {} : { dismissals: dismissals.value }),
-    ...(walkthroughProgress === undefined
-      ? {}
-      : { walkthroughProgress: walkthroughProgress.value }),
+    ...definedProps({
+      dismissals: dismissals?.value,
+      walkthroughProgress: walkthroughProgress?.value,
+    }),
     updatedAt: updatedAt.value,
   });
 }
@@ -387,7 +382,7 @@ function parseFailure(
     provider,
     model: input.model,
     reasoning: input.reasoning,
-    ...(input.category === undefined ? {} : { category: input.category }),
+    ...definedProps({ category: input.category }),
     retryable: input.retryable,
     failedAt: failedAt.value,
   });
@@ -460,9 +455,7 @@ function parseProgress(
   return ok({
     reviewedSectionIds: input.reviewedSectionIds,
     supportReviewed: input.supportReviewed,
-    ...(input.currentSectionId === undefined
-      ? {}
-      : { currentSectionId: input.currentSectionId }),
+    ...definedProps({ currentSectionId: input.currentSectionId }),
   });
 }
 

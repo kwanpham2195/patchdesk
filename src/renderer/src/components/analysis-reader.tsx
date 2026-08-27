@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
+import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { FindingEvidenceHunk } from "./finding-evidence-hunk";
@@ -279,12 +280,10 @@ function AnalysisFindingRow({
             {
               file: finding.file,
               lineStart: finding.lineStart,
-              ...(finding.lineEnd === undefined
-                ? {}
-                : { lineEnd: finding.lineEnd }),
-              ...(finding.diffSide === undefined
-                ? {}
-                : { diffSide: finding.diffSide }),
+              ...definedProps({
+                lineEnd: finding.lineEnd,
+                diffSide: finding.diffSide,
+              }),
             },
           );
           return location.mappingStatus === "mapped" &&
@@ -561,11 +560,15 @@ function significantTokens(value: string): ReadonlySet<string> {
   );
 }
 
-function recommendationFor(verdict: AnalysisResult["verdict"]): {
+type VerdictPresentation = {
   readonly label: string;
   readonly heading: string;
   readonly variant: "secondary" | "default" | "destructive";
-} {
+};
+
+function recommendationFor(
+  verdict: AnalysisResult["verdict"],
+): VerdictPresentation {
   switch (verdict) {
     case "approve":
       return {

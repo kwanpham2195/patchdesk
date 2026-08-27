@@ -2,6 +2,7 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { definedProps } from "../../domain/defined-props";
 import { err, ok, type Result } from "../../domain/result";
 
 /** A bounded, renderer-safe availability description. It never contains values or paths. */
@@ -108,7 +109,9 @@ function provider(
     return {
       id,
       label,
-      ...(ambientApiKey === undefined ? {} : { keys: [ambientApiKey] }),
+      ...definedProps({
+        keys: ambientApiKey === undefined ? undefined : [ambientApiKey],
+      }),
       ambient: source,
       guidance:
         source === "vertex"
@@ -120,7 +123,7 @@ function provider(
     id,
     label,
     keys: [source],
-    ...(requiredKeys === undefined ? {} : { requiredKeys }),
+    ...definedProps({ requiredKeys }),
     guidance: "Set the provider API key in the Electron process environment.",
   };
 }
@@ -129,9 +132,26 @@ const PROVIDER_BY_ID = new Map(
   PROVIDERS.map((provider) => [provider.id, provider]),
 );
 
-const AMBIENT_ENVIRONMENT: Readonly<
-  Record<NonNullable<ProviderDefinition["ambient"]>, ReadonlyArray<string>>
-> = {
+/**
+ * The ambient-environment table's own type. Written key by key rather than as
+ * `Record<…>` or a mapped type: both of those are open dictionaries, which
+ * `no-known-value-widening` rejects as annotations, and only an annotation
+ * gives the binding its `readonly` properties and `ReadonlyArray` entries — a
+ * trailing `satisfies` leaves the binding with the literal's mutable inferred
+ * type. `tests/adapters/pi-provider-catalog.test.ts` probes both guarantees.
+ */
+type AmbientEnvironment = {
+  readonly bedrock: ReadonlyArray<string>;
+  readonly vertex: ReadonlyArray<string>;
+};
+
+/**
+ * Exported only so the readonly probe in the test can name this binding. The
+ * trailing `satisfies` is what keeps the key set tied to
+ * `ProviderDefinition["ambient"]`: add an ambient source and this stops
+ * compiling here rather than at the lookup below.
+ */
+export const AMBIENT_ENVIRONMENT: AmbientEnvironment = {
   bedrock: [
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -163,7 +183,9 @@ const AMBIENT_ENVIRONMENT: Readonly<
     "CLOUDSDK_CONFIG",
     "GOOGLE_GENAI_USE_VERTEXAI",
   ],
-};
+} satisfies Readonly<
+  Record<NonNullable<ProviderDefinition["ambient"]>, ReadonlyArray<string>>
+>;
 
 export class LocalPiProviderCatalog {
   private readonly environment: (name: string) => string | undefined;
@@ -200,7 +222,7 @@ export class LocalPiProviderCatalog {
         id: provider.id,
         label: provider.label,
         configured: source !== undefined,
-        ...(source === undefined ? {} : { source }),
+        ...definedProps({ source }),
         guidance: provider.guidance,
       };
     }
@@ -210,7 +232,7 @@ export class LocalPiProviderCatalog {
         id: provider.id,
         label: provider.label,
         configured: source !== undefined,
-        ...(source === undefined ? {} : { source }),
+        ...definedProps({ source }),
         guidance: provider.guidance,
       };
     }
@@ -225,7 +247,9 @@ export class LocalPiProviderCatalog {
       id: provider.id,
       label: provider.label,
       configured,
-      ...(configured && key !== undefined ? { source: key } : {}),
+      ...definedProps({
+        source: configured && key !== undefined ? key : undefined,
+      }),
       guidance: provider.guidance,
     };
   }

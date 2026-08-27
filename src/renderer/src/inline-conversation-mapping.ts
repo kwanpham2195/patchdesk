@@ -1,3 +1,4 @@
+import { definedProps } from "../../domain/defined-props";
 import type { ParsedPatchFile } from "../../domain/patch";
 
 export type MappedConversationThread = {
@@ -112,7 +113,7 @@ export function projectReadOnlyConversationAnnotations(
         end: mapped.end,
         side: mapped.side,
         state: thread.state,
-        ...(thread.complete === undefined ? {} : { complete: thread.complete }),
+        ...definedProps({ complete: thread.complete }),
         comments: thread.comments,
       },
     ];

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { requestJson } from "../api-client";
 import { useLatestCommitted } from "./use-latest-committed";
+import { definedProps } from "../../../domain/defined-props";
 import type {
   InsightProvider,
   InsightReasoning,
@@ -217,9 +218,9 @@ export function useInsightRun(input: {
 
   return {
     status,
-    ...(runId === undefined ? {} : { runId }),
+    ...definedProps({ runId }),
     error,
-    ...(failureReason === undefined ? {} : { failureReason }),
+    ...definedProps({ failureReason }),
     busy: starting || runId !== undefined || activeRun !== undefined,
     run,
     cancel,

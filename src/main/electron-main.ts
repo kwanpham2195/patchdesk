@@ -37,6 +37,7 @@ import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
 import { parseAbsolutePath, parseGitSha } from "../domain/ids";
+import { loggableMetaValue } from "../domain/log-entry";
 import { err } from "../domain/result";
 import { FlueInsightChildInvoker } from "../services/flue-insight-child-invoker";
 import { resolveInsightRuntime } from "./insight-runtime";
@@ -361,7 +362,7 @@ process.on("uncaughtException", (cause: unknown) => {
     level: "error",
     topic: "crash",
     message: "Uncaught main-process exception",
-    meta: { error: cause },
+    meta: { error: loggableMetaValue(cause) },
   });
   // Record before dying; the previous behavior was an untracked crash.
   void logs.flush().finally(() => app.exit(1));
@@ -373,7 +374,7 @@ process.on("unhandledRejection", (reason: unknown) => {
     level: "error",
     topic: "crash",
     message: "Unhandled main-process rejection",
-    meta: { reason },
+    meta: { reason: loggableMetaValue(reason) },
   });
   // Preserve the default crash-on-unhandled-rejection behavior after recording.
   setImmediate(() => {

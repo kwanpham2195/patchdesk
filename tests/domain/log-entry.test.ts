@@ -2,11 +2,25 @@ import { describe, expect, it } from "vitest";
 
 import {
   LOG_MAX_MESSAGE_LENGTH,
+  loggableMetaValue,
   maskLogSecrets,
   normalizeLogEntry,
   parseLogEntry,
   sanitizeLogMeta,
 } from "../../src/domain/log-entry";
+
+/** The exact shape `electron-main.ts`'s two crash handlers write. */
+function crashEntry(cause: unknown) {
+  return normalizeLogEntry({
+    seq: 1,
+    at: "2026-08-08T00:00:00.000Z",
+    process: "main",
+    level: "error",
+    topic: "crash",
+    message: "Uncaught main-process exception",
+    meta: { error: loggableMetaValue(cause) },
+  });
+}
 
 describe("log entry redaction", () => {
   it("masks credential shapes inline while keeping the rest of the line", () => {
@@ -65,6 +79,54 @@ describe("log entry redaction", () => {
     expect(entry.topic).toHaveLength(48);
     expect(entry.message).toHaveLength(LOG_MAX_MESSAGE_LENGTH);
     expect(entry.meta).toEqual({ ok: true });
+  });
+
+  it("records a normal Error with its name, message and stack", () => {
+    const cause = new Error("boom");
+    expect(crashEntry(cause).meta).toMatchObject({
+      error: { name: "Error", message: "boom" },
+    });
+  });
+
+  it("records a crash whose Error carries a non-string name or message", () => {
+    // `instanceof Error` does not make these fields strings. Anything can be
+    // thrown and anything can reject a promise, so the crash handlers must
+    // record such a value rather than throw while recording it.
+    expect(
+      crashEntry(Object.assign(new Error("boom"), { name: 42 })).meta,
+    ).toMatchObject({ error: { name: 42, message: "boom" } });
+
+    const objectMessage = Object.assign(new Error("boom"), { message: {} });
+    expect(crashEntry(objectMessage).meta).toMatchObject({
+      error: { name: "Error" },
+    });
+
+    const nullMessage = Object.assign(new Error("boom"), { message: null });
+    expect(crashEntry(nullMessage).meta).toMatchObject({
+      error: { name: "Error", message: null },
+    });
+
+    const rejection: unknown = Object.assign(Object.create(Error.prototype), {
+      message: { detail: "structured" },
+    });
+    expect(crashEntry(rejection).meta).toMatchObject({
+      error: { name: "Error", message: { detail: "structured" } },
+    });
+  });
+
+  it("records a crash whose Error carries a non-string stack", () => {
+    expect(
+      crashEntry(Object.assign(new Error("boom"), { stack: 7 })).meta,
+    ).toMatchObject({ error: { name: "Error", message: "boom", stack: 7 } });
+  });
+
+  it("bounds an Error stack to a thousand characters before masking it", () => {
+    const cause = Object.assign(new Error("boom"), {
+      stack: `${"s".repeat(2_000)} ghp_1234567890abcdef`,
+    });
+    const meta = crashEntry(cause).meta;
+    expect(meta).toMatchObject({ error: { stack: "s".repeat(512) } });
+    expect(JSON.stringify(meta)).not.toContain("ghp_");
   });
 
   it("parses persisted entries and rejects malformed ones", () => {

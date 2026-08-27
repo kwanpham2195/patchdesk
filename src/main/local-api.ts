@@ -162,7 +162,7 @@ import {
 } from "../domain/ids";
 import type { InboxRepositoryRef } from "../services/maintainer-inbox-service";
 import type { InsightType } from "../domain/insight-record";
-import type { RawJsonValue } from "../domain/json";
+import { rawJsonValueSchema, type RawJsonValue } from "../domain/json";
 
 const localApiConfigurationSchema = object({
   allowedOrigin: pipe(string(), minLength(1)),
@@ -1457,7 +1457,7 @@ const rendererLogEntrySchema = strictObject({
   level: picklist(["debug", "info", "warn", "error"]),
   topic: pipe(string(), minLength(1), maxLength(48)),
   message: pipe(string(), minLength(1), maxLength(512)),
-  meta: optional(record(string(), unknown())),
+  meta: optional(record(string(), rawJsonValueSchema)),
   profileId: optional(pipe(string(), minLength(1), maxLength(180))),
   sessionId: optional(pipe(string(), minLength(1), maxLength(180))),
   correlationId: optional(pipe(string(), minLength(1), maxLength(120))),

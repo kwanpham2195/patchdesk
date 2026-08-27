@@ -1,3 +1,4 @@
+import { definedProps } from "./defined-props";
 import type {
   ContentHash,
   FindingId,
@@ -216,9 +217,7 @@ export function updateWalkthroughProgress(
     walkthroughProgress: {
       reviewedSectionIds,
       supportReviewed: progress.supportReviewed,
-      ...(progress.currentSectionId === undefined
-        ? {}
-        : { currentSectionId: progress.currentSectionId }),
+      ...definedProps({ currentSectionId: progress.currentSectionId }),
     },
     updatedAt: at,
   });

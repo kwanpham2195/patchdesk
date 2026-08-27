@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
 import {
   parseFindingId,
   parseRepoRelativePath,
@@ -217,16 +218,12 @@ export function parseModelReviewResult(
     findings: findings.value,
     validationPlan: parsed.output.validationPlan,
     assumptions: parsed.output.assumptions,
-    ...(parsed.output.coverage === undefined
-      ? {}
-      : { coverage: parsed.output.coverage }),
-    ...(parsed.output.overallConfidence === undefined
-      ? {}
-      : { overallConfidence: parsed.output.overallConfidence }),
-    ...(parsed.output.unresolvedItems === undefined
-      ? {}
-      : { unresolvedItems: parsed.output.unresolvedItems }),
-    ...(callouts === undefined ? {} : { callouts: callouts.value }),
+    ...definedProps({
+      coverage: parsed.output.coverage,
+      overallConfidence: parsed.output.overallConfidence,
+      unresolvedItems: parsed.output.unresolvedItems,
+      callouts: callouts?.value,
+    }),
   });
 }
 
@@ -264,16 +261,12 @@ export function parseReviewResult(
     findings,
     validationPlan: parsed.output.validationPlan,
     assumptions: parsed.output.assumptions,
-    ...(parsed.output.coverage === undefined
-      ? {}
-      : { coverage: parsed.output.coverage }),
-    ...(parsed.output.overallConfidence === undefined
-      ? {}
-      : { overallConfidence: parsed.output.overallConfidence }),
-    ...(parsed.output.unresolvedItems === undefined
-      ? {}
-      : { unresolvedItems: parsed.output.unresolvedItems }),
-    ...(callouts === undefined ? {} : { callouts: callouts.value }),
+    ...definedProps({
+      coverage: parsed.output.coverage,
+      overallConfidence: parsed.output.overallConfidence,
+      unresolvedItems: parsed.output.unresolvedItems,
+      callouts: callouts?.value,
+    }),
   });
 }
 
@@ -292,7 +285,7 @@ function parseStoredCallouts(
       category: callout.category,
       title: callout.title,
       detail: callout.detail,
-      ...(path === undefined ? {} : { path: path.value }),
+      ...definedProps({ path: path?.value }),
     });
   }
   return ok(values);
@@ -313,7 +306,7 @@ function parseCallouts(
       category: callout.category,
       title: callout.title,
       detail: callout.detail,
-      ...(path === undefined ? {} : { path: path.value }),
+      ...definedProps({ path: path?.value }),
     });
   }
   return ok(values);
@@ -367,27 +360,21 @@ function projectFinding(
     id: id.value,
     severity: finding.severity,
     title: finding.title,
-    ...(file === undefined ? {} : { file: file.value }),
-    ...(finding.lineStart === undefined
-      ? {}
-      : { lineStart: finding.lineStart }),
-    ...(lineEnd === undefined ? {} : { lineEnd }),
-    ...(finding.diffSide === undefined ? {} : { diffSide: finding.diffSide }),
+    ...definedProps({
+      file: file?.value,
+      lineStart: finding.lineStart,
+      lineEnd,
+      diffSide: finding.diffSide,
+    }),
     explanation: finding.explanation,
-    ...(finding.suggestedComment === undefined
-      ? {}
-      : { suggestedComment: finding.suggestedComment }),
+    ...definedProps({ suggestedComment: finding.suggestedComment }),
     confidence: finding.confidence,
-    ...(finding.category === undefined ? {} : { category: finding.category }),
-    ...(finding.affectedScenario === undefined
-      ? {}
-      : { affectedScenario: finding.affectedScenario }),
-    ...(finding.whyItMatters === undefined
-      ? {}
-      : { whyItMatters: finding.whyItMatters }),
-    ...(finding.suggestedChange === undefined
-      ? {}
-      : { suggestedChange: finding.suggestedChange }),
+    ...definedProps({
+      category: finding.category,
+      affectedScenario: finding.affectedScenario,
+      whyItMatters: finding.whyItMatters,
+      suggestedChange: finding.suggestedChange,
+    }),
   });
 }
 

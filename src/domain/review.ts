@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
 import {
   createReviewId,
   parseContentHash,
@@ -328,9 +329,11 @@ function laterTimestamp(
   previous: IsoTimestamp,
   requested: IsoTimestamp,
 ): IsoTimestamp {
-  return Date.parse(requested) > Date.parse(previous)
-    ? requested
-    : (new Date(Date.parse(previous) + 1).toISOString() as IsoTimestamp);
+  if (Date.parse(requested) > Date.parse(previous)) return requested;
+  // SAFETY: `previous` is already a parsed IsoTimestamp, so `Date.parse(previous)` is a
+  // finite number, never NaN; `new Date(finite).toISOString()` always returns the
+  // ISO-8601 form IsoTimestamp brands.
+  return new Date(Date.parse(previous) + 1).toISOString() as IsoTimestamp;
 }
 
 /** Parse persisted Review data under the current durable freshness contract. */
@@ -407,9 +410,7 @@ function parseReviewBase(
     identity,
     currentSessionId: sessionId.value,
     currentHeadSha: headSha.value,
-    ...(representedRemote.value === undefined
-      ? {}
-      : { representedRemote: representedRemote.value }),
+    ...definedProps({ representedRemote: representedRemote.value }),
     status: status.value,
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,

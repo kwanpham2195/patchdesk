@@ -1,4 +1,9 @@
+import * as v from "valibot";
+
 import { requestJson } from "../api-client";
+
+import { definedProps } from "../../../domain/defined-props";
+import type { LogMetaInput } from "../../../domain/log-entry";
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -6,7 +11,7 @@ type PendingLogEntry = {
   readonly level: RendererLogLevel;
   readonly topic: string;
   readonly message: string;
-  readonly meta?: Readonly<Record<string, unknown>>;
+  readonly meta?: LogMetaInput;
 };
 
 const MAX_QUEUE = 200;
@@ -18,32 +23,16 @@ let captureInstalled = false;
 
 /** Renderer-side log stream; forwarded in batches to the main-process log service. */
 export const appLog = {
-  debug(
-    topic: string,
-    message: string,
-    meta?: Readonly<Record<string, unknown>>,
-  ): void {
+  debug(topic: string, message: string, meta?: LogMetaInput): void {
     enqueue("debug", topic, message, meta);
   },
-  info(
-    topic: string,
-    message: string,
-    meta?: Readonly<Record<string, unknown>>,
-  ): void {
+  info(topic: string, message: string, meta?: LogMetaInput): void {
     enqueue("info", topic, message, meta);
   },
-  warn(
-    topic: string,
-    message: string,
-    meta?: Readonly<Record<string, unknown>>,
-  ): void {
+  warn(topic: string, message: string, meta?: LogMetaInput): void {
     enqueue("warn", topic, message, meta);
   },
-  error(
-    topic: string,
-    message: string,
-    meta?: Readonly<Record<string, unknown>>,
-  ): void {
+  error(topic: string, message: string, meta?: LogMetaInput): void {
     enqueue("error", topic, message, meta);
   },
 };
@@ -52,13 +41,13 @@ function enqueue(
   level: RendererLogLevel,
   topic: string,
   message: string,
-  meta?: Readonly<Record<string, unknown>>,
+  meta?: LogMetaInput,
 ): void {
   queue.push({
     level,
     topic,
     message,
-    ...(meta === undefined ? {} : { meta }),
+    ...definedProps({ meta }),
   });
   if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
   if (flushTimer === undefined) {
@@ -116,7 +105,10 @@ function formatArgs(args: ReadonlyArray<unknown>): string {
   try {
     return args
       .map((arg) => {
-        if (typeof arg === "string") return arg;
+        // Console hands an interceptor whatever the caller passed. Parse the
+        // one shape that must print unquoted, then fall back to JSON.
+        const text = v.safeParse(v.string(), arg);
+        if (text.success) return text.output;
         if (arg instanceof Error) return arg.message;
         try {
           return JSON.stringify(arg);

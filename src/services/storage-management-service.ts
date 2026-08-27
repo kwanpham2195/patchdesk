@@ -1,4 +1,5 @@
 import { err, ok, type Result } from "../domain/result";
+import { definedProps } from "../domain/defined-props";
 import {
   type IsoTimestamp,
   type ReviewSessionId,
@@ -401,7 +402,7 @@ export class StorageManagementService {
       profileId,
       category: "cleanup",
       phase: "retention_sweep",
-      ...(sessionId === undefined ? {} : { sessionId }),
+      ...definedProps({ sessionId }),
       retryable,
       detail,
     });

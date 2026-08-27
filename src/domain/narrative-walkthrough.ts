@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
 import {
   parseContentHash,
   parseGitSha,
@@ -506,7 +507,7 @@ function normalizedHunk(hunk: ParsedHunk): NarrativeHunk {
     path: hunk.path,
     header: hunk.header,
     raw: hunk.raw,
-    ...(hunk.filePrefix === undefined ? {} : { filePrefix: hunk.filePrefix }),
+    ...definedProps({ filePrefix: hunk.filePrefix }),
     oldStart: hunk.oldStart,
     oldLines: hunk.oldLines,
     newStart: hunk.newStart,
@@ -588,7 +589,9 @@ export function normalizeNarrativeWalkthrough(
   );
   return ok({
     snapshot: parsedSnapshot.value,
-    ...(citationVersion ? { citationVersion: 2 as const } : {}),
+    ...definedProps({
+      citationVersion: citationVersion ? (2 as const) : undefined,
+    }),
     citationStatus: !citationVersion
       ? "unverified"
       : rejectedCitationCount > 0

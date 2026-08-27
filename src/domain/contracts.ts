@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
 import {
   parseWorkspaceProfileId,
   type GitSha,
@@ -92,14 +93,12 @@ export function parsePatchdeskSettingsPatch(
     return invalid("config");
   }
 
-  return ok({
-    ...(parsed.output.appearance === undefined
-      ? {}
-      : { appearance: parsed.output.appearance }),
-    ...(parsed.output.diffTheme === undefined
-      ? {}
-      : { diffTheme: parsed.output.diffTheme }),
-  });
+  return ok(
+    definedProps({
+      appearance: parsed.output.appearance,
+      diffTheme: parsed.output.diffTheme,
+    }),
+  );
 }
 
 function parsePatchdeskConfigFields(input: {
@@ -108,20 +107,22 @@ function parsePatchdeskConfigFields(input: {
   readonly diffTheme?: DiffTheme | undefined;
 }): Result<PatchdeskConfigFile, InvalidDomainContract> {
   if (input.lastSelectedProfileId === undefined) {
-    return ok({
-      ...(input.appearance === undefined
-        ? {}
-        : { appearance: input.appearance }),
-      ...(input.diffTheme === undefined ? {} : { diffTheme: input.diffTheme }),
-    });
+    return ok(
+      definedProps({
+        appearance: input.appearance,
+        diffTheme: input.diffTheme,
+      }),
+    );
   }
 
   const profileId = parseWorkspaceProfileId(input.lastSelectedProfileId);
   if (profileId._tag === "err") return invalid("config");
   return ok({
     lastSelectedProfileId: profileId.value,
-    ...(input.appearance === undefined ? {} : { appearance: input.appearance }),
-    ...(input.diffTheme === undefined ? {} : { diffTheme: input.diffTheme }),
+    ...definedProps({
+      appearance: input.appearance,
+      diffTheme: input.diffTheme,
+    }),
   });
 }
 

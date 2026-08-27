@@ -30,16 +30,23 @@ export async function installTestDesktopBridge(
                 body: { error: "invalid_input" },
                 correlationId: "browser-test",
               };
-            const response = await fetch(new URL(input.path.slice(1), url), {
+            // Built in separate statements, not via `definedProps`: this
+            // callback is serialized by Playwright's `addInitScript` and
+            // evaluated inside the page, where an imported helper is not in
+            // scope.
+            const requestInit: RequestInit = {
               method: input.method ?? "GET",
               headers: {
                 "Content-Type": "application/json",
                 "X-Patchdesk-Capability": cap,
               },
-              ...(input.body === undefined
-                ? {}
-                : { body: JSON.stringify(input.body) }),
-            });
+            };
+            if (input.body !== undefined)
+              requestInit.body = JSON.stringify(input.body);
+            const response = await fetch(
+              new URL(input.path.slice(1), url),
+              requestInit,
+            );
             return {
               ok: response.ok,
               status: response.status,

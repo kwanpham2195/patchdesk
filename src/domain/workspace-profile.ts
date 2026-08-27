@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "./defined-props";
 import {
   parseAbsolutePath,
   parseGitHubHost,
@@ -130,7 +131,7 @@ function parseWatchedRepo(
     host: host.value,
     owner: owner.value,
     repo: repo.value,
-    ...(localPath === undefined ? {} : { localPath: localPath.value }),
+    ...definedProps({ localPath: localPath?.value }),
   });
 }
 

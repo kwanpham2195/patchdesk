@@ -166,4 +166,22 @@ describe("provider environment allowlist", () => {
     expect(providerEnvironmentNames("deepseek")).not.toContain("GH_TOKEN");
     expect(providerEnvironmentNames("unknown")).toEqual([]);
   });
+
+  it("keeps the ambient environment table readonly at both levels", async () => {
+    const { AMBIENT_ENVIRONMENT } =
+      await import("../../src/adapters/pi/pi-provider-catalog");
+    const table: typeof AMBIENT_ENVIRONMENT = { bedrock: [], vertex: [] };
+
+    // A compile-time probe, not a runtime one. Both directives below must
+    // keep firing: annotate `AMBIENT_ENVIRONMENT` with anything that is not
+    // readonly at both levels -- a trailing `satisfies` on its own is the easy
+    // mistake -- and they go unused, which fails `pnpm typecheck`.
+    // @ts-expect-error `bedrock` is a readonly property.
+    table.bedrock = [];
+    // @ts-expect-error entries are `ReadonlyArray<string>`, so they cannot be pushed to.
+    table.vertex.push("AWS_REGION");
+
+    expect(AMBIENT_ENVIRONMENT.bedrock).toContain("AWS_ACCESS_KEY_ID");
+    expect(AMBIENT_ENVIRONMENT.vertex).toContain("GOOGLE_CLOUD_PROJECT");
+  });
 });

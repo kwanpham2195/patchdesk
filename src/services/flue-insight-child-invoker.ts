@@ -6,11 +6,13 @@ import type {
   CommandFailure,
   CommandRunner,
 } from "../adapters/github/command-runner";
+import { definedProps } from "../domain/defined-props";
 import {
   parseModelReviewResult,
   type ModelReviewResult,
 } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
+import { readObjectField } from "./read-object-field";
 import {
   parseWalkthroughOutput,
   type WalkthroughInput,
@@ -108,7 +110,7 @@ export class FlueInsightChildInvoker {
       timeoutMs,
       environment,
       inheritEnvironment: false,
-      ...(signal === undefined ? {} : { signal }),
+      ...definedProps({ signal }),
     });
     if (signal?.aborted) return err({ reason: "cancelled" });
     if (output._tag === "err")
@@ -135,22 +137,21 @@ function productionChildEnvironment(
 ): Readonly<Record<string, string>> | undefined {
   if (typeof body !== "object" || body === null || Array.isArray(body))
     return undefined;
-  const input = (body as { readonly input?: unknown }).input;
+  const input = readObjectField(body, "input");
   if (typeof input !== "object" || input === null || Array.isArray(input))
     return undefined;
-  const model = (input as { readonly model?: unknown }).model;
+  const model = readObjectField(input, "model");
   if (typeof model !== "string") return undefined;
   const separator = model.indexOf("/");
   if (separator <= 0) return undefined;
   const provider = model.slice(0, separator).toLowerCase();
   const names = providerEnvironmentNames(provider);
   if (names.length === 0) return undefined;
-  const environment: Record<string, string> = {
-    ELECTRON_RUN_AS_NODE: "1",
-    PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-    LANG: "C",
-    LC_ALL: "C",
-  };
+  const environment: Record<string, string> = {};
+  environment.ELECTRON_RUN_AS_NODE = "1";
+  environment.PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+  environment.LANG = "C";
+  environment.LC_ALL = "C";
   for (const name of names) {
     const value = process.env[name];
     if (value !== undefined) environment[name] = value;
@@ -174,16 +175,13 @@ function parseChildResponse(
   | undefined {
   if (typeof input !== "object" || input === null || Array.isArray(input))
     return undefined;
-  const record = input as Readonly<Record<string, unknown>>;
-  const keys = Object.keys(record);
-  if (record.ok === true && keys.length === 2 && Object.hasOwn(record, "value"))
-    return { ok: true, value: record.value };
-  if (
-    record.ok === false &&
-    keys.length === 2 &&
-    typeof record.reason === "string"
-  )
-    return { ok: false, reason: record.reason };
+  const keys = Object.keys(input);
+  const ok = readObjectField(input, "ok");
+  if (ok === true && keys.length === 2 && Object.hasOwn(input, "value"))
+    return { ok: true, value: readObjectField(input, "value") };
+  const reason = readObjectField(input, "reason");
+  if (ok === false && keys.length === 2 && typeof reason === "string")
+    return { ok: false, reason };
   return undefined;
 }
 

@@ -2,6 +2,7 @@ import { readdir, rm } from "node:fs/promises";
 
 import * as v from "valibot";
 
+import { definedProps } from "../../domain/defined-props";
 import {
   parseContentHash,
   parseIsoTimestamp,
@@ -218,9 +219,7 @@ export function parseReviewObservationJournal(
       : parseFindingReviewReceipts(raw.output.nextFindingReviewReceipts, {
           id: sessionId.value,
           headSha: sessionHeadSha.value,
-          ...(pending.value === undefined
-            ? {}
-            : { pendingReview: pending.value }),
+          ...definedProps({ pendingReview: pending.value }),
         });
   const createdAt = parseIsoTimestamp(raw.output.createdAt);
   if (
@@ -253,12 +252,10 @@ export function parseReviewObservationJournal(
     nextReviewUpdatedAt: nextReviewUpdatedAt.value,
     previousSnapshotHash: previousSnapshotHash.value,
     nextSnapshotHash: nextSnapshotHash.value,
-    ...(pending.value === undefined
-      ? {}
-      : { nextPendingReview: pending.value }),
-    ...(receipts.value === undefined
-      ? {}
-      : { nextFindingReviewReceipts: receipts.value }),
+    ...definedProps({
+      nextPendingReview: pending.value,
+      nextFindingReviewReceipts: receipts.value,
+    }),
     createdAt: createdAt.value,
   });
 }
