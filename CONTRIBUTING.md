@@ -72,8 +72,14 @@ One logical unit per commit. Do not add AI or co-authored trailers.
 Commits run `pnpm precommit`:
 
 1. `pnpm lint:staged` checks every staged JavaScript and TypeScript file with
-   Oxfmt, then Oxlint with denied warnings.
+   Oxfmt, then Oxlint with denied warnings, applies the file-size ratchet to
+   them, and then runs the repo-wide Oxlint count ratchet over the staged
+   change.
 2. React Doctor scans staged files and remains blocking.
+
+The count ratchet runs on every commit, not only in a pull request, and it
+runs even when nothing source-like is staged: a lone `.oxlintrc.json` change
+is exactly what it exists to gate. It adds about 1 second to a commit.
 
 The staged gate is check-only. It rejects partially staged source files and
 never changes the index or working tree. If it blocks, run
@@ -85,12 +91,42 @@ Repo-wide `pnpm lint` remains a diagnostic while untouched legacy findings are
 migrated. Every staged source file must be clean, but untouched findings do
 not block focused changes.
 
-`pnpm lint:changed` also enforces a ratchet: it runs Oxlint over the whole
-repository and compares the finding count with the baseline recorded in
-`lint-baseline.json`. If the count rose, the check fails and names both
-numbers. If the count fell, the check passes and prints the new number, so
-you can lower the baseline deliberately. To lower it, edit the `findings`
-value in `lint-baseline.json` to match the new, smaller count.
+### The count ratchet
+
+The count ratchet runs Oxlint over the whole repository and compares the
+finding count with the baseline recorded in `lint-baseline.json`. Three rules:
+
+- The count rose. The check fails and names both numbers. Fix the new
+  finding, or raise `findings` deliberately when the increase is reviewed.
+- The count fell. The check fails too, and asks you to set `findings` to the
+  new number and stage `lint-baseline.json` in the same commit. A drop nobody
+  records is a drop that can drift back up unnoticed.
+- `.oxlintrc.json` (or an Oxlint plugin under `tools/oxlint/`) changed while
+  `lint-baseline.json` is not part of the change at all. The check fails
+  before Oxlint even runs. This rule is keyed on the baseline being staged,
+  not on its content differing: a config edit that moves no count has nothing
+  to write into the baseline, and demanding a content change there would make
+  such an edit uncommittable. Deleting a config file counts as changing it.
+
+  This rule does not catch a change that loosens some findings away and adds
+  the same number of new ones. The count nets back to the baseline, so the
+  baseline is correct and there is nothing to object to. No gate comparing
+  one number with one number can see that; catching it would need a baseline
+  of finding identities rather than of finding totals.
+
+The baseline is read with `git show <revision>:lint-baseline.json`, out of
+the commit under test rather than the working tree, so an edit you never
+staged still reads as the old number.
+
+Oxlint reads the whole working tree, uncommitted edits included. If unstaged
+work moved the number, commit or set that work aside rather than moving the
+baseline to match it.
+
+The Knip ratchet (`pnpm knip:ratchet`, baseline `knip-baseline.json`) works
+the same way. It is not part of `pnpm precommit`: Knip answers a whole-project
+reachability question, so an ordinary mid-refactor commit moves its count for
+a reason that has nothing wrong with it, and a gate that rejects that commit
+gets switched off. It runs in `pnpm check` and in the pull request gates.
 
 Do not silence findings by weakening rules, adding casts, or faking
 `SAFETY:` comments. Genuine I/O boundaries keep `unknown` via targeted
@@ -100,17 +136,19 @@ per-file overrides in `.oxlintrc.json` with a boundary contract comment
 ## Verifying before pushing
 
 `pnpm check` is the pre-handoff command: it runs `pnpm typecheck`,
-`pnpm test:root`, then `pnpm lint:staged` (checks what you will commit), in
-that order, and stops at the first failure. `pnpm lint:staged` passes with
-"no staged source files" when nothing is staged, so `pnpm check` only checks
-lint on the files you have staged.
+`pnpm test:root`, `pnpm lint:staged` (checks what you will commit), then
+`pnpm knip:ratchet`, in that order, and stops at the first failure.
+`pnpm lint:staged` reports "no staged source files" when nothing is staged
+and still runs the count ratchet, so the repo-wide finding count is checked
+either way.
 
 Beyond `pnpm check`:
 
 - `pnpm test:all` (root suite and separate `runtime/flue` suite) — the
   complete test gate; `pnpm check` only runs the root suite.
-- `pnpm knip` finds unused files, exports, and dependencies. Not yet part of
-  `pnpm check`; run it directly.
+- `pnpm knip` prints the unused files, exports, and dependencies behind the
+  Knip ratchet's number. `pnpm check` runs the ratchet; run `pnpm knip` when
+  you need to see which entries make it up.
 - For desktop or renderer changes: `pnpm build`, then the focused browser
   suite (`pnpm test:e2e` or `pnpm test:performance`).
 
@@ -118,7 +156,8 @@ Pull requests targeting `main` run the `Pull request gates` workflow on
 `macos-14`. It runs these named checks in order:
 
 - `pnpm lint:changed -- <base> <head>` for changed JavaScript and TypeScript
-  files only;
+  files only, plus the Oxlint count ratchet;
+- `pnpm knip:ratchet -- <base> <head>`;
 - `pnpm typecheck`;
 - `pnpm test:all`, including the root suite and separate `runtime/flue` suite;
 - `pnpm test:bundle`; and

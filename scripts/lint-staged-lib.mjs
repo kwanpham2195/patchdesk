@@ -1,6 +1,8 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { checkLintRatchet } from "./quality-ratchet-lib.mjs";
+
 const SOURCE_EXTENSIONS = new Set([
   ".js",
   ".jsx",
@@ -65,7 +67,14 @@ const SOURCE_EXTENSIONS = new Set([
 
 /**
  * Check staged JavaScript and TypeScript files without changing the index or
- * working tree.
+ * working tree, then run the repo-wide Oxlint count ratchet over the same
+ * staged change.
+ *
+ * This is the whole commit gate: `pnpm precommit` and `pnpm check` both reach
+ * the ratchet through here, so an ordinary `git commit` runs it. The ratchet
+ * deliberately runs even when nothing source-like is staged, because staging
+ * `.oxlintrc.json` or `lint-baseline.json` alone is exactly the change it
+ * exists to gate.
  *
  * @param {LintStagedOptions} options
  * @returns {Promise<number>} A process-style exit code.
@@ -83,11 +92,8 @@ export async function lintStaged({
     return 1;
   }
 
-  const files = selectSourcePaths(splitNullDelimitedPaths(discovered.stdout));
-  if (files.length === 0) {
-    output.stdout("lint-staged: no staged source files to check.\n");
-    return 0;
-  }
+  const changedPaths = splitNullDelimitedPaths(discovered.stdout);
+  const files = selectSourcePaths(changedPaths);
 
   const partiallyStaged = [];
   let guardFailed = false;
@@ -123,19 +129,90 @@ export async function lintStaged({
   }
   if (guardFailed) return 1;
 
-  // `head` is "" (no revision before the colon), which is git's own syntax
-  // for reading a path out of the index rather than a commit. The staged
-  // content is what is about to be committed, and it is not yet reachable by
-  // any commit-ish, so the index is the only right place to read it from.
-  // The unstaged-change guard above proves the working tree agrees.
-  return checkSourcePaths(files, {
+  const base = await stagedBase(run, cwd, output);
+  if (base === undefined) return 1;
+
+  if (files.length === 0) {
+    output.stdout("lint-staged: no staged source files to check.\n");
+  } else {
+    // `head` is "" (no revision before the colon), which is git's own syntax
+    // for reading a path out of the index rather than a commit. The staged
+    // content is what is about to be committed, and it is not yet reachable
+    // by any commit-ish, so the index is the only right place to read it
+    // from. The unstaged-change guard above proves the working tree agrees.
+    const sourceResult = await checkSourcePaths(files, {
+      cwd,
+      run,
+      fileExists,
+      output,
+      base,
+      head: "",
+    });
+    if (sourceResult !== 0) return sourceResult;
+  }
+
+  return checkLintRatchet({
     cwd,
     run,
     fileExists,
     output,
-    base: "HEAD",
-    head: "",
+    revision: "",
+    changedPaths,
   });
+}
+
+/**
+ * The revision the staged change is measured against: `HEAD` normally, and
+ * git's empty tree when the branch is unborn.
+ *
+ * A pre-commit hook runs before the commit exists, so on the very first
+ * commit in a repository there is no `HEAD` at all -- and no `HEAD~1` either,
+ * which is why the gate never asks for one. Resolving to the empty tree makes
+ * every staged file read as new (the 500-line new-file limit applies) instead
+ * of wedging the first commit on "git could not resolve the base revision".
+ *
+ * The empty tree's object id is asked of git rather than hard-coded, because
+ * a SHA-256 repository has a different one.
+ *
+ * @returns {Promise<string | undefined>} `undefined` means git itself failed,
+ *   already reported to `output`.
+ */
+async function stagedBase(run, cwd, output) {
+  const head = await execute(
+    run,
+    "git",
+    // `--quiet` must come BEFORE `--end-of-options`: everything after that
+    // marker is read as a revision, so the other order asks git to resolve a
+    // revision literally named "--quiet" and always fails.
+    ["rev-parse", "--verify", "--quiet", "--end-of-options", "HEAD^{commit}"],
+    cwd,
+    output,
+  );
+  if (head === undefined) return undefined;
+  if (hasExit(head, 0)) return "HEAD";
+
+  const empty = await execute(
+    run,
+    "git",
+    ["hash-object", "-t", "tree", "/dev/null"],
+    cwd,
+    output,
+  );
+  if (empty === undefined) return undefined;
+  if (!hasExit(empty, 0)) {
+    output.stderr(
+      "HEAD does not resolve and git could not name its empty tree, so the " +
+        "staged change has nothing to be compared against.\n",
+    );
+    if (empty.stderr.length > 0) output.stderr(empty.stderr);
+    return undefined;
+  }
+  const objectId = empty.stdout.trim();
+  if (!/^[0-9a-f]{40,64}$/.test(objectId)) {
+    output.stderr("git returned an invalid empty-tree object id.\n");
+    return undefined;
+  }
+  return objectId;
 }
 
 /**
@@ -187,7 +264,7 @@ const NEW_FILE_LINE_LIMIT = 500;
  * misread as "every file is absent here" -- and a file list of only exempt
  * or already-deleted-at-head files costs zero extra git calls, since neither
  * revision is ever actually read. This matters because `head`'s
- * changed-file list (`--diff-filter=ACMR`, in both wired callers) reports
+ * changed-file list (`--diff-filter=ACDMR`, in both wired callers) reports
  * only the NEW path of a rename -- so a plain `git show <base>:<newpath>`
  * would otherwise fail not because the revision is bad, but because the
  * path lived under a different name at `base`. Before concluding a file is
@@ -278,16 +355,22 @@ function isGeneratedFile(file) {
 }
 
 /**
- * Confirms `revision` is a real, resolvable commit before the ratchet reads
+ * Confirms `revision` is a real, resolvable tree before the ratchet reads
  * anything at it. The empty string is git's own syntax (used as
  * `${revision}:${path}`) for reading the index rather than a commit, so it
  * is always valid and never sent to `git rev-parse`.
+ *
+ * Resolution asks for `^{tree}`, not `^{commit}`, because `git show
+ * <revision>:<path>` is a tree lookup and every caller only ever does that.
+ * A commit-ish resolves to its tree, so `HEAD` and a SHA still pass -- and so
+ * does the empty tree `stagedBase` returns on an unborn branch, which
+ * `^{commit}` would reject.
  *
  * Without this check, a bad revision and a merely-absent path are the same
  * thing to `git show`'s exit code (both nonzero), so `countLinesAtRevision`
  * would misread "the revision itself doesn't exist" as "this file is new"
  * or "this file was deleted" -- a broken ratchet reporting success. Same
- * idiom as `resolveCommitRef` in `scripts/check-changed-source.mjs`.
+ * idiom as `resolveCommitRef` in `scripts/quality-ratchet-lib.mjs`.
  *
  * @returns {Promise<boolean>} Whether `revision` resolves. `false` means an
  *   explanatory message has already gone to `output`.
@@ -298,7 +381,7 @@ async function validateRevision(run, cwd, revision, label, output) {
   const result = await execute(
     run,
     "git",
-    ["rev-parse", "--verify", "--end-of-options", `${revision}^{commit}`],
+    ["rev-parse", "--verify", "--end-of-options", `${revision}^{tree}`],
     cwd,
     output,
   );
@@ -317,7 +400,7 @@ async function validateRevision(run, cwd, revision, label, output) {
  * Maps each renamed file's NEW path (at `head`) to its OLD path (at `base`),
  * across the whole `base`..`head` change, so the ratchet can find a renamed
  * file's line count at `base` even though the changed-file list (built with
- * `--diff-filter=ACMR`) only ever names the new path.
+ * `--diff-filter=ACDMR`) only ever names the new path.
  *
  * Deliberately runs with no pathspec: filtering `git diff` to just the new
  * path hides the corresponding deletion from git's rename pairing, which
@@ -441,8 +524,17 @@ async function runSourceQualityChecks(
   return 0;
 }
 
+/**
+ * The staged change's paths. `D` is in the filter because deleting
+ * `.oxlintrc.json`, or a rule file under `tools/oxlint/`, is a configuration
+ * change like any other and the count ratchet's rule 2 has to see it. The
+ * size ratchet consumes the same list and is unharmed: `selectSourceFiles`
+ * drops any path that is not on disk, and `checkFileSizes` skips a file that
+ * is absent at `head`, so a deleted file is never read for a line count.
+ * `U` (unmerged) stays out: a conflicted path is not yet a change.
+ */
 function discoveryArgs() {
-  return ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"];
+  return ["diff", "--cached", "--name-only", "--diff-filter=ACDMR", "-z"];
 }
 
 async function selectSourceFiles(paths, cwd, fileExists) {

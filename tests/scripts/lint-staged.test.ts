@@ -41,9 +41,55 @@ type HarnessOptions = {
    * `head`, valued by its name at `base`. Defaults to no renames.
    */
   readonly renameMap?: ReadonlyMap<string, string>;
+  /**
+   * `lint-baseline.json`'s `findings` value, as the count ratchet reads it
+   * out of the index (`git show :lint-baseline.json`). Defaults to 0, which
+   * matches the default repo-wide diagnostic count, so tests that are not
+   * about the ratchet never trip it.
+   */
+  readonly baselineFindings?: number;
+  /** Raw indexed `lint-baseline.json` content. Overrides `baselineFindings`. */
+  readonly baselineContent?: string;
+  /** Raw `git show :lint-baseline.json` result. Overrides both of the above. */
+  readonly baselineResult?: CommandResult;
+  /** Diagnostic count the repo-wide ratchet Oxlint run reports. Defaults to 0. */
+  readonly ratchetDiagnosticsCount?: number;
+  /** Raw repo-wide ratchet Oxlint result. Overrides `ratchetDiagnosticsCount`. */
+  readonly ratchetResult?: CommandResult;
+  /** Makes `HEAD` unresolvable, the way an unborn branch does. */
+  readonly unbornHead?: boolean;
+  /**
+   * Paths the index holds, as `git ls-files --stage -- <path>` reports them.
+   * The count ratchet's configuration rule asks git this, rather than reading
+   * the changed-path list, because staging an unchanged file leaves no diff
+   * entry behind. Defaults to a tracked `lint-baseline.json`, which is the
+   * ordinary state of this repository.
+   */
+  readonly indexedPaths?: ReadonlySet<string>;
 };
 
 const cwd = "/fixture/project";
+
+/** Git's empty tree, which `stagedBase` falls back to on an unborn branch. */
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+const BASELINE_SPEC_SUFFIX = ":lint-baseline.json";
+
+/**
+ * Git reads EVERY argument after `--end-of-options` as a revision, so an
+ * option written after that marker is not an option at all and the command
+ * fails with "Needed a single revision". A stub that answers any `rev-parse`
+ * with a SHA hides that, and hid it once: `--quiet` written after the marker
+ * made `stagedBase` believe HEAD was unborn on every commit, which turned
+ * every modified file into a "new file" for the size ratchet.
+ */
+function optionAfterEndOfOptions(
+  args: ReadonlyArray<string>,
+): CommandResult | undefined {
+  const marker = args.indexOf("--end-of-options");
+  if (marker === -1 || args.length - marker === 2) return undefined;
+  return failure("fatal: Needed a single revision", 128);
+}
 
 /** Where the gate must find a pinned tool: never a same-named binary on PATH. */
 const pinned = (name: string): string => `${cwd}/node_modules/.bin/${name}`;
@@ -96,7 +142,24 @@ function createHarness(options: HarnessOptions = {}) {
   const installedTools = options.installedTools ?? PINNED_TOOLS;
   const partiallyStagedPaths =
     options.partiallyStagedPaths ?? new Set<string>();
+  const indexedPaths = options.indexedPaths ?? new Set(["lint-baseline.json"]);
   const toolResults = options.toolResults ?? new Map<string, CommandResult>();
+  const baselineResult =
+    options.baselineResult ??
+    success(
+      options.baselineContent ??
+        JSON.stringify({ findings: options.baselineFindings ?? 0 }),
+    );
+  const ratchetResult =
+    options.ratchetResult ??
+    success(
+      JSON.stringify({
+        diagnostics: Array.from(
+          { length: options.ratchetDiagnosticsCount ?? 0 },
+          () => ({}),
+        ),
+      }),
+    );
 
   const run = async (
     command: string,
@@ -104,8 +167,21 @@ function createHarness(options: HarnessOptions = {}) {
     commandCwd: string,
   ): Promise<CommandResult> => {
     calls.push({ command, args, cwd: commandCwd });
-    if (command === "git" && args[0] === "rev-parse")
+    if (command === "git" && args[0] === "rev-parse") {
+      const badOrder = optionAfterEndOfOptions(args);
+      if (badOrder !== undefined) return badOrder;
+      if (options.unbornHead === true && args.includes("HEAD^{commit}"))
+        return failure("fatal: Needed a single revision", 128);
       return success("deadbeef\n");
+    }
+    if (command === "git" && args[0] === "hash-object")
+      return success(`${EMPTY_TREE}\n`);
+    if (command === "git" && args[0] === "ls-files") {
+      const path = args[args.length - 1];
+      return path !== undefined && indexedPaths.has(path)
+        ? success(`100644 ${"0".repeat(40)} 0\t${path}\n`)
+        : success("");
+    }
     if (
       command === "git" &&
       args[0] === "diff" &&
@@ -122,6 +198,10 @@ function createHarness(options: HarnessOptions = {}) {
     }
     if (command === "git" && args[0] === "show") {
       const spec = args[1];
+      // The count ratchet's baseline read is answered before `showResults`,
+      // which only ever describes source files for the size ratchet.
+      if (spec !== undefined && spec.endsWith(BASELINE_SPEC_SUFFIX))
+        return baselineResult;
       const configured =
         spec === undefined ? undefined : options.showResults?.get(spec);
       if (configured !== undefined) return configured;
@@ -134,6 +214,10 @@ function createHarness(options: HarnessOptions = {}) {
       ? command.slice(`${cwd}/node_modules/.bin/`.length)
       : command;
     if (options.rejectedCommand === tool) throw new Error("spawn failed");
+    // The repo-wide ratchet run and the staged-file run are the same binary;
+    // only `--format=json` tells them apart.
+    if (tool === "oxlint" && args.includes("--format=json"))
+      return ratchetResult;
     const result = toolResults.get(tool);
     return result ?? success();
   };
@@ -167,7 +251,16 @@ describe("lintStaged", () => {
     });
 
     await expect(lintStaged(harness.options)).resolves.toBe(0);
-    expect(harness.calls).toHaveLength(1);
+    // Discovery, then `stagedBase`, then the count ratchet's baseline read
+    // and its repo-wide Oxlint run. The ratchet runs even with nothing
+    // source-like staged, because a lone `.oxlintrc.json` change is exactly
+    // what it exists to gate.
+    expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
+      "git",
+      "git",
+      pinned("oxlint"),
+    ]);
     expect(harness.stdout.join("")).toContain("no staged source files");
   });
 
@@ -181,45 +274,73 @@ describe("lintStaged", () => {
       "git",
       "git",
       "git",
+      "git",
       pinned("oxfmt"),
+      pinned("oxlint"),
+      "git",
       pinned("oxlint"),
     ]);
     expect(harness.calls[0]).toMatchObject({
       command: "git",
-      args: ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+      args: ["diff", "--cached", "--name-only", "--diff-filter=ACDMR", "-z"],
+      cwd,
+    });
+    // `stagedBase` asks whether HEAD exists at all before anything reads it,
+    // so an unborn branch falls back to the empty tree instead of wedging.
+    expect(harness.calls[2]).toMatchObject({
+      command: "git",
+      args: [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        "HEAD^{commit}",
+      ],
       cwd,
     });
     // The size ratchet reads the staged (index) content and the last
     // commit's content before either quality tool runs: `head` is `""`, so
     // `git show :path` reads the index, and `base` is `HEAD`. `base` is
     // validated (`rev-parse`) the first time it is actually read.
-    expect(harness.calls[2]).toMatchObject({
+    expect(harness.calls[3]).toMatchObject({
       command: "git",
       args: ["show", ":src/example.ts"],
       cwd,
     });
-    expect(harness.calls[3]).toMatchObject({
+    expect(harness.calls[4]).toMatchObject({
       command: "git",
-      args: ["rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"],
+      args: ["rev-parse", "--verify", "--end-of-options", "HEAD^{tree}"],
       cwd,
     });
-    expect(harness.calls[4]).toMatchObject({
+    expect(harness.calls[5]).toMatchObject({
       command: "git",
       args: ["show", "HEAD:src/example.ts"],
       cwd,
     });
-    expect(harness.calls[5]).toMatchObject({
+    expect(harness.calls[6]).toMatchObject({
       command: pinned("oxfmt"),
       args: ["--check", "--no-error-on-unmatched-pattern", "src/example.ts"],
       cwd,
     });
-    expect(harness.calls[6]).toMatchObject({
+    expect(harness.calls[7]).toMatchObject({
       command: pinned("oxlint"),
       args: [
         "--deny-warnings",
         "--no-error-on-unmatched-pattern",
         "src/example.ts",
       ],
+      cwd,
+    });
+    // Then the count ratchet: read the baseline the commit would carry, and
+    // run Oxlint over the whole repository.
+    expect(harness.calls[8]).toMatchObject({
+      command: "git",
+      args: ["show", ":lint-baseline.json"],
+      cwd,
+    });
+    expect(harness.calls[9]).toMatchObject({
+      command: pinned("oxlint"),
+      args: ["--deny-warnings", "--format=json"],
       cwd,
     });
   });
@@ -231,6 +352,7 @@ describe("lintStaged", () => {
 
     await expect(lintStaged(harness.options)).resolves.toBe(1);
     expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
       "git",
       "git",
       "git",
@@ -254,10 +376,11 @@ describe("lintStaged", () => {
       "git",
       "git",
       "git",
+      "git",
       pinned("oxfmt"),
       pinned("oxlint"),
     ]);
-    expect(harness.calls[6]?.args).toContain("--deny-warnings");
+    expect(harness.calls[7]?.args).toContain("--deny-warnings");
     expect(harness.stderr.join("")).toContain("lint warning");
     expect(harness.stderr.join("")).toContain("pnpm exec oxlint --fix");
   });
@@ -288,11 +411,11 @@ describe("lintStaged", () => {
       "--",
       "src/renamed.ts",
     ]);
-    expect(harness.calls[5]?.args.at(-1)).toBe("src/renamed.ts");
+    expect(harness.calls[6]?.args.at(-1)).toBe("src/renamed.ts");
   });
 
   it("passes a staged rename whose new path is over 500 lines but was under the limit at its old, committed path", async () => {
-    // Reproduces the real bug: `--diff-filter=ACMR` reports only the new
+    // Reproduces the real bug: `--diff-filter=ACDMR` reports only the new
     // path for a rename, so `git show HEAD:<newpath>` fails -- not because
     // the file is new, but because it lived under a different name at
     // HEAD. Without the rename fix, this would be misread as a 550-line
@@ -353,7 +476,7 @@ describe("lintStaged", () => {
 
     await expect(lintStaged(harness.options)).resolves.toBe(0);
     expect(harness.calls[1]?.args).toEqual(["diff", "--quiet", "--", path]);
-    expect(harness.calls[5]?.args.at(-1)).toBe(path);
+    expect(harness.calls[6]?.args.at(-1)).toBe(path);
   });
 
   it("reports a command process failure and fails closed", async () => {
@@ -362,6 +485,7 @@ describe("lintStaged", () => {
     await expect(lintStaged(harness.options)).resolves.toBe(1);
     expect(harness.stderr.join("")).toContain("spawn failed");
     expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
       "git",
       "git",
       "git",
@@ -386,6 +510,7 @@ describe("lintStaged", () => {
       "git",
       "git",
       "git",
+      "git",
     ]);
     expect(harness.stderr.join("")).toContain(
       "oxfmt is not installed at node_modules/.bin/oxfmt",
@@ -404,6 +529,228 @@ describe("lintStaged", () => {
     ).toBe(false);
   });
 
+  it("fails when .oxlintrc.json is staged and lint-baseline.json is not in the index", async () => {
+    // Loosening a rule lowers the repo-wide count on its own. Without this
+    // gate the count ratchet would read the lower number as an improvement
+    // and accept it as the new truth.
+    const harness = createHarness({
+      stagedOutput: ".oxlintrc.json\0",
+      existingPaths: new Set(),
+      indexedPaths: new Set(),
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      ".oxlintrc.json changed but lint-baseline.json is not staged in this change.",
+    );
+    expect(harness.stderr.join("")).toContain("silently lowers");
+    expect(harness.stderr.join("")).toContain(
+      "accept the new lower number as the truth",
+    );
+    // It fails before paying for a repo-wide Oxlint run.
+    expect(
+      harness.calls.some(({ args }) => args.includes("--format=json")),
+    ).toBe(false);
+  });
+
+  it("fails when an Oxlint plugin source is staged and lint-baseline.json is not in the index", async () => {
+    // A rule written in plugin JavaScript can be weakened exactly the way a
+    // rule written in .oxlintrc.json can.
+    const harness = createHarness({
+      stagedOutput: "tools/oxlint/anti-slop/index.ts\0",
+      existingPaths: new Set(),
+      indexedPaths: new Set(),
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      ".oxlintrc.json changed but lint-baseline.json is not staged in this change.",
+    );
+  });
+
+  it("passes when .oxlintrc.json and lint-baseline.json are staged together", async () => {
+    const harness = createHarness({
+      stagedOutput: ".oxlintrc.json\0lint-baseline.json\0",
+      existingPaths: new Set(),
+      baselineFindings: 3,
+      ratchetDiagnosticsCount: 3,
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(0);
+    expect(harness.stderr.join("")).toBe("");
+    expect(harness.stdout.join("")).toContain(
+      "Repo-wide Oxlint findings unchanged at 3",
+    );
+  });
+
+  it("passes an .oxlintrc.json change that moves no count, with the tracked baseline staged unchanged", async () => {
+    // Adding a rule nothing violates, or editing tools/oxlint/LICENSE, leaves
+    // the count where it was, so there is nothing to write into
+    // lint-baseline.json and the file produces no diff entry however it is
+    // staged. Keying the rule on a CONTENT DIFFERENCE made that change
+    // uncommittable: its own advice ("set findings to the new number") was
+    // already satisfied, and the only ways past were a cosmetic edit to an
+    // unused field or --no-verify. The rule is keyed on the baseline being
+    // in the index instead.
+    const harness = createHarness({
+      stagedOutput: ".oxlintrc.json\0",
+      existingPaths: new Set(),
+      baselineFindings: 7,
+      ratchetDiagnosticsCount: 7,
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(0);
+    expect(harness.stderr.join("")).toBe("");
+    expect(harness.stdout.join("")).toContain(
+      "Repo-wide Oxlint findings unchanged at 7",
+    );
+  });
+
+  it("asks git for the baseline's index entry rather than reading the changed-path list", async () => {
+    // Staging an unchanged file and never touching it are the same index to
+    // git, so a diff-derived path list cannot tell them apart. Only the index
+    // itself can be asked, and it is asked with an explicit `--` separator so
+    // a baseline path is never read as a revision.
+    const harness = createHarness({
+      stagedOutput: ".oxlintrc.json\0",
+      existingPaths: new Set(),
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(0);
+    expect(
+      harness.calls.some(
+        ({ command, args }) =>
+          command === "git" &&
+          args.join(" ") === "ls-files --stage -- lint-baseline.json",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not catch a config change whose findings net back to the same count", async () => {
+    // A KNOWN, DELIBERATE HOLE, recorded so nobody mistakes it for closed.
+    // Loosening five findings away while adding five new ones leaves the
+    // count where the baseline says it should be, so rule 3 passes it and
+    // rule 2 has nothing to object to -- the baseline IS correct. No gate
+    // that compares one number to one number can tell netting from no
+    // change; catching it needs a baseline of finding identities, not of
+    // finding totals. The previous content-difference form did not catch it
+    // either: one character in an unused "note" field satisfied it.
+    const harness = createHarness({
+      stagedOutput: ".oxlintrc.json\0lint-baseline.json\0",
+      existingPaths: new Set(),
+      baselineFindings: 5,
+      ratchetDiagnosticsCount: 5,
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(0);
+    expect(harness.stdout.join("")).toContain(
+      "Repo-wide Oxlint findings unchanged at 5",
+    );
+  });
+
+  it("puts a staged deletion of an Oxlint plugin file through the configuration rule", async () => {
+    // `--diff-filter=ACDMR` includes deletions, so removing a rule file is
+    // seen as the configuration change it is. Under `ACMR` it was invisible.
+    const harness = createHarness({
+      stagedOutput: "tools/oxlint/anti-slop/rules/no-drift.ts\0",
+      existingPaths: new Set(),
+      indexedPaths: new Set(),
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      ".oxlintrc.json changed but lint-baseline.json is not staged in this change.",
+    );
+  });
+
+  it("never reads a deleted source file for a line count or a lint run", async () => {
+    // Deletions now reach the changed-path list. A deleted file is not on
+    // disk, so `selectSourceFiles` drops it before the size ratchet or
+    // either quality tool sees it. The unstaged-change guard still asks
+    // about it, which is harmless: index and working tree agree that it is
+    // gone, so `git diff --quiet` exits 0.
+    const harness = createHarness({
+      stagedOutput: "src/example.ts\0src/deleted.ts\0",
+      existingPaths: new Set(["src/example.ts"]),
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(0);
+    const touching = harness.calls.filter(({ args }) =>
+      args.some((arg) => arg.includes("src/deleted.ts")),
+    );
+    expect(touching.map(({ args }) => args.slice(0, 2).join(" "))).toEqual([
+      "diff --quiet",
+    ]);
+    expect(harness.stdout.join("")).toContain(
+      "checked 1 staged source file(s)",
+    );
+  });
+
+  it("fails when the repo-wide count fell but the staged lint-baseline.json still holds the old number", async () => {
+    // The baseline is read with `git show :lint-baseline.json`, so an edit
+    // that was never staged reads as the old number and still fails. That
+    // is what makes "update the baseline in the same commit" enforceable
+    // rather than advice.
+    const harness = createHarness({
+      baselineFindings: 9,
+      ratchetDiagnosticsCount: 4,
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "Repo-wide Oxlint findings fell from 9 to 4",
+    );
+    expect(harness.stderr.join("")).toContain(
+      'Set "findings" in lint-baseline.json to 4',
+    );
+    expect(harness.stderr.join("")).toContain("unstaged edits count too");
+  });
+
+  it("fails when the repo-wide count rose above the staged baseline", async () => {
+    const harness = createHarness({
+      baselineFindings: 4,
+      ratchetDiagnosticsCount: 5,
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      "Repo-wide Oxlint findings rose from 4 to 5",
+    );
+  });
+
+  it("checks the first commit in a repository against git's empty tree instead of wedging on a missing HEAD", async () => {
+    // A pre-commit hook runs before the commit exists, so on an unborn
+    // branch there is no HEAD -- and no HEAD~1 either, which is why the
+    // gate never asks for one. Every staged file reads as new.
+    const harness = createHarness({
+      unbornHead: true,
+      showResults: new Map([[":src/example.ts", success(linesOf(10))]]),
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(0);
+    expect(harness.stderr.join("")).toBe("");
+    expect(harness.calls.some(({ args }) => args[0] === "hash-object")).toBe(
+      true,
+    );
+    expect(
+      harness.calls.some(
+        ({ args }) =>
+          args[0] === "show" && args[1] === `${EMPTY_TREE}:src/example.ts`,
+      ),
+    ).toBe(true);
+  });
+
+  it("still applies the new-file limit on an unborn branch", async () => {
+    const harness = createHarness({
+      unbornHead: true,
+      showResults: new Map([[":src/example.ts", success(linesOf(501))]]),
+    });
+
+    await expect(lintStaged(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain("501");
+    expect(harness.stderr.join("")).toContain("new file");
+  });
+
   it("fails the size ratchet before running Oxfmt or Oxlint, reading HEAD as base and the index as head", async () => {
     const harness = createHarness({
       showResults: new Map([
@@ -414,6 +761,7 @@ describe("lintStaged", () => {
 
     await expect(lintStaged(harness.options)).resolves.toBe(1);
     expect(harness.calls.map(({ command }) => command)).toEqual([
+      "git",
       "git",
       "git",
       "git",
@@ -448,7 +796,7 @@ describe("checkFileSizes", () => {
    *   unconfigured spec throws, rather than silently standing in for
    *   whatever the real command would have done.
    * @param options.revisionFailures `git rev-parse --verify` failures keyed
-   *   by the bare revision (no `^{commit}` suffix). An unlisted revision
+   *   by the bare revision (no `^{tree}` suffix). An unlisted revision
    *   validates successfully; this is only for exercising a bad revision.
    * @param options.renameResults The base/head rename pairing `git diff
    *   --name-status -M` reports, keyed by the new path, valued by the old
@@ -471,8 +819,8 @@ describe("checkFileSizes", () => {
       expect(command).toBe("git");
       if (args[0] === "rev-parse") {
         const revisionArg = args.at(-1);
-        const revision = revisionArg?.endsWith("^{commit}")
-          ? revisionArg.slice(0, -"^{commit}".length)
+        const revision = revisionArg?.endsWith("^{tree}")
+          ? revisionArg.slice(0, -"^{tree}".length)
           : undefined;
         const configured =
           revision === undefined
@@ -611,7 +959,7 @@ describe("checkFileSizes", () => {
 
   it("passes a renamed file over 500 lines by reading its old path's line count at base", async () => {
     // The changed-file list only ever names the NEW path
-    // (`--diff-filter=ACMR`), so a plain `git show <base>:<newpath>` fails
+    // (`--diff-filter=ACDMR`), so a plain `git show <base>:<newpath>` fails
     // here -- not because the file is new, but because it lived under
     // "src/old.ts" at `base`. Before this fix, that failure was misread as
     // "new file", and 550 lines would have been rejected under the

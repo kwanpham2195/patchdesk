@@ -20,10 +20,16 @@ type HarnessOptions = {
   readonly existingPaths?: ReadonlySet<string>;
   readonly toolResults?: ReadonlyMap<string, CommandResult>;
   readonly diffResult?: CommandResult;
-  /** `lint-baseline.json`'s `findings` value. Defaults to 0. */
+  /**
+   * `lint-baseline.json`'s `findings` value, as the count ratchet reads it
+   * out of the commit under test (`git show <head>:lint-baseline.json`),
+   * never out of the working tree. Defaults to 0.
+   */
   readonly baselineFindings?: number;
-  /** Raw `lint-baseline.json` content. Overrides `baselineFindings`. */
+  /** Raw committed `lint-baseline.json` content. Overrides `baselineFindings`. */
   readonly baselineContent?: string;
+  /** Raw `git show <head>:lint-baseline.json` result. Overrides both above. */
+  readonly baselineResult?: CommandResult;
   /** Diagnostic count the repo-wide ratchet run reports. Defaults to 0. */
   readonly ratchetDiagnosticsCount?: number;
   /** Raw ratchet Oxlint result. Overrides `ratchetDiagnosticsCount`. */
@@ -45,6 +51,14 @@ type HarnessOptions = {
    * name at base. Defaults to no renames.
    */
   readonly renameMap?: ReadonlyMap<string, string>;
+  /**
+   * Paths the commit under test holds, as `git ls-tree <head> -- <path>`
+   * reports them. The count ratchet's configuration rule asks git this rather
+   * than reading the changed-path list, because a file carried through a
+   * change unchanged produces no diff entry. Defaults to a committed
+   * `lint-baseline.json`.
+   */
+  readonly treePaths?: ReadonlySet<string>;
 };
 
 const cwd = "/fixture/project";
@@ -92,17 +106,21 @@ const failure = (stderr: string, status = 1): CommandResult => ({
   stderr,
 });
 
-const baselinePath = `${cwd}/lint-baseline.json`;
+const BASELINE_SPEC_SUFFIX = ":lint-baseline.json";
 
 function createHarness(options: HarnessOptions = {}) {
   const calls: Array<CommandCall> = [];
   const stdout: string[] = [];
   const stderr: string[] = [];
   const existingPaths = options.existingPaths ?? new Set(["src/example.ts"]);
+  const treePaths = options.treePaths ?? new Set(["lint-baseline.json"]);
   const toolResults = options.toolResults ?? new Map<string, CommandResult>();
-  const baselineContent =
-    options.baselineContent ??
-    JSON.stringify({ findings: options.baselineFindings ?? 0 });
+  const baselineResult =
+    options.baselineResult ??
+    success(
+      options.baselineContent ??
+        JSON.stringify({ findings: options.baselineFindings ?? 0 }),
+    );
   const ratchetResult =
     options.ratchetResult ??
     success(
@@ -132,6 +150,12 @@ function createHarness(options: HarnessOptions = {}) {
       // matters for that, not this content.
       return success("irrelevant-but-valid\n");
     }
+    if (command === "git" && args[0] === "ls-tree") {
+      const path = args[args.length - 1];
+      return path !== undefined && treePaths.has(path)
+        ? success(`100644 blob ${"0".repeat(40)}\t${path}\n`)
+        : success("");
+    }
     if (
       command === "git" &&
       args[0] === "diff" &&
@@ -140,6 +164,10 @@ function createHarness(options: HarnessOptions = {}) {
       return success(renameDiffStdout(options.renameMap));
     if (command === "git" && args[0] === "show") {
       const spec = args[1];
+      // The count ratchet's baseline read is answered before `showResults`,
+      // which only ever describes source files for the size ratchet.
+      if (spec !== undefined && spec.endsWith(BASELINE_SPEC_SUFFIX))
+        return baselineResult;
       const configured =
         spec === undefined ? undefined : options.showResults?.get(spec);
       if (configured !== undefined) return configured;
@@ -174,10 +202,6 @@ function createHarness(options: HarnessOptions = {}) {
           return PINNED_TOOLS.has(relative);
         return existingPaths.has(path) || existingPaths.has(relative);
       },
-      readFile: async (path: string): Promise<string> => {
-        if (path === baselinePath) return baselineContent;
-        throw new Error(`ENOENT: no such file, open '${path}'`);
-      },
       output: {
         stdout: (text: string) => stdout.push(text),
         stderr: (text: string) => stderr.push(text),
@@ -194,11 +218,13 @@ describe("checkChangedSource", () => {
     });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(0);
-    expect(harness.calls).toHaveLength(4);
+    // rev-parse base, rev-parse head, the changed-file diff, the count
+    // ratchet's baseline read, then its repo-wide Oxlint run.
+    expect(harness.calls).toHaveLength(5);
     expect(harness.calls[2]?.args).toEqual([
       "diff",
       "--name-only",
-      "--diff-filter=ACMR",
+      "--diff-filter=ACDMR",
       "-z",
       `${resolvedBase}...${resolvedHead}`,
     ]);
@@ -350,32 +376,108 @@ describe("checkChangedSource", () => {
     );
   });
 
-  it("passes and reports the lint ratchet when repo-wide findings fall below the baseline", async () => {
+  it("fails the lint ratchet when repo-wide findings fall without the committed baseline following them down", async () => {
+    // A drop nobody records is a drop that can drift back up unnoticed.
+    // The baseline is read out of the commit under test, so an edit to
+    // lint-baseline.json that was never staged still reads as the old
+    // number and still fails here.
     const harness = createHarness({
       baselineFindings: 10,
       ratchetDiagnosticsCount: 4,
     });
 
-    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
-    expect(harness.stdout.join("")).toContain(
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
       "Repo-wide Oxlint findings fell from 10 to 4",
     );
-    expect(harness.stdout.join("")).toContain('Lower "findings"');
+    expect(harness.stderr.join("")).toContain(
+      'Set "findings" in lint-baseline.json to 4',
+    );
+    expect(harness.stderr.join("")).toContain("this same change");
   });
 
-  it("fails the lint ratchet when lint-baseline.json cannot be read", async () => {
-    const harness = createHarness();
+  it("passes the lint ratchet when the commit under test lowers the baseline to the new count", async () => {
+    const harness = createHarness({
+      diffOutput: "src/example.ts\0lint-baseline.json\0",
+      baselineFindings: 4,
+      ratchetDiagnosticsCount: 4,
+    });
 
-    await expect(
-      checkChangedSource({
-        ...harness.options,
-        readFile: async () => {
-          throw new Error("EACCES: permission denied");
-        },
-      }),
-    ).resolves.toBe(1);
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.stdout.join("")).toContain(
+      "Repo-wide Oxlint findings unchanged at 4",
+    );
+    expect(harness.stderr.join("")).toBe("");
+  });
+
+  it("fails the lint ratchet when lint-baseline.json is absent from the commit under test", async () => {
+    const harness = createHarness({
+      baselineResult: failure("fatal: path does not exist", 128),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
     expect(harness.stderr.join("")).toContain(
-      "Could not read lint-baseline.json: EACCES: permission denied",
+      "Could not read lint-baseline.json at commit",
+    );
+    // "staged" is the wrong word when the change under test is a commit.
+    expect(harness.stderr.join("")).toContain(
+      "must be committed at that revision before it counts",
+    );
+    expect(harness.stderr.join("")).not.toContain("must be staged");
+  });
+
+  it("fails the lint ratchet when .oxlintrc.json changed and no baseline is committed at head", async () => {
+    const harness = createHarness({
+      diffOutput: ".oxlintrc.json\0",
+      existingPaths: new Set(),
+      treePaths: new Set(),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    // The commit shape says "committed", not "staged".
+    expect(harness.stderr.join("")).toContain(
+      ".oxlintrc.json changed but lint-baseline.json is not committed in this change.",
+    );
+    // It fails before paying for a repo-wide Oxlint run.
+    expect(
+      harness.calls.some(({ args }) => args.includes("--format=json")),
+    ).toBe(false);
+  });
+
+  it("passes an .oxlintrc.json change that moves no count when the baseline is committed at head", async () => {
+    // The configuration rule is keyed on the baseline being part of the
+    // change, not on its content differing, so a config edit with nothing to
+    // recount is committable.
+    const harness = createHarness({
+      diffOutput: ".oxlintrc.json\0",
+      existingPaths: new Set(),
+      baselineFindings: 2,
+      ratchetDiagnosticsCount: 2,
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(0);
+    expect(harness.stderr.join("")).toBe("");
+    expect(
+      harness.calls.some(
+        ({ command, args }) =>
+          command === "git" &&
+          args.join(" ") === `ls-tree ${resolvedHead} -- lint-baseline.json`,
+      ),
+    ).toBe(true);
+  });
+
+  it("puts a deleted Oxlint plugin file through the configuration rule", async () => {
+    // `--diff-filter=ACDMR` includes deletions, so removing a rule file is
+    // seen as the configuration change it is.
+    const harness = createHarness({
+      diffOutput: "tools/oxlint/anti-slop/rules/no-drift.ts\0",
+      existingPaths: new Set(),
+      treePaths: new Set(),
+    });
+
+    await expect(checkChangedSource(harness.options)).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain(
+      ".oxlintrc.json changed but lint-baseline.json is not committed in this change.",
     );
   });
 
@@ -383,9 +485,7 @@ describe("checkChangedSource", () => {
     const harness = createHarness({ baselineContent: "not json" });
 
     await expect(checkChangedSource(harness.options)).resolves.toBe(1);
-    expect(harness.stderr.join("")).toContain(
-      "lint-baseline.json is not valid JSON",
-    );
+    expect(harness.stderr.join("")).toContain("is not valid JSON");
   });
 
   it("fails the lint ratchet when the findings field is not a non-negative integer", async () => {
@@ -497,13 +597,14 @@ describe("checkChangedSource", () => {
       "git",
       pinned("oxfmt"),
       pinned("oxlint"),
+      "git",
       pinned("oxlint"),
     ]);
   });
 
   it("passes a rename between the resolved base and head commits over 500 lines by reading its old path's line count at base", async () => {
     // The changed-file list only ever names the NEW path
-    // (`--diff-filter=ACMR`), so `git show <resolvedBase>:<newpath>` fails
+    // (`--diff-filter=ACDMR`), so `git show <resolvedBase>:<newpath>` fails
     // here -- not because the file is new, but because it lived under
     // "src/old.ts" at the resolved base commit.
     const renamed = "src/renamed.ts";
