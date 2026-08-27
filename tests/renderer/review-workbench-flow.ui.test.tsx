@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import type * as PierreDiffs from "@pierre/diffs";
+import { bridge, restoreBridge } from "./review-workbench-bridge";
 
 // oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real. Only tests that also shim `CSSStyleSheet.prototype.replaceSync` reach Pierre's CodeView path at all; every other test in this file renders through the accessible plain-text fallback, which never calls `preloadHighlighter`.
 vi.mock("@pierre/diffs", async (importOriginal) => {
@@ -140,16 +141,6 @@ function mount(
   return { replace, patch, view };
 }
 
-// This generic mocked bridge harness intentionally has no fixed response
-// shape: each test's own `handler` decides the JSON per request path, so
-// the echoed value is legitimately whatever that test needs it to be, not
-// a domain type this file could name.
-type BridgeHandler = (input: {
-  readonly path: string;
-  readonly body?: unknown;
-  // oxlint-disable-next-line anti-slop/no-unknown-returns -- see comment above
-}) => Promise<unknown> | unknown;
-
 /**
  * Opening the inline comment composer selects its line, which scrolls
  * Pierre's CodeView to it. That scroll suspends pointer events on the
@@ -170,20 +161,6 @@ async function typePastPierreScrollSuspend(
 ): Promise<void> {
   await waitFor(() => user.click(element));
   await user.type(element, text, { skipClick: true });
-}
-
-function bridge(handler: BridgeHandler) {
-  const request = vi.fn(
-    async (input: { readonly path: string; readonly body?: unknown }) => {
-      const body = await handler(input);
-      return { ok: true, status: 200, correlationId: input.path, body };
-    },
-  );
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: { request },
-  });
-  return request;
 }
 
 const analysisResult = {
@@ -307,6 +284,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.unstubAllGlobals();
+  restoreBridge();
 });
 
 describe("ReviewWorkbenchFlow current Review protocol", () => {

@@ -8,7 +8,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { DesktopResponse } from "../../src/main/ipc-contract";
 import { LogsPanel } from "../../src/renderer/src/components/logs-panel";
+import {
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 
 type TestLogEntry = {
   readonly schemaVersion: 1;
@@ -19,21 +25,26 @@ type TestLogEntry = {
   readonly topic: string;
   readonly message: string;
 };
-type LogsRequest = { readonly path: string };
-type DeferredResponseBody = {
-  readonly ok: true;
-  readonly body: unknown;
-  readonly correlationId: string;
-};
 type DeferredResponse = {
-  readonly promise: Promise<DeferredResponseBody>;
-  readonly resolve: (value: DeferredResponseBody) => void;
+  readonly promise: Promise<DesktopResponse>;
+  readonly resolve: (value: DesktopResponse) => void;
 };
+
+let desktop: DesktopDouble | undefined;
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  desktop?.restore();
+  desktop = undefined;
 });
+
+/** Every log path the panel polled, in call order. */
+function polledPaths(double: DesktopDouble): readonly string[] {
+  return double.request.mock.calls.flatMap(([input]) =>
+    "path" in input ? [input.path] : [],
+  );
+}
 
 function entry(seq: number, message: string) {
   return {
@@ -49,7 +60,7 @@ function entry(seq: number, message: string) {
 
 function deferredResponse(): DeferredResponse {
   let resolve!: DeferredResponse["resolve"];
-  const promise = new Promise<DeferredResponseBody>((next) => {
+  const promise = new Promise<DesktopResponse>((next) => {
     resolve = next;
   });
   return { promise, resolve };
@@ -57,23 +68,18 @@ function deferredResponse(): DeferredResponse {
 
 describe("LogsPanel", () => {
   it("uses semantic status tokens for each log level", async () => {
-    const request = vi.fn(async () => ({
-      ok: true as const,
-      body: {
-        entries: [
-          { ...entry(0, "message-error"), level: "error" },
-          { ...entry(1, "message-warn"), level: "warn" },
-          { ...entry(2, "message-info"), level: "info" },
-          { ...entry(3, "message-debug"), level: "debug" },
-        ],
-        nextAfter: 3,
-      },
-      correlationId: "logs",
-    }));
     vi.stubGlobal("window", window);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { request },
+    desktop = installDesktopDouble({
+      "/v1/logs?limit=300": () =>
+        success({
+          entries: [
+            { ...entry(0, "message-error"), level: "error" },
+            { ...entry(1, "message-warn"), level: "warn" },
+            { ...entry(2, "message-info"), level: "info" },
+            { ...entry(3, "message-debug"), level: "debug" },
+          ],
+          nextAfter: 3,
+        }),
     });
     vi.useFakeTimers();
     try {
@@ -99,28 +105,15 @@ describe("LogsPanel", () => {
   });
 
   it("tails the stream and resumes exactly once with the nextAfter cursor", async () => {
-    const request = vi.fn(async (input: LogsRequest) => {
-      if (input.path === "/v1/logs?limit=300")
-        return {
-          ok: true,
-          body: {
-            entries: [entry(0, "first"), entry(1, "second")],
-            nextAfter: 1,
-          },
-          correlationId: "logs",
-        };
-      if (input.path === "/v1/logs?after=1&limit=500")
-        return {
-          ok: true,
-          body: { entries: [entry(2, "third")], nextAfter: 2 },
-          correlationId: "logs",
-        };
-      throw new Error(`unexpected ${input.path}`);
-    });
     vi.stubGlobal("window", window);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { request },
+    desktop = installDesktopDouble({
+      "/v1/logs?limit=300": () =>
+        success({
+          entries: [entry(0, "first"), entry(1, "second")],
+          nextAfter: 1,
+        }),
+      "/v1/logs?after=1&limit=500": () =>
+        success({ entries: [entry(2, "third")], nextAfter: 2 }),
     });
     vi.useFakeTimers();
     try {
@@ -136,15 +129,13 @@ describe("LogsPanel", () => {
         await vi.advanceTimersByTimeAsync(2_000);
       });
       expect(screen.getByText("third")).toBeTruthy();
-      const polls = request.mock.calls.filter((call) =>
-        call[0].path.includes("/v1/logs"),
+      const polls = polledPaths(desktop).filter((path) =>
+        path.includes("/v1/logs"),
       );
       expect(polls.length).toBeGreaterThanOrEqual(2);
-      const resumed = polls.find((call) =>
-        call[0].path.startsWith("/v1/logs?after="),
+      expect(polls.find((path) => path.startsWith("/v1/logs?after="))).toBe(
+        "/v1/logs?after=1&limit=500",
       );
-      const resumedPath = resumed === undefined ? undefined : resumed[0].path;
-      expect(resumedPath).toBe("/v1/logs?after=1&limit=500");
       expect(screen.getAllByText("third")).toHaveLength(1);
     } finally {
       vi.useRealTimers();
@@ -152,19 +143,10 @@ describe("LogsPanel", () => {
   });
 
   it("pausing before the next interval prevents a new poll", async () => {
-    const request = vi.fn(async (input: LogsRequest) => {
-      if (input.path === "/v1/logs?limit=300")
-        return {
-          ok: true,
-          body: { entries: [entry(0, "initial")], nextAfter: 0 },
-          correlationId: "logs",
-        };
-      throw new Error(`unexpected ${input.path}`);
-    });
     vi.stubGlobal("window", window);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { request },
+    desktop = installDesktopDouble({
+      "/v1/logs?limit=300": () =>
+        success({ entries: [entry(0, "initial")], nextAfter: 0 }),
     });
     vi.useFakeTimers();
     try {
@@ -176,7 +158,7 @@ describe("LogsPanel", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2_000);
       });
-      expect(request.mock.calls).toHaveLength(1);
+      expect(polledPaths(desktop)).toHaveLength(1);
       expect(screen.getByText("initial")).toBeTruthy();
     } finally {
       vi.useRealTimers();
@@ -185,20 +167,17 @@ describe("LogsPanel", () => {
 
   it("commits an in-flight response while paused and resumes from its cursor once", async () => {
     const inFlight = deferredResponse();
-    const request = vi.fn(async (input: LogsRequest) => {
-      if (input.path === "/v1/logs?limit=300")
-        return {
-          ok: true,
-          body: { entries: [entry(0, "initial")], nextAfter: 0 },
-          correlationId: "logs",
-        };
-      if (input.path === "/v1/logs?after=0&limit=500") return inFlight.promise;
-      throw new Error(`unexpected ${input.path}`);
-    });
     vi.stubGlobal("window", window);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { request },
+    // Only the first two polls are scripted. The third — the one this test is
+    // about — is left unrouted on purpose: the double refuses it, exactly as
+    // the hand-rolled stub did, and the assertion is on the path the panel
+    // asked for, not on what came back. The refusal is accepted below with
+    // takeUnroutedCalls(), which is itself the assertion that the third poll
+    // is the only call this test leaves unanswered.
+    desktop = installDesktopDouble({
+      "/v1/logs?limit=300": () =>
+        success({ entries: [entry(0, "initial")], nextAfter: 0 }),
+      "/v1/logs?after=0&limit=500": () => inFlight.promise,
     });
     vi.useFakeTimers();
     try {
@@ -211,11 +190,9 @@ describe("LogsPanel", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: "Pause log tail" }));
       await act(async () => {
-        inFlight.resolve({
-          ok: true,
-          body: { entries: [entry(1, "in-flight")], nextAfter: 1 },
-          correlationId: "logs",
-        });
+        inFlight.resolve(
+          success({ entries: [entry(1, "in-flight")], nextAfter: 1 }),
+        );
         await inFlight.promise;
       });
       expect(screen.getByText("in-flight")).toBeTruthy();
@@ -223,19 +200,20 @@ describe("LogsPanel", () => {
         await vi.advanceTimersByTimeAsync(2_000);
       });
       expect(
-        request.mock.calls.filter(([input]) => input.path.includes("/v1/logs")),
+        polledPaths(desktop).filter((path) => path.includes("/v1/logs")),
       ).toHaveLength(2);
       fireEvent.click(screen.getByRole("button", { name: "Resume log tail" }));
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2_000);
       });
-      const polls = request.mock.calls.filter(([input]) =>
-        input.path.includes("/v1/logs"),
+      const polls = polledPaths(desktop).filter((path) =>
+        path.includes("/v1/logs"),
       );
       expect(polls).toHaveLength(3);
-      const resumed = polls[2];
-      if (resumed === undefined) throw new Error("missing resumed poll");
-      expect(resumed[0].path).toBe("/v1/logs?after=1&limit=500");
+      expect(polls[2]).toBe("/v1/logs?after=1&limit=500");
+      expect(desktop.takeUnroutedCalls()).toEqual([
+        "GET /v1/logs?after=1&limit=500",
+      ]);
     } finally {
       vi.useRealTimers();
     }
@@ -243,22 +221,16 @@ describe("LogsPanel", () => {
 
   it("suppresses an initial response after unmount", async () => {
     const initial = deferredResponse();
-    const request = vi.fn(async () => initial.promise);
     vi.stubGlobal("window", window);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { request },
+    desktop = installDesktopDouble({
+      "/v1/logs?limit=300": () => initial.promise,
     });
     vi.useFakeTimers();
     try {
       const view = render(<LogsPanel />);
       view.unmount();
       await act(async () => {
-        initial.resolve({
-          ok: true,
-          body: { entries: [entry(1, "late")], nextAfter: 1 },
-          correlationId: "logs",
-        });
+        initial.resolve(success({ entries: [entry(1, "late")], nextAfter: 1 }));
         await initial.promise;
       });
       expect(screen.queryByText("late")).toBeNull();
@@ -268,21 +240,11 @@ describe("LogsPanel", () => {
   });
 
   it("keeps its prior cursor when a poll returns no entries", async () => {
-    const request = vi.fn(async (input: LogsRequest) => {
-      if (input.path === "/v1/logs?limit=300")
-        return {
-          ok: true,
-          body: { entries: [entry(0, "only")], nextAfter: 0 },
-          correlationId: "logs",
-        };
-      if (input.path.startsWith("/v1/logs?after="))
-        return { ok: true, body: { entries: [] }, correlationId: "logs" };
-      throw new Error(`unexpected ${input.path}`);
-    });
     vi.stubGlobal("window", window);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { request },
+    desktop = installDesktopDouble({
+      "/v1/logs?limit=300": () =>
+        success({ entries: [entry(0, "only")], nextAfter: 0 }),
+      "/v1/logs?after=0&limit=500": () => success({ entries: [] }),
     });
     vi.useFakeTimers();
     try {
@@ -297,14 +259,11 @@ describe("LogsPanel", () => {
       // No entries: the client retains the previous cursor and does not append
       // duplicates or reset the stream.
       expect(screen.getAllByText("only")).toHaveLength(1);
-      const polls = request.mock.calls.filter((call) =>
-        call[0].path.includes("/v1/logs"),
+      const polls = polledPaths(desktop).filter((path) =>
+        path.includes("/v1/logs"),
       );
       expect(polls).toHaveLength(2);
-      const secondPoll = polls[1];
-      const secondPollPath =
-        secondPoll === undefined ? undefined : secondPoll[0].path;
-      expect(secondPollPath).toBe("/v1/logs?after=0&limit=500");
+      expect(polls[1]).toBe("/v1/logs?after=0&limit=500");
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });

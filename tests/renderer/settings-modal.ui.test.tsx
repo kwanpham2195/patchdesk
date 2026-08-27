@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
 import { SettingsModal } from "../../src/renderer/src/components/settings-modal";
-import { failure, success } from "./fake-desktop-response";
+import {
+  failure,
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 
 const profile = {
   id: "cfw",
@@ -20,10 +25,14 @@ const profile = {
 
 const dashboard = { profile, dashboard: { repos: [] } };
 
+let desktop: DesktopDouble | undefined;
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
   vi.unstubAllGlobals();
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("SettingsModal", () => {
@@ -54,7 +63,7 @@ describe("SettingsModal", () => {
   });
 
   it("opens on General and exposes only the two local-data controls", async () => {
-    const request = installDesktopApi();
+    const desktopApi = installDesktopApi();
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
@@ -103,7 +112,7 @@ describe("SettingsModal", () => {
     await user.click(screen.getByRole("button", { name: "Clear local data" }));
 
     await waitFor(() =>
-      expect(request).toHaveBeenCalledWith({
+      expect(desktopApi.request).toHaveBeenCalledWith({
         path: "/v1/storage/clear-local-data",
         method: "POST",
         body: { profileId: "cfw" },
@@ -285,7 +294,7 @@ describe("SettingsModal", () => {
   });
 
   it("offers Save in the dirty-draft guard and closes only after saving", async () => {
-    const request = installDesktopApi();
+    const desktopApi = installDesktopApi();
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
@@ -297,7 +306,7 @@ describe("SettingsModal", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(request).toHaveBeenCalledWith(
+      expect(desktopApi.request).toHaveBeenCalledWith(
         expect.objectContaining({ path: "/v1/profiles", method: "PUT" }),
       ),
     );
@@ -305,7 +314,7 @@ describe("SettingsModal", () => {
   });
 
   it("keeps a failed profile save retryable before a later save closes", async () => {
-    const request = installDesktopApi({ profileSaveFailures: 1 });
+    const desktopApi = installDesktopApi({ profileSaveFailures: 1 });
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
@@ -316,7 +325,7 @@ describe("SettingsModal", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(request).toHaveBeenCalledWith(
+      expect(desktopApi.request).toHaveBeenCalledWith(
         expect.objectContaining({ path: "/v1/profiles", method: "PUT" }),
       ),
     );
@@ -358,7 +367,7 @@ describe("SettingsModal", () => {
   });
 
   it("selects an enabled default review model and saves it for this profile", async () => {
-    const request = installDesktopApi({
+    const desktopApi = installDesktopApi({
       models: {
         providers: [
           { id: "pi", label: "Pi", available: true, guidance: "Configured." },
@@ -406,7 +415,9 @@ describe("SettingsModal", () => {
         reasoning: "medium",
       }),
     );
-    expect(request).toHaveBeenCalledWith({ path: "/v1/insight-providers" });
+    expect(desktopApi.request).toHaveBeenCalledWith({
+      path: "/v1/insight-providers",
+    });
   });
 
   it("offers the full reasoning range and saves a chosen default under the shared Analysis key", async () => {
@@ -601,39 +612,27 @@ function installDesktopApi(
     readonly models?: RawJsonValue;
     readonly profileSaveFailures?: number;
   } = {},
-): ReturnType<typeof vi.fn> {
+): DesktopDouble {
   let profileSaveFailures = options.profileSaveFailures ?? 0;
-  const request = vi.fn(
-    async (input: {
-      readonly path?: string;
-      readonly method?: string;
-      readonly body?: unknown;
-      readonly operation?: string;
-    }) => {
-      if (input.operation === "selectDirectory")
-        return success({ path: "/picked/workspace" });
-      if (input.path === "/v1/environment") return success({});
-      if (input.path === "/v1/insight-providers")
-        return success(options.models ?? {});
-      if (
-        input.path === "/v1/profiles" &&
-        input.method === "PUT" &&
-        profileSaveFailures > 0
-      ) {
+  desktop = installDesktopDouble({
+    "/v1/environment": () => success({}),
+    // The modal's Logs tab polls, and `lib/logger.ts` flushes the renderer
+    // log queue through the same bridge; both are answered here so neither
+    // is mistaken for a settings request.
+    "/v1/logs": () => success({ entries: [] }),
+    "/v1/watchlist/suggestions": () => success({}),
+    "/v1/insight-providers": () => success(options.models ?? {}),
+    "/v1/profiles": (input) => {
+      if (input.method === "PUT" && profileSaveFailures > 0) {
         profileSaveFailures -= 1;
         return failure({ error: "profile_save_failed" });
       }
-      if (
-        input.path === "/v1/storage/clear-local-data" &&
-        options.clearLocalDataFails === true
-      )
-        return failure({ error: "storage_unavailable" });
       return success({});
     },
-  );
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: { request, onMenuAction: () => () => undefined },
+    "/v1/storage/clear-local-data": () =>
+      options.clearLocalDataFails === true
+        ? failure({ error: "storage_unavailable" })
+        : success({}),
   });
-  return request;
+  return desktop;
 }

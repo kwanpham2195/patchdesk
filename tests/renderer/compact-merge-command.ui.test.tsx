@@ -6,9 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactMergeCommand } from "../../src/renderer/src/components/compact-merge-command";
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import { deriveCheckReasons } from "../../src/domain/merge-readiness";
+import { installDesktopDouble } from "./fake-desktop-response";
+
+let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 
 afterEach(() => {
   cleanup();
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("compact merge command", () => {
@@ -39,10 +44,7 @@ describe("compact merge command", () => {
 
   it("offers the safe GitHub action for partially evidenced blockers", async () => {
     const openExternalHttps = vi.fn(async () => true);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { openExternalHttps },
-    });
+    desktop = installDesktopDouble({}, { openExternalHttps });
     render(
       <CompactMergeCommand
         readiness={{

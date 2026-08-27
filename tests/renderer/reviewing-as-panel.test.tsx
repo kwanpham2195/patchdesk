@@ -7,8 +7,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { EnvironmentCheckResponse } from "../../src/renderer/src/renderer-contracts";
 import type { Profile } from "../../src/renderer/src/renderer-models";
-import type { RawJsonValue } from "../../src/domain/json";
-import type { DesktopResponse } from "../../src/main/ipc-contract";
+import {
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 
 function makeProfile(
   overrides: {
@@ -29,9 +32,13 @@ function makeProfile(
 
 const profile = makeProfile();
 
+let desktop: DesktopDouble | undefined;
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("Reviewing as panel", () => {
@@ -353,23 +360,12 @@ function installDesktopApi(
   // supplies.
   environment: () => Partial<EnvironmentCheckResponse>,
 ): void {
-  const request = vi.fn(
-    async (input: {
-      readonly path?: string;
-      readonly method?: string;
-      readonly body?: unknown;
-      readonly operation?: string;
-    }) => {
-      if (input.path === "/v1/environment") return success(environment());
-      return success({});
-    },
-  );
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: { request, onMenuAction: () => () => undefined },
+  desktop = installDesktopDouble({
+    "/v1/environment": () => success(environment()),
+    // The panel loads suggestions alongside the environment check; every test
+    // here is about the environment, so this answers the same empty object
+    // the file's previous catch-all did.
+    "/v1/watchlist/suggestions": () => success({}),
+    "/v1/logs": () => success(null),
   });
-}
-
-function success(body: RawJsonValue): DesktopResponse {
-  return { ok: true, status: 200, body, correlationId: "test" };
 }

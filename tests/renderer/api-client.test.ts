@@ -5,26 +5,24 @@ import {
   PatchdeskApiError,
   requestJson,
 } from "../../src/renderer/src/api-client";
+import { installDesktopDouble } from "./fake-desktop-response";
+
+let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 
 afterEach(() => {
-  Reflect.deleteProperty(window, "patchdesk");
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("renderer API boundary", () => {
   it("rejects a failed bridge response with its status and structured body", async () => {
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async () => ({
-          ok: false,
-          status: 409,
-          body: { error: "refresh_failed", retryable: true },
-          correlationId: "corr-refresh",
-        }),
-        openExternalHttps: async () => false,
-        onMenuAction: () => () => undefined,
-        qaScrollDiagnosticsEnabled: false,
-      },
+    desktop = installDesktopDouble({
+      "/v1/inbox": () => ({
+        ok: false,
+        status: 409,
+        body: { error: "refresh_failed", retryable: true },
+        correlationId: "corr-refresh",
+      }),
     });
 
     let thrown: unknown;
@@ -44,19 +42,13 @@ describe("renderer API boundary", () => {
   });
 
   it("classifies a forbidden write as its own 'forbidden' kind, not the generic 'auth' bucket a bare 403 status would otherwise produce", async () => {
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async () => ({
-          ok: false,
-          status: 403,
-          body: { error: "forbidden" },
-          correlationId: "corr-forbidden",
-        }),
-        openExternalHttps: async () => false,
-        onMenuAction: () => () => undefined,
-        qaScrollDiagnosticsEnabled: false,
-      },
+    desktop = installDesktopDouble({
+      "/v1/pending-review": () => ({
+        ok: false,
+        status: 403,
+        body: { error: "forbidden" },
+        correlationId: "corr-forbidden",
+      }),
     });
 
     let thrown: unknown;
@@ -77,19 +69,13 @@ describe("renderer API boundary", () => {
   });
 
   it("classifies a locked merge as its own 'merge_in_progress' kind", async () => {
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async () => ({
-          ok: false,
-          status: 409,
-          body: { error: "merge_in_progress" },
-          correlationId: "corr-merge-in-progress",
-        }),
-        openExternalHttps: async () => false,
-        onMenuAction: () => () => undefined,
-        qaScrollDiagnosticsEnabled: false,
-      },
+    desktop = installDesktopDouble({
+      "/v1/reviews/merge": () => ({
+        ok: false,
+        status: 409,
+        body: { error: "merge_in_progress" },
+        correlationId: "corr-merge-in-progress",
+      }),
     });
 
     let thrown: unknown;
@@ -108,19 +94,13 @@ describe("renderer API boundary", () => {
   });
 
   it("classifies a rejected assignee write as its own 'assignee_cap_exceeded' kind, stating the limit is ten", async () => {
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async () => ({
-          ok: false,
-          status: 400,
-          body: { error: "assignee_cap_exceeded" },
-          correlationId: "corr-assignee-cap",
-        }),
-        openExternalHttps: async () => false,
-        onMenuAction: () => () => undefined,
-        qaScrollDiagnosticsEnabled: false,
-      },
+    desktop = installDesktopDouble({
+      "/v1/reviews/assignees/command": () => ({
+        ok: false,
+        status: 400,
+        body: { error: "assignee_cap_exceeded" },
+        correlationId: "corr-assignee-cap",
+      }),
     });
 
     let thrown: unknown;

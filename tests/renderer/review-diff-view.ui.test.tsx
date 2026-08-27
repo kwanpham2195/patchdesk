@@ -14,6 +14,11 @@ import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
 import type * as PierreDiffs from "@pierre/diffs";
+import {
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 
 const must = <T,>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
@@ -29,32 +34,30 @@ vi.mock("@pierre/diffs", async (importOriginal) => {
   };
 });
 
-afterEach(() => cleanup());
+let desktop: DesktopDouble | undefined;
+
+afterEach(() => {
+  cleanup();
+  desktop?.restore();
+  desktop = undefined;
+});
 
 describe("review diff hydration", () => {
   it("does not hydrate a filtered non-virtualized walkthrough diff", () => {
-    const request = vi.fn(async () => ({
-      ok: true as const,
-      status: 200 as const,
-      body: {
-        state: "ready",
-        oldFile: { name: "src/a.ts", contents: "before\nold tail\n" },
-        newFile: {
-          name: "src/a.ts",
-          contents: "after\nnew tail\nnew tail 2\n",
-        },
+    desktop = installDesktopDouble(
+      {
+        "/v1/reviews/diff-file": () =>
+          success({
+            state: "ready",
+            oldFile: { name: "src/a.ts", contents: "before\nold tail\n" },
+            newFile: {
+              name: "src/a.ts",
+              contents: "after\nnew tail\nnew tail 2\n",
+            },
+          }),
       },
-      correlationId: "test",
-    }));
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request,
-        openExternalHttps: async () => true,
-        onMenuAction: () => () => undefined,
-        qaScrollDiagnosticsEnabled: false,
-      },
-    });
+      { openExternalHttps: async () => true },
+    );
     const patch =
       "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-before\n+after\n";
     const parsed = parseReviewDiff(patch);
@@ -74,7 +77,7 @@ describe("review diff hydration", () => {
       />,
     );
 
-    expect(request).not.toHaveBeenCalled();
+    expect(desktop.request).not.toHaveBeenCalled();
   });
 
   it("submits a fingerprinted inline comment through the accessible fallback", async () => {

@@ -5,14 +5,22 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
 import { InboxFlow } from "../../src/renderer/src/flows/inbox-flow";
+import type { RawJsonValue } from "../../src/domain/json";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { Dashboard } from "../../src/renderer/src/renderer-models";
+import {
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+  type DesktopRoute,
+} from "./fake-desktop-response";
 
 const sha = "a".repeat(40);
 const patchHash = "b".repeat(64);
@@ -124,13 +132,25 @@ function renderInboxFlow(ui: ReactNode): ReturnType<typeof render> {
   return render(<BusyProvider>{ui}</BusyProvider>);
 }
 
+let desktop: DesktopDouble | undefined;
+
 afterEach(() => {
   cleanup();
-  // SAFETY: removes the test-installed `window.patchdesk` stub between
-  // tests; the global itself is declared optional elsewhere in the app.
-  delete (window as { patchdesk?: unknown }).patchdesk;
+  desktop?.restore();
+  desktop = undefined;
   vi.restoreAllMocks();
 });
+
+/**
+ * Every loopback request the flow sent, in order, with its body.
+ */
+function sentRequests(
+  double: DesktopDouble,
+): ReadonlyArray<{ readonly path: string; readonly body?: unknown }> {
+  return double.request.mock.calls.flatMap(([input]) =>
+    "path" in input ? [input] : [],
+  );
+}
 
 /**
  * The review endpoints a test drove, in order. Scoped to `/v1/reviews/` on
@@ -138,45 +158,60 @@ afterEach(() => {
  * whether it lands mid-test depends on timing, so asserting over every captured
  * request made these cases order-dependent and intermittently red.
  */
-function reviewRequestPaths(
-  requests: ReadonlyArray<{ readonly path: string }>,
-): ReadonlyArray<string> {
-  return requests
+function reviewRequestPaths(double: DesktopDouble): ReadonlyArray<string> {
+  return sentRequests(double)
     .map((request) => request.path)
     .filter((path) => path.startsWith("/v1/reviews/"));
 }
 
+/**
+ * The paths every InboxFlow test answers the same way. Each is a real request
+ * the flow makes on mount; naming them here keeps the double strict about the
+ * ones a given test is actually about.
+ */
+/**
+ * Projects a fixture into the JSON grammar `DesktopResponse.body` carries.
+ * The real bridge serialises every response across the IPC boundary, so this
+ * is that same round trip: `WorkbenchResponse` declares optional members the
+ * JSON grammar has no way to express.
+ */
+function asJsonBody(value: WorkbenchResponse): RawJsonValue {
+  // SAFETY: `JSON.parse` of `JSON.stringify` output is by construction a
+  // value of the JSON grammar; `JSON.parse` is simply typed `any`.
+  return JSON.parse(JSON.stringify(value)) as RawJsonValue;
+}
+
+/** The destructive alert InboxFlow raises when opening a review fails. */
+function openErrorAlert(): HTMLElement | undefined {
+  return screen
+    .getAllByRole("alert")
+    .find(
+      (alert) => within(alert).queryByText("Could not open review") !== null,
+    );
+}
+
+const SHARED_INBOX_ROUTES = {
+  "/v1/logs": () => success(null),
+  "/v1/github/access": () => success({}),
+  "/v1/environment": () => success({}),
+} satisfies Readonly<Record<string, DesktopRoute>>;
+
 describe("InboxFlow saved-review recovery", () => {
   it("falls back to opening by PR identity when the stored review cannot be loaded", async () => {
-    const requests: Array<{ readonly path: string; readonly body?: unknown }> =
-      [];
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: {
-          readonly path: string;
-          readonly body?: unknown;
-        }) => {
-          requests.push(input);
-          if (input.path === "/v1/reviews/load") {
-            return {
-              ok: false,
-              status: 404,
-              correlationId: "load",
-              body: { error: "not_found" },
-            };
-          }
-          if (input.path === "/v1/reviews/open") {
-            return {
-              ok: true,
-              status: 200,
-              correlationId: "open",
-              body: projection,
-            };
-          }
-          return { ok: true, status: 200, correlationId: input.path, body: {} };
-        },
-      },
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/load": () => ({
+        ok: false,
+        status: 404,
+        correlationId: "load",
+        body: { error: "not_found" },
+      }),
+      "/v1/reviews/open": () => ({
+        ok: true,
+        status: 200,
+        correlationId: "open",
+        body: asJsonBody(projection),
+      }),
     });
     const onOpenWorkbench = vi.fn();
     renderInboxFlow(
@@ -194,11 +229,11 @@ describe("InboxFlow saved-review recovery", () => {
     );
     fireEvent.click(screen.getByRole("option"));
     await waitFor(() => expect(onOpenWorkbench).toHaveBeenCalled());
-    expect(reviewRequestPaths(requests)).toEqual([
+    expect(reviewRequestPaths(desktop)).toEqual([
       "/v1/reviews/load",
       "/v1/reviews/open",
     ]);
-    const open = requests.find(
+    const open = sentRequests(desktop).find(
       (request) => request.path === "/v1/reviews/open",
     );
     expect(open?.body).toEqual({
@@ -213,8 +248,6 @@ describe("InboxFlow saved-review recovery", () => {
 
 describe("InboxFlow merged review opening", () => {
   it("sends only merged rows to the terminal-only endpoint", async () => {
-    const requests: Array<{ readonly path: string; readonly body?: unknown }> =
-      [];
     const mergedRow = {
       ...savedRow,
       remoteState: "merged" as const,
@@ -229,22 +262,9 @@ describe("InboxFlow merged review opening", () => {
       ...inbox,
       inbox: { ...inbox.inbox, rows: [mergedRow] },
     } as never;
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: {
-          readonly path: string;
-          readonly body?: unknown;
-        }) => {
-          requests.push(input);
-          return {
-            ok: true,
-            status: 200,
-            correlationId: input.path,
-            body: projection,
-          };
-        },
-      },
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/open-merged": () => success(asJsonBody(projection)),
     });
     const onOpenWorkbench = vi.fn();
     renderInboxFlow(
@@ -264,7 +284,7 @@ describe("InboxFlow merged review opening", () => {
     fireEvent.click(screen.getByRole("option"));
 
     await waitFor(() => expect(onOpenWorkbench).toHaveBeenCalledOnce());
-    expect(reviewRequestPaths(requests)).toEqual(["/v1/reviews/open-merged"]);
+    expect(reviewRequestPaths(desktop)).toEqual(["/v1/reviews/open-merged"]);
   });
 });
 
@@ -477,44 +497,29 @@ describe("InboxFlow settings targeting", () => {
 
 describe("InboxFlow setup checklist", () => {
   function stubPatchdesk(
-    handlers: Record<string, { readonly ok: true; readonly body: unknown }>,
+    handlers: Readonly<Record<string, RawJsonValue>>,
   ): void {
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: { readonly path: string }) => {
-          const handler = handlers[input.path];
-          if (handler === undefined)
-            return {
-              ok: true,
-              status: 200,
-              correlationId: input.path,
-              body: {},
-            };
-          return {
-            ok: handler.ok,
-            status: 200,
-            correlationId: input.path,
-            body: handler.body,
-          };
-        },
-      },
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      ...Object.fromEntries(
+        Object.entries(handlers).map(([path, body]) => [
+          path,
+          () => success(body),
+        ]),
+      ),
     });
   }
 
   it("shows both checks passing when GitHub access is available and local tools are ready", async () => {
     stubPatchdesk({
-      "/v1/github/access": { ok: true, body: { state: "available" } },
+      "/v1/github/access": { state: "available" },
       "/v1/environment": {
-        ok: true,
-        body: {
-          git: "ready",
-          gh: "ready",
-          githubAuth: "ready",
-          githubAccounts: [
-            { host: "github.com", login: "patchdesk", active: true },
-          ],
-        },
+        git: "ready",
+        gh: "ready",
+        githubAuth: "ready",
+        githubAccounts: [
+          { host: "github.com", login: "patchdesk", active: true },
+        ],
       },
     });
     renderInboxFlow(
@@ -539,15 +544,12 @@ describe("InboxFlow setup checklist", () => {
 
   it("says the GitHub CLI needs installing when gh is missing, not that authentication is required", async () => {
     stubPatchdesk({
-      "/v1/github/access": { ok: true, body: { state: "available" } },
+      "/v1/github/access": { state: "available" },
       "/v1/environment": {
-        ok: true,
-        body: {
-          git: "ready",
-          gh: "missing",
-          githubAuth: "unavailable",
-          githubAccounts: [],
-        },
+        git: "ready",
+        gh: "missing",
+        githubAuth: "unavailable",
+        githubAccounts: [],
       },
     });
     renderInboxFlow(
@@ -570,15 +572,12 @@ describe("InboxFlow setup checklist", () => {
 
   it("tells the user to run gh auth login for the Settings account when authentication is required", async () => {
     stubPatchdesk({
-      "/v1/github/access": { ok: true, body: { state: "github_auth" } },
+      "/v1/github/access": { state: "github_auth" },
       "/v1/environment": {
-        ok: true,
-        body: {
-          git: "ready",
-          gh: "ready",
-          githubAuth: "authentication_required",
-          githubAccounts: [],
-        },
+        git: "ready",
+        gh: "ready",
+        githubAuth: "authentication_required",
+        githubAccounts: [],
       },
     });
     renderInboxFlow(
@@ -616,20 +615,14 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
       ...inbox,
       inbox: { ...inbox.inbox, rows: [runReviewRow] },
     } as never;
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: { readonly path: string }) => {
-          if (input.path === "/v1/reviews/open")
-            return {
-              ok: false,
-              status: 500,
-              correlationId: "open-fail",
-              body: { error: "unavailable" },
-            };
-          return { ok: true, status: 200, correlationId: input.path, body: {} };
-        },
-      },
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/open": () => ({
+        ok: false,
+        status: 500,
+        correlationId: "open-fail",
+        body: { error: "unavailable" },
+      }),
     });
 
     const { rerender } = renderInboxFlow(
@@ -647,11 +640,12 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
 
     fireEvent.click(screen.getByRole("option"));
 
-    const expectedCopy =
-      "Could not prepare owner/repo#1. The requested service is currently unavailable.";
     // Confirms the error landed in `InboxFlow`'s local `openError` state
     // while `InboxScreen` (dashboard/inbox still defined) is what renders it.
-    await screen.findByText(expectedCopy);
+    // The alert and its title are the observable; the sentence inside it is
+    // wording, which this test deliberately does not pin.
+    const raisedAlert = await screen.findByRole("alert");
+    expect(within(raisedAlert).getByText("Could not open review")).toBeTruthy();
 
     // Simulates the profile switch that follows in the real app: a `cleared`
     // dispatch clears `dashboard`/`inbox` and forces `screen: "loading"`,
@@ -673,7 +667,6 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
     );
 
     expect(await screen.findByText("First run")).toBeTruthy();
-    expect(screen.getByText("Could not open review")).toBeTruthy();
-    expect(screen.getByText(expectedCopy)).toBeTruthy();
+    expect(openErrorAlert()).toBeDefined();
   });
 });

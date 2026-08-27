@@ -11,7 +11,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { parseContentHash } from "../../src/domain/ids";
-import type { DesktopMenuAction } from "../../src/main/ipc-contract";
 import { App, type ReviewWorkbenchLoader } from "../../src/renderer/src/app";
 import {
   loadInboxViewPreferences,
@@ -20,19 +19,62 @@ import {
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { ReviewWorkbenchFlowProps } from "../../src/renderer/src/flows/review-workbench-flow";
 import type { InboxStateFilter } from "../../src/domain/maintainer-inbox";
+import type { RawJsonValue } from "../../src/domain/json";
+import {
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+  type DesktopRoute,
+} from "./fake-desktop-response";
 
 const sha = "a".repeat(40);
 const patchHash = contentHashFixture("b".repeat(64));
+
+let installed: DesktopDouble | undefined;
 
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
   window.history.replaceState({}, "", "/");
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: undefined,
-  });
+  installed?.restore();
+  installed = undefined;
 });
+
+const profileFixture = {
+  id: "profile",
+  label: "Profile",
+  githubHost: "github.com",
+  ghAccount: "fixture",
+};
+
+/**
+ * The paths `App` requests on every boot that no test here asserts on, plus
+ * the navigation-state operation it reports after each destination change.
+ * Naming them keeps the double strict about the ones a test is about.
+ */
+const APP_BOOT_ROUTES = {
+  "/v1/logs": () => success(null),
+  "/v1/settings": () => success({}),
+  "/v1/environment": () => success({}),
+  "/v1/github/access": () => success({}),
+  "/v1/watchlist/suggestions": () => success({}),
+} satisfies Readonly<Record<string, DesktopRoute>>;
+
+const APP_BOOT_OPERATIONS = {
+  setNavigationState: () => success({}),
+} as const;
+
+/**
+ * Projects a fixture into the JSON grammar `DesktopResponse.body` carries.
+ * The real bridge serialises every response across the IPC boundary, so this
+ * is that same round trip: `WorkbenchResponse` declares optional members the
+ * JSON grammar has no way to express.
+ */
+function asJsonBody(value: WorkbenchResponse): RawJsonValue {
+  // SAFETY: `JSON.parse` of `JSON.stringify` output is by construction a
+  // value of the JSON grammar; `JSON.parse` is simply typed `any`.
+  return JSON.parse(JSON.stringify(value)) as RawJsonValue;
+}
 
 describe("App Review route loading", () => {
   it("does not resolve Review or fixture code for Inbox and Settings", async () => {
@@ -89,33 +131,17 @@ describe("App Review route loading", () => {
   it("requests the default rows-per-page on load, then clears the page token and requests the first page with the new size on change", async () => {
     const user = userEvent.setup();
     const paths: string[] = [];
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: { readonly path?: string }) => {
-          if (input.path?.startsWith("/v1/inbox")) paths.push(input.path);
-          return {
-            ok: true,
-            status: 200,
-            correlationId: "test",
-            body:
-              input.path === "/v1/profiles"
-                ? [
-                    {
-                      id: "profile",
-                      label: "Profile",
-                      githubHost: "github.com",
-                      ghAccount: "fixture",
-                    },
-                  ]
-                : input.path?.startsWith("/v1/inbox")
-                  ? inbox()
-                  : {},
-          };
+    installed = installDesktopDouble(
+      {
+        ...APP_BOOT_ROUTES,
+        "/v1/profiles": () => success([profileFixture]),
+        "/v1/inbox": (input) => {
+          paths.push(input.path);
+          return success(inbox());
         },
-        onMenuAction: () => () => undefined,
       },
-    });
+      { operations: APP_BOOT_OPERATIONS },
+    );
     render(<App />);
     await screen.findByRole("heading", { name: "Maintainer inbox" });
     expect(paths).toEqual(["/v1/inbox?state=open&pageSize=25"]);
@@ -131,33 +157,20 @@ describe("App Review route loading", () => {
   it("requests the saved page size once on mount, without a default-size fetch first", async () => {
     saveInboxViewPreferences("profile", { pageSize: 10 });
     const paths: string[] = [];
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: { readonly path?: string }) => {
-          if (input.path?.startsWith("/v1/inbox")) paths.push(input.path);
-          return {
-            ok: true,
-            status: 200,
-            correlationId: "test",
-            body:
-              input.path === "/v1/profiles"
-                ? [
-                    {
-                      id: "profile",
-                      label: "Profile",
-                      githubHost: "github.com",
-                      ghAccount: "fixture",
-                    },
-                  ]
-                : input.path?.startsWith("/v1/inbox")
-                  ? { ...inbox(), inbox: { ...inbox().inbox, pageSize: 10 } }
-                  : {},
-          };
+    installed = installDesktopDouble(
+      {
+        ...APP_BOOT_ROUTES,
+        "/v1/profiles": () => success([profileFixture]),
+        "/v1/inbox": (input) => {
+          paths.push(input.path);
+          return success({
+            ...inbox(),
+            inbox: { ...inbox().inbox, pageSize: 10 },
+          });
         },
-        onMenuAction: () => () => undefined,
       },
-    });
+      { operations: APP_BOOT_OPERATIONS },
+    );
     render(<App />);
     await screen.findByRole("heading", { name: "Maintainer inbox" });
     // Exactly one request, already sized from the saved preference — not the
@@ -274,47 +287,19 @@ describe("App inbox state switch", () => {
   it("holds the row list in a loading state instead of showing the previous state's rows under the new state's label", async () => {
     const user = userEvent.setup();
     const mergedGate = promise<void>();
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: { readonly path?: string }) => {
-          if (input.path === "/v1/profiles") {
-            return {
-              ok: true,
-              status: 200,
-              correlationId: "test",
-              body: [
-                {
-                  id: "profile",
-                  label: "Profile",
-                  githubHost: "github.com",
-                  ghAccount: "fixture",
-                },
-              ],
-            };
-          }
-          if (input.path === "/v1/inbox?state=open&pageSize=25") {
-            return {
-              ok: true,
-              status: 200,
-              correlationId: "test",
-              body: stateFilteredInbox("open", 1, "Open PR title"),
-            };
-          }
-          if (input.path === "/v1/inbox?state=merged&pageSize=25") {
-            await mergedGate.promise;
-            return {
-              ok: true,
-              status: 200,
-              correlationId: "test",
-              body: stateFilteredInbox("merged", 2, "Merged PR title"),
-            };
-          }
-          return { ok: true, status: 200, correlationId: "test", body: {} };
+    installed = installDesktopDouble(
+      {
+        ...APP_BOOT_ROUTES,
+        "/v1/profiles": () => success([profileFixture]),
+        "/v1/inbox?state=open&pageSize=25": () =>
+          success(stateFilteredInbox("open", 1, "Open PR title")),
+        "/v1/inbox?state=merged&pageSize=25": async () => {
+          await mergedGate.promise;
+          return success(stateFilteredInbox("merged", 2, "Merged PR title"));
         },
-        onMenuAction: () => () => undefined,
       },
-    });
+      { operations: APP_BOOT_OPERATIONS },
+    );
     render(<App />);
     await screen.findByRole("heading", { name: "Maintainer inbox" });
     const rowList = screen.getByRole("listbox", { name: "Pull requests" });
@@ -637,65 +622,34 @@ function stateFilteredInbox(
   };
 }
 
-/** Test double for the desktop menu-action channel: lets a test fire the same
- * "refresh"/"openSettings" actions the View menu sends over IPC, without a
- * real Electron main process. */
-type DesktopMenuActionDouble = {
-  readonly sendMenuAction: (action: DesktopMenuAction) => void;
-};
-
+/** Installs the App bridge for a test that also fires "refresh"/"openSettings"
+ * through the desktop menu-action channel, the same way the View menu does
+ * over IPC, without a real Electron main process. */
 function installDesktop(
   options: {
     readonly failInboxRefresh?: boolean;
     readonly inboxRefreshGate?: Promise<void>;
   } = {},
-): DesktopMenuActionDouble {
+): DesktopDouble {
   let inboxRequests = 0;
-  let menuActionListener: ((action: DesktopMenuAction) => void) | undefined;
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: {
-      request: async (input: { readonly path?: string }) => {
-        if (input.path === "/v1/inbox?state=open&pageSize=25") {
-          inboxRequests += 1;
-          if (options.failInboxRefresh && inboxRequests > 1) {
-            if (options.inboxRefreshGate !== undefined)
-              await options.inboxRefreshGate;
-            throw new Error("refresh failed");
-          }
+  installed = installDesktopDouble(
+    {
+      ...APP_BOOT_ROUTES,
+      "/v1/profiles": () => success([profileFixture]),
+      "/v1/reviews/load": () => success(asJsonBody(projection())),
+      "/v1/inbox?state=open&pageSize=25": async () => {
+        inboxRequests += 1;
+        if (options.failInboxRefresh && inboxRequests > 1) {
+          if (options.inboxRefreshGate !== undefined)
+            await options.inboxRefreshGate;
+          throw new Error("refresh failed");
         }
-        return {
-          ok: true,
-          status: 200,
-          correlationId: "test",
-          body:
-            input.path === "/v1/profiles"
-              ? [
-                  {
-                    id: "profile",
-                    label: "Profile",
-                    githubHost: "github.com",
-                    ghAccount: "fixture",
-                  },
-                ]
-              : input.path === "/v1/inbox?state=open&pageSize=25"
-                ? inbox()
-                : input.path === "/v1/reviews/load"
-                  ? projection()
-                  : {},
-        };
-      },
-      onMenuAction: (listener: (action: DesktopMenuAction) => void) => {
-        menuActionListener = listener;
-        return () => {
-          menuActionListener = undefined;
-        };
+        return success(inbox());
       },
     },
-  });
-  return {
-    sendMenuAction: (action) => menuActionListener?.(action),
-  };
+    { operations: APP_BOOT_OPERATIONS },
+  );
+  return installed;
 }
 
 function inbox() {
@@ -782,29 +736,12 @@ function installRepoDesktop(
   gateFor: (path: string) => Promise<void> | undefined = () => undefined,
 ) {
   const paths: string[] = [];
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: {
-      request: async (input: { readonly path?: string }) => {
-        const path = input.path ?? "";
-        if (path === "/v1/profiles") {
-          return {
-            ok: true,
-            status: 200,
-            correlationId: "test",
-            body: [
-              {
-                id: "profile",
-                label: "Profile",
-                githubHost: "github.com",
-                ghAccount: "fixture",
-                repos: watchlist,
-              },
-            ],
-          };
-        }
-        if (!path.startsWith("/v1/inbox"))
-          return { ok: true, status: 200, correlationId: "test", body: {} };
+  installed = installDesktopDouble(
+    {
+      ...APP_BOOT_ROUTES,
+      "/v1/profiles": () => success([{ ...profileFixture, repos: watchlist }]),
+      "/v1/inbox": async (input) => {
+        const path = input.path;
         paths.push(path);
         await gateFor(path);
         const url = new URL(path, "http://localhost");
@@ -827,15 +764,15 @@ function installRepoDesktop(
             body: { error: "invalid_input" },
           };
         const page = url.searchParams.get("page");
-        const body =
+        return success(
           page === "page-1"
             ? repoInboxResponse(repo, watchlist)
-            : repoInboxResponse(repo, watchlist, { nextPageToken: "page-1" });
-        return { ok: true, status: 200, correlationId: "test", body };
+            : repoInboxResponse(repo, watchlist, { nextPageToken: "page-1" }),
+        );
       },
-      onMenuAction: () => () => undefined,
     },
-  });
+    { operations: APP_BOOT_OPERATIONS },
+  );
   return { paths };
 }
 

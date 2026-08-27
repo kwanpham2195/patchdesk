@@ -14,7 +14,12 @@ import {
   parseDiffThemePreferences,
   type DiffThemePreferences,
 } from "../../src/renderer/src/diff-theme-preferences";
-import { failure, success } from "./fake-desktop-response";
+import {
+  failure,
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 
 const dashboard = {
   profile: {
@@ -26,8 +31,12 @@ const dashboard = {
   dashboard: { repos: [] },
 };
 
+let desktop: DesktopDouble | undefined;
+
 afterEach(() => {
   cleanup();
+  desktop?.restore();
+  desktop = undefined;
   window.localStorage.clear();
   window.sessionStorage.clear();
   vi.unstubAllGlobals();
@@ -40,7 +49,7 @@ describe("file-backed renderer preferences", () => {
       "patchdesk.diff-theme.v2",
       JSON.stringify({ light: "github-light", dark: "github-dark" }),
     );
-    const request = installDesktopApi({
+    const desktopApi = installDesktopApi({
       appearance: "dark",
       diffTheme: { light: "pierre-light", dark: "tokyo-night" },
     });
@@ -67,11 +76,7 @@ describe("file-backed renderer preferences", () => {
       }),
     );
     window.removeEventListener("patchdesk:diff-theme", onTheme);
-    expect(
-      request.mock.calls.some(
-        ([input]) => input.path === "/v1/settings" && input.method === "PATCH",
-      ),
-    ).toBe(false);
+    expect(settingsPatches(desktopApi)).toHaveLength(0);
   });
 
   it("keeps renderer values until the missing settings write succeeds", async () => {
@@ -80,17 +85,12 @@ describe("file-backed renderer preferences", () => {
       "patchdesk.diff-theme.v2",
       JSON.stringify({ light: "github-light", dark: "github-dark" }),
     );
-    const request = installDesktopApi({}, { patchSucceeds: false });
+    const desktopApi = installDesktopApi({}, { patchSucceeds: false });
 
     render(<App />);
 
     await waitFor(() =>
-      expect(
-        request.mock.calls.some(
-          ([input]) =>
-            input.path === "/v1/settings" && input.method === "PATCH",
-        ),
-      ).toBe(true),
+      expect(settingsPatches(desktopApi).length).toBeGreaterThan(0),
     );
     expect(window.localStorage.getItem("patchdesk.appearance.v1")).toBe("dark");
     expect(
@@ -104,17 +104,12 @@ describe("file-backed renderer preferences", () => {
       "patchdesk.diff-theme.v2",
       JSON.stringify({ light: "github-light", dark: "github-dark" }),
     );
-    const request = installDesktopApi({});
+    const desktopApi = installDesktopApi({});
 
     render(<App />);
 
     await waitFor(() =>
-      expect(
-        request.mock.calls.some(
-          ([input]) =>
-            input.path === "/v1/settings" && input.method === "PATCH",
-        ),
-      ).toBe(true),
+      expect(settingsPatches(desktopApi).length).toBeGreaterThan(0),
     );
     await waitFor(() =>
       expect(window.localStorage.getItem("patchdesk.appearance.v1")).toBeNull(),
@@ -123,18 +118,16 @@ describe("file-backed renderer preferences", () => {
   });
 
   it("replaces unavailable file-backed diff themes with installed defaults and persists the correction", async () => {
-    const request = installDesktopApi({
+    const desktopApi = installDesktopApi({
       diffTheme: { light: "removed-light-theme", dark: "github-dark" },
     });
 
     render(<App />);
 
     await waitFor(() => {
-      const corrections = request.mock.calls.filter(
-        ([input]) => input.path === "/v1/settings" && input.method === "PATCH",
-      );
+      const corrections = settingsPatches(desktopApi);
       expect(corrections).toHaveLength(1);
-      expect(corrections[0]?.[0].body).toEqual({
+      expect(corrections[0]).toEqual({
         appearance: "system",
         diffTheme: { light: "pierre-light", dark: "github-dark" },
       });
@@ -142,7 +135,7 @@ describe("file-backed renderer preferences", () => {
   });
 
   it("keeps the Pierre defaults when the backend provides them explicitly", async () => {
-    const request = installDesktopApi({
+    const desktopApi = installDesktopApi({
       diffTheme: { light: "pierre-light", dark: "pierre-dark" },
     });
     const themeEvents: Array<DiffThemePreferences> = [];
@@ -165,13 +158,11 @@ describe("file-backed renderer preferences", () => {
       }),
     );
     await waitFor(() => {
-      const corrections = request.mock.calls.filter(
-        ([input]) => input.path === "/v1/settings" && input.method === "PATCH",
-      );
+      const corrections = settingsPatches(desktopApi);
       // The appearance transfer sends one PATCH; the Pierre defaults must
       // not trigger a separate diff-theme correction.
       expect(
-        corrections.filter(([input]) => input.body?.diffTheme !== undefined),
+        corrections.filter((body) => body.diffTheme !== undefined),
       ).toHaveLength(0);
     });
     window.removeEventListener("patchdesk:diff-theme", onTheme);
@@ -222,41 +213,50 @@ function installDesktopApi(
     readonly patchSucceeds?: boolean;
     readonly getFails?: boolean;
   } = {},
-): ReturnType<typeof vi.fn> {
-  const request = vi.fn(
-    async (input: {
-      readonly path?: string;
-      readonly method?: string;
-      readonly body?: SettingsPatchBody;
-      readonly operation?: string;
-    }) => {
-      if (input.operation === "setNavigationState") return success({});
-      if (input.path === "/v1/settings" && input.method === "PATCH") {
-        if (options.patchSucceeds === false)
-          return failure({ error: "unavailable" });
-        return success({ ...settings, ...input.body });
-      }
-      if (input.path === "/v1/settings") {
+): DesktopDouble {
+  desktop = installDesktopDouble(
+    {
+      "/v1/settings": (input) => {
+        if (input.method === "PATCH") {
+          if (options.patchSucceeds === false)
+            return failure({ error: "unavailable" });
+          return success({ ...settings, ...patchBody(input.body) });
+        }
         if (options.getFails === true) return failure({ error: "storage" });
         return success(settings);
-      }
-      if (input.path === "/v1/profiles") return success([dashboard.profile]);
-      if (input.path === "/v1/inbox")
-        return success({
+      },
+      "/v1/profiles": () => success([dashboard.profile]),
+      "/v1/inbox": () =>
+        success({
           profile: dashboard.profile,
           inbox: { rows: [], repositories: [], snapshot: {} },
-        });
-      if (input.path === "/v1/environment") return success({});
-      return success(dashboard);
+        }),
+      "/v1/environment": () => success({}),
+      "/v1/logs": () => success(null),
+      // Neither of these is what any test here asserts on; both keep the
+      // `dashboard` body the file's previous catch-all returned, so the
+      // screen boots exactly as it did before.
+      "/v1/github/access": () => success(dashboard),
+      "/v1/watchlist/suggestions": () => success(dashboard),
     },
+    { operations: { setNavigationState: () => success({}) } },
   );
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: {
-      request,
-      onMenuAction: () => () => undefined,
-      qaScrollDiagnosticsEnabled: false,
-    },
-  });
-  return request;
+  return desktop;
+}
+
+/** Every `/v1/settings` PATCH the renderer sent, in call order. */
+function settingsPatches(double: DesktopDouble): readonly SettingsPatchBody[] {
+  return double.request.mock.calls.flatMap(([input]) =>
+    "path" in input && input.path === "/v1/settings" && input.method === "PATCH"
+      ? [patchBody(input.body)]
+      : [],
+  );
+}
+
+/** The settings patch a test sent, as the subset these tests read back. */
+function patchBody(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the bridge hands every route the raw request body; this fixture only needs the two settings fields it echoes.
+  body: unknown,
+): SettingsPatchBody {
+  return (body ?? {}) as SettingsPatchBody;
 }

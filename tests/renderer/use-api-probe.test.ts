@@ -3,15 +3,17 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import * as v from "valibot";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type {
-  DesktopRequest,
-  DesktopResponse,
-} from "../../src/main/ipc-contract";
+import type { DesktopResponse } from "../../src/main/ipc-contract";
 import {
   useApiProbe,
   type ApiProbeState,
 } from "../../src/renderer/src/hooks/use-api-probe";
-import { failure, success } from "./fake-desktop-response";
+import {
+  failure,
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 
 const PROBE_PATH = "/v1/probe";
 
@@ -40,26 +42,26 @@ function deferred(): Deferred {
  */
 function installBridge(
   respond: (call: number) => Promise<DesktopResponse> | DesktopResponse,
-) {
+): DesktopDouble {
   let call = 0;
-  const request = vi.fn(async (input: DesktopRequest) => {
-    if ("path" in input && input.path === "/v1/logs") return success(null);
-    call += 1;
-    return respond(call);
+  desktop = installDesktopDouble({
+    "/v1/logs": () => success(null),
+    [PROBE_PATH]: () => {
+      call += 1;
+      return respond(call);
+    },
   });
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: { request, onMenuAction: () => () => undefined },
-  });
-  return request;
+  return desktop;
 }
 
 /** How many of the bridge's calls were this probe's own request. */
-function probeCalls(request: ReturnType<typeof installBridge>): number {
-  return request.mock.calls.filter(
+function probeCalls(double: DesktopDouble): number {
+  return double.request.mock.calls.filter(
     ([input]) => "path" in input && input.path === PROBE_PATH,
   ).length;
 }
+
+let desktop: DesktopDouble | undefined;
 
 // A parser that accepts `{ ok: true }` and rejects everything else, so a
 // rejected body and a transport failure are distinguishable in the fixture
@@ -77,6 +79,8 @@ const probe = { path: PROBE_PATH, restartKey: 0 } as const;
 
 afterEach(() => {
   vi.restoreAllMocks();
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("useApiProbe", () => {
@@ -101,7 +105,7 @@ describe("useApiProbe", () => {
   });
 
   it("sends the method the probe asks for, and a GET by default", async () => {
-    const request = installBridge(() => success({ ok: true }));
+    const probeBridge = installBridge(() => success({ ok: true }));
     const { result } = renderHook(() =>
       useApiProbe(
         { path: "/v1/probe", method: "POST", restartKey: 0 },
@@ -109,21 +113,21 @@ describe("useApiProbe", () => {
       ),
     );
     await waitFor(() => expect(result.current.kind).toBe("loaded"));
-    expect(request).toHaveBeenCalledWith({
+    expect(probeBridge.request).toHaveBeenCalledWith({
       path: "/v1/probe",
       method: "POST",
     });
 
-    const getRequest = installBridge(() => success({ ok: true }));
+    const getProbe = installBridge(() => success({ ok: true }));
     const plain = renderHook(() => useApiProbe(probe, parseProbe));
     await waitFor(() => expect(plain.result.current.kind).toBe("loaded"));
-    expect(getRequest).toHaveBeenCalledWith({ path: "/v1/probe" });
+    expect(getProbe.request).toHaveBeenCalledWith({ path: "/v1/probe" });
   });
 
   it("re-runs on a new restart key and returns to checking while it does", async () => {
     const first = deferred();
     const second = deferred();
-    const request = installBridge((call) =>
+    const probeBridge = installBridge((call) =>
       call === 1 ? first.promise : second.promise,
     );
     const { result, rerender } = renderHook(
@@ -145,7 +149,7 @@ describe("useApiProbe", () => {
       await second.promise;
     });
     expect(result.current).toEqual({ kind: "error" });
-    expect(probeCalls(request)).toBe(2);
+    expect(probeCalls(probeBridge)).toBe(2);
   });
 
   // `parse` is one of the effect's dependencies, which is why the hook's doc
@@ -153,7 +157,7 @@ describe("useApiProbe", () => {
   // is what makes that requirement real: a new parser identity re-runs the
   // probe, so an inline parser would re-request on every render.
   it("re-runs when the parser identity changes", async () => {
-    const request = installBridge(() => success({ ok: true }));
+    const probeBridge = installBridge(() => success({ ok: true }));
     const { result, rerender } = renderHook<
       ApiProbeState<"accepted">,
       { parse: typeof parseProbe }
@@ -165,11 +169,11 @@ describe("useApiProbe", () => {
     );
 
     await waitFor(() => expect(result.current.kind).toBe("loaded"));
-    expect(probeCalls(request)).toBe(1);
+    expect(probeCalls(probeBridge)).toBe(1);
 
     // Same behaviour, new identity — the only thing that changed.
     rerender({ parse: vi.fn(parseProbe) });
-    await waitFor(() => expect(probeCalls(request)).toBe(2));
+    await waitFor(() => expect(probeCalls(probeBridge)).toBe(2));
     await waitFor(() =>
       expect(result.current).toEqual({ kind: "loaded", value: "accepted" }),
     );
@@ -177,10 +181,10 @@ describe("useApiProbe", () => {
     // Control: re-rendering with the same identity does not re-request.
     const stable = vi.fn(parseProbe);
     rerender({ parse: stable });
-    await waitFor(() => expect(probeCalls(request)).toBe(3));
+    await waitFor(() => expect(probeCalls(probeBridge)).toBe(3));
     rerender({ parse: stable });
     await waitFor(() => expect(result.current.kind).toBe("loaded"));
-    expect(probeCalls(request)).toBe(3);
+    expect(probeCalls(probeBridge)).toBe(3);
   });
 
   it("does not let a superseded response overwrite the newer one", async () => {

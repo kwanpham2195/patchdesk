@@ -8,6 +8,7 @@ import {
   PullRequestDescription,
   PullRequestDescriptionPreview,
 } from "../../src/renderer/src/components/pull-request-description";
+import { installDesktopDouble } from "./fake-desktop-response";
 
 const pullRequest = (() => {
   const parsed = parsePullRequestInput(
@@ -41,9 +42,11 @@ beforeEach(() => {
   });
 });
 
+let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 afterEach(() => {
   cleanup();
-  Reflect.deleteProperty(window, "patchdesk");
+  desktop?.restore();
+  desktop = undefined;
   restoreDialogMethod("showModal", originalShowModalDescriptor);
   restoreDialogMethod("close", originalCloseDescriptor);
 });
@@ -63,10 +66,7 @@ describe("PullRequestDescription", () => {
   it("renders safe GitHub-flavored Markdown and opens only an explicit same-host link", async () => {
     const user = userEvent.setup();
     const openExternalHttps = vi.fn(async () => true);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { openExternalHttps },
-    });
+    desktop = installDesktopDouble({}, { openExternalHttps });
 
     render(
       <PullRequestDescription

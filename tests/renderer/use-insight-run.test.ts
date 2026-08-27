@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import type { RawJsonValue } from "../../src/domain/json";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 
 import { useInsightRun } from "../../src/renderer/src/hooks/use-insight-run";
+import {
+  installDesktopDouble,
+  type DesktopDouble,
+  type DesktopRoute,
+} from "./fake-desktop-response";
 
 const sha = "a".repeat(40);
 const patchHash = "b".repeat(64);
@@ -85,26 +91,52 @@ type InsightRunFixture = {
 /** Every response body the faux desktop bridge returns in this suite. */
 type BridgeBody = InsightRunFixture | WorkbenchResponse;
 
+/**
+ * Projects a fixture into the JSON grammar `DesktopResponse.body` carries.
+ * The real bridge serialises every response across the IPC boundary, so this
+ * is the same round trip, not a cast around one: `WorkbenchResponse` declares
+ * optional members the JSON grammar has no way to express.
+ */
+function asJsonBody(value: BridgeBody): RawJsonValue {
+  // SAFETY: `JSON.parse` of `JSON.stringify` output is by construction a
+  // value of the JSON grammar; `JSON.parse` is simply typed `any`.
+  return JSON.parse(JSON.stringify(value)) as RawJsonValue;
+}
+
+/**
+ * Every path `useInsightRun` reaches for, spelled out. The poll path carries
+ * the run id, so each run id this suite hands back gets its own entry: a poll
+ * for an id no test scripted is a bug, not a route to answer quietly.
+ */
+const INSIGHT_RUN_PATHS = [
+  "/v1/reviews/insights/analysis/run",
+  "/v1/reviews/insights/analysis/cancel",
+  "/v1/reviews/insights/runs/run-a",
+  "/v1/reviews/insights/runs/run-old",
+  "/v1/reviews/insights/runs/run-new",
+  "/v1/reviews/load",
+] as const;
+
 function installBridge(
   handler: (input: RequestInput) => Promise<BridgeBody> | BridgeBody,
 ): RequestInput[] {
   const calls: RequestInput[] = [];
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: {
-      request: async (input: RequestInput) => {
-        calls.push(input);
-        return {
-          ok: true,
-          status: 200,
-          correlationId: input.path,
-          body: await handler(input),
-        };
-      },
-    },
-  });
+  const route: DesktopRoute = async (input) => {
+    calls.push(input);
+    return {
+      ok: true,
+      status: 200,
+      correlationId: input.path,
+      body: asJsonBody(await handler(input)),
+    };
+  };
+  desktop = installDesktopDouble(
+    Object.fromEntries(INSIGHT_RUN_PATHS.map((path) => [path, route])),
+  );
   return calls;
 }
+
+let desktop: DesktopDouble | undefined;
 
 const started = {
   runId: "run-a",
@@ -113,7 +145,8 @@ const started = {
 };
 
 afterEach(() => {
-  Reflect.deleteProperty(window, "patchdesk");
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("useInsightRun", () => {

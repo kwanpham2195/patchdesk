@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { Profile } from "../../src/renderer/src/renderer-models";
-import { failure, success } from "./fake-desktop-response";
+import {
+  failure,
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 
 const profile: Profile = {
   id: "cfw",
@@ -18,14 +23,18 @@ const profile: Profile = {
   rulePaths: ["/workspace/cfw/AGENTS.md"],
 };
 
+let desktop: DesktopDouble | undefined;
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("workspace profile settings", () => {
   it("creates a selected profile with every editable profile list", async () => {
-    const request = installDesktopApi();
+    const desktopApi = installDesktopApi();
     const user = userEvent.setup();
     const reload = vi.fn(async () => undefined);
 
@@ -73,7 +82,7 @@ describe("workspace profile settings", () => {
     await user.click(screen.getByRole("button", { name: "Save profile" }));
 
     await vi.waitFor(() =>
-      expect(request).toHaveBeenCalledWith({
+      expect(desktopApi.request).toHaveBeenCalledWith({
         path: "/v1/profiles",
         method: "POST",
         body: {
@@ -87,7 +96,7 @@ describe("workspace profile settings", () => {
         },
       }),
     );
-    expect(request).toHaveBeenCalledWith({
+    expect(desktopApi.request).toHaveBeenCalledWith({
       path: "/v1/profiles/select",
       method: "POST",
       body: { id: "enterprise" },
@@ -120,7 +129,7 @@ describe("workspace profile settings", () => {
   });
 
   it("shows inline validation for a blank list entry without saving", async () => {
-    const request = installDesktopApi();
+    const desktopApi = installDesktopApi();
     const user = userEvent.setup();
 
     renderSettings();
@@ -131,12 +140,14 @@ describe("workspace profile settings", () => {
       screen.getByText("Owner filters cannot contain blank entries."),
     ).toBeTruthy();
     expect(
-      request.mock.calls.some(([input]) => input.path === "/v1/profiles"),
+      desktopApi.request.mock.calls.some(
+        ([input]) => "path" in input && input.path === "/v1/profiles",
+      ),
     ).toBe(false);
   });
 
   it("shows a save error inline when the profile API rejects the request", async () => {
-    const request = installDesktopApi({ rejectProfileSave: true });
+    const desktopApi = installDesktopApi({ rejectProfileSave: true });
     const user = userEvent.setup();
 
     renderSettings();
@@ -149,7 +160,9 @@ describe("workspace profile settings", () => {
       ),
     ).toBeTruthy();
     expect(
-      request.mock.calls.some(([input]) => input.path === "/v1/profiles"),
+      desktopApi.request.mock.calls.some(
+        ([input]) => "path" in input && input.path === "/v1/profiles",
+      ),
     ).toBe(true);
   });
 });
@@ -233,7 +246,7 @@ describe("workspace root discovery", () => {
 
 describe("watchlist toggling", () => {
   it("ticking an unwatched repository adds it to the watchlist", async () => {
-    const request = installDesktopApi({
+    const desktopApi = installDesktopApi({
       suggestions: [
         {
           host: "github.com",
@@ -252,7 +265,7 @@ describe("watchlist toggling", () => {
     await user.click(checkbox);
 
     await vi.waitFor(() =>
-      expect(request).toHaveBeenCalledWith({
+      expect(desktopApi.request).toHaveBeenCalledWith({
         path: "/v1/watchlist",
         method: "POST",
         body: {
@@ -266,7 +279,7 @@ describe("watchlist toggling", () => {
   });
 
   it("unticking a watched repository removes it from the watchlist", async () => {
-    const request = installDesktopApi({ suggestions: [] });
+    const desktopApi = installDesktopApi({ suggestions: [] });
     const watchedProfile: Profile = {
       ...profile,
       repos: [
@@ -287,7 +300,7 @@ describe("watchlist toggling", () => {
     await user.click(checkbox);
 
     await vi.waitFor(() =>
-      expect(request).toHaveBeenCalledWith({
+      expect(desktopApi.request).toHaveBeenCalledWith({
         path: "/v1/watchlist",
         method: "DELETE",
         body: {
@@ -395,35 +408,30 @@ function installDesktopApi(
           readonly localPath: string;
         }>;
   } = {},
-): ReturnType<typeof vi.fn> {
-  const request = vi.fn(
-    async (input: {
-      readonly path?: string;
-      readonly method?: string;
-      readonly body?: unknown;
-      readonly operation?: string;
-    }) => {
-      if (input.operation === "selectDirectory")
-        return success({ path: "/picked/enterprise" });
-      if (input.path === "/v1/environment") return success({});
-      if (input.path === "/v1/watchlist/suggestions") {
-        return options.suggestions === "reject"
+): DesktopDouble {
+  desktop = installDesktopDouble(
+    {
+      "/v1/environment": () => success({}),
+      "/v1/logs": () => success(null),
+      "/v1/profiles/select": () => success({}),
+      "/v1/watchlist": () => success({}),
+      "/v1/watchlist/suggestions": () =>
+        options.suggestions === "reject"
           ? failure({ error: "storage" })
-          : success(options.suggestions ?? []);
-      }
-      if (
-        input.path === "/v1/profiles" &&
-        options.pendingProfileSave !== undefined
-      )
-        return options.pendingProfileSave;
-      if (input.path === "/v1/profiles" && options.rejectProfileSave === true)
-        return failure({ error: "storage" });
-      return success({});
+          : success(options.suggestions ?? []),
+      "/v1/profiles": () => {
+        if (options.pendingProfileSave !== undefined)
+          return options.pendingProfileSave;
+        if (options.rejectProfileSave === true)
+          return failure({ error: "storage" });
+        return success({});
+      },
+    },
+    {
+      operations: {
+        selectDirectory: () => success({ path: "/picked/enterprise" }),
+      },
     },
   );
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: { request, onMenuAction: () => () => undefined },
-  });
-  return request;
+  return desktop;
 }

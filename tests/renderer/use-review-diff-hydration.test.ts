@@ -4,6 +4,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { useReviewDiffHydration } from "../../src/renderer/src/hooks/use-review-diff-hydration";
 import type { RawJsonValue } from "../../src/domain/json";
+import type { LocalApiDesktopRequest } from "../../src/main/ipc-contract";
+import {
+  installDesktopDouble,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 
 const patchA =
   "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
@@ -31,42 +36,46 @@ function ready(oldText = "old", newText = "new") {
   };
 }
 
+/**
+ * Installs the one route this hook uses. `response` is handed the file path
+ * the request asked to hydrate — the only field these tests branch on — and
+ * the returned array collects every request the hook actually sent.
+ */
 function installBridge(
-  response: () => Promise<RawJsonValue> | RawJsonValue,
-): Array<{ readonly path: string; readonly body?: RawJsonValue }> {
-  const calls: Array<{ readonly path: string; readonly body?: RawJsonValue }> =
-    [];
-  Object.defineProperty(window, "patchdesk", {
-    configurable: true,
-    value: {
-      request: async (input: {
-        readonly path: string;
-        readonly body?: RawJsonValue;
-      }) => {
-        calls.push(input);
-        return {
-          ok: true,
-          status: 200,
-          correlationId: input.path,
-          body: await response(),
-        };
-      },
+  response: (
+    hydratedPath: string | undefined,
+  ) => Promise<RawJsonValue> | RawJsonValue,
+): LocalApiDesktopRequest[] {
+  const calls: LocalApiDesktopRequest[] = [];
+  desktop = installDesktopDouble({
+    "/v1/reviews/diff-file": async (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        status: 200,
+        correlationId: input.path,
+        body: await response(hydratedPath(input)),
+      };
     },
   });
   return calls;
 }
 
-// The mocked `request` for a single `diff-file` call, typed to the one field
-// these tests actually branch on (`path`) instead of leaving `body` unknown.
-type MockDiffFileRequestInput = {
-  readonly path: string;
-  readonly body?: { readonly path?: string };
-};
+/** The file path a `/v1/reviews/diff-file` request asked to hydrate. */
+function hydratedPath(input: LocalApiDesktopRequest): string | undefined {
+  const body = input.body;
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows the raw request body the bridge carries as `unknown`; this fixture is the boundary and no earlier parser exists for it.
+  if (body === null || typeof body !== "object" || !("path" in body))
+    return undefined;
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- same boundary, narrowing the one primitive field these tests branch on.
+  return typeof body.path === "string" ? body.path : undefined;
+}
+
+let desktop: DesktopDouble | undefined;
 
 afterEach(() => {
-  // SAFETY: removes the test-installed `window.patchdesk` stub between
-  // tests; the global itself is declared optional elsewhere in the app.
-  delete (window as { patchdesk?: unknown }).patchdesk;
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("useReviewDiffHydration", () => {
@@ -125,29 +134,11 @@ describe("useReviewDiffHydration", () => {
   });
 
   it("keeps selected-path status owned while switching from A to B", async () => {
-    const first = deferred<unknown>();
-    const second = deferred<unknown>();
-    const calls = installBridge(() => {
-      throw new Error("unexpected bridge response");
-    });
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: MockDiffFileRequestInput) => {
-          calls.push(input);
-          const body = input.body;
-          return {
-            ok: true,
-            status: 200,
-            correlationId: input.path,
-            body:
-              body?.path === "src/a.ts"
-                ? await first.promise
-                : await second.promise,
-          };
-        },
-      },
-    });
+    const first = deferred<RawJsonValue>();
+    const second = deferred<RawJsonValue>();
+    installBridge((path) =>
+      path === "src/a.ts" ? first.promise : second.promise,
+    );
     const { result, rerender } = renderHook(
       ({ selectedPath }) =>
         useReviewDiffHydration({
@@ -213,25 +204,11 @@ describe("useReviewDiffHydration", () => {
   });
 
   it("coalesces concurrent hydration responses into a single render", async () => {
-    const firstFile = deferred<unknown>();
-    const secondFile = deferred<unknown>();
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: MockDiffFileRequestInput) => {
-          const body = input.body;
-          return {
-            ok: true,
-            status: 200,
-            correlationId: input.path,
-            body:
-              body?.path === "src/a.ts"
-                ? await firstFile.promise
-                : await secondFile.promise,
-          };
-        },
-      },
-    });
+    const firstFile = deferred<RawJsonValue>();
+    const secondFile = deferred<RawJsonValue>();
+    installBridge((path) =>
+      path === "src/a.ts" ? firstFile.promise : secondFile.promise,
+    );
     let renderCount = 0;
     const { result } = renderHook(() => {
       renderCount += 1;
@@ -262,25 +239,11 @@ describe("useReviewDiffHydration", () => {
   });
 
   it("drops a stale-generation response that resolves alongside an in-generation one", async () => {
-    const staleSource = deferred<unknown>();
-    const freshSource = deferred<unknown>();
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: {
-        request: async (input: MockDiffFileRequestInput) => {
-          const body = input.body;
-          return {
-            ok: true,
-            status: 200,
-            correlationId: input.path,
-            body:
-              body?.path === "src/a.ts"
-                ? await staleSource.promise
-                : await freshSource.promise,
-          };
-        },
-      },
-    });
+    const staleSource = deferred<RawJsonValue>();
+    const freshSource = deferred<RawJsonValue>();
+    installBridge((path) =>
+      path === "src/a.ts" ? staleSource.promise : freshSource.promise,
+    );
     const { result, rerender } = renderHook(
       ({ patch, sessionId }) =>
         useReviewDiffHydration({

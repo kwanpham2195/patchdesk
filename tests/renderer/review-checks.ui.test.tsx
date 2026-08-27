@@ -6,10 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import type { CheckSummary } from "../../src/domain/github-context";
 import { ReviewChecks } from "../../src/renderer/src/components/review-checks";
+import { installDesktopDouble } from "./fake-desktop-response";
+
+let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 
 afterEach(() => {
   cleanup();
-  delete (window as { patchdesk?: unknown }).patchdesk;
+  desktop?.restore();
+  desktop = undefined;
 });
 
 describe("review checks", () => {
@@ -155,10 +159,7 @@ describe("review checks", () => {
     if (parsed._tag === "err")
       throw new Error("Fixture pull request is invalid");
     const openExternalHttps = vi.fn(async () => true);
-    Object.defineProperty(window, "patchdesk", {
-      configurable: true,
-      value: { openExternalHttps },
-    });
+    desktop = installDesktopDouble({}, { openExternalHttps });
 
     render(
       <ReviewChecks
