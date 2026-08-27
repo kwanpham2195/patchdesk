@@ -3,7 +3,7 @@ AGENTS.md
 ## Delegate to subagents
 
 The main session reviews and delegates. It decides what to do, hands the work
-to subagents on the `sonnet` model, reviews what comes back, and reports.
+to subagents on the `opus` model, reviews what comes back, and reports.
 It does not carry out the work itself.
 
 Delegate:
