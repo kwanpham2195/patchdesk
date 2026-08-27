@@ -23,18 +23,20 @@ export function hashAvatarUrl(avatarUrl: string): string {
   return createHash("sha256").update(avatarUrl).digest("hex");
 }
 
-/** True when this profile already has bytes cached for `avatarHash`. */
+/**
+ * True when this profile already has bytes cached for `avatarHash`. Answered by
+ * reading the file rather than by `stat`, so a cache entry that exists but
+ * cannot be read — wrong permissions, a directory in its place, a bad sector —
+ * counts as absent and the caller re-fetches it. `readAvatar` already reads the
+ * whole file for exactly this path, so sharing it costs nothing extra.
+ */
 export async function hasAvatar(
   paths: PatchdeskPaths,
   profileId: WorkspaceProfileId,
   avatarHash: string,
 ): Promise<boolean> {
-  try {
-    await readFile(paths.avatarFile(profileId, avatarHash));
-    return true;
-  } catch {
-    return false;
-  }
+  const read = await readAvatar(paths, profileId, avatarHash);
+  return read._tag === "ok";
 }
 
 /** Read the raw cached bytes for one avatar. */

@@ -5,7 +5,6 @@ import * as v from "valibot";
 
 import type {
   CheckSummary,
-  CheckRunSummary,
   Conversation,
   GitHubAppliedRulesetPullRequestParameters,
   GitHubComment,
@@ -30,6 +29,7 @@ import {
   type WorkspaceProfileId,
 } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
+import { checksSchema, projectChecks } from "./check-summary-schema";
 import {
   readJsonFile,
   type StorageFailure,
@@ -100,27 +100,6 @@ const commentsSchema = v.strictObject({
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(
     v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"]),
-  ),
-});
-const checksSchema = v.strictObject({
-  overall: v.picklist(["passing", "failing", "pending", "skipped", "unknown"]),
-  checks: v.array(
-    v.strictObject({
-      name: v.string(),
-      required: v.union([v.boolean(), v.literal("unknown")]),
-      status: v.picklist(["queued", "in_progress", "completed", "unknown"]),
-      conclusion: v.optional(
-        v.picklist([
-          "success",
-          "failure",
-          "cancelled",
-          "timed_out",
-          "skipped",
-          "neutral",
-        ]),
-      ),
-      url: v.optional(v.string()),
-    }),
   ),
 });
 const pullRequestSchema = v.strictObject({
@@ -423,7 +402,7 @@ export function parseReviewRemoteSnapshot(
   }
   const pr = parsePullRequest(parsed.output.pullRequest);
   const comments = parseComments(parsed.output.comments);
-  const checks = parseChecks(parsed.output.checks);
+  const checks = projectChecks(parsed.output.checks);
   const commits = parseCommits(
     parsed.output.commits,
     pr._tag === "ok" ? pr.value.headSha : undefined,
@@ -445,7 +424,6 @@ export function parseReviewRemoteSnapshot(
     pr._tag === "err" ||
     comments._tag === "err" ||
     commits._tag === "err" ||
-    checks._tag === "err" ||
     publishedFeedback._tag === "err" ||
     conversation._tag === "err" ||
     mergePolicy._tag === "err" ||
@@ -467,7 +445,7 @@ export function parseReviewRemoteSnapshot(
     pullRequest: pr.value,
     comments: comments.value,
     commits: commits.value,
-    checks: checks.value,
+    checks,
     ...publishedFeedbackField,
     conversation: conversation.value,
     ...mergePolicyField,
@@ -604,26 +582,6 @@ function parseCommits(
   )
     return invalidRead();
   return ok(commits);
-}
-
-function parseChecks(
-  input: v.InferOutput<typeof checksSchema>,
-): Result<CheckSummary, StorageFailure> {
-  return ok({
-    overall: input.overall,
-    checks: input.checks.map((check): CheckRunSummary => {
-      const conclusionField =
-        check.conclusion === undefined ? {} : { conclusion: check.conclusion };
-      const urlField = check.url === undefined ? {} : { url: check.url };
-      return {
-        name: check.name,
-        required: check.required,
-        status: check.status,
-        ...conclusionField,
-        ...urlField,
-      };
-    }),
-  });
 }
 
 function parsePublishedFeedback(
@@ -943,15 +901,14 @@ function parseMergePolicy(
     number = parsePullRequestNumber(input.pr.number),
     head = parseGitSha(input.headSha),
     base = input.baseSha === undefined ? undefined : parseGitSha(input.baseSha);
-  const checks = parseChecks(input.checks);
+  const checks = projectChecks(input.checks);
   if (
     host._tag === "err" ||
     owner._tag === "err" ||
     repo._tag === "err" ||
     number._tag === "err" ||
     head._tag === "err" ||
-    base?._tag === "err" ||
-    checks._tag === "err"
+    base?._tag === "err"
   )
     return invalidRead();
   const baseShaField = base === undefined ? {} : { baseSha: base.value };
@@ -977,7 +934,7 @@ function parseMergePolicy(
     mergeability: input.mergeability,
     ...mergeStateStatusField,
     reviewDecision: input.reviewDecision,
-    checks: checks.value,
+    checks,
     complete: input.complete,
     ...incompleteReasonField,
   });

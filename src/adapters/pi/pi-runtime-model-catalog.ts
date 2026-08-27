@@ -191,40 +191,16 @@ export function canonicalModelId(
     : undefined;
 }
 
-const providerCatalogIds = new Set([
-  "amazon-bedrock",
-  "ant-ling",
-  "anthropic",
-  "azure-openai-responses",
-  "cerebras",
-  "cloudflare-ai-gateway",
-  "deepseek",
-  "fireworks",
-  "google",
-  "google-vertex",
-  "groq",
-  "huggingface",
-  "kimi-coding",
-  "minimax",
-  "minimax-cn",
-  "mistral",
-  "moonshotai",
-  "moonshotai-cn",
-  "nvidia",
-  "openai",
-  "opencode",
-  "opencode-go",
-  "openrouter",
-  "together",
-  "vercel-ai-gateway",
-  "xai",
-  "xiaomi",
-  "xiaomi-token-plan-ams",
-  "xiaomi-token-plan-cn",
-  "xiaomi-token-plan-sgp",
-  "zai",
-  "zai-coding-cn",
-]);
+/**
+ * The provider half of a canonical model id is exactly the allowlist
+ * `providerCatalog()` already publishes, so it is derived rather than restated:
+ * a provider added to or removed from `PROVIDERS` cannot leave a second copy
+ * behind to drift. The catalog is a module-level constant, so reading it once
+ * here is safe.
+ */
+const providerCatalogIds = new Set(
+  providerCatalog().map((provider) => provider.id),
+);
 
 function unavailable(): Result<never, PiRuntimeModelCatalogUnavailable> {
   return err({ _tag: "PiRuntimeModelCatalogUnavailable" });

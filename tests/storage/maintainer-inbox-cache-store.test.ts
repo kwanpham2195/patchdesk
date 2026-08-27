@@ -293,6 +293,136 @@ describe("maintainer inbox cache store", () => {
     });
   });
 
+  it("reads back a check whose url is an empty string (a v.url() refinement here rejected data the cache itself wrote)", async () => {
+    const { store, profileId } = await fixtureStore();
+    const cache = {
+      schemaVersion: 1 as const,
+      refreshedAt: updatedAt,
+      rows: [
+        {
+          remoteState: "open" as const,
+          identity: {
+            host: must(parseGitHubHost("github.com")),
+            owner: must(parseGitHubOwner("centraldigital")),
+            repo: must(parseGitHubRepoName("patchdesk")),
+            number: must(parsePullRequestNumber(42)),
+          },
+          title: "Guard duplicate input",
+          author: "author",
+          baseBranch: "sit",
+          headBranch: "feature/duplicate-guard",
+          currentHeadSha: sha,
+          isDraft: false,
+          updatedAt,
+          changeStats: {},
+          // The wire projection drops only `null`/`undefined` from
+          // `details_url`, so an empty-string URL reaches the cache file
+          // verbatim — and must read back, or save() writes a cache that
+          // read() then discards whole.
+          checks: {
+            overall: "failing" as const,
+            checks: [
+              {
+                name: "build",
+                required: "unknown" as const,
+                status: "completed" as const,
+                conclusion: "failure" as const,
+                url: "",
+              },
+            ],
+          },
+          reviewState: "none" as const,
+          mergeability: "unknown" as const,
+          labels: [],
+          categories: [],
+          recommendedAction: {
+            kind: "run_review" as const,
+            label: "Run review" as const,
+          },
+          dataFreshness: "fresh" as const,
+        },
+      ],
+      repository: {
+        identity: repository,
+        state: "ready" as const,
+        complete: true,
+      },
+    };
+    expect(await store.save(profileId, repository, cache)).toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    expect(await store.read(profileId, repository)).toEqual({
+      _tag: "ok",
+      value: cache,
+    });
+  });
+
+  it("reads back a check whose name is an empty string (a minLength(1) refinement here rejected data the cache itself wrote)", async () => {
+    const { store, profileId } = await fixtureStore();
+    const cache = {
+      schemaVersion: 1 as const,
+      refreshedAt: updatedAt,
+      rows: [
+        {
+          remoteState: "open" as const,
+          identity: {
+            host: must(parseGitHubHost("github.com")),
+            owner: must(parseGitHubOwner("centraldigital")),
+            repo: must(parseGitHubRepoName("patchdesk")),
+            number: must(parsePullRequestNumber(43)),
+          },
+          title: "Guard duplicate input",
+          author: "author",
+          baseBranch: "sit",
+          headBranch: "feature/duplicate-guard",
+          currentHeadSha: sha,
+          isDraft: false,
+          updatedAt,
+          changeStats: {},
+          // `github-wire-schemas.ts` types a check run's `name` as a plain
+          // `v.string()`, so GitHub may send `""` and the wire projection
+          // carries it through unchanged. The url here is deliberately a
+          // well-formed absolute one, so this case turns on `name` alone.
+          checks: {
+            overall: "failing" as const,
+            checks: [
+              {
+                name: "",
+                required: "unknown" as const,
+                status: "completed" as const,
+                conclusion: "failure" as const,
+                url: "https://github.com/centraldigital/patchdesk/runs/1",
+              },
+            ],
+          },
+          reviewState: "none" as const,
+          mergeability: "unknown" as const,
+          labels: [],
+          categories: [],
+          recommendedAction: {
+            kind: "run_review" as const,
+            label: "Run review" as const,
+          },
+          dataFreshness: "fresh" as const,
+        },
+      ],
+      repository: {
+        identity: repository,
+        state: "ready" as const,
+        complete: true,
+      },
+    };
+    expect(await store.save(profileId, repository, cache)).toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    expect(await store.read(profileId, repository)).toEqual({
+      _tag: "ok",
+      value: cache,
+    });
+  });
+
   it("rejects credential-like data before writing the cache", async () => {
     const { store, profileId } = await fixtureStore();
     expect(

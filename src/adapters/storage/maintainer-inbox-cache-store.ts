@@ -21,12 +21,10 @@ import {
   type InboxReviewSummary,
   type MaintainerInboxRow,
 } from "../../domain/maintainer-inbox";
-import type {
-  CheckSummary,
-  PullRequestSummary,
-} from "../../domain/github-context";
+import type { PullRequestSummary } from "../../domain/github-context";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { err, ok, type Result } from "../../domain/result";
+import { checksSchema, projectChecks } from "./check-summary-schema";
 import {
   readJsonFile,
   type StorageFailure,
@@ -46,28 +44,6 @@ export type MaintainerInboxCache = {
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
   readonly repository: InboxCacheRepository;
 };
-
-const checkSchema = v.strictObject({
-  overall: v.picklist(["passing", "failing", "pending", "skipped", "unknown"]),
-  checks: v.array(
-    v.strictObject({
-      name: v.pipe(v.string(), v.minLength(1)),
-      required: v.union([v.boolean(), v.literal("unknown")]),
-      status: v.picklist(["queued", "in_progress", "completed", "unknown"]),
-      conclusion: v.optional(
-        v.picklist([
-          "success",
-          "failure",
-          "cancelled",
-          "timed_out",
-          "skipped",
-          "neutral",
-        ]),
-      ),
-      url: v.optional(v.pipe(v.string(), v.url())),
-    }),
-  ),
-});
 
 const actionSchema = v.variant("kind", [
   v.strictObject({
@@ -116,7 +92,7 @@ const rowSchema = v.strictObject({
     deletions: v.optional(v.number()),
     changedFiles: v.optional(v.number()),
   }),
-  checks: checkSchema,
+  checks: checksSchema,
   reviewState: v.picklist([
     "none",
     "review_pending",
@@ -291,24 +267,6 @@ function parseRow(
     recommendedAction: action.value,
     dataFreshness: input.dataFreshness,
   });
-}
-
-function projectChecks(input: v.InferOutput<typeof checkSchema>): CheckSummary {
-  return {
-    overall: input.overall,
-    checks: input.checks.map((check) => {
-      const conclusionField =
-        check.conclusion === undefined ? {} : { conclusion: check.conclusion };
-      const urlField = check.url === undefined ? {} : { url: check.url };
-      return {
-        name: check.name,
-        required: check.required,
-        status: check.status,
-        ...conclusionField,
-        ...urlField,
-      };
-    }),
-  };
 }
 
 function parsePullRequestIdentity(input: {

@@ -345,55 +345,7 @@ export class CodexAppServerClient {
     );
     if (started._tag === "err") return started;
     try {
-      const deadline = Date.now() + MODEL_DISCOVERY_DEADLINE_MS;
-      const models: CodexModel[] = [];
-      let bytes = 0;
-      const seenCursors = new Set<string>();
-      let cursor: string | undefined;
-      for (let page = 0; page < MAX_MODEL_PAGES; page += 1) {
-        if (options.signal?.aborted)
-          return err({ reason: "cancelled", phase: "model_list" });
-        if (Date.now() >= deadline)
-          return err({ reason: "timed_out", phase: "model_list" });
-        const params =
-          cursor === undefined
-            ? { includeHidden: false }
-            : { includeHidden: false, cursor };
-        const response = await child.request(
-          "model/list",
-          params,
-          options.signal,
-          deadline - Date.now(),
-        );
-        if (response._tag === "err")
-          return err({
-            reason: classifyRpcFailure(response.error),
-            phase: "model_list",
-          });
-        bytes += Buffer.byteLength(JSON.stringify(response.value), "utf8");
-        if (bytes > MAX_MODEL_BYTES)
-          return err({ reason: "runtime_unavailable", phase: "model_list" });
-        const parsedResult = v.safeParse(modelListResultSchema, response.value);
-        if (!parsedResult.success)
-          return err({ reason: "invalid_result", phase: "model_list" });
-        const pageModels = parseModelPage(parsedResult.output.data);
-        if (pageModels._tag === "err")
-          return err({ reason: "invalid_result", phase: "model_list" });
-        models.push(...pageModels.value);
-        if (models.length > MAX_MODELS)
-          return err({ reason: "runtime_unavailable", phase: "model_list" });
-        const nextCursor = parsedResult.output.nextCursor ?? undefined;
-        if (nextCursor === undefined) break;
-        if (seenCursors.has(nextCursor))
-          return err({ reason: "runtime_unavailable", phase: "model_list" });
-        seenCursors.add(nextCursor);
-        cursor = nextCursor;
-        if (page === MAX_MODEL_PAGES - 1)
-          return err({ reason: "runtime_unavailable", phase: "model_list" });
-      }
-      if (models.length === 0)
-        return err({ reason: "runtime_unavailable", phase: "model_list" });
-      return ok(models);
+      return await paginateModelList(child, options.signal);
     } finally {
       await child.stop();
     }
@@ -442,7 +394,7 @@ export class CodexAppServerClient {
     input: CodexRunInput,
     signal?: AbortSignal,
   ): Promise<Result<unknown, CodexAppServerFailure>> {
-    const models = await this.listModelsForRun(child, signal);
+    const models = await paginateModelList(child, signal);
     if (models._tag === "err") return models;
     const selected = models.value.find(
       (model) =>
@@ -474,57 +426,74 @@ export class CodexAppServerClient {
       signal,
     );
   }
+}
 
-  private async listModelsForRun(
-    child: RpcChild,
-    signal?: AbortSignal,
-  ): Promise<Result<ReadonlyArray<CodexModel>, CodexAppServerFailure>> {
-    const deadline = Date.now() + MODEL_DISCOVERY_DEADLINE_MS;
-    const models: CodexModel[] = [];
-    let bytes = 0;
-    const cursors = new Set<string>();
-    let cursor: string | undefined;
-    for (let page = 0; page < MAX_MODEL_PAGES; page += 1) {
-      if (signal?.aborted)
-        return err({ reason: "cancelled", phase: "model_list" });
-      if (Date.now() >= deadline)
-        return err({ reason: "timed_out", phase: "model_list" });
-      const params =
-        cursor === undefined
-          ? { includeHidden: false }
-          : { includeHidden: false, cursor };
-      const response = await child.request(
-        "model/list",
-        params,
-        signal,
-        deadline - Date.now(),
-      );
-      if (response._tag === "err")
-        return err({
-          reason: classifyRpcFailure(response.error),
-          phase: "model_list",
-        });
-      bytes += Buffer.byteLength(JSON.stringify(response.value), "utf8");
-      if (bytes > MAX_MODEL_BYTES)
-        return err({ reason: "runtime_unavailable", phase: "model_list" });
-      const parsedResult = v.safeParse(modelListResultSchema, response.value);
-      if (!parsedResult.success)
-        return err({ reason: "invalid_result", phase: "model_list" });
-      const parsed = parseModelPage(parsedResult.output.data);
-      if (parsed._tag === "err")
-        return err({ reason: "invalid_result", phase: "model_list" });
-      models.push(...parsed.value);
-      if (models.length > MAX_MODELS)
-        return err({ reason: "runtime_unavailable", phase: "model_list" });
-      const next = parsedResult.output.nextCursor ?? undefined;
-      if (next === undefined) return ok(models);
-      if (cursors.has(next))
-        return err({ reason: "runtime_unavailable", phase: "model_list" });
-      cursors.add(next);
-      cursor = next;
-    }
-    return err({ reason: "runtime_unavailable", phase: "model_list" });
+/**
+ * Walks `model/list` to the end of its cursor chain on an already-started
+ * child, under every discovery bound at once: a wall-clock deadline, a page
+ * cap, a response-byte cap, a model-count cap, and a seen-cursor set that
+ * stops a runtime looping the same cursor back. Shared by `listModels` (which
+ * owns a throwaway child) and `runTurn` (which reuses the turn's own child) so
+ * the two cannot drift apart on which bound is enforced.
+ *
+ * An empty catalog is a failure, not an empty success: a Codex runtime that
+ * advertises no model at all is unusable, and every caller would otherwise
+ * have to re-derive that.
+ */
+async function paginateModelList(
+  child: RpcChild,
+  signal?: AbortSignal,
+): Promise<Result<ReadonlyArray<CodexModel>, CodexAppServerFailure>> {
+  const deadline = Date.now() + MODEL_DISCOVERY_DEADLINE_MS;
+  const models: CodexModel[] = [];
+  let bytes = 0;
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_MODEL_PAGES; page += 1) {
+    if (signal?.aborted)
+      return err({ reason: "cancelled", phase: "model_list" });
+    if (Date.now() >= deadline)
+      return err({ reason: "timed_out", phase: "model_list" });
+    const params =
+      cursor === undefined
+        ? { includeHidden: false }
+        : { includeHidden: false, cursor };
+    const response = await child.request(
+      "model/list",
+      params,
+      signal,
+      deadline - Date.now(),
+    );
+    if (response._tag === "err")
+      return err({
+        reason: classifyRpcFailure(response.error),
+        phase: "model_list",
+      });
+    bytes += Buffer.byteLength(JSON.stringify(response.value), "utf8");
+    if (bytes > MAX_MODEL_BYTES)
+      return err({ reason: "runtime_unavailable", phase: "model_list" });
+    const parsedResult = v.safeParse(modelListResultSchema, response.value);
+    if (!parsedResult.success)
+      return err({ reason: "invalid_result", phase: "model_list" });
+    const pageModels = parseModelPage(parsedResult.output.data);
+    if (pageModels._tag === "err")
+      return err({ reason: "invalid_result", phase: "model_list" });
+    models.push(...pageModels.value);
+    if (models.length > MAX_MODELS)
+      return err({ reason: "runtime_unavailable", phase: "model_list" });
+    const nextCursor = parsedResult.output.nextCursor ?? undefined;
+    if (nextCursor === undefined)
+      return models.length === 0
+        ? err({ reason: "runtime_unavailable", phase: "model_list" })
+        : ok(models);
+    if (seenCursors.has(nextCursor))
+      return err({ reason: "runtime_unavailable", phase: "model_list" });
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
   }
+  // The page cap ran out with a cursor still outstanding: the catalog is
+  // larger than discovery is willing to walk, so it is not usable as read.
+  return err({ reason: "runtime_unavailable", phase: "model_list" });
 }
 
 class RpcChild {
