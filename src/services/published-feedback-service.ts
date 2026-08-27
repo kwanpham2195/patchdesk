@@ -7,7 +7,12 @@ import type { PullRequestRef } from "../domain/pull-request";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import type { FreshReview, ReviewWriteGate } from "./review-write-gate";
+import type { ReviewSession } from "../domain/review-session";
+import {
+  requireCurrentHead,
+  type FreshReview,
+  type ReviewWriteGate,
+} from "./review-write-gate";
 
 export type PublishedFeedbackFailure =
   | "not_fresh"
@@ -188,16 +193,15 @@ export class PublishedFeedbackService {
 
   private async verifyHead(
     profile: WorkspaceProfileConfig,
-    session: Parameters<typeof sessionPr>[0],
+    session: ReviewSession,
   ): Promise<Result<void, PublishedFeedbackFailure>> {
-    const current = await this.github.getPullRequest({
-      profile,
-      pr: sessionPr(session),
-    });
-    return current._tag === "ok" &&
-      current.value.headSha === session.key.headSha
-      ? ok(undefined)
-      : err(current._tag === "ok" ? "not_fresh" : "github_read_failed");
+    const current = await requireCurrentHead(this.github, profile, session);
+    if (current._tag === "ok") return ok(undefined);
+    return err(
+      current.error.reason === "github_read"
+        ? "github_read_failed"
+        : "not_fresh",
+    );
   }
 
   private async authorizedComment(

@@ -7,10 +7,8 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import {
   parseContentHash,
-  parseGitSha,
   parseInsightRunId,
   parseIsoTimestamp,
-  parseReviewSessionId,
   parseWorkspaceProfileId,
   type ContentHash,
   type FindingId,
@@ -27,6 +25,7 @@ import {
   failInsightRun,
   provenanceFromRun,
   requestInsightCancellation,
+  sameInsightRevision,
   updateWalkthroughProgress,
   type InsightFailureCategory,
   type InsightRecord,
@@ -58,7 +57,6 @@ import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { contentHash } from "./review-artifact-hash";
 import { mapConcurrent } from "../domain/map-concurrent";
 import { err, ok, type Result } from "../domain/result";
-import { readObjectField } from "./read-object-field";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
 export type InsightInvocationInput = {
@@ -374,10 +372,11 @@ export class InsightRunCoordinator {
       await contentHash(session.value.patchPath),
     );
     if (currentHash._tag === "err") return err("storage_unavailable");
-    const retained = await this.insights.load(
+    const retained = await this.insights.loadTyped(
       input.profileId,
       input.reviewId,
       "analysis",
+      parseReviewResult,
     );
     if (retained._tag === "err")
       return err(
@@ -385,42 +384,19 @@ export class InsightRunCoordinator {
           ? "not_found"
           : "storage_unavailable",
       );
-    // SAFETY: retained.value.retained is deserialized from this Insight record's JSON file by
-    // InsightStore, so it is JSON-grammar data even though InsightRecord<unknown> leaves its
-    // per-run shape unparsed until callers read fields off it.
-    const retainedRecord = retained.value.retained as RawJsonValue | undefined;
-    const retainedRunId = parseInsightRunId(
-      readObjectField(retainedRecord, "runId"),
-    );
-    const retainedRevision = readObjectField(retainedRecord, "revision");
-    if (retainedRunId._tag === "err" || retainedRunId.value !== input.runId)
-      return err("not_found");
-    const retainedSession = parseReviewSessionId(
-      readObjectField(retainedRevision, "sessionId"),
-    );
-    const retainedHead = parseGitSha(
-      readObjectField(retainedRevision, "headSha"),
-    );
-    const retainedPatch = parseContentHash(
-      readObjectField(retainedRevision, "patchHash"),
-    );
-    if (retainedRecord === undefined) return err("not_found");
-    const retainedValue = parseReviewResult(readRetainedValue(retainedRecord));
-    if (
-      retainedSession._tag === "err" ||
-      retainedHead._tag === "err" ||
-      retainedPatch._tag === "err" ||
-      retainedValue._tag === "err"
-    )
+    const retainedRecord = retained.value.retained;
+    if (retainedRecord === undefined || retainedRecord.runId !== input.runId)
       return err("not_found");
     if (
-      retainedSession.value !== session.value.id ||
-      retainedHead.value !== session.value.key.headSha ||
-      retainedPatch.value !== currentHash.value
+      !sameInsightRevision(retainedRecord.revision, {
+        sessionId: session.value.id,
+        headSha: session.value.key.headSha,
+        patchHash: currentHash.value,
+      })
     )
       return err("stale_request");
     if (
-      !retainedValue.value.findings.some(
+      !retainedRecord.value.findings.some(
         (finding) => finding.id === input.findingId,
       )
     )
@@ -433,17 +409,14 @@ export class InsightRunCoordinator {
       type: "analysis",
       now: timestamp.value,
       operation: (record) => {
-        // SAFETY: record.retained is deserialized from this Insight record's JSON file by
-        // InsightStore, so it is JSON-grammar data even though InsightRecord<unknown> leaves its
-        // per-run shape unparsed until callers read fields off it.
-        const retainedJson = record.retained as RawJsonValue | undefined;
+        const stored = record.retained;
         if (
           record.activeRun !== undefined ||
-          retainedJson === undefined ||
-          !isRetainedRun(retainedJson, input.runId)
+          stored === undefined ||
+          stored.runId !== input.runId
         )
           return err("not_available" as const);
-        const parsed = parseReviewResult(readRetainedValue(retainedJson));
+        const parsed = parseReviewResult(stored.value);
         if (
           parsed._tag === "err" ||
           !parsed.value.findings.some(
@@ -497,10 +470,7 @@ export class InsightRunCoordinator {
       type: "walkthrough",
       now: timestamp.value,
       operation: (record) => {
-        const retainedRunId = parseInsightRunId(
-          readObjectField(record.retained, "runId"),
-        );
-        if (retainedRunId._tag === "err" || retainedRunId.value !== input.runId)
+        if (record.retained?.runId !== input.runId)
           return err("not_available" as const);
         return updateWalkthroughProgress(
           record,
@@ -668,15 +638,7 @@ export class InsightRunCoordinator {
         type: input.type,
         status: record.value.activeRun.status,
       });
-    // SAFETY: record.value.retained is deserialized from this Insight record's JSON file by
-    // InsightStore, so it is JSON-grammar data even though InsightRecord<unknown> leaves its
-    // per-run shape unparsed until callers read fields off it.
-    if (
-      isRetainedRun(
-        record.value.retained as RawJsonValue | undefined,
-        input.runId,
-      )
-    ) {
+    if (record.value.retained?.runId === input.runId) {
       return ok({ runId: input.runId, type: input.type, status: "completed" });
     }
     if (record.value.replacementFailure?.runId === input.runId)
@@ -895,9 +857,11 @@ export class InsightRunCoordinator {
           const active = record.activeRun;
           if (active?.id !== runId) return err("superseded" as const);
           if (
-            active.revision.sessionId !== input.sessionId ||
-            active.revision.headSha !== latestSession.value.key.headSha ||
-            active.revision.patchHash !== latestHash.value
+            !sameInsightRevision(active.revision, {
+              sessionId: input.sessionId,
+              headSha: latestSession.value.key.headSha,
+              patchHash: latestHash.value,
+            })
           ) {
             return failInsightRun(
               record,
@@ -1052,9 +1016,11 @@ export class InsightRunCoordinator {
                 active?.id === runId &&
                 (review.value.status._tag === "Terminal" ||
                   review.value.currentSessionId !== active.revision.sessionId ||
-                  session.value.id !== active.revision.sessionId ||
-                  session.value.key.headSha !== active.revision.headSha ||
-                  patchHash.value !== active.revision.patchHash)
+                  !sameInsightRevision(active.revision, {
+                    sessionId: session.value.id,
+                    headSha: session.value.key.headSha,
+                    patchHash: patchHash.value,
+                  }))
               ) {
                 return failInsightRun(
                   record,
@@ -1205,22 +1171,6 @@ function currentWalkthroughOutput(value: RawJsonValue): RawJsonValue {
   // (valibot's looseObject passes unknown keys through unchanged), so each property is itself
   // RawJsonValue by the JSON value grammar.
   return { ...record.output, citationVersion: 2 } as RawJsonValue;
-}
-
-function isRetainedRun(
-  value: RawJsonValue | undefined,
-  runId: InsightRunId,
-): boolean {
-  const parsed = parseInsightRunId(readObjectField(value, "runId"));
-  return parsed._tag === "ok" && parsed.value === runId;
-}
-
-function readRetainedValue(value: RawJsonValue): RawJsonValue | undefined {
-  const field = readObjectField(value, "value");
-  if (field === undefined) return undefined;
-  // SAFETY: value is RawJsonValue, so any own property read off it is itself RawJsonValue by the
-  // JSON value grammar.
-  return field as RawJsonValue;
 }
 
 function currentIsoTimestamp(): IsoTimestamp {

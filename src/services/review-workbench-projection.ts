@@ -14,7 +14,10 @@ import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
-import type { ReviewFreshness } from "../domain/review";
+import {
+  sessionRepresentsReview,
+  type ReviewFreshness,
+} from "../domain/review";
 import type { ReviewRemoteSnapshot } from "../adapters/storage/review-remote-store";
 import type {
   CheckSummary,
@@ -28,11 +31,6 @@ import type {
 } from "../domain/github-context";
 import {
   createReviewId,
-  parseContentHash,
-  parseGitSha,
-  parseInsightRunId,
-  parseIsoTimestamp,
-  parseReviewSessionId,
   type GitHubHost,
   type GitHubOwner,
   type GitSha,
@@ -59,16 +57,12 @@ import {
   evaluateMergeReadiness,
   type MergeReadiness,
 } from "../domain/merge-readiness";
-import type {
-  InsightFindingDismissal,
-  InsightRecord,
-  RetainedInsight,
-} from "../domain/insight-record";
 import {
-  parseInsightProvider,
-  parseInsightReasoning,
-  type InsightProvenance,
-} from "../domain/insight-provider";
+  sameInsightRevision,
+  type InsightFindingDismissal,
+  type InsightRecord,
+  type RetainedInsight,
+} from "../domain/insight-record";
 import type { PendingReviewProjection } from "./pending-review-service";
 import {
   projectDirectSummaryReview,
@@ -200,7 +194,7 @@ export class ReviewWorkbenchProjectionService {
     private readonly profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
     private readonly reviews: Pick<ReviewStore, "load">,
-    private readonly insights: Pick<InsightStore, "loadTyped" | "load">,
+    private readonly insights: Pick<InsightStore, "loadTyped">,
     private readonly paths: PatchdeskPaths,
   ) {}
 
@@ -459,13 +453,8 @@ export class ReviewWorkbenchProjectionService {
         : err({ _tag: "SessionStorageUnavailable" });
     if (
       stableReview.value.id !== reviewId ||
-      stableReview.value.identity.profileId !== session.key.profileId ||
-      stableReview.value.identity.host !== session.key.host ||
-      stableReview.value.identity.owner !== session.key.owner ||
-      stableReview.value.identity.repo !== session.key.repo ||
-      stableReview.value.identity.prNumber !== session.key.prNumber ||
       stableReview.value.currentSessionId !== session.id ||
-      stableReview.value.currentHeadSha !== session.key.headSha
+      !sessionRepresentsReview(stableReview.value, session)
     )
       return err({ _tag: "SessionStorageUnavailable" });
     const reviewStatus =
@@ -534,17 +523,9 @@ export class ReviewWorkbenchProjectionService {
         // The callback's parameter is left uninferred here (rather than
         // annotated `unknown`) so it takes its type from `loadTyped`'s
         // signature; this is the actual I/O boundary where a stored
-        // Insight's `retained` value first becomes available to parse.
-        (input) => {
-          const envelope = v.safeParse(retainedEnvelopeSchema, input);
-          if (!envelope.success) return err(undefined);
-          const base = parseRetainedBase(envelope.output);
-          if (base._tag === "err") return base;
-          const value = parseReviewResult(readObjectField(input, "value"));
-          return value._tag === "err"
-            ? err(undefined)
-            : ok({ ...base.value, value: value.value });
-        },
+        // Insight's `retained` value first becomes available to parse. The
+        // envelope around it is already parsed -- see `parseRetainedInsight`.
+        (input) => parseReviewResult(input),
       ),
       this.loadWalkthroughRecord(session),
     ]);
@@ -634,10 +615,14 @@ export class ReviewWorkbenchProjectionService {
       }
     >
   > {
-    const loaded = await this.insights.load(
+    const loaded = await this.insights.loadTyped(
       session.key.profileId,
       createReviewId(session.key),
       "walkthrough",
+      // The stored Walkthrough is normalized against its own session's patch
+      // below, which needs the patch bytes this parser cannot read, so the
+      // value is carried through unparsed and normalized after the envelope.
+      (input) => ok(input),
     );
     if (loaded._tag === "err") {
       if (loaded.error.reason === "not_found")
@@ -646,7 +631,8 @@ export class ReviewWorkbenchProjectionService {
         return err({ reason: "invalid_stored_value" });
       return err({ reason: "storage" });
     }
-    if (loaded.value.retained === undefined) {
+    const base = loaded.value.retained;
+    if (base === undefined) {
       // SAFETY: `loaded.value.retained` is undefined here, so the generic
       // `RetainedInsight<NarrativeWalkthrough>` parameter names no runtime
       // data this branch actually inspects; only the `retained?` field's
@@ -657,11 +643,7 @@ export class ReviewWorkbenchProjectionService {
         >,
       });
     }
-    const retainedValue = loaded.value.retained;
-    const envelope = v.safeParse(retainedEnvelopeSchema, retainedValue);
-    if (!envelope.success) return err({ reason: "invalid_stored_value" });
-    const base = parseRetainedBase(envelope.output);
-    if (base._tag === "err") return err({ reason: "invalid_stored_value" });
+    const rawValue = base.value;
     // Readable-without-artifact fallback: preserves bounded prose while
     // dropping hunk coordinates that no longer have trusted patch bytes to
     // resolve against. Each stored field degrades independently instead of
@@ -675,7 +657,6 @@ export class ReviewWorkbenchProjectionService {
         readonly reason: "not_found" | "invalid_stored_value" | "storage";
       }
     > => {
-      const rawValue = readObjectField(retainedValue, "value");
       const rawChapters = readObjectField(rawValue, "chapters");
       const chapters = Array.isArray(rawChapters)
         ? rawChapters.slice(0, 12).map((chapter, chapterIndex) => {
@@ -709,7 +690,7 @@ export class ReviewWorkbenchProjectionService {
           })
         : [];
       const value: NarrativeWalkthrough = {
-        snapshot: { profileId: session.key.profileId, ...base.value.revision },
+        snapshot: { profileId: session.key.profileId, ...base.revision },
         citationStatus: "unverified",
         title: v.parse(
           boundedTextSchema(200, "Stored Walkthrough"),
@@ -723,13 +704,13 @@ export class ReviewWorkbenchProjectionService {
         support: { id: "support", title: "Support", hunkIds: [], hunks: [] },
       };
       return ok({
-        record: { ...loaded.value, retained: { ...base.value, value } },
+        record: { ...loaded.value, retained: { ...base, value } },
         artifactStatus: "mismatch",
       });
     };
     const retainedSession = await this.sessions.load(
       session.key.profileId,
-      base.value.revision.sessionId,
+      base.revision.sessionId,
     );
     if (retainedSession._tag === "err") return fallback();
     const retainedPatch = await readFile(
@@ -738,22 +719,18 @@ export class ReviewWorkbenchProjectionService {
     ).catch(() => undefined);
     if (retainedPatch === undefined) return fallback();
     const actualHash = createHash("sha256").update(retainedPatch).digest("hex");
-    if (actualHash !== base.value.revision.patchHash) return fallback();
-    const normalized = normalizeNarrativeWalkthrough(
-      readObjectField(retainedValue, "value"),
-      retainedPatch,
-      {
-        profileId: session.key.profileId,
-        sessionId: base.value.revision.sessionId,
-        headSha: base.value.revision.headSha,
-        patchHash: base.value.revision.patchHash,
-      },
-    );
+    if (actualHash !== base.revision.patchHash) return fallback();
+    const normalized = normalizeNarrativeWalkthrough(rawValue, retainedPatch, {
+      profileId: session.key.profileId,
+      sessionId: base.revision.sessionId,
+      headSha: base.revision.headSha,
+      patchHash: base.revision.patchHash,
+    });
     if (normalized._tag === "err") return err({ reason: "storage" });
     return ok({
       record: {
         ...loaded.value,
-        retained: { ...base.value, value: normalized.value },
+        retained: { ...base, value: normalized.value },
       },
       artifactStatus: "verified",
     });
@@ -1089,7 +1066,7 @@ type MutableStoredInsightRecords = {
 function projectStoredInsight<T>(
   record: InsightRecord<RetainedInsight<T>> | undefined,
   session: ReviewSession,
-  patchHash: string | undefined,
+  patchHash: ContentHash | undefined,
   decorate: (value: T, record: InsightRecord<RetainedInsight<T>>) => T = (
     value,
   ) => value,
@@ -1150,9 +1127,13 @@ function projectStoredInsight<T>(
     };
   const retainedRecord = record?.retained;
   const isCurrent =
-    retainedRecord?.revision.sessionId === session.id &&
-    retainedRecord.revision.headSha === session.key.headSha &&
-    retainedRecord.revision.patchHash === patchHash;
+    retainedRecord !== undefined &&
+    patchHash !== undefined &&
+    sameInsightRevision(retainedRecord.revision, {
+      sessionId: session.id,
+      headSha: session.key.headSha,
+      patchHash,
+    });
   return {
     status: isCurrent ? "current" : "outdated",
     ...(artifactStatus !== undefined && { artifactStatus }),
@@ -1182,44 +1163,6 @@ function projectAnalysisFindings(
 }
 
 /**
- * Envelope for one stored `RetainedInsight`'s scalar fields, decoded at the
- * I/O boundary. Every field stays `v.unknown()` here — this schema only
- * establishes that the field is present, exactly like the `readObjectField`
- * walk it replaces; the real per-field validation still happens in the
- * domain parsers (`parseInsightRunId`, `parseGitSha`, ...) below, so a
- * malformed value degrades identically to before: any missing or
- * wrong-shaped piece fails at the domain parser instead of here, and both
- * paths converge on the same `err(undefined)`.
- */
-const retainedEnvelopeSchema = v.object({
-  runId: v.unknown(),
-  revision: v.optional(
-    v.object({
-      sessionId: v.unknown(),
-      headSha: v.unknown(),
-      patchHash: v.unknown(),
-    }),
-  ),
-  generatedAt: v.unknown(),
-  provenance: v.unknown(),
-});
-type RetainedEnvelope = v.InferOutput<typeof retainedEnvelopeSchema>;
-
-const provenanceEnvelopeSchema = v.object({
-  provider: v.unknown(),
-  model: v.unknown(),
-  reasoning: v.unknown(),
-});
-type ProvenanceEnvelope = v.InferOutput<typeof provenanceEnvelopeSchema>;
-
-/** Matches the original inline check (`model.trim().length > 0 && model.length <= 200`) without a runtime `typeof`. */
-const provenanceModelSchema = v.pipe(
-  v.string(),
-  v.check((value) => value.trim().length > 0, "model must not be blank"),
-  v.maxLength(200),
-);
-
-/**
  * A bounded-text field that never fails: a non-blank string is truncated to
  * `maxLength` (its original, untrimmed bytes — matching the prior
  * `value.slice(0, maxLength)` behavior exactly), anything else falls back.
@@ -1234,56 +1177,4 @@ function boundedTextSchema(maxLength: number, fallback: string) {
         : fallback;
     }),
   );
-}
-
-function parseRetainedBase(
-  envelope: RetainedEnvelope,
-): Result<RetainedInsight<unknown>, undefined> {
-  const runId = parseInsightRunId(envelope.runId);
-  const sessionId = parseReviewSessionId(envelope.revision?.sessionId);
-  const headSha = parseGitSha(envelope.revision?.headSha);
-  const patchHash = parseContentHash(envelope.revision?.patchHash);
-  const generatedAt = parseIsoTimestamp(envelope.generatedAt);
-  const provenanceEnvelope = v.safeParse(
-    provenanceEnvelopeSchema,
-    envelope.provenance,
-  );
-  const provenance = provenanceEnvelope.success
-    ? parseRetainedProvenance(provenanceEnvelope.output)
-    : err(undefined);
-  if (
-    runId._tag === "err" ||
-    sessionId._tag === "err" ||
-    headSha._tag === "err" ||
-    patchHash._tag === "err" ||
-    generatedAt._tag === "err" ||
-    provenance._tag === "err"
-  )
-    return err(undefined);
-  return ok({
-    runId: runId.value,
-    revision: {
-      sessionId: sessionId.value,
-      headSha: headSha.value,
-      patchHash: patchHash.value,
-    },
-    generatedAt: generatedAt.value,
-    provenance: provenance.value,
-    value: undefined,
-  });
-}
-
-function parseRetainedProvenance(
-  envelope: ProvenanceEnvelope,
-): Result<InsightProvenance, undefined> {
-  const provider = parseInsightProvider(envelope.provider);
-  const model = v.safeParse(provenanceModelSchema, envelope.model);
-  const reasoning = parseInsightReasoning(envelope.reasoning);
-  return provider._tag === "ok" && model.success && reasoning._tag === "ok"
-    ? ok({
-        provider: provider.value,
-        model: model.output,
-        reasoning: reasoning.value,
-      })
-    : err(undefined);
 }

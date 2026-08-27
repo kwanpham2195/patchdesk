@@ -1,18 +1,27 @@
+import * as v from "valibot";
+
 import { definedProps } from "./defined-props";
-import type {
-  ContentHash,
-  FindingId,
-  GitSha,
-  InsightRunId,
-  IsoTimestamp,
-  ReviewId,
-  ReviewSessionId,
+import {
+  parseContentHash,
+  parseGitSha,
+  parseInsightRunId,
+  parseIsoTimestamp,
+  parseReviewSessionId,
+  type ContentHash,
+  type FindingId,
+  type GitSha,
+  type InsightRunId,
+  type IsoTimestamp,
+  type ReviewId,
+  type ReviewSessionId,
 } from "./ids";
 import { err, ok, type Result } from "./result";
-import type {
-  InsightProvenance,
-  InsightProvider,
-  InsightReasoning,
+import {
+  parseInsightProvider,
+  parseInsightReasoning,
+  type InsightProvenance,
+  type InsightProvider,
+  type InsightReasoning,
 } from "./insight-provider";
 
 export type InsightType = "analysis" | "walkthrough";
@@ -39,6 +48,8 @@ export type RetainedInsight<T> = {
   readonly provenance: InsightProvenance;
   readonly value: T;
 };
+/** A retained Insight with its provider-shaped value withheld. See `InsightStore.load`. */
+export type RetainedInsightEnvelope = Omit<RetainedInsight<unknown>, "value">;
 export type InsightFindingDismissal = {
   readonly findingId: FindingId;
   readonly reason: string;
@@ -85,6 +96,94 @@ export type InsightRecord<T> = {
   readonly replacementFailure?: InsightFailure;
   readonly updatedAt: IsoTimestamp;
 };
+
+/** True when two Insight revisions name the same session, head, and patch bytes. */
+export function sameInsightRevision(
+  a: InsightRevision,
+  b: InsightRevision,
+): boolean {
+  return (
+    a.sessionId === b.sessionId &&
+    a.headSha === b.headSha &&
+    a.patchHash === b.patchHash
+  );
+}
+
+/**
+ * The stored shape of `retained`: a fixed envelope around one provider-shaped
+ * `value` this module cannot know. Anything outside the envelope, or an
+ * envelope field that fails its own domain parser, is a corrupt record.
+ */
+const retainedEnvelopeSchema = v.strictObject({
+  runId: v.pipe(v.string(), v.minLength(1)),
+  revision: v.strictObject({
+    sessionId: v.pipe(v.string(), v.minLength(1)),
+    headSha: v.pipe(v.string(), v.minLength(40)),
+    patchHash: v.pipe(v.string(), v.length(64)),
+  }),
+  generatedAt: v.pipe(v.string(), v.isoTimestamp()),
+  provenance: v.strictObject({
+    provider: v.unknown(),
+    model: v.pipe(
+      v.string(),
+      v.check((value) => value.trim().length > 0, "model must not be blank"),
+      v.maxLength(200),
+    ),
+    reasoning: v.unknown(),
+  }),
+  value: v.unknown(),
+});
+
+/**
+ * The one parser for a stored `retained` entry. It owns the envelope --
+ * run id, revision, timestamp, provenance -- and hands only `value` to the
+ * caller's parser, because the retained value's shape belongs to whichever
+ * Insight produced it.
+ *
+ * Every read of a stored Insight goes through here, so no caller has to
+ * rebuild the envelope rules or cast an unparsed record back into JSON.
+ */
+export function parseRetainedInsight<T>(
+  raw: unknown,
+  parseValue: (input: unknown) => Result<T, unknown>,
+): Result<RetainedInsight<T>, undefined> {
+  const envelope = v.safeParse(retainedEnvelopeSchema, raw);
+  if (!envelope.success) return err(undefined);
+  const runId = parseInsightRunId(envelope.output.runId);
+  const sessionId = parseReviewSessionId(envelope.output.revision.sessionId);
+  const headSha = parseGitSha(envelope.output.revision.headSha);
+  const patchHash = parseContentHash(envelope.output.revision.patchHash);
+  const generatedAt = parseIsoTimestamp(envelope.output.generatedAt);
+  const provider = parseInsightProvider(envelope.output.provenance.provider);
+  const reasoning = parseInsightReasoning(envelope.output.provenance.reasoning);
+  const value = parseValue(envelope.output.value);
+  if (
+    runId._tag === "err" ||
+    sessionId._tag === "err" ||
+    headSha._tag === "err" ||
+    patchHash._tag === "err" ||
+    generatedAt._tag === "err" ||
+    provider._tag === "err" ||
+    reasoning._tag === "err" ||
+    value._tag === "err"
+  )
+    return err(undefined);
+  return ok({
+    runId: runId.value,
+    revision: {
+      sessionId: sessionId.value,
+      headSha: headSha.value,
+      patchHash: patchHash.value,
+    },
+    generatedAt: generatedAt.value,
+    provenance: {
+      provider: provider.value,
+      model: envelope.output.provenance.model,
+      reasoning: reasoning.value,
+    },
+    value: value.value,
+  });
+}
 
 /** Creates an empty schema-v2 Insight record. */
 export function createInsightRecord(input: {

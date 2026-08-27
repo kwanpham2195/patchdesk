@@ -12,14 +12,16 @@ import {
   type ReviewId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
-import type {
-  InsightFailure,
-  InsightFindingDismissal,
-  InsightRecord,
-  InsightRun,
-  InsightType,
-  RetainedInsight,
-  WalkthroughProgress,
+import {
+  parseRetainedInsight,
+  type InsightFailure,
+  type InsightFindingDismissal,
+  type InsightRecord,
+  type InsightRun,
+  type InsightType,
+  type RetainedInsight,
+  type RetainedInsightEnvelope,
+  type WalkthroughProgress,
 } from "../../domain/insight-record";
 import { KeyedMutex } from "../../domain/keyed-mutex";
 import { err, ok, type Result } from "../../domain/result";
@@ -88,18 +90,6 @@ const walkthroughProgressSchema = v.strictObject({
   supportReviewed: v.boolean(),
   currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
-const provenanceSchema = v.strictObject({
-  provider: providerSchema,
-  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-  reasoning: reasoningSchema,
-});
-const retainedSchema = v.strictObject({
-  runId: v.pipe(v.string(), v.minLength(1)),
-  revision: revisionSchema,
-  generatedAt: v.pipe(v.string(), v.isoTimestamp()),
-  provenance: provenanceSchema,
-  value: v.unknown(),
-});
 const recordFields = {
   reviewId: v.pipe(v.string(), v.minLength(1)),
   type: v.picklist(["analysis", "walkthrough"]),
@@ -113,7 +103,6 @@ const recordFields = {
 const recordSchemaV2 = v.strictObject({
   schemaVersion: v.literal(2),
   ...recordFields,
-  retained: v.optional(retainedSchema),
   activeRun: v.optional(activeRunSchemaV2),
 });
 
@@ -128,7 +117,7 @@ export type InsightStoreFailure = StorageFailure | InsightMutationFailure;
 /** Parses the single supported schema-2 Insight record. */
 export function parseInsightRecord(
   input: unknown,
-): Result<InsightRecord<unknown>, StorageFailure> {
+): Result<InsightRecord<RetainedInsight<unknown>>, StorageFailure> {
   const version = v.safeParse(recordSchemaV2, input);
   return version.success ? parseV2Record(version.output) : invalidRead();
 }
@@ -139,34 +128,32 @@ export class InsightStore {
 
   constructor(private readonly paths: PatchdeskPaths) {}
 
+  /**
+   * The record without its retained value. `parseRetainedInsight` has already
+   * proved the envelope, so callers read `runId`, `revision`, `generatedAt`
+   * and `provenance` as parsed domain values -- but the provider-shaped
+   * `value` is deliberately not in this type. `loadTyped` is the only way
+   * that value leaves storage, and it takes the parser that gives it meaning.
+   */
   async load(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
     type: InsightType,
-  ): Promise<Result<InsightRecord<unknown>, StorageFailure>> {
-    const stored = await readJsonFile(
-      this.paths.insightFile(profileId, reviewId, type),
-    );
-    if (stored._tag === "err") return stored;
-    const parsed = parseInsightRecord(stored.value);
-    if (
-      parsed._tag === "err" ||
-      parsed.value.reviewId !== reviewId ||
-      parsed.value.type !== type
-    )
-      return invalidRead();
-    return parsed;
+  ): Promise<Result<InsightRecord<RetainedInsightEnvelope>, StorageFailure>> {
+    return this.loadRecord(profileId, reviewId, type);
   }
 
+  /** The record with its retained value parsed by the caller's own parser. */
   async loadTyped<T>(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
     type: InsightType,
-    parseRetainedValue: (input: unknown) => Result<RetainedInsight<T>, unknown>,
+    parseRetainedValue: (input: unknown) => Result<T, unknown>,
   ): Promise<Result<InsightRecord<RetainedInsight<T>>, StorageFailure>> {
-    const loaded = await this.load(profileId, reviewId, type);
+    const loaded = await this.loadRecord(profileId, reviewId, type);
     if (loaded._tag === "err") return loaded;
-    if (loaded.value.retained === undefined) {
+    const stored = loaded.value.retained;
+    if (stored === undefined) {
       return ok({
         schemaVersion: 2,
         reviewId: loaded.value.reviewId,
@@ -181,12 +168,29 @@ export class InsightStore {
         updatedAt: loaded.value.updatedAt,
       });
     }
-    const parsedRetained = parseRetained(loaded.value.retained);
-    if (parsedRetained._tag === "err") return invalidRead();
-    const retained = parseRetainedValue(loaded.value.retained);
-    return retained._tag === "err"
+    const value = parseRetainedValue(stored.value);
+    return value._tag === "err"
       ? invalidRead()
-      : ok({ ...loaded.value, retained: retained.value });
+      : ok({ ...loaded.value, retained: { ...stored, value: value.value } });
+  }
+
+  private async loadRecord(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+  ): Promise<Result<InsightRecord<RetainedInsight<unknown>>, StorageFailure>> {
+    const stored = await readJsonFile(
+      this.paths.insightFile(profileId, reviewId, type),
+    );
+    if (stored._tag === "err") return stored;
+    const parsed = parseInsightRecord(stored.value);
+    if (
+      parsed._tag === "err" ||
+      parsed.value.reviewId !== reviewId ||
+      parsed.value.type !== type
+    )
+      return invalidRead();
+    return parsed;
   }
 
   async save(
@@ -216,12 +220,14 @@ export class InsightStore {
     readonly type: InsightType;
     readonly now: InsightRecord<unknown>["updatedAt"];
     readonly operation: (
-      record: InsightRecord<unknown>,
+      record: InsightRecord<RetainedInsight<unknown>>,
     ) => Result<InsightRecord<unknown>, InsightMutationFailure>;
-  }): Promise<Result<InsightRecord<unknown>, InsightStoreFailure>> {
+  }): Promise<
+    Result<InsightRecord<RetainedInsightEnvelope>, InsightStoreFailure>
+  > {
     const key = `${input.profileId}\n${input.reviewId}\n${input.type}`;
     return this.locks.run(key, async () => {
-      const loaded = await this.load(
+      const loaded = await this.loadRecord(
         input.profileId,
         input.reviewId,
         input.type,
@@ -243,14 +249,14 @@ export class InsightStore {
       if (changed._tag === "err") return changed;
       const saved = await this.save(input.profileId, changed.value);
       if (saved._tag === "err") return saved;
-      return this.load(input.profileId, input.reviewId, input.type);
+      return this.loadRecord(input.profileId, input.reviewId, input.type);
     });
   }
 }
 
 function parseV2Record(
   input: v.InferOutput<typeof recordSchemaV2>,
-): Result<InsightRecord<unknown>, StorageFailure> {
+): Result<InsightRecord<RetainedInsight<unknown>>, StorageFailure> {
   const common = parseCommonRecord(input);
   if (common._tag === "err") return common;
   const activeRun =
@@ -262,7 +268,9 @@ function parseV2Record(
       : parseFailure(input.replacementFailure);
   if (replacementFailure?._tag === "err") return invalidRead();
   const retained =
-    input.retained === undefined ? undefined : parseRetained(input.retained);
+    input.retained === undefined
+      ? undefined
+      : parseRetainedInsight(input.retained, (value) => ok(value));
   if (retained?._tag === "err") return invalidRead();
   return ok({
     ...common.value,
@@ -288,7 +296,10 @@ function parseCommonRecord(input: {
   readonly replacementFailure?: v.InferOutput<typeof failureSchema> | undefined;
   readonly updatedAt: string;
 }): Result<
-  Omit<InsightRecord<unknown>, "retained" | "activeRun" | "replacementFailure">,
+  Omit<
+    InsightRecord<RetainedInsight<unknown>>,
+    "retained" | "activeRun" | "replacementFailure"
+  >,
   StorageFailure
 > {
   const reviewId = parseReviewId(input.reviewId);
@@ -367,38 +378,6 @@ function parseFailure(
     ...definedProps({ category: input.category }),
     retryable: input.retryable,
     failedAt: failedAt.value,
-  });
-}
-
-function parseRetained(
-  input: unknown,
-): Result<RetainedInsight<unknown>, StorageFailure> {
-  const parsed = v.safeParse(retainedSchema, input);
-  if (!parsed.success) return invalidRead();
-  const value = parsed.output;
-  const runId = parseInsightRunId(value.runId);
-  const sessionId = parseReviewSessionId(value.revision.sessionId);
-  const headSha = parseGitSha(value.revision.headSha);
-  const patchHash = parseContentHash(value.revision.patchHash);
-  const generatedAt = parseIsoTimestamp(value.generatedAt);
-  if (
-    runId._tag === "err" ||
-    sessionId._tag === "err" ||
-    headSha._tag === "err" ||
-    patchHash._tag === "err" ||
-    generatedAt._tag === "err"
-  )
-    return invalidRead();
-  return ok({
-    runId: runId.value,
-    revision: {
-      sessionId: sessionId.value,
-      headSha: headSha.value,
-      patchHash: patchHash.value,
-    },
-    generatedAt: generatedAt.value,
-    provenance: value.provenance,
-    value: value.value,
   });
 }
 

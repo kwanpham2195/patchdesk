@@ -1,3 +1,5 @@
+import type { GitHubReader } from "../adapters/github/github-adapter";
+import type { PullRequestSummary } from "../domain/github-context";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type {
@@ -6,7 +8,7 @@ import type {
 } from "../adapters/storage/review-remote-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
-import type { Review } from "../domain/review";
+import { sessionRepresentsReview, type Review } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ContentHash, ReviewId, WorkspaceProfileId } from "../domain/ids";
@@ -16,6 +18,42 @@ import { contentHash } from "./review-artifact-hash";
 export type ReviewWriteGateFailure = {
   readonly reason: "not_found" | "storage" | "stale" | "terminal" | "not_fresh";
 };
+
+export type CurrentHeadFailure = {
+  readonly reason: "github_read" | "head_moved";
+};
+
+/**
+ * The remote half of the write gate: one `getPullRequest` immediately before
+ * a write, proving GitHub still reports the head SHA this session pinned.
+ * `requireFresh` proves the durable state is coherent; this proves the remote
+ * has not moved since. Every caller runs it after the storage gate and before
+ * its first GitHub write, so the round trip happens exactly where it did.
+ *
+ * Two reasons, not one. Every call site renders "GitHub could not be read"
+ * and "the head moved under you" differently -- one is a retry, the other is
+ * a refresh -- so the distinction is kept here rather than flattened and
+ * guessed at again by each caller.
+ */
+export async function requireCurrentHead(
+  github: Pick<GitHubReader, "getPullRequest">,
+  profile: WorkspaceProfileConfig,
+  session: Pick<ReviewSession, "key">,
+): Promise<Result<PullRequestSummary, CurrentHeadFailure>> {
+  const current = await github.getPullRequest({
+    profile,
+    pr: {
+      host: session.key.host,
+      owner: session.key.owner,
+      repo: session.key.repo,
+      number: session.key.prNumber,
+    },
+  });
+  if (current._tag === "err") return err({ reason: "github_read" });
+  return current.value.headSha === session.key.headSha
+    ? ok(current.value)
+    : err({ reason: "head_moved" });
+}
 
 export type FreshReview = {
   readonly profile: WorkspaceProfileConfig;
@@ -79,14 +117,7 @@ export class ReviewWriteGate {
       return session.error.reason === "not_found"
         ? err({ reason: "not_found" })
         : err({ reason: "storage" });
-    if (
-      session.value.key.profileId !== profileId ||
-      session.value.key.host !== review.value.identity.host ||
-      session.value.key.owner !== review.value.identity.owner ||
-      session.value.key.repo !== review.value.identity.repo ||
-      session.value.key.prNumber !== review.value.identity.prNumber ||
-      session.value.key.headSha !== review.value.currentHeadSha
-    )
+    if (!sessionRepresentsReview(review.value, session.value))
       return err({ reason: "stale" });
     return ok({
       profile: profile.value,
@@ -144,12 +175,7 @@ export class ReviewWriteGate {
     )
       return err({ reason: "stale" });
     if (
-      session.value.key.profileId !== profileId ||
-      session.value.key.host !== value.identity.host ||
-      session.value.key.owner !== value.identity.owner ||
-      session.value.key.repo !== value.identity.repo ||
-      session.value.key.prNumber !== value.identity.prNumber ||
-      session.value.key.headSha !== value.currentHeadSha ||
+      !sessionRepresentsReview(value, session.value) ||
       session.value.key.headSha !== value.representedRemote.headSha
     )
       return err({ reason: "stale" });

@@ -121,6 +121,19 @@ const submit = (service: DirectSummaryReviewService) =>
   });
 
 describe("DirectSummaryReviewService", () => {
+  it("refuses a write as stale_head when GitHub reports a moved head", async () => {
+    const value = fixture(undefined, {
+      // SAFETY: this literal is a 40-character hex string, matching parseGitSha's format.
+      getPullRequest: async () =>
+        ok({ headSha: "c".repeat(40), author: "other" }),
+    });
+    await expect(submit(value.service)).resolves.toEqual({
+      _tag: "err",
+      error: "stale_head",
+    });
+    expect(value.github.createDirectSummaryReview).not.toHaveBeenCalled();
+  });
+
   it("persists a confirmed direct-summary receipt before success", async () => {
     const value = fixture();
     await expect(submit(value.service)).resolves.toMatchObject({

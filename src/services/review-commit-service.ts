@@ -5,6 +5,7 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { GitSha, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import type { PullRequestCommit } from "../domain/github-context";
 import { err, ok, type Result } from "../domain/result";
+import { sessionRepresentsReview } from "../domain/review";
 import type { GitReadExecutor } from "./review-worktree-service";
 
 const maxCommitPatchBytes = 1_500_000;
@@ -83,12 +84,7 @@ export class ReviewCommitService {
       });
     if (
       session.value.id !== review.value.currentSessionId ||
-      session.value.key.headSha !== review.value.currentHeadSha ||
-      session.value.key.profileId !== review.value.identity.profileId ||
-      session.value.key.host !== review.value.identity.host ||
-      session.value.key.owner !== review.value.identity.owner ||
-      session.value.key.repo !== review.value.identity.repo ||
-      session.value.key.prNumber !== review.value.identity.prNumber
+      !sessionRepresentsReview(review.value, session.value)
     )
       return err({ reason: "stale_head" });
 

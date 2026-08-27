@@ -19,9 +19,10 @@ import { KeyedMutex } from "../domain/keyed-mutex";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSession } from "../domain/review-session";
 import type { GitHubReviewEvent } from "../domain/pending-review";
-import type {
-  ReviewWriteExpectation,
-  ReviewWriteGate,
+import {
+  requireCurrentHead,
+  type ReviewWriteExpectation,
+  type ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
@@ -105,13 +106,15 @@ export class DirectSummaryReviewService {
       )
         return err("outcome_unknown");
       const pr = sessionPr(fresh.value.session);
-      const current = await this.github.getPullRequest({
-        profile: fresh.value.profile,
-        pr,
-      });
-      if (current._tag === "err") return err("unavailable");
-      if (current.value.headSha !== fresh.value.session.key.headSha)
-        return err("stale_head");
+      const current = await requireCurrentHead(
+        this.github,
+        fresh.value.profile,
+        fresh.value.session,
+      );
+      if (current._tag === "err")
+        return err(
+          current.error.reason === "github_read" ? "unavailable" : "stale_head",
+        );
       const account = await this.github.resolveAuthenticatedAccount(
         fresh.value.profile,
       );
@@ -139,13 +142,17 @@ export class DirectSummaryReviewService {
       });
       if (baseline._tag === "err" || !baseline.value.complete)
         return err("unavailable");
-      const finalCurrent = await this.github.getPullRequest({
-        profile: fresh.value.profile,
-        pr,
-      });
-      if (finalCurrent._tag === "err") return err("unavailable");
-      if (finalCurrent.value.headSha !== fresh.value.session.key.headSha)
-        return err("stale_head");
+      const finalCurrent = await requireCurrentHead(
+        this.github,
+        fresh.value.profile,
+        fresh.value.session,
+      );
+      if (finalCurrent._tag === "err")
+        return err(
+          finalCurrent.error.reason === "github_read"
+            ? "unavailable"
+            : "stale_head",
+        );
       const finalPending = await this.github.getViewerPendingReview({
         profile: fresh.value.profile,
         pr,

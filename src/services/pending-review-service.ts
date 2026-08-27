@@ -34,9 +34,10 @@ import type { ReviewSession } from "../domain/review-session";
 import type { GitHubWriteFailure } from "../domain/github-write";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
-import type {
-  ReviewWriteExpectation,
-  ReviewWriteGate,
+import {
+  requireCurrentHead,
+  type ReviewWriteExpectation,
+  type ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { PullRequestRef } from "../domain/pull-request";
@@ -530,13 +531,11 @@ export class PendingReviewService {
       // Final current-head check immediately before any write, matching the
       // direct-conversation boundary: the represented snapshot is fresh, and
       // the live head must still match it.
-      const current = await this.github.getPullRequest({
-        profile,
-        pr: sessionPr(session),
-      });
-      if (current._tag === "err") return err("unavailable");
-      if (current.value.headSha !== session.key.headSha)
-        return err("stale_head");
+      const current = await requireCurrentHead(this.github, profile, session);
+      if (current._tag === "err")
+        return err(
+          current.error.reason === "github_read" ? "unavailable" : "stale_head",
+        );
       return operation(profile, session);
     } finally {
       this.writeCoordinator.release(key);

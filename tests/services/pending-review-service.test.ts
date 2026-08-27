@@ -180,6 +180,23 @@ function fixture(
 }
 
 describe("PendingReviewService", () => {
+  it("refuses a write as stale_head when GitHub reports a moved head", async () => {
+    const value = fixture(undefined, {
+      // SAFETY: this literal is a 40-character hex string, matching parseGitSha's format.
+      getPullRequest: vi.fn(async () => ok({ headSha: "c".repeat(40) })),
+    });
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "comment",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "stale_head" });
+    expect(value.github.startPendingReviewWithThread).not.toHaveBeenCalled();
+  });
+
   it("keeps an absent pending state unavailable until a complete read persists None", async () => {
     const value = fixture();
     await expect(

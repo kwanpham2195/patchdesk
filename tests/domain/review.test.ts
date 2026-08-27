@@ -7,6 +7,7 @@ import {
   markReviewTerminal,
   moveReviewToSession,
   parseReview,
+  sessionRepresentsReview,
   type ReviewIdentity,
 } from "../../src/domain/review";
 import {
@@ -204,5 +205,36 @@ describe("Review", () => {
       },
     };
     expect(parseReview(invalid)).toMatchObject({ _tag: "err" });
+  });
+});
+
+describe("sessionRepresentsReview", () => {
+  const key = { ...identity, headSha: firstSha, baseSha };
+
+  it("accepts the session key the Review currently points at", () => {
+    expect(sessionRepresentsReview(review(), { key })).toBe(true);
+  });
+
+  it("rejects a mismatch in any one of the six compared fields", () => {
+    const mismatches = [
+      { profileId: must(parseWorkspaceProfileId("other")) },
+      { host: must(parseGitHubHost("github.example.com")) },
+      { owner: must(parseGitHubOwner("someone-else")) },
+      { repo: must(parseGitHubRepoName("other-repo")) },
+      { prNumber: must(parsePullRequestNumber(43)) },
+      { headSha: secondSha },
+    ];
+    for (const mismatch of mismatches)
+      expect(
+        sessionRepresentsReview(review(), { key: { ...key, ...mismatch } }),
+      ).toBe(false);
+  });
+
+  it("ignores the base SHA, which is session identity rather than revision", () => {
+    expect(
+      sessionRepresentsReview(review(), {
+        key: { ...key, baseSha: otherBaseSha },
+      }),
+    ).toBe(true);
   });
 });

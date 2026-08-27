@@ -199,6 +199,7 @@
         "src/domain/direct-summary-review.ts",
         "src/domain/review.ts",
         "src/domain/insight-provider.ts",
+        "src/domain/insight-record.ts",
         "src/adapters/storage/insight-store.ts",
         "src/adapters/storage/json-file.ts",
         "src/adapters/storage/merge-operation-store.ts",

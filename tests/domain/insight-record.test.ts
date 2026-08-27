@@ -6,7 +6,9 @@ import {
   createInsightRecord,
   dismissInsightFinding,
   failInsightRun,
+  parseRetainedInsight,
   requestInsightCancellation,
+  sameInsightRevision,
   updateWalkthroughProgress,
   type InsightRecord,
 } from "../../src/domain/insight-record";
@@ -24,7 +26,7 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
-import type { Result } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
@@ -373,5 +375,75 @@ describe("InsightRecord", () => {
     expect(completed._tag).toBe("ok");
     if (completed._tag === "ok")
       expect(completed.value.retained?.value).toEqual({ summary: "new" });
+  });
+});
+
+describe("sameInsightRevision", () => {
+  const revision = { sessionId, headSha, patchHash };
+
+  it("is true only when the session, head, and patch hash all match", () => {
+    expect(sameInsightRevision(revision, { ...revision })).toBe(true);
+    expect(
+      sameInsightRevision(revision, {
+        ...revision,
+        headSha: must(parseGitSha("c".repeat(40))),
+      }),
+    ).toBe(false);
+    expect(
+      sameInsightRevision(revision, {
+        ...revision,
+        patchHash: must(parseContentHash("d".repeat(64))),
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("parseRetainedInsight", () => {
+  const runId = must(
+    parseInsightRunId(`insight-analysis-1-${headSha.slice(0, 12)}-${reviewId}`),
+  );
+  const stored = {
+    runId,
+    revision: { sessionId, headSha, patchHash },
+    generatedAt: now,
+    provenance,
+    value: { summary: "stored" },
+  };
+
+  it("parses the envelope and delegates only the value", () => {
+    const seen: Array<unknown> = [];
+    const parsed = parseRetainedInsight(stored, (input) => {
+      seen.push(input);
+      return ok("parsed");
+    });
+    expect(seen).toEqual([{ summary: "stored" }]);
+    expect(parsed).toEqual({
+      _tag: "ok",
+      value: {
+        runId,
+        revision: { sessionId, headSha, patchHash },
+        generatedAt: now,
+        provenance,
+        value: "parsed",
+      },
+    });
+  });
+
+  it("rejects a value its caller's parser rejects", () => {
+    expect(parseRetainedInsight(stored, () => err("no"))._tag).toBe("err");
+  });
+
+  it("rejects a missing field, a blank provenance model, and an extra key", () => {
+    const { runId: _runId, ...withoutRunId } = stored;
+    void _runId;
+    expect(parseRetainedInsight(withoutRunId, ok)._tag).toBe("err");
+    expect(
+      parseRetainedInsight(
+        { ...stored, provenance: { ...provenance, model: "   " } },
+        ok,
+      )._tag,
+    ).toBe("err");
+    expect(parseRetainedInsight({ ...stored, extra: 1 }, ok)._tag).toBe("err");
+    expect(parseRetainedInsight(undefined, ok)._tag).toBe("err");
   });
 });

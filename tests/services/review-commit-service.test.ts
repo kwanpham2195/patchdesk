@@ -172,4 +172,49 @@ describe("ReviewCommitService", () => {
       service.diff({ profileId, reviewId: review.id, commitSha: headSha }),
     ).resolves.toEqual({ _tag: "err", error: { reason: "foreign_commit" } });
   });
+
+  /**
+   * The condition ahead of `sessionRepresentsReview` here compares session
+   * ids only. Nothing else in `diff` re-checks that the loaded Session names
+   * the same pull request or the same head as the Review: the git commands
+   * that follow run inside `session.worktree.path` and read
+   * `session.key.headSha`, so a Session that agrees on id but not on revision
+   * would have this service serve a diff out of the wrong checkout.
+   */
+  it("refuses a Session whose revision the Review no longer represents", async () => {
+    const staleSessions = [
+      { ...session, key: { ...session.key, headSha: commitSha } },
+      // SAFETY: a plain owner string already satisfies GitHubOwner's runtime shape.
+      { ...session, key: { ...session.key, owner: "someone-else" as never } },
+    ];
+    for (const stale of staleSessions) {
+      const service = new ReviewCommitService(
+        {
+          async load() {
+            return ok(review);
+          },
+        },
+        {
+          async load() {
+            // SAFETY: This fake storage returns the complete snapshot fixture consumed by ReviewCommitService.
+            return ok(snapshot as never);
+          },
+        },
+        {
+          async load() {
+            // SAFETY: This fake storage returns the complete session fixture consumed by ReviewCommitService.
+            return ok(stale as never);
+          },
+        },
+        {
+          async run() {
+            throw new Error("git must not run for a stale session");
+          },
+        },
+      );
+      await expect(
+        service.diff({ profileId, reviewId: review.id, commitSha }),
+      ).resolves.toEqual({ _tag: "err", error: { reason: "stale_head" } });
+    }
+  });
 });

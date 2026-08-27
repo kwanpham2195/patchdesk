@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { parseRetainedInsight } from "../../src/domain/insight-record";
 import { err, ok } from "../../src/domain/result";
 import {
   at,
   fixture,
   hash,
   headSha,
+  identity,
   profileId,
   review,
   reviewId,
@@ -215,6 +217,38 @@ describe("ReviewWorkbenchProjectionService", () => {
       _tag: "err",
       error: { _tag: "SessionStorageUnavailable" },
     });
+  });
+
+  /**
+   * The two leading conditions at this gate compare the Review's own id and
+   * its `currentSessionId`; neither looks at a head SHA, and neither looks at
+   * the identity the Review was created under. `sessionRepresentsReview` is
+   * the only thing standing between a moved head -- or a Review filed under a
+   * different pull request -- and a workbench that renders the stale Session
+   * as the represented revision, with its findings, its pending review and
+   * its merge actions all offered as current.
+   */
+  it("fails closed when the Review no longer represents the Session's revision", async () => {
+    for (const stale of [
+      // SAFETY: a 40-char hex string already satisfies GitSha's runtime shape.
+      review({ currentHeadSha: "c".repeat(40) }),
+      // SAFETY: a plain owner string already satisfies GitHubOwner's runtime shape.
+      review({ identity: { ...identity, owner: "someone-else" } }),
+      review({ identity: { ...identity, prNumber: 43 } }),
+    ]) {
+      await expect(
+        fixture(stale).service.loadRepresented({
+          profileId,
+          sessionId,
+          snapshot,
+          refreshedAt: at,
+          freshness: { _tag: "Fresh" },
+        }),
+      ).resolves.toEqual({
+        _tag: "err",
+        error: { _tag: "SessionStorageUnavailable" },
+      });
+    }
   });
 
   describe("deriveMergeReasons (via loadRepresented's mergeEvidence)", () => {
@@ -650,7 +684,15 @@ describe("ReviewWorkbenchProjectionService walkthrough fallback degradation", ()
 
   async function projectWalkthrough(value: RawJsonValue) {
     const fx = fixture();
-    fx.insights.load.mockResolvedValueOnce(walkthroughRecord(value));
+    // `loadStoredInsights` calls `loadTyped` twice -- once for the analysis
+    // record, once for the walkthrough -- so the stub answers by the `type`
+    // argument rather than by call order.
+    fx.insights.loadTyped.mockImplementation((async (
+      ...args: ReadonlyArray<unknown>
+    ) =>
+      args[2] === "walkthrough"
+        ? walkthroughRecord(value)
+        : err({ reason: "not_found" })) as never);
     const result = await fx.service.loadRepresented({
       profileId,
       sessionId,
@@ -763,12 +805,10 @@ describe("ReviewWorkbenchProjectionService walkthrough fallback degradation", ()
 });
 
 // `insights.loadTyped` is mocked at the interface boundary everywhere above,
-// so it never actually calls the parser callback `loadStoredInsights`
-// passes it — the callback that now runs the analysis retained value
-// through `retainedEnvelopeSchema` + `parseRetainedBase` + a valibot
-// envelope for provenance. These tests make the mock behave like the real
-// `InsightStore.loadTyped` (invoke the callback, wrap its result), so the
-// callback itself — not just the surrounding service — is under test.
+// so it never actually decodes a stored record. These tests make the mock
+// behave like the real `InsightStore.loadTyped` — `parseRetainedInsight` for
+// the envelope, then the callback `loadStoredInsights` passes for the value
+// — so the decode path itself, not just the surrounding service, is tested.
 describe("ReviewWorkbenchProjectionService analysis retained decode", () => {
   const analysisRunId = "insight-analysis-1-aaaaaaaaaaaa-x";
   const validReviewResult = {
@@ -780,12 +820,6 @@ describe("ReviewWorkbenchProjectionService analysis retained decode", () => {
     assumptions: [],
   };
 
-  /** Matches `InsightStore.loadTyped`'s `parseRetainedValue` callback shape, keyed to `RawJsonValue` rather than `unknown`. */
-  type RawInsightParser = (input: RawJsonValue) => {
-    readonly _tag: "ok" | "err";
-    readonly value?: unknown;
-  };
-
   function stubLoadTyped(
     fx: ReturnType<typeof fixture>,
     rawRetained: RawJsonValue,
@@ -795,15 +829,16 @@ describe("ReviewWorkbenchProjectionService analysis retained decode", () => {
       // never` because the mock's inferred signature (from the fixture's
       // default zero-argument implementation) doesn't describe the real
       // 4-argument method; the body below reproduces exactly what the real
-      // implementation does with its `parseRetainedValue` callback — call
-      // it with the raw stored value and wrap a successful result in the
-      // same envelope fields (`schemaVersion`/`reviewId`/`type`/`nextToken`/`updatedAt`).
+      // implementation does — `parseRetainedInsight` for the envelope and
+      // the caller's `parseRetainedValue` for the value, wrapped in the
+      // same record fields (`schemaVersion`/`reviewId`/`type`/`nextToken`/`updatedAt`).
       (async (...args: ReadonlyArray<unknown>) => {
         // SAFETY: `loadStoredInsights` always calls `insights.loadTyped`
-        // with `(profileId, reviewId, "analysis", parseRetainedValue)`; the
-        // 4th positional argument is always that callback.
-        const parseRetainedValue = args[3] as RawInsightParser;
-        const retained = parseRetainedValue(rawRetained);
+        // with `(profileId, reviewId, "analysis", parseRetainedValue)`, so
+        // the 4th positional argument is always that value parser; `never`
+        // is the only annotation that hands it back to `parseRetainedInsight`
+        // without restating `unknown` in a test file.
+        const retained = parseRetainedInsight(rawRetained, args[3] as never);
         if (retained._tag === "err")
           return err({ reason: "invalid_stored_value" });
         return ok({

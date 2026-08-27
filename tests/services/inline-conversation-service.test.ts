@@ -89,6 +89,31 @@ function makeGateway(overrides: Record<string, ReturnType<typeof vi.fn>> = {}) {
 }
 
 describe("InlineConversationService", () => {
+  it("refuses a write as not_fresh when GitHub reports a moved head", async () => {
+    const gate = makeGate();
+    const createThreadReply = vi.fn();
+    const service = new InlineConversationService(
+      gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
+      makeGateway({
+        createThreadReply,
+        // SAFETY: this literal is a 40-character hex string, matching parseGitSha's format.
+        getPullRequest: vi.fn(async () => ok({ headSha: "c".repeat(40) })),
+      }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+    );
+    const result = await service.execute({
+      profileId,
+      reviewId,
+      command: command({ _tag: "Reply", threadId: "PRRT_any" }),
+    });
+    expect(result).toEqual({ _tag: "err", error: "not_fresh" });
+    expect(createThreadReply).not.toHaveBeenCalled();
+  });
+
   it("proves a Reply's thread belongs to the active Review before mutating", async () => {
     const gate = makeGate();
     const createThreadReply = vi.fn();

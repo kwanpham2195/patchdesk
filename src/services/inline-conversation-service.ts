@@ -10,9 +10,10 @@ import {
   type ReviewId,
   type WorkspaceProfileId,
 } from "../domain/ids";
-import type {
-  ReviewWriteExpectation,
-  ReviewWriteGate,
+import {
+  requireCurrentHead,
+  type ReviewWriteExpectation,
+  type ReviewWriteGate,
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
@@ -176,13 +177,17 @@ export class InlineConversationService {
       repo: fresh.value.session.key.repo,
       number: fresh.value.session.key.prNumber,
     };
-    const current = await this.github.getPullRequest({
-      profile: fresh.value.profile,
-      pr,
-    });
-    if (current._tag === "err") return err("github_read_failed");
-    if (current.value.headSha !== fresh.value.session.key.headSha)
-      return err("not_fresh");
+    const current = await requireCurrentHead(
+      this.github,
+      fresh.value.profile,
+      fresh.value.session,
+    );
+    if (current._tag === "err")
+      return err(
+        current.error.reason === "github_read"
+          ? "github_read_failed"
+          : "not_fresh",
+      );
 
     switch (input.command._tag) {
       case "CreateComment": {

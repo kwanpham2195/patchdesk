@@ -39,6 +39,11 @@ export const reviewId = createReviewId(identity);
 export const hash = "b".repeat(64) as never;
 export function session(
   localCheckoutWarning?: "missing_local_path" | "local_checkout_unavailable",
+  // A real, readable patch file. Only the tests that need the projection to
+  // compute a `patchHash` pass one; the default path does not exist, so the
+  // patch read fails and `patchHash` stays `undefined`, which is what every
+  // other fixture in this file expects.
+  patchPath = "/does-not-exist",
 ) {
   // SAFETY: this whole fixture is cast `as never` because it stands in for a
   // full, internal `ReviewSession` record the service under test never
@@ -55,7 +60,7 @@ export function session(
       baseBranch: "sit",
     },
     // SAFETY: a plain filesystem path string already satisfies the branded patch-path type's runtime shape.
-    patchPath: "/does-not-exist" as never,
+    patchPath: patchPath as never,
     // SAFETY: a plain filesystem path string already satisfies the branded worktree-path type's runtime shape.
     worktree: { path: "/tmp/worktree" as never, headSha },
     pendingReview: {
@@ -170,20 +175,20 @@ export function review(
 export function fixture(
   stable = review(),
   localCheckoutWarning?: "missing_local_path" | "local_checkout_unavailable",
+  patchPath?: string,
 ) {
   const profiles = { load: vi.fn(async () => ok({ ghAccount: "fixture" })) };
   const sessions = {
-    load: vi.fn(async () => ok(session(localCheckoutWarning))),
+    load: vi.fn(async () => ok(session(localCheckoutWarning, patchPath))),
   };
   const reviews = { load: vi.fn(async () => ok(stable)) };
   const insights = {
     loadTyped: vi.fn(async () => err({ reason: "not_found" })),
-    load: vi.fn(async () => err({ reason: "not_found" })),
   };
   return {
-    // SAFETY: each mock below only stubs the one method
-    // (`load`/`loadTyped`) this service actually calls; casting to `never`
-    // stands in for the full repository interface the constructor declares.
+    // SAFETY: each mock below only stubs the one method this service
+    // actually calls; casting to `never` stands in for the full repository
+    // interface the constructor declares.
     service: new ReviewWorkbenchProjectionService(
       profiles as never,
       sessions as never,

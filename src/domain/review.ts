@@ -25,6 +25,7 @@ import {
   type WorkspaceProfileId,
 } from "./ids";
 import { err, ok, type Result } from "./result";
+import type { ReviewSessionKey } from "./review-session";
 
 export type ReviewIdentity = {
   readonly profileId: WorkspaceProfileId;
@@ -160,6 +161,30 @@ const reviewV2Schema = v.strictObject({
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
+
+/**
+ * True when `session` is the exact revision the Review currently represents:
+ * same profile, same pull request, and the Review's current head SHA.
+ *
+ * Every write precondition in the app compares these same six fields before
+ * it lets a caller touch GitHub or durable review state, so they are compared
+ * in one place. A caller that also needs `session.id` to equal
+ * `review.currentSessionId` checks that itself: session identity is a
+ * separate fact from the revision this function compares.
+ */
+export function sessionRepresentsReview(
+  review: Pick<Review, "identity" | "currentHeadSha">,
+  session: { readonly key: ReviewSessionKey },
+): boolean {
+  return (
+    session.key.profileId === review.identity.profileId &&
+    session.key.host === review.identity.host &&
+    session.key.owner === review.identity.owner &&
+    session.key.repo === review.identity.repo &&
+    session.key.prNumber === review.identity.prNumber &&
+    session.key.headSha === review.currentHeadSha
+  );
+}
 
 /** Construct a new Review before its initial remote snapshot is available. */
 export function createReview(input: {
