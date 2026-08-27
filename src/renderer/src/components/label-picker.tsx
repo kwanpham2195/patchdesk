@@ -1,18 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Settings2 } from "lucide-react";
 
-import type {
-  RepositoryLabel,
-  RepositoryLabelPermission,
-} from "../../../domain/github-context";
-import { PatchdeskApiError } from "../api-client";
+import type { RepositoryLabel } from "../../../domain/github-context";
 import {
   forbiddenCopy,
-  projectRepositoryLabelReadState,
   rateLimitedCopy,
   type RepositoryLabelReadState,
 } from "../github-read-failure-copy";
-import { withoutMember } from "../picker-selection";
+import {
+  useGithubItemPicker,
+  type GithubItemPicker,
+  type GithubItemPickerActions,
+} from "../hooks/use-github-item-picker";
 import type { RepositoryLabelListResponse } from "../renderer-contracts";
 import { LabelChip } from "./label-chip";
 import { Button } from "./ui/button";
@@ -44,6 +43,27 @@ export type LabelPickerActions = {
   ) => Promise<void>;
 };
 
+/** What this picker's `state: "ready"` read carries, on top of the shared permission. */
+type LabelReady = {
+  readonly labels: ReadonlyArray<RepositoryLabel>;
+  readonly totalCount: number;
+};
+
+// Module scope, so the hook's fetch effect keeps one stable identity to
+// depend on rather than refetching on every render.
+const projectReady = (response: RepositoryLabelListResponse): LabelReady => {
+  const labels = response.labels ?? [];
+  return { labels, totalCount: response.totalCount ?? labels.length };
+};
+const keyOf = (label: RepositoryLabel): string => label.name;
+const describeWriteFailure = (
+  label: RepositoryLabel,
+  nextAttached: boolean,
+): string =>
+  nextAttached
+    ? `Patchdesk could not add "${label.name}".`
+    : `Patchdesk could not remove "${label.name}".`;
+
 /**
  * Assigns and removes labels on the pull request under review. Rendered as
  * the Labels section's settings control in `PullRequestMetadataRail`, next
@@ -53,12 +73,14 @@ export type LabelPickerActions = {
  * is its only mount point now that the workbench header no longer renders a
  * labels row.
  *
- * Mirrors `ConversationThreadCard`'s resolve/unresolve override: toggling a
- * label applies to local state immediately, is dropped once the
- * authoritative `attachedLabels` prop catches up with it (an explicit
- * refresh or reload re-baselines the projection), and a failed write
- * reverts the optimistic guess with a visible error rather than silently
- * reverting.
+ * The optimistic-toggle state machine is `useGithubItemPicker`'s, shared with
+ * `AssigneePicker` and `ReviewerPicker`: toggling a label applies to local
+ * state immediately, is dropped once the authoritative `attachedLabels` prop
+ * catches up with it (an explicit refresh or reload re-baselines the
+ * projection), and a failed write reverts the optimistic guess with a visible
+ * error rather than silently reverting. Unlike the two people pickers this
+ * one has no search box — GitHub's label list is small enough to fetch whole,
+ * so `fetchLabels` takes no query and the hook's query stays empty.
  *
  * `actions` is `undefined` when the Review can no longer accept label
  * writes (e.g. closed/merged); the picker renders nothing in that case, the
@@ -78,112 +100,38 @@ export function LabelPicker({
   }>;
   readonly actions?: LabelPickerActions;
 }): React.JSX.Element | null {
-  const [open, setOpen] = useState(false);
-  const [readState, setReadState] = useState<RepositoryLabelReadState>({
-    _tag: "loading",
-  });
-  const permission: RepositoryLabelPermission =
-    readState._tag === "ready" ? readState.permission : "unknown";
-  const [pendingAdds, setPendingAdds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [pendingRemoves, setPendingRemoves] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [busyNames, setBusyNames] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [writeError, setWriteError] = useState<string>();
-  // Tracks the last `attachedLabels` prop identity rendered, so a change to
-  // it can be adjusted for during rendering (the pattern React recommends
-  // over an effect for "adjusting state when a prop changes":
-  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes).
-  const [prevAttachedLabels, setPrevAttachedLabels] = useState(attachedLabels);
-
   const attachedNames = useMemo(
-    () => new Set(attachedLabels.map((label) => label.name)),
+    () => attachedLabels.map((label) => label.name),
     [attachedLabels],
   );
-  // Drop each optimistic override once the authoritative attached-label set
-  // catches up with it, so a stale local guess never outlives real data.
-  if (prevAttachedLabels !== attachedLabels) {
-    setPrevAttachedLabels(attachedLabels);
-    setPendingAdds((current) => {
-      const next = new Set(
-        [...current].filter((name) => !attachedNames.has(name)),
-      );
-      return next.size === current.size ? current : next;
-    });
-    setPendingRemoves((current) => {
-      const next = new Set(
-        [...current].filter((name) => attachedNames.has(name)),
-      );
-      return next.size === current.size ? current : next;
-    });
-  }
-
-  useEffect(() => {
-    if (!open || actions === undefined) return;
-    let cancelled = false;
-    setReadState({ _tag: "loading" });
-    actions
-      .fetchLabels()
-      .then((response) => {
-        if (cancelled) return;
-        setReadState(projectRepositoryLabelReadState(response));
-      })
-      .catch(() => {
-        if (!cancelled) setReadState({ _tag: "github_read" });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, actions]);
+  const pickerActions = useMemo(
+    ():
+      | GithubItemPickerActions<RepositoryLabel, RepositoryLabelListResponse>
+      | undefined =>
+      actions === undefined
+        ? undefined
+        : {
+            fetchList: () => actions.fetchLabels(),
+            add: (label) =>
+              actions.addLabels([{ id: label.id, name: label.name }]),
+            remove: (label) =>
+              actions.removeLabels([{ id: label.id, name: label.name }]),
+          },
+    [actions],
+  );
+  const picker = useGithubItemPicker({
+    attached: attachedNames,
+    actions: pickerActions,
+    keyOf,
+    projectReady,
+    describeWriteFailure,
+  });
+  const { readState, permission } = picker;
 
   if (actions === undefined) return null;
 
-  const toggle = (label: RepositoryLabel, nextAttached: boolean): void => {
-    if (busyNames.has(label.name) || permission === "denied") return;
-    setWriteError(undefined);
-    setBusyNames((current) => new Set(current).add(label.name));
-    if (nextAttached) {
-      setPendingAdds((current) => new Set(current).add(label.name));
-      setPendingRemoves((current) => withoutMember(current, label.name));
-    } else {
-      setPendingRemoves((current) => new Set(current).add(label.name));
-      setPendingAdds((current) => withoutMember(current, label.name));
-    }
-    const ref = { id: label.id, name: label.name };
-    const write = nextAttached
-      ? actions.addLabels([ref])
-      : actions.removeLabels([ref]);
-    write
-      .catch((cause: unknown) => {
-        // The optimistic guess did not hold: revert it.
-        if (nextAttached)
-          setPendingAdds((current) => withoutMember(current, label.name));
-        else setPendingRemoves((current) => withoutMember(current, label.name));
-        // Permission state is never inferred from this: it already comes
-        // from the read path (`readState.permission`), evidenced by
-        // `getRepositoryPermission`. A rejected write here still gets a
-        // specific reason surfaced — a permitted user can still hit e.g. an
-        // IP allow list — but it does not change what the picker believes
-        // about this account's standing.
-        const reason =
-          cause instanceof PatchdeskApiError ? ` ${cause.message}` : "";
-        setWriteError(
-          nextAttached
-            ? `Patchdesk could not add "${label.name}".${reason}`
-            : `Patchdesk could not remove "${label.name}".${reason}`,
-        );
-      })
-      .finally(() => {
-        setBusyNames((current) => withoutMember(current, label.name));
-      });
-  };
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={picker.open} onOpenChange={picker.setOpen}>
       <PopoverTrigger
         render={
           <Button variant="ghost" size="icon-xs" aria-label="Manage labels" />
@@ -196,28 +144,35 @@ export function LabelPicker({
           <PopoverTitle>Labels</PopoverTitle>
         </PopoverHeader>
         {readState._tag === "ready" && permission === "denied" ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            data-slot="picker-permission-denied"
+            className="text-xs text-destructive"
+          >
             This account cannot manage labels on this repository.
           </p>
         ) : readState._tag === "ready" && permission === "unknown" ? (
-          <p className="text-xs text-muted-foreground">
+          <p
+            data-slot="picker-permission-caveat"
+            className="text-xs text-muted-foreground"
+          >
             Patchdesk could not confirm you can manage labels here — a change
             may be refused.
           </p>
         ) : null}
-        {writeError === undefined ? null : (
-          <p role="alert" className="text-xs text-destructive">
-            {writeError}
+        {picker.writeError === undefined ? null : (
+          <p
+            role="alert"
+            data-slot="picker-write-error"
+            className="text-xs text-destructive"
+          >
+            {picker.writeError}
           </p>
         )}
         <LabelPickerList
           readState={readState}
-          attachedNames={attachedNames}
-          pendingAdds={pendingAdds}
-          pendingRemoves={pendingRemoves}
-          busyNames={busyNames}
+          picker={picker}
           disabled={permission === "denied"}
-          onToggle={toggle}
         />
       </PopoverContent>
     </Popover>
@@ -227,20 +182,12 @@ export function LabelPicker({
 /** The picker's body: the read state's message, or its list of toggleable repository labels. */
 function LabelPickerList({
   readState,
-  attachedNames,
-  pendingAdds,
-  pendingRemoves,
-  busyNames,
+  picker,
   disabled,
-  onToggle,
 }: {
   readonly readState: RepositoryLabelReadState;
-  readonly attachedNames: ReadonlySet<string>;
-  readonly pendingAdds: ReadonlySet<string>;
-  readonly pendingRemoves: ReadonlySet<string>;
-  readonly busyNames: ReadonlySet<string>;
+  readonly picker: GithubItemPicker<RepositoryLabel, LabelReady>;
   readonly disabled: boolean;
-  readonly onToggle: (label: RepositoryLabel, nextAttached: boolean) => void;
 }): React.JSX.Element {
   if (readState._tag === "loading")
     return (
@@ -280,11 +227,8 @@ function LabelPickerList({
       <FieldGroup className="max-h-64 gap-0.5 overflow-y-auto">
         <ul aria-label="Repository labels">
           {readState.labels.map((label) => {
-            const attached =
-              pendingAdds.has(label.name) ||
-              (attachedNames.has(label.name) &&
-                !pendingRemoves.has(label.name));
-            const busy = busyNames.has(label.name);
+            const attached = picker.isAttached(label);
+            const busy = picker.isBusy(label);
             const controlId = `label-${label.id}`;
             const descriptionId =
               label.description === undefined
@@ -303,7 +247,7 @@ function LabelPickerList({
                     {...(descriptionId === undefined
                       ? {}
                       : { "aria-describedby": descriptionId })}
-                    onCheckedChange={() => onToggle(label, !attached)}
+                    onCheckedChange={() => picker.toggle(label, !attached)}
                   />
                   <FieldContent>
                     <FieldLabel htmlFor={controlId} className="font-normal">
@@ -328,7 +272,10 @@ function LabelPickerList({
         </ul>
       </FieldGroup>
       {readState.totalCount > readState.labels.length ? (
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p
+          data-slot="picker-truncation"
+          className="mt-1 text-xs text-muted-foreground"
+        >
           Showing {readState.labels.length} of {readState.totalCount} labels.
           Some repository labels aren&apos;t shown.
         </p>

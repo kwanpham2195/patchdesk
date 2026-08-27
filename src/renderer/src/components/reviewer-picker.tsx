@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { Settings2 } from "lucide-react";
 
-import type { PullRequestAssigneePermission } from "../../../domain/github-context";
-import { PatchdeskApiError } from "../api-client";
 import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
-import { withoutMember } from "../picker-selection";
+import type { GithubListReadState } from "../github-read-failure-copy";
+import {
+  useGithubItemPicker,
+  type GithubItemPicker,
+  type GithubItemPickerActions,
+} from "../hooks/use-github-item-picker";
 import type { ReviewerListResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
@@ -25,10 +28,6 @@ import {
   PopoverTrigger,
 } from "./ui/popover";
 import { Spinner } from "./ui/spinner";
-import type { ForbiddenReason } from "../../../domain/github-forbidden-reason";
-
-/** Mirrors `assignee-picker.tsx`'s `SEARCH_DEBOUNCE_MS`; kept as its own constant here rather than a shared import since each search-enabled picker owns its own debounce timing. */
-const SEARCH_DEBOUNCE_MS = 200;
 
 /** One candidate row's shape, taken from the parsed wire response — see
  * `AssignableUser` in `assignee-picker.tsx` for why this reads from the
@@ -50,29 +49,36 @@ export type ReviewerPickerActions = {
   ) => Promise<void>;
 };
 
-type ReadState =
-  | { readonly _tag: "loading" }
-  | { readonly _tag: "github_read" }
-  | { readonly _tag: "github_auth" }
-  | {
-      readonly _tag: "ready";
-      readonly suggested: ReadonlyArray<SuggestedRow>;
-      readonly candidates: ReadonlyArray<CandidateRow>;
-      readonly candidatesTotalCount: number;
-      /**
-       * The service's real, GitHub-evidenced answer for whether this
-       * account can write reviewers here (`ReviewerListOutcome.ready
-       * .permission` in `src/services/reviewer-service.ts`). Never inferred
-       * client-side — `"unknown"` means evidence was genuinely unavailable,
-       * not that a write hasn't been tried yet.
-       */
-      readonly permission: PullRequestAssigneePermission;
-    }
-  | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
-  | {
-      readonly _tag: "github_forbidden";
-      readonly reason?: ForbiddenReason;
-    };
+/**
+ * What this picker's `state: "ready"` read carries, on top of the shared
+ * permission. Unlike the other two pickers this is two lists, not one:
+ * GitHub's own suggestions and the full candidate set.
+ */
+type ReviewerReady = {
+  readonly suggested: ReadonlyArray<SuggestedRow>;
+  readonly candidates: ReadonlyArray<CandidateRow>;
+  readonly candidatesTotalCount: number;
+};
+type ReadState = GithubListReadState<ReviewerReady>;
+
+// Module scope, so the hook's fetch effect keeps one stable identity to
+// depend on rather than refetching on every render.
+const projectReady = (response: ReviewerListResponse): ReviewerReady => {
+  const candidates = response.candidates ?? [];
+  return {
+    suggested: response.suggested ?? [],
+    candidates,
+    candidatesTotalCount: response.candidatesTotalCount ?? candidates.length,
+  };
+};
+const keyOf = (candidate: CandidateRow): string => candidate.login;
+const describeWriteFailure = (
+  candidate: CandidateRow,
+  nextAttached: boolean,
+): string =>
+  nextAttached
+    ? `Patchdesk could not ask "${candidate.login}" to review.`
+    : `Patchdesk could not remove "${candidate.login}" from the requested reviewers.`;
 
 /** Honest, Patchdesk-authored copy for why GitHub suggested this person —
  * GitHub's own API exposes only `isAuthor`/`isCommenter`, never a
@@ -89,10 +95,11 @@ function suggestionCopy(suggestion: SuggestedRow): string {
 /**
  * Requests and un-requests reviewers on the pull request under review.
  * Rendered as the Reviewers section's settings control in
- * `PullRequestMetadataRail`, mirroring `AssigneePicker`'s structure
- * (gear-icon trigger, three-state permission notice, debounced server-side
- * search with a monotonic request-id guard, optimistic toggle with
- * revert-on-failure). Two differences from `AssigneePicker`:
+ * `PullRequestMetadataRail`. Its optimistic state, debounced server-side
+ * search, stale-response guard and revert-on-failure are
+ * `useGithubItemPicker`'s, shared with `AssigneePicker` and `LabelPicker`.
+ * Two things stay this picker's own, because they are surface rather than
+ * state:
  *
  * - GitHub's own suggested reviewers (`response.suggested`) render grouped
  *   above the remaining candidates, each captioned with Patchdesk's own
@@ -117,123 +124,38 @@ export function ReviewerPicker({
   readonly attachedReviewers: ReadonlyArray<string>;
   readonly actions?: ReviewerPickerActions;
 }): React.JSX.Element | null {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [readState, setReadState] = useState<ReadState>({ _tag: "loading" });
-  const permission: PullRequestAssigneePermission =
-    readState._tag === "ready" ? readState.permission : "unknown";
-  const [pendingRequests, setPendingRequests] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  const pickerActions = useMemo(
+    ():
+      | GithubItemPickerActions<CandidateRow, ReviewerListResponse>
+      | undefined =>
+      actions === undefined
+        ? undefined
+        : {
+            fetchList: (query) => actions.fetchReviewers(query),
+            add: (candidate) =>
+              actions.requestReviewers([
+                { id: candidate.id, login: candidate.login },
+              ]),
+            remove: (candidate) =>
+              actions.removeReviewers([
+                { id: candidate.id, login: candidate.login },
+              ]),
+          },
+    [actions],
   );
-  const [pendingRemovals, setPendingRemovals] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [busyLogins, setBusyLogins] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [writeError, setWriteError] = useState<string>();
-  // Tracks the last `attachedReviewers` prop identity rendered, so a change
-  // to it can be adjusted for during rendering (mirrors `AssigneePicker`'s
-  // use of https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes).
-  const [prevAttachedReviewers, setPrevAttachedReviewers] =
-    useState(attachedReviewers);
-
-  const attachedLogins = useMemo(
-    () => new Set(attachedReviewers),
-    [attachedReviewers],
-  );
-  if (prevAttachedReviewers !== attachedReviewers) {
-    setPrevAttachedReviewers(attachedReviewers);
-    setPendingRequests((current) => {
-      const next = new Set(
-        [...current].filter((login) => !attachedLogins.has(login)),
-      );
-      return next.size === current.size ? current : next;
-    });
-    setPendingRemovals((current) => {
-      const next = new Set(
-        [...current].filter((login) => attachedLogins.has(login)),
-      );
-      return next.size === current.size ? current : next;
-    });
-  }
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedQuery(query);
-    }, SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
-  // Monotonic request id: a fetch started later always carries a higher id,
-  // so an in-flight response from an earlier keystroke is dropped rather
-  // than overwriting a newer one that already landed.
-  const requestIdRef = useRef(0);
-  useEffect(() => {
-    if (!open || actions === undefined) return;
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    setReadState({ _tag: "loading" });
-    actions
-      .fetchReviewers(debouncedQuery === "" ? undefined : debouncedQuery)
-      .then((response) => {
-        if (requestIdRef.current !== requestId) return;
-        setReadState(projectReadState(response));
-      })
-      .catch(() => {
-        if (requestIdRef.current === requestId)
-          setReadState({ _tag: "github_read" });
-      });
-  }, [open, actions, debouncedQuery]);
+  const picker = useGithubItemPicker({
+    attached: attachedReviewers,
+    actions: pickerActions,
+    keyOf,
+    projectReady,
+    describeWriteFailure,
+  });
+  const { readState, permission } = picker;
 
   if (actions === undefined) return null;
 
-  const toggle = (candidate: CandidateRow, nextAttached: boolean): void => {
-    if (busyLogins.has(candidate.login) || permission === "denied") return;
-    setWriteError(undefined);
-    setBusyLogins((current) => new Set(current).add(candidate.login));
-    if (nextAttached) {
-      setPendingRequests((current) => new Set(current).add(candidate.login));
-      setPendingRemovals((current) => withoutMember(current, candidate.login));
-    } else {
-      setPendingRemovals((current) => new Set(current).add(candidate.login));
-      setPendingRequests((current) => withoutMember(current, candidate.login));
-    }
-    const ref = { id: candidate.id, login: candidate.login };
-    const write = nextAttached
-      ? actions.requestReviewers([ref])
-      : actions.removeReviewers([ref]);
-    write
-      .catch((cause: unknown) => {
-        // The optimistic guess did not hold: revert it.
-        if (nextAttached)
-          setPendingRequests((current) =>
-            withoutMember(current, candidate.login),
-          );
-        else
-          setPendingRemovals((current) =>
-            withoutMember(current, candidate.login),
-          );
-        // Permission state is never inferred from this: it already comes
-        // from the read path (`readState.permission`). A rejected write
-        // here still gets a specific reason surfaced, but does not change
-        // what the picker believes about this account's standing.
-        const reason =
-          cause instanceof PatchdeskApiError ? ` ${cause.message}` : "";
-        setWriteError(
-          nextAttached
-            ? `Patchdesk could not ask "${candidate.login}" to review.${reason}`
-            : `Patchdesk could not remove "${candidate.login}" from the requested reviewers.${reason}`,
-        );
-      })
-      .finally(() => {
-        setBusyLogins((current) => withoutMember(current, candidate.login));
-      });
-  };
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={picker.open} onOpenChange={picker.setOpen}>
       <PopoverTrigger
         render={
           <Button
@@ -250,18 +172,29 @@ export function ReviewerPicker({
           <PopoverTitle>Reviewers</PopoverTitle>
         </PopoverHeader>
         {readState._tag === "ready" && permission === "denied" ? (
-          <p role="alert" className="text-xs text-destructive">
+          <p
+            role="alert"
+            data-slot="picker-permission-denied"
+            className="text-xs text-destructive"
+          >
             This account cannot manage reviewers on this repository.
           </p>
         ) : readState._tag === "ready" && permission === "unknown" ? (
-          <p className="text-xs text-muted-foreground">
+          <p
+            data-slot="picker-permission-caveat"
+            className="text-xs text-muted-foreground"
+          >
             Patchdesk could not confirm you can manage reviewers here — a change
             may be refused.
           </p>
         ) : null}
-        {writeError === undefined ? null : (
-          <p role="alert" className="text-xs text-destructive">
-            {writeError}
+        {picker.writeError === undefined ? null : (
+          <p
+            role="alert"
+            data-slot="picker-write-error"
+            className="text-xs text-destructive"
+          >
+            {picker.writeError}
           </p>
         )}
         <FieldGroup>
@@ -271,18 +204,14 @@ export function ReviewerPicker({
               type="search"
               aria-label="Search reviewer candidates"
               placeholder="Search people…"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              value={picker.query}
+              onChange={(event) => picker.setQuery(event.target.value)}
             />
           </Field>
           <ReviewerPickerList
             readState={readState}
-            attachedLogins={attachedLogins}
-            pendingRequests={pendingRequests}
-            pendingRemovals={pendingRemovals}
-            busyLogins={busyLogins}
+            picker={picker}
             disabled={permission === "denied"}
-            onToggle={toggle}
           />
         </FieldGroup>
       </PopoverContent>
@@ -290,62 +219,20 @@ export function ReviewerPicker({
   );
 }
 
-function projectReadState(
-  response: ReviewerListResponse | undefined,
-): ReadState {
-  if (response === undefined) return { _tag: "github_read" };
-  if (response.state === "ready") {
-    const candidates = response.candidates ?? [];
-    return {
-      _tag: "ready",
-      suggested: response.suggested ?? [],
-      candidates,
-      candidatesTotalCount: response.candidatesTotalCount ?? candidates.length,
-      // Fails closed to `"unknown"` (never `"permitted"`) if the field is
-      // ever missing — an unconfirmed state, not an authorized one.
-      permission: response.permission ?? "unknown",
-    };
-  }
-  if (response.state === "github_rate_limited") {
-    const resumeAtField =
-      response.resumeAt === undefined ? {} : { resumeAt: response.resumeAt };
-    return { _tag: "github_rate_limited", ...resumeAtField };
-  }
-  if (response.state === "github_forbidden") {
-    const reasonField =
-      response.forbiddenReason === undefined
-        ? {}
-        : { reason: response.forbiddenReason };
-    return { _tag: "github_forbidden", ...reasonField };
-  }
-  return { _tag: response.state };
-}
-
 /** One toggleable candidate row, reused for both the suggested group and the remaining-candidates list so the checkbox/avatar/caption markup is written once. */
 function ReviewerCandidateRow({
   candidate,
   caption,
-  attachedLogins,
-  pendingRequests,
-  pendingRemovals,
-  busyLogins,
+  picker,
   disabled,
-  onToggle,
 }: {
   readonly candidate: CandidateRow;
   readonly caption?: string;
-  readonly attachedLogins: ReadonlySet<string>;
-  readonly pendingRequests: ReadonlySet<string>;
-  readonly pendingRemovals: ReadonlySet<string>;
-  readonly busyLogins: ReadonlySet<string>;
+  readonly picker: GithubItemPicker<CandidateRow, ReviewerReady>;
   readonly disabled: boolean;
-  readonly onToggle: (candidate: CandidateRow, nextAttached: boolean) => void;
 }): React.JSX.Element {
-  const attached =
-    pendingRequests.has(candidate.login) ||
-    (attachedLogins.has(candidate.login) &&
-      !pendingRemovals.has(candidate.login));
-  const busy = busyLogins.has(candidate.login);
+  const attached = picker.isAttached(candidate);
+  const busy = picker.isBusy(candidate);
   const controlId = `reviewer-${candidate.id}`;
   const captionId = caption === undefined ? undefined : `${controlId}-caption`;
   return (
@@ -361,7 +248,7 @@ function ReviewerCandidateRow({
           {...(captionId === undefined
             ? {}
             : { "aria-describedby": captionId })}
-          onCheckedChange={() => onToggle(candidate, !attached)}
+          onCheckedChange={() => picker.toggle(candidate, !attached)}
         />
         <FieldLabel htmlFor={controlId} className="font-normal">
           <Avatar
@@ -375,6 +262,7 @@ function ReviewerCandidateRow({
       {caption === undefined ? null : (
         <span
           id={captionId}
+          data-slot="reviewer-suggestion-caption"
           className="truncate pl-9 text-[10px] text-muted-foreground"
         >
           {caption}
@@ -387,20 +275,12 @@ function ReviewerCandidateRow({
 /** The picker's body: the read state's message, or its suggested-then-candidates lists. */
 function ReviewerPickerList({
   readState,
-  attachedLogins,
-  pendingRequests,
-  pendingRemovals,
-  busyLogins,
+  picker,
   disabled,
-  onToggle,
 }: {
   readonly readState: ReadState;
-  readonly attachedLogins: ReadonlySet<string>;
-  readonly pendingRequests: ReadonlySet<string>;
-  readonly pendingRemovals: ReadonlySet<string>;
-  readonly busyLogins: ReadonlySet<string>;
+  readonly picker: GithubItemPicker<CandidateRow, ReviewerReady>;
   readonly disabled: boolean;
-  readonly onToggle: (candidate: CandidateRow, nextAttached: boolean) => void;
 }): React.JSX.Element {
   if (readState._tag === "loading")
     return (
@@ -473,12 +353,8 @@ function ReviewerPickerList({
                     key={candidate.id}
                     candidate={candidate}
                     caption={suggestionCopy(suggestion)}
-                    attachedLogins={attachedLogins}
-                    pendingRequests={pendingRequests}
-                    pendingRemovals={pendingRemovals}
-                    busyLogins={busyLogins}
+                    picker={picker}
                     disabled={disabled}
-                    onToggle={onToggle}
                   />
                 ))}
               </ul>
@@ -492,19 +368,18 @@ function ReviewerPickerList({
                 <ReviewerCandidateRow
                   key={candidate.id}
                   candidate={candidate}
-                  attachedLogins={attachedLogins}
-                  pendingRequests={pendingRequests}
-                  pendingRemovals={pendingRemovals}
-                  busyLogins={busyLogins}
+                  picker={picker}
                   disabled={disabled}
-                  onToggle={onToggle}
                 />
               ))}
             </ul>
           </FieldGroup>
         )}
         {readState.candidatesTotalCount > readState.candidates.length ? (
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p
+            data-slot="picker-truncation"
+            className="mt-1 text-xs text-muted-foreground"
+          >
             Showing {readState.candidates.length} of{" "}
             {readState.candidatesTotalCount} candidates. Some repository
             collaborators aren&apos;t shown.
