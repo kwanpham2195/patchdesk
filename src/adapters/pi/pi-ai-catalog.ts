@@ -53,4 +53,3 @@ function matchesDigest(
 }
 
 export const PI_AI_CATALOG = parseGeneratedCatalog(generatedPiAiCatalog);
-export { parseGeneratedCatalog };

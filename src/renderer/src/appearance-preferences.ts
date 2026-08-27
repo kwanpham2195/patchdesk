@@ -19,9 +19,7 @@ export function clearAppearancePreference(): void {
   }
 }
 
-export function resolveAppearance(
-  value: AppearancePreference,
-): ResolvedAppearance {
+function resolveAppearance(value: AppearancePreference): ResolvedAppearance {
   if (value !== "system") return value;
   return globalThis.window !== undefined &&
     window.matchMedia !== undefined &&

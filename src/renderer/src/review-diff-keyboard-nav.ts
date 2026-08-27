@@ -79,7 +79,7 @@ export function adjacentFilePath(
 /** Which column a hunk's scroll anchor line lives in -- mirrors
  * `@pierre/diffs`' `SelectionSide` without importing it, keeping this module
  * free of a Pierre dependency. */
-export type ReviewHunkSide = "additions" | "deletions";
+type ReviewHunkSide = "additions" | "deletions";
 
 /**
  * Identifies one hunk's jump target: the file it belongs to and the line
@@ -261,7 +261,7 @@ export function buildCommentOrder(
 // Bounds the post-scroll focus poll below: a target that never renders a
 // card (a defect in its own right) gives up honestly instead of polling
 // forever.
-export const MAX_COMMENT_FOCUS_ATTEMPTS = 30;
+const MAX_COMMENT_FOCUS_ATTEMPTS = 30;
 
 /** Finds the `ConversationThreadCard` root rendered for `anchorId`, matching
  * on `data-review-comment-thread` by attribute value comparison rather than

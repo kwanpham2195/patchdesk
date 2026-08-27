@@ -20,7 +20,7 @@ import {
 import { Textarea } from "./ui/textarea";
 import type { PendingReviewProjection } from "../renderer-contracts";
 
-export type FinishReviewActions = {
+type FinishReviewActions = {
   readonly busy: boolean;
   readonly onSubmit: (
     event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",

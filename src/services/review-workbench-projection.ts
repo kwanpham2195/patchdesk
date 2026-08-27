@@ -82,7 +82,7 @@ import { err, ok, type Result } from "../domain/result";
 import { readObjectField } from "./read-object-field";
 
 /** Renderer-safe Session identity. It deliberately omits patch/worktree paths and durable internals. */
-export type WorkbenchSessionProjection = {
+type WorkbenchSessionProjection = {
   readonly id: ReviewSessionId;
   readonly key: {
     readonly profileId: WorkspaceProfileId;
@@ -93,13 +93,13 @@ export type WorkbenchSessionProjection = {
     readonly headSha: GitSha;
   };
 };
-export type AnalysisFindingReviewStatus =
+type AnalysisFindingReviewStatus =
   | { readonly state: "actionable" }
   | { readonly state: "pending_review" }
   | { readonly state: "published" }
   | { readonly state: "locked" };
 
-export type AnalysisReviewActionsProjection = {
+type AnalysisReviewActionsProjection = {
   readonly findings: Readonly<Record<string, AnalysisFindingReviewStatus>>;
   readonly canFinishWithAnalysisSummary: boolean;
 };

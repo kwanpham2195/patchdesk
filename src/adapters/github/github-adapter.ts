@@ -3288,10 +3288,7 @@ export class GitHubAdapter
   }
 }
 
-export {
-  FakeGitHubAdapter,
-  type FakeGitHubAdapterValues,
-} from "./fake-github-adapter";
+export { FakeGitHubAdapter } from "./fake-github-adapter";
 
 /** Backoff delay for `confirmPublishedCommentThread`'s retried read-back. */
 function wait(ms: number): Promise<void> {

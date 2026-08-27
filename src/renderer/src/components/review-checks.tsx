@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-export type CheckResultKind = "passed" | "failed" | "pending" | "other";
+type CheckResultKind = "passed" | "failed" | "pending" | "other";
 
 export type CheckResultPresentation = {
   readonly kind: CheckResultKind;
@@ -39,7 +39,7 @@ export type CheckResultPresentation = {
 
 /** One renderer rule that classifies a represented check run. */
 // oxlint-disable-next-line react/only-export-components -- Shared presentation rule consumed by the sidebar summary.
-export function classifyCheck(check: CheckRunSummary): CheckResultKind {
+function classifyCheck(check: CheckRunSummary): CheckResultKind {
   if (check.conclusion === "success") return "passed";
   if (
     check.conclusion === "failure" ||
@@ -54,9 +54,7 @@ export function classifyCheck(check: CheckRunSummary): CheckResultKind {
 
 /** Typed icon, label, and semantic treatment for one check run. */
 // oxlint-disable-next-line react/only-export-components -- Shared presentation rule consumed by the sidebar summary.
-export function presentCheckResult(
-  check: CheckRunSummary,
-): CheckResultPresentation {
+function presentCheckResult(check: CheckRunSummary): CheckResultPresentation {
   const kind = classifyCheck(check);
   switch (kind) {
     case "passed":

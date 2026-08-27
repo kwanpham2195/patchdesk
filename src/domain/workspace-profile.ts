@@ -51,7 +51,7 @@ const rawWatchedRepoSchema = v.strictObject({
 });
 
 /** Valibot boundary schema for a persisted workspace-profile JSON record. */
-export const workspaceProfileConfigSchema = v.strictObject({
+const workspaceProfileConfigSchema = v.strictObject({
   id: v.string(),
   label: v.pipe(v.string(), v.minLength(1)),
   githubHost: v.string(),

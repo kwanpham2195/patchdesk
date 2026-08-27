@@ -26,9 +26,6 @@ import {
 } from "./ids";
 import { err, ok, type Result } from "./result";
 
-export { createReviewId, parseReviewId } from "./ids";
-export type { ReviewId } from "./ids";
-
 export type ReviewIdentity = {
   readonly profileId: WorkspaceProfileId;
   readonly host: GitHubHost;
@@ -76,7 +73,7 @@ export type ReviewFreshness =
       readonly reason: RevisionUnavailableReason;
     };
 
-export type ReviewStatus =
+type ReviewStatus =
   | { readonly _tag: "Open" }
   | {
       readonly _tag: "Terminal";
@@ -241,29 +238,6 @@ export function reconcileReviewRemoteState(
     freshness: { _tag: "Fresh" },
     updatedAt: laterTimestamp(review.updatedAt, input.refreshedAt),
   });
-}
-
-/** Mark a same-revision reconciliation fresh without replacing its snapshot. */
-export function markReviewFresh(
-  review: Review,
-  pullRequestUpdatedAt: IsoTimestamp,
-  updatedAt: IsoTimestamp,
-): Review {
-  if (
-    review.status._tag === "Terminal" ||
-    review.representedRemote === undefined
-  ) {
-    return review;
-  }
-  return {
-    ...review,
-    representedRemote: {
-      ...review.representedRemote,
-      pullRequestUpdatedAt,
-    },
-    freshness: { _tag: "Fresh" },
-    updatedAt: laterTimestamp(review.updatedAt, updatedAt),
-  };
 }
 
 /** Record a complete remote revision proof without adopting that revision. */

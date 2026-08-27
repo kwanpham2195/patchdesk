@@ -23,7 +23,7 @@ import {
  * than the ~90s poll interval and any plausible GitHub read-propagation
  * delay, short enough not to mask a real persistent bug.
  */
-export const RECENT_WRITE_JOURNAL_AGE_CEILING_MS = 24 * 60 * 60 * 1000;
+const RECENT_WRITE_JOURNAL_AGE_CEILING_MS = 24 * 60 * 60 * 1000;
 
 /** The persisted variant of a typed own-write entry, dated for pruning. */
 export type DurableRecentReviewWrite = RecentReviewWrite & {
@@ -269,7 +269,6 @@ function parseRecentWriteEntries(
 
 function stripWrittenAt(entry: DurableRecentReviewWrite): RecentReviewWrite {
   const { writtenAt: _writtenAt, ...rest } = entry;
-  void _writtenAt;
   return rest;
 }
 

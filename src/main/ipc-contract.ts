@@ -6,12 +6,6 @@ export const APP_CAPABILITY_HEADER = "X-Patchdesk-Capability";
 /** Opaque local credential shared with the renderer only through preload. */
 export type AppCapability = string;
 
-/** Represents the narrow local API surface that preload may expose to the renderer. */
-export type RendererLocalApi = {
-  readonly baseUrl: string;
-  readonly capability: AppCapability;
-};
-
 export const DESKTOP_REQUEST_CHANNEL = "patchdesk:request";
 export const DESKTOP_NAVIGATE_CHANNEL = "patchdesk:navigate";
 export type DesktopDestination = "settings" | "refresh";
@@ -29,13 +23,13 @@ export type SelectDirectoryDesktopRequest = {
   readonly defaultPath?: string;
 };
 
-export type SetNavigationStateDesktopRequest = {
+type SetNavigationStateDesktopRequest = {
   readonly operation: "setNavigationState";
   readonly state: "clear" | "dirty_draft" | "write_pending";
 };
 
 /** Opens a validated HTTPS URL outside the isolated renderer. */
-export type OpenExternalHttpsDesktopRequest = {
+type OpenExternalHttpsDesktopRequest = {
   readonly operation: "openExternalHttps";
   readonly url: string;
 };

@@ -1,19 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
-  INBOX_CACHE_DEGRADED_AFTER_MS,
-  INBOX_CACHE_REFUSE_AFTER_MS,
   isInboxCacheDegraded,
   isInboxCacheStale,
 } from "../../src/domain/inbox-freshness-policy";
 
+// The thresholds are written out here rather than imported from the module
+// under test, so the test pins the policy instead of restating whatever the
+// implementation happens to hold.
+const DEGRADED_AFTER_MS = 30 * 60 * 1000;
+const REFUSE_AFTER_MS = 4 * 60 * 60 * 1000;
+
 describe("inbox cache freshness policy", () => {
   it("is not degraded or stale just under each threshold", () => {
-    expect(isInboxCacheDegraded(INBOX_CACHE_DEGRADED_AFTER_MS - 1)).toBe(false);
-    expect(isInboxCacheStale(INBOX_CACHE_REFUSE_AFTER_MS - 1)).toBe(false);
+    expect(isInboxCacheDegraded(DEGRADED_AFTER_MS - 1)).toBe(false);
+    expect(isInboxCacheStale(REFUSE_AFTER_MS - 1)).toBe(false);
   });
   it("flips exactly at each threshold", () => {
-    expect(isInboxCacheDegraded(INBOX_CACHE_DEGRADED_AFTER_MS)).toBe(true);
-    expect(isInboxCacheStale(INBOX_CACHE_REFUSE_AFTER_MS)).toBe(true);
+    expect(isInboxCacheDegraded(DEGRADED_AFTER_MS)).toBe(true);
+    expect(isInboxCacheStale(REFUSE_AFTER_MS)).toBe(true);
   });
   it("treats a negative age (clock skew) as not degraded/stale", () => {
     // A negative age means the read clock ran behind the save clock — the

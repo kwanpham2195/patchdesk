@@ -39,7 +39,7 @@ import { Spinner } from "./ui/spinner";
  * slice only needs to add another `<RailSection>` rather than rebuild the
  * header row, freshness line, and settings-control slot.
  */
-export function RailSection({
+function RailSection({
   title,
   freshness,
   settings,

@@ -48,7 +48,7 @@ export type PendingReviewAnchor = {
 };
 
 /** One actionable pending review comment with its thread and anchor. */
-export type PendingReviewComment = {
+type PendingReviewComment = {
   readonly reviewCommentId: GitHubReviewCommentId;
   readonly threadId: GitHubThreadId;
   readonly body: string;
@@ -147,16 +147,6 @@ export type PendingReviewRead =
   | { readonly _tag: "None" }
   | { readonly _tag: "Pending"; readonly review: ViewerPendingReview }
   | { readonly _tag: "Unavailable" };
-
-/** Typed failure for a pending-review write or reconciliation. */
-export type PendingReviewWriteFailure =
-  | { readonly _tag: "NotFresh" }
-  | { readonly _tag: "HeadChanged"; readonly currentHeadSha: GitSha }
-  | { readonly _tag: "NotFound" }
-  | { readonly _tag: "PermissionDenied" }
-  | { readonly _tag: "Rejected" }
-  | { readonly _tag: "Unavailable" }
-  | { readonly _tag: "OutcomeUnknown" };
 
 export type InvalidPendingReview = {
   readonly _tag: "InvalidPendingReview";

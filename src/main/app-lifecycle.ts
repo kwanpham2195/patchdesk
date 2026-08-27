@@ -14,7 +14,7 @@ export type LocalApiStartupResult<
   | { readonly _tag: "recovery-failed" };
 
 /** Narrow server lifecycle dependency owned by the desktop composition root. */
-export type LocalApiLifecycle = {
+type LocalApiLifecycle = {
   start(): Promise<LocalApiStartupResult>;
   healthCheck(server: StartedLocalApi): Promise<boolean>;
   stop(server: StartedLocalApi): Promise<void>;

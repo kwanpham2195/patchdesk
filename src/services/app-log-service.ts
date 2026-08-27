@@ -31,9 +31,9 @@ type LogTailPage = {
   readonly nextAfter?: number;
 };
 
-export const APP_LOG_DEFAULT_BUFFER_SIZE = 2_000;
-export const APP_LOG_DEFAULT_MAX_FILE_BYTES = 5 * 1024 * 1024;
-export const APP_LOG_DEFAULT_ROTATED_FILES_TO_KEEP = 3;
+const APP_LOG_DEFAULT_BUFFER_SIZE = 2_000;
+const APP_LOG_DEFAULT_MAX_FILE_BYTES = 5 * 1024 * 1024;
+const APP_LOG_DEFAULT_ROTATED_FILES_TO_KEEP = 3;
 
 /**
  * Unified local log stream: in-memory ring buffer for tailing plus an

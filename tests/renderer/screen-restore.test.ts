@@ -8,8 +8,13 @@ import {
   loadWorkbenchUiState,
   saveSettingsRestore,
   saveWorkbenchUiState,
-  workbenchUiKey,
 } from "../../src/renderer/src/lib/screen-restore";
+
+// The storage key is written out here rather than imported from the module
+// under test, so the test pins the persisted key format instead of
+// restating whatever the implementation happens to build.
+const workbenchUiKey = (reviewId: string): string =>
+  `patchdesk.workbench-ui.v1.${reviewId}`;
 
 const reviewIdA = "review-a";
 const reviewIdB = "review-b";

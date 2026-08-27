@@ -22,9 +22,9 @@ import {
 } from "./ids";
 import { err, ok, type Result } from "./result";
 
-export type MergeMethod = "merge" | "squash" | "rebase";
+type MergeMethod = "merge" | "squash" | "rebase";
 
-export type MergeRejectionReason =
+type MergeRejectionReason =
   | "invalid_input"
   | "not_found"
   | "stale_head"
@@ -33,7 +33,7 @@ export type MergeRejectionReason =
   | "merge_forbidden"
   | "merge_failed";
 
-export type MergeOperationState =
+type MergeOperationState =
   | { readonly _tag: "Requested" }
   | { readonly _tag: "OutcomeUnknown" }
   | {

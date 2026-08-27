@@ -1,13 +1,7 @@
 import * as v from "valibot";
 
 import { definedProps } from "./defined-props";
-import {
-  parseWorkspaceProfileId,
-  type GitSha,
-  type PullRequestNumber,
-  type WorkspaceProfileId,
-} from "./ids";
-import type { PullRequestRef } from "./pull-request";
+import { parseWorkspaceProfileId, type WorkspaceProfileId } from "./ids";
 import { err, ok, type Result } from "./result";
 
 export type InvalidDomainContract = {
@@ -21,9 +15,9 @@ export type PatchdeskConfigFile = {
   readonly diffTheme?: DiffTheme;
 };
 
-export type Appearance = "system" | "light" | "dark";
+type Appearance = "system" | "light" | "dark";
 
-export type DiffTheme = {
+type DiffTheme = {
   readonly light: string;
   readonly dark: string;
 };
@@ -33,22 +27,8 @@ export type PatchdeskSettingsPatch = {
   readonly diffTheme?: DiffTheme;
 };
 
-export type GitHubPullRequestDto = {
-  readonly number: PullRequestNumber;
-  readonly title: string;
-  readonly state: "open" | "closed";
-  readonly draft: boolean;
-  readonly head: { readonly ref: string; readonly sha: GitSha };
-  readonly base: { readonly ref: string };
-};
-
-export type StartReviewRequest = {
-  readonly profileId: WorkspaceProfileId;
-  readonly pr: PullRequestRef;
-};
-
 /** Valibot schema for the global Patchdesk config file. */
-export const patchdeskConfigSchema = v.strictObject({
+const patchdeskConfigSchema = v.strictObject({
   lastSelectedProfileId: v.optional(v.string()),
   appearance: v.optional(v.picklist(["system", "light", "dark"])),
   diffTheme: v.optional(
@@ -60,7 +40,7 @@ export const patchdeskConfigSchema = v.strictObject({
 });
 
 /** Valibot schema for the mutable, file-backed settings exposed by the desktop API. */
-export const patchdeskSettingsPatchSchema = v.strictObject({
+const patchdeskSettingsPatchSchema = v.strictObject({
   appearance: v.optional(v.picklist(["system", "light", "dark"])),
   diffTheme: v.optional(
     v.strictObject({

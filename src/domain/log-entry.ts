@@ -58,12 +58,12 @@ export type LogEntryInput = {
   readonly correlationId?: string;
 };
 
-export const LOG_MAX_TOPIC_LENGTH = 48;
-export const LOG_MAX_MESSAGE_LENGTH = 512;
-export const LOG_MAX_IDENTIFIER_LENGTH = 180;
-export const LOG_MAX_CORRELATION_ID_LENGTH = 120;
-export const LOG_MAX_META_DEPTH = 3;
-export const LOG_MAX_META_STRING_LENGTH = 512;
+const LOG_MAX_TOPIC_LENGTH = 48;
+const LOG_MAX_MESSAGE_LENGTH = 512;
+const LOG_MAX_IDENTIFIER_LENGTH = 180;
+const LOG_MAX_CORRELATION_ID_LENGTH = 120;
+const LOG_MAX_META_DEPTH = 3;
+const LOG_MAX_META_STRING_LENGTH = 512;
 
 const SENSITIVE_META_KEY =
   /^(?:authorization|token|password|secret|credential|api[_-]?key|set-cookie|cookie)$/i;

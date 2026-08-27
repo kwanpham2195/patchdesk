@@ -33,7 +33,7 @@ import type { ReviewOperationCoordinator } from "./review-operation-coordinator"
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 
 /** One reviewer to request or un-request; `login` travels alongside `id` for the same reason `AssigneeRef.login` does in `assignee-service.ts` — a confirmed write can journal a human-legible own-write fingerprint without a second lookup, and the subtractive REST un-request identifies people by login regardless of `id`. */
-export type ReviewerRef = {
+type ReviewerRef = {
   readonly id: string;
   readonly login: string;
 };

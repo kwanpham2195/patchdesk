@@ -9,19 +9,19 @@ import {
 } from "./ids";
 import { err, ok, type Result } from "./result";
 
-export type ReviewVerdict = "approve" | "comment" | "request_changes";
-export type FindingSeverity = "P0" | "P1" | "P2" | "P3";
-export type FindingCategory =
+type ReviewVerdict = "approve" | "comment" | "request_changes";
+type FindingSeverity = "P0" | "P1" | "P2" | "P3";
+type FindingCategory =
   | "bug"
   | "security"
   | "test"
   | "performance"
   | "maintainability"
   | "docs";
-export type FindingMappingStatus = "mapped" | "unmapped" | "invalid_line";
-export type FindingDisposition = "open" | "dismissed";
-export type ReviewConfidence = "high" | "medium" | "low";
-export type ReviewCalloutCategory =
+type FindingMappingStatus = "mapped" | "unmapped" | "invalid_line";
+type FindingDisposition = "open" | "dismissed";
+type ReviewConfidence = "high" | "medium" | "low";
+type ReviewCalloutCategory =
   | "migration"
   | "dependency"
   | "dependency_change"
@@ -31,14 +31,14 @@ export type ReviewCalloutCategory =
   | "feature_flag"
   | "configuration";
 
-export type ReviewCallout = {
+type ReviewCallout = {
   readonly category: ReviewCalloutCategory;
   readonly title: string;
   readonly detail: string;
   readonly path?: RepoRelativePath;
 };
 
-export type ModelReviewFinding = {
+type ModelReviewFinding = {
   readonly id: FindingId;
   readonly severity: FindingSeverity;
   readonly title: string;
@@ -68,7 +68,7 @@ export type ModelReviewResult = {
   readonly callouts?: ReadonlyArray<ReviewCallout>;
 };
 
-export type ReviewFinding = ModelReviewFinding & {
+type ReviewFinding = ModelReviewFinding & {
   readonly mappingStatus: FindingMappingStatus;
   /** Renderer-side disposition; absent on raw validated model results. */
   readonly disposition?: FindingDisposition;
@@ -157,7 +157,7 @@ export const modelReviewResultSchema = v.strictObject({
 });
 
 /** Schema for Patchdesk's validated and location-mapped final review result. */
-export const reviewResultSchema = v.strictObject({
+const reviewResultSchema = v.strictObject({
   changeSummary: v.pipe(v.string(), v.minLength(1)),
   verdict: v.picklist(["approve", "comment", "request_changes"]),
   summary: v.pipe(v.string(), v.minLength(1)),

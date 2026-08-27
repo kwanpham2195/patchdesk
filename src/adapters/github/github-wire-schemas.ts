@@ -154,7 +154,7 @@ export const mergeEvidenceBranchProtectionSchema = v.looseObject({
 // Bounded per the ADR "Choose a validation style by data boundary": only the
 // specific `pull_request` and `required_status_checks` fields Patchdesk
 // displays are named here, not the full parameters payload GitHub returns.
-export const appliedRulesetRuleParametersSchema = v.looseObject({
+const appliedRulesetRuleParametersSchema = v.looseObject({
   required_approving_review_count: v.optional(
     v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100)),
   ),
@@ -489,7 +489,7 @@ export const maintainerInboxSearchResponseSchema = v.looseObject({
 });
 
 /** One rollup entry: a CheckRun or a StatusContext, discriminated by `__typename`. */
-export const mergePolicyContextSchema = v.looseObject({
+const mergePolicyContextSchema = v.looseObject({
   __typename: v.string(),
   name: v.optional(v.string()),
   status: v.optional(v.string()),

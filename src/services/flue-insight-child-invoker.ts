@@ -165,8 +165,6 @@ function productionChildEnvironment(
   return environment;
 }
 
-export { productionChildEnvironment };
-
 function parseChildResponse(
   input: unknown,
 ):

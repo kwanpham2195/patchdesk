@@ -57,7 +57,7 @@ export function unionRecentWrites(
   return union;
 }
 
-export function recentWriteDedupeKey(entry: RecentReviewWrite): string {
+function recentWriteDedupeKey(entry: RecentReviewWrite): string {
   switch (entry._tag) {
     case "Comment":
       return `Comment:${entry.commentId}`;

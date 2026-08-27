@@ -151,7 +151,7 @@ export type ReviewInlineAnnotation = {
   readonly localComposer?: LocalComposerConfig;
 };
 
-export type LocalComposerConfig = {
+type LocalComposerConfig = {
   readonly path: string;
   readonly startLine: number;
   readonly line: number;
@@ -160,7 +160,7 @@ export type LocalComposerConfig = {
   readonly onSave: (body: string) => Promise<void>;
   readonly pendingReview?: PendingReviewComposerActions;
 };
-export type PendingReviewWriteConfig = {
+type PendingReviewWriteConfig = {
   readonly localId: string;
   readonly status: "sending" | "failed";
   readonly action: "start" | "add";

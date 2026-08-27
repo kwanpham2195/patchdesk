@@ -40,34 +40,9 @@ export type Dashboard = {
   };
 };
 
-export type Preview = {
-  readonly pr: {
-    readonly host?: string;
-    readonly owner: string;
-    readonly repo: string;
-    readonly number: number;
-  };
-  readonly confirmation: {
-    readonly required: boolean;
-    readonly targetProfileId?: string;
-  };
-};
-
 import type { WorkbenchResponse } from "./renderer-contracts";
 
 export type WorkbenchPayload = WorkbenchResponse;
-
-export type ReviewRecord = {
-  readonly id: string;
-  readonly profileId: string;
-  readonly owner: string;
-  readonly repo: string;
-  readonly prNumber: number;
-  readonly title?: string;
-  readonly state: string;
-  readonly draftState?: string;
-  readonly updatedAt: string;
-};
 
 export function repositoryKey(repo: Repo): string {
   return `${repo.host}/${repo.owner}/${repo.repo}`;

@@ -3,10 +3,8 @@ import * as v from "valibot";
 import {
   PIERRE_DARK_THEMES,
   PIERRE_LIGHT_THEMES,
-  type PierreThemeOption,
 } from "./pierre-theme-catalog.generated";
 
-export type DiffThemeOption = PierreThemeOption;
 export const DIFF_LIGHT_THEMES = PIERRE_LIGHT_THEMES;
 export const DIFF_DARK_THEMES = PIERRE_DARK_THEMES;
 
@@ -18,7 +16,7 @@ export type DiffThemePreferences = {
 // `as const satisfies` (rather than `: DiffThemePreferences`) keeps `light`/
 // `dark` as literal types so they can be passed directly as `v.fallback`
 // defaults below, which must match the picklist's literal option type.
-export const DEFAULT_DIFF_THEME_PREFERENCES = {
+const DEFAULT_DIFF_THEME_PREFERENCES = {
   light: "pierre-light",
   dark: "pierre-dark",
 } as const satisfies DiffThemePreferences;

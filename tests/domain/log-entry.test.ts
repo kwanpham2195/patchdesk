@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  LOG_MAX_MESSAGE_LENGTH,
   loggableMetaValue,
   maskLogSecrets,
   normalizeLogEntry,
@@ -77,7 +76,7 @@ describe("log entry redaction", () => {
       meta: { authorization: "Bearer x", ok: true },
     });
     expect(entry.topic).toHaveLength(48);
-    expect(entry.message).toHaveLength(LOG_MAX_MESSAGE_LENGTH);
+    expect(entry.message).toHaveLength(512);
     expect(entry.meta).toEqual({ ok: true });
   });
 

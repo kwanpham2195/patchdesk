@@ -60,18 +60,14 @@ export type PullRequestOverviewMerge = {
   readonly onRecoverMerge: () => Promise<void>;
 };
 
-export type PullRequestOverviewActions = {
-  readonly merge?: PullRequestOverviewMerge;
-};
-
-export type ReviewInsightStatus =
+type ReviewInsightStatus =
   | "not_generated"
   | "running"
   | "current"
   | "outdated"
   | "failed";
 
-export type ReviewInsightState = {
+type ReviewInsightState = {
   readonly status: ReviewInsightStatus;
 };
 

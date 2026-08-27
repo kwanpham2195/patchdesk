@@ -9,7 +9,7 @@ import type {
   WalkthroughProgress,
 } from "./insight-record";
 import type { InsightReasoning } from "./insight-provider";
-export type InsightStatus =
+type InsightStatus =
   | "not_generated"
   | "running"
   | "current"

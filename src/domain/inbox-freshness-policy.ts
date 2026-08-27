@@ -4,8 +4,8 @@
  * both the main-process service (hard refusal) and the renderer (visible
  * aging copy) so the two layers cannot drift apart.
  */
-export const INBOX_CACHE_DEGRADED_AFTER_MS = 30 * 60 * 1000; // 30 minutes
-export const INBOX_CACHE_REFUSE_AFTER_MS = 4 * 60 * 60 * 1000; // 4 hours
+const INBOX_CACHE_DEGRADED_AFTER_MS = 30 * 60 * 1000; // 30 minutes
+const INBOX_CACHE_REFUSE_AFTER_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 export function isInboxCacheDegraded(ageMs: number): boolean {
   // An unparseable age (NaN) must fail closed: presenting a cache of

@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_INBOX_VIEW_PREFERENCES,
   loadInboxViewPreferences,
   saveInboxViewPreferences,
 } from "../../src/renderer/src/inbox-view-preferences";
+
+// The defaults are written out here rather than imported from the module
+// under test, so the test pins what an absent or unreadable stored value
+// must fall back to instead of restating whatever the implementation holds.
+const DEFAULTS = {
+  state: "open",
+  pageSize: 25,
+  selectedLabels: [],
+  awaitingMyReview: false,
+  inspectorOpen: true,
+};
 
 const KEY = "patchdesk.inbox-view.v6.profile-1";
 const V2_KEY = "patchdesk.inbox-view.v2.profile-1";
@@ -40,9 +50,7 @@ describe("inbox view preferences", () => {
   beforeEach(() => window.localStorage.clear());
 
   it("returns defaults without a stored value", () => {
-    expect(loadInboxViewPreferences("profile-1")).toEqual(
-      DEFAULT_INBOX_VIEW_PREFERENCES,
-    );
+    expect(loadInboxViewPreferences("profile-1")).toEqual(DEFAULTS);
   });
 
   it("keeps sound fields when a single stored field is malformed", () => {
@@ -83,9 +91,7 @@ describe("inbox view preferences", () => {
 
   it("resets to defaults, including page size, when reading version 2 data", () => {
     storeV2({ state: "merged", pageSize: 50 });
-    expect(loadInboxViewPreferences("profile-1")).toEqual(
-      DEFAULT_INBOX_VIEW_PREFERENCES,
-    );
+    expect(loadInboxViewPreferences("profile-1")).toEqual(DEFAULTS);
   });
 
   it("migrates version 1 preferences with an open state", () => {
@@ -129,15 +135,11 @@ describe("inbox view preferences", () => {
       KEY,
       JSON.stringify({ version: 99, preferences: { view: "ready_to_merge" } }),
     );
-    expect(loadInboxViewPreferences("profile-1")).toEqual(
-      DEFAULT_INBOX_VIEW_PREFERENCES,
-    );
+    expect(loadInboxViewPreferences("profile-1")).toEqual(DEFAULTS);
   });
 
   it("ignores unparsable stored text", () => {
     window.localStorage.setItem(KEY, "{not json");
-    expect(loadInboxViewPreferences("profile-1")).toEqual(
-      DEFAULT_INBOX_VIEW_PREFERENCES,
-    );
+    expect(loadInboxViewPreferences("profile-1")).toEqual(DEFAULTS);
   });
 });

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { definedProps } from "../../domain/defined-props";
-import { err, ok, type Result } from "../../domain/result";
+import { ok, type Result } from "../../domain/result";
 
 /** A bounded, renderer-safe availability description. It never contains values or paths. */
 export type PiProviderStatus = {
@@ -309,9 +309,6 @@ export class LocalPiProviderCatalog {
 export function providerCatalog(): ReadonlyArray<ProviderDefinition> {
   return PROVIDERS;
 }
-export function providerDefinition(id: string): ProviderDefinition | undefined {
-  return PROVIDER_BY_ID.get(id);
-}
 
 /** Environment names needed by one selected built-in provider; values never cross this boundary. */
 export function providerEnvironmentNames(id: string): ReadonlyArray<string> {
@@ -330,11 +327,4 @@ export function providerEnvironmentNames(id: string): ReadonlyArray<string> {
 
 function hasValue(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0;
-}
-
-export function unavailableProviderCatalog(): Result<
-  never,
-  PiProviderCatalogFailure
-> {
-  return err({ _tag: "PiProviderCatalogUnavailable" });
 }

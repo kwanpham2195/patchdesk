@@ -23,7 +23,7 @@ import type { ReviewOperationCoordinator } from "./review-operation-coordinator"
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 
 /** One label to add or remove; `name` travels alongside `id` purely so a confirmed write can journal a human-legible own-write fingerprint without a second lookup. */
-export type LabelRef = {
+type LabelRef = {
   readonly id: string;
   readonly name: string;
 };

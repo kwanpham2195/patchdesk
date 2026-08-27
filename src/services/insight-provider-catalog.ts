@@ -14,7 +14,7 @@ import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-cata
 import { canonicalModelId } from "../adapters/pi/pi-runtime-model-catalog";
 
 /** Renderer-safe provider availability. It never contains a path or account detail. */
-export type InsightProviderStatus = {
+type InsightProviderStatus = {
   readonly id: InsightProvider;
   readonly label: string;
   readonly available: boolean;
@@ -22,7 +22,7 @@ export type InsightProviderStatus = {
 };
 
 /** Provider-specific model metadata used only by Insight dialogs. */
-export type InsightProviderModel = {
+type InsightProviderModel = {
   readonly provider: InsightProvider;
   readonly id: string;
   readonly label: string;

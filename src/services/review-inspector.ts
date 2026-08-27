@@ -5,8 +5,8 @@ import { err, ok, type Result } from "../domain/result";
 import { isPathContained } from "../adapters/storage/path-containment";
 import { writeAtomicFile } from "../adapters/storage/json-file";
 
-export const MAX_ANALYSIS_INSPECTION_CALLS = 8;
-export const MAX_GIT_SHOW_BYTES = 512 * 1024;
+const MAX_ANALYSIS_INSPECTION_CALLS = 8;
+const MAX_GIT_SHOW_BYTES = 512 * 1024;
 export type InspectorDenied = {
   readonly _tag: "InspectorDenied";
   readonly reason: "invalid_input" | "outside_snapshot" | "budget_exhausted";

@@ -38,7 +38,7 @@ export type NarrativeHunk = {
 };
 
 /** A semantic reading section and the exact hunks that support it. */
-export type NarrativeSection = {
+type NarrativeSection = {
   readonly id: string;
   readonly title: string;
   readonly prose: string;
@@ -47,14 +47,14 @@ export type NarrativeSection = {
 };
 
 /** An ordered chapter in the persistent walkthrough rail. */
-export type NarrativeChapter = {
+type NarrativeChapter = {
   readonly id: string;
   readonly title: string;
   readonly sections: ReadonlyArray<NarrativeSection>;
 };
 
 /** The derived Support group containing every hunk outside the primary path. */
-export type NarrativeSupport = {
+type NarrativeSupport = {
   readonly id: "support";
   readonly title: "Support";
   readonly hunkIds: ReadonlyArray<string>;
@@ -62,10 +62,7 @@ export type NarrativeSupport = {
 };
 
 /** A normalized, snapshot-bound walkthrough ready for renderer projection. */
-export type NarrativeCitationStatus =
-  | "verified"
-  | "partially_verified"
-  | "unverified";
+type NarrativeCitationStatus = "verified" | "partially_verified" | "unverified";
 
 export type NarrativeWalkthrough = {
   readonly snapshot: NarrativeSnapshot;
@@ -104,7 +101,7 @@ const MAX_PATCH_LINE_COORDINATE = 1_000_000;
 const MAX_HUNK_LINE_COUNT = 100_000;
 const MAX_HUNK_RAW_LENGTH = 200_000;
 /** Keeps patch file metadata safe and aligned with the renderer projection boundary. */
-export const MAX_NARRATIVE_FILE_PREFIX_LENGTH = 8_192;
+const MAX_NARRATIVE_FILE_PREFIX_LENGTH = 8_192;
 const HUNK_ALIAS_SYNTAX = /^h[1-9]\d*$/;
 
 const boundedText = (maxLength: number) =>

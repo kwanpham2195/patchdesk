@@ -14,7 +14,7 @@ type AppendRecentWrites = (
 ) => void;
 type ObserveConfirmedDirectSummary = (reviewId: string) => Promise<void>;
 
-export type DirectSummaryPanel = {
+type DirectSummaryPanel = {
   readonly busy: boolean;
   readonly state: DirectSummaryReviewProjection["state"];
   readonly receipt?: Extract<

@@ -6,7 +6,7 @@ import type {
 } from "./ids";
 import type { PullRequestRef } from "./pull-request";
 
-export type DiffLocation = {
+type DiffLocation = {
   readonly path: RepoRelativePath;
   readonly line?: number;
   readonly lineEnd?: number;
@@ -108,7 +108,7 @@ export type MergeDisplayReason = {
 };
 
 /** Why an optional policy endpoint did not disclose configuration. */
-export type GitHubOptionalEvidenceUnavailable = {
+type GitHubOptionalEvidenceUnavailable = {
   readonly state: "unavailable";
   readonly reason: "forbidden" | "not_found" | "unsupported";
 };
@@ -230,7 +230,7 @@ export type ConversationEntry =
     };
 
 /** Timeline issue comment; review-attached comments also expose their review, node, and editability. */
-export type ConversationIssueComment = GitHubComment & {
+type ConversationIssueComment = GitHubComment & {
   readonly reviewId?: string;
   readonly nodeId?: string;
   readonly canEdit?: boolean;

@@ -16,7 +16,7 @@ import { walkthroughOutputSchema } from "../../../src/services/walkthrough-opera
 
 export const MAX_RUNTIME_STDIN_BYTES = 2 * 1024 * 1024;
 export const MAX_RUNTIME_STDOUT_BYTES = 2 * 1024 * 1024;
-export const NODE_FLOOR = [22, 19, 0] as const;
+const NODE_FLOOR = [22, 19, 0] as const;
 
 const reasoningSchema = v.picklist(["low", "medium", "high"]);
 const boundedPath = v.pipe(v.string(), v.minLength(1), v.maxLength(4_096));

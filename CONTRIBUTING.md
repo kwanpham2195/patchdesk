@@ -154,6 +154,11 @@ reachability question, so an ordinary mid-refactor commit moves its count for
 a reason that has nothing wrong with it, and a gate that rejects that commit
 gets switched off. It runs in `pnpm check` and in the pull request gates.
 
+The Knip baseline is zero. Every unused file, export, and type has been
+removed or made module-private, so the ratchet and a bare blocking `pnpm knip`
+are now the same gate. Fix a new finding by deleting the dead code or dropping
+the `export` keyword; do not raise the baseline.
+
 Do not silence findings by weakening rules, adding casts, or faking
 `SAFETY:` comments. Genuine I/O boundaries keep `unknown` via targeted
 per-file overrides listed file by file in `.oxlintrc.json`'s `overrides`

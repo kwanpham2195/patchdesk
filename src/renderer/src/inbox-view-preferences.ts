@@ -81,7 +81,7 @@ export type InboxViewPreferences = {
   readonly selectedRepository?: RepositoryIdentity;
 };
 
-export const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
+const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   state: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
   selectedLabels: [],

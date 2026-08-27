@@ -3,7 +3,7 @@ import type { ReviewDiagnosticService } from "../services/review-diagnostic-serv
 import type { StorageManagementService } from "../services/storage-management-service";
 
 /** Retention sweep interval once per 24 hours while the app runs. */
-export const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export type RetentionSweepScheduler = {
   stop(): Promise<void>;

@@ -5,8 +5,8 @@ import { narrativeHunkManifest } from "../domain/narrative-walkthrough";
 import { err, ok, type Result } from "../domain/result";
 import { readBoundedArtifact } from "./walkthrough-artifact-reader";
 
-export const MAX_WALKTHROUGH_ARTIFACT_BYTES = 2 * 1024 * 1024;
-export const MAX_WALKTHROUGH_CONTEXT_BYTES = 512 * 1024;
+const MAX_WALKTHROUGH_ARTIFACT_BYTES = 2 * 1024 * 1024;
+const MAX_WALKTHROUGH_CONTEXT_BYTES = 512 * 1024;
 const MAX_TITLE_LENGTH = 200;
 const MAX_FOCUS_LENGTH = 320;
 const MAX_CHAPTERS = 12;

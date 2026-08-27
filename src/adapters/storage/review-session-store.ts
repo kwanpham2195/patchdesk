@@ -73,7 +73,7 @@ const reviewSessionSchema = v.strictObject({
   updatedAt: v.string(),
 });
 
-export type InvalidSessionEntry = {
+type InvalidSessionEntry = {
   readonly entryName: string;
   readonly sessionId?: ReviewSessionId;
 };

@@ -15,7 +15,7 @@ import {
 } from "./pi-provider-catalog";
 
 /** A renderer-safe description of an eligible Pi model enabled for this local runtime. */
-export type PiRuntimeModel = {
+type PiRuntimeModel = {
   readonly id: string;
   readonly label: string;
 };

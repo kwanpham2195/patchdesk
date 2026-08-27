@@ -45,7 +45,7 @@ type PendingReviewCommand =
       readonly confirmation: true;
     };
 
-export type PendingReviewPanel = {
+type PendingReviewPanel = {
   readonly projection: WorkbenchResponse["pendingReview"];
   readonly busy: boolean;
   readonly finishDialogOpen: boolean;

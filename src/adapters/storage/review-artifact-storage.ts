@@ -19,7 +19,7 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
  * directory names. The stamp uses UTC so the directory name matches the
  * supplied ISO timestamp regardless of the runtime timezone.
  */
-export function toQuarantineStamp(at: IsoTimestamp): string {
+function toQuarantineStamp(at: IsoTimestamp): string {
   const date = new Date(at);
   const year = date.getUTCFullYear().toString().padStart(4, "0");
   const month = (date.getUTCMonth() + 1).toString().padStart(2, "0");

@@ -374,10 +374,10 @@ function workspaceReducer(
 export type ReviewWorkbenchLoader = () => Promise<{
   readonly default: ReviewWorkbenchFlowComponent;
 }>;
-export type FixtureContentLoader = () => Promise<{
+type FixtureContentLoader = () => Promise<{
   readonly default: FixtureContentComponent;
 }>;
-export type PerformanceFixtureLoader = () => Promise<{
+type PerformanceFixtureLoader = () => Promise<{
   readonly default: PerformanceFixtureComponent;
 }>;
 

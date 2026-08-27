@@ -198,7 +198,7 @@ const commandApprovalParamsSchema = v.looseObject({
 type CommandApprovalParams = v.InferOutput<typeof commandApprovalParamsSchema>;
 
 /** Creates the restricted environment inherited by the Codex child. */
-export function allowlistedCodexEnvironment(
+function allowlistedCodexEnvironment(
   environment: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const allowed = ["PATH", "HOME", "TMPDIR", "TMP", "TEMP"];
@@ -211,7 +211,7 @@ export function allowlistedCodexEnvironment(
 }
 
 /** Validates that a path is inside the represented worktree without following an escape. */
-export async function isPathInsideWorktree(
+async function isPathInsideWorktree(
   worktreePath: string,
   candidatePath: string,
 ): Promise<boolean> {

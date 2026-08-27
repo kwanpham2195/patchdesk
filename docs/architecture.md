@@ -117,7 +117,7 @@ The types and invariants of the system. This is the **API Boundary** every other
 
 - `ids.ts` defines branded primitive types (`ReviewId`, `GitSha`, `FindingId`, ...) and the parsers that produce them. A branded value cannot be created from a raw string by accident.
 - `result.ts` defines `Result<T, E>`. Errors are typed values, never thrown exceptions.
-- `review.ts` models the Review aggregate: identity, current session, freshness, and terminal state. Pure functions such as `markReviewFresh` and `markReviewTerminal` are the only state transitions.
+- `review.ts` models the Review aggregate: identity, current session, freshness, and terminal state. Pure functions such as `reconcileReviewRemoteState` and `markReviewTerminal` are the only state transitions.
 - `review-session.ts` models a session pinned to one pull-request revision.
 - `insight-record.ts` models the run lifecycle of an Insight: queued, running, completed, failed, superseded.
 - `pending-review.ts`, `merge-operation.ts`, and `direct-summary-review.ts` model write intents and their receipts.
@@ -314,7 +314,7 @@ The renderer boundary uses jsdom and Testing Library.
 `renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
 
 The outermost boundary is the built app.
-Playwright browser tests run against the packaged renderer with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus dedicated accessibility and performance suites.
+Playwright browser tests run against the packaged renderer with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus a dedicated performance suite. There is no accessibility suite; ADR 0034 rules out assistive-technology tests.
 Package smoke runs the packaged app with a fixed faux provider before UI checks.
 
 **Architecture Invariant:** tests are reproducible and local-only.

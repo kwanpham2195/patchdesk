@@ -77,7 +77,7 @@ export type AvatarRailDependencies = {
  * unbounded number of requests. Uncapped avatars are simply left unfetched
  * until a later sync revisits them.
  */
-export const MAX_AVATARS_PER_SYNC = 24;
+const MAX_AVATARS_PER_SYNC = 24;
 
 /**
  * Warms the shared per-profile avatar cache from one refreshed snapshot.

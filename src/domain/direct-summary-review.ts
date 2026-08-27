@@ -11,7 +11,7 @@ import {
 import type { GitHubReviewEvent } from "./pending-review";
 import { err, ok, type Result } from "./result";
 
-export type DirectSummaryReviewOperation = {
+type DirectSummaryReviewOperation = {
   readonly requestId: string;
   readonly event: GitHubReviewEvent;
   /** SHA-256 of the body; summary text is never persisted as a local draft. */

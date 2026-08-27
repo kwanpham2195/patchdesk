@@ -31,9 +31,7 @@ const diagnosticMetadataSchema = v.strictObject({
   title: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(512))),
 });
 
-export type ReviewDiagnosticCategory = v.InferOutput<
-  typeof diagnosticCategorySchema
->;
+type ReviewDiagnosticCategory = v.InferOutput<typeof diagnosticCategorySchema>;
 
 export type ReviewDiagnosticEvent = v.InferOutput<typeof diagnosticEventSchema>;
 
@@ -62,17 +60,13 @@ export type ReviewDiagnosticInput = {
   readonly detail?: string;
 };
 
-export type InvalidReviewDiagnostic = {
-  readonly _tag: "InvalidReviewDiagnostic";
-};
-
 export const REVIEW_DIAGNOSTIC_MAX_EVENTS = 200;
 export const REVIEW_DIAGNOSTIC_MAX_DETAIL_LENGTH = 512;
 export const REVIEW_DIAGNOSTIC_MAX_FILE_BYTES = 256_000;
 const REDACTED_DETAIL = "[redacted diagnostic detail]";
 
 /** Parse one persisted diagnostic event before it enters service state. */
-export function parseReviewDiagnosticEvent(
+function parseReviewDiagnosticEvent(
   input: unknown,
 ): ReviewDiagnosticEvent | undefined {
   const parsed = v.safeParse(diagnosticEventSchema, input);

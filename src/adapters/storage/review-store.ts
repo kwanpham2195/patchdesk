@@ -15,7 +15,7 @@ import {
 } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
-export type ReviewStoreConflict = {
+type ReviewStoreConflict = {
   readonly _tag: "ReviewConflict";
   readonly reason: "stale_revision" | "terminal";
 };

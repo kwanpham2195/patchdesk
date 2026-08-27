@@ -7,26 +7,26 @@ import { cn } from "../lib/utils";
 const marked = new Marked({ gfm: true, breaks: false });
 
 /** A source-specific decision for one Markdown link. */
-export type MarkdownLinkRenderInput = {
+type MarkdownLinkRenderInput = {
   readonly href: string;
   readonly children: ReadonlyArray<ReactNode>;
   readonly key: string;
 };
 
 /** A source-specific decision for one Markdown image. */
-export type MarkdownImageRenderInput = {
+type MarkdownImageRenderInput = {
   readonly token: Tokens.Image | Tokens.Generic;
   readonly key: string;
 };
 
 /** A source-specific decision for one raw HTML token. */
-export type MarkdownHtmlRenderInput = {
+type MarkdownHtmlRenderInput = {
   readonly html: string;
   readonly key: string;
 };
 
 /** A source-specific decision for one Mermaid code fence. */
-export type MarkdownMermaidRenderInput = {
+type MarkdownMermaidRenderInput = {
   readonly source: string;
   readonly key: string;
 };

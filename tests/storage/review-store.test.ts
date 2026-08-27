@@ -8,11 +8,11 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ReviewStore } from "../../src/adapters/storage/review-store";
 import {
   createReview,
-  createReviewId,
   markReviewTerminal,
   type ReviewIdentity,
 } from "../../src/domain/review";
 import {
+  createReviewId,
   createReviewSessionId,
   parseGitHubHost,
   parseGitHubOwner,

@@ -21,7 +21,7 @@ export type SettingsRestoreState = {
   readonly section: string;
 };
 
-export function workbenchUiKey(reviewId: string): string {
+function workbenchUiKey(reviewId: string): string {
   return `${WORKBENCH_UI_KEY_PREFIX}${reviewId}`;
 }
 

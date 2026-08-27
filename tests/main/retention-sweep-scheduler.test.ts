@@ -6,15 +6,17 @@ import {
   type WorkspaceProfileId,
 } from "../../src/domain/ids";
 import { err, ok, type Result } from "../../src/domain/result";
-import {
-  RETENTION_SWEEP_INTERVAL_MS,
-  startRetentionSweepScheduler,
-} from "../../src/main/retention-sweep-scheduler";
+import { startRetentionSweepScheduler } from "../../src/main/retention-sweep-scheduler";
 import type {
   StorageManagementFailure,
   StorageManagementService,
 } from "../../src/services/storage-management-service";
 import type { ReviewDiagnosticService } from "../../src/services/review-diagnostic-service";
+
+// The sweep interval is written out here rather than imported from the
+// scheduler, so this test pins the once-per-24-hours rule instead of
+// restating whatever the implementation happens to hold.
+const SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 type SweepResult = Awaited<
   ReturnType<StorageManagementService["sweepRetained"]>
@@ -101,7 +103,7 @@ describe("retention sweep scheduler", () => {
       enabled: true,
     });
 
-    await vi.advanceTimersByTimeAsync(RETENTION_SWEEP_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
     await scheduler.stop();
 
     expect(sweepRetained).toHaveBeenCalledTimes(2);
@@ -143,12 +145,12 @@ describe("retention sweep scheduler", () => {
       enabled: true,
     });
 
-    await vi.advanceTimersByTimeAsync(RETENTION_SWEEP_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
     expect(sweepRetained).toHaveBeenCalledTimes(1);
 
     firstSweep.resolve(ok(undefined));
     await firstSweep.promise;
-    await vi.advanceTimersByTimeAsync(RETENTION_SWEEP_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
     await scheduler.stop();
 
     expect(sweepRetained).toHaveBeenCalledTimes(2);
@@ -166,7 +168,7 @@ describe("retention sweep scheduler", () => {
     });
 
     await scheduler.stop();
-    await vi.advanceTimersByTimeAsync(RETENTION_SWEEP_INTERVAL_MS * 2);
+    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS * 2);
 
     expect(sweepRetained).toHaveBeenCalledTimes(1);
   });

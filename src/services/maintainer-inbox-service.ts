@@ -77,7 +77,7 @@ const inboxPageTokenSchema = v.strictObject({
 
 type InboxPageToken = v.InferOutput<typeof inboxPageTokenSchema>;
 
-export type MaintainerInboxRepository = {
+type MaintainerInboxRepository = {
   readonly repo: WatchedRepoConfig;
   readonly state: InboxCacheRepository["state"];
   readonly complete: boolean;

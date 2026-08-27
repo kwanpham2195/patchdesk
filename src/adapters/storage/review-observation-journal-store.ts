@@ -179,7 +179,7 @@ async function mapConcurrent<T, R>(
 }
 
 /** Parse a persisted journal before any recovery code can replay it. */
-export function parseReviewObservationJournal(
+function parseReviewObservationJournal(
   input: unknown,
 ): Result<ReviewObservationJournal, StorageFailure> {
   const raw = v.safeParse(journalSchema, input);

@@ -26,7 +26,7 @@ import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 export type TrashMover = {
   move(path: string): Promise<Result<void, StorageFailure>>;
 };
-export type StorageSessionProjection = {
+type StorageSessionProjection = {
   readonly id: string;
   readonly prLabel: string;
   readonly state: "prepared";
@@ -49,9 +49,8 @@ export type StorageDeleteQuarantinedInput = {
   readonly profileId: WorkspaceProfileId;
   readonly entryName: string;
 };
-export type StorageClearCacheInput = { readonly profileId: WorkspaceProfileId };
-export const RETAIN_TERMINAL_SESSIONS_MS = 14 * 24 * 60 * 60 * 1000;
-export const RETAIN_QUARANTINE_MS = 30 * 24 * 60 * 60 * 1000;
+const RETAIN_TERMINAL_SESSIONS_MS = 14 * 24 * 60 * 60 * 1000;
+const RETAIN_QUARANTINE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type StorageManagementFailure =
   | { readonly _tag: "ProfileNotFound" }

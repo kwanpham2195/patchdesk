@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   createReview,
-  createReviewId,
   markReviewRevisionChanged,
   markReviewUnavailable,
   markReviewTerminal,
@@ -11,6 +10,7 @@ import {
   type ReviewIdentity,
 } from "../../src/domain/review";
 import {
+  createReviewId,
   createReviewSessionId,
   parseContentHash,
   parseGitHubHost,

@@ -4,11 +4,10 @@ import type { WorkbenchResponse } from "../../renderer-contracts";
  * consumes it -- seeded per fixture so the browser suite can exercise the
  * Threads section against real thread data without inventing a new model
  * shape. */
-export type FixtureConversationThread = NonNullable<
+type FixtureConversationThread = NonNullable<
   WorkbenchResponse["conversation"]["inline"]
 >["threads"][number];
-export const noConversationThreads: ReadonlyArray<FixtureConversationThread> =
-  [];
+const noConversationThreads: ReadonlyArray<FixtureConversationThread> = [];
 
 function buildFixturePatch(): string {
   const changedLines = Array.from(
@@ -42,7 +41,7 @@ function buildActiveFollowPatch(): string {
 
 export const fixturePatch = buildFixturePatch();
 export const walkthroughFixturePatch = `${fixturePatch}diff --git a/src/c.ts b/src/c.ts\n--- a/src/c.ts\n+++ b/src/c.ts\n@@ -1 +1 @@\n-old\n+new\n`;
-export const activeFollowFixturePatch = buildActiveFollowPatch();
+const activeFollowFixturePatch = buildActiveFollowPatch();
 
 // A Conversation timeline long enough that its tab genuinely scrolls past
 // the viewport -- `#workbench-fixture`'s own conversation is empty ("No
@@ -379,55 +378,4 @@ export function canonicalWorkbenchModel(
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
     mergeReasons: [],
   } as WorkbenchResponse;
-}
-
-export function fixtureWalkthroughRetention(
-  sessionId: string,
-  headSha: string,
-): NonNullable<WorkbenchResponse["insights"]["walkthrough"]["retained"]> {
-  return {
-    runId: "walkthrough-fixture",
-    sessionId,
-    headSha,
-    generatedAt: "2026-07-17T00:00:00.000Z",
-    value: {
-      snapshot: {
-        profileId: "fixture",
-        sessionId,
-        headSha,
-        patchHash: "b".repeat(64),
-      },
-      citationStatus: "verified",
-      title: "Walkthrough fixture",
-      focus: "Follow the changed path through this Review.",
-      chapters: [
-        {
-          id: "chapter-1",
-          title: "Context",
-          sections: [
-            {
-              id: "section-1",
-              title: "Keep the review local",
-              prose:
-                "This stored walkthrough explains the immutable Review revision.",
-              hunkIds: ["h1"],
-              hunks: [
-                {
-                  id: "h1",
-                  path: "src/a.ts",
-                  header: "@@ -1 +1 @@",
-                  raw: "@@ -1 +1 @@\\n-old\\n+new",
-                  oldStart: 1,
-                  oldLines: 1,
-                  newStart: 1,
-                  newLines: 1,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      support: { id: "support", title: "Support", hunkIds: [], hunks: [] },
-    },
-  };
 }

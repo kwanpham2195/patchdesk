@@ -11,10 +11,12 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
 import { parseWorkspaceProfileId } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
-import {
-  AvatarSyncService,
-  MAX_AVATARS_PER_SYNC,
-} from "../../src/services/avatar-sync-service";
+import { AvatarSyncService } from "../../src/services/avatar-sync-service";
+
+// The avatar fan-out cap is written out here rather than imported from the
+// service, so this test pins the cap instead of restating whatever the
+// implementation happens to hold.
+const MAX_AVATARS_PER_SYNC = 24;
 
 const must = <T>(result: Result<T, unknown>): T =>
   result._tag === "ok"

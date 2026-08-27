@@ -5,9 +5,9 @@ import {
   type InboxRepositoryRef,
 } from "../../src/services/maintainer-inbox-service";
 import { err, ok, type Result } from "../../src/domain/result";
-import { INBOX_CACHE_REFUSE_AFTER_MS } from "../../src/domain/inbox-freshness-policy";
 import type { MaintainerInboxCache } from "../../src/adapters/storage/maintainer-inbox-cache-store";
 import type { StorageFailure } from "../../src/adapters/storage/json-file";
+const REFUSE_AFTER_MS = 4 * 60 * 60 * 1000; // pins the four-hour refuse rule
 
 // SAFETY: MaintainerInboxService reads only host/owner/repo off the
 // repository parameter; the plain strings stand in for the branded GitHub
@@ -867,7 +867,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
 
   it("marks a cache just under the refuse threshold as failed_cached", async () => {
     const refreshedAt = new Date(
-      Date.parse(now) - (INBOX_CACHE_REFUSE_AFTER_MS - 1),
+      Date.parse(now) - (REFUSE_AFTER_MS - 1),
     ).toISOString();
     const service = serviceWithCache({
       read: async () =>
@@ -887,7 +887,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
 
   it("marks a cache at the refuse threshold as stale_cached", async () => {
     const refreshedAt = new Date(
-      Date.parse(now) - INBOX_CACHE_REFUSE_AFTER_MS,
+      Date.parse(now) - REFUSE_AFTER_MS,
     ).toISOString();
     const service = serviceWithCache({
       read: async () =>

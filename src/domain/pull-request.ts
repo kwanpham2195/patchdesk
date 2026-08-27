@@ -7,7 +7,6 @@ import {
   type GitHubOwner,
   type GitHubRepoName,
   type PullRequestNumber,
-  type WorkspaceProfileId,
 } from "./ids";
 import { err, ok, type Result } from "./result";
 
@@ -17,22 +16,6 @@ export type PullRequestRef = {
   readonly repo: GitHubRepoName;
   readonly number: PullRequestNumber;
 };
-
-export type PullRequestInput =
-  | { readonly _tag: "GitHubUrl"; readonly url: string }
-  | { readonly _tag: "CompactRef"; readonly value: string }
-  | {
-      readonly _tag: "SelectedDashboardPr";
-      readonly profileId: WorkspaceProfileId;
-      readonly pr: PullRequestRef;
-    }
-  | {
-      readonly _tag: "SeparateFields";
-      readonly host?: GitHubHost;
-      readonly owner: GitHubOwner;
-      readonly repo: GitHubRepoName;
-      readonly number: PullRequestNumber;
-    };
 
 export type InvalidPullRequestInput = {
   readonly _tag: "InvalidPullRequestInput";
