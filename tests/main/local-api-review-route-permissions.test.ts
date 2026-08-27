@@ -1,8 +1,7 @@
-import { createServer, type Server } from "node:http";
-import { readFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, extname, join, normalize } from "node:path";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { expect, test } from "playwright/test";
+import { afterEach, expect, it } from "vitest";
 
 import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
@@ -27,63 +26,125 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "../../src/main/local-api";
-import { installTestDesktopBridge } from "./bridge-fixture";
 
-test("desktop bridge opens the canonical represented workbench without removed Review routes", async ({
-  page,
-}) => {
-  const renderer = await serveRenderer();
-  const root = await mkdtemp(join(tmpdir(), "patchdesk-browser-"));
-  let api: LocalApiServer | undefined;
-  try {
-    const paths = PatchdeskPaths.forTest(root);
-    const seeded = await seedRepresentedReview(paths);
-    await new ProfileStore(paths).saveConfig({
-      lastSelectedProfileId: "cfw",
-      recentPrs: [],
-    });
-    const started = await startLocalApiServer({
-      allowedOrigin: origin(renderer),
-      capability: "cap",
-      paths,
-      github: new FakeGitHubAdapter({
-        authenticatedAccount: { host: "github.com", account: "fixture" },
-        listOpenPullRequests: [],
-        // SAFETY: This fake adapter fixture supplies the response shape exercised by the browser case; unrelated production fields are outside this test seam.
-        pullRequest: summary() as never,
-        comments: { threads: [] },
-        checks: { overall: "passing", checks: [] },
-      }),
-    });
-    if (started._tag !== "started") throw new Error("local API did not start");
-    api = started.server;
-    await installTestDesktopBridge(page, api.url.toString(), "cap");
-    await page.addInitScript(
-      (id) =>
-        window.localStorage.setItem("patchdesk.destination", `workbench:${id}`),
-      seeded.reviewId,
-    );
-    await page.goto(origin(renderer));
-    await expect(
-      page.getByRole("region", { name: "Review workbench" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Represented review" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Diff", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-  } finally {
-    if (api !== undefined) await api.stop();
-    await close(renderer);
+// Moved from tests/browser/local-api-workbench.spec.ts:88-190 -- this test
+// never touched the page's DOM. It only used Playwright's `page.evaluate` as
+// a way to run `fetch` calls against the local API server (mirroring what
+// `window.patchdesk.request` in `bridge-fixture.ts` does under the hood: a
+// plain `fetch` carrying `X-Patchdesk-Capability` and an `Origin` header), so
+// it belongs here as a direct HTTP test of `src/main/local-api.ts` rather
+// than paying for a browser.
+
+const capability = "cap";
+const origin = "http://patchdesk.test";
+let server: LocalApiServer | undefined;
+let root: string | undefined;
+
+afterEach(async () => {
+  if (server !== undefined) await server.stop();
+  server = undefined;
+  if (root !== undefined)
     await rm(root, {
       recursive: true,
       force: true,
       maxRetries: 10,
       retryDelay: 100,
     });
-  }
+  root = undefined;
 });
+
+it("permits current Review-id routes and denies deleted routes", async () => {
+  root = await mkdtemp(join(tmpdir(), "patchdesk-api-routes-"));
+  const paths = PatchdeskPaths.forTest(root);
+  const seeded = await seedRepresentedReview(paths);
+  const started = await startLocalApiServer({
+    allowedOrigin: origin,
+    capability,
+    paths,
+    github: new FakeGitHubAdapter({
+      // SAFETY: This fake adapter fixture supplies the response shape exercised by this test; unrelated production fields are outside this test seam.
+      pullRequest: summary() as never,
+      comments: { threads: [] },
+      checks: { overall: "passing", checks: [] },
+    }),
+  });
+  if (started._tag !== "started") throw new Error("local API did not start");
+  server = started.server;
+
+  const current = await Promise.all([
+    call("v1/reviews/load", { profileId: "cfw", reviewId: seeded.reviewId }),
+    call("v1/reviews/detect-updates", {
+      profileId: "cfw",
+      reviewId: seeded.reviewId,
+    }),
+    call("v1/reviews/refresh", {
+      profileId: "cfw",
+      reviewId: seeded.reviewId,
+    }),
+  ]);
+  expect(
+    current.every(
+      (status) => status !== 401 && status !== 403 && status !== 400,
+    ),
+  ).toBe(true);
+
+  const removed = await Promise.all([
+    plainFetch("v1/dashboard", "GET"),
+    plainFetch("v1/reviews", "GET"),
+    plainFetch("v1/reviews/models", "GET"),
+    plainFetch(`v1/reviews/${"ba" + "tch"}`, "POST"),
+    plainFetch(`v1/reviews/${"r" + "un"}`, "POST"),
+    plainFetch("v1/reviews/complete", "POST"),
+    plainFetch("v1/reviews/update", "POST"),
+  ]);
+  expect(removed.every((status) => status === 404)).toBe(true);
+
+  const denied = await call(
+    "v1/reviews/load",
+    { profileId: "cfw", reviewId: seeded.reviewId },
+    "",
+  );
+  expect([401, 403]).toContain(denied);
+});
+
+/**
+ * Mirrors `window.patchdesk.request` from `tests/browser/bridge-fixture.ts`:
+ * a POST with a JSON body, the capability header, and the renderer's Origin.
+ */
+async function call(
+  path: string,
+  body: { readonly profileId: string; readonly reviewId: string },
+  cap: string = capability,
+): Promise<number> {
+  if (server === undefined) throw new Error("server not started");
+  const response = await fetch(new URL(path, server.url), {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "Content-Type": "application/json",
+      "X-Patchdesk-Capability": cap,
+    },
+    body: JSON.stringify(body),
+  });
+  return response.status;
+}
+
+/** A deleted route probe: same capability and Origin, no body assumed. */
+async function plainFetch(
+  path: string,
+  method: "GET" | "POST",
+): Promise<number> {
+  if (server === undefined) throw new Error("server not started");
+  const headers = new Headers({
+    Origin: origin,
+    "X-Patchdesk-Capability": capability,
+  });
+  if (method === "POST") headers.set("Content-Type", "application/json");
+  const requestInit: RequestInit = { method, headers };
+  if (method === "POST") requestInit.body = "{}";
+  const response = await fetch(new URL(path, server.url), requestInit);
+  return response.status;
+}
 
 function summary() {
   return {
@@ -117,6 +178,10 @@ async function seedRepresentedReview(
   const number = must(parsePullRequestNumber(1));
   const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
   const baseSha = must(parseGitSha("1234567890abcdef1234567890abcdef12345678"));
+  await new ProfileStore(paths).saveConfig({
+    lastSelectedProfileId: "cfw",
+    recentPrs: [],
+  });
   await new ProfileStore(paths).save(
     must(
       parseWorkspaceProfileConfig({
@@ -174,7 +239,7 @@ async function seedRepresentedReview(
     reviewId: review.id,
     snapshot: {
       schemaVersion: 1,
-      // SAFETY: This fake adapter fixture supplies the response shape exercised by the browser case; unrelated production fields are outside this test seam.
+      // SAFETY: This fake adapter fixture supplies the response shape exercised by this test; unrelated production fields are outside this test seam.
       pullRequest: summary() as never,
       comments: { threads: [], complete: true },
       conversation: { prDescription: "", entries: [], complete: true },
@@ -205,50 +270,4 @@ function must<T>(
 ): T {
   if (result._tag === "err") throw new Error("invalid fixture");
   return result.value;
-}
-async function serveRenderer(): Promise<Server> {
-  const root = join(process.cwd(), "out", "renderer");
-  const server = createServer(async (request, response) => {
-    const file = normalize(
-      join(
-        root,
-        request.url === undefined || request.url === "/"
-          ? "index.html"
-          : request.url,
-      ),
-    );
-    if (!file.startsWith(root)) {
-      response.writeHead(400).end();
-      return;
-    }
-    try {
-      const content = await readFile(file);
-      response
-        .writeHead(200, {
-          "Content-Type":
-            extname(file) === ".js"
-              ? "text/javascript"
-              : extname(file) === ".css"
-                ? "text/css"
-                : "text/html",
-        })
-        .end(content);
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return server;
-}
-function origin(server: Server): string {
-  const address = server.address();
-  if (address === null) throw new Error("missing address");
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Node's server address union uses a string only for named sockets; this test binds an ephemeral TCP port above.
-  if (typeof address === "string") throw new Error("missing address");
-  return `http://127.0.0.1:${address.port}`;
-}
-function close(server: Server): Promise<void> {
-  return new Promise((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
-  );
 }
