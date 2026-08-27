@@ -50,11 +50,7 @@ export class ReviewRecoveryService {
     const profiles = await this.profiles.list();
     if (profiles._tag === "err") return { recovered: 0, failed: 1 };
     const results = await mapConcurrent(profiles.value, 4, async (profile) =>
-      this.options.lifecycleGate === undefined
-        ? this.reconcileProfile(profile.id)
-        : this.options.lifecycleGate.withProfileLock(profile.id, () =>
-            this.reconcileProfile(profile.id),
-          ),
+      this.reconcileProfile(profile.id),
     );
     return results.reduce(
       (total, result) => ({
@@ -78,15 +74,60 @@ export class ReviewRecoveryService {
     );
   }
 
+  /**
+   * The merge-operation half takes Review locks; the session-sweep half takes
+   * this profile's lock. They run as two independent halves, never one inside
+   * the other, because this codebase keeps exactly one global lock order:
+   * the Review lock is always outer and the profile lock always inner (see
+   * `tests/services/review-lock-order.test.ts`). Holding the profile lock
+   * across the whole reconciliation — as this did before — inverted that
+   * order against `open()` and `refresh`, which take the Review lock first
+   * and only then reach `prepare()`'s profile lock. Two non-reentrant locks
+   * taken in opposite orders wait on each other forever.
+   */
   private async reconcileProfile(
     profileId: WorkspaceProfileId,
   ): Promise<{ readonly recovered: number; readonly failed: number }> {
-    const [merge, scan] = await Promise.all([
+    const [merge, sweep] = await Promise.all([
       this.reconcileMergeOperations(profileId),
-      this.sessions.scanSessionEntries(profileId),
+      this.sweepInvalidSessions(profileId),
     ]);
-    if (scan._tag === "err")
-      return { recovered: merge.recovered, failed: merge.failed + 1 };
+    return {
+      recovered: merge.recovered + sweep.recovered,
+      failed: merge.failed + sweep.failed,
+    };
+  }
+
+  /**
+   * Scanning the profile's session entries and moving the invalid ones aside
+   * is the only profile-wide work here, so it is the only work that needs the
+   * profile lock: it must not run while `ReviewSessionPreparation.prepare` is
+   * writing a new session into the same directory, or a half-written healthy
+   * session could be quarantined. Nothing inside this sweep takes a Review
+   * lock, so the lock stays a leaf.
+   *
+   * The merge-operation half needs no profile lock: every operation file is
+   * per session, the Review lock already serializes each one, and the
+   * `reconcileReview` entry point has always reconciled the very same
+   * operations under the Review lock alone.
+   */
+  private async sweepInvalidSessions(
+    profileId: WorkspaceProfileId,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    const sweep = (): Promise<{
+      readonly recovered: number;
+      readonly failed: number;
+    }> => this.sweepInvalidSessionsUnlocked(profileId);
+    return this.options.lifecycleGate === undefined
+      ? sweep()
+      : this.options.lifecycleGate.withProfileLock(profileId, sweep);
+  }
+
+  private async sweepInvalidSessionsUnlocked(
+    profileId: WorkspaceProfileId,
+  ): Promise<{ readonly recovered: number; readonly failed: number }> {
+    const scan = await this.sessions.scanSessionEntries(profileId);
+    if (scan._tag === "err") return { recovered: 0, failed: 1 };
     const quarantined = await mapConcurrent(
       scan.value.invalidEntries,
       4,
@@ -119,7 +160,7 @@ export class ReviewRecoveryService {
         recovered: total.recovered + result.recovered,
         failed: total.failed + result.failed,
       }),
-      merge,
+      { recovered: 0, failed: 0 },
     );
   }
 
