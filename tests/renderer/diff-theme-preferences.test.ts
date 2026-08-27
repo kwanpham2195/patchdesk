@@ -119,6 +119,37 @@ describe("diff theme preferences", () => {
     expect(loadDiffThemePreferences()).toEqual(DEFAULT);
   });
 
+  // Precedence: the v2 key wins whenever it holds a usable pair, and the v1
+  // key is consulted whenever it does not — an unreadable v2 value is the
+  // same situation as an absent one, so the user's older explicit choice is
+  // preferred over the hardcoded default.
+  it("prefers a usable v2 pair over the v1 family", () => {
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v2",
+      JSON.stringify({ light: "one-light", dark: "tokyo-night" }),
+    );
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v1",
+      JSON.stringify("high_contrast"),
+    );
+    expect(loadDiffThemePreferences()).toEqual({
+      light: "one-light",
+      dark: "tokyo-night",
+    });
+  });
+
+  it("falls through to the v1 family when the v2 value is unusable", () => {
+    window.localStorage.setItem("patchdesk.diff-theme.v2", "{not json");
+    window.localStorage.setItem(
+      "patchdesk.diff-theme.v1",
+      JSON.stringify("high_contrast"),
+    );
+    expect(loadDiffThemePreferences()).toEqual({
+      light: "github-light-high-contrast",
+      dark: "github-dark-high-contrast",
+    });
+  });
+
   it("still migrates a valid v1 family object shape", () => {
     window.localStorage.setItem(
       "patchdesk.diff-theme.v1",

@@ -16,9 +16,13 @@ import {
 } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { PatchdeskApiError, requestJson } from "../api-client";
+import {
+  useApiProbe,
+  useEnvironmentCheck,
+  type ApiProbeState,
+} from "../hooks/use-api-probe";
 import { useBusy } from "../hooks/use-busy";
 import {
-  parseEnvironmentCheckResponse,
   parseGitHubAccessCheckResponse,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
@@ -38,6 +42,7 @@ import type {
 } from "../renderer-models";
 import type {
   EnvironmentCheckResponse,
+  GitHubAccessCheckResponse,
   InboxResponse,
   RepositoryLabelListResponse,
 } from "../renderer-contracts";
@@ -513,17 +518,6 @@ function BootstrapOutcome({
     </div>
   );
 }
-type AccessCheckState =
-  | { readonly kind: "checking" }
-  | { readonly kind: "available" }
-  | { readonly kind: "github_auth" }
-  | { readonly kind: "error" };
-
-type ToolsCheckState =
-  | { readonly kind: "checking" }
-  | { readonly kind: "loaded"; readonly env: EnvironmentCheckResponse }
-  | { readonly kind: "error" };
-
 /**
  * Renders the first two setup-checklist items against their real, current
  * state (`POST /v1/github/access`, `GET /v1/environment`) instead of static
@@ -532,55 +526,16 @@ type ToolsCheckState =
  * `gh auth login`) can confirm it without restarting the app.
  */
 function SetupChecklist(): React.JSX.Element {
-  const [access, setAccess] = useState<AccessCheckState>({
-    kind: "checking",
-  });
-  const [tools, setTools] = useState<ToolsCheckState>({ kind: "checking" });
   const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    setAccess({ kind: "checking" });
-    void (async () => {
-      try {
-        const value = await requestJson("/v1/github/access", {
-          method: "POST",
-        });
-        if (!active) return;
-        const parsed = parseGitHubAccessCheckResponse(value);
-        setAccess(
-          parsed === undefined ? { kind: "error" } : { kind: parsed.state },
-        );
-      } catch {
-        if (active) setAccess({ kind: "error" });
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [attempt]);
-
-  useEffect(() => {
-    let active = true;
-    setTools({ kind: "checking" });
-    void (async () => {
-      try {
-        const value = await requestJson("/v1/environment");
-        if (!active) return;
-        const parsed = parseEnvironmentCheckResponse(value);
-        setTools(
-          parsed === undefined
-            ? { kind: "error" }
-            : { kind: "loaded", env: parsed },
-        );
-      } catch {
-        if (active) setTools({ kind: "error" });
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [attempt]);
+  // Two independent requests behind one Re-check button. The environment
+  // probe is the same one the Reviewing-as panel in Settings runs, but the
+  // two never share a result: the copy below points at Settings, which that
+  // panel cannot.
+  const access = useApiProbe(
+    { path: "/v1/github/access", method: "POST", restartKey: attempt },
+    parseGitHubAccessCheckResponse,
+  );
+  const tools = useEnvironmentCheck(attempt);
 
   return (
     <>
@@ -622,44 +577,38 @@ function SetupChecklist(): React.JSX.Element {
 function AccessCheckLine({
   state,
 }: {
-  readonly state: AccessCheckState;
+  readonly state: ApiProbeState<GitHubAccessCheckResponse>;
 }): React.JSX.Element {
-  switch (state.kind) {
-    case "checking":
-      return (
-        <StatusLine
-          tone="muted"
-          icon={<LoaderCircle className="animate-spin" />}
-        >
-          Checking GitHub access…
-        </StatusLine>
-      );
-    case "available":
-      return (
-        <StatusLine tone="pass" icon={<CheckCircle2 />}>
-          GitHub access confirmed.
-        </StatusLine>
-      );
-    case "github_auth":
-      return (
-        <StatusLine tone="fail" icon={<CircleAlert />}>
-          Not authenticated. Run <code>gh auth login</code> for the GitHub
-          account entered in Settings, under Workspace, then re-check.
-        </StatusLine>
-      );
-    case "error":
-      return (
-        <StatusLine tone="fail" icon={<CircleAlert />}>
-          Could not check GitHub access.
-        </StatusLine>
-      );
-  }
+  if (state.kind === "checking")
+    return (
+      <StatusLine tone="muted" icon={<LoaderCircle className="animate-spin" />}>
+        Checking GitHub access…
+      </StatusLine>
+    );
+  if (state.kind === "error")
+    return (
+      <StatusLine tone="fail" icon={<CircleAlert />}>
+        Could not check GitHub access.
+      </StatusLine>
+    );
+  if (state.value.state === "available")
+    return (
+      <StatusLine tone="pass" icon={<CheckCircle2 />}>
+        GitHub access confirmed.
+      </StatusLine>
+    );
+  return (
+    <StatusLine tone="fail" icon={<CircleAlert />}>
+      Not authenticated. Run <code>gh auth login</code> for the GitHub account
+      entered in Settings, under Workspace, then re-check.
+    </StatusLine>
+  );
 }
 
 function ToolsCheckLines({
   state,
 }: {
-  readonly state: ToolsCheckState;
+  readonly state: ApiProbeState<EnvironmentCheckResponse>;
 }): React.JSX.Element {
   if (state.kind === "checking")
     return (
@@ -673,7 +622,7 @@ function ToolsCheckLines({
         Could not check local tools.
       </StatusLine>
     );
-  const { env } = state;
+  const env = state.value;
   return (
     <div className="mt-1 space-y-1">
       {env.git === "ready" ? (

@@ -1,22 +1,30 @@
+import * as v from "valibot";
+
+import { definePreference } from "./lib/local-preference";
+
 export type AppearancePreference = "system" | "light" | "dark";
 export type ResolvedAppearance = "light" | "dark";
 
-const STORAGE_KEY = "patchdesk.appearance.v1";
+const DEFAULT_APPEARANCE: AppearancePreference = "system";
+
+// The key holds the bare literal, not JSON, so the stored text goes to the
+// schema unchanged. Nothing writes it any more: config.json is the durable
+// store, and clearAppearancePreference() removes this value once config.json
+// has accepted it.
+const appearancePreference = definePreference({
+  key: "patchdesk.appearance.v1",
+  schema: v.picklist(["light", "dark"]),
+  defaultValue: DEFAULT_APPEARANCE,
+  decodeStored: (raw: string) => raw,
+});
 
 export function loadAppearancePreference(): AppearancePreference {
-  if (globalThis.window === undefined) return "system";
-  const value = window.localStorage.getItem(STORAGE_KEY);
-  return value === "light" || value === "dark" ? value : "system";
+  return appearancePreference.load();
 }
 
 /** Removes the renderer preference after it has been persisted to config.json. */
 export function clearAppearancePreference(): void {
-  if (globalThis.window === undefined) return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Config is already durable; a stale renderer value is safe to ignore.
-  }
+  appearancePreference.clear();
 }
 
 function resolveAppearance(value: AppearancePreference): ResolvedAppearance {

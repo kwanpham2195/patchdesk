@@ -2,7 +2,16 @@ import { useCallback, useState } from "react";
 import * as v from "valibot";
 
 import { parseGitHubThreadId, type GitHubThreadId } from "../../../domain/ids";
-import { PatchdeskApiError, requestJson } from "../api-client";
+import {
+  PatchdeskApiError,
+  contextualMessage,
+  isOutcomeUnknownRetry,
+  requestJson,
+} from "../api-client";
+import {
+  FINISH_REVIEW_MESSAGES,
+  PENDING_REVIEW_RECOVERY_MESSAGES,
+} from "../review-copy";
 import type { PendingReviewComposerActions } from "../components/review-diff-view";
 import {
   parsePendingReviewProjection,
@@ -74,49 +83,6 @@ export type PendingReviewActionsResult = {
   readonly pendingReview: PendingReviewPanel | undefined;
   readonly openFinishDialogWithSummary: (summary: string) => void;
 };
-
-function boundedPendingReviewError(cause: unknown): string {
-  if (cause instanceof PatchdeskApiError) {
-    if (
-      cause.kind === "outcome_unknown" ||
-      cause.kind === "ambiguous_write" ||
-      cause.kind === "timeout"
-    )
-      return "GitHub could not confirm the submission. Check GitHub again before trying again.";
-    if (cause.kind === "review_write_in_progress")
-      return "Another action is still finishing. Your review was not submitted. Wait a moment, then submit again.";
-    if (cause.kind === "pending_review")
-      return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
-    if (cause.kind === "stale_head")
-      return "The pull request changed. Refresh, then finish the review.";
-    if (cause.kind === "rejected" || cause.kind === "github_rejected")
-      return "GitHub rejected the submission.";
-    if (
-      cause.kind === "no_pending_review" ||
-      cause.kind === "pending_review_locked"
-    )
-      return "The pending review changed. Check GitHub again or refresh.";
-    if (cause.kind === "forbidden")
-      return "GitHub blocked this submission: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.";
-  }
-  return "Patchdesk could not finish this review. Check GitHub again or refresh.";
-}
-
-function boundedPendingReviewRecoveryError(cause: unknown): string {
-  if (cause instanceof PatchdeskApiError) {
-    if (cause.kind === "review_write_in_progress") {
-      return "Another action is still finishing. Wait a moment, then check GitHub again.";
-    }
-    if (
-      cause.kind === "timeout" ||
-      cause.kind === "unavailable" ||
-      cause.kind === "outcome_unknown"
-    ) {
-      return "Patchdesk could not check GitHub right now. Try again.";
-    }
-  }
-  return "Patchdesk could not reconcile this pending review. Try again or refresh.";
-}
 
 function threadIdsOf(
   projection: PendingReviewProjection | undefined,
@@ -273,12 +239,7 @@ export function usePendingReviewActions({
           }
         }
       } catch (cause) {
-        if (
-          cause instanceof PatchdeskApiError &&
-          (cause.kind === "outcome_unknown" ||
-            cause.kind === "ambiguous_write" ||
-            cause.kind === "timeout")
-        ) {
+        if (isOutcomeUnknownRetry(cause)) {
           const projected = applyPendingReviewProjection(cause.responseBody);
           if (projected === undefined && !recoveryRequired) {
             onWorkbenchPatch({
@@ -335,7 +296,9 @@ export function usePendingReviewActions({
         setFinishDialogError(undefined);
       }
     } catch (cause) {
-      setFinishDialogError(boundedPendingReviewRecoveryError(cause));
+      setFinishDialogError(
+        contextualMessage(cause, PENDING_REVIEW_RECOVERY_MESSAGES),
+      );
     } finally {
       setPendingReviewBusy(false);
     }
@@ -393,7 +356,7 @@ export function usePendingReviewActions({
         await runPendingReviewCommand({ _tag: "Submit", event, summaryBody });
         setFinishDialogOpen(false);
       } catch (cause) {
-        setFinishDialogError(boundedPendingReviewError(cause));
+        setFinishDialogError(contextualMessage(cause, FINISH_REVIEW_MESSAGES));
       }
     },
     onDiscard: async (): Promise<void> => {
@@ -401,7 +364,7 @@ export function usePendingReviewActions({
         await runPendingReviewCommand({ _tag: "Discard", confirmation: true });
         setFinishDialogOpen(false);
       } catch (cause) {
-        setFinishDialogError(boundedPendingReviewError(cause));
+        setFinishDialogError(contextualMessage(cause, FINISH_REVIEW_MESSAGES));
       }
     },
     onCheckGitHubAgain: checkGitHubAgain,

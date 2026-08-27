@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definePreference } from "./lib/local-preference";
 import {
   insightProviderModelSchema,
   type InsightProviderCatalogModel,
@@ -10,7 +11,9 @@ const MAX_MODELS = 512;
 
 /**
  * Only this provider's catalog is cached, so a corrupt or foreign entry
- * rejects the whole list rather than being dropped silently.
+ * rejects the whole list rather than being dropped silently. Unlike a
+ * preference, this cache has an authoritative source: the explicit fetch
+ * rebuilds it.
  */
 const codexModelCacheSchema = v.pipe(
   v.array(insightProviderModelSchema),
@@ -21,19 +24,17 @@ const codexModelCacheSchema = v.pipe(
   ),
 );
 
+const codexModelCache = definePreference({
+  key: (profileId: string) => `patchdesk.codex-models.v${VERSION}.${profileId}`,
+  schema: codexModelCacheSchema,
+  defaultValue: undefined,
+});
+
 /** Loads the cached Codex model catalog for one profile, rejecting corrupt local storage. */
 export function loadCodexModelCache(
   profileId: string,
 ): ReadonlyArray<InsightProviderCatalogModel> | undefined {
-  try {
-    const raw: unknown = JSON.parse(
-      window.localStorage.getItem(key(profileId)) ?? "null",
-    );
-    const parsed = v.safeParse(codexModelCacheSchema, raw);
-    return parsed.success ? parsed.output : undefined;
-  } catch {
-    return undefined;
-  }
+  return codexModelCache.load(profileId);
 }
 
 /** Saves the Codex model catalog fetched by an explicit user action, for one profile. */
@@ -41,14 +42,5 @@ export function saveCodexModelCache(
   profileId: string,
   models: ReadonlyArray<InsightProviderCatalogModel>,
 ): void {
-  try {
-    window.localStorage.setItem(key(profileId), JSON.stringify(models));
-  } catch {
-    // Local storage is best effort; a failed write just repeats the explicit
-    // fetch next time.
-  }
-}
-
-function key(profileId: string): string {
-  return `patchdesk.codex-models.v${VERSION}.${profileId}`;
+  codexModelCache.save(profileId, [...models]);
 }

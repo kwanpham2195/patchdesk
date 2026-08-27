@@ -4,6 +4,7 @@ import type {
   InsightProvider,
   InsightReasoning,
 } from "../../domain/insight-provider";
+import { definePreference } from "./lib/local-preference";
 
 export type InsightPreferenceType = "analysis" | "walkthrough";
 export type InsightRunPreference = {
@@ -21,20 +22,24 @@ const storedPreferenceSchema = v.object({
   reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
 });
 
+// A stored record is one provider/model/reasoning choice; a field that no
+// longer parses makes the remaining two meaningless, so the record rejects as
+// a whole and the caller picks a default from the live provider catalog.
+const insightRunPreference = definePreference({
+  key: (scope: {
+    readonly profileId: string;
+    readonly type: InsightPreferenceType;
+  }) => `patchdesk.insight-run.v${VERSION}.${scope.type}.${scope.profileId}`,
+  schema: storedPreferenceSchema,
+  defaultValue: undefined,
+});
+
 /** Loads one profile/type Insight preference, rejecting corrupt local storage. */
 export function loadInsightRunPreference(
   profileId: string,
   type: InsightPreferenceType,
 ): InsightRunPreference | undefined {
-  try {
-    const parsed = v.safeParse(
-      storedPreferenceSchema,
-      JSON.parse(window.localStorage.getItem(key(profileId, type)) ?? "null"),
-    );
-    return parsed.success ? parsed.output : undefined;
-  } catch {
-    return undefined;
-  }
+  return insightRunPreference.load({ profileId, type });
 }
 
 /** Saves one non-secret profile/type Insight preference. */
@@ -43,9 +48,5 @@ export function saveInsightRunPreference(
   type: InsightPreferenceType,
   preference: InsightRunPreference,
 ): void {
-  window.localStorage.setItem(key(profileId, type), JSON.stringify(preference));
-}
-
-function key(profileId: string, type: InsightPreferenceType): string {
-  return `patchdesk.insight-run.v${VERSION}.${type}.${profileId}`;
+  insightRunPreference.save({ profileId, type }, preference);
 }

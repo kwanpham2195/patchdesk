@@ -9,6 +9,7 @@ import {
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
 import type { RepositoryIdentity } from "../../domain/repository-identity";
+import { definePreference } from "./lib/local-preference";
 
 const inboxStateFilterSchema = v.picklist(INBOX_STATE_FILTER_VALUES);
 
@@ -97,36 +98,56 @@ const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
 // route, and the renderer all use for the same value.
 // Bumping VERSION (rather than migrating the v5 key) resets every field
 // to default on an old-version read, matching how v1 -> v2 -> v3 -> v4
-// already worked: `loadLegacyInboxViewPreferences` only recognizes the v1
-// key, so any other stale version falls straight through to
-// `DEFAULT_INBOX_VIEW_PREFERENCES`.
+// already worked: only the v1 key is still recognized, so any other stale
+// version falls straight through to `DEFAULT_INBOX_VIEW_PREFERENCES`.
 const VERSION = 6;
 
-const storedSchema = v.object({
-  version: v.literal(VERSION),
-  preferences: preferencesSchema,
+const storedSchema = v.pipe(
+  v.object({
+    version: v.literal(VERSION),
+    preferences: preferencesSchema,
+  }),
+  v.transform((stored): InboxViewPreferences =>
+    preferencesFrom(stored.preferences),
+  ),
+);
+
+const legacyStoredSchema = v.pipe(
+  v.object({
+    version: v.literal(1),
+    preferences: preferencesSchema,
+  }),
+  v.transform((stored): InboxViewPreferences => ({
+    ...preferencesFrom(stored.preferences),
+    state: "open",
+  })),
+);
+
+const inboxViewPreference = definePreference({
+  key: (profileId: string) => `patchdesk.inbox-view.v${VERSION}.${profileId}`,
+  schema: storedSchema,
+  defaultValue: undefined,
+  encodeStored: (value: InboxViewPreferences) => ({
+    version: VERSION,
+    preferences: value,
+  }),
 });
 
-const legacyStoredSchema = v.object({
-  version: v.literal(1),
-  preferences: preferencesSchema,
+const legacyInboxViewPreference = definePreference({
+  key: (profileId: string) => `patchdesk.inbox-view.v1.${profileId}`,
+  schema: legacyStoredSchema,
+  defaultValue: undefined,
 });
 
 /** Loads local, profile-scoped presentation choices; malformed values safely reset. */
 export function loadInboxViewPreferences(
   profileId: string,
 ): InboxViewPreferences {
-  const stored = globalThis.window?.localStorage.getItem(key(profileId));
-  if (stored === null || stored === undefined)
-    return loadLegacyInboxViewPreferences(profileId);
-  try {
-    const parsed = v.safeParse(storedSchema, JSON.parse(stored));
-    return parsed.success
-      ? preferencesFrom(parsed.output.preferences)
-      : DEFAULT_INBOX_VIEW_PREFERENCES;
-  } catch {
-    return DEFAULT_INBOX_VIEW_PREFERENCES;
-  }
+  return (
+    inboxViewPreference.load(profileId) ??
+    legacyInboxViewPreference.load(profileId) ??
+    DEFAULT_INBOX_VIEW_PREFERENCES
+  );
 }
 
 /** Persists only local presentation state; review and GitHub state never enter this key. */
@@ -135,10 +156,7 @@ export function saveInboxViewPreferences(
   update: Partial<InboxViewPreferences>,
 ): InboxViewPreferences {
   const next = { ...loadInboxViewPreferences(profileId), ...update };
-  globalThis.window?.localStorage.setItem(
-    key(profileId),
-    JSON.stringify({ version: VERSION, preferences: next }),
-  );
+  inboxViewPreference.save(profileId, next);
   return next;
 }
 
@@ -158,27 +176,4 @@ function preferencesFrom(
       : { ...base, selectedIdentity: parsed.selectedIdentity };
   if (parsed.selectedRepository === undefined) return withIdentity;
   return { ...withIdentity, selectedRepository: parsed.selectedRepository };
-}
-
-function key(profileId: string): string {
-  return `patchdesk.inbox-view.v${VERSION}.${profileId}`;
-}
-
-function legacyKey(profileId: string): string {
-  return `patchdesk.inbox-view.v1.${profileId}`;
-}
-
-function loadLegacyInboxViewPreferences(
-  profileId: string,
-): InboxViewPreferences {
-  const stored = globalThis.window?.localStorage.getItem(legacyKey(profileId));
-  if (stored === null || stored === undefined)
-    return DEFAULT_INBOX_VIEW_PREFERENCES;
-  try {
-    const parsed = v.safeParse(legacyStoredSchema, JSON.parse(stored));
-    if (!parsed.success) return DEFAULT_INBOX_VIEW_PREFERENCES;
-    return { ...preferencesFrom(parsed.output.preferences), state: "open" };
-  } catch {
-    return DEFAULT_INBOX_VIEW_PREFERENCES;
-  }
 }

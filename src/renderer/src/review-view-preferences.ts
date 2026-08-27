@@ -1,5 +1,7 @@
 import * as v from "valibot";
 
+import { definePreference } from "./lib/local-preference";
+
 export type ReviewViewPreferences = {
   readonly diffStyle: "unified" | "split";
   readonly fileMode: "all" | "selected";
@@ -23,25 +25,29 @@ const preferencesSchema = v.object({
   overflow: v.fallback(v.picklist(["scroll", "wrap"]), "scroll"),
 });
 
-const storedSchema = v.object({
-  version: v.literal(STORAGE_VERSION),
-  preferences: preferencesSchema,
+const storedSchema = v.pipe(
+  v.object({
+    version: v.literal(STORAGE_VERSION),
+    preferences: preferencesSchema,
+  }),
+  v.transform((stored): ReviewViewPreferences => stored.preferences),
+);
+
+const reviewViewPreference = definePreference({
+  key: (profileId: string) =>
+    `patchdesk.review-view.v${STORAGE_VERSION}.${profileId}`,
+  schema: storedSchema,
+  defaultValue: DEFAULT_REVIEW_VIEW_PREFERENCES,
+  encodeStored: (value: ReviewViewPreferences) => ({
+    version: STORAGE_VERSION,
+    preferences: value,
+  }),
 });
 
 export function loadReviewViewPreferences(
   profileId: string,
 ): ReviewViewPreferences {
-  const stored = globalThis.window?.localStorage.getItem(storageKey(profileId));
-  if (stored === null || stored === undefined)
-    return DEFAULT_REVIEW_VIEW_PREFERENCES;
-  try {
-    const parsed = v.safeParse(storedSchema, JSON.parse(stored));
-    return parsed.success
-      ? parsed.output.preferences
-      : DEFAULT_REVIEW_VIEW_PREFERENCES;
-  } catch {
-    return DEFAULT_REVIEW_VIEW_PREFERENCES;
-  }
+  return reviewViewPreference.load(profileId);
 }
 
 export function saveReviewViewPreferences(
@@ -49,13 +55,6 @@ export function saveReviewViewPreferences(
   update: Partial<ReviewViewPreferences>,
 ): ReviewViewPreferences {
   const next = { ...loadReviewViewPreferences(profileId), ...update };
-  globalThis.window?.localStorage.setItem(
-    storageKey(profileId),
-    JSON.stringify({ version: STORAGE_VERSION, preferences: next }),
-  );
+  reviewViewPreference.save(profileId, next);
   return next;
-}
-
-function storageKey(profileId: string): string {
-  return `patchdesk.review-view.v${STORAGE_VERSION}.${profileId}`;
 }

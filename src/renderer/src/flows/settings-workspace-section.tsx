@@ -9,11 +9,15 @@ import { ChevronDown, FolderOpen, Plus, X } from "lucide-react";
 import { requestJson, selectDirectory } from "../api-client";
 import {
   parseDiscoveredRepos,
-  parseEnvironmentCheckResponse,
   type DiscoveredRepo,
   type EnvironmentCheckResponse,
   type GithubAuthAccount,
 } from "../renderer-contracts";
+import {
+  useApiProbe,
+  useEnvironmentCheck,
+  type ApiProbeState,
+} from "../hooks/use-api-probe";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import {
   Collapsible,
@@ -79,18 +83,6 @@ type ProfileListEntry = {
   readonly id: string;
   readonly value: string;
 };
-
-/** Local state machine for the Reviewing-as panel's `GET /v1/environment` probe, mirroring `inbox-flow.tsx`'s `ToolsCheckState`. */
-type ReviewingAsState =
-  | { readonly kind: "checking" }
-  | { readonly kind: "loaded"; readonly env: EnvironmentCheckResponse }
-  | { readonly kind: "error" };
-
-/** Local state machine for the workspace-root discovery scan (`GET /v1/watchlist/suggestions`), scoped to the saved profile since discovery runs server-side against it. */
-type RootDiscoveryState =
-  | { readonly kind: "loading" }
-  | { readonly kind: "loaded"; readonly repos: ReadonlyArray<DiscoveredRepo> }
-  | { readonly kind: "error" };
 
 /** What a single workspace-root row shows for its discovery result. */
 type RootDiscoveryStatus =
@@ -173,7 +165,7 @@ export function WorkspaceProfileSection({
   const savedRepos = dashboard?.profile.repos ?? EMPTY_REPOS;
   const savedRoots = dashboard?.profile.workspaceRoots ?? EMPTY_ROOTS;
   const discoveredRepos =
-    rootDiscovery.kind === "loaded" ? rootDiscovery.repos : EMPTY_DISCOVERED;
+    rootDiscovery.kind === "loaded" ? rootDiscovery.value : EMPTY_DISCOVERED;
   // The single merge and the single grouping of discovered + watched
   // repositories for this render — replaces what used to be two independent
   // fetch/group pipelines (this hook's own and `WatchlistPanel`'s).
@@ -675,7 +667,7 @@ function useWorkspaceProfileDraft({
 }
 
 type ReviewingAsProbeHook = {
-  readonly reviewingAs: ReviewingAsState;
+  readonly reviewingAs: ApiProbeState<EnvironmentCheckResponse>;
   readonly recheck: () => void;
 };
 
@@ -688,33 +680,9 @@ function useReviewingAsProbe(
   ghAccount: string,
   updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void,
 ): ReviewingAsProbeHook {
-  const [reviewingAs, setReviewingAs] = useState<ReviewingAsState>({
-    kind: "checking",
-  });
   const [reviewingAsAttempt, setReviewingAsAttempt] = useState(0);
   const reviewingAsDefaultApplied = useRef(false);
-
-  useEffect(() => {
-    let active = true;
-    setReviewingAs({ kind: "checking" });
-    void (async () => {
-      try {
-        const value = await requestJson("/v1/environment");
-        if (!active) return;
-        const parsed = parseEnvironmentCheckResponse(value);
-        setReviewingAs(
-          parsed === undefined
-            ? { kind: "error" }
-            : { kind: "loaded", env: parsed },
-        );
-      } catch {
-        if (active) setReviewingAs({ kind: "error" });
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [reviewingAsAttempt]);
+  const reviewingAs = useEnvironmentCheck(reviewingAsAttempt);
 
   // Defaults the account selection the first time authenticated accounts
   // load, but only when the draft has no account yet — a one-time
@@ -725,7 +693,7 @@ function useReviewingAsProbe(
   useEffect(() => {
     if (reviewingAsDefaultApplied.current) return;
     if (reviewingAs.kind !== "loaded") return;
-    const accounts = reviewingAs.env.githubAccounts;
+    const accounts = reviewingAs.value.githubAccounts;
     if (accounts.length === 0) return;
     reviewingAsDefaultApplied.current = true;
     if (ghAccount !== "") return;
@@ -770,10 +738,7 @@ const EMPTY_ENTRIES: ReadonlyArray<WatchlistEntry> = [];
  */
 function useWorkspaceRootDiscovery(
   savedProfile: Profile | undefined,
-): RootDiscoveryState {
-  const [state, setState] = useState<RootDiscoveryState>({
-    kind: "loading",
-  });
+): ApiProbeState<ReadonlyArray<DiscoveredRepo>> {
   // A JSON key rather than the profile object itself: the dashboard is
   // refetched (and reallocated) on every reload even when nothing this scan
   // cares about changed, and `profileDirty`'s dependency check above uses
@@ -784,29 +749,10 @@ function useWorkspaceRootDiscovery(
     repos: savedProfile?.repos,
   });
 
-  useEffect(() => {
-    let active = true;
-    setState({ kind: "loading" });
-    void (async () => {
-      try {
-        const value = await requestJson("/v1/watchlist/suggestions");
-        if (!active) return;
-        const parsed = parseDiscoveredRepos(value);
-        setState(
-          parsed === undefined
-            ? { kind: "error" }
-            : { kind: "loaded", repos: parsed },
-        );
-      } catch {
-        if (active) setState({ kind: "error" });
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [savedKey]);
-
-  return state;
+  return useApiProbe(
+    { path: "/v1/watchlist/suggestions", restartKey: savedKey },
+    parseDiscoveredRepos,
+  );
 }
 
 /**
@@ -822,14 +768,14 @@ function useWorkspaceRootDiscovery(
 function workspaceRootDiscoveryStatus(
   root: string,
   savedProfile: Profile | undefined,
-  discovery: RootDiscoveryState,
+  discovery: ApiProbeState<ReadonlyArray<DiscoveredRepo>>,
   byRoot: ReadonlyMap<string, ReadonlyArray<WatchlistEntry>>,
   isWatched: (entry: WatchlistEntry) => boolean,
 ): RootDiscoveryStatus {
   const trimmedRoot = root.trim();
   const savedRoots = savedProfile?.workspaceRoots ?? EMPTY_ROOTS;
   if (!savedRoots.includes(trimmedRoot)) return { kind: "unsaved" };
-  if (discovery.kind === "loading") return { kind: "loading" };
+  if (discovery.kind === "checking") return { kind: "loading" };
   if (discovery.kind === "error") return { kind: "error" };
   const rootEntries = byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES;
   const watchedCount = rootEntries.filter(isWatched).length;
@@ -987,9 +933,11 @@ type ReviewingAsView =
       readonly accounts: ReadonlyArray<GithubAuthAccount>;
     };
 
-function reviewingAsView(state: ReviewingAsState): ReviewingAsView {
+function reviewingAsView(
+  state: ApiProbeState<EnvironmentCheckResponse>,
+): ReviewingAsView {
   if (state.kind !== "loaded") return { kind: state.kind };
-  const { env } = state;
+  const env = state.value;
   const accounts = env.githubAccounts;
   if (
     accounts.length === 0 ||
@@ -1042,7 +990,7 @@ function ReviewingAsPanel({
   updateProfileDraft,
   onRecheck,
 }: {
-  readonly state: ReviewingAsState;
+  readonly state: ApiProbeState<EnvironmentCheckResponse>;
   readonly profileDraft: ProfileDraft;
   readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
   readonly onRecheck: () => void;

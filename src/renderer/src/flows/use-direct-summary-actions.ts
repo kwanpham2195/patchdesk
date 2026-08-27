@@ -1,6 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 
-import { PatchdeskApiError, requestJson } from "../api-client";
+import {
+  contextualMessage,
+  isOutcomeUnknownRetry,
+  requestJson,
+} from "../api-client";
+import { DIRECT_SUMMARY_MESSAGES } from "../review-copy";
 import {
   parseDirectSummaryReviewResponse,
   type DirectSummaryReviewProjection,
@@ -44,30 +49,6 @@ export type DirectSummaryActionsInput = {
 export type DirectSummaryActionsResult = {
   readonly directSummary: DirectSummaryPanel | undefined;
 };
-
-function boundedDirectSummaryError(cause: unknown): string {
-  if (cause instanceof PatchdeskApiError) {
-    if (
-      cause.kind === "outcome_unknown" ||
-      cause.kind === "ambiguous_write" ||
-      cause.kind === "timeout"
-    )
-      return "GitHub could not confirm the submission. Check GitHub again before trying again.";
-    if (cause.kind === "review_write_in_progress")
-      return "Another action is still finishing. Your review was not submitted. Wait a moment, then submit again.";
-    if (cause.kind === "pending_review")
-      return "A pending review already exists. Refresh, then finish or discard that review before submitting a summary.";
-    if (cause.kind === "self_approval_not_allowed")
-      return "You can’t approve your own pull request. Choose Comment or ask another reviewer to approve it.";
-    if (cause.kind === "stale_head")
-      return "The pull request changed. Refresh before submitting a review summary.";
-    if (cause.kind === "rejected" || cause.kind === "github_rejected")
-      return "GitHub rejected the review summary.";
-    if (cause.kind === "forbidden")
-      return "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.";
-  }
-  return "Patchdesk could not submit this review summary. Check GitHub again or refresh.";
-}
 
 function directSummarySignature(
   projection: DirectSummaryReviewProjection,
@@ -159,17 +140,14 @@ export function useDirectSummaryActions({
         setDirectSummaryError(undefined);
         return result;
       } catch (cause) {
-        if (
-          cause instanceof PatchdeskApiError &&
-          (cause.kind === "outcome_unknown" ||
-            cause.kind === "ambiguous_write" ||
-            cause.kind === "timeout")
-        )
+        if (isOutcomeUnknownRetry(cause))
           setDirectSummaryOverride({
             state: "recovery_required",
             resolution: "check_required",
           });
-        setDirectSummaryError(boundedDirectSummaryError(cause));
+        setDirectSummaryError(
+          contextualMessage(cause, DIRECT_SUMMARY_MESSAGES),
+        );
         throw cause;
       } finally {
         setDirectSummaryBusy(false);
@@ -210,7 +188,9 @@ export function useDirectSummaryActions({
         setDirectSummaryError(undefined);
         return result;
       } catch (cause) {
-        setDirectSummaryError(boundedDirectSummaryError(cause));
+        setDirectSummaryError(
+          contextualMessage(cause, DIRECT_SUMMARY_MESSAGES),
+        );
         throw cause;
       } finally {
         setDirectSummaryBusy(false);

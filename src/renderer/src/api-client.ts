@@ -162,6 +162,55 @@ export async function selectDirectory(
   );
 }
 
+/**
+ * The copy one screen shows for a failed request: the screen's own wording
+ * for the kinds it words differently, and `safeMessage` for the rest.
+ *
+ * `fallback` is only for a cause that is not a Patchdesk API failure at all —
+ * a bug, or a parse that threw — where there is no kind to word.
+ */
+export type ContextualMessages = Partial<Record<ApiFailureKind, string>> & {
+  readonly fallback: string;
+};
+
+/**
+ * Picks the message a screen shows for a failure.
+ *
+ * `overrides` names only the kinds this screen says something more useful
+ * about than the API does — usually because it can name the action that
+ * failed and what to do next. Every other API failure falls back to
+ * `safeMessage`, the same bounded copy the error already carries, so a kind
+ * the screen has not thought about still gets an accurate sentence instead of
+ * one generic line for everything.
+ *
+ * Nothing this returns is GitHub's own text or the raw response body.
+ */
+export function contextualMessage(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a `catch` binding is `unknown` by construction; recognising a PatchdeskApiError is what this function is for.
+  cause: unknown,
+  overrides: ContextualMessages,
+): string {
+  if (!(cause instanceof PatchdeskApiError)) return overrides.fallback;
+  return overrides[cause.kind] ?? safeMessage(cause.kind);
+}
+
+/**
+ * Whether a failure leaves the write's outcome unknown: GitHub may or may not
+ * have applied it. A screen that sees this must offer "check GitHub again"
+ * rather than a plain retry, which could apply the write twice.
+ */
+export function isOutcomeUnknownRetry(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a `catch` binding is `unknown` by construction; recognising a PatchdeskApiError is what this function is for.
+  cause: unknown,
+): cause is PatchdeskApiError {
+  return (
+    cause instanceof PatchdeskApiError &&
+    (cause.kind === "outcome_unknown" ||
+      cause.kind === "ambiguous_write" ||
+      cause.kind === "timeout")
+  );
+}
+
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- narrows a raw JSON error body (already the local API's own response payload) at this exact I/O boundary; no earlier parser exists for this shape.
 function errorCode(value: unknown): string | undefined {
   // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external input at this exact I/O boundary predicate; no earlier parser exists for this primitive shape.

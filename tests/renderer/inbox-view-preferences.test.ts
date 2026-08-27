@@ -142,4 +142,26 @@ describe("inbox view preferences", () => {
     window.localStorage.setItem(KEY, "{not json");
     expect(loadInboxViewPreferences("profile-1")).toEqual(DEFAULTS);
   });
+
+  // Precedence: the current key wins whenever it holds a usable record, and
+  // the version 1 key is consulted whenever it does not — an unreadable
+  // current value is the same situation as an absent one, so the maintainer's
+  // older stored view is preferred over the hardcoded default.
+  it("prefers a usable current value over version 1 data", () => {
+    store({ state: "merged" });
+    storeLegacy({ selectedLabels: ["bug"] });
+    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
+      state: "merged",
+      selectedLabels: [],
+    });
+  });
+
+  it("falls through to version 1 data when the current value is unusable", () => {
+    window.localStorage.setItem(KEY, "{not json");
+    storeLegacy({ state: "merged", selectedLabels: ["bug"] });
+    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
+      state: "open",
+      selectedLabels: ["bug"],
+    });
+  });
 });
