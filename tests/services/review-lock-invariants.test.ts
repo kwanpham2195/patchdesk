@@ -14,7 +14,7 @@ import {
   values,
   withinDeadline,
 } from "./review-invariant-fixtures";
-import { writeGate } from "./review-lock-invariant-services";
+import { refreshService, writeGate } from "./review-lock-invariant-services";
 import { lockRows } from "./review-lock-invariant-rows";
 
 /**
@@ -111,20 +111,35 @@ describe("every Review entry point waits for the coordinator lock", () => {
 });
 
 /**
- * A LIVE DEFECT, deliberately not fixed here (see
- * `.agents/PLANS/program/reports/E12.md`).
+ * Fixed by F2. `PublishedFeedbackService.serialized` takes the Review lock
+ * through `coordinator.acquire` and releases it in a `finally` once its
+ * `operation` settles. The write used to call the injected `refresh` from
+ * INSIDE that `operation` (via the old `afterWrite`), and `refresh` is
+ * `ReviewRefreshService.refresh`, which takes the SAME key through
+ * `withReviewLock`. `KeyedMutex` is not reentrant, so that refresh queued
+ * behind a lock its own caller was holding and neither ever completed.
  *
- * `PublishedFeedbackService.serialized` takes the Review lock through
- * `coordinator.acquire`, and holds it across the whole command. `afterWrite`
- * then calls the injected `refresh`, which is `ReviewRefreshService.refresh` —
- * and that takes the SAME key through `withReviewLock`. `KeyedMutex` is not
- * reentrant, so the refresh queues behind a lock its own caller is holding and
- * neither ever completes. Three routes reach it: comment edit, comment delete,
- * and review dismiss.
+ * The fix keeps the write itself inside `serialized` (`classifyWrite` only
+ * classifies the GitHub write's outcome, taking no lock of its own) and
+ * moves the refresh to `refreshAfterWrite`, called only after `serialized`
+ * returns — i.e. after the lock is already released. `refresh` is otherwise
+ * unchanged: it still takes the coordinator lock itself, which is now safe
+ * because nothing holds it when `refreshAfterWrite` runs. Three routes reach
+ * this shape: comment edit, comment delete, and review dismiss.
  *
- * Each row asserts the correct behaviour — the command settles — and is
- * `it.todo` until F1 replaces `afterWrite` with the shared write-confirmation
- * executor, which removes the refresh-inside-the-lock call.
+ * Cost: releasing before the refresh opens a window where another command
+ * can acquire the same key and run before the refresh does. That is
+ * acceptable here — the write has already succeeded against GitHub by then,
+ * and the refresh is a read reconciliation of local state, not part of the
+ * durable write. A user who hits that window sees their edit/delete/dismiss
+ * succeed and the local view catch up on the next refresh, exactly as if
+ * they had triggered that refresh a moment later by hand.
+ *
+ * Each row below wires a REAL `ReviewOperationCoordinator` and a REAL
+ * `ReviewRefreshService` — sharing one coordinator instance with the service
+ * under test, the exact shape that deadlocks if the refresh ever moves back
+ * inside `serialized` — and asserts the command settles well inside the
+ * deadline instead of hanging.
  */
 describe("a published-feedback write does not re-enter the lock it holds", () => {
   const routes: ReadonlyArray<{
@@ -199,20 +214,16 @@ describe("a published-feedback write does not re-enter the lock it holds", () =>
   });
 
   for (const route of routes) {
-    // F1 — replacing `afterWrite` with the write-confirmation executor removes
-    // the `withReviewLock` call this flow makes while already holding the key.
-    it.todo(`${route.name} settles instead of deadlocking on its own Review lock`, async () => {
+    it(`${route.name} settles instead of deadlocking on its own Review lock`, async () => {
       const coordinator = new ReviewOperationCoordinator();
       const track = recorder();
+      const refresh = refreshService(coordinator, track);
       const service = new PublishedFeedbackService(
         // SAFETY: recorded stubs; this row asserts settling, not the outcome.
         writeGate(track) as never,
         gatewayReachingTheWrite() as never,
         coordinator,
-        () =>
-          coordinator.withReviewLock(profileId, reviewId, async () =>
-            ok(undefined),
-          ),
+        (input) => refresh.refresh(input) as Promise<Result<unknown, unknown>>,
       );
       await expect(
         withinDeadline(route.issue(service), 500, `${route.name} refresh`),

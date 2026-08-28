@@ -54,7 +54,7 @@ export class PublishedFeedbackService {
     readonly body: string;
   }): Promise<Result<void, PublishedFeedbackFailure>> {
     if (input.body.trim().length === 0) return err("github_write_failed");
-    return this.serialized(input, async () => {
+    const written = await this.serialized(input, async () => {
       const fresh = await this.fresh(input.profileId, input.reviewId);
       if (fresh._tag === "err") return fresh;
       const allowed = await this.authorizedComment(
@@ -71,16 +71,18 @@ export class PublishedFeedbackService {
       if (latestHead._tag === "err") return latestHead;
       const writer = this.github.updateReviewComment;
       if (writer === undefined) return err("github_write_failed");
-      return this.afterWrite(
+      return this.classifyWrite(
         await writer({
           profile: fresh.value.profile,
           pr: sessionPr(fresh.value.session),
           commentId: input.commentId,
           body: input.body.trim(),
         }),
-        input,
       );
     });
+    // `serialized` has already released the Review lock by the time this
+    // runs, so the refresh below cannot re-enter it. See `refreshAfterWrite`.
+    return written._tag === "err" ? written : this.refreshAfterWrite(input);
   }
 
   async deleteComment(input: {
@@ -90,7 +92,7 @@ export class PublishedFeedbackService {
     readonly confirmation: boolean;
   }): Promise<Result<void, PublishedFeedbackFailure>> {
     if (!input.confirmation) return err("confirmation_required");
-    return this.serialized(input, async () => {
+    const written = await this.serialized(input, async () => {
       const fresh = await this.fresh(input.profileId, input.reviewId);
       if (fresh._tag === "err") return fresh;
       const allowed = await this.authorizedComment(
@@ -107,15 +109,17 @@ export class PublishedFeedbackService {
       if (latestHead._tag === "err") return latestHead;
       const writer = this.github.deleteReviewComment;
       if (writer === undefined) return err("github_write_failed");
-      return this.afterWrite(
+      return this.classifyWrite(
         await writer({
           profile: fresh.value.profile,
           pr: sessionPr(fresh.value.session),
           commentId: input.commentId,
         }),
-        input,
       );
     });
+    // `serialized` has already released the Review lock by the time this
+    // runs, so the refresh below cannot re-enter it. See `refreshAfterWrite`.
+    return written._tag === "err" ? written : this.refreshAfterWrite(input);
   }
 
   async dismissReview(input: {
@@ -129,7 +133,7 @@ export class PublishedFeedbackService {
       return err(
         input.confirmation ? "github_write_failed" : "confirmation_required",
       );
-    return this.serialized(input, async () => {
+    const written = await this.serialized(input, async () => {
       const fresh = await this.fresh(input.profileId, input.reviewId);
       if (fresh._tag === "err") return fresh;
       const allowed = await this.authorizedReview(
@@ -145,16 +149,18 @@ export class PublishedFeedbackService {
       if (latestHead._tag === "err") return latestHead;
       const writer = this.github.dismissReview;
       if (writer === undefined) return err("github_write_failed");
-      return this.afterWrite(
+      return this.classifyWrite(
         await writer({
           profile: fresh.value.profile,
           pr: sessionPr(fresh.value.session),
           reviewId: input.publishedReviewId,
           message: input.message.trim(),
         }),
-        input,
       );
     });
+    // `serialized` has already released the Review lock by the time this
+    // runs, so the refresh below cannot re-enter it. See `refreshAfterWrite`.
+    return written._tag === "err" ? written : this.refreshAfterWrite(input);
   }
 
   private async serialized<
@@ -248,14 +254,31 @@ export class PublishedFeedbackService {
         : err("permission_denied");
   }
 
-  private async afterWrite(
+  /**
+   * Classifies the GitHub write's own outcome, INSIDE the Review lock.
+   * Deliberately does not refresh: `ReviewRefreshService.refresh` takes the
+   * same Review lock through `withReviewLock`, and `KeyedMutex` is not
+   * reentrant, so refreshing here — before `serialized` releases the lock —
+   * would queue behind this call's own lock and never complete. See
+   * `refreshAfterWrite`.
+   */
+  private classifyWrite(
     result: Result<void, unknown>,
-    input: {
-      readonly profileId: WorkspaceProfileId;
-      readonly reviewId: ReviewId;
-    },
-  ): Promise<Result<void, PublishedFeedbackFailure>> {
-    if (result._tag === "err") return err("github_write_failed");
+  ): Result<void, PublishedFeedbackFailure> {
+    return result._tag === "err" ? err("github_write_failed") : ok(undefined);
+  }
+
+  /**
+   * Runs only after `serialized` has already released the Review lock, so a
+   * failure here can never strand it. Reconciles local state with the write
+   * that already succeeded against GitHub; not part of the durable write
+   * itself, so a caller can safely observe the write as done even if this
+   * read reconciliation is still pending or fails.
+   */
+  private async refreshAfterWrite(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<Result<void, PublishedFeedbackFailure>> {
     if (this.refresh === undefined) return ok(undefined);
     const refreshed = await this.refresh(input);
     return refreshed._tag === "ok" ? ok(undefined) : err("refresh_required");
