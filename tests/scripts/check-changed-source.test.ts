@@ -35,6 +35,11 @@ type HarnessOptions = {
   /** Raw ratchet Oxlint result. Overrides `ratchetDiagnosticsCount`. */
   readonly ratchetResult?: CommandResult;
   /**
+   * Raw `git merge-base <base> HEAD` result, which only the one-argument
+   * (index-as-head) form asks for. Defaults to the resolved base commit.
+   */
+  readonly mergeBaseResult?: CommandResult;
+  /**
    * `git show` result keyed by its `<revision>:<path>` argument, for the
    * size ratchet. When this is left unset entirely, any `git show` call
    * gets `DEFAULT_SHOW_CONTENT` (a few short lines), which never trips the
@@ -141,6 +146,8 @@ function createHarness(options: HarnessOptions = {}) {
       // matters for that, not this content.
       return success("irrelevant-but-valid\n");
     }
+    if (command === "git" && args[0] === "merge-base")
+      return options.mergeBaseResult ?? success(`${resolvedBase}\n`);
     if (command === "git" && args[0] === "ls-tree") {
       // Real `git ls-tree <head> -- lint-baseline.json` prints a tree entry
       // for a tracked file whether or not the commit under test touches it,
@@ -288,19 +295,82 @@ describe("checkChangedSource", () => {
     expect(harness.stderr.join("")).toContain("lint error");
   });
 
-  it("rejects missing or blank commit arguments before running commands", async () => {
+  it("rejects missing, blank, or surplus commit arguments before running commands", async () => {
     const missing = createHarness();
     const blank = createHarness();
+    const surplus = createHarness();
 
     await expect(
-      checkChangedSource({ ...missing.options, args: ["base-sha"] }),
+      checkChangedSource({ ...missing.options, args: [] }),
     ).resolves.toBe(2);
     await expect(
       checkChangedSource({ ...blank.options, args: [" ", "head-sha"] }),
     ).resolves.toBe(2);
+    await expect(
+      checkChangedSource({ ...surplus.options, args: ["a", "b", "c"] }),
+    ).resolves.toBe(2);
     expect(missing.calls).toHaveLength(0);
     expect(blank.calls).toHaveLength(0);
+    expect(surplus.calls).toHaveLength(0);
     expect(missing.stderr.join("")).toContain("Usage:");
+  });
+
+  it("reads the index as head when given a base alone, from the merge base", async () => {
+    // `pnpm check` runs this form. It has to see the work in hand: reading
+    // the commits only would report on the state before the fix being
+    // handed over.
+    const harness = createHarness();
+
+    await expect(
+      checkChangedSource({ ...harness.options, args: ["base-sha"] }),
+    ).resolves.toBe(0);
+    expect(harness.calls[1]?.args).toEqual([
+      "merge-base",
+      "--end-of-options",
+      resolvedBase,
+      "HEAD",
+    ]);
+    expect(harness.calls[2]?.args).toEqual([
+      "diff",
+      "--cached",
+      "--name-only",
+      "--diff-filter=ACDMR",
+      "-z",
+      resolvedBase,
+    ]);
+    // An empty revision is git's own syntax for the index, so the size
+    // ratchet reads `:<path>` rather than any commit's copy.
+    expect(
+      harness.calls.some(
+        (call) => call.args[0] === "show" && call.args[1] === ":src/example.ts",
+      ),
+    ).toBe(true);
+  });
+
+  it("fails when the indexed content pushes a file past the size ceiling", async () => {
+    const harness = createHarness({
+      showResults: new Map([
+        [":src/example.ts", success(linesOf(1001))],
+        [`${resolvedBase}:src/example.ts`, success(linesOf(999))],
+      ]),
+    });
+
+    await expect(
+      checkChangedSource({ ...harness.options, args: ["base-sha"] }),
+    ).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain("1001");
+    expect(harness.stderr.join("")).toContain("Move something out");
+  });
+
+  it("fails closed when git cannot find a merge base", async () => {
+    const harness = createHarness({
+      mergeBaseResult: failure("fatal: Not a valid object name", 128),
+    });
+
+    await expect(
+      checkChangedSource({ ...harness.options, args: ["base-sha"] }),
+    ).resolves.toBe(1);
+    expect(harness.stderr.join("")).toContain("merge base");
   });
 
   it("rejects an option-like commit argument before discovery", async () => {

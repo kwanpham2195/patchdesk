@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 
+import { countLines, isImportSpecifierOnlyGrowth } from "./file-growth-lib.mjs";
 import {
   defaultFileExists,
   execute,
@@ -234,17 +235,34 @@ export async function checkSourcePaths(
   return runSourceQualityChecks(files, { cwd, run, fileExists, output });
 }
 
-const GROWTH_LINE_LIMIT = 1000;
+const FILE_LINE_CEILING = 1000;
 const NEW_FILE_LINE_LIMIT = 500;
 
 /**
- * The size ratchet: a file already over 1,000 lines at `base` may not grow
- * any further at `head`, and a file that does not exist at `base` under its
- * own path AND was not renamed from somewhere else (a genuinely new file)
- * may not exceed 500 lines at `head`. A file at exactly 1,000 lines that
- * grows is not yet over the ratchet's line -- only a file already *over*
- * 1,000 lines is blocked from growing further, so the boundary itself can
- * still move by one line before the gate engages.
+ * The size ratchet. Two rules:
+ *
+ * 1. **No file may grow while it is over 1,000 lines at `head`.** A file at
+ *    999 lines cannot become 1,001, and a file already at 3,020 cannot
+ *    become 3,021. The ceiling is absolute, so it composes across commits:
+ *    forty commits of five lines each hit it at exactly the same place one
+ *    commit of two hundred does.
+ * 2. **A genuinely new file may not exceed 500 lines at `head`** -- one that
+ *    does not exist at `base` under its own path AND was not renamed from
+ *    somewhere else.
+ *
+ * Rule 1 replaced an earlier `base > 1,000 && head > base`, which left a
+ * blind band: a file between 501 and 999 lines could grow freely, and the
+ * commit that carried it over the line could carry it as far as it liked.
+ * Measured over this repository's own history, that is not hypothetical --
+ * `tests/scripts/lint-staged.test.ts` went 763 -> 1,111 in one commit and
+ * `tests/services/review-workbench-projection.test.ts` went 981 -> 1,097 in
+ * another. Both are now over the ceiling and frozen there for good. Rule 1
+ * would have stopped each of them at the boundary instead, and it is the
+ * only growth it would have stopped in 39 commits that touched source.
+ *
+ * Growth that is nothing but added import specifiers is exempt (see
+ * `isImportSpecifierOnlyGrowth`, `scripts/file-growth-lib.mjs`). It is
+ * exempt from rule 1 only: a new file has no base to compare against.
  *
  * `base` and `head` are each validated the first time the loop actually
  * needs to read something at that revision (see `validateRevision`), and the
@@ -298,27 +316,29 @@ export async function checkFileSizes(files, { cwd, run, base, head, output }) {
     if (isGeneratedFile(file)) continue;
 
     if (!(await ensureValidRevision(head, "head"))) return 1;
-    const headLines = await countLinesAtRevision(run, cwd, head, file, output);
-    if (headLines === undefined) return 1;
-    if (headLines === null) continue; // deleted at head; nothing to ratchet
+    const headContent = await readAtRevision(run, cwd, head, file, output);
+    if (headContent === undefined) return 1;
+    if (headContent === null) continue; // deleted at head; nothing to ratchet
 
     if (!(await ensureValidRevision(base, "base"))) return 1;
-    let baseLines = await countLinesAtRevision(run, cwd, base, file, output);
-    if (baseLines === undefined) return 1;
+    let baseContent = await readAtRevision(run, cwd, base, file, output);
+    if (baseContent === undefined) return 1;
 
-    if (baseLines === null) {
+    if (baseContent === null) {
       if (renameMap === undefined) {
         renameMap = await loadRenameMap(run, cwd, base, head, output);
         if (renameMap === undefined) return 1;
       }
       const oldPath = renameMap.get(file);
       if (oldPath !== undefined) {
-        baseLines = await countLinesAtRevision(run, cwd, base, oldPath, output);
-        if (baseLines === undefined) return 1;
+        baseContent = await readAtRevision(run, cwd, base, oldPath, output);
+        if (baseContent === undefined) return 1;
       }
     }
 
-    if (baseLines === null) {
+    const headLines = countLines(headContent);
+
+    if (baseContent === null) {
       if (headLines > NEW_FILE_LINE_LIMIT) {
         output.stderr(
           `${file} is a new file at ${headLines} lines, over the ${NEW_FILE_LINE_LIMIT}-line limit for new files. Move something out.\n`,
@@ -328,12 +348,14 @@ export async function checkFileSizes(files, { cwd, run, base, head, output }) {
       continue;
     }
 
-    if (baseLines > GROWTH_LINE_LIMIT && headLines > baseLines) {
-      output.stderr(
-        `${file} grew from ${baseLines} to ${headLines} lines. Files already over ${GROWTH_LINE_LIMIT} lines cannot grow. Move something out.\n`,
-      );
-      failed = true;
-    }
+    const baseLines = countLines(baseContent);
+    if (headLines <= FILE_LINE_CEILING || headLines <= baseLines) continue;
+    if (isImportSpecifierOnlyGrowth(baseContent, headContent)) continue;
+
+    output.stderr(
+      `${file} grew from ${baseLines} to ${headLines} lines, past the ${FILE_LINE_CEILING}-line ceiling. No file may grow beyond it. Move something out.\n`,
+    );
+    failed = true;
   }
 
   return failed ? 1 : 0;
@@ -356,7 +378,7 @@ function isGeneratedFile(file) {
  * `^{commit}` would reject.
  *
  * Without this check, a bad revision and a merely-absent path are the same
- * thing to `git show`'s exit code (both nonzero), so `countLinesAtRevision`
+ * thing to `git show`'s exit code (both nonzero), so `readAtRevision`
  * would misread "the revision itself doesn't exist" as "this file is new"
  * or "this file was deleted" -- a broken ratchet reporting success. Same
  * idiom as `resolveCommitRef` in `scripts/quality-ratchet-lib.mjs`.
@@ -441,11 +463,15 @@ function parseRenameMap(stdout) {
 }
 
 /**
- * @returns {Promise<number | null | undefined>} The line count, `null` if
- *   the file does not exist at `revision`, or `undefined` if the `git show`
+ * The file's whole content at `revision`. The ratchet needs the text, not
+ * just a count: the import-specifier exemption has to see which lines the
+ * growth is made of.
+ *
+ * @returns {Promise<string | null | undefined>} The content, `null` if the
+ *   file does not exist at `revision`, or `undefined` if the `git show`
  *   command itself could not be run (a crash, reported by `execute`).
  */
-async function countLinesAtRevision(run, cwd, revision, path, output) {
+async function readAtRevision(run, cwd, revision, path, output) {
   const result = await execute(
     run,
     "git",
@@ -455,13 +481,7 @@ async function countLinesAtRevision(run, cwd, revision, path, output) {
   );
   if (result === undefined) return undefined;
   if (!hasExit(result, 0)) return null;
-  return countLines(result.stdout);
-}
-
-function countLines(content) {
-  if (content === "") return 0;
-  const lines = content.split("\n");
-  return lines.at(-1) === "" ? lines.length - 1 : lines.length;
+  return result.stdout;
 }
 
 async function runSourceQualityChecks(

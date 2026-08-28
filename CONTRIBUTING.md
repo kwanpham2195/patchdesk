@@ -159,6 +159,44 @@ removed or made module-private, so the ratchet and a bare blocking `pnpm knip`
 are now the same gate. Fix a new finding by deleting the dead code or dropping
 the `export` keyword; do not raise the baseline.
 
+### The size ratchet
+
+`pnpm lint:staged` and `pnpm lint:changed` both apply it to every changed
+JavaScript and TypeScript file. Two rules:
+
+- **No file may grow past 1,000 lines.** A file at 999 lines cannot become
+  1,001, and a file already at 3,020 cannot become 3,021. The ceiling is
+  absolute, so it composes: forty commits of five lines each meet it in the
+  same place one commit of two hundred does.
+- **A new file may not exceed 500 lines.** A rename is not a new file: the
+  ratchet reads the old path's count at the base revision first.
+
+`*.generated.ts` is exempt — a generator decides that size, not a reviewer.
+
+The ceiling replaced an earlier rule that only blocked a file _already over_
+1,000 lines. That left a blind band: anything between 501 and 999 lines could
+grow freely, and the change that carried a file over the line could carry it
+as far as it liked. Two files in this repository did exactly that.
+`tests/scripts/lint-staged.test.ts` went 763 → 1,111 in one commit and
+`tests/services/review-workbench-projection.test.ts` went 981 → 1,097 in
+another; both sit above the ceiling now and are frozen there. Replaying the
+ceiling over the 39 commits that touched source since the ratchet landed
+blocks those two changes and nothing else.
+
+Growth that is **only added import specifiers** is exempt (see
+`isImportSpecifierOnlyGrowth` in `scripts/file-growth-lib.mjs`). Without it
+the ratchet refuses the change that makes a file smaller: naming an imported
+type instead of repeating it inline costs one line inside an import
+declaration, and a file already at the ceiling could not spend it. The
+exemption needs two things at once — nothing outside the import declarations
+may gain a line, and at least one specifier must have been added — so a
+comment, a blank line between specifiers, or a body statement cannot ride
+along. Which lines are import lines is decided by parsing the declaration
+whole, and the two revisions are compared by the text of the lines that
+differ rather than by a count of each kind, so moving where the import region
+ends buys nothing. It never applies to a new file, which has no base to
+compare against.
+
 Do not silence findings by weakening rules, adding casts, or faking
 `SAFETY:` comments. Genuine I/O boundaries keep `unknown` via targeted
 per-file overrides listed file by file in `.oxlintrc.json`'s `overrides`
@@ -168,16 +206,29 @@ invariant the surrounding code checked, not restate what the code does.
 ## Verifying before pushing
 
 `pnpm check` is the pre-handoff command: it runs `pnpm typecheck`,
-`pnpm test:root`, `pnpm lint:staged` (checks what you will commit), then
-`pnpm knip:ratchet`, in that order, and stops at the first failure.
-`pnpm lint:staged` reports "no staged source files" when nothing is staged
-and still runs the count ratchet, so the repo-wide finding count is checked
-either way.
+`pnpm test:all`, `pnpm lint:staged` (checks what you will commit),
+`pnpm lint:changed -- origin/main` (checks the whole branch the way the pull
+request gates will), then `pnpm knip:ratchet`, in that order, and stops at the
+first failure. `pnpm lint:staged` reports "no staged source files" when
+nothing is staged and still runs the count ratchet, so the repo-wide finding
+count is checked either way.
+
+`pnpm check` runs both shapes of the changed-source gate on purpose. The
+staged shape measures one commit's worth of change against `HEAD`; the branch
+shape measures every file the branch has touched since it left `origin/main`,
+so a file that stopped formatting cleanly, or grew past the size ceiling,
+twenty commits ago is caught before CI finds it.
+
+`pnpm lint:changed` takes its head two ways. With a base and a head it is that
+commit pair, which is what CI passes. **With a base alone it reads the index
+as head**, from `git merge-base <base> HEAD`, so `pnpm check` reports on the
+work in hand rather than only on what is already committed — otherwise the
+last command before a handoff would answer about the tree before the fix.
+`origin/main` is the pull request's base branch, so a stale remote-tracking
+ref checks a stale range: `git fetch` first.
 
 Beyond `pnpm check`:
 
-- `pnpm test:all` (root suite and separate `runtime/flue` suite) — the
-  complete test gate; `pnpm check` only runs the root suite.
 - `pnpm knip` prints the unused files, exports, and dependencies behind the
   Knip ratchet's number. `pnpm check` runs the ratchet; run `pnpm knip` when
   you need to see which entries make it up.

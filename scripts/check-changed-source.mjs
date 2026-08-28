@@ -17,13 +17,24 @@ import { checkLintRatchet } from "./quality-ratchet-lib.mjs";
 const projectRoot = resolve(import.meta.dirname, "..");
 
 /**
- * Run changed-source quality checks for exactly one base/head pair, then
- * check the repo-wide Oxlint finding count against the baseline committed at
- * `head`.
+ * Run changed-source quality checks over everything a branch has changed,
+ * then check the repo-wide Oxlint finding count against the baseline at the
+ * same head.
  *
- * This is the pull-request shape of the gate. The commit shape lives in
- * `lintStaged` (`scripts/lint-staged-lib.mjs`), which runs the same ratchet
- * against the index instead of a commit pair.
+ * This is the branch shape of the gate. The commit shape lives in
+ * `lintStaged` (`scripts/lint-staged-lib.mjs`), which measures one commit's
+ * worth of staged change against `HEAD`.
+ *
+ * Two forms, the same split `pnpm knip:ratchet` uses:
+ *
+ * - `<base> <head>`, two commits, is what the pull request gates run.
+ * - `<base>` alone reads the **index** as head, so `pnpm check` sees the work
+ *   in hand rather than only what is already committed. Without it, the one
+ *   command a developer runs before handing work over would report on the
+ *   state before their fix -- a gate answering about the wrong tree looks
+ *   exactly like a gate that works. The base is moved to `git merge-base
+ *   <base> HEAD` first, so a base branch that has moved on since the branch
+ *   started does not read as changes this branch made.
  *
  * @param {{
  *   readonly args: ReadonlyArray<string>;
@@ -41,16 +52,27 @@ export async function checkChangedSource({
   fileExists,
   output,
 }) {
-  if (args.length !== 2 || args.some((value) => value.trim().length === 0)) {
-    output.stderr("Usage: pnpm lint:changed -- <base> <head>\n");
+  if (
+    (args.length !== 1 && args.length !== 2) ||
+    args.some((value) => value.trim().length === 0)
+  ) {
+    output.stderr("Usage: pnpm lint:changed -- <base> [<head>]\n");
     return 2;
   }
 
   const [baseRef, headRef] = args;
-  const base = await resolveCommitRef(baseRef, "base", { cwd, run, output });
+  let base = await resolveCommitRef(baseRef, "base", { cwd, run, output });
   if (base === undefined) return 1;
-  const head = await resolveCommitRef(headRef, "head", { cwd, run, output });
-  if (head === undefined) return 1;
+
+  let head = "";
+  if (headRef === undefined) {
+    base = await mergeBaseWithHead(base, { cwd, run, output });
+    if (base === undefined) return 1;
+  } else {
+    head = await resolveCommitRef(headRef, "head", { cwd, run, output });
+    if (head === undefined) return 1;
+  }
+
   const result = await execute(run, "git", diffArgs(base, head), cwd, output);
   if (result === undefined) return 1;
   if (!hasExit(result, 0)) {
@@ -86,13 +108,58 @@ export async function checkChangedSource({
 }
 
 /**
+ * The commit both branches share, so `<base>` alone means "everything this
+ * branch changed" and never "everything that changed on the base branch too".
+ *
+ * @returns {Promise<string | undefined>} `undefined` means git failed,
+ *   already reported to `output`.
+ */
+async function mergeBaseWithHead(base, { cwd, run, output }) {
+  const result = await execute(
+    run,
+    "git",
+    ["merge-base", "--end-of-options", base, "HEAD"],
+    cwd,
+    output,
+  );
+  if (result === undefined) return undefined;
+  if (!hasExit(result, 0)) {
+    output.stderr(
+      `git could not find a merge base between the base commit and HEAD (status=${String(result.status)}).\n`,
+    );
+    replay(result, output);
+    return undefined;
+  }
+  const resolved = result.stdout.trim();
+  if (!/^[0-9a-f]{40,64}$/.test(resolved)) {
+    output.stderr("git returned an invalid merge-base commit reference.\n");
+    return undefined;
+  }
+  return resolved;
+}
+
+/**
  * `D` is in the filter so a deleted `.oxlintrc.json`, or a deleted rule file
  * under `tools/oxlint/`, still reaches the count ratchet's configuration
  * rule. The source checks consume the same list and are unharmed: a path
  * deleted at `head` is not on disk, so `checkSourcePaths` filters it out
  * before any tool or line count reads it.
+ *
+ * An empty `head` means the index. `git diff --cached <base>` is the index
+ * against that commit, matching `git show :<path>`, which is how
+ * `checkFileSizes` and the count ratchet read an empty revision.
  */
 function diffArgs(base, head) {
+  if (head === "") {
+    return [
+      "diff",
+      "--cached",
+      "--name-only",
+      "--diff-filter=ACDMR",
+      "-z",
+      base,
+    ];
+  }
   return [
     "diff",
     "--name-only",
