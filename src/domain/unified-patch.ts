@@ -204,22 +204,11 @@ export function tokenizeUnifiedPatchLines(
       tokens.push({ kind: "hunk_header", index, raw, range });
       continue;
     }
-    // A hunk body only runs for the line count its header declared. Past that
-    // count the file-prefix markers below become readable again, so a deleted
-    // line whose own text begins with `--- ` is never mistaken for a path line.
-    const inBody = inHunk && (oldRemaining > 0 || newRemaining > 0);
-    if (!inBody) {
-      const prefix = prefixToken(raw, index);
-      if (prefix !== undefined) {
-        tokens.push(prefix);
-        continue;
-      }
-    }
-    if (!inHunk) {
-      tokens.push({ kind: "other", index, raw });
-      continue;
-    }
-    if (raw.startsWith("\\")) {
+    // `\ No newline at end of file` is part of the hunk whether or not the
+    // header's declared counts are already exhausted — it consumes neither
+    // count, so it must be classified before the exhaustion gate below can
+    // end the hunk early and reclassify it as a bare `other` line.
+    if (inHunk && raw.startsWith("\\")) {
       tokens.push({
         kind: "body",
         index,
@@ -227,6 +216,29 @@ export function tokenizeUnifiedPatchLines(
         marker: "no_newline",
         text: raw,
       });
+      continue;
+    }
+    // A hunk body only runs for the line count its header declared. Past that
+    // count the file-prefix markers below become readable again, so a deleted
+    // line whose own text begins with `--- ` is never mistaken for a path
+    // line. The trailing empty string `patch.split("\n")` yields after the
+    // patch's closing newline is never real content either, even when a hunk
+    // header declares more lines than its body actually delivers (a patch cut
+    // short mid-hunk) and so never exhausts its own counts on its own.
+    const isTrailingSplitArtifact = index === lines.length - 1 && raw === "";
+    const inBody =
+      inHunk &&
+      (oldRemaining > 0 || newRemaining > 0) &&
+      !isTrailingSplitArtifact;
+    if (!inBody) {
+      const prefix = prefixToken(raw, index);
+      if (prefix !== undefined) {
+        tokens.push(prefix);
+        continue;
+      }
+    }
+    if (!inBody) {
+      tokens.push({ kind: "other", index, raw });
       continue;
     }
     if (raw.startsWith("-")) {

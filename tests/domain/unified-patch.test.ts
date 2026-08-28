@@ -4,6 +4,7 @@ import {
   parseRepoRelativePath,
   type RepoRelativePath,
 } from "../../src/domain/ids";
+import { narrativeHunkManifest } from "../../src/domain/narrative-walkthrough";
 import { mapFindingLocation, parseUnifiedPatch } from "../../src/domain/patch";
 import { ReviewPatchIndex } from "../../src/services/review-patch-index";
 import {
@@ -112,6 +113,57 @@ rename to src/new name.ts
 +new
 `;
 
+// Unedited `git diff` output (throwaway repo, `f.txt`: "one\ntwo\nthree\n" ->
+// "one\ntwo\nTHREE\n"). The hunk declares 3 old / 3 new lines and the patch
+// string ends with the newline `git diff` always emits after the last body
+// line, so `patch.split("\n")` yields one trailing empty string past both
+// counts — the EOF case B11 exists for.
+const endOfFilePatch = `diff --git a/f.txt b/f.txt
+index 4cb29ea..2f43848 100644
+--- a/f.txt
++++ b/f.txt
+@@ -1,3 +1,3 @@
+ one
+ two
+-three
++THREE
+`;
+
+// Unedited `git diff` output (throwaway repo, `eof.txt`: "AAA\nBBB\nCCC" ->
+// "AAA\nBBB\nDDD", neither revision ending in a newline). Changing the last
+// line puts `\ No newline at end of file` at the very END of the hunk, right
+// where both declared counts (3 old / 3 new) are already exhausted — the
+// ordinary shape for any changed file with no trailing newline, and the case
+// B11's `inBody` guard silently reclassified from `body`/`no_newline` to a
+// bare `other`, breaking `narrativeHunkManifest` for the whole patch.
+const endOfHunkNoNewlinePatch = `diff --git a/eof.txt b/eof.txt
+index 32bd28a..269ef55 100644
+--- a/eof.txt
++++ b/eof.txt
+@@ -1,3 +1,3 @@
+ AAA
+ BBB
+-CCC
+\\ No newline at end of file
++DDD
+\\ No newline at end of file
+`;
+
+// Hand-built: a hunk header can declare more lines than its body delivers —
+// a patch cut short mid-hunk, or a truncated GitHub \`patch\` field (this
+// repo already models truncation elsewhere with the \`omitted\` token). Real
+// \`git diff\` never emits this shape; it always closes a hunk once it has
+// written exactly the declared count.
+const truncatedHunkPatch = `diff --git a/t.txt b/t.txt
+--- a/t.txt
++++ b/t.txt
+@@ -1,5 +1,5 @@
+ one
+ two
+ three
+ four
+`;
+
 function bodyNumbers(
   patch: string,
 ): ReadonlyArray<readonly [string, number | undefined, number | undefined]> {
@@ -207,12 +259,13 @@ describe("UnifiedPatchTokenizer", () => {
       ["added", undefined, 2],
       ["context", 3, 3],
       ["context", 4, 4],
-      // The empty string `split("\n")` yields after the closing newline, which
-      // `parseUnifiedPatch` has always counted one past the last hunk line.
-      ["other", 5, 5],
+      // The empty string `split("\n")` yields after the closing newline, one
+      // past the hunk's declared 4 old / 4 new lines. It carries no numbers:
+      // B11 stops emitting body tokens once both hunk counts are exhausted,
+      // so this is a plain `other` token, not counted by `bodyNumbers`.
     ]);
     const files = parseUnifiedPatch(deletionPatch);
-    expect([...(files[0]?.oldLines ?? [])]).toEqual([1, 2, 3, 4, 5]);
+    expect([...(files[0]?.oldLines ?? [])]).toEqual([1, 2, 3, 4]);
     expect(
       mapFindingLocation(files, {
         file: "m.sql",
@@ -230,6 +283,90 @@ describe("UnifiedPatchTokenizer", () => {
     ).toMatchObject({ selectedLines: ["SELECT 2;"] });
   });
 
+  it("stops emitting body tokens once the hunk's declared line counts are exhausted, so no line exists one past EOF", () => {
+    // The trailing empty string `split("\n")` yields is a bare `other` token
+    // with no line numbers, not a numbered `body` token one past the file.
+    expect(tokenizeUnifiedPatch(endOfFilePatch).at(-1)).toEqual({
+      kind: "other",
+      index: 9,
+      raw: "",
+    });
+    const files = parseUnifiedPatch(endOfFilePatch);
+    expect([...(files[0]?.oldLines ?? [])]).toEqual([1, 2, 3]);
+    expect([...(files[0]?.newLines ?? [])]).toEqual([1, 2, 3]);
+    // The real last line still anchors normally.
+    expect(
+      fingerprintPatchAnchor(endOfFilePatch, {
+        path: repoPath("f.txt"),
+        side: "new",
+        startLine: 3,
+        line: 3,
+      }),
+    ).toMatchObject({ selectedLines: ["THREE"] });
+    // A line one past EOF must not resolve to an anchor: before B11's fix
+    // this returned a fingerprint for a line that does not exist in the file.
+    expect(
+      fingerprintPatchAnchor(endOfFilePatch, {
+        path: repoPath("f.txt"),
+        side: "new",
+        startLine: 4,
+        line: 4,
+      }),
+    ).toBeUndefined();
+    // A hunk header can also declare MORE lines than its body delivers (a
+    // patch cut short mid-hunk, or a truncated GitHub `patch` field). The
+    // declared counts (5/5) never reach zero on their own, so the trailing
+    // empty string must be refused on its own terms, not just when counts
+    // run out.
+    expect(tokenizeUnifiedPatch(truncatedHunkPatch).at(-1)).toEqual({
+      kind: "other",
+      index: 8,
+      raw: "",
+    });
+    const truncatedFiles = parseUnifiedPatch(truncatedHunkPatch);
+    expect([...(truncatedFiles[0]?.oldLines ?? [])]).toEqual([1, 2, 3, 4]);
+    expect([...(truncatedFiles[0]?.newLines ?? [])]).toEqual([1, 2, 3, 4]);
+    expect(
+      fingerprintPatchAnchor(truncatedHunkPatch, {
+        path: repoPath("t.txt"),
+        side: "new",
+        startLine: 4,
+        line: 4,
+      }),
+    ).toMatchObject({ selectedLines: ["four"] });
+    // The header claims a 5th line on both sides; the body never delivered
+    // one. An anchor there must not resolve.
+    expect(
+      fingerprintPatchAnchor(truncatedHunkPatch, {
+        path: repoPath("t.txt"),
+        side: "new",
+        startLine: 5,
+        line: 5,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps an end-of-hunk no-newline marker as body/no_newline, so narrativeHunkManifest still indexes the patch", () => {
+    // Both markers occupy neither side. The first sits mid-hunk (already
+    // covered above); the second is the end-of-hunk case, where both
+    // declared counts are already exhausted before the marker line is
+    // reached. Before this fix, `inBody` being false there reclassified it
+    // to a bare `other` token.
+    expect(bodyNumbers(endOfHunkNoNewlinePatch)).toEqual([
+      ["context", 1, 1],
+      ["context", 2, 2],
+      ["removed", 3, undefined],
+      ["no_newline", undefined, undefined],
+      ["added", undefined, 3],
+      ["no_newline", undefined, undefined],
+    ]);
+    const manifest = narrativeHunkManifest(endOfHunkNoNewlinePatch);
+    expect(manifest._tag).toBe("ok");
+    if (manifest._tag === "ok") {
+      expect(manifest.value.map((hunk) => hunk.path)).toEqual(["eof.txt"]);
+    }
+  });
+
   it("gives a mid-hunk no-newline marker no line on either side, so later lines keep their numbers", () => {
     expect(bodyNumbers(midHunkNoNewlinePatch)).toEqual([
       ["context", 1, 1],
@@ -239,13 +376,15 @@ describe("UnifiedPatchTokenizer", () => {
       ["no_newline", undefined, undefined],
       ["added", undefined, 3],
       ["added", undefined, 4],
-      // The empty string `split("\n")` yields after the closing newline.
-      ["other", 4, 5],
+      // The empty string `split("\n")` yields after the closing newline, one
+      // past the hunk's declared 3 old / 4 new lines. It carries no numbers:
+      // B11 stops emitting body tokens once both hunk counts are exhausted,
+      // so this is a plain `other` token, not counted by `bodyNumbers`.
     ]);
     const files = parseUnifiedPatch(midHunkNoNewlinePatch);
     expect(files[0]).toMatchObject({ additions: 2, deletions: 1 });
-    expect([...(files[0]?.oldLines ?? [])]).toEqual([1, 2, 3, 4]);
-    expect([...(files[0]?.newLines ?? [])]).toEqual([1, 2, 3, 4, 5]);
+    expect([...(files[0]?.oldLines ?? [])]).toEqual([1, 2, 3]);
+    expect([...(files[0]?.newLines ?? [])]).toEqual([1, 2, 3, 4]);
     // Counting the marker as a body line would shift both of these one high.
     expect(
       fingerprintPatchAnchor(midHunkNoNewlinePatch, {
