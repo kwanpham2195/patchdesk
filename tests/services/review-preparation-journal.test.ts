@@ -173,6 +173,27 @@ function noSavedSession(): SessionLoader {
 }
 
 /**
+ * A Session store whose `load` fails for a reason other than `"not_found"` —
+ * a transient read error (`"io"`), or a schema/parse failure on a file that
+ * is nonetheless present (`"invalid_json"`, `"invalid_stored_value"`,
+ * `"sensitive_value"`). Every one of these means the store could not tell
+ * "the Session is gone" from "the Session is there but this read failed", so
+ * B12's fix must not treat any of them like `noSavedSession()` above.
+ */
+function unreadableSession(
+  reason: "io" | "invalid_json" | "invalid_stored_value" | "sensitive_value",
+): SessionLoader {
+  return {
+    load: async () =>
+      err({
+        _tag: "StorageFailure" as const,
+        operation: "read" as const,
+        reason,
+      }),
+  };
+}
+
+/**
  * A Session as the store would hand it back. `prNumberOverride` builds one
  * whose identity-derived id is deliberately *not* the id recovery asked
  * about, which is the store answering "that is not the Session you meant".
@@ -610,6 +631,108 @@ describe("ReviewPreparationJournal", () => {
     await expect(access(target)).rejects.toThrow();
     await expect(access(worktreePath)).rejects.toThrow();
     await expect(access(subject.journalFile)).rejects.toThrow();
+  });
+
+  it("leaves a committing journal's target and worktree alone when the store's load fails with an io error, and retries the same journal on the next sweep", async () => {
+    // B12: on `main`, every load failure — not only `not_found` — fell
+    // through to the same `cleanup(worktrees)` as `noSavedSession()` above.
+    // A transient `io` read error (a disk hiccup, EACCES, EIO) reading a
+    // perfectly healthy Session's file must not be treated as proof the
+    // Session never landed. This is the same fixture shape as the
+    // `noSavedSession()` test above; the only difference is the store's
+    // failure reason.
+    const subject = await fixture();
+    const target = subject.paths.patchFile(
+      subject.profileId,
+      subject.sessionId,
+    );
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, "patch", "utf8");
+
+    const worktreePath = subject.paths.worktreeDirectory(
+      subject.profileId,
+      subject.sessionId,
+    );
+    const repositoryPath = join(subject.root, "repo");
+    await mkdir(repositoryPath, { recursive: true });
+    await mkdir(worktreePath, { recursive: true });
+    await writeFile(
+      join(worktreePath, "worktree.json"),
+      JSON.stringify({
+        profileId: subject.profileId,
+        sessionId: subject.sessionId,
+      }),
+      "utf8",
+    );
+    await writePersistedJournal(subject.journalFile, {
+      profileId: subject.profileId,
+      sessionId: subject.sessionId,
+      targets: [target],
+      state: "committing",
+      worktree: { path: worktreePath, repositoryPath },
+    });
+    await expectPresent(target);
+    await expectPresent(worktreePath);
+
+    await expect(
+      ReviewPreparationJournal.recover(
+        subject.paths,
+        worktrees(subject.paths),
+        unreadableSession("io"),
+      ),
+    ).resolves.toEqual({ recovered: 0, failed: 1 });
+
+    // Fail safe: nothing was touched.
+    await expectPresent(target);
+    await expectPresent(worktreePath);
+    await expectPresent(subject.journalFile);
+
+    // Not stuck forever, not a hot loop: the very next sweep re-asks the
+    // store, and once it can actually answer "not_found", this same journal
+    // recovers on that later call, not because anything special happened —
+    // recovery was simply retried.
+    await expect(
+      ReviewPreparationJournal.recover(
+        subject.paths,
+        worktrees(subject.paths),
+        noSavedSession(),
+      ),
+    ).resolves.toEqual({ recovered: 1, failed: 0 });
+    await expect(access(target)).rejects.toThrow();
+    await expect(access(worktreePath)).rejects.toThrow();
+    await expect(access(subject.journalFile)).rejects.toThrow();
+  });
+
+  it("also leaves the artifacts alone for a different non-not_found reason (control: invalid_stored_value), proving the guard is not narrowed to just io", async () => {
+    // Control for the test above. If the fix were mistakenly written as
+    // `reason === "io"` instead of `reason !== "not_found"`, this test would
+    // catch it: `invalid_stored_value` is a different reason that must be
+    // treated exactly the same way — "the store could not tell me" — even
+    // though it is not an `io` failure.
+    const subject = await fixture();
+    const target = subject.paths.patchFile(
+      subject.profileId,
+      subject.sessionId,
+    );
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, "patch", "utf8");
+    await writePersistedJournal(subject.journalFile, {
+      profileId: subject.profileId,
+      sessionId: subject.sessionId,
+      targets: [target],
+      state: "committing",
+    });
+
+    await expect(
+      ReviewPreparationJournal.recover(
+        subject.paths,
+        worktrees(subject.paths),
+        unreadableSession("invalid_stored_value"),
+      ),
+    ).resolves.toEqual({ recovered: 0, failed: 1 });
+
+    await expectPresent(target);
+    await expectPresent(subject.journalFile);
   });
 
   it("returns journal_exists rather than overwriting a live journal, leaving it byte-identical", async () => {

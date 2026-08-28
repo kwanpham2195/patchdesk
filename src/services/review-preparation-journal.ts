@@ -460,16 +460,29 @@ export class ReviewPreparationJournal {
    * A `committing` journal means the Session save it was guarding may or may
    * not have completed before the crash: when a matching Session is on disk,
    * that save won, and only the journal itself is removed (the Session keeps
-   * its artifacts). Otherwise — the load fails, or the loaded Session's id
-   * doesn't match — the save never landed, so this falls through to the same
+   * its artifacts). Otherwise — the store reports the Session is genuinely
+   * absent (`reason: "not_found"`), or the loaded Session's id doesn't match
+   * — the save never landed, so this falls through to the same
    * `cleanup(worktrees)` a `preparing` journal gets, removing every artifact
    * it recorded.
    *
    * Those two are the only fall-through conditions, and both are the store
-   * answering. "There is no store" is deliberately not a third one: `sessions`
-   * is non-optional all the way down from the two public entry points, so the
-   * question is always asked of something and the destructive branch can never
-   * be reached by a caller that simply forgot an argument.
+   * answering "no". A load that fails for any other reason (`"io"`,
+   * `"invalid_json"`, `"invalid_stored_value"`, `"sensitive_value"`) is not an
+   * answer — it means this process could not find out whether the Session
+   * landed, which is exactly as consistent with "it did land and a disk
+   * hiccup is in the way" as with "it never landed". Treating "I don't know"
+   * as "no" would delete a healthy Session's patch file and worktree on a
+   * transient read error. So only `reason === "not_found"` reaches cleanup;
+   * every other reason returns early, leaves the journal and every artifact
+   * untouched, and reports failure so the next sweep (the next app startup,
+   * or `recoverSession`'s one retry inside `prepare()`) asks the store again
+   * — never a hot loop, since nothing here retries synchronously.
+   *
+   * "There is no store" is deliberately not a fall-through condition either:
+   * `sessions` is non-optional all the way down from the two public entry
+   * points, so the question is always asked of something and the destructive
+   * branch can never be reached by a caller that simply forgot an argument.
    */
   private static async recoverJournalFile(
     paths: PatchdeskPaths,
@@ -531,6 +544,17 @@ export class ReviewPreparationJournal {
             .then(() => true)
             .catch(() => false);
         }
+        // The store could not answer at all — "not_found" is the only
+        // reason that means "genuinely absent"; every other reason (`"io"`,
+        // `"invalid_json"`, `"invalid_stored_value"`, `"sensitive_value"`)
+        // means this read could not tell a missing Session from a healthy
+        // one it merely failed to reach. Fail safe: leave the journal and
+        // every recorded artifact exactly as they are and report failure so
+        // the next sweep asks again, instead of treating "I don't know" as
+        // "it's gone" and deleting a Session's patch file and worktree on a
+        // disk hiccup.
+        if (session._tag === "err" && session.error.reason !== "not_found")
+          return false;
       }
       const cleaned = await journal.cleanup(worktrees);
       return cleaned._tag === "ok";
