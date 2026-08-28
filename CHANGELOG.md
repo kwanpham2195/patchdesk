@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the Analysis merge policy having no effect on the merge itself; an open P0 or P1 Finding now blocks or asks for acknowledgement, as the profile's policy says, instead of being ignored at the merge.
+- Fixed a dismissed Finding still counting against merge; the merge badge and the merge itself now count only open Findings, so what the badge offers is what the merge allows.
 - Fixed Patchdesk refusing to merge a pull request in a repository with no required-review rule; when GitHub reports no review requirement, that is no longer read as a missing approval.
 - Fixed the merge badge reading "Ready to merge" above a panel that said GitHub blocked the merge; the badge and the reasons listed below it now agree.
 - Merge readiness now names the checks GitHub requires: the panel says which required check failed and which has not finished yet, and a repository with no branch-protection rule no longer reads as "Required checks have not passed."

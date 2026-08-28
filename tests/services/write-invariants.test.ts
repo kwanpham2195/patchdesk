@@ -199,9 +199,21 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
             }),
         } as never,
         {
-          load: async () => ok(values.review),
-          save: async () => ok(undefined),
-        },
+          reviews: {
+            load: async () => ok(values.review),
+            save: async () => ok(undefined),
+          },
+          // SAFETY: this fixture answers the one Insight read the merge gate
+          // makes -- the current Analysis -- with "no Analysis stored".
+          insights: {
+            loadTyped: async () =>
+              err({
+                _tag: "StorageFailure",
+                operation: "read",
+                reason: "not_found",
+              }),
+          },
+        } as never,
         new ReviewOperationCoordinator(),
       );
       const command = () =>

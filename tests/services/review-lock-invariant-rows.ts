@@ -349,10 +349,16 @@ export const lockRows: ReadonlyArray<LockRow> = [
           ),
         } as never,
         writeGate(track) as never,
+        // SAFETY: recorded stubs; this row refuses before it reads either.
         {
-          load: track.stub("reviews.load", ok(values.review)),
-          save: track.stub("reviews.save", ok(undefined)),
-        },
+          reviews: {
+            load: track.stub("reviews.load", ok(values.review)),
+            save: track.stub("reviews.save", ok(undefined)),
+          },
+          insights: {
+            loadTyped: track.stub("insights.loadTyped", ok(undefined)),
+          },
+        } as never,
         coordinator,
       );
       return () =>

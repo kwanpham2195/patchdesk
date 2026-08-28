@@ -3,6 +3,10 @@ import type {
   GitHubReader,
 } from "../adapters/github/github-adapter";
 import {
+  analysisMergeInput,
+  type MergeGateFinding,
+} from "../domain/analysis-merge-findings";
+import {
   evaluateMergeReadiness,
   type MergeReadiness,
 } from "../domain/merge-readiness";
@@ -42,10 +46,14 @@ export type MergeFailure =
 export async function mergePullRequest(input: {
   readonly profile: WorkspaceProfileConfig;
   readonly session: ReviewSession;
+  /**
+   * The current Analysis Findings, dismissals already applied. Absent means
+   * "no current Analysis", not "no Findings were checked" -- the caller reads
+   * them with `mergeGateFindings`, which returns nothing for an Analysis that
+   * does not belong to the revision being merged.
+   */
   readonly result?: {
-    readonly findings: ReadonlyArray<{
-      readonly severity: "P0" | "P1" | "P2" | "P3";
-    }>;
+    readonly findings: ReadonlyArray<MergeGateFinding>;
   };
   readonly gateway: MergeGateway;
   readonly method: MergeMethod;
@@ -87,10 +95,6 @@ export async function mergePullRequest(input: {
   if (policy.value.baseSha !== revision.value.identity.baseSha)
     return err({ _tag: "RevisionChangedBlocksMerge" });
 
-  const analysisMergePolicyField =
-    input.profile.analysisMergePolicy === undefined
-      ? {}
-      : { analysisMergePolicy: input.profile.analysisMergePolicy };
   const readiness = evaluateMergeReadiness({
     isCurrentHead: true,
     isOpen: policy.value.isOpen,
@@ -105,13 +109,13 @@ export async function mergePullRequest(input: {
     // would refuse every merge in such a repository.
     hasGitHubReviewBlocker: policy.value.reviewDecision === "review_required",
     hasRequestChanges: policy.value.reviewDecision === "changes_requested",
-    hasHighSeverityFinding: (input.result?.findings ?? []).some(
-      (finding) => finding.severity === "P0" || finding.severity === "P1",
+    // The Workbench merge badge counts the same Findings through the same
+    // helper, so a dismissed Finding never separates what the badge offers
+    // from what this gate allows.
+    ...analysisMergeInput(
+      input.result?.findings ?? [],
+      input.profile.analysisMergePolicy,
     ),
-    analysisFindingCount: (input.result?.findings ?? []).filter(
-      (finding) => finding.severity === "P0" || finding.severity === "P1",
-    ).length,
-    ...analysisMergePolicyField,
   });
   if (readiness._tag === "Blocked")
     return err({ _tag: "MergeBlocked", readiness });

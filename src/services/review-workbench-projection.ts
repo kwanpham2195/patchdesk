@@ -59,10 +59,14 @@ import {
 } from "../domain/merge-readiness";
 import {
   sameInsightRevision,
-  type InsightFindingDismissal,
   type InsightRecord,
   type RetainedInsight,
 } from "../domain/insight-record";
+import {
+  analysisMergeInput,
+  mergeGateFindings,
+  projectAnalysisFindings,
+} from "../domain/analysis-merge-findings";
 import type { PendingReviewProjection } from "./pending-review-service";
 import {
   projectDirectSummaryReview,
@@ -419,7 +423,16 @@ export class ReviewWorkbenchProjectionService {
               mergeAggregate.reviewDecision === "review_required",
             hasRequestChanges:
               mergeAggregate.reviewDecision === "changes_requested",
-            hasHighSeverityFinding: false,
+            // The merge gate reads the same Findings through the same two
+            // helpers, so the badge never offers a merge the gate refuses.
+            ...analysisMergeInput(
+              mergeGateFindings(storedInsights.value.analysis, {
+                sessionId: session.id,
+                headSha: session.key.headSha,
+                patchHash,
+              }),
+              profile.analysisMergePolicy,
+            ),
           })
         : {
             _tag: "Blocked" as const,
@@ -1140,24 +1153,6 @@ function projectStoredInsight<T>(
       progress: record.walkthroughProgress,
     }),
     retained,
-  };
-}
-
-function projectAnalysisFindings(
-  value: ReviewResult,
-  record: InsightRecord<RetainedInsight<ReviewResult>>,
-): ReviewResult {
-  const dismissed = new Set(
-    (record.dismissals ?? []).map(
-      (entry: InsightFindingDismissal) => entry.findingId,
-    ),
-  );
-  return {
-    ...value,
-    findings: value.findings.map((finding) => ({
-      ...finding,
-      disposition: dismissed.has(finding.id) ? "dismissed" : "open",
-    })),
   };
 }
 

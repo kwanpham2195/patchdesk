@@ -2,8 +2,10 @@ import type {
   GitHubMergeWriter,
   GitHubReader,
 } from "../adapters/github/github-adapter";
+import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
+import { mergeGateFindings } from "../domain/analysis-merge-findings";
 import {
   parseContentHash,
   parseGitSha,
@@ -11,7 +13,12 @@ import {
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
+  type ContentHash,
+  type GitSha,
   type IsoTimestamp,
+  type ReviewId,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
 } from "../domain/ids";
 import {
   confirmMergeOperation,
@@ -21,6 +28,7 @@ import {
 } from "../domain/merge-operation";
 import { markReviewTerminal } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
+import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import { mergePullRequest, type MergeMethod } from "./merge-service";
 import { readObjectField } from "./read-object-field";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
@@ -38,7 +46,11 @@ export class MergeWriteController {
     private readonly now: () => IsoTimestamp,
     private readonly operations: MergeOperationStore,
     private readonly writeGate: ReviewWriteGate,
-    private readonly reviews: Pick<ReviewStore, "load" | "save">,
+    /** The two durable Review stores this merge reads, grouped as one dependency. */
+    private readonly stores: {
+      readonly reviews: Pick<ReviewStore, "load" | "save">;
+      readonly insights: Pick<InsightStore, "loadTyped">;
+    },
     private readonly writeCoordinator: ReviewOperationCoordinator,
   ) {}
 
@@ -106,6 +118,16 @@ export class MergeWriteController {
       ] as const;
       if (profile._tag === "err" || session._tag === "err")
         return err({ reason: "not_found" });
+      const findings = await this.currentAnalysisFindings(
+        profileId.value,
+        reviewId.value,
+        {
+          sessionId: sessionId.value,
+          headSha: expectedHead.value,
+          patchHash: expectedPatch.value,
+        },
+      );
+      if (findings._tag === "err") return err({ reason: "storage_failed" });
       const startedAt = this.now();
       const requested = requestMergeOperation({
         operationId: `merge-${startedAt.replace(/[^0-9]/g, "")}`,
@@ -141,6 +163,7 @@ export class MergeWriteController {
       const merged = await mergePullRequest({
         profile: profile.value,
         session: session.value,
+        result: { findings: findings.value },
         gateway: this.github,
         method,
         supportedMethods: this.methods,
@@ -167,7 +190,7 @@ export class MergeWriteController {
         (await this.operations.confirm(confirmed.value))._tag === "err"
       )
         return err({ reason: "merge_outcome_unknown" });
-      const currentReview = await this.reviews.load(
+      const currentReview = await this.stores.reviews.load(
         profileId.value,
         requested.value.reviewId,
       );
@@ -178,7 +201,7 @@ export class MergeWriteController {
         "merged",
         startedAt,
       );
-      const savedReview = await this.reviews.save(
+      const savedReview = await this.stores.reviews.save(
         terminalReview,
         currentReview.value.updatedAt,
       );
@@ -194,6 +217,39 @@ export class MergeWriteController {
     } finally {
       this.writeCoordinator.release(key);
     }
+  }
+
+  /**
+   * The Analysis Findings this merge must answer for. Without them the gate's
+   * Analysis rules -- the profile's merge policy and the high-severity
+   * acknowledgement -- decide on an empty Finding list and can never fire, so
+   * a merge the Workbench badge blocks would still go through.
+   *
+   * A missing or schema-drifted Insight reads as "no Analysis", exactly as the
+   * Workbench projection reads it, so a corrupt record never silently refuses
+   * a merge. Any other storage failure is reported instead of guessed at.
+   */
+  private async currentAnalysisFindings(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    revision: {
+      readonly sessionId: ReviewSessionId;
+      readonly headSha: GitSha;
+      readonly patchHash: ContentHash;
+    },
+  ): Promise<Result<ReviewResult["findings"], { readonly reason: string }>> {
+    const analysis = await this.stores.insights.loadTyped(
+      profileId,
+      reviewId,
+      "analysis",
+      (input) => parseReviewResult(input),
+    );
+    if (analysis._tag === "err")
+      return analysis.error.reason === "not_found" ||
+        analysis.error.reason === "invalid_stored_value"
+        ? ok([])
+        : err({ reason: "storage_failed" });
+    return ok(mergeGateFindings(analysis.value, revision));
   }
 }
 

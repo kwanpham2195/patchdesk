@@ -794,7 +794,7 @@ export async function startLocalApiServer(
           systemNow,
           new MergeOperationStore(paths),
           reviewWriteGate,
-          reviews,
+          { reviews, insights },
           reviewOperations,
         );
   app.get("/v1/profiles", async (context) => {

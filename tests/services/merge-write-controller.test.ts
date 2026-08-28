@@ -21,7 +21,11 @@ import {
   createReviewSession,
   type ReviewSession,
 } from "../../src/domain/review-session";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import type {
+  AnalysisMergePolicy,
+  WorkspaceProfileConfig,
+} from "../../src/domain/workspace-profile";
+import type { StorageFailure } from "../../src/adapters/storage/json-file";
 import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
 import { MergeWriteController } from "../../src/services/merge-write-controller";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
@@ -230,11 +234,101 @@ function request() {
   };
 }
 
+/**
+ * One retained Analysis, described by the only things the merge gate reads:
+ * the severity of its single Finding, whether that Finding was dismissed, and
+ * whether the Analysis belongs to the revision being merged.
+ */
+type AnalysisFixture = {
+  readonly severity: "P0" | "P1" | "P2" | "P3";
+  readonly dismissed?: boolean;
+  readonly patchHash?: string;
+  readonly readFailure?: StorageFailure["reason"];
+};
+
+const analysisFindingId = "finding-1";
+
+function analysisInsights(analysis: AnalysisFixture | undefined) {
+  const loadTyped = async () => {
+    if (analysis === undefined)
+      return err({
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "not_found",
+      });
+    if (analysis.readFailure !== undefined)
+      return err({
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: analysis.readFailure,
+      });
+    const record = {
+      schemaVersion: 2,
+      reviewId,
+      type: "analysis",
+      nextToken: 1,
+      retained: {
+        runId: "insight-analysis-1-aaaaaaaaaaaa-x",
+        revision: {
+          sessionId,
+          headSha: values.headSha,
+          patchHash: analysis.patchHash ?? patchHash,
+        },
+        generatedAt: at,
+        provenance: {
+          provider: "pi",
+          model: "test-model",
+          reasoning: "medium",
+        },
+        value: {
+          changeSummary: "one change",
+          verdict: "comment",
+          summary: "one finding",
+          findings: [
+            {
+              id: analysisFindingId,
+              severity: analysis.severity,
+              title: "A finding",
+              explanation: "why",
+              confidence: "high",
+              mappingStatus: "mapped",
+            },
+          ],
+          validationPlan: [],
+          assumptions: [],
+        },
+      },
+      updatedAt: at,
+    };
+    return ok(
+      analysis.dismissed === true
+        ? {
+            ...record,
+            dismissals: [
+              {
+                findingId: analysisFindingId,
+                reason: "not a real problem",
+                dismissedAt: at,
+              },
+            ],
+          }
+        : record,
+    );
+  };
+  // SAFETY: cast `as never` for the same reason the projection tests cast
+  // their own `loadTyped` stand-ins: the real method is generic over the
+  // caller's value parser, which this stub does not need -- it hands back an
+  // already-shaped record, exactly as the store would after parsing.
+  return { loadTyped } as never;
+}
+
 function fixture(
   options: {
     readonly saveReview?: SaveResult;
     readonly mergeResult?: GatewayMergeResult;
     readonly mergeability?: MergePolicySnapshot["mergeability"];
+    readonly analysis?: AnalysisFixture;
+    readonly analysisMergePolicy?: AnalysisMergePolicy;
   } = {},
 ) {
   const session = createReviewSession({
@@ -260,8 +354,12 @@ function fixture(
     load: loadReview,
     save: saveReview,
   };
+  const profile: WorkspaceProfileConfig =
+    options.analysisMergePolicy === undefined
+      ? values.profile
+      : { ...values.profile, analysisMergePolicy: options.analysisMergePolicy };
   const writeGate = new RecordingReviewWriteGate(
-    values.profile,
+    profile,
     review,
     session,
     values.snapshot,
@@ -288,7 +386,7 @@ function fixture(
     () => at,
     operations,
     writeGate,
-    reviews,
+    { reviews, insights: analysisInsights(options.analysis) },
     coordinator,
   );
   return {
@@ -296,7 +394,7 @@ function fixture(
     coordinator,
     gateway,
     operations,
-    profile: values.profile,
+    profile,
     reviews,
     saveReview,
     session,
@@ -419,6 +517,89 @@ describe("MergeWriteController", () => {
     });
     expect(current.operations.confirmed).toHaveLength(1);
     expect(current.operations.removed).toHaveLength(0);
+    expect(current.gateway.mergeRequests).toHaveLength(1);
+  });
+
+  // The gate only ever saw an empty Finding list, because this controller --
+  // the one production caller of `mergePullRequest` -- did not pass `result`.
+  // Every Analysis merge rule the profile configures decided on nothing.
+  it("refuses the merge when the profile blocks on an open high-severity Finding", async () => {
+    const current = fixture({
+      analysis: { severity: "P0" },
+      analysisMergePolicy: "block",
+    });
+    await expect(current.controller.merge(request())).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "merge_blocked" },
+    });
+    expect(current.gateway.mergeRequests).toHaveLength(0);
+    expect(current.operations.rejected[0]?.state).toEqual({
+      _tag: "Rejected",
+      reason: "merge_blocked",
+    });
+  });
+
+  // The badge counts a dismissed Finding as gone; the gate must agree, or the
+  // maintainer is offered a merge that is then refused with an unexplained
+  // failure.
+  it("allows the merge when the only high-severity Finding was dismissed", async () => {
+    const current = fixture({
+      analysis: { severity: "P0", dismissed: true },
+      analysisMergePolicy: "block",
+    });
+    await expect(current.controller.merge(request())).resolves.toMatchObject({
+      _tag: "ok",
+      value: { review: { status: { _tag: "Terminal", state: "merged" } } },
+    });
+    expect(current.gateway.mergeRequests).toHaveLength(1);
+  });
+
+  // Controls. Neither of the two rules above may fire for a reason it does not
+  // own: a P2 is not high severity, and an Analysis from another patch is not
+  // this merge's Analysis.
+  it("allows the merge when the only open Finding is below high severity", async () => {
+    const current = fixture({
+      analysis: { severity: "P2" },
+      analysisMergePolicy: "block",
+    });
+    await expect(current.controller.merge(request())).resolves.toMatchObject({
+      _tag: "ok",
+    });
+    expect(current.gateway.mergeRequests).toHaveLength(1);
+  });
+
+  it("allows the merge when the open high-severity Finding is from another revision", async () => {
+    const current = fixture({
+      analysis: { severity: "P0", patchHash: "b".repeat(64) },
+      analysisMergePolicy: "block",
+    });
+    await expect(current.controller.merge(request())).resolves.toMatchObject({
+      _tag: "ok",
+    });
+    expect(current.gateway.mergeRequests).toHaveLength(1);
+  });
+
+  it("refuses to guess at Findings when the Analysis record cannot be read", async () => {
+    const current = fixture({
+      analysis: { severity: "P0", readFailure: "io" },
+      analysisMergePolicy: "block",
+    });
+    await expect(current.controller.merge(request())).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "storage_failed" },
+    });
+    expect(current.operations.begun).toHaveLength(0);
+    expect(current.gateway.mergeRequests).toHaveLength(0);
+  });
+
+  it("reads a corrupt Analysis record as no Analysis, exactly as the Workbench does", async () => {
+    const current = fixture({
+      analysis: { severity: "P0", readFailure: "invalid_stored_value" },
+      analysisMergePolicy: "block",
+    });
+    await expect(current.controller.merge(request())).resolves.toMatchObject({
+      _tag: "ok",
+    });
     expect(current.gateway.mergeRequests).toHaveLength(1);
   });
 
