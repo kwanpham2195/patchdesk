@@ -67,9 +67,19 @@ export async function resolveCommitRef(ref, name, { cwd, run, output }) {
 
 /**
  * Resolves one of the repository's pinned tools to its exact path under
- * `node_modules/.bin`, never a same-named binary on PATH. A developer whose
- * editor installs its own copy would otherwise gate commits with a different
- * version than the repository's own scripts use.
+ * `node_modules/.bin`.
+ *
+ * Deliberately never falls back to a same-named binary on PATH. A developer
+ * whose editor installs its own oxfmt (a Mason or Homebrew copy, say) would
+ * otherwise have the commit gate check staged files with a different version
+ * than `pnpm format:check` uses, and the two disagree: an older oxfmt rejects
+ * files this repository formats correctly, and reformatting to satisfy it
+ * breaks the repository check instead. A tool missing from `node_modules` is
+ * a setup problem, so it is reported as one.
+ *
+ * Every gate resolves its tool through here -- the commit gate's oxfmt and
+ * oxlint, and the count ratchets' oxlint and knip -- so the message names the
+ * gates as a whole rather than any one of them.
  *
  * @param {string} name
  * @param {string} cwd
@@ -82,7 +92,7 @@ export async function pinnedTool(name, cwd, fileExists, output) {
   if (await fileExists(path)) return path;
   output.stderr(
     `${name} is not installed at node_modules/.bin/${name}. Run pnpm install.\n` +
-      `The quality ratchets use this repository's pinned tools, never a copy on PATH.\n`,
+      `The quality gates use this repository's pinned tools, never a copy on PATH.\n`,
   );
   return undefined;
 }

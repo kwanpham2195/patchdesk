@@ -1,6 +1,12 @@
-import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import {
+  defaultFileExists,
+  execute,
+  hasExit,
+  pinnedTool,
+  replay,
+} from "./gate-command-lib.mjs";
 import { checkLintRatchet } from "./quality-ratchet-lib.mjs";
 
 const SOURCE_EXTENSIONS = new Set([
@@ -15,28 +21,11 @@ const SOURCE_EXTENSIONS = new Set([
 ]);
 
 /**
- * Runs one command from the repository root and returns its complete result.
- * @typedef {(
- *   command: string,
- *   args: ReadonlyArray<string>,
- *   cwd: string,
- * ) => Promise<CommandResult>} RunCommand
+ * @typedef {import("./gate-command-lib.mjs").RunCommand} RunCommand
  */
 
 /**
- * @typedef {{
- *   readonly status: number | null;
- *   readonly signal: string | null;
- *   readonly stdout: string;
- *   readonly stderr: string;
- * }} CommandResult
- */
-
-/**
- * @typedef {{
- *   readonly stdout: (text: string) => void;
- *   readonly stderr: (text: string) => void;
- * }} CommandOutput
+ * @typedef {import("./gate-command-lib.mjs").CommandOutput} CommandOutput
  */
 
 /**
@@ -561,88 +550,10 @@ function extensionOf(path) {
   return lastDot === -1 ? "" : path.slice(lastDot).toLowerCase();
 }
 
-/**
- * Resolves one of the repository's pinned tools to its exact path under
- * `node_modules/.bin`.
- *
- * Deliberately never falls back to a same-named binary on PATH. A developer
- * whose editor installs its own oxfmt (a Mason or Homebrew copy, say) would
- * otherwise have the commit gate check staged files with a different version
- * than `pnpm format:check` uses, and the two disagree: an older oxfmt rejects
- * files this repository formats correctly, and reformatting to satisfy it
- * breaks the repository check instead. A tool missing from `node_modules` is
- * a setup problem, so it is reported as one.
- */
-async function pinnedTool(name, cwd, fileExists, output) {
-  const path = resolve(cwd, "node_modules", ".bin", name);
-  if (await fileExists(path)) return path;
-  output.stderr(
-    `${name} is not installed at node_modules/.bin/${name}. Run pnpm install.\n` +
-      `The commit gate uses this repository's pinned tools, never a copy on PATH.\n`,
-  );
-  return undefined;
-}
-
-async function defaultFileExists(path) {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function execute(run, command, args, cwd, output) {
-  try {
-    const result = await run(command, args, cwd);
-    if (isCommandResult(result)) return result;
-    output.stderr(
-      `The ${command} command returned an invalid process result.\n`,
-    );
-  } catch (cause) {
-    output.stderr(`${command} could not start: ${describeCause(cause)}\n`);
-  }
-  return undefined;
-}
-
-function isCommandResult(value) {
-  if (value === null || value === undefined) return false;
-  const candidate = Object(value);
-  const status = value.status;
-  const signal = value.signal;
-  return (
-    Object.hasOwn(candidate, "status") &&
-    Object.hasOwn(candidate, "signal") &&
-    Object.hasOwn(candidate, "stdout") &&
-    Object.hasOwn(candidate, "stderr") &&
-    (status === null || Number.isInteger(status)) &&
-    (signal === null || isString(signal)) &&
-    isString(value.stdout) &&
-    isString(value.stderr)
-  );
-}
-
-function isString(value) {
-  return Object.prototype.toString.call(value) === "[object String]";
-}
-
-function hasExit(result, status) {
-  return result.signal === null && result.status === status;
-}
-
-function replay(result, output) {
-  if (result.stdout.length > 0) output.stdout(result.stdout);
-  if (result.stderr.length > 0) output.stderr(result.stderr);
-}
-
 function reportUnexpectedExit(output, command, result) {
   output.stderr(
     `${command} failed (status=${String(result.status)}, signal=${String(result.signal)}).\n`,
   );
-}
-
-function describeCause(cause) {
-  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function formatPaths(files) {
