@@ -31,11 +31,15 @@ export const fixtureLabelCatalog: RepositoryLabelListResponse = {
   permission: "permitted",
 };
 
-// A tiny, obviously-fake `data:` URI standing in for a resolved avatar --
-// never a real image, just enough for `Avatar` to take the `<img>` branch
-// instead of the initials-badge one. Mirrors the placeholder style
-// `conversation.ui.test.tsx` already uses for `authorAvatarDataUri`.
-const FIXTURE_AVATAR_DATA_URI = "data:image/png;base64,AAAA";
+// A 1x1 transparent PNG standing in for a resolved avatar. It has to be a
+// PNG a browser can actually decode, not a placeholder byte string:
+// `AvatarImage` swaps itself for the initials badge on the `<img>`'s `error`
+// event, so an undecodable `data:` URI renders the *fallback* branch in a
+// real browser even though jsdom -- which never loads images and so never
+// fires `error` -- keeps showing the `<img>`. An undecodable placeholder
+// therefore passes every renderer test and fails the browser one.
+const FIXTURE_AVATAR_DATA_URI =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 // The repository's assignable people, as the Assignees picker's
 // `fetchAssignableUsers` reads it -- deliberately a superset of

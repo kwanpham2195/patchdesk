@@ -1,8 +1,5 @@
-import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
-import type { AddressInfo } from "node:net";
-import { extname, join, normalize } from "node:path";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 // This suite proves the focus discipline behind `,`/`.` file navigation and
 // `[`/`]` hunk navigation -- the actual point of these slices, per
@@ -20,7 +17,7 @@ test("`.` and `,` jump between files, stopping (not wrapping) at either end", as
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -54,7 +51,7 @@ test("`.` and `,` jump between files, stopping (not wrapping) at either end", as
     await expect(boundary).toHaveText("Already at the first file.");
     await expect.poll(() => overlapsViewport("src/a.ts")).toBe(true);
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -71,7 +68,7 @@ test("the fixed panel header follows `.` keyboard file navigation, not just the 
     // (an unrelated, pre-existing quirk out of scope for this fix), so this
     // regression needs a fixture with real scroll distance between files to
     // prove the header genuinely settles on the jumped-to file.
-    await page.goto(`${origin(server)}/#active-follow-fixture`);
+    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -92,7 +89,7 @@ test("the fixed panel header follows `.` keyboard file navigation, not just the 
       .toBe(true);
     await expect(header).toHaveText("src/b.ts");
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -111,7 +108,7 @@ test("`.` reaches a file living in the final viewport-height of content, which t
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -123,7 +120,7 @@ test("`.` reaches a file living in the final viewport-height of content, which t
     await page.keyboard.press(".");
     await expect(header).toHaveText("src/b.ts");
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -133,7 +130,7 @@ test("typing `.` in the comment composer inserts the character instead of naviga
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     // Pierre's CodeView finishes wiring its own hover tracking a moment
@@ -175,7 +172,7 @@ test("typing `.` in the comment composer inserts the character instead of naviga
       page.locator("[data-review-diff-file-nav-boundary]"),
     ).toHaveCount(0);
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -185,7 +182,7 @@ test("`]` and `[` jump between hunks, stopping (not wrapping) at either end, inc
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -235,7 +232,7 @@ test("`]` and `[` jump between hunks, stopping (not wrapping) at either end, inc
     await page.keyboard.press("]");
     await expect(boundary).toHaveText("Already at the last hunk.");
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -245,7 +242,7 @@ test("typing `[` in the comment composer inserts the character instead of naviga
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     // Pierre's CodeView finishes wiring its own hover tracking a moment
@@ -282,7 +279,7 @@ test("typing `[` in the comment composer inserts the character instead of naviga
       page.locator("[data-review-diff-hunk-nav-boundary]"),
     ).toHaveCount(0);
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -307,7 +304,7 @@ test("`}` announces there are no unresolved comments, without moving the viewpor
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -328,7 +325,7 @@ test("`}` announces there are no unresolved comments, without moving the viewpor
     await expect(status).toHaveText("No unresolved comments.");
     expect(await scrollTop()).toBe(before);
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -338,7 +335,7 @@ test("typing `{` in the comment composer inserts the character instead of naviga
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     // Pierre's CodeView finishes wiring its own hover tracking a moment
@@ -371,20 +368,20 @@ test("typing `{` in the comment composer inserts the character instead of naviga
       page.locator("[data-review-diff-comment-nav-status]"),
     ).toHaveCount(0);
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
 test("Cmd+, still opens Settings", async ({ page }) => {
   const server = await serveRenderer();
   try {
-    await page.goto(origin(server));
+    await page.goto(serverOrigin(server));
     const settings = page.getByRole("dialog", { name: "Settings" });
     await expect(settings).toHaveCount(0);
     await page.keyboard.press("Meta+,");
     await expect(settings).toBeVisible();
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -406,50 +403,5 @@ async function headerOverlapsViewport(
   return (
     headerBox.y + headerBox.height > viewportBox.y &&
     headerBox.y < viewportBox.y + viewportBox.height
-  );
-}
-
-async function serveRenderer(): Promise<Server> {
-  const rendererRoot = join(process.cwd(), "out/renderer");
-  const server = createServer(async (request, response) => {
-    const path =
-      request.url === undefined || request.url === "/"
-        ? "index.html"
-        : request.url;
-    const file = normalize(join(rendererRoot, path));
-    if (!file.startsWith(rendererRoot)) {
-      response.writeHead(400).end();
-      return;
-    }
-    try {
-      response
-        .writeHead(200, {
-          "Content-Type":
-            extname(file) === ".js"
-              ? "text/javascript"
-              : extname(file) === ".css"
-                ? "text/css"
-                : "text/html",
-        })
-        .end(await readFile(file));
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return server;
-}
-function isAddressInfo(address: string | AddressInfo): address is AddressInfo {
-  return Object.prototype.hasOwnProperty.call(address, "port");
-}
-function origin(server: Server): string {
-  const address = server.address();
-  if (address === null || !isAddressInfo(address))
-    throw new Error("missing address");
-  return `http://127.0.0.1:${address.port}`;
-}
-function close(server: Server): Promise<void> {
-  return new Promise((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
   );
 }

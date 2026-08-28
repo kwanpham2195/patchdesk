@@ -1,8 +1,6 @@
-import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
-import type { AddressInfo } from "node:net";
-import { extname, join, normalize } from "node:path";
+import type { Server } from "node:http";
 import { expect, test } from "playwright/test";
+import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 // The pull-request metadata rail (#9/#10/#11): a sticky right-hand rail on
 // the Conversation tab holding a Labels section, absent on Diff and
@@ -15,13 +13,13 @@ test.describe("pull request metadata rail", () => {
     server = await serveRenderer();
   });
   test.afterEach(async () => {
-    await close(server);
+    await closeServer(server);
   });
 
   test("the Labels picker opens from the rail and toggles a label", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await page
       .getByRole("button", { name: "Conversation", exact: true })
       .click();
@@ -42,7 +40,7 @@ test.describe("pull request metadata rail", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 960, height: 900 });
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await page
       .getByRole("button", { name: "Conversation", exact: true })
       .click();
@@ -81,7 +79,7 @@ test.describe("pull request metadata rail", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${origin(server)}/#conversation-rail-fixture`);
+    await page.goto(`${serverOrigin(server)}/#conversation-rail-fixture`);
     await page
       .getByRole("button", { name: "Conversation", exact: true })
       .click();
@@ -130,7 +128,7 @@ test.describe("pull request metadata rail", () => {
   test("renders a cached avatar as an <img>, falls back to initials without one, and never points a rail element at a remote src", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await page
       .getByRole("button", { name: "Conversation", exact: true })
       .click();
@@ -189,7 +187,7 @@ test.describe("pull request metadata rail", () => {
   test("the Reviewers picker groups suggested reviewers above candidates, states no reviewer number, filters by search, and requests someone", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await page
       .getByRole("button", { name: "Conversation", exact: true })
       .click();
@@ -231,7 +229,9 @@ test.describe("pull request metadata rail", () => {
   test("states plainly when nobody is assigned, and offers a self-assign shortcut", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-empty-assignees-fixture`);
+    await page.goto(
+      `${serverOrigin(server)}/#workbench-empty-assignees-fixture`,
+    );
     await page
       .getByRole("button", { name: "Conversation", exact: true })
       .click();
@@ -249,7 +249,7 @@ test.describe("pull request metadata rail", () => {
   test("the Assignees picker opens, states the ten-assignee limit, filters by search, and toggles someone on", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await page
       .getByRole("button", { name: "Conversation", exact: true })
       .click();
@@ -282,49 +282,3 @@ test.describe("pull request metadata rail", () => {
     await expect(collaboratorCheckbox).toHaveAttribute("aria-checked", "true");
   });
 });
-
-async function serveRenderer(): Promise<Server> {
-  const rendererRoot = join(process.cwd(), "out/renderer");
-  const server = createServer(async (request, response) => {
-    const path =
-      request.url === undefined || request.url === "/"
-        ? "index.html"
-        : request.url;
-    const file = normalize(join(rendererRoot, path));
-    if (!file.startsWith(rendererRoot)) {
-      response.writeHead(400).end();
-      return;
-    }
-    try {
-      response
-        .writeHead(200, {
-          "Content-Type":
-            extname(file) === ".js"
-              ? "text/javascript"
-              : extname(file) === ".css"
-                ? "text/css"
-                : "text/html",
-        })
-        .end(await readFile(file));
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return server;
-}
-function origin(server: Server): string {
-  const address = server.address();
-  if (address === null || !("port" in Object(address)))
-    throw new Error("missing address");
-  // SAFETY: `Server#address()` returns `string | AddressInfo | null`; the
-  // check above rules out `null` and rules out the `string` (pipe/socket
-  // path) branch, since a JS string wrapper never carries a `port` property.
-  // Only the `AddressInfo` branch remains.
-  return `http://127.0.0.1:${(address as AddressInfo).port}`;
-}
-function close(server: Server): Promise<void> {
-  return new Promise((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
-  );
-}

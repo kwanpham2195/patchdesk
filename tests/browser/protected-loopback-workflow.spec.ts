@@ -1,8 +1,5 @@
-import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
+import type { Server } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
-import type { AddressInfo } from "node:net";
-import { extname, join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { test, expect } from "playwright/test";
 
@@ -13,6 +10,7 @@ import {
   type LocalApiServer,
 } from "../../src/main/local-api";
 import { installTestDesktopBridge } from "./bridge-fixture";
+import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 const capability = "browser-test-capability";
 let client: Server | undefined;
@@ -21,7 +19,7 @@ let root: string | undefined;
 
 test.afterEach(async () => {
   if (api !== undefined) await api.stop();
-  if (client !== undefined) await close(client);
+  if (client !== undefined) await closeServer(client);
   if (root !== undefined) await rm(root, { recursive: true, force: true });
   api = undefined;
   client = undefined;
@@ -141,51 +139,3 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await expect(clearLocalDialog).toBeHidden();
   await page.getByRole("button", { name: "Close" }).click();
 });
-
-async function serveRenderer(): Promise<Server> {
-  const rendererRoot = join(process.cwd(), "out/renderer");
-  const server = createServer(async (request, response) => {
-    const path =
-      request.url === undefined || request.url === "/"
-        ? "index.html"
-        : request.url;
-    const file = normalize(join(rendererRoot, path));
-    if (!file.startsWith(rendererRoot)) {
-      response.writeHead(400).end();
-      return;
-    }
-    try {
-      const body = await readFile(file);
-      response.writeHead(200, { "Content-Type": contentType(file) }).end(body);
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return server;
-}
-
-function isAddressInfo(address: string | AddressInfo): address is AddressInfo {
-  return Object.prototype.hasOwnProperty.call(address, "port");
-}
-
-function serverOrigin(server: Server): string {
-  const address = server.address();
-  if (address === null || !isAddressInfo(address))
-    throw new Error("missing address");
-  return `http://127.0.0.1:${address.port}`;
-}
-
-function close(server: Server): Promise<void> {
-  return new Promise((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve())),
-  );
-}
-
-function contentType(path: string): string {
-  return extname(path) === ".js"
-    ? "text/javascript"
-    : extname(path) === ".css"
-      ? "text/css"
-      : "text/html";
-}

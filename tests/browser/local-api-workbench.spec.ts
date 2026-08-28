@@ -1,6 +1,5 @@
-import { createServer, type Server } from "node:http";
-import { readFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, extname, join, normalize } from "node:path";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, test } from "playwright/test";
 
@@ -28,6 +27,7 @@ import {
   type LocalApiServer,
 } from "../../src/main/local-api";
 import { installTestDesktopBridge } from "./bridge-fixture";
+import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 test("desktop bridge opens the canonical represented workbench without removed Review routes", async ({
   page,
@@ -43,7 +43,7 @@ test("desktop bridge opens the canonical represented workbench without removed R
       recentPrs: [],
     });
     const started = await startLocalApiServer({
-      allowedOrigin: origin(renderer),
+      allowedOrigin: serverOrigin(renderer),
       capability: "cap",
       paths,
       github: new FakeGitHubAdapter({
@@ -63,7 +63,7 @@ test("desktop bridge opens the canonical represented workbench without removed R
         window.localStorage.setItem("patchdesk.destination", `workbench:${id}`),
       seeded.reviewId,
     );
-    await page.goto(origin(renderer));
+    await page.goto(serverOrigin(renderer));
     await expect(
       page.getByRole("region", { name: "Review workbench" }),
     ).toBeVisible();
@@ -75,7 +75,7 @@ test("desktop bridge opens the canonical represented workbench without removed R
     ).toHaveAttribute("aria-pressed", "true");
   } finally {
     if (api !== undefined) await api.stop();
-    await close(renderer);
+    await closeServer(renderer);
     await rm(root, {
       recursive: true,
       force: true,
@@ -205,50 +205,4 @@ function must<T>(
 ): T {
   if (result._tag === "err") throw new Error("invalid fixture");
   return result.value;
-}
-async function serveRenderer(): Promise<Server> {
-  const root = join(process.cwd(), "out", "renderer");
-  const server = createServer(async (request, response) => {
-    const file = normalize(
-      join(
-        root,
-        request.url === undefined || request.url === "/"
-          ? "index.html"
-          : request.url,
-      ),
-    );
-    if (!file.startsWith(root)) {
-      response.writeHead(400).end();
-      return;
-    }
-    try {
-      const content = await readFile(file);
-      response
-        .writeHead(200, {
-          "Content-Type":
-            extname(file) === ".js"
-              ? "text/javascript"
-              : extname(file) === ".css"
-                ? "text/css"
-                : "text/html",
-        })
-        .end(content);
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return server;
-}
-function origin(server: Server): string {
-  const address = server.address();
-  if (address === null) throw new Error("missing address");
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Node's server address union uses a string only for named sockets; this test binds an ephemeral TCP port above.
-  if (typeof address === "string") throw new Error("missing address");
-  return `http://127.0.0.1:${address.port}`;
-}
-function close(server: Server): Promise<void> {
-  return new Promise((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
-  );
 }

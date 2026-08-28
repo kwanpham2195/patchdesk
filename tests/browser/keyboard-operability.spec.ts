@@ -1,8 +1,6 @@
-import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
-import type { AddressInfo } from "node:net";
-import { extname, join, normalize } from "node:path";
+import type { Server } from "node:http";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 // Keyboard operability for the audience ADR 0034 keeps: a sighted person
 // driving Patchdesk with a keyboard and a mouse. Nothing here narrates to a
@@ -25,14 +23,14 @@ test.describe("keyboard operability", () => {
     server = await serveRenderer();
   });
   test.afterEach(async () => {
-    await close(server);
+    await closeServer(server);
   });
 
   test("keyboard users can skip, navigate, and close quick navigation", async ({
     page,
   }) => {
     await installBridgeStub(page);
-    await page.goto(origin(server));
+    await page.goto(serverOrigin(server));
 
     await page.keyboard.press("Tab");
     await expect(
@@ -52,7 +50,7 @@ test.describe("keyboard operability", () => {
     page,
   }) => {
     await installBridgeStub(page);
-    await page.goto(origin(server));
+    await page.goto(serverOrigin(server));
 
     // Open it from the keyboard, not with a click: Enter on the header
     // control is the path a keyboard user actually takes.
@@ -117,7 +115,7 @@ test.describe("keyboard operability", () => {
   test("rendered Mermaid controls stay independently keyboard accessible", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#mermaid-fixture`);
+    await page.goto(`${serverOrigin(server)}/#mermaid-fixture`);
     const diagram = page.getByRole("button", { name: "Mermaid diagram" });
     const source = page.getByText("Mermaid source", { exact: true });
     // Wait for Mermaid to finish: until it does, the fallback branch renders
@@ -162,7 +160,7 @@ test.describe("keyboard operability", () => {
   test("the rail's Labels picker is fully keyboard-reachable and operable", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await openConversationRail(page);
 
     const manageLabels = page.getByRole("button", { name: "Manage labels" });
@@ -181,7 +179,7 @@ test.describe("keyboard operability", () => {
   test("the header refresh control is keyboard-reachable with an accessible name", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const refresh = page.getByRole("button", {
       name: "Refresh GitHub state",
       exact: true,
@@ -205,7 +203,7 @@ test.describe("keyboard operability", () => {
   test("the rail's Assignees picker is fully keyboard-reachable and operable", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await openConversationRail(page);
 
     const manageAssignees = page.getByRole("button", {
@@ -228,7 +226,9 @@ test.describe("keyboard operability", () => {
   test("the Assignees empty-state self-assign shortcut is keyboard-reachable and operable", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-empty-assignees-fixture`);
+    await page.goto(
+      `${serverOrigin(server)}/#workbench-empty-assignees-fixture`,
+    );
     await openConversationRail(page);
 
     const assignSelf = page.getByRole("button", { name: "Assign yourself" });
@@ -240,7 +240,7 @@ test.describe("keyboard operability", () => {
   test("the rail's Reviewers picker is fully keyboard-reachable and operable", async ({
     page,
   }) => {
-    await page.goto(`${origin(server)}/#workbench-fixture`);
+    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await openConversationRail(page);
 
     const manageReviewers = page.getByRole("button", {
@@ -341,49 +341,4 @@ async function installBridgeStub(page: Page): Promise<void> {
       },
     });
   });
-}
-
-async function serveRenderer(): Promise<Server> {
-  const rendererRoot = join(process.cwd(), "out/renderer");
-  const server = createServer(async (request, response) => {
-    const path =
-      request.url === undefined || request.url === "/"
-        ? "index.html"
-        : request.url;
-    const file = normalize(join(rendererRoot, path));
-    if (!file.startsWith(rendererRoot)) {
-      response.writeHead(400).end();
-      return;
-    }
-    try {
-      response
-        .writeHead(200, {
-          "Content-Type":
-            extname(file) === ".js"
-              ? "text/javascript"
-              : extname(file) === ".css"
-                ? "text/css"
-                : "text/html",
-        })
-        .end(await readFile(file));
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return server;
-}
-function isAddressInfo(address: string | AddressInfo): address is AddressInfo {
-  return Object.prototype.hasOwnProperty.call(address, "port");
-}
-function origin(server: Server): string {
-  const address = server.address();
-  if (address === null || !isAddressInfo(address))
-    throw new Error("missing address");
-  return `http://127.0.0.1:${address.port}`;
-}
-function close(server: Server): Promise<void> {
-  return new Promise((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
-  );
 }

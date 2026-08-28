@@ -1,8 +1,5 @@
-import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
-import type { AddressInfo } from "node:net";
-import { extname, join, normalize } from "node:path";
 import { expect, test } from "playwright/test";
+import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 // A single renderer scheduling pause can contaminate one timing sample when
 // the full browser suite has just exercised many heavy fixtures. Retries keep
@@ -28,7 +25,7 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
         sample.previous = current;
       }, 25);
     });
-    await page.goto(`${origin(server)}/#performance-fixture`);
+    await page.goto(`${serverOrigin(server)}/#performance-fixture`);
     const workbench = page.getByRole("region", { name: "Diff workbench" });
     await expect(workbench).toBeVisible({ timeout: 15_000 });
     // Visibility can resolve during the frame that commits the 10 MB fixture.
@@ -240,7 +237,7 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
       }),
     );
   } finally {
-    await close(server);
+    await closeServer(server);
   }
 });
 
@@ -250,52 +247,4 @@ function summarize(durations: ReadonlyArray<number>) {
     median: sorted[Math.floor(sorted.length / 2)] ?? Number.POSITIVE_INFINITY,
     worst: sorted.at(-1) ?? Number.POSITIVE_INFINITY,
   };
-}
-
-async function serveRenderer(): Promise<Server> {
-  const rendererRoot = join(process.cwd(), "out/renderer");
-  const server = createServer(async (request, response) => {
-    const path =
-      request.url === undefined || request.url === "/"
-        ? "index.html"
-        : request.url;
-    const file = normalize(join(rendererRoot, path));
-    if (!file.startsWith(rendererRoot)) {
-      response.writeHead(400).end();
-      return;
-    }
-    try {
-      response
-        .writeHead(200, {
-          "Content-Type":
-            extname(file) === ".js"
-              ? "text/javascript"
-              : extname(file) === ".css"
-                ? "text/css"
-                : "text/html",
-        })
-        .end(await readFile(file));
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return server;
-}
-
-function isAddressInfo(address: string | AddressInfo): address is AddressInfo {
-  return Object.prototype.hasOwnProperty.call(address, "port");
-}
-
-function origin(server: Server): string {
-  const address = server.address();
-  if (address === null || !isAddressInfo(address))
-    throw new Error("missing address");
-  return `http://127.0.0.1:${address.port}`;
-}
-
-function close(server: Server): Promise<void> {
-  return new Promise((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
-  );
 }
