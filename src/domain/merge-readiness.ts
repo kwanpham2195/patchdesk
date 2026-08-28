@@ -1,6 +1,7 @@
 import type {
   CheckRunSummary,
   CheckSummary,
+  GitHubMergeEvidence,
   MergeDisplayReason,
 } from "./github-context";
 import type { AnalysisMergePolicy } from "./workspace-profile";
@@ -166,4 +167,30 @@ function checkReason(message: string): MergeDisplayReason {
     availability: "available",
     openOnGitHub: false,
   };
+}
+
+/**
+ * `mergeable` answers only "does this branch apply cleanly"; the rule-level
+ * verdict lives in `mergeStateStatus`. Folding both into the one mergeability
+ * `evaluateMergeReadiness` reads means every state that earns a reason card
+ * earns a blocker.
+ *
+ * `mergePolicyComplete === false` overrides the fold outright -- the same
+ * fail-closed rule the merge gate applies to the raw read
+ * (`merge-service.ts`): `policy.value.complete ? policy.value.mergeability :
+ * "unknown"`. An incomplete policy classified nothing reliably, so neither
+ * surface may trust it further just because `mergeStateStatus` reads clean.
+ * `undefined` means no merge-policy read was attempted at all, which is a
+ * different, lower-confidence source this axis does not touch.
+ */
+export function readinessMergeability(
+  aggregate: GitHubMergeEvidence,
+  mergePolicyComplete?: boolean,
+): "mergeable" | "conflicting" | "blocked" | "unknown" {
+  if (mergePolicyComplete === false) return "unknown";
+  const { mergeable, mergeStateStatus: status } = aggregate;
+  if (mergeable === "conflicting" || status === "dirty") return "conflicting";
+  if (mergeable === "blocked" || status === "blocked" || status === "behind")
+    return "blocked";
+  return mergeable;
 }

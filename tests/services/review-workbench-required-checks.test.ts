@@ -12,38 +12,41 @@ import {
   snapshotData,
 } from "./review-workbench-projection-fixture";
 
+// Module-scope so both describe blocks below -- required-check
+// classification and mergeability classification -- share one fixture
+// shape instead of two parallel copies.
+function policy(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- test-only fixture builder; the result is cast `as never` below, the same boundary `snapshotData` itself uses.
+  checks: unknown,
+  complete = true,
+) {
+  return {
+    pr: identity,
+    headSha,
+    baseSha: headSha,
+    isOpen: true,
+    isDraft: false,
+    mergeability: "mergeable",
+    mergeStateStatus: "clean",
+    reviewDecision: "approved",
+    checks,
+    complete,
+  };
+}
+function snapshotWithPolicy(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- test-only fixture builder; the result is cast `as never` below, the same boundary `snapshotData` itself uses.
+  mergePolicy: unknown,
+) {
+  // SAFETY: see the file-level note above `const snapshotData`; this
+  // helper only adds a caller-supplied `mergePolicy` fixture.
+  return { ...snapshotData, mergePolicy } as never;
+}
+
 // The snapshot's `mergePolicy` is the only source that can say whether GitHub
 // requires a check. Every fixture below leaves the snapshot's own REST
 // `checks` green, so any checks blocker or reason these tests observe can
 // only have come from the merge policy.
 describe("required-check classification from the snapshot merge policy", () => {
-  function policy(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- test-only fixture builder; the result is cast `as never` below, the same boundary `snapshotData` itself uses.
-    checks: unknown,
-    complete = true,
-  ) {
-    return {
-      pr: identity,
-      headSha,
-      baseSha: headSha,
-      isOpen: true,
-      isDraft: false,
-      mergeability: "mergeable",
-      mergeStateStatus: "clean",
-      reviewDecision: "approved",
-      checks,
-      complete,
-    };
-  }
-  function snapshotWithPolicy(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- test-only fixture builder; the result is cast `as never` below, the same boundary `snapshotData` itself uses.
-    mergePolicy: unknown,
-  ) {
-    // SAFETY: see the file-level note above `const snapshotData`; this
-    // helper only adds a caller-supplied `mergePolicy` fixture.
-    return { ...snapshotData, mergePolicy } as never;
-  }
-
   it("blocks the badge on a required check that has not finished, and says so in the panel", async () => {
     const value = fixture();
     const result = await value.service.loadRepresented({
@@ -244,5 +247,170 @@ describe("required-check classification from the snapshot merge policy", () => {
     expect(
       badge._tag === "ok" ? badge.value.mergeReadiness.blockers : undefined,
     ).toContain("required_check");
+  });
+
+  // The one place badge and gate are meant to disagree, not a second
+  // instance of the bug above. `evaluateMergeReadiness`'s `hasFailingChecks`
+  // (see `merge-readiness.ts`) is opt-in and the merge gate never passes it,
+  // so a check GitHub does not require -- `unstable`, "mergeable with a
+  // non-passing commit status" in GitHub's own terms per ADR 0027 -- blocks
+  // only the badge, via `failing_check`, and never refuses the actual merge.
+  it("disagrees with the merge gate by design: a failing check nobody required blocks the badge only", async () => {
+    const checks = {
+      overall: "failing" as const,
+      checks: [
+        {
+          name: "lint",
+          required: false as const,
+          status: "completed" as const,
+          conclusion: "failure" as const,
+        },
+      ],
+    };
+    const value = fixture();
+    const badge = await value.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot: snapshotWithPolicy(policy(checks)),
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    const merge = vi.fn(async () => ({ _tag: "ok" as const, value: {} }));
+    const gate = await mergePullRequest({
+      // SAFETY: the profile fields `mergePullRequest` reads are both here.
+      profile: { githubHost: "github.com", ghAccount: "fixture" } as never,
+      session: session(),
+      // SAFETY: this fake gateway stubs only the methods
+      // `mergePullRequest` calls; `changedFileCount: 0` matches the empty
+      // canonical diff, which is what makes the revision proof hold.
+      gateway: {
+        getPullRequest: async () => ({
+          _tag: "ok" as const,
+          value: {
+            ref: identity,
+            headSha,
+            baseSha: headSha,
+            changedFileCount: 0,
+          },
+        }),
+        getPullRequestDiff: async () => ({ _tag: "ok" as const, value: "" }),
+        getMergePolicy: async () => ({
+          _tag: "ok" as const,
+          value: { ...policy(checks), pr: identity },
+        }),
+        mergePullRequest: merge,
+      } as never,
+      method: "squash",
+      supportedMethods: ["squash"],
+      acknowledgedWarningCodes: [],
+    });
+    expect(gate).toMatchObject({ _tag: "ok" });
+    expect(merge).toHaveBeenCalledTimes(1);
+    expect(
+      badge._tag === "ok" ? badge.value.mergeReadiness.blockers : undefined,
+    ).toContain("failing_check");
+  });
+});
+
+// `readinessMergeability` (`review-workbench-projection.ts`) folds
+// `mergeable`/`mergeStateStatus` into the one value `evaluateMergeReadiness`
+// reads for the badge. The merge gate applies its own fail-closed rule
+// straight to the raw policy read (`merge-service.ts`):
+// `policy.value.complete ? policy.value.mergeability : "unknown"`. Before
+// this fix `readinessMergeability` never consulted `complete`, so an
+// incomplete policy -- one that classified nothing reliably -- could still
+// read Ready on the badge while the gate refused the same merge with
+// `mergeability_unknown`.
+describe("mergeability classification from the snapshot merge policy", () => {
+  it("fails closed on an incomplete policy even when the raw evidence reads mergeable", async () => {
+    const value = fixture();
+    const result = await value.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot: snapshotWithPolicy(
+        policy({ overall: "unknown", checks: [] }, false),
+      ),
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    const projected = result._tag === "ok" ? result.value : undefined;
+    expect(projected?.mergeReadiness).toMatchObject({
+      _tag: "Blocked",
+      blockers: ["mergeability_unknown"],
+    });
+  });
+
+  // Must not over-block: failing closed on an incomplete read must not make
+  // a complete, mergeable policy read blocked.
+  it("does not over-block: a complete, mergeable policy still reads Ready", async () => {
+    const value = fixture();
+    const result = await value.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot: snapshotWithPolicy(policy({ overall: "passing", checks: [] })),
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    const projected = result._tag === "ok" ? result.value : undefined;
+    expect(projected?.mergeReadiness).toEqual({
+      _tag: "Ready",
+      blockers: [],
+      warnings: [],
+    });
+  });
+
+  // One policy fixture, both surfaces, same verdict -- the gate already
+  // forces "unknown" here (`merge-service.ts:102`); the badge must now agree
+  // rather than reading Ready above a merge the gate refuses.
+  it("agrees with the merge gate when the merge policy read is incomplete", async () => {
+    const checks = { overall: "unknown" as const, checks: [] };
+    const value = fixture();
+    const badge = await value.service.loadRepresented({
+      profileId,
+      sessionId,
+      snapshot: snapshotWithPolicy(policy(checks, false)),
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" },
+    });
+    const merge = vi.fn(async () => ({ _tag: "ok" as const, value: {} }));
+    const gate = await mergePullRequest({
+      // SAFETY: the profile fields `mergePullRequest` reads are both here.
+      profile: { githubHost: "github.com", ghAccount: "fixture" } as never,
+      session: session(),
+      // SAFETY: this fake gateway stubs only the methods
+      // `mergePullRequest` calls; `changedFileCount: 0` matches the empty
+      // canonical diff, which is what makes the revision proof hold.
+      gateway: {
+        getPullRequest: async () => ({
+          _tag: "ok" as const,
+          value: {
+            ref: identity,
+            headSha,
+            baseSha: headSha,
+            changedFileCount: 0,
+          },
+        }),
+        getPullRequestDiff: async () => ({ _tag: "ok" as const, value: "" }),
+        getMergePolicy: async () => ({
+          _tag: "ok" as const,
+          value: { ...policy(checks, false), pr: identity },
+        }),
+        mergePullRequest: merge,
+      } as never,
+      method: "squash",
+      supportedMethods: ["squash"],
+      acknowledgedWarningCodes: [],
+    });
+    expect(gate).toMatchObject({
+      _tag: "err",
+      error: {
+        _tag: "MergeBlocked",
+        readiness: { blockers: ["mergeability_unknown"] },
+      },
+    });
+    expect(merge).not.toHaveBeenCalled();
+    expect(
+      badge._tag === "ok" ? badge.value.mergeReadiness.blockers : undefined,
+    ).toContain("mergeability_unknown");
   });
 });

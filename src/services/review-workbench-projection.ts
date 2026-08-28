@@ -55,6 +55,7 @@ import {
 import {
   deriveCheckReasons,
   evaluateMergeReadiness,
+  readinessMergeability,
   type MergeReadiness,
 } from "../domain/merge-readiness";
 import {
@@ -182,6 +183,8 @@ type ProjectRemoteInput = {
   /** Whichever check read classified `required`; see `loadRepresented`. */
   readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;
   readonly mergeEvidence?: GitHubMergeEvidence;
+  /** `snapshot.mergePolicy?.complete`; absent means no read was attempted. */
+  readonly mergePolicyComplete?: boolean;
 };
 /** Mutable draft of `ProjectRemoteInput`, built in statements so the
  * optional `mergeEvidence` is added only when the snapshot carried one. */
@@ -235,6 +238,8 @@ export class ReviewWorkbenchProjectionService {
     };
     if (input.snapshot.mergeEvidence !== undefined)
       remote.mergeEvidence = input.snapshot.mergeEvidence;
+    if (input.snapshot.mergePolicy !== undefined)
+      remote.mergePolicyComplete = input.snapshot.mergePolicy.complete;
     return this.project(
       session.value.profile,
       session.value.session,
@@ -416,7 +421,10 @@ export class ReviewWorkbenchProjectionService {
             isCurrentHead: current.value.headSha === session.key.headSha,
             isOpen: current.value.isOpen,
             isDraft: current.value.isDraft,
-            mergeability: readinessMergeability(mergeAggregate),
+            mergeability: readinessMergeability(
+              mergeAggregate,
+              remote?.mergePolicyComplete,
+            ),
             checks,
             hasFailingChecks: checks.overall === "failing",
             hasGitHubReviewBlocker:
@@ -1031,19 +1039,6 @@ function aggregateMergeEvidence(
             ? "review_required"
             : "unknown",
   };
-}
-
-// `mergeable` answers only "does this branch apply cleanly"; the rule-level
-// verdict lives in `mergeStateStatus`. Folding both into the one mergeability
-// the rule reads means every state that earns a reason card earns a blocker.
-function readinessMergeability(
-  aggregate: GitHubMergeEvidence,
-): "mergeable" | "conflicting" | "blocked" | "unknown" {
-  const { mergeable, mergeStateStatus: status } = aggregate;
-  if (mergeable === "conflicting" || status === "dirty") return "conflicting";
-  if (mergeable === "blocked" || status === "blocked" || status === "behind")
-    return "blocked";
-  return mergeable;
 }
 
 type StoredInsightRecords = {
