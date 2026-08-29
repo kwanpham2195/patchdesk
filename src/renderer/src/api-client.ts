@@ -294,3 +294,17 @@ function safeMessage(kind: ApiFailureKind): string {
       return "Patchdesk could not complete the request.";
   }
 }
+
+export async function api(
+  path: string,
+  init: { readonly method?: string; readonly body?: unknown } = {},
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- this is the renderer's own request boundary; every call site immediately parses the result with a dedicated parser (parseInboxResponse, parseGlobalSettings, isProfile, ...).
+): Promise<unknown> {
+  // SAFETY: only local callers of `api()` supply `init.method`, always one of these five literals.
+  const methodField =
+    init.method === undefined
+      ? {}
+      : { method: init.method as "GET" | "POST" | "PUT" | "PATCH" | "DELETE" };
+  const bodyField = init.body === undefined ? {} : { body: init.body };
+  return await requestJson(path, { ...methodField, ...bodyField });
+}
