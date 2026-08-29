@@ -64,6 +64,9 @@ export type GitHubReadOperation =
   | "get_comment_target"
   | "auth_status";
 
+/** Wall-clock budget for one gh invocation, shared by every GitHub module. */
+export const commandTimeoutMs = 15_000;
+
 /** A gh invocation whose account environment the runner supplies from the profile. */
 export type GhCommandRequest = Omit<
   CommandRequest,
