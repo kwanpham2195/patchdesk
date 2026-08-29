@@ -11,6 +11,7 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "./ids";
+import { definedProps } from "./defined-props";
 import type { PullRequestSnapshot } from "./github-context";
 import type { DirectSummaryReviewState } from "./direct-summary-review";
 import type {
@@ -70,12 +71,6 @@ export type ReviewWorktreeRef = {
   readonly headSha: GitSha;
 };
 
-/** Mutable draft of `ReviewSession`, built in statements so each optional
- * field is added only when it has a value. */
-type MutableReviewSession = {
-  -readonly [K in keyof ReviewSession]: ReviewSession[K];
-};
-
 /** Constructs a deterministic session without filesystem or GitHub effects. */
 export function createReviewSession(input: {
   readonly key: ReviewSessionKey;
@@ -87,7 +82,7 @@ export function createReviewSession(input: {
   readonly worktree: ReviewWorktreeRef;
   readonly createdAt: IsoTimestamp;
 }): ReviewSession {
-  const session: MutableReviewSession = {
+  return {
     schemaVersion: 6,
     id: createReviewSessionId(input.key),
     key: input.key,
@@ -96,11 +91,10 @@ export function createReviewSession(input: {
     worktree: input.worktree,
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
+    ...definedProps({
+      prContext: input.prContext,
+      canonicalPatchHash: input.canonicalPatchHash,
+      localCheckoutWarning: input.localCheckoutWarning,
+    }),
   };
-  if (input.prContext !== undefined) session.prContext = input.prContext;
-  if (input.canonicalPatchHash !== undefined)
-    session.canonicalPatchHash = input.canonicalPatchHash;
-  if (input.localCheckoutWarning !== undefined)
-    session.localCheckoutWarning = input.localCheckoutWarning;
-  return session;
 }

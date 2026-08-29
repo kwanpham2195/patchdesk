@@ -14,6 +14,7 @@ import * as v from "valibot";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { readJsonFile, writeAtomicJson } from "../adapters/storage/json-file";
 import { isPathContained } from "../adapters/storage/path-containment";
+import { definedProps } from "../domain/defined-props";
 import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
@@ -62,12 +63,6 @@ type ValidatedDeletionSet = {
   readonly worktree?: JournalWorktree;
 };
 
-/** Mutable draft of `ValidatedDeletionSet`, built in statements so the
- * optional `worktree` field is added only when present. */
-type MutableValidatedDeletionSet = {
-  -readonly [K in keyof ValidatedDeletionSet]: ValidatedDeletionSet[K];
-};
-
 /**
  * Durable record of one in-flight Session preparation. It stays in the main
  * process: it is never projected to the renderer and never logged. The
@@ -113,12 +108,6 @@ const journalContentSchema = v.looseObject({
   worktree: v.optional(journalWorktreeSchema),
 });
 
-/** Mutable draft of `JournalContent`, built in statements so the optional
- * `worktree` field is added only when present. */
-type MutableJournalContent = {
-  -readonly [K in keyof JournalContent]: JournalContent[K];
-};
-
 function toJournalWorktree(
   worktree: v.InferOutput<typeof journalWorktreeSchema> | undefined,
 ): JournalWorktree | undefined {
@@ -131,16 +120,14 @@ function toJournalWorktree(
 function toJournalContent(
   parsed: v.InferOutput<typeof journalContentSchema>,
 ): JournalContent {
-  const worktree = toJournalWorktree(parsed.worktree);
-  const content: MutableJournalContent = {
+  return {
     schemaVersion: 1,
     profileId: parsed.profileId,
     sessionId: parsed.sessionId,
     state: parsed.state,
     targets: parsed.targets,
+    ...definedProps({ worktree: toJournalWorktree(parsed.worktree) }),
   };
-  if (worktree !== undefined) content.worktree = worktree;
-  return content;
 }
 
 /**
@@ -707,15 +694,13 @@ export class ReviewPreparationJournal {
     ) {
       return undefined;
     }
-    const deletion: MutableValidatedDeletionSet = {
+    return {
       profileId: profileId.value,
       sessionId: sessionId.value,
       journalFile: expectedJournalFile,
       targets: this.content.targets,
+      ...definedProps({ worktree: this.content.worktree }),
     };
-    if (this.content.worktree !== undefined)
-      deletion.worktree = this.content.worktree;
-    return deletion;
   }
 }
 

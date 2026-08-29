@@ -11,6 +11,7 @@ import * as v from "valibot";
 
 import { requestJson } from "@/api-client";
 import type { ReviewContextStatus } from "@/review-context-control";
+import { definedProps } from "../../../domain/defined-props";
 import type { RawJsonValue } from "../../../domain/json";
 import {
   isUnifiedFileHeader,
@@ -37,12 +38,6 @@ type ReadyDiffSourceResponse = {
   readonly newFile?: DiffFileContents;
 };
 
-/** Mutable draft of `ReadyDiffSourceResponse`, built in statements so the
- * optional `oldFile`/`newFile` are added only when they parsed. */
-type MutableReadyDiffSourceResponse = {
-  -readonly [K in keyof ReadyDiffSourceResponse]: ReadyDiffSourceResponse[K];
-};
-
 type DiffSourceResponse =
   | ReadyDiffSourceResponse
   | { readonly state: "unavailable"; readonly reason: string };
@@ -51,12 +46,6 @@ type HydrationSource = {
   readonly patch: string;
   readonly profileId?: string;
   readonly sessionId?: string;
-};
-
-/** Mutable draft of `HydrationSource`, built in statements so the optional
- * `profileId`/`sessionId` are added only when the session carries them. */
-type MutableHydrationSource = {
-  -readonly [K in keyof HydrationSource]: HydrationSource[K];
 };
 
 export type ReviewDiffHydration = {
@@ -88,9 +77,13 @@ export function useReviewDiffHydration({
     useState<ReviewContextStatus>("idle");
   const sourceProfileId = sourceSession?.profileId;
   const sourceSessionId = sourceSession?.sessionId;
-  const currentSource: MutableHydrationSource = { patch };
-  if (sourceProfileId !== undefined) currentSource.profileId = sourceProfileId;
-  if (sourceSessionId !== undefined) currentSource.sessionId = sourceSessionId;
+  const currentSource: HydrationSource = {
+    patch,
+    ...definedProps({
+      profileId: sourceProfileId,
+      sessionId: sourceSessionId,
+    }),
+  };
   const [hydrationSource, setHydrationSource] =
     useState<HydrationSource>(currentSource);
   const [hydrationGeneration, setHydrationGeneration] = useState(0);
@@ -346,8 +339,11 @@ function parseDiffSourceResponse(
   const parsedOldFile = v.safeParse(diffFileContentsSchema, oldFile);
   const parsedNewFile = v.safeParse(diffFileContentsSchema, newFile);
   if (!parsedOldFile.success && !parsedNewFile.success) return undefined;
-  const response: MutableReadyDiffSourceResponse = { state: "ready" };
-  if (parsedOldFile.success) response.oldFile = parsedOldFile.output;
-  if (parsedNewFile.success) response.newFile = parsedNewFile.output;
-  return response;
+  return {
+    state: "ready",
+    ...definedProps({
+      oldFile: parsedOldFile.success ? parsedOldFile.output : undefined,
+      newFile: parsedNewFile.success ? parsedNewFile.output : undefined,
+    }),
+  };
 }

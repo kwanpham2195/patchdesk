@@ -4,6 +4,7 @@ import type {
   GitHubComment,
   PublishedReview,
 } from "../../../domain/github-context";
+import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
@@ -21,20 +22,19 @@ import {
  * re-baselines it. Mirrors `resolvedThreads`/`editedBodies`/
  * `deletedCommentIds` in `review-diff-view.tsx`; onReply needs no override
  * here because its optimistic list lives inside `ConversationThreadCard`.
- * Declared mutable so callers can build it in statements (adding a callback
- * only when its action is wired) instead of a conditional empty-object
- * spread; `Readonly` gives the type every other consumer sees.
  */
-type MutableGeneralThreadOverrides = {
-  resolvedThreads: ReadonlyMap<string, "open" | "resolved">;
-  editedBodies: ReadonlyMap<string, string>;
-  deletedCommentIds: ReadonlySet<string>;
-  onSetState?: (threadId: string, state: "open" | "resolved") => Promise<void>;
-  onReply?: (threadId: string, body: string) => Promise<string | void>;
-  onEditComment?: (commentId: string, body: string) => Promise<void>;
-  onDeleteComment?: (commentId: string) => Promise<void>;
+type GeneralThreadOverrides = {
+  readonly resolvedThreads: ReadonlyMap<string, "open" | "resolved">;
+  readonly editedBodies: ReadonlyMap<string, string>;
+  readonly deletedCommentIds: ReadonlySet<string>;
+  readonly onSetState?: (
+    threadId: string,
+    state: "open" | "resolved",
+  ) => Promise<void>;
+  readonly onReply?: (threadId: string, body: string) => Promise<string | void>;
+  readonly onEditComment?: (commentId: string, body: string) => Promise<void>;
+  readonly onDeleteComment?: (commentId: string) => Promise<void>;
 };
-type GeneralThreadOverrides = Readonly<MutableGeneralThreadOverrides>;
 
 export function Conversation({
   conversation,
@@ -61,49 +61,54 @@ export function Conversation({
     ReadonlySet<string>
   >(() => new Set());
 
-  const replyToThread = conversationActions?.replyToThread;
   const setThreadState = conversationActions?.setThreadState;
   const editComment = conversationActions?.editComment;
   const deleteComment = conversationActions?.deleteComment;
 
-  const generalThreadOverrides: MutableGeneralThreadOverrides = {
+  const onSetState: GeneralThreadOverrides["onSetState"] =
+    setThreadState === undefined
+      ? undefined
+      : async (threadId, state) => {
+          await setThreadState(threadId, state);
+          setResolvedThreads((current) => {
+            const next = new Map(current);
+            next.set(threadId, state);
+            return next;
+          });
+        };
+  const onEditComment: GeneralThreadOverrides["onEditComment"] =
+    editComment === undefined
+      ? undefined
+      : async (commentId, body) => {
+          await editComment(commentId, body);
+          setEditedBodies((current) => {
+            const next = new Map(current);
+            next.set(commentId, body);
+            return next;
+          });
+        };
+  const onDeleteComment: GeneralThreadOverrides["onDeleteComment"] =
+    deleteComment === undefined
+      ? undefined
+      : async (commentId) => {
+          await deleteComment(commentId);
+          setDeletedCommentIds((current) => {
+            const next = new Set(current);
+            next.add(commentId);
+            return next;
+          });
+        };
+  const generalThreadOverrides: GeneralThreadOverrides = {
     resolvedThreads,
     editedBodies,
     deletedCommentIds,
+    ...definedProps({
+      onReply: conversationActions?.replyToThread,
+      onSetState,
+      onEditComment,
+      onDeleteComment,
+    }),
   };
-  if (replyToThread !== undefined) {
-    generalThreadOverrides.onReply = replyToThread;
-  }
-  if (setThreadState !== undefined) {
-    generalThreadOverrides.onSetState = async (threadId, state) => {
-      await setThreadState(threadId, state);
-      setResolvedThreads((current) => {
-        const next = new Map(current);
-        next.set(threadId, state);
-        return next;
-      });
-    };
-  }
-  if (editComment !== undefined) {
-    generalThreadOverrides.onEditComment = async (commentId, body) => {
-      await editComment(commentId, body);
-      setEditedBodies((current) => {
-        const next = new Map(current);
-        next.set(commentId, body);
-        return next;
-      });
-    };
-  }
-  if (deleteComment !== undefined) {
-    generalThreadOverrides.onDeleteComment = async (commentId) => {
-      await deleteComment(commentId);
-      setDeletedCommentIds((current) => {
-        const next = new Set(current);
-        next.add(commentId);
-        return next;
-      });
-    };
-  }
 
   return (
     <div className="flex-1 overflow-y-auto" data-review-conversation>
@@ -177,10 +182,6 @@ type WireGeneralThread = Extract<
   { readonly _tag: "GeneralThread" }
 >["thread"];
 
-type MutableGitHubComment = {
-  -readonly [K in keyof GitHubComment]: GitHubComment[K];
-};
-
 /** Parses one wire comment into a `GitHubComment`, establishing the
  * `IsoTimestamp` brand `createdAt`/`updatedAt` require. Drops a comment
  * whose `createdAt` fails to parse rather than rendering a bad timestamp —
@@ -192,25 +193,26 @@ function parseGeneralThreadComment(
 ): GitHubComment | undefined {
   const parsedCreatedAt = parseIsoTimestamp(comment.createdAt);
   if (parsedCreatedAt._tag === "err") return undefined;
-  const parsed: MutableGitHubComment = {
+  const parsedUpdatedAt =
+    comment.updatedAt === undefined
+      ? undefined
+      : parseIsoTimestamp(comment.updatedAt);
+  // `location` is intentionally not carried through: a location-less
+  // GeneralThread's comments never have one, and ConversationThreadCard
+  // doesn't read it.
+  return {
     id: comment.id,
     author: comment.author,
     body: comment.body,
     createdAt: parsedCreatedAt.value,
+    ...definedProps({
+      updatedAt:
+        parsedUpdatedAt?._tag === "ok" ? parsedUpdatedAt.value : undefined,
+      url: comment.url,
+      authorAvatarDataUri: comment.authorAvatarDataUri,
+      viewerDidAuthor: comment.viewerDidAuthor,
+    }),
   };
-  if (comment.updatedAt !== undefined) {
-    const parsedUpdatedAt = parseIsoTimestamp(comment.updatedAt);
-    if (parsedUpdatedAt._tag === "ok") parsed.updatedAt = parsedUpdatedAt.value;
-  }
-  if (comment.url !== undefined) parsed.url = comment.url;
-  if (comment.authorAvatarDataUri !== undefined)
-    parsed.authorAvatarDataUri = comment.authorAvatarDataUri;
-  // `location` is intentionally not carried through: a location-less
-  // GeneralThread's comments never have one, and ConversationThreadCard
-  // doesn't read it.
-  if (comment.viewerDidAuthor !== undefined)
-    parsed.viewerDidAuthor = comment.viewerDidAuthor;
-  return parsed;
 }
 
 function ConversationTimelineEntry({
@@ -307,15 +309,6 @@ function ReviewSummaryEntry({
   );
 }
 
-/** Mutable draft of `ConversationThreadCardData`, built in statements below
- * so each optional callback is added only when its action is wired, instead
- * of a conditional empty-object spread. */
-type MutableConversationThreadCardData = {
-  -readonly [
-    K in keyof ConversationThreadCardData
-  ]: ConversationThreadCardData[K];
-};
-
 /**
  * Renders a location-less "general" review thread through the same
  * `ConversationThreadCard` used by the diff view, so Reply/Resolve/Edit/
@@ -358,29 +351,26 @@ function GeneralThreadEntry({
     parsedThreadId._tag === "ok"
       ? { _tag: "thread", id: parsedThreadId.value }
       : { _tag: "unresolved" };
-  const cardData: MutableConversationThreadCardData = {
+  const cardData: ConversationThreadCardData = {
     target,
     state,
     comments,
+    ...definedProps({
+      // A dropped comment always forces `complete: false` (ORed with the
+      // wire's own value) so the "Some replies unavailable" notice fires even
+      // when the wire otherwise reported this thread as fully loaded.
+      complete: someCommentsDropped ? false : wire.complete,
+      // Reply/Resolve require the branded thread id; withhold them entirely
+      // (rather than wiring a handler that would silently no-op) when the id
+      // failed to parse.
+      onSetState:
+        parsedThreadId._tag === "ok" ? overrides.onSetState : undefined,
+      onReply: parsedThreadId._tag === "ok" ? overrides.onReply : undefined,
+      // Edit/Delete key on each comment's own id, not the thread id, so they
+      // stay available even when the thread id itself is unresolved.
+      onEditComment: overrides.onEditComment,
+      onDeleteComment: overrides.onDeleteComment,
+    }),
   };
-  // A dropped comment always forces `complete: false` (ORed with the wire's
-  // own value) so the "Some replies unavailable" notice fires even when the
-  // wire otherwise reported this thread as fully loaded.
-  if (someCommentsDropped) cardData.complete = false;
-  else if (wire.complete !== undefined) cardData.complete = wire.complete;
-  // Reply/Resolve require the branded thread id; withhold them entirely
-  // (rather than wiring a handler that would silently no-op) when the id
-  // failed to parse.
-  if (parsedThreadId._tag === "ok") {
-    if (overrides.onSetState !== undefined)
-      cardData.onSetState = overrides.onSetState;
-    if (overrides.onReply !== undefined) cardData.onReply = overrides.onReply;
-  }
-  // Edit/Delete key on each comment's own id, not the thread id, so they
-  // stay available even when the thread id itself is unresolved.
-  if (overrides.onEditComment !== undefined)
-    cardData.onEditComment = overrides.onEditComment;
-  if (overrides.onDeleteComment !== undefined)
-    cardData.onDeleteComment = overrides.onDeleteComment;
   return <ConversationThreadCard thread={cardData} />;
 }

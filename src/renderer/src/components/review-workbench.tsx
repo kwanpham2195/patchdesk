@@ -20,6 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 import {
@@ -42,15 +43,6 @@ import type { LabelPickerActions } from "./label-picker";
 import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
 import type { ReviewerPickerActions } from "./reviewer-picker";
 
-/** Mutable form of `PullRequestMetadataRail`'s props, so `ReviewWorkbench`
- * can assign `labelActions`/`assigneeActions` only when present instead of a
- * conditional empty-object spread (mirrors `MutableGeneralThreadOverrides`
- * in `conversation.tsx`). */
-type MutablePullRequestMetadataRailProps = {
-  -readonly [
-    K in keyof React.ComponentProps<typeof PullRequestMetadataRail>
-  ]: React.ComponentProps<typeof PullRequestMetadataRail>[K];
-};
 import type {
   CommitDiffResponse,
   DirectSummaryReviewProjection,
@@ -106,43 +98,11 @@ import type {
   WorkbenchSection,
 } from "../lib/screen-restore";
 
-/** Mutable draft of `ConversationThreadCardData`, built in statements so
- * each optional callback is added only when its action is wired, instead of
- * a conditional empty-object spread. */
-type MutableConversationThreadCardData = {
-  -readonly [
-    K in keyof ConversationThreadCardData
-  ]: ConversationThreadCardData[K];
-};
-/** Mutable draft of `ReviewConversationActions`. */
-type MutableReviewConversationActions = {
-  -readonly [
-    K in keyof ReviewConversationActions
-  ]: ReviewConversationActions[K];
-};
 /** The subset of `Conversation`'s props built conditionally, so the
  * `conversationActions` prop is only added (never spread from a conditional
  * empty object) when at least one direct-conversation action is wired. */
 type ConversationTabProps = {
-  conversationActions?: ReviewConversationActions;
-};
-
-/** Mutable draft of `CanonicalReviewOverview`, built in statements so each
- * optional field is added only when it has a value, instead of a
- * conditional empty-object spread. */
-type MutableCanonicalReviewOverview = {
-  -readonly [K in keyof CanonicalReviewOverview]: CanonicalReviewOverview[K];
-};
-/** Mutable draft of `CanonicalReviewOverview["revision"]`. */
-type MutableCanonicalReviewOverviewRevision = {
-  baseBranch?: string;
-  headBranch?: string;
-  reviewedHeadSha: string;
-  currentHeadSha?: string;
-  freshness: "fresh" | "updates_available" | "unavailable" | "not_refreshed";
-  refreshedAt: string;
-  commitCount?: number;
-  fileCount?: number;
+  readonly conversationActions?: ReviewConversationActions;
 };
 
 /** Direct conversation actions for both `<Conversation>` (the Conversation
@@ -153,9 +113,7 @@ type MutableCanonicalReviewOverviewRevision = {
  * Conversation tab is independent of that selection. */
 type DirectConversationActionProps = {
   readonly conversationTabProps: ConversationTabProps;
-  readonly diffConversationActions:
-    | MutableReviewConversationActions
-    | undefined;
+  readonly diffConversationActions: ReviewConversationActions | undefined;
 };
 function directConversationActionProps(
   actions: Pick<
@@ -169,39 +127,22 @@ function directConversationActionProps(
     actions.replyToThread !== undefined ||
     actions.editComment !== undefined ||
     actions.deleteComment !== undefined;
-  const conversationActionsForTab:
-    | MutableReviewConversationActions
-    | undefined = hasAnyAction ? {} : undefined;
-  if (conversationActionsForTab !== undefined) {
-    if (actions.setThreadState !== undefined)
-      conversationActionsForTab.setThreadState = actions.setThreadState;
-    if (actions.replyToThread !== undefined)
-      conversationActionsForTab.replyToThread = actions.replyToThread;
-    if (actions.editComment !== undefined)
-      conversationActionsForTab.editComment = actions.editComment;
-    if (actions.deleteComment !== undefined)
-      conversationActionsForTab.deleteComment = actions.deleteComment;
-  }
-  // `exactOptionalPropertyTypes` treats `conversationActions={undefined}` as
-  // distinct from omitting the prop, so the prop itself is only added here
-  // (never spread from a conditional empty-object).
-  const conversationTabProps: ConversationTabProps = {};
-  if (conversationActionsForTab !== undefined)
-    conversationTabProps.conversationActions = conversationActionsForTab;
-
-  const diffConversationActions: MutableReviewConversationActions | undefined =
-    selectedCommitSha === undefined && hasAnyAction ? {} : undefined;
-  if (diffConversationActions !== undefined) {
-    if (actions.setThreadState !== undefined)
-      diffConversationActions.setThreadState = actions.setThreadState;
-    if (actions.replyToThread !== undefined)
-      diffConversationActions.replyToThread = actions.replyToThread;
-    if (actions.editComment !== undefined)
-      diffConversationActions.editComment = actions.editComment;
-    if (actions.deleteComment !== undefined)
-      diffConversationActions.deleteComment = actions.deleteComment;
-  }
-  return { conversationTabProps, diffConversationActions };
+  const wired: ReviewConversationActions = definedProps({
+    setThreadState: actions.setThreadState,
+    replyToThread: actions.replyToThread,
+    editComment: actions.editComment,
+    deleteComment: actions.deleteComment,
+  });
+  return {
+    // `exactOptionalPropertyTypes` treats `conversationActions={undefined}` as
+    // distinct from omitting the prop, so the prop itself is only added here
+    // (never spread from a conditional empty-object).
+    conversationTabProps: definedProps({
+      conversationActions: hasAnyAction ? wired : undefined,
+    }),
+    diffConversationActions:
+      selectedCommitSha === undefined && hasAnyAction ? wired : undefined,
+  };
 }
 
 function pullRequestExternalRef(
@@ -609,21 +550,18 @@ export function ReviewWorkbench({
         // through an id the mutation layer accepts.
         const parsedThreadId = parseGitHubThreadId(thread.id);
         if (parsedThreadId._tag === "err") return [];
-        const conversationThread: MutableConversationThreadCardData = {
+        const conversationThread: ConversationThreadCardData = {
           target: { _tag: "thread" as const, id: parsedThreadId.value },
           state: thread.state,
           comments: thread.comments,
+          ...definedProps({
+            complete: thread.complete,
+            onSetState: actions.setThreadState,
+            onReply: actions.replyToThread,
+            onEditComment: actions.editComment,
+            onDeleteComment: actions.deleteComment,
+          }),
         };
-        if (thread.complete !== undefined)
-          conversationThread.complete = thread.complete;
-        if (actions.setThreadState !== undefined)
-          conversationThread.onSetState = actions.setThreadState;
-        if (actions.replyToThread !== undefined)
-          conversationThread.onReply = actions.replyToThread;
-        if (actions.editComment !== undefined)
-          conversationThread.onEditComment = actions.editComment;
-        if (actions.deleteComment !== undefined)
-          conversationThread.onDeleteComment = actions.deleteComment;
         return [
           {
             id: `conversation:${thread.id}`,
@@ -703,21 +641,19 @@ export function ReviewWorkbench({
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
   const externalPullRequest = pullRequestExternalRef(model);
-  const overviewRevision: MutableCanonicalReviewOverviewRevision = {
+  const overviewRevision: CanonicalReviewOverview["revision"] = {
     reviewedHeadSha: model.revision.reviewedHeadSha,
     freshness: model.revision.freshness,
     refreshedAt: model.revision.refreshedAt,
     commitCount: model.commits.length,
+    ...definedProps({
+      baseBranch: model.pullRequest?.baseBranch,
+      headBranch: model.pullRequest?.headBranch,
+      currentHeadSha: model.revision.currentHeadSha,
+      fileCount: model.pullRequest?.changedFileCount,
+    }),
   };
-  if (model.pullRequest !== undefined) {
-    overviewRevision.baseBranch = model.pullRequest.baseBranch;
-    overviewRevision.headBranch = model.pullRequest.headBranch;
-  }
-  if (model.revision.currentHeadSha !== undefined)
-    overviewRevision.currentHeadSha = model.revision.currentHeadSha;
-  if (model.pullRequest?.changedFileCount !== undefined)
-    overviewRevision.fileCount = model.pullRequest.changedFileCount;
-  const overview: MutableCanonicalReviewOverview = {
+  const overview: CanonicalReviewOverview = {
     repository,
     prNumber: model.session.key.prNumber,
     title,
@@ -736,13 +672,13 @@ export function ReviewWorkbench({
       analysis: { status: model.insights.analysis.status },
       walkthrough: { status: model.insights.walkthrough.status },
     },
+    ...definedProps({
+      description: model.pullRequest?.description,
+      pullRequest: externalPullRequest,
+      terminalState:
+        model.review.status === "open" ? undefined : model.review.status,
+    }),
   };
-  if (model.pullRequest?.description !== undefined)
-    overview.description = model.pullRequest.description;
-  if (externalPullRequest !== undefined)
-    overview.pullRequest = externalPullRequest;
-  if (model.review.status !== "open")
-    overview.terminalState = model.review.status;
   const commitHeader =
     selectedCommit === undefined || commitDiff === undefined
       ? undefined
@@ -776,21 +712,20 @@ export function ReviewWorkbench({
   // `model.pullRequest`/`model.revision`/`terminal` -- `Conversation` only
   // ever renders what it's handed, which keeps the rail off the Diff and
   // Insights tabs by construction rather than by a conditional inside them.
-  const railProps: MutablePullRequestMetadataRailProps = {
+  const railProps: React.ComponentProps<typeof PullRequestMetadataRail> = {
     labels: model.pullRequest?.labels ?? [],
     assignees: model.pullRequest?.assignees ?? [],
     requestedReviewers: model.pullRequest?.requestedReviewers ?? [],
     freshness: model.revision.freshness,
     refreshedAt: model.revision.refreshedAt,
     terminal,
+    ...definedProps({
+      pendingReview: model.pendingReview,
+      labelActions: actions.labels,
+      assigneeActions: actions.assignees,
+      reviewerActions: actions.reviewers,
+    }),
   };
-  if (model.pendingReview !== undefined)
-    railProps.pendingReview = model.pendingReview;
-  if (actions.labels !== undefined) railProps.labelActions = actions.labels;
-  if (actions.assignees !== undefined)
-    railProps.assigneeActions = actions.assignees;
-  if (actions.reviewers !== undefined)
-    railProps.reviewerActions = actions.reviewers;
   const conversationRail =
     model.pullRequest === undefined ? undefined : (
       <PullRequestMetadataRail {...railProps} />

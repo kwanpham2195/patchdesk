@@ -47,6 +47,7 @@ import type {
   InsightProjection,
   InsightScopeProjection,
 } from "../domain/insight";
+import { definedProps } from "../domain/defined-props";
 import { parseUnifiedPatch } from "../domain/patch";
 import {
   normalizeNarrativeWalkthrough,
@@ -144,21 +145,6 @@ export type ReviewWorkbenchProjection = {
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
 };
 
-/** Mutable draft of `ReviewWorkbenchProjection`, built in statements so each
- * optional field (`fullPatch`, `pullRequest`) is added only when it has a value. */
-type MutableReviewWorkbenchProjection = {
-  -readonly [
-    K in keyof ReviewWorkbenchProjection
-  ]: ReviewWorkbenchProjection[K];
-};
-/** Mutable draft of `ReviewWorkbenchProjection["revision"]`, built in
- * statements so `patchHash`/`currentHeadSha` are added only when known. */
-type MutableRevisionProjection = {
-  -readonly [
-    K in keyof ReviewWorkbenchProjection["revision"]
-  ]: ReviewWorkbenchProjection["revision"][K];
-};
-
 export type LoadWorkbenchInput = {
   readonly profileId: WorkspaceProfileId;
   readonly sessionId: ReviewSessionId;
@@ -169,11 +155,6 @@ export type WorkbenchProjectionFailure =
   | { readonly _tag: "SessionNotFound" }
   | { readonly _tag: "ReviewNotFound" }
   | { readonly _tag: "SessionStorageUnavailable" };
-
-/** Mutable draft of `Conversation`, built in statements by `resolveAvatars`. */
-type MutableConversation = {
-  -readonly [K in keyof Conversation]: Conversation[K];
-};
 
 /** Live-read evidence `project` combines with the durable Session; absent when no GitHub read was attempted. */
 type ProjectRemoteInput = {
@@ -186,12 +167,6 @@ type ProjectRemoteInput = {
   /** `snapshot.mergePolicy?.complete`; absent means no read was attempted. */
   readonly mergePolicyComplete?: boolean;
 };
-/** Mutable draft of `ProjectRemoteInput`, built in statements so the
- * optional `mergeEvidence` is added only when the snapshot carried one. */
-type MutableProjectRemoteInput = {
-  -readonly [K in keyof ProjectRemoteInput]: ProjectRemoteInput[K];
-};
-
 /**
  * Read-side owner of the renderer-safe model for the exact snapshot held by
  * the durable Review. It never performs live GitHub reads or session-only
@@ -223,7 +198,7 @@ export class ReviewWorkbenchProjectionService {
       sessionId: input.sessionId,
     });
     if (session._tag === "err") return session;
-    const remote: MutableProjectRemoteInput = {
+    const remote: ProjectRemoteInput = {
       current: { _tag: "ok", value: input.snapshot.pullRequest },
       conversation: ok(input.snapshot.conversation),
       commits: input.snapshot.commits,
@@ -235,11 +210,11 @@ export class ReviewWorkbenchProjectionService {
           ? input.snapshot.mergePolicy.checks
           : input.snapshot.checks,
       ),
+      ...definedProps({
+        mergeEvidence: input.snapshot.mergeEvidence,
+        mergePolicyComplete: input.snapshot.mergePolicy?.complete,
+      }),
     };
-    if (input.snapshot.mergeEvidence !== undefined)
-      remote.mergeEvidence = input.snapshot.mergeEvidence;
-    if (input.snapshot.mergePolicy !== undefined)
-      remote.mergePolicyComplete = input.snapshot.mergePolicy.complete;
     return this.project(
       session.value.profile,
       session.value.session,
@@ -322,20 +297,22 @@ export class ReviewWorkbenchProjectionService {
         return entry;
       }),
     );
-    const result: MutableConversation = { ...conversation, entries };
-    if (conversation.inline !== undefined) {
-      const inlineThreads = conversation.inline;
-      result.inline = {
-        ...inlineThreads,
-        threads: await Promise.all(
-          inlineThreads.threads.map(async (thread) => ({
-            ...thread,
-            comments: await Promise.all(thread.comments.map(resolveComment)),
-          })),
-        ),
-      };
-    }
-    return result;
+    const inlineThreads = conversation.inline;
+    const inline =
+      inlineThreads === undefined
+        ? undefined
+        : {
+            ...inlineThreads,
+            threads: await Promise.all(
+              inlineThreads.threads.map(async (thread) => ({
+                ...thread,
+                comments: await Promise.all(
+                  thread.comments.map(resolveComment),
+                ),
+              })),
+            ),
+          };
+    return { ...conversation, entries, ...definedProps({ inline }) };
   }
 
   private async project(
@@ -492,15 +469,14 @@ export class ReviewWorkbenchProjectionService {
       pendingReview: pendingReview?.state ?? session.pendingReview,
     });
 
-    const revision: MutableRevisionProjection = {
+    const revision: ReviewWorkbenchProjection["revision"] = {
       reviewedHeadSha: session.key.headSha,
       freshness,
       refreshedAt,
+      ...definedProps({ patchHash, currentHeadSha }),
     };
-    if (patchHash !== undefined) revision.patchHash = patchHash;
-    if (currentHeadSha !== undefined) revision.currentHeadSha = currentHeadSha;
 
-    const projection: MutableReviewWorkbenchProjection = {
+    const projection: ReviewWorkbenchProjection = {
       state: "review",
       review: { id: reviewId, status: reviewStatus },
       session: projectSession(session),
@@ -521,13 +497,14 @@ export class ReviewWorkbenchProjectionService {
       checks,
       mergeReadiness,
       mergeReasons,
+      ...definedProps({
+        localCheckout: projectLocalCheckoutWarning(
+          session.localCheckoutWarning,
+        ),
+        fullPatch,
+        pullRequest,
+      }),
     };
-    const localCheckout = projectLocalCheckoutWarning(
-      session.localCheckoutWarning,
-    );
-    if (localCheckout !== undefined) projection.localCheckout = localCheckout;
-    if (fullPatch !== undefined) projection.fullPatch = fullPatch;
-    if (pullRequest !== undefined) projection.pullRequest = pullRequest;
     return ok(projection);
   }
 
@@ -572,19 +549,17 @@ export class ReviewWorkbenchProjectionService {
             analysis.value.retained,
           )
         : undefined;
-    const records: MutableStoredInsightRecords = {};
-    if (analysis._tag === "ok") records.analysis = analysis.value;
-    if (walkthrough._tag === "ok")
-      records.walkthrough = walkthrough.value.record;
-    if (analysisArtifact?.scope !== undefined)
-      records.analysisScope = analysisArtifact.scope;
-    if (analysisArtifact?.artifactStatus !== undefined)
-      records.analysisArtifactStatus = analysisArtifact.artifactStatus;
-    if (
-      walkthrough._tag === "ok" &&
-      walkthrough.value.artifactStatus !== undefined
-    )
-      records.walkthroughArtifactStatus = walkthrough.value.artifactStatus;
+    const records: StoredInsightRecords = definedProps({
+      analysis: analysis._tag === "ok" ? analysis.value : undefined,
+      walkthrough:
+        walkthrough._tag === "ok" ? walkthrough.value.record : undefined,
+      analysisScope: analysisArtifact?.scope,
+      analysisArtifactStatus: analysisArtifact?.artifactStatus,
+      walkthroughArtifactStatus:
+        walkthrough._tag === "ok"
+          ? walkthrough.value.artifactStatus
+          : undefined,
+    });
     return ok(records);
   }
 
@@ -1048,12 +1023,6 @@ type StoredInsightRecords = {
   readonly analysisArtifactStatus?: InsightArtifactStatus;
   readonly walkthroughArtifactStatus?: InsightArtifactStatus;
 };
-/** Mutable draft of `StoredInsightRecords`, built in statements so each
- * optional field is added only when storage actually held it. */
-type MutableStoredInsightRecords = {
-  -readonly [K in keyof StoredInsightRecords]: StoredInsightRecords[K];
-};
-
 /**
  * `projectStoredInsight` is generic in `T`, so a locally declared
  * `-readonly [K in keyof InsightProjection<T>]` draft type (the pattern used

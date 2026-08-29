@@ -1,6 +1,7 @@
 import * as v from "valibot";
 
 import type { RawJsonValue } from "../../../domain/json";
+import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId, type GitHubThreadId } from "../../../domain/ids";
 
 export type DirectConversationReceipt =
@@ -22,19 +23,6 @@ export type DirectConversationReceipt =
     }
   | { readonly _tag: "CommentEdited"; readonly commentId: string }
   | { readonly _tag: "CommentDeleted"; readonly commentId: string };
-
-type MutableCommentCreatedReceipt = {
-  _tag: "CommentCreated";
-  commentId: string;
-  reviewId?: string;
-  threadId?: string;
-};
-
-type MutableReplyCreatedReceipt = {
-  _tag: "ReplyCreated";
-  commentId: string;
-  reviewId?: string;
-};
 
 const directConversationReceiptSchema = v.variant("_tag", [
   v.looseObject({
@@ -82,21 +70,20 @@ export function parseDirectConversationReceipt(
   }
   if (output._tag === "CommentEdited" || output._tag === "CommentDeleted")
     return { _tag: output._tag, commentId: output.commentId };
-  if (output._tag === "ReplyCreated") {
-    const receipt: MutableReplyCreatedReceipt = {
+  if (output._tag === "ReplyCreated")
+    return {
       _tag: "ReplyCreated",
       commentId: output.commentId,
+      ...definedProps({ reviewId: output.reviewId }),
     };
-    if (output.reviewId !== undefined) receipt.reviewId = output.reviewId;
-    return receipt;
-  }
-  const receipt: MutableCommentCreatedReceipt = {
+  return {
     _tag: "CommentCreated",
     commentId: output.commentId,
+    ...definedProps({
+      reviewId: output.reviewId,
+      threadId: output.threadId,
+    }),
   };
-  if (output.reviewId !== undefined) receipt.reviewId = output.reviewId;
-  if (output.threadId !== undefined) receipt.threadId = output.threadId;
-  return receipt;
 }
 
 const labelReceiptSchema = v.variant("_tag", [

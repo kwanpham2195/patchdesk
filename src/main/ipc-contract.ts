@@ -25,7 +25,7 @@ export type LocalApiDesktopRequest = {
 };
 
 /** Privileged desktop operation accepted only from the owning renderer. */
-export type SelectDirectoryDesktopRequest = {
+type SelectDirectoryDesktopRequest = {
   readonly operation: "selectDirectory";
   readonly defaultPath?: string;
 };

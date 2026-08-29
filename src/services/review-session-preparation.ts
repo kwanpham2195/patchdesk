@@ -26,6 +26,7 @@ import {
   type ReviewRevision,
   type ReviewSession,
 } from "../domain/review-session";
+import { definedProps } from "../domain/defined-props";
 import { KeyedMutex } from "../domain/keyed-mutex";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import { err, ok, type Result } from "../domain/result";
@@ -80,39 +81,9 @@ export function normalizeReviewPatch(patch: string): string {
   return patch;
 }
 
-/** Mutable draft of `ReviewWorktreeService.prepare`'s input, built in
- * statements so `localPath` is added only when present. */
-type MutableWorktreePrepareInput = {
-  -readonly [
-    K in keyof Parameters<ReviewWorktreeService["prepare"]>[0]
-  ]: Parameters<ReviewWorktreeService["prepare"]>[0][K];
-};
-
-/** Mutable draft of a session's `prContext`, built in statements so
- * `description` is added only when present. */
-type MutablePrContext = {
-  -readonly [K in keyof NonNullable<ReviewSession["prContext"]>]: NonNullable<
-    ReviewSession["prContext"]
-  >[K];
-};
-
-/** Mutable draft of `createReviewSession`'s input, built in statements so
- * `canonicalPatchHash` is added only when present. */
-type MutableCreateReviewSessionInput = {
-  -readonly [K in keyof Parameters<typeof createReviewSession>[0]]: Parameters<
-    typeof createReviewSession
-  >[0][K];
-};
-
 /** Outcome of writing a session's on-disk artifacts: the canonical patch
  * hash, present only when it could be established. */
 type WriteArtifactsResult = { readonly canonicalPatchHash?: ContentHash };
-
-/** Mutable draft of `WriteArtifactsResult`, built in statements so
- * `canonicalPatchHash` is added only when present. */
-type MutableWriteArtifactsResult = {
-  -readonly [K in keyof WriteArtifactsResult]: WriteArtifactsResult[K];
-};
 
 type PreparationDependencies = {
   readonly profiles: ProfileStore;
@@ -292,7 +263,7 @@ export class ReviewSessionPreparation {
       if (recorded._tag === "err")
         return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
     }
-    const worktreePrepareInput: MutableWorktreePrepareInput = {
+    const worktreePrepareInput = {
       profileId: input.profileId,
       profile,
       host: input.pullRequest.host,
@@ -302,9 +273,8 @@ export class ReviewSessionPreparation {
       baseSha: revision.baseSha,
       sha: revision.headSha,
       sessionId,
+      ...definedProps({ localPath: matchingRepo?.localPath }),
     };
-    if (matchingRepo?.localPath !== undefined)
-      worktreePrepareInput.localPath = matchingRepo.localPath;
     const prepared =
       await this.dependencies.worktrees.prepare(worktreePrepareInput);
     // Clear the journal's advance worktree record whenever no worktree
@@ -357,15 +327,14 @@ export class ReviewSessionPreparation {
     const committing = await journal.markCommitting();
     if (committing._tag === "err")
       return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
-    const prContext: MutablePrContext = {
+    const prContext: NonNullable<ReviewSession["prContext"]> = {
       title: current.value.title,
       author: current.value.author,
       headBranch: current.value.headBranch,
       baseBranch: current.value.baseBranch,
+      ...definedProps({ description: current.value.description }),
     };
-    if (current.value.description !== undefined)
-      prContext.description = current.value.description;
-    const sessionInput: MutableCreateReviewSessionInput = {
+    const sessionInput: Parameters<typeof createReviewSession>[0] = {
       key: {
         profileId: input.profileId,
         host: input.pullRequest.host,
@@ -383,11 +352,14 @@ export class ReviewSessionPreparation {
       patchPath: patchPath.value,
       worktree: { path: parsedWorktreePath.value, headSha: revision.headSha },
       createdAt: this.dependencies.now(),
+      ...definedProps({
+        localCheckoutWarning:
+          prepared.value.mode === "metadata_only"
+            ? prepared.value.warning
+            : undefined,
+        canonicalPatchHash: artifacts.value.canonicalPatchHash,
+      }),
     };
-    if (prepared.value.mode === "metadata_only")
-      sessionInput.localCheckoutWarning = prepared.value.warning;
-    if (artifacts.value.canonicalPatchHash !== undefined)
-      sessionInput.canonicalPatchHash = artifacts.value.canonicalPatchHash;
     const session = createReviewSession(sessionInput);
     const saved = await this.dependencies.sessions.save(session);
     if (saved._tag === "err")
@@ -530,11 +502,8 @@ export class ReviewSessionPreparation {
       },
       rulePaths: input.profile.rulePaths,
     });
-    const artifactResult: MutableWriteArtifactsResult = {};
-    if (canonicalPatchHash !== undefined)
-      artifactResult.canonicalPatchHash = canonicalPatchHash;
     return context._tag === "ok"
-      ? ok(artifactResult)
+      ? ok(definedProps({ canonicalPatchHash }))
       : await this.abort(input.journal, { _tag: "PreparationUnavailable" });
   }
 

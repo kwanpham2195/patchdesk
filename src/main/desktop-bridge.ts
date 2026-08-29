@@ -21,8 +21,8 @@ import {
   type DesktopRequest,
   type DesktopResponse,
   type LocalApiDesktopRequest,
-  type SelectDirectoryDesktopRequest,
 } from "./ipc-contract";
+import { definedProps } from "../domain/defined-props";
 import type { StartedLocalApi } from "./app-lifecycle";
 
 const requestSchema = union([
@@ -44,19 +44,6 @@ const requestSchema = union([
     url: pipe(string(), minLength(1), maxLength(2_048)),
   }),
 ]);
-
-/** Mutable draft of `SelectDirectoryDesktopRequest`, built in statements so
- * the optional `defaultPath` is added only when it has a value. */
-type MutableSelectDirectoryDesktopRequest = {
-  -readonly [
-    K in keyof SelectDirectoryDesktopRequest
-  ]: SelectDirectoryDesktopRequest[K];
-};
-/** Mutable draft of `LocalApiDesktopRequest`, built in statements so the
- * optional `method` and `body` are added only when they have a value. */
-type MutableLocalApiDesktopRequest = {
-  -readonly [K in keyof LocalApiDesktopRequest]: LocalApiDesktopRequest[K];
-};
 
 const allowedRoutes = new Set([
   "GET /v1/profiles",
@@ -177,24 +164,17 @@ export function installDesktopRequestBridge(
             ? { operation: parsed.output.operation, state: parsed.output.state }
             : parsed.output.operation === "openExternalHttps"
               ? { operation: parsed.output.operation, url: parsed.output.url }
-              : (() => {
-                  const selectDirectoryRequest: MutableSelectDirectoryDesktopRequest =
-                    { operation: parsed.output.operation };
-                  if (parsed.output.defaultPath !== undefined)
-                    selectDirectoryRequest.defaultPath =
-                      parsed.output.defaultPath;
-                  return selectDirectoryRequest;
-                })()
-          : (() => {
-              const localApiRequest: MutableLocalApiDesktopRequest = {
-                path: parsed.output.path,
-              };
-              if (parsed.output.method !== undefined)
-                localApiRequest.method = parsed.output.method;
-              if (parsed.output.body !== undefined)
-                localApiRequest.body = parsed.output.body;
-              return localApiRequest;
-            })();
+              : {
+                  operation: parsed.output.operation,
+                  ...definedProps({ defaultPath: parsed.output.defaultPath }),
+                }
+          : {
+              path: parsed.output.path,
+              ...definedProps({
+                method: parsed.output.method,
+                body: parsed.output.body,
+              }),
+            };
       if (request === undefined || event.sender.id !== senderId) {
         return {
           ok: false,

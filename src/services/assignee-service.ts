@@ -13,6 +13,7 @@ import type {
   PullRequestAssigneePermission,
 } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import { definedProps } from "../domain/defined-props";
 import type { PullRequestRef } from "../domain/pull-request";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
@@ -96,18 +97,6 @@ export type AssigneeListOutcome =
 /** Only the review-resolution half can fail the request outright; a GitHub read failure is conveyed as an `AssigneeListOutcome` instead. */
 export type AssigneeListFailure = PullRequestMetadataListFailure;
 
-/**
- * `GitHubReader.listAssignableUsers`'s input, declared mutable here so the
- * optional search term can be added in a statement rather than through a
- * conditional empty-object spread. Mirrors `MutableGeneralThreadOverrides`
- * in `conversation.tsx`; the adapter still sees its own readonly contract.
- */
-type MutableAssignableUsersRequest = {
-  profile: WorkspaceProfileConfig;
-  repo: PullRequestRef;
-  query?: string;
-};
-
 type Gateway = Pick<
   GitHubReader,
   | "getPullRequest"
@@ -174,15 +163,14 @@ export class AssigneeService {
     if (current._tag === "err")
       return err(mapMetadataGateFailure(current.error));
     const pr = pullRequestRefForSession(current.value.session.key);
-    // Built in statements rather than by spreading a conditional empty
-    // object: the search term is omitted entirely when the caller supplied
-    // none, so GitHub's `query:` argument stays unset instead of being sent
-    // as an explicit empty filter.
-    const listInput: MutableAssignableUsersRequest = {
+    // The search term is omitted entirely when the caller supplied none, so
+    // GitHub's `query:` argument stays unset instead of being sent as an
+    // explicit empty filter.
+    const listInput = {
       profile: current.value.profile,
       repo: pr,
+      ...definedProps({ query: input.query }),
     };
-    if (input.query !== undefined) listInput.query = input.query;
     const [listed, permission] = await Promise.all([
       this.github.listAssignableUsers(listInput),
       this.resolvePermission(current.value.profile, pr),

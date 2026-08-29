@@ -28,6 +28,7 @@ import {
   type ReviewId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
+import { definedProps } from "../../domain/defined-props";
 import { err, ok, type Result } from "../../domain/result";
 import { checksSchema, projectChecks } from "./check-summary-schema";
 import {
@@ -1024,31 +1025,17 @@ function parseMergeEvidence(
   });
 }
 
-/** Mutable draft of a stored `pull_request` rule's parameters, built in
- * statements so each optional field is added only when it has a value. */
-type MutableStoredPullRequestParameters = {
-  requiredApprovingReviewCount?: number;
-  requireLastPushApproval?: boolean;
-  requiredReviewThreadResolution?: boolean;
-  dismissStaleReviewsOnPush?: boolean;
-  requireCodeOwnerReview?: boolean;
-};
-
 function buildStoredPullRequestParameters(
   input: v.InferOutput<typeof storedPullRequestParametersSchema> | undefined,
 ): GitHubAppliedRulesetPullRequestParameters | undefined {
   if (input === undefined) return undefined;
-  const built: MutableStoredPullRequestParameters = {};
-  if (input.requiredApprovingReviewCount !== undefined)
-    built.requiredApprovingReviewCount = input.requiredApprovingReviewCount;
-  if (input.requireLastPushApproval !== undefined)
-    built.requireLastPushApproval = input.requireLastPushApproval;
-  if (input.requiredReviewThreadResolution !== undefined)
-    built.requiredReviewThreadResolution = input.requiredReviewThreadResolution;
-  if (input.dismissStaleReviewsOnPush !== undefined)
-    built.dismissStaleReviewsOnPush = input.dismissStaleReviewsOnPush;
-  if (input.requireCodeOwnerReview !== undefined)
-    built.requireCodeOwnerReview = input.requireCodeOwnerReview;
+  const built = definedProps({
+    requiredApprovingReviewCount: input.requiredApprovingReviewCount,
+    requireLastPushApproval: input.requireLastPushApproval,
+    requiredReviewThreadResolution: input.requiredReviewThreadResolution,
+    dismissStaleReviewsOnPush: input.dismissStaleReviewsOnPush,
+    requireCodeOwnerReview: input.requireCodeOwnerReview,
+  });
   return Object.keys(built).length === 0 ? undefined : built;
 }
 

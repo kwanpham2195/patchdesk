@@ -23,6 +23,7 @@ import {
   pendingReviewMatchesSession,
   type PendingReviewState,
 } from "../../domain/pending-review";
+import { definedProps } from "../../domain/defined-props";
 import { parseDirectSummaryReviewState } from "../../domain/direct-summary-review";
 import { KeyedMutex } from "../../domain/keyed-mutex";
 import { mapConcurrent } from "../../domain/map-concurrent";
@@ -196,42 +197,12 @@ export class ReviewSessionStore {
   }
 }
 
-/** Mutable draft of `ReviewSession`, built in statements so each optional
- * field is added only when it has a value. */
-type MutableReviewSession = {
-  -readonly [K in keyof ReviewSession]: ReviewSession[K];
-};
-/** Mutable draft of `ReviewSession["pr"]`. */
-type MutableSessionPr = {
-  headSha: GitSha;
-  baseSha: GitSha;
-  isDraft: boolean;
-  isOpen: boolean;
-};
-/** Mutable draft of `ReviewSession["prContext"]`, built in statements so the
- * optional `description` is added only when it has a value. */
-type MutableSessionPrContext = {
-  title: string;
-  description?: string;
-  author: string;
-  headBranch: string;
-  baseBranch: string;
-};
-/** Mutable draft of the `parseFindingReviewReceipts` session argument, built
- * in statements so the optional `pendingReview` is added only when it has a
- * value. */
-type MutableFindingReviewContext = {
-  id: ReviewSessionId;
-  headSha: GitSha;
-  pendingReview?: PendingReviewState;
-};
-
 function buildSessionPr(
   headSha: GitSha,
   baseSha: GitSha,
   isDraft: boolean,
   isOpen: boolean,
-): MutableSessionPr {
+): ReviewSession["pr"] {
   return { headSha, baseSha, isDraft, isOpen };
 }
 
@@ -241,25 +212,22 @@ function buildSessionPrContext(raw: {
   readonly author: string;
   readonly headBranch: string;
   readonly baseBranch: string;
-}): MutableSessionPrContext {
-  const context: MutableSessionPrContext = {
+}): NonNullable<ReviewSession["prContext"]> {
+  return {
     title: raw.title,
     author: raw.author,
     headBranch: raw.headBranch,
     baseBranch: raw.baseBranch,
+    ...definedProps({ description: raw.description }),
   };
-  if (raw.description !== undefined) context.description = raw.description;
-  return context;
 }
 
 function buildFindingReviewContext(
   id: ReviewSessionId,
   headSha: GitSha,
   pendingReview: PendingReviewState | undefined,
-): MutableFindingReviewContext {
-  const context: MutableFindingReviewContext = { id, headSha };
-  if (pendingReview !== undefined) context.pendingReview = pendingReview;
-  return context;
+): Parameters<typeof parseFindingReviewReceipts>[1] {
+  return { id, headSha, ...definedProps({ pendingReview }) };
 }
 
 /** Parses one current schema-6 session and rejects all removed authority fields. */
@@ -370,7 +338,7 @@ export function parseStoredReviewSession(
     raw.output.prContext === undefined
       ? undefined
       : buildSessionPrContext(raw.output.prContext);
-  const session: MutableReviewSession = {
+  return ok({
     schemaVersion: 6,
     id: id.value,
     key: {
@@ -392,19 +360,15 @@ export function parseStoredReviewSession(
     worktree: { path: worktreePath.value, headSha: worktreeHeadSha.value },
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
-  };
-  if (prContext !== undefined) session.prContext = prContext;
-  if (canonicalPatchHash !== undefined)
-    session.canonicalPatchHash = canonicalPatchHash.value;
-  if (raw.output.localCheckoutWarning !== undefined)
-    session.localCheckoutWarning = raw.output.localCheckoutWarning;
-  if (pendingReview.value !== undefined)
-    session.pendingReview = pendingReview.value;
-  if (findingReviewReceipts.value !== undefined)
-    session.findingReviewReceipts = findingReviewReceipts.value;
-  if (directSummaryReview.value !== undefined)
-    session.directSummaryReview = directSummaryReview.value;
-  return ok(session);
+    ...definedProps({
+      prContext,
+      canonicalPatchHash: canonicalPatchHash?.value,
+      localCheckoutWarning: raw.output.localCheckoutWarning,
+      pendingReview: pendingReview.value,
+      findingReviewReceipts: findingReviewReceipts.value,
+      directSummaryReview: directSummaryReview.value,
+    }),
+  });
 }
 
 function storageListFailure(): Result<never, StorageFailure> {

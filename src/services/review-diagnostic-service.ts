@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { isNotFound, writeAtomicFile } from "../adapters/storage/json-file";
+import { definedProps } from "../domain/defined-props";
 import { KeyedMutex } from "../domain/keyed-mutex";
 import { err, ok, type Result } from "../domain/result";
 import {
@@ -26,12 +27,6 @@ import {
 
 export type ReviewDiagnosticFailure = {
   readonly _tag: "ReviewDiagnosticStorageFailed";
-};
-
-/** Mutable draft of `ReviewSupportBundle`, built in statements so the
- * optional `sessionId`/`metadata` fields are added only when present. */
-type MutableReviewSupportBundle = {
-  -readonly [K in keyof ReviewSupportBundle]: ReviewSupportBundle[K];
 };
 
 export type ReviewDiagnosticServiceOptions = {
@@ -146,15 +141,13 @@ export class ReviewDiagnosticService {
                 ? undefined
                 : parseReviewDiagnosticMetadata({ title });
             })();
-      const bundle: MutableReviewSupportBundle = {
+      return ok({
         schemaVersion: 1,
         generatedAt: this.now(),
         profileId: input.profileId,
         events: events.value.slice(-this.maxEvents),
-      };
-      if (input.sessionId !== undefined) bundle.sessionId = input.sessionId;
-      if (metadata !== undefined) bundle.metadata = metadata;
-      return ok(bundle);
+        ...definedProps({ sessionId: input.sessionId, metadata }),
+      });
     });
   }
 

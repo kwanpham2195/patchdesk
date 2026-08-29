@@ -14,6 +14,7 @@ import type {
   SuggestedPullRequestReviewer,
 } from "../domain/github-context";
 import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import { definedProps } from "../domain/defined-props";
 import type { PullRequestRef } from "../domain/pull-request";
 import {
   deriveReviewVerdicts,
@@ -97,18 +98,6 @@ export type ReviewerListOutcome =
 /** Only the review-resolution half can fail the request outright; a GitHub read failure is conveyed as a `ReviewerListOutcome` instead. */
 export type ReviewerListFailure = PullRequestMetadataListFailure;
 
-/**
- * `GitHubReader.listAssignableUsers`'s input, declared mutable here so the
- * optional search term can be added in a statement rather than through a
- * conditional empty-object spread — mirrors `MutableAssignableUsersRequest`
- * in `assignee-service.ts`.
- */
-type MutableAssignableUsersRequest = {
-  profile: WorkspaceProfileConfig;
-  repo: PullRequestRef;
-  query?: string;
-};
-
 type Gateway = Pick<
   GitHubReader,
   | "getPullRequest"
@@ -182,11 +171,11 @@ export class ReviewerService {
     // pull request's current head — is what a Revision-bound review verdict
     // is judged against; see `deriveReviewVerdicts`.
     const representedHeadSha = current.value.session.key.headSha;
-    const candidatesInput: MutableAssignableUsersRequest = {
+    const candidatesInput = {
       profile: current.value.profile,
       repo: pr,
+      ...definedProps({ query: input.query }),
     };
-    if (input.query !== undefined) candidatesInput.query = input.query;
     const [reviewers, candidates, permission] = await Promise.all([
       this.github.getPullRequestReviewers({
         profile: current.value.profile,

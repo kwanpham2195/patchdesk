@@ -4,6 +4,7 @@ import type { CodeViewLineSelection } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
 import { PatchdeskApiError } from "../api-client";
+import { definedProps } from "../../../domain/defined-props";
 import { fingerprintPatchAnchor } from "../../../domain/diff-anchor";
 import {
   parseGitHubThreadId,
@@ -76,30 +77,6 @@ type PendingReviewWriteOverlay =
       readonly body: string;
       readonly message: string;
     };
-
-type MutableLocalCommentAuthoringSaveInput = {
-  -readonly [
-    K in keyof LocalCommentAuthoringSaveInput
-  ]: LocalCommentAuthoringSaveInput[K];
-};
-
-type MutableLocalComposerConfig = {
-  -readonly [
-    K in keyof NonNullable<ReviewInlineAnnotation["localComposer"]>
-  ]: NonNullable<ReviewInlineAnnotation["localComposer"]>[K];
-};
-
-type MutableConversationThreadCardData = {
-  -readonly [
-    K in keyof ConversationThreadCardData
-  ]: ConversationThreadCardData[K];
-};
-
-type MutablePendingReviewWriteConfig = {
-  -readonly [
-    K in keyof NonNullable<ReviewInlineAnnotation["pendingReviewWrite"]>
-  ]: NonNullable<ReviewInlineAnnotation["pendingReviewWrite"]>[K];
-};
 
 export type ReviewConversationOverlays = {
   readonly displayedAnnotations: ReadonlyArray<ReviewInlineAnnotation>;
@@ -271,14 +248,14 @@ export function useReviewConversationOverlays({
       ]);
       clearAuthoring();
       try {
-        const saveInput: MutableLocalCommentAuthoringSaveInput = {
+        const saveInput: LocalCommentAuthoringSaveInput = {
           path: authoringSelection.id,
           startLine: anchor.startLine,
           line: anchor.line,
           side,
           body,
+          ...definedProps({ fingerprint }),
         };
-        if (fingerprint !== undefined) saveInput.fingerprint = fingerprint;
         const receipt = await localCommentAuthoring.onSave(saveInput);
         const parsedThreadId =
           receipt?.threadId === undefined
@@ -422,19 +399,15 @@ export function useReviewConversationOverlays({
       severity: "info",
       title: "Local comment",
       explanation: "",
-      localComposer: (() => {
-        const composer: MutableLocalComposerConfig = {
-          path: authoringSelection.id,
-          startLine: authoringSelection.range.start,
-          line: authoringSelection.range.end,
-          side: authoringSelection.range.side === "additions" ? "new" : "old",
-          onCancel: clearAuthoring,
-          onSave: saveAuthoring,
-        };
-        if (wrappedPendingReview !== undefined)
-          composer.pendingReview = wrappedPendingReview;
-        return composer;
-      })(),
+      localComposer: {
+        path: authoringSelection.id,
+        startLine: authoringSelection.range.start,
+        line: authoringSelection.range.end,
+        side: authoringSelection.range.side === "additions" ? "new" : "old",
+        onCancel: clearAuthoring,
+        onSave: saveAuthoring,
+        ...definedProps({ pendingReview: wrappedPendingReview }),
+      },
     };
   }, [
     authoringSelection,
@@ -469,7 +442,7 @@ export function useReviewConversationOverlays({
             },
           };
         }
-        const conversationThread: MutableConversationThreadCardData = {
+        const conversationThread: ConversationThreadCardData = {
           target:
             entry.threadId === undefined
               ? { _tag: "comment_only" as const, commentId: entry.commentId }
@@ -485,12 +458,11 @@ export function useReviewConversationOverlays({
               viewerDidAuthor: true,
             },
           ],
+          ...definedProps({
+            onEditComment: conversationActions?.editComment,
+            onDeleteComment: conversationActions?.deleteComment,
+          }),
         };
-        if (conversationActions?.editComment !== undefined)
-          conversationThread.onEditComment = conversationActions.editComment;
-        if (conversationActions?.deleteComment !== undefined)
-          conversationThread.onDeleteComment =
-            conversationActions.deleteComment;
         return {
           id: `conversation:${entry.commentId}`,
           path: entry.path,
@@ -504,7 +476,9 @@ export function useReviewConversationOverlays({
         };
       }),
       ...pendingWriteOverlays.map((entry: PendingReviewWriteOverlay) => {
-        const pendingReviewWrite: MutablePendingReviewWriteConfig = {
+        const pendingReviewWrite: NonNullable<
+          ReviewInlineAnnotation["pendingReviewWrite"]
+        > = {
           localId: entry.localId,
           status: entry._tag,
           action: entry.action,
@@ -513,8 +487,10 @@ export function useReviewConversationOverlays({
             setPendingWriteOverlays((current) =>
               current.filter((candidate) => candidate.localId !== localId),
             ),
+          ...definedProps({
+            message: entry._tag === "failed" ? entry.message : undefined,
+          }),
         };
-        if (entry._tag === "failed") pendingReviewWrite.message = entry.message;
         return {
           id: `pending-write:${entry.localId}`,
           path: entry.path,
@@ -606,50 +582,63 @@ export function useReviewConversationOverlays({
       const edit = thread.onEditComment ?? conversationActions?.editComment;
       const remove =
         thread.onDeleteComment ?? conversationActions?.deleteComment;
-      const cardThread: MutableConversationThreadCardData = { ...thread };
-      if (setState !== undefined) {
-        cardThread.onSetState = async (threadId, state) => {
-          await setState(threadId, state);
-          setResolvedThreads((current) => {
-            const next = new Map(current);
-            next.set(threadId, state);
-            return next;
-          });
-        };
-      }
-      if (reply !== undefined) cardThread.onReply = reply;
-      if (edit !== undefined) {
-        cardThread.onEditComment = async (commentId, body) => {
-          await edit(commentId, body);
-          setEditedBodies((current) => {
-            const next = new Map(current);
-            next.set(commentId, body);
-            return next;
-          });
-        };
-      }
-      if (remove !== undefined) {
-        cardThread.onDeleteComment = async (commentId) => {
-          await remove(commentId);
-          setDeletedCommentIds((current) => {
-            const next = new Set(current);
-            next.add(commentId);
-            return next;
-          });
-          setCreatedThreads((current) =>
-            current.some(
-              (entry) =>
-                entry._tag === "published" && entry.commentId === commentId,
-            )
-              ? current.filter(
+      const onSetState: ConversationThreadCardData["onSetState"] =
+        setState === undefined
+          ? undefined
+          : async (threadId, state) => {
+              await setState(threadId, state);
+              setResolvedThreads((current) => {
+                const next = new Map(current);
+                next.set(threadId, state);
+                return next;
+              });
+            };
+      const onEditComment: ConversationThreadCardData["onEditComment"] =
+        edit === undefined
+          ? undefined
+          : async (commentId, body) => {
+              await edit(commentId, body);
+              setEditedBodies((current) => {
+                const next = new Map(current);
+                next.set(commentId, body);
+                return next;
+              });
+            };
+      const onDeleteComment: ConversationThreadCardData["onDeleteComment"] =
+        remove === undefined
+          ? undefined
+          : async (commentId) => {
+              await remove(commentId);
+              setDeletedCommentIds((current) => {
+                const next = new Set(current);
+                next.add(commentId);
+                return next;
+              });
+              setCreatedThreads((current) =>
+                current.some(
                   (entry) =>
-                    entry._tag !== "published" || entry.commentId !== commentId,
+                    entry._tag === "published" && entry.commentId === commentId,
                 )
-              : current,
-          );
-        };
-      }
-      return cardThread;
+                  ? current.filter(
+                      (entry) =>
+                        entry._tag !== "published" ||
+                        entry.commentId !== commentId,
+                    )
+                  : current,
+              );
+            };
+      // Each override only replaces the incoming field when it is wired;
+      // `definedProps` drops the undefined ones so `...thread`'s own value
+      // survives, exactly as the conditional assignments did.
+      return {
+        ...thread,
+        ...definedProps({
+          onSetState,
+          onReply: reply,
+          onEditComment,
+          onDeleteComment,
+        }),
+      };
     },
     [conversationActions],
   );

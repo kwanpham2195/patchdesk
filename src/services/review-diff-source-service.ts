@@ -10,6 +10,7 @@ import {
   parseWorkspaceProfileId,
   type GitSha,
 } from "../domain/ids";
+import { definedProps } from "../domain/defined-props";
 import { err, ok, type Result } from "../domain/result";
 import type { ReviewSession } from "../domain/review-session";
 import type { GitReadExecutor } from "./review-worktree-service";
@@ -53,12 +54,6 @@ export type ReviewDiffSource =
         | "too_large"
         | "github_read";
     };
-
-type MutableReadyReviewDiffSource = {
-  state: "ready";
-  oldFile?: { name: string; contents: string };
-  newFile?: { name: string; contents: string };
-};
 
 export type ReviewDiffSourceFailure = {
   readonly reason: "invalid_input" | "not_found" | "storage";
@@ -154,12 +149,14 @@ export class ReviewDiffSourceService {
     if (!matchesPatch(rawFilePatch, oldContents, newContents)) {
       return ok({ state: "unavailable", reason: "patch_unavailable" });
     }
-    const response: MutableReadyReviewDiffSource = { state: "ready" };
-    if (oldResult !== undefined)
-      response.oldFile = { name: file.oldPath, contents: oldContents };
-    if (newResult !== undefined)
-      response.newFile = { name: file.newPath, contents: newContents };
-    return ok(response);
+    // `oldResult`/`newResult` are a `Result` object or `undefined`, so the
+    // truthiness test here is exactly a `!== undefined` test.
+    const oldFile = oldResult && { name: file.oldPath, contents: oldContents };
+    const newFile = newResult && { name: file.newPath, contents: newContents };
+    return ok({
+      state: "ready" as const,
+      ...definedProps({ oldFile, newFile }),
+    });
   }
 
   private async loadPatchIndex(

@@ -12,6 +12,7 @@ import type {
   GitHubLabel,
   PullRequestAssigneePermission,
 } from "../../../domain/github-context";
+import { definedProps } from "../../../domain/defined-props";
 import type { ReviewVerdictState } from "../../../domain/review-verdicts";
 import { PatchdeskApiError } from "../api-client";
 import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
@@ -23,7 +24,6 @@ import type {
 } from "../renderer-contracts";
 import {
   AssigneePicker,
-  type AssigneePickerActions,
   type AssigneesSectionActions,
 } from "./assignee-picker";
 import { LabelChip } from "./label-chip";
@@ -71,53 +71,6 @@ function RailSection({
     </section>
   );
 }
-
-/** Mutable form of `RailSection`'s header props, so a section can assign
- * `settings` only when present instead of a conditional empty-object spread
- * (mirrors `MutableGeneralThreadOverrides` in `conversation.tsx`). */
-type MutableRailSectionHeaderProps = {
-  title: string;
-  freshness: RevisionFreshness;
-  settings?: React.ReactNode;
-};
-
-/** Mutable form of `AssigneePicker`'s props, for the same reason. */
-type MutableAssigneePickerProps = {
-  attachedAssignees: ReadonlyArray<string>;
-  actions?: AssigneePickerActions;
-};
-
-/** Mutable form of `AssigneesSection`'s props, for the same reason. */
-type MutableAssigneesSectionProps = {
-  assignees: ReadonlyArray<string>;
-  freshness: RevisionFreshness;
-  refreshedAt: string;
-  terminal: boolean;
-  actions?: AssigneesSectionActions;
-};
-
-/** Mutable form of `ReviewerPicker`'s props, for the same reason. */
-type MutableReviewerPickerProps = {
-  attachedReviewers: ReadonlyArray<string>;
-  actions?: ReviewerPickerActions;
-};
-
-/** Mutable form of `ReviewersSection`'s props, for the same reason. */
-type MutableReviewersSectionProps = {
-  requestedReviewers: ReadonlyArray<string>;
-  pendingReview?: PendingReviewProjection;
-  freshness: RevisionFreshness;
-  refreshedAt: string;
-  terminal: boolean;
-  actions?: ReviewerPickerActions;
-};
-
-/** Mutable form of `PullRequestMetadataRail`'s Labels `<RailSection>` header, for the same reason. */
-type MutableLabelsRailSectionProps = {
-  title: string;
-  freshness: RevisionFreshness;
-  settings?: React.ReactNode;
-};
 
 type ReviewerRow = NonNullable<ReviewerListResponse["reviewers"]>[number];
 
@@ -384,22 +337,22 @@ function ReviewersSection({
     // it is intentionally in the dependency list purely as a re-fetch key.
   }, [actions, refreshedAt]);
 
-  const pickerProps: MutableReviewerPickerProps = {
-    attachedReviewers: requestedReviewers,
-  };
-  if (actions !== undefined) pickerProps.actions = actions;
-
-  const headerProps: MutableRailSectionHeaderProps = {
-    title: "Reviewers",
-    freshness,
-  };
-  if (!terminal) headerProps.settings = <ReviewerPicker {...pickerProps} />;
-
   const pendingCount =
     pendingReview?.state === "pending" ? pendingReview.count : undefined;
 
   return (
-    <RailSection {...headerProps}>
+    <RailSection
+      title="Reviewers"
+      freshness={freshness}
+      {...definedProps({
+        settings: terminal ? undefined : (
+          <ReviewerPicker
+            attachedReviewers={requestedReviewers}
+            {...definedProps({ actions })}
+          />
+        ),
+      })}
+    >
       <div className="flex flex-col gap-1.5">
         <ReviewersSectionBody readState={readState} />
         {pendingCount === undefined ? null : (
@@ -527,19 +480,19 @@ function AssigneesSection({
       .finally(() => setSelfAssignBusy(false));
   };
 
-  const pickerProps: MutableAssigneePickerProps = {
-    attachedAssignees: visibleAssignees,
-  };
-  if (actions !== undefined) pickerProps.actions = actions;
-
-  const headerProps: MutableRailSectionHeaderProps = {
-    title: "Assignees",
-    freshness,
-  };
-  if (!terminal) headerProps.settings = <AssigneePicker {...pickerProps} />;
-
   return (
-    <RailSection {...headerProps}>
+    <RailSection
+      title="Assignees"
+      freshness={freshness}
+      {...definedProps({
+        settings: terminal ? undefined : (
+          <AssigneePicker
+            attachedAssignees={visibleAssignees}
+            {...definedProps({ actions })}
+          />
+        ),
+      })}
+    >
       {visibleAssignees.length === 0 ? (
         <div className="flex flex-col gap-1.5">
           <p className="text-xs text-muted-foreground">Nobody is assigned.</p>
@@ -626,46 +579,37 @@ export function PullRequestMetadataRail({
   readonly assigneeActions?: AssigneesSectionActions;
   readonly reviewerActions?: ReviewerPickerActions;
 }): React.JSX.Element {
-  const reviewersSectionProps: MutableReviewersSectionProps = {
-    requestedReviewers,
-    freshness,
-    refreshedAt,
-    terminal,
-  };
-  if (pendingReview !== undefined)
-    reviewersSectionProps.pendingReview = pendingReview;
-  if (reviewerActions !== undefined)
-    reviewersSectionProps.actions = reviewerActions;
-
-  const assigneesSectionProps: MutableAssigneesSectionProps = {
-    assignees,
-    freshness,
-    refreshedAt,
-    terminal,
-  };
-  if (assigneeActions !== undefined)
-    assigneesSectionProps.actions = assigneeActions;
-
-  const labelsSectionHeaderProps: MutableLabelsRailSectionProps = {
-    title: "Labels",
-    freshness,
-  };
-  if (!terminal)
-    labelsSectionHeaderProps.settings = (
-      <LabelPicker
-        attachedLabels={labels}
-        {...(labelActions === undefined ? {} : { actions: labelActions })}
-      />
-    );
-
   return (
     <aside
       aria-label="Pull request metadata"
       className="w-full min-[1100px]:sticky min-[1100px]:top-0 min-[1100px]:w-[272px] min-[1100px]:shrink-0"
     >
-      <ReviewersSection {...reviewersSectionProps} />
-      <AssigneesSection {...assigneesSectionProps} />
-      <RailSection {...labelsSectionHeaderProps}>
+      <ReviewersSection
+        requestedReviewers={requestedReviewers}
+        freshness={freshness}
+        refreshedAt={refreshedAt}
+        terminal={terminal}
+        {...definedProps({ pendingReview, actions: reviewerActions })}
+      />
+      <AssigneesSection
+        assignees={assignees}
+        freshness={freshness}
+        refreshedAt={refreshedAt}
+        terminal={terminal}
+        {...definedProps({ actions: assigneeActions })}
+      />
+      <RailSection
+        title="Labels"
+        freshness={freshness}
+        {...definedProps({
+          settings: terminal ? undefined : (
+            <LabelPicker
+              attachedLabels={labels}
+              {...definedProps({ actions: labelActions })}
+            />
+          ),
+        })}
+      >
         {labels.length === 0 ? (
           <p className="text-xs text-muted-foreground">No labels.</p>
         ) : (

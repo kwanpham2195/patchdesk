@@ -2,6 +2,7 @@ import {
   ReviewWorkbench,
   type ReviewWorkbenchActions,
 } from "../../components/review-workbench";
+import { definedProps } from "../../../../domain/defined-props";
 import type { PullRequestOverviewMerge } from "../../components/pr-overview-sheet";
 import type { AssigneesSectionActions } from "../../components/assignee-picker";
 import type { ReviewerPickerActions } from "../../components/reviewer-picker";
@@ -16,13 +17,6 @@ import {
   canonicalWorkbenchModel,
   type workbenchFixtureData,
 } from "./workbench-fixture-data";
-
-/** Mutable form of `ReviewWorkbenchActions`, so a fixture can assign its
- * optional `merge` field only when present instead of using a conditional
- * empty-object spread. */
-type MutableReviewWorkbenchActions = {
-  -readonly [K in keyof ReviewWorkbenchActions]: ReviewWorkbenchActions[K];
-};
 
 export function CanonicalFixtureWorkbench({
   data,
@@ -52,12 +46,7 @@ export function CanonicalFixtureWorkbench({
   const model = canonicalWorkbenchModel(data);
   const merged =
     modelOverrides === undefined ? model : { ...model, ...modelOverrides };
-  // Built as a mutable local (assignable to the readonly-field
-  // `ReviewWorkbenchActions` structurally) and given `merge` only when
-  // present, rather than a conditional empty-object spread: under this
-  // project's `exactOptionalPropertyTypes`, an optional field must be
-  // absent, not merely set to `undefined`.
-  const actions: MutableReviewWorkbenchActions = {
+  const actions: ReviewWorkbenchActions = {
     detectUpdates: async () => undefined,
     refresh: async () => undefined,
     loadCommitDiff: async () => {
@@ -72,8 +61,8 @@ export function CanonicalFixtureWorkbench({
     },
     assignees: assigneeActions ?? fixtureAssigneeActions,
     reviewers: reviewerActions ?? fixtureReviewerActions,
+    ...definedProps({ merge: mergeAction }),
   };
-  if (mergeAction !== undefined) actions.merge = mergeAction;
   return (
     <ReviewWorkbench
       model={merged}
