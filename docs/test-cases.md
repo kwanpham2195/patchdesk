@@ -9,6 +9,11 @@ Each flow lists two kinds of coverage:
 - `automated:` the canonical test or suite that must stay green.
 - `manual:` the steps that require a human in the live app, plus the code paths that make the manual pass necessary.
 
+A flow may also carry a `gap:` line naming behaviour nothing tests, or a `note:`
+line correcting an expectation the flow no longer meets. Recording a gap is
+right; naming a test that does not exist, or a behaviour a named test does not
+assert, is not.
+
 Manual passes always happen in the live app, never on a build or unit test alone.
 Use the `patchdesk-electron-tester` skill (agent-browser over CDP 9233) for live checks.
 Keep the dev log tails live in herdr (`~/.local/share/patchdesk/logs/patchdesk.jsonl` and the `pnpm dev` console).
@@ -17,12 +22,27 @@ After main-process changes, restart the dev app; a stale main process shows as r
 The full automated gate before any handoff is:
 
 ```bash
+pnpm check
 pnpm lint
-pnpm typecheck
-pnpm test:all
 pnpm build
 pnpm test:e2e
 ```
+
+`pnpm check` is the one command that carries most of the gate. It runs
+`pnpm typecheck`, `pnpm typecheck:scripts`, `pnpm test:all` (the root suite and
+the separate `runtime/flue` suite), `pnpm lint:staged`,
+`pnpm lint:changed -- origin/main`, and `pnpm knip:ratchet`, in that order, and
+stops at the first failure. It does not run the repo-wide `pnpm lint`, the
+bundle check, or the browser suite, and the pull request gates run all three —
+so run `pnpm lint` beside it, add `pnpm build` and `pnpm test:e2e` for renderer
+or desktop work, and `pnpm test:bundle` when the renderer bundles or the Pierre
+theme catalog change. `CONTRIBUTING.md` ("Verifying before pushing") describes
+each command; `AGENTS.md` ("Testing") sets which layer a new test belongs in.
+
+There is no assistive-technology lane: no axe scan, no screen-reader narration
+check, no forced-colors or reduced-motion check (ADR 0034). Keyboard operability
+is kept and is tested in `tests/browser/keyboard-operability.spec.ts` and
+`tests/browser/review-diff-keyboard-nav.spec.ts`.
 
 ## Startup and lifecycle
 
@@ -51,7 +71,7 @@ Every request needs the per-launch capability and the renderer origin. The bridg
 
 One Selected repository, remembered per profile. GitHub answers the filter, the order, and the count; Patchdesk answers only the two Review indicators (Updated since review, Ready to merge). Refresh happens only when asked.
 
-- `automated:` `tests/services/maintainer-inbox-service.test.ts` (single-repository search scoped and page-token-validated, GitHub's `issueCount` used as the count rather than the loaded row count, merged scope returns only the terminal action), `tests/adapters/github-adapter.test.ts` (`searchMaintainerPullRequests` query shape, `rateLimit { remaining resetAt }` selection guarded on both listing queries, rate-limit and forbidden read mapping), `tests/domain/maintainer-inbox.test.ts` (`ready_to_merge`'s four conditions tested independently, merged rows projected outside active-work), `tests/domain/inbox-freshness-policy.test.ts` (degraded/stale thresholds, clock-skew and NaN handling), `tests/renderer/maintainer-inbox.ui.test.tsx` (repository picker, label filter sent to GitHub instead of filtering loaded rows, repository-wide `matchCount` rendered honestly, roving-tabindex pagination with real disabled Previous/Next), `tests/renderer/inbox-flow.ui.test.tsx` (merged rows routed to the terminal-only open endpoint, rate-limited and forbidden repository outcomes render no retry), `tests/renderer/inbox-view-preferences.test.ts` (selected repository and page size persisted per profile, reset to defaults on a version mismatch), `tests/renderer/inbox-freshness.test.ts` (freshness labels and elapsed-time copy; no scheduler remains), `tests/services/inbox-refresh-coordinator.test.ts` (concurrent reads to the same profile and repository coalesced, isolated across repository/page/size/filter), `tests/storage/maintainer-inbox-cache-store.test.ts` (schema-strict round-trip, credential-like data rejected), `tests/local-api-auth.test.ts` (`GET /v1/inbox` and `GET /v1/inbox/labels` reject a repository outside scope and an out-of-range page size; `GET /v1/dashboard` and `POST /v1/direct-entry/preview` return 404).
+- `automated:` `tests/services/maintainer-inbox-service.test.ts` (single-repository search scoped and page-token-validated, GitHub's `issueCount` used as the count rather than the loaded row count, merged scope returns only the terminal action), `tests/adapters/github-adapter.test.ts` (`searchMaintainerPullRequests` query shape, `rateLimit { remaining resetAt }` selection guarded on both listing queries, rate-limit and forbidden read mapping), `tests/domain/maintainer-inbox.test.ts` (`ready_to_merge`'s four conditions tested independently, merged rows projected outside active-work), `tests/domain/inbox-freshness-policy.test.ts` (degraded/stale thresholds, clock-skew and NaN handling), `tests/renderer/maintainer-inbox.ui.test.tsx` (repository picker, label filter sent to GitHub instead of filtering loaded rows, repository-wide `matchCount` rendered honestly, pagination that disables an unavailable direction with a real `disabled` button and ignores clicks on it), `tests/renderer/inbox-flow.ui.test.tsx` (merged rows routed to the terminal-only open endpoint, rate-limited and forbidden repository outcomes render no retry), `tests/renderer/inbox-view-preferences.test.ts` (selected repository and page size persisted per profile, reset to defaults on a version mismatch), `tests/renderer/inbox-freshness.test.ts` (freshness labels and elapsed-time copy; no scheduler remains), `tests/services/inbox-refresh-coordinator.test.ts` (concurrent reads to the same profile and repository coalesced, isolated across repository/page/size/filter), `tests/storage/maintainer-inbox-cache-store.test.ts` (schema-strict round-trip, credential-like data rejected), `tests/local-api-auth.test.ts` (`GET /v1/inbox` and `GET /v1/inbox/labels` reject a repository outside scope and an out-of-range page size; `GET /v1/dashboard` and `POST /v1/direct-entry/preview` return 404).
 - `manual:`
   - Compare the header count against GitHub's own count for the same filter; they must agree, including on a repository with more matches than one page.
   - Leave the screen idle for three minutes: no `GET /v1/inbox` request may appear in the log.
@@ -77,12 +97,12 @@ Opening a Review prepares one immutable session: PR fetch, canonical patch, cont
 
 A Review is Fresh, RevisionChanged, or Unavailable. GitHub wins; Patchdesk never merges drafts.
 
-- `automated:` `tests/services/review-refresh-service.test.ts` (head race, merged vs closed, phantom detection), `tests/services/review-write-gate.test.ts`, `tests/storage/review-remote-store.test.ts` (content-addressed snapshot integrity).
+- `automated:` `tests/services/review-refresh-service.test.ts` (head race, base race, merged vs closed, terminal-only refresh), `tests/services/review-write-gate.test.ts` (represented and undetected state required, revision agreement), `tests/renderer/use-review-observation.test.ts` (the renderer's detect-updates state machine: trigger coalescing, generation discipline, direct commands pausing detection, Reconciled and Terminal outcomes, the recent-write journal), `tests/storage/review-remote-store.test.ts` (content-addressed snapshot integrity).
 - `manual:`
   - Open a Review, push a commit to the PR on GitHub, refresh: the workbench must show RevisionChanged and block writes until refresh succeeds.
   - Merge the PR on GitHub, refresh: the workbench must become Terminal with no review or merge actions.
   - Close the PR without merging, refresh: Terminal with closed state.
-- `run when:` anything changes in `review-refresh-service.ts`, `review-write-gate.ts`, `review-remote-store.ts`, or the freshness transitions in `src/domain/review.ts`.
+- `run when:` anything changes in `review-refresh-service.ts`, `review-write-gate.ts`, `review-remote-store.ts`, `use-review-observation.ts`, or the freshness transitions in `src/domain/review.ts`.
 
 ## Insight runs: Analysis and Walkthrough
 
@@ -101,7 +121,7 @@ The coordinator owns the run lifecycle; the child is a throwaway; results are va
 
 Writes require a Fresh Review, explicit action, durable intent, and a read-only post-write reconciliation. Uncertainty locks, never replays.
 
-- `automated:` `tests/services/pending-review-service.test.ts` (intent before write, no replay, ownership, submit only once), `tests/services/direct-summary-review-service.test.ts` (author approval blocked, uncertainty retained), `tests/services/published-feedback-service.test.ts` (confirmation + head recheck), `tests/services/inline-conversation-service.test.ts` (target ownership proofs, no full-conversation reads).
+- `automated:` `tests/services/pending-review-service.test.ts` (intent before write, no replay, ownership, submit only once), `tests/services/direct-summary-review-service.test.ts` (author approval blocked, uncertainty retained), `tests/services/published-feedback-service.test.ts` (confirmation + head recheck), `tests/services/inline-conversation-service.test.ts` (target ownership proofs, no full-conversation reads), `tests/services/write-invariants.test.ts` (the table-driven rule that every GitHub write persists intent before the remote boundary, and that every metadata write is an idempotent set operation), `tests/services/review-lock-invariants.test.ts` (every Review entry point waits for the coordinator lock, and no write re-enters the lock it already holds), `tests/renderer/use-pending-review-actions.test.ts` (the renderer's pending-review commands, journalling, busy state, and the recovery lock), `tests/renderer/use-direct-summary-actions.test.ts` (direct-summary submit, receipt override, and the outcome-unknown lock).
 - `manual:`
   - Run Analysis, then use a Finding review command: the GitHub pending review must appear with exactly that finding, and the Analysis screen must expose the summary action.
   - Submit the pending review from the Finish review modal: one GitHub review must be published with the edited body.
@@ -109,7 +129,7 @@ Writes require a Fresh Review, explicit action, durable intent, and a read-only 
   - Resolve and unresolve a mapped conversation thread: the GitHub thread state must change.
   - Edit and delete an own published comment: must work with confirmation.
   - Delete or dismiss a comment you did not author: must be rejected.
-- `run when:` anything changes in `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, `inline-conversation-service.ts`, `review-write-gate.ts`, or the GitHub adapter write methods.
+- `run when:` anything changes in `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, `inline-conversation-service.ts`, `review-write-gate.ts`, `use-pending-review-actions.ts`, `use-direct-summary-actions.ts`, or the GitHub adapter write methods.
 
 ## Merge
 
@@ -157,7 +177,8 @@ Codex runs against the immutable represented worktree only, through a read-only 
 
 The Conversation screen's rail owns the pull request's Reviewers, Assignees, and Labels. Every write gates on the current session (not diff freshness), resolves permission per write type, fails closed, and journals so a maintainer's own change never reads back as remote activity.
 
-- `automated:` `tests/browser/conversation-rail.spec.ts` (the rail's sections, pickers, empty states, permission rendering, narrow-window stacking, terminal read-only), `tests/services/label-service.test.ts`, `tests/services/assignee-service.test.ts` (ten-assignee cap, self-assign), `tests/services/reviewer-service.test.ts` (subtractive removal, additive request), `tests/domain/review-verdicts.test.ts` (the verdict union, dropped drafts, outdated marking).
+- `automated:` `tests/browser/conversation-rail.spec.ts` (the three pickers opening and toggling, the Assignees empty state and its self-assign shortcut, narrow-window stacking, the rail staying in view while the timeline scrolls, cached-avatar rendering with no remote `src`), `tests/browser/keyboard-operability.spec.ts` (the same three pickers and the self-assign shortcut reached and operated by keyboard alone), `tests/renderer/use-github-item-picker.test.ts` (the shared picker state machine: permission failing closed to `unknown`, optimistic attach and revert, stale-response ordering, debounced search, and a picker with no actions issuing neither read nor write), `tests/renderer/github-item-picker.rendering.test.tsx` (write-failure and read-failure alerts, the unconfirmed-account caveat, the truncation note), `tests/services/label-service.test.ts`, `tests/services/assignee-service.test.ts` (ten-assignee cap, self-assign), `tests/services/reviewer-service.test.ts` (subtractive removal, additive request), `tests/domain/review-verdicts.test.ts` (the verdict union, dropped drafts, outdated marking).
+- `gap:` nothing tests the rail component itself. The browser tests that asserted its section composition (Reviewers above Assignees above Labels, absent outside the Conversation tab) and its Terminal read-only rendering were deleted as duplicates and have no replacement: `use-github-item-picker.test.ts` proves an actions-less picker is inert, but nothing proves the rail withholds those actions when the Review is Terminal. Permission rendering is not part of this gap — the two picker suites above own it. Until the rail gets its own test, the manual cases below are the only cover for section composition and Terminal read-only.
 - `manual:`
   - Apply and remove a label from the rail against a real PR: GitHub must show the change, and the next refresh must not report it as remote activity.
   - Assign and unassign a person, and use the empty state's self-assign shortcut: GitHub must show the change.
@@ -165,13 +186,14 @@ The Conversation screen's rail owns the pull request's Reviewers, Assignees, and
   - On a PR with an approval given before the latest push, confirm the verdict renders as outdated.
   - With an unfinished GitHub pending review open, confirm the Reviewers section shows it as a draft with its comment count and still shows every submitted verdict.
   - Sign in as a triage-only account: labels must stay editable while the reviewer and assignee controls report that the account cannot make the change.
-- `run when:` anything changes in `label-service.ts`, `assignee-service.ts`, `reviewer-service.ts`, `review-verdicts.ts`, `pull-request-metadata-rail.tsx`, the three pickers, or the rail's routes in `local-api.ts`.
+- `run when:` anything changes in `label-service.ts`, `assignee-service.ts`, `reviewer-service.ts`, `review-verdicts.ts`, `pull-request-metadata-rail.tsx`, `use-github-item-picker.ts`, the three picker components, or the rail's routes in `src/main/routes/`.
 
 ## Browser, performance, and package
 
 The built app is the outermost boundary.
 
-- `automated:` `tests/browser/review-workbench.spec.ts` (workbench surfaces, diff stream), `tests/browser/protected-loopback-workflow.spec.ts` (loopback API through the bridge), `tests/browser/performance.spec.ts` (1,000 files, ~10 MB patch), package smoke (`pnpm test:package-smoke`), bundle check (`pnpm test:bundle`).
+- `automated:` `tests/browser/review-workbench.spec.ts` (workbench surfaces, Pierre CodeView scrolling and virtualisation, scroll-follow of the active file, navigator resize and persistence, diff theme switching, PR overview and header refresh), `tests/browser/review-diff-keyboard-nav.spec.ts` (`.`/`,` file jumps, `]`/`[` hunk jumps, `}` with no unresolved comments, and each of those keys typed into the comment composer instead), `tests/browser/keyboard-operability.spec.ts` (quick navigation, the Settings modal's trapped surface, Mermaid controls, the header refresh control), `tests/browser/protected-loopback-workflow.spec.ts` (loopback API through the bridge), `tests/browser/performance.spec.ts` (1,000 files, ~10 MB patch), package smoke (`pnpm test:package-smoke`), bundle check (`pnpm test:bundle`).
+- `note:` there is no progressive diff-stream test because there is no diff stream. CodeView receives the whole file list at mount and virtualises it itself; the batching prefix and its test were deleted.
 - `manual:`
   - Package a build (`pnpm package:mac`) and run the packaged app against a real PR: open, refresh, analysis, walkthrough, and one write flow.
   - In the packaged app, open the performance fixture and confirm the diff stays responsive.
@@ -180,5 +202,7 @@ The built app is the outermost boundary.
 ## Keeping the registry honest
 
 - The automated column points at canonical tests, not the full suite. New flows get their canonical test here when they land.
+- Every path and parenthetical here names a file that exists and a behaviour that file asserts. A change that deletes or moves a test updates this file in the same commit. When coverage is lost and not replaced, write a `gap:` line saying so — a registry that names a test which does not exist is worse than one that admits the hole.
+- `AGENTS.md` ("Testing") decides which layer a new test belongs in. Add the test there first, then name it here.
 - A manual case stays only while a human can run it in the dev app or the packaged app. If a code path removes the case, remove the manual entry.
 - When a manual pass finds a bug, add a regression test first, then keep the manual case only if it still covers something the test cannot (visual, timing, or real-GitHub behavior).

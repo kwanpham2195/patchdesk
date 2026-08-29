@@ -58,6 +58,23 @@ pnpm test -- --run
 
 Use `pnpm test -- --run <file>` for focused root-suite development. The complete pre-push test gate is `pnpm test:all`; it runs the root suite and the separate `runtime/flue` suite.
 
+## Where a test belongs
+
+`AGENTS.md` ("Testing") holds the rules for which layer a test goes in, and
+they are not advisory: test at the lowest layer that can observe the behaviour.
+Domain and services get a test per behaviour, written before the fix. A hook
+that owns timing, generations, optimistic state, or a request payload gets a
+`renderHook` test with a fake bridge, never a mounted component. Components get
+one smoke test per screen plus the keyboard and focus tests that need a DOM,
+queried by role or label — if a component computes something worth asserting,
+export the function and test the function. `tests/browser/` is for end-to-end
+journeys and for what only a real browser shows, never for a behaviour an RTL
+or hook test already proves. There is no assistive-technology lane (ADR 0034):
+no axe scans, no screen-reader narration checks, no forced-colors or
+reduced-motion checks. Use the shared doubles rather than hand-rolling one.
+`docs/test-cases.md` then names the canonical test for each user-facing flow;
+keep it true in the same commit that moves or deletes a test.
+
 ## Making changes
 
 Branch from `main` using `<type>/<slug>` with types
