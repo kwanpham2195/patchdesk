@@ -87,10 +87,15 @@ export async function checkChangedSource({
     .split("\0")
     .filter((path) => path.length > 0);
 
+  // `fileExists` is optional on both option bags, and the repository compiles
+  // with `exactOptionalPropertyTypes`, so an absent override must be omitted
+  // rather than passed through as an explicit `undefined`.
+  const fileExistsField = fileExists === undefined ? {} : { fileExists };
+
   const sourceCheckResult = await checkSourcePaths(changedPaths, {
     cwd,
     run,
-    fileExists,
+    ...fileExistsField,
     output,
     base,
     head,
@@ -100,7 +105,7 @@ export async function checkChangedSource({
   return checkLintRatchet({
     cwd,
     run,
-    fileExists,
+    ...fileExistsField,
     output,
     revision: head,
     changedPaths,

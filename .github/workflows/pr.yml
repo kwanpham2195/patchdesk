@@ -56,6 +56,12 @@ jobs:
           "${{ github.event.pull_request.base.sha }}"
           "${{ github.event.pull_request.head.sha }}"
 
+      - name: Check the scripts/ typecheck ratchet
+        run: >-
+          pnpm typecheck:scripts --
+          "${{ github.event.pull_request.base.sha }}"
+          "${{ github.event.pull_request.head.sha }}"
+
       - name: Lint the whole repository
         run: pnpm lint
 

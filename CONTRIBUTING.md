@@ -159,6 +159,32 @@ removed or made module-private, so the ratchet and a bare blocking `pnpm knip`
 are now the same gate. Fix a new finding by deleting the dead code or dropping
 the `export` keyword; do not raise the baseline.
 
+### The `scripts/` typecheck ratchet
+
+`pnpm typecheck` covers `src` and `tests`. It cannot cover `scripts/`: those
+modules are plain JavaScript, and `tsconfig.json`'s `include` does not list
+them. `tsconfig.scripts.json` does, with `allowJs` and `checkJs`, and
+`pnpm typecheck:scripts` (baseline `scripts-typecheck-baseline.json`) holds
+the count the same way the Oxlint and Knip ratchets hold theirs: a rise fails,
+and so does a drop nobody records. It runs in `pnpm check` and in the pull
+request gates, not in `pnpm precommit` — it builds a whole `tsc` program and
+answers a repository-wide question, not one about the staged files.
+
+Seven hand-written `scripts/*.d.mts` files stood beside these modules until
+2026-08-29. They were not a convenience: TypeScript prefers a declaration file
+over its `.js` sibling both when resolving an import and when expanding an
+`include` glob, so those files kept the real implementations out of every
+program the repository ever compiled. Nothing had type-checked the code they
+described. Deleting them is what turned this check on, and it is why the
+declarations no longer exist to drift: `tests/scripts/**` now checks against
+the implementations themselves.
+
+Unlike the other two, this baseline does not start at zero. It starts at 131,
+because that is what the first run found. 124 of the 131 are an implicit `any`
+on a parameter or a destructured binding, each one a JSDoc annotation away
+from gone; annotating them is its own piece of work. Lower the baseline as
+they land. Do not raise it.
+
 ### The size ratchet
 
 `pnpm lint:staged` and `pnpm lint:changed` both apply it to every changed
@@ -206,7 +232,8 @@ invariant the surrounding code checked, not restate what the code does.
 ## Verifying before pushing
 
 `pnpm check` is the pre-handoff command: it runs `pnpm typecheck`,
-`pnpm test:all`, `pnpm lint:staged` (checks what you will commit),
+`pnpm typecheck:scripts`, `pnpm test:all`, `pnpm lint:staged` (checks what you
+will commit),
 `pnpm lint:changed -- origin/main` (checks the whole branch the way the pull
 request gates will), then `pnpm knip:ratchet`, in that order, and stops at the
 first failure. `pnpm lint:staged` reports "no staged source files" when
@@ -241,6 +268,7 @@ Pull requests targeting `main` run the `Pull request gates` workflow on
 - `pnpm lint:changed -- <base> <head>` for changed JavaScript and TypeScript
   files only, plus the Oxlint count ratchet;
 - `pnpm knip:ratchet -- <base> <head>`;
+- `pnpm typecheck:scripts -- <base> <head>`;
 - `pnpm lint` over the whole repository;
 - `pnpm typecheck`;
 - `pnpm test:all`, including the root suite and separate `runtime/flue` suite;

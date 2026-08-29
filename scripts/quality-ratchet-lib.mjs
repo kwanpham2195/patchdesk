@@ -76,6 +76,34 @@ const KNIP_RATCHET = {
 };
 
 /**
+ * `scripts/**` is plain JavaScript that the root `tsconfig.json` does not
+ * include, so `tsconfig.scripts.json` checks it separately under `checkJs`.
+ * Turning that on found 131 findings at once, almost all of them implicit
+ * `any`, and annotating them is a piece of work of its own -- so this ratchet
+ * holds the line meanwhile. See `scripts-typecheck-baseline.json` for what the
+ * number is and why it does not start at zero the way the other two do.
+ *
+ * @type {RatchetSpec}
+ */
+const SCRIPTS_TYPE_RATCHET = {
+  label: "TypeScript (scripts/)",
+  subject: "scripts/ type errors",
+  baselineFile: "scripts-typecheck-baseline.json",
+  baselineField: "errors",
+  configLabel: "tsconfig.scripts.json",
+  isConfigPath: isScriptsTypeConfigPath,
+  tool: "tsc",
+  toolArgs: [
+    "--noEmit",
+    "--pretty",
+    "false",
+    "--project",
+    "tsconfig.scripts.json",
+  ],
+  countIssues: countTypeErrors,
+};
+
+/**
  * Compare the repo-wide Oxlint finding count with the baseline recorded in
  * `lint-baseline.json`, as the change under test would commit it.
  *
@@ -95,6 +123,17 @@ export async function checkLintRatchet(options) {
  */
 export async function checkKnipRatchet(options) {
   return runCountRatchet(KNIP_RATCHET, options);
+}
+
+/**
+ * Compare the `scripts/**` type-error count with the baseline recorded in
+ * `scripts-typecheck-baseline.json`, as the change under test would commit it.
+ *
+ * @param {RatchetOptions} options
+ * @returns {Promise<number>} A process-style exit code.
+ */
+export async function checkScriptsTypeRatchet(options) {
+  return runCountRatchet(SCRIPTS_TYPE_RATCHET, options);
 }
 
 /**
@@ -346,6 +385,52 @@ function isOxlintConfigPath(path) {
   return (
     basename(path) === ".oxlintrc.json" || path.startsWith("tools/oxlint/")
   );
+}
+
+/**
+ * `tsconfig.scripts.json` sets the strictness the count is taken under, and it
+ * inherits everything else from the root `tsconfig.json`, so loosening either
+ * one lowers the number the same way.
+ *
+ * @param {string} path
+ * @returns {boolean}
+ */
+function isScriptsTypeConfigPath(path) {
+  return path === "tsconfig.scripts.json" || path === "tsconfig.json";
+}
+
+/**
+ * tsc has no JSON reporter, so the count is its diagnostic lines. `--pretty
+ * false` gives one line per diagnostic in `file(line,col): error TSnnnn: `
+ * form, with any elaboration indented under it; the indented continuations are
+ * part of the same finding and are not counted.
+ *
+ * A diagnostic with no file position means the project itself did not load --
+ * a missing `tsconfig.scripts.json`, an unreadable `extends`. Counting those
+ * would report a tiny number for a run that checked nothing, so they return
+ * `undefined` and the caller replays the output instead.
+ *
+ * @param {string} stdout
+ * @param {CommandOutput} output
+ * @returns {number | undefined}
+ */
+function countTypeErrors(stdout, output) {
+  let counted = 0;
+  let positionless = 0;
+  for (const line of stdout.split("\n")) {
+    if (!/^\S.*error TS[0-9]+: /.test(line)) continue;
+    if (/^[^(]+\([0-9]+,[0-9]+\): error TS[0-9]+: /.test(line)) counted += 1;
+    else positionless += 1;
+  }
+  if (positionless > 0) {
+    output.stderr(
+      `tsc reported ${positionless} diagnostic(s) with no file position, which ` +
+        `means the project did not load and nothing was type-checked. Fix that ` +
+        `before the count means anything.\n`,
+    );
+    return undefined;
+  }
+  return counted;
 }
 
 /**

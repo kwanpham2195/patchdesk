@@ -5,23 +5,22 @@ import { fileURLToPath } from "node:url";
 
 import { resolveChangeUnderTest } from "./change-under-test-lib.mjs";
 import { processOutput, spawnCommand } from "./gate-command-lib.mjs";
-import { checkKnipRatchet } from "./quality-ratchet-lib.mjs";
+import { checkScriptsTypeRatchet } from "./quality-ratchet-lib.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 
 /**
- * Compare the repo-wide Knip issue count with `knip-baseline.json`.
+ * Compare the `scripts/**` type-error count with
+ * `scripts-typecheck-baseline.json`.
  *
  * With no arguments the change under test is the staged one, so the same
- * invocation works from `pnpm check` and from a commit hook. With a base and
- * a head it is that commit pair, which is the shape CI uses.
+ * invocation works from `pnpm check` and from a commit hook. With a base and a
+ * head it is that commit pair, which is the shape CI uses. This is the same
+ * pair of shapes `pnpm knip:ratchet` takes, and for the same reason.
  *
- * Knip is NOT part of `pnpm precommit`. Its number answers a whole-project
- * reachability question, so an ordinary mid-refactor commit -- move a helper
- * out of one file now, wire up its new caller in the next commit -- moves the
- * count for a reason that has nothing wrong with it. A gate that rejects that
- * commit gets switched off. `pnpm check`, the pre-handoff gate, and the pull
- * request gates are where the whole project is meant to hang together.
+ * This is NOT part of `pnpm precommit`: the whole `scripts/` tree is
+ * type-checked on every run, so it costs a full `tsc` program and answers a
+ * repository-wide question rather than one about the staged files.
  *
  * @param {{
  *   readonly args: ReadonlyArray<string>;
@@ -32,13 +31,19 @@ const projectRoot = resolve(import.meta.dirname, "..");
  * }} options
  * @returns {Promise<number>} A process-style exit code.
  */
-export async function checkKnipCount({ args, cwd, run, fileExists, output }) {
+export async function checkScriptsTypeCount({
+  args,
+  cwd,
+  run,
+  fileExists,
+  output,
+}) {
   if (args.length !== 0 && args.length !== 2) {
-    output.stderr("Usage: pnpm knip:ratchet [-- <base> <head>]\n");
+    output.stderr("Usage: pnpm typecheck:scripts [-- <base> <head>]\n");
     return 2;
   }
   if (args.some((value) => value.trim().length === 0)) {
-    output.stderr("Usage: pnpm knip:ratchet [-- <base> <head>]\n");
+    output.stderr("Usage: pnpm typecheck:scripts [-- <base> <head>]\n");
     return 2;
   }
 
@@ -49,7 +54,13 @@ export async function checkKnipCount({ args, cwd, run, fileExists, output }) {
   // with `exactOptionalPropertyTypes`, so an absent override must be omitted
   // rather than passed through as an explicit `undefined`.
   const fileExistsField = fileExists === undefined ? {} : { fileExists };
-  return checkKnipRatchet({ cwd, run, ...fileExistsField, output, ...change });
+  return checkScriptsTypeRatchet({
+    cwd,
+    run,
+    ...fileExistsField,
+    output,
+    ...change,
+  });
 }
 
 if (
@@ -58,7 +69,7 @@ if (
 ) {
   const args = process.argv.slice(2);
   if (args[0] === "--") args.shift();
-  process.exitCode = await checkKnipCount({
+  process.exitCode = await checkScriptsTypeCount({
     args,
     cwd: projectRoot,
     run: spawnCommand,

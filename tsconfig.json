@@ -10,6 +10,7 @@
       "@/*": ["src/renderer/src/*"]
     },
     "allowImportingTsExtensions": false,
+    "allowJs": true,
     "verbatimModuleSyntax": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,

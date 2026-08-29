@@ -1,0 +1,19 @@
+{
+  // The quality gates and build helpers under `scripts/` are plain ES modules,
+  // so the root `tsconfig.json` cannot check them: its `include` lists `src`
+  // and `tests`, and `checkJs` there would report on nothing.
+  //
+  // This project checks the implementations themselves, under exactly the root
+  // configuration's strictness. `pnpm typecheck` stays green; the count this
+  // produces is held by `scripts-typecheck-baseline.json` through
+  // `pnpm typecheck:scripts`.
+  //
+  // `vitest/globals` is dropped: nothing under `scripts/` is a test.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "types": ["node"]
+  },
+  "include": ["scripts"]
+}
