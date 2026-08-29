@@ -45,7 +45,7 @@ Every request needs the per-launch capability and the renderer origin. The bridg
   - In the renderer DevTools console, fetch `http://127.0.0.1:<port>/v1/profiles` with no capability header: expect rejection.
   - Fetch the same route with the capability but a foreign `Origin`: expect rejection.
   - Confirm the log file records the rejected attempts without any command output or credentials.
-- `run when:` anything changes in `src/main/local-api.ts`, `app-capability.ts`, `renderer-origin.ts`, or `ipc-contract.ts`.
+- `run when:` anything changes in `src/main/local-api.ts`, `src/main/routes/`, `app-capability.ts`, `renderer-origin.ts`, or `ipc-contract.ts`.
 
 ## Pull requests screen
 

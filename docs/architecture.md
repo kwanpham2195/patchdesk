@@ -92,7 +92,7 @@ It is the only place that knows about Electron.
 
 - `electron-main.ts` is the entry point. It enforces a single instance, registers window and lifecycle events, and records crashes before exit.
 - `app-lifecycle.ts` owns startup order: local API start, health check, workbench display, then shutdown in reverse.
-- `local-api.ts` starts the Hono API on `127.0.0.1` with a random port. Every route parses its input with a Valibot schema, calls a service, and serializes the typed result.
+- `local-api.ts` starts the Hono API on `127.0.0.1` with a random port. It builds the container (`local-api-container.ts` over `local-api-stores.ts`), registers the route modules in `routes/`, and listens. Every route parses its input with a Valibot schema, calls a service, and serializes the typed result.
 - `desktop-bridge.ts` is the only IPC surface the renderer can reach. It validates the requested route against an allowlist, forwards the request to the local API with the capability and renderer-origin headers, caps responses at 8 MiB, and applies a 30-second timeout.
 - `app-capability.ts` generates the per-launch capability and compares presented values with constant-time equality.
 - `preload.ts` exposes the minimal `window.patchdesk.request` bridge to the sandboxed renderer.
