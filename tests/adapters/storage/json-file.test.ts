@@ -13,6 +13,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { writeAtomicFile } from "../../../src/adapters/storage/json-file";
 
+/**
+ * The one member of a `FileHandle` the fsync-ordering test calls through to:
+ * enough to invoke the real `sync()` on whichever handle a spied call landed
+ * on, without naming the whole `FileHandle` surface.
+ */
+type SyncableHandle = { sync: () => Promise<void> };
+
 const roots: string[] = [];
 
 afterEach(async () => {
@@ -76,7 +83,7 @@ describe("writeAtomicFile", () => {
     expect(await readdir(target)).toEqual(["already-here"]);
   });
 
-  it("fsyncs both the file handle it wrote to and the directory handle, as two distinct handles", async () => {
+  it("fsyncs the file handle before the rename and the directory handle after it, as two distinct handles", async () => {
     // `FileHandle` instances share one prototype, so spying on it (a real
     // object, not a module namespace) observes every `sync()`/`writeFile()`
     // call this write makes — including the temp file handle `writeAtomicFile`
@@ -91,14 +98,38 @@ describe("writeAtomicFile", () => {
     // handle ever receives `writeFile` (the temp file), and `sync` is called
     // on that same handle *and* on a second, different handle (the
     // directory) — which only holds if both fsyncs actually ran.
+    //
+    // Identity says which handles are synced, never when, and when is the
+    // whole durability guarantee: a rename that publishes the name before the
+    // bytes are flushed can leave a file that exists but is empty or torn
+    // after a crash, and an fsync of the directory before the rename does
+    // nothing to make that rename survive one. `rename` is a module binding
+    // rather than a method on a shared prototype, so it cannot be spied on to
+    // order calls against it without mocking `node:fs/promises` wholesale,
+    // which is exactly what the prototype spy above exists to avoid. Have
+    // each `sync()` record the directory as it stands at that instant
+    // instead — the durable state the guarantee is about, not a proxy for it.
+    // Before the rename the bytes are only under the temp name; after it,
+    // only under the target name.
     const directory = await tempDirectory();
-    const probeHandle = await open(join(directory, ".probe"), "w");
+    const probePath = join(directory, ".probe");
+    const probeHandle = await open(probePath, "w");
     const fileHandlePrototype: {
-      sync: () => Promise<void>;
+      sync: (this: SyncableHandle) => Promise<void>;
       writeFile: (...args: unknown[]) => Promise<void>;
     } = Object.getPrototypeOf(probeHandle);
     await probeHandle.close();
-    const syncSpy = vi.spyOn(fileHandlePrototype, "sync");
+    // The probe file has served its purpose (reaching the prototype) and
+    // would otherwise show up in the directory listings recorded below.
+    await rm(probePath);
+    const realSync = fileHandlePrototype.sync;
+    const directoryAtEachSync: string[][] = [];
+    const syncSpy = vi
+      .spyOn(fileHandlePrototype, "sync")
+      .mockImplementation(async function (this: SyncableHandle): Promise<void> {
+        directoryAtEachSync.push((await readdir(directory)).sort());
+        await realSync.call(this);
+      });
     const writeFileSpy = vi.spyOn(fileHandlePrototype, "writeFile");
     const target = join(directory, "artifact.bin");
 
@@ -117,5 +148,16 @@ describe("writeAtomicFile", () => {
     expect(
       syncSpy.mock.instances.some((instance) => instance !== fileHandle),
     ).toBe(true);
+    // The file handle is the one synced first, the directory second.
+    expect(syncSpy.mock.instances[0]).toBe(fileHandle);
+    expect(syncSpy.mock.instances[1]).not.toBe(fileHandle);
+    // And the rename falls between the two: at the handle fsync the bytes are
+    // still under the temp name with no target published, while at the
+    // directory fsync the rename has landed and the temp name is gone.
+    expect(directoryAtEachSync).toHaveLength(2);
+    const [atHandleSync, atDirectorySync] = directoryAtEachSync;
+    expect(atHandleSync?.some((entry) => entry.endsWith(".tmp"))).toBe(true);
+    expect(atHandleSync).not.toContain("artifact.bin");
+    expect(atDirectorySync).toEqual(["artifact.bin"]);
   });
 });
