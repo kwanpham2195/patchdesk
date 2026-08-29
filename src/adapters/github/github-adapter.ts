@@ -1,15 +1,16 @@
 import * as v from "valibot";
 
-import type {
-  CommandFailure,
-  CommandRequest,
-  CommandRunner,
-  ForbiddenReason,
-} from "./command-runner";
+import type { CommandFailure, CommandRunner } from "./command-runner";
 import {
   GitHubCliCredentials,
   type GitHubCredentials,
 } from "./github-credentials";
+import {
+  GhRequestRunner,
+  type GhCommandRequest,
+  type GitHubReadFailure,
+  type GitHubReadOperation,
+} from "./gh-request-runner";
 import type {
   AssignableUserListing,
   CheckRunSummary,
@@ -665,61 +666,10 @@ export type BranchProtectionEvidence = {
 };
 
 /** Safe expected failures emitted by the GitHub read boundary. */
-export type GitHubReadFailure =
-  | {
-      readonly _tag: "GitHubAuthenticationFailed";
-      readonly operation: GitHubReadOperation;
-    }
-  | {
-      readonly _tag: "GitHubReadFailed";
-      readonly operation: GitHubReadOperation;
-    }
-  | {
-      readonly _tag: "GitHubResponseInvalid";
-      readonly operation: GitHubReadOperation;
-    }
-  | {
-      readonly _tag: "GitHubRateLimited";
-      readonly operation: GitHubReadOperation;
-      readonly resumeAt?: IsoTimestamp;
-    }
-  | {
-      readonly _tag: "GitHubForbidden";
-      readonly operation: GitHubReadOperation;
-      readonly reason: ForbiddenReason;
-    };
-
-export type GitHubReadOperation =
-  | "list_open_prs"
-  | "list_maintainer_prs"
-  | "search_maintainer_prs"
-  | "list_repository_labels"
-  | "list_assignable_users"
-  | "get_pull_request_reviewers"
-  | "get_pr"
-  | "get_merge_policy"
-  | "get_merge_policy_evidence"
-  | "get_comments"
-  | "get_reviews"
-  | "get_pending_review"
-  | "get_direct_summary_reviews"
-  | "load_conversation"
-  | "get_repository_permission"
-  | "get_branch_protection"
-  | "get_pr_commits"
-  | "get_checks"
-  | "get_diff"
-  | "get_file"
-  | "compare_revisions"
-  | "get_thread_target"
-  | "get_comment_target"
-  | "auth_status";
-
-/** A gh invocation whose account environment the adapter supplies from the profile. */
-type GhCommandRequest = Omit<
-  CommandRequest,
-  "environment" | "inheritEnvironment"
->;
+export type {
+  GitHubReadFailure,
+  GitHubReadOperation,
+} from "./gh-request-runner";
 
 /**
  * GitHub CLI external adapter. It owns all gh execution and returns parsed, safe projections.
@@ -733,32 +683,23 @@ export class GitHubAdapter
     GitHubDirectSummaryGateway,
     GitHubPendingReviewGateway
 {
-  /**
-   * Last-observed rateLimit { remaining, resetAt } per GitHub host, learned
-   * opportunistically from the maintainerInboxQuery response on every
-   * successful poll. Consulted when classifying a later CommandRateLimited
-   * failure on the same host so the resume time can be surfaced proactively.
-   */
-  private readonly rateLimitByHost = new Map<
-    string,
-    { readonly remaining: number; readonly resetAt: IsoTimestamp }
-  >();
+  private readonly commands: CommandRunner;
+  private readonly requests: GhRequestRunner;
 
   constructor(
-    private readonly commands: CommandRunner,
-    private readonly credentials: GitHubCredentials = new GitHubCliCredentials(
-      commands,
-    ),
-  ) {}
+    commands: CommandRunner,
+    credentials: GitHubCredentials = new GitHubCliCredentials(commands),
+  ) {
+    this.commands = commands;
+    this.requests = new GhRequestRunner(commands, credentials);
+  }
 
   /** Run a gh command that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
     request: GhCommandRequest,
   ): Promise<Result<unknown, CommandFailure>> {
-    return this.runAsProfileAccount(profile, request, (input) =>
-      this.commands.runJson(input),
-    );
+    return this.requests.ghJson(profile, request);
   }
 
   /** Run a gh command that returns text as the profile's configured GitHub account. */
@@ -766,56 +707,15 @@ export class GitHubAdapter
     profile: WorkspaceProfileConfig,
     request: GhCommandRequest,
   ): Promise<Result<string, CommandFailure>> {
-    return this.runAsProfileAccount(profile, request, (input) =>
-      this.commands.runText(input),
-    );
+    return this.requests.ghText(profile, request);
   }
 
-  private async runAsProfileAccount<T>(
-    profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
-    run: (input: CommandRequest) => Promise<Result<T, CommandFailure>>,
-  ): Promise<Result<T, CommandFailure>> {
-    const environment = await this.credentials.environmentFor(profile);
-    if (environment._tag === "err") return environment;
-    const response = await run({ ...request, environment: environment.value });
-    if (
-      response._tag === "err" &&
-      response.error._tag === "CommandAuthenticationRequired"
-    ) {
-      this.credentials.forget(profile);
-    }
-    return response;
-  }
-
-  /**
-   * Classify a failed CommandFailure into a GitHubReadFailure. A rate-limited
-   * failure carries the last-observed resetAt for `host` when one is cached
-   * (see rateLimitByHost); when the cache is cold, resumeAt is left undefined
-   * and a fallback delay is applied at the point that schedules the wait,
-   * not baked in here.
-   */
   private commandFailure(
     operation: GitHubReadOperation,
     failure: CommandFailure,
     host: string,
   ): Result<never, GitHubReadFailure> {
-    if (failure._tag === "CommandAuthenticationRequired")
-      return err({ _tag: "GitHubAuthenticationFailed", operation });
-    if (failure._tag === "CommandRateLimited") {
-      const cached = this.rateLimitByHost.get(host);
-      const resumeAtField =
-        cached === undefined ? {} : { resumeAt: cached.resetAt };
-      return err({ _tag: "GitHubRateLimited", operation, ...resumeAtField });
-    }
-    if (failure._tag === "CommandForbidden") {
-      return err({
-        _tag: "GitHubForbidden",
-        operation,
-        reason: failure.reason,
-      });
-    }
-    return err({ _tag: "GitHubReadFailed", operation });
+    return this.requests.commandFailure(operation, failure, host);
   }
 
   async listOpenPullRequests(input: {
@@ -967,13 +867,7 @@ export class GitHubAdapter
    * better evidence than none.
    */
   private recordRateLimit(host: string, rateLimit: MaintainerRateLimit): void {
-    if (rateLimit === undefined) return;
-    const resumeAt = parseGitHubTimestamp(rateLimit.resetAt);
-    if (resumeAt._tag === "ok")
-      this.rateLimitByHost.set(host, {
-        remaining: rateLimit.remaining,
-        resetAt: resumeAt.value,
-      });
+    this.requests.recordRateLimit(host, rateLimit);
   }
 
   /** Fetches up to 100 repository labels in one bounded page; `totalCount` reveals truncation beyond that. */
