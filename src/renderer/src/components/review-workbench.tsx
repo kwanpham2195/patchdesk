@@ -10,19 +10,10 @@ import {
 const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
 });
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ExternalLink,
-  LoaderCircle,
-  PanelLeftOpen,
-  RefreshCw,
-  XCircle,
-} from "lucide-react";
+import { PanelLeftOpen } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
 import {
   deriveConversationThreadEntries,
   type ConversationThreadRow,
@@ -32,11 +23,9 @@ import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
-  parseGitHubThreadId,
   parsePullRequestNumber,
   parseRepoRelativePath,
 } from "../../../domain/ids";
-import type { CheckSummary } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { AssigneesSectionActions } from "./assignee-picker";
 import type { LabelPickerActions } from "./label-picker";
@@ -49,36 +38,32 @@ import type {
   WorkbenchResponse,
 } from "../renderer-contracts";
 import { Conversation } from "./conversation";
-import {
-  openPullRequestExternalUrl,
-  pullRequestPageUrl,
-} from "../external-links";
 import { DiffWorkbench } from "./diff-workbench";
 import type {
   LocalCommentAuthoring,
   LocalCommentLocation,
   PendingReviewComposerActions,
   ReviewInlineAnnotation,
-  SelectedDiffRange,
 } from "./review-diff-view";
-import type {
-  ConversationThreadCardData,
-  ReviewConversationActions,
-} from "./conversation-thread-card";
+import type { ReviewConversationActions } from "./conversation-thread-card";
+import type { PullRequestOverviewMerge } from "./pr-overview-sheet";
+import { ReviewNavigator } from "./review-navigator";
 import {
-  CanonicalReviewOverviewSheet,
-  type CanonicalReviewOverview,
-  type PullRequestOverviewMerge,
-} from "./pr-overview-sheet";
-import { CompactMergeCommand } from "./compact-merge-command";
-import { FinishReviewDialog } from "./finish-review-dialog";
-import { SummaryReviewDialog } from "./summary-review-dialog";
+  buildAnnotations,
+  buildConversationAnnotations,
+  buildPendingReviewAnnotations,
+  buildReadOnlyConversationAnnotations,
+} from "./review-workbench-annotations";
+import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
+import { ReviewWorkbenchHeader } from "./review-workbench-header";
 import {
-  ReviewNavigator,
-  type ReviewNavigatorSection,
-} from "./review-navigator";
+  buildOverview,
+  buildOverviewRevision,
+  buildRailProps,
+} from "./review-workbench-overview";
 import { ReviewNavigatorResizeHandle } from "./review-navigator-resize-handle";
 import { useCommitDiff } from "../hooks/use-commit-diff";
+import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
@@ -409,52 +394,25 @@ export function ReviewWorkbench({
   const [preferences, setPreferences] = useState<ReviewViewPreferences>(() =>
     loadReviewViewPreferences(model.session.key.profileId),
   );
-  const [section, setSection] = useState<ReviewNavigatorSection>(
-    initialState?.section === "insights"
-      ? "files"
-      : (initialState?.section ?? "files"),
-  );
-  const [activeTab, setActiveTab] = useState<WorkbenchActiveTab>(
-    initialState?.activeTab ??
-      (initialState?.section === "insights" ? "insights" : "diff"),
-  );
-  const [selectedPath, setSelectedPath] = useState<string | undefined>(
-    initialState?.selectedPath,
-  );
-  const [activePath, setActivePath] = useState<string | undefined>(
-    initialState?.selectedPath,
-  );
-  const [selectedCommitSha, setSelectedCommitSha] = useState<
-    string | undefined
-  >(initialState?.selectedCommitSha);
-  // Session-local: the last thread row chosen in the Threads section, and the
-  // diff range it anchors to. Not part of restored position (screen-restore's
-  // schema stays as widened in slice B) — a stale mark on reopen would be
-  // worse than none.
-  const [selectedThreadId, setSelectedThreadId] = useState<string | undefined>(
-    undefined,
-  );
-  const [selectedRange, setSelectedRange] = useState<
-    SelectedDiffRange | undefined
-  >(undefined);
-  const commitWorkbenchPosition = useCallback(
-    (next: WorkbenchPosition): void => {
-      setActiveTab(next.activeTab);
-      setSection(next.section);
-      setSelectedPath(next.selectedPath);
-      const position = { activeTab: next.activeTab, section: next.section };
-      onPositionCommitted?.(
-        next.selectedPath === undefined || next.selectedPath.endsWith("/")
-          ? position
-          : { ...position, selectedPath: next.selectedPath },
-      );
-    },
-    [onPositionCommitted],
-  );
+  const {
+    section,
+    activeTab,
+    selectedPath,
+    activePath,
+    setActivePath,
+    selectedCommitSha,
+    selectedThreadId,
+    setSelectedThreadId,
+    selectedRange,
+    setSelectedRange,
+    commitWorkbenchPosition,
+    selectSection,
+    selectCommit,
+  } = useReviewWorkbenchPosition({
+    model,
+    ...definedProps({ initialState, onPositionCommitted }),
+  });
   const feedbackRegionRef = useRef<HTMLDivElement>(null);
-  const [previousRevision, setPreviousRevision] = useState(
-    model.revision.reviewedHeadSha,
-  );
   const retainedAnalysis = model.insights.analysis.retained;
   const analysisIsCurrent =
     model.insights.analysis.status === "current" &&
@@ -469,44 +427,6 @@ export function ReviewWorkbench({
     selectedCommitSha === undefined
       ? undefined
       : model.commits.find((commit) => commit.sha === selectedCommitSha);
-  const loadCommit = useCallback(
-    (sha: string): void => {
-      commitWorkbenchPosition({ activeTab: "diff", section: "commits" });
-      setSelectedCommitSha(sha);
-      setSelectedThreadId(undefined);
-      setSelectedRange(undefined);
-    },
-    [commitWorkbenchPosition],
-  );
-  const selectSection = useCallback(
-    (next: ReviewNavigatorSection): void => {
-      commitWorkbenchPosition({ activeTab: "diff", section: next });
-      if (next !== "commits") {
-        setSelectedCommitSha(undefined);
-      }
-      if (
-        next === "commits" &&
-        selectedCommitSha === undefined &&
-        model.commits[0] !== undefined
-      )
-        loadCommit(model.commits[0].sha);
-    },
-    [commitWorkbenchPosition, loadCommit, model.commits, selectedCommitSha],
-  );
-  const selectCommit = useCallback(
-    (sha: string): void => {
-      loadCommit(sha);
-    },
-    [loadCommit],
-  );
-  if (previousRevision !== model.revision.reviewedHeadSha) {
-    setPreviousRevision(model.revision.reviewedHeadSha);
-    setSelectedCommitSha(undefined);
-    setSelectedPath(undefined);
-    setActivePath(undefined);
-    setSection("files");
-    setActiveTab("conversation");
-  }
   const updatePreferences = useCallback(
     (update: Partial<ReviewViewPreferences>): void => {
       setPreferences((current) => ({ ...current, ...update }));
@@ -535,81 +455,33 @@ export function ReviewWorkbench({
   );
   const commitDiff =
     commitDiffState._tag === "Ready" ? commitDiffState.projection : undefined;
-  const readOnlyConversationAnnotations = useMemo(() => {
-    if (model.fullPatch === undefined) return [];
-    return projectReadOnlyConversationAnnotations(
-      parseUnifiedPatch(model.fullPatch),
-      model.conversation.inline?.threads ?? [],
-    );
-  }, [model.conversation.inline, model.fullPatch]);
+  const readOnlyConversationAnnotations = useMemo(
+    () =>
+      buildReadOnlyConversationAnnotations(
+        model.fullPatch,
+        model.conversation.inline,
+      ),
+    [model.conversation.inline, model.fullPatch],
+  );
   const conversationAnnotations: ReadonlyArray<ReviewInlineAnnotation> =
-    useMemo(() => {
-      return readOnlyConversationAnnotations.flatMap((thread) => {
-        // The wire model carries plain string ids; the annotation target needs
-        // the verified GitHub thread id so Reply and Resolve are only reachable
-        // through an id the mutation layer accepts.
-        const parsedThreadId = parseGitHubThreadId(thread.id);
-        if (parsedThreadId._tag === "err") return [];
-        const conversationThread: ConversationThreadCardData = {
-          target: { _tag: "thread" as const, id: parsedThreadId.value },
-          state: thread.state,
-          comments: thread.comments,
-          ...definedProps({
-            complete: thread.complete,
-            onSetState: actions.setThreadState,
-            onReply: actions.replyToThread,
-            onEditComment: actions.editComment,
-            onDeleteComment: actions.deleteComment,
-          }),
-        };
-        return [
-          {
-            id: `conversation:${thread.id}`,
-            path: thread.path,
-            start: thread.start,
-            end: thread.end,
-            side: thread.side,
-            severity: "conversation",
-            title: "Conversation",
-            explanation: "",
-            conversationThread,
-          },
-        ];
-      });
-    }, [
-      actions.deleteComment,
-      actions.editComment,
-      actions.replyToThread,
-      actions.setThreadState,
-      readOnlyConversationAnnotations,
-    ]);
+    useMemo(
+      () =>
+        buildConversationAnnotations(readOnlyConversationAnnotations, {
+          setThreadState: actions.setThreadState,
+          replyToThread: actions.replyToThread,
+          editComment: actions.editComment,
+          deleteComment: actions.deleteComment,
+        }),
+      [
+        actions.deleteComment,
+        actions.editComment,
+        actions.replyToThread,
+        actions.setThreadState,
+        readOnlyConversationAnnotations,
+      ],
+    );
   const pendingReviewAnnotations: ReadonlyArray<ReviewInlineAnnotation> =
-    model.pendingReview?.state !== "pending"
-      ? []
-      : (() => {
-          const pendingReview = model.pendingReview;
-          return pendingReview.review.comments.flatMap((comment) => {
-            const parsedThreadId = parseGitHubThreadId(comment.threadId);
-            if (parsedThreadId._tag === "err") return [];
-            return [
-              {
-                id: `pending-review:${comment.threadId}`,
-                path: comment.path,
-                start: comment.startLine,
-                end: comment.line,
-                side: comment.side,
-                severity: "conversation",
-                title: "Pending review",
-                explanation: "",
-                pendingReviewThread: {
-                  threadId: parsedThreadId.value,
-                  body: comment.body,
-                  nodeId: pendingReview.review.nodeId,
-                },
-              },
-            ];
-          });
-        })();
+    buildPendingReviewAnnotations(model);
   // A pending-review thread is also visible to the thread reader; dedupe
   // lives in `deriveConversationThreadEntries` so the diff and (eventually) a
   // Threads navigator section agree on the same entry list by construction.
@@ -617,68 +489,22 @@ export function ReviewWorkbench({
     conversationAnnotations,
     pendingReviewAnnotations,
   );
-  const annotations: ReadonlyArray<ReviewInlineAnnotation> = [
-    ...findings.flatMap((finding) =>
-      finding.file === undefined ||
-      finding.lineStart === undefined ||
-      finding.diffSide === undefined
-        ? []
-        : [
-            {
-              id: finding.id,
-              path: finding.file,
-              start: finding.lineStart,
-              end: finding.lineEnd ?? finding.lineStart,
-              side: finding.diffSide,
-              severity: finding.severity,
-              title: finding.title,
-              explanation: finding.explanation,
-            },
-          ],
-    ),
-    ...conversationThreadEntries,
-  ];
+  const annotations: ReadonlyArray<ReviewInlineAnnotation> = buildAnnotations(
+    findings,
+    conversationThreadEntries,
+  );
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
   const externalPullRequest = pullRequestExternalRef(model);
-  const overviewRevision: CanonicalReviewOverview["revision"] = {
-    reviewedHeadSha: model.revision.reviewedHeadSha,
-    freshness: model.revision.freshness,
-    refreshedAt: model.revision.refreshedAt,
-    commitCount: model.commits.length,
-    ...definedProps({
-      baseBranch: model.pullRequest?.baseBranch,
-      headBranch: model.pullRequest?.headBranch,
-      currentHeadSha: model.revision.currentHeadSha,
-      fileCount: model.pullRequest?.changedFileCount,
-    }),
-  };
-  const overview: CanonicalReviewOverview = {
+  const overviewRevision = buildOverviewRevision(model);
+  const overview = buildOverview({
+    model,
     repository,
-    prNumber: model.session.key.prNumber,
     title,
-    summary:
-      retainedAnalysis?.value.summary ??
-      "No retained Analysis is available for this snapshot.",
-    // SAFETY: the validated projection is structurally identical to the
-    // domain shapes; valibot's optional fields carry an explicit undefined
-    // that the strict domain types reject, so the overview adopts them at
-    // this renderer seam. Runtime validation already ran on `model.checks`.
-    checks: model.checks as CheckSummary,
-    mergeReadiness: model.mergeReadiness,
-    mergeReasons: model.mergeReasons ?? [],
-    revision: overviewRevision,
-    insights: {
-      analysis: { status: model.insights.analysis.status },
-      walkthrough: { status: model.insights.walkthrough.status },
-    },
-    ...definedProps({
-      description: model.pullRequest?.description,
-      pullRequest: externalPullRequest,
-      terminalState:
-        model.review.status === "open" ? undefined : model.review.status,
-    }),
-  };
+    retainedAnalysis,
+    overviewRevision,
+    externalPullRequest,
+  });
   const commitHeader =
     selectedCommit === undefined || commitDiff === undefined
       ? undefined
@@ -708,24 +534,7 @@ export function ReviewWorkbench({
   const { conversationTabProps, diffConversationActions } =
     directConversationActionProps(actions, selectedCommitSha);
 
-  // Built here (not inside `Conversation`) because it's the model that owns
-  // `model.pullRequest`/`model.revision`/`terminal` -- `Conversation` only
-  // ever renders what it's handed, which keeps the rail off the Diff and
-  // Insights tabs by construction rather than by a conditional inside them.
-  const railProps: React.ComponentProps<typeof PullRequestMetadataRail> = {
-    labels: model.pullRequest?.labels ?? [],
-    assignees: model.pullRequest?.assignees ?? [],
-    requestedReviewers: model.pullRequest?.requestedReviewers ?? [],
-    freshness: model.revision.freshness,
-    refreshedAt: model.revision.refreshedAt,
-    terminal,
-    ...definedProps({
-      pendingReview: model.pendingReview,
-      labelActions: actions.labels,
-      assigneeActions: actions.assignees,
-      reviewerActions: actions.reviewers,
-    }),
-  };
+  const railProps = buildRailProps({ model, actions, terminal });
   const conversationRail =
     model.pullRequest === undefined ? undefined : (
       <PullRequestMetadataRail {...railProps} />
@@ -737,138 +546,20 @@ export function ReviewWorkbench({
         className="flex min-h-0 flex-1 flex-col"
         aria-label="Review workbench"
       >
-        <header
-          data-review-workbench-toolbar
-          className="flex shrink-0 flex-col gap-1.5 border-b px-4 py-3"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1
-              className="min-w-0 text-lg font-semibold"
-              aria-label={title}
-              title={title}
-            >
-              #{model.session.key.prNumber} {title}
-            </h1>
-            <div
-              className="flex flex-wrap items-center gap-2"
-              aria-label="Pull request status and actions"
-            >
-              <Button
-                variant="outline"
-                size="xs"
-                className={cn(
-                  "hover:bg-status-success/20 hover:text-status-success",
-                  checksPillColor(model.checks.overall),
-                )}
-                onClick={() => setOverviewOpen(true)}
-                aria-label={`Open PR overview: checks ${checksLabel.toLowerCase()}`}
-              >
-                {checksIcon(model.checks.overall)}
-                Checks · {checksLabel}
-              </Button>
-              <Button
-                variant="outline"
-                size="xs"
-                className={cn(
-                  "hover:bg-destructive/20 hover:text-destructive",
-                  mergePillColor(mergeStatus),
-                )}
-                onClick={() => setOverviewOpen(true)}
-                aria-label={`Open PR overview: merge ${mergeLabel(mergeStatus).toLowerCase()}`}
-              >
-                {mergeIcon(mergeStatus)}
-                Merge · {mergeLabel(mergeStatus)}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={externalPullRequest === undefined}
-                onClick={() => {
-                  if (externalPullRequest !== undefined)
-                    void openPullRequestExternalUrl(
-                      pullRequestPageUrl(externalPullRequest).toString(),
-                      externalPullRequest,
-                    );
-                }}
-              >
-                <ExternalLink data-icon="inline-start" /> Open on GitHub
-              </Button>
-              {actions.pendingReview === undefined || terminal ? null : (
-                <PendingReviewHeaderAction
-                  pendingReview={actions.pendingReview}
-                  onOpenSummary={() => setSummaryDialogOpen(true)}
-                  summaryAvailable={
-                    actions.directSummary !== undefined &&
-                    actions.directSummary.state !== "recovery_required"
-                  }
-                />
-              )}
-            </div>
-          </div>
-          {terminal ? (
-            <p
-              role="status"
-              className="border-t border-status-success/30 bg-status-success/10 px-1 py-2 text-sm text-status-success"
-            >
-              {model.review.status === "merged"
-                ? "Pull request merged on GitHub. This Review remains readable."
-                : "Pull request closed on GitHub. This Review remains readable."}
-            </p>
-          ) : (
-            <PendingReviewNotice pendingReview={actions.pendingReview} />
-          )}
-          {model.localCheckout === undefined ? null : (
-            <p
-              className="border-t border-status-warning/30 bg-status-warning/10 px-1 py-2 text-sm text-status-warning"
-              data-review-local-checkout-warning
-              role="status"
-            >
-              {model.localCheckout.message}
-            </p>
-          )}
-          <div className="flex items-center gap-1">
-            <p
-              className="text-xs text-muted-foreground"
-              title={`${repository} · ${model.pullRequest?.baseBranch ?? "unknown"} ← ${model.pullRequest?.headBranch ?? "unknown"}`}
-            >
-              {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
-              {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
-              {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·
-              refreshed {model.revision.refreshedAt}
-              {hasUpdates ? (
-                <span
-                  className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-status-warning/50 bg-status-warning/10 px-2 py-0.5 font-medium text-status-warning"
-                  role="status"
-                  data-review-new-version-indicator
-                >
-                  Updates available
-                </span>
-              ) : null}
-            </p>
-            {terminal ? null : (
-              // A renderer reload loads the stored projection; only the explicit
-              // refresh action replaces represented GitHub state.
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="shrink-0"
-                disabled={actions.refreshing === true}
-                onClick={() => void actions.refresh()}
-                aria-label={
-                  actions.refreshing === true
-                    ? "Refresh GitHub state — refreshing"
-                    : "Refresh GitHub state"
-                }
-              >
-                {actions.refreshing === true ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <RefreshCw />
-                )}
-              </Button>
-            )}
-          </div>
-        </header>
+        <ReviewWorkbenchHeader
+          model={model}
+          actions={actions}
+          title={title}
+          repository={repository}
+          checksLabel={checksLabel}
+          freshnessLabel={freshnessLabel}
+          mergeStatus={mergeStatus}
+          hasUpdates={hasUpdates}
+          terminal={terminal}
+          externalPullRequest={externalPullRequest}
+          setOverviewOpen={setOverviewOpen}
+          setSummaryDialogOpen={setSummaryDialogOpen}
+        />
 
         <div
           className="flex shrink-0 items-center gap-1 border-b px-4 py-1"
@@ -1129,173 +820,17 @@ export function ReviewWorkbench({
           data-review-workbench-draft-dock
         ></div>
 
-        <CanonicalReviewOverviewSheet
-          open={overviewOpen}
-          onOpenChange={setOverviewOpen}
+        <ReviewWorkbenchDialogs
+          actions={actions}
           overview={overview}
-          {...(actions.merge === undefined ? {} : { merge: actions.merge })}
+          overviewOpen={overviewOpen}
+          setOverviewOpen={setOverviewOpen}
+          summaryDialogOpen={summaryDialogOpen}
+          setSummaryDialogOpen={setSummaryDialogOpen}
+          externalPullRequest={externalPullRequest}
         />
-        {actions.pendingReview === undefined ||
-        actions.pendingReview.projection?.state !== "pending" ? null : (
-          <FinishReviewDialog
-            open={actions.pendingReview.finishDialogOpen}
-            onOpenChange={actions.pendingReview.onCloseFinishDialog}
-            projection={actions.pendingReview.projection}
-            {...(actions.pendingReview.finishDialogInitialSummary === undefined
-              ? {}
-              : {
-                  initialSummary:
-                    actions.pendingReview.finishDialogInitialSummary,
-                })}
-            actions={{
-              busy: actions.pendingReview.busy,
-              onSubmit: actions.pendingReview.onSubmit,
-              onDiscard: actions.pendingReview.onDiscard,
-              onCheckGitHubAgain: actions.pendingReview.onCheckGitHubAgain,
-            }}
-            {...(actions.pendingReview.finishDialogError === undefined
-              ? {}
-              : { error: actions.pendingReview.finishDialogError })}
-          />
-        )}
-        {actions.directSummary === undefined ? null : (
-          <SummaryReviewDialog
-            open={summaryDialogOpen}
-            onOpenChange={setSummaryDialogOpen}
-            busy={actions.directSummary.busy}
-            state={actions.directSummary.state}
-            {...(actions.directSummary.receipt === undefined
-              ? {}
-              : { receipt: actions.directSummary.receipt })}
-            {...(actions.directSummary.recoveryResolution === undefined
-              ? {}
-              : {
-                  recoveryResolution: actions.directSummary.recoveryResolution,
-                })}
-            approvalCapability={actions.directSummary.approvalCapability}
-            {...(actions.directSummary.error === undefined
-              ? {}
-              : { error: actions.directSummary.error })}
-            onSubmit={actions.directSummary.onSubmit}
-            onRecover={actions.directSummary.onRecover}
-            {...(externalPullRequest === undefined
-              ? {}
-              : {
-                  onOpenPullRequest: () => {
-                    void openPullRequestExternalUrl(
-                      pullRequestPageUrl(externalPullRequest).toString(),
-                      externalPullRequest,
-                    );
-                  },
-                })}
-          />
-        )}
-        {actions.merge === undefined ||
-        actions.merge.readiness._tag === "Blocked" ? null : (
-          <CompactMergeCommand
-            initialMethod="squash"
-            readiness={actions.merge.readiness}
-            methods={actions.merge.methods}
-            {...(actions.merge.mergeReasons === undefined
-              ? {}
-              : { mergeReasons: actions.merge.mergeReasons })}
-            {...(actions.merge.pullRequest === undefined
-              ? {}
-              : { pullRequest: actions.merge.pullRequest })}
-            context={actions.merge.context}
-            onMerge={actions.merge.onMerge}
-            onRecoverMerge={actions.merge.onRecoverMerge}
-          />
-        )}
       </section>
     </PublishedFeedbackNavigationContext.Provider>
-  );
-}
-
-function PendingReviewHeaderAction({
-  pendingReview,
-  onOpenSummary,
-  summaryAvailable,
-}: {
-  readonly pendingReview: NonNullable<ReviewWorkbenchActions["pendingReview"]>;
-  readonly onOpenSummary: () => void;
-  readonly summaryAvailable: boolean;
-}): React.JSX.Element | null {
-  const projection = pendingReview.projection;
-  if (projection === undefined || projection.state === "none") {
-    return (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onOpenSummary}
-        disabled={!summaryAvailable}
-        data-review-header-start
-      >
-        Start a review
-      </Button>
-    );
-  }
-  if (projection.state === "pending") {
-    return (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={pendingReview.onOpenFinishDialog}
-        disabled={pendingReview.busy}
-        data-review-header-finish
-      >
-        Finish review · {projection.count}
-      </Button>
-    );
-  }
-  return null;
-}
-
-function PendingReviewNotice({
-  pendingReview,
-}: {
-  readonly pendingReview: ReviewWorkbenchActions["pendingReview"];
-}): React.JSX.Element | null {
-  const projection = pendingReview?.projection;
-  if (
-    projection === undefined ||
-    projection.state === "none" ||
-    projection.state === "pending"
-  )
-    return null;
-  const recovery = projection.state === "recovery_required";
-  return (
-    <div
-      role="status"
-      data-review-pending-recovery
-      className="rounded-md border border-status-warning/50 bg-status-warning/10 px-3 py-1.5 text-xs text-status-warning"
-    >
-      {recovery ? (
-        <>
-          A pending review write needs reconciliation (started{" "}
-          {projection.action}). GitHub was not changed without your
-          confirmation.
-        </>
-      ) : (
-        <>
-          The pending review state is unavailable right now. New review comments
-          are paused.
-        </>
-      )}{" "}
-      <button
-        type="button"
-        className="underline decoration-status-warning/60 underline-offset-2 hover:text-status-warning"
-        disabled={pendingReview?.busy === true}
-        onClick={() => void pendingReview?.onCheckGitHubAgain()}
-      >
-        Check GitHub again
-      </button>
-      {pendingReview?.recoveryError === undefined ? null : (
-        <span role="alert" className="ml-2 font-medium">
-          {pendingReview.recoveryError}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -1314,78 +849,6 @@ function formatRelativeTime(value: string): string {
     if (Math.abs(seconds) >= divisor)
       return relativeTimeFormatter.format(Math.round(seconds / divisor), unit);
   return relativeTimeFormatter.format(seconds, "second");
-}
-
-function checksPillColor(overall: string): string {
-  switch (overall) {
-    case "passing":
-      return "border-status-success/30 bg-status-success/10 text-status-success";
-    case "failing":
-      return "border-destructive/30 bg-destructive/10 text-destructive";
-    case "pending":
-      return "border-status-warning/30 bg-status-warning/10 text-status-warning";
-    default:
-      return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
-  }
-}
-function checksIcon(overall: string): React.JSX.Element {
-  switch (overall) {
-    case "passing":
-      return <CheckCircle2 className="size-3" />;
-    case "failing":
-      return <XCircle className="size-3" />;
-    case "pending":
-      return <LoaderCircle className="size-3" />;
-    default:
-      return <AlertTriangle className="size-3" />;
-  }
-}
-
-function mergePillColor(tag: string): string {
-  switch (tag) {
-    case "Merged":
-    case "Ready":
-      return "border-status-success/30 bg-status-success/10 text-status-success";
-    case "Closed":
-      return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
-    case "NeedsAcknowledgement":
-      return "border-status-warning/30 bg-status-warning/10 text-status-warning";
-    case "Blocked":
-      return "border-destructive/30 bg-destructive/10 text-destructive";
-    default:
-      return "border-muted-foreground/20 bg-muted/30 text-muted-foreground";
-  }
-}
-function mergeIcon(tag: string): React.JSX.Element {
-  switch (tag) {
-    case "Merged":
-    case "Ready":
-      return <CheckCircle2 className="size-3" />;
-    case "Closed":
-      return <XCircle className="size-3" />;
-    case "NeedsAcknowledgement":
-      return <AlertTriangle className="size-3" />;
-    case "Blocked":
-      return <XCircle className="size-3" />;
-    default:
-      return <AlertTriangle className="size-3" />;
-  }
-}
-function mergeLabel(tag: string): string {
-  switch (tag) {
-    case "Merged":
-      return "Merged";
-    case "Closed":
-      return "Closed";
-    case "Ready":
-      return "Ready";
-    case "NeedsAcknowledgement":
-      return "Warnings";
-    case "Blocked":
-      return "Blocked";
-    default:
-      return tag;
-  }
 }
 
 function TabButton({
