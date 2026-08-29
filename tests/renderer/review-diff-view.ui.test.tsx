@@ -816,9 +816,16 @@ describe("pending-review composer lifecycle", () => {
       renderDiff({ pendingReviewComposer: actions });
       await openComposer(user);
       await user.click(screen.getByRole("button", { name: "Start a review" }));
+      // The anchor is derived here, from the line the composer opened on;
+      // `usePendingReviewActions` only forwards whatever anchor it is handed,
+      // so this is the only place the derivation is observable.
       await waitFor(() =>
-        expect(actions.onStartReview).toHaveBeenCalledTimes(1),
+        expect(actions.onStartReview).toHaveBeenCalledWith(
+          { path: "src/a.ts", startLine: 1, line: 1, side: "new" },
+          "test",
+        ),
       );
+      expect(actions.onStartReview).toHaveBeenCalledTimes(1);
       expect(
         screen.queryByRole("textbox", { name: "Inline comment" }),
       ).toBeNull();

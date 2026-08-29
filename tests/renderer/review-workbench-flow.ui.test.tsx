@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -15,6 +14,27 @@ import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contract
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import type * as PierreDiffs from "@pierre/diffs";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
+import {
+  callBody,
+  callPath,
+  patchHash,
+  pending,
+  projection,
+  providerCatalog,
+  sha,
+  withAnalysis,
+  type DeferredResolve,
+} from "./review-workbench-fixtures";
+
+/**
+ * What `ReviewWorkbenchFlow` does that its hooks cannot see themselves: which
+ * projection each screen renders, and that every writer on the screen is
+ * handed the `runDirectCommand` gate `useReviewObservation` returns. The
+ * state machines behind those hooks are argued directly in
+ * `use-review-observation.test.ts`, `use-pending-review-actions.test.ts`, and
+ * `use-direct-summary-actions.test.ts`; a hook test supplies its own adapters,
+ * so it can never observe the wiring below.
+ */
 
 // oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real. Only tests that also shim `CSSStyleSheet.prototype.replaceSync` reach Pierre's CodeView path at all; every other test in this file renders through the accessible plain-text fallback, which never calls `preloadHighlighter`.
 vi.mock("@pierre/diffs", async (importOriginal) => {
@@ -24,102 +44,6 @@ vi.mock("@pierre/diffs", async (importOriginal) => {
     preloadHighlighter: vi.fn(async () => undefined),
   };
 });
-
-const sha = "a".repeat(40);
-const patchHash = "b".repeat(64);
-
-// A deferred test-control Promise resolver: each call site resolves it with
-// a differently-shaped mocked observation/detection payload, so `unknown`
-// here is the honest type, not an unparsed I/O boundary value.
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- see comment above
-type DeferredResolve = (value: unknown) => void;
-
-// `request.mock.calls` entries are `[requestInput, ...]` where the mocked
-// `bridge()` is always invoked with `{ path, body? }`; these narrow the
-// otherwise-untyped mock-call argument to read the fields most assertions
-// below need. `body` stays `unknown` on the way out because each test's
-// mocked request carries a differently-shaped body; that is fixture data
-// this generic test helper cannot name, not an unparsed I/O boundary value.
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- see comment above
-function callPath(input: unknown): string | undefined {
-  // SAFETY: `bridge()`'s mock request is always invoked with an object
-  // carrying at least a `path` string; this narrows the untyped mock-call
-  // argument to read it.
-  return (input as { readonly path?: string } | undefined)?.path;
-}
-function callBody(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- see comment above callPath
-  input: unknown,
-  // oxlint-disable-next-line anti-slop/no-unknown-returns -- see comment above callPath
-): unknown {
-  // SAFETY: same invariant as `callPath` above; `body` is whatever the
-  // calling code constructed for that request.
-  return (input as { readonly body?: unknown } | undefined)?.body;
-}
-
-function projection(
-  overrides: Partial<WorkbenchResponse> = {},
-): WorkbenchResponse {
-  // SAFETY: this literal matches the `WorkbenchResponse` wire shape the
-  // flow under test parses via `parseWorkbenchResponse`; it is fixture
-  // data, not a runtime-decoded value.
-  return {
-    state: "review",
-    review: { id: "review-42", status: "open" },
-    session: {
-      id: "session-a",
-      key: {
-        profileId: "profile",
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        prNumber: 42,
-        headSha: sha,
-      },
-    },
-    revision: {
-      reviewedHeadSha: sha,
-      currentHeadSha: sha,
-      freshness: "fresh",
-      refreshedAt: "2026-08-01T00:00:00.000Z",
-      // SAFETY: `patchHash` is a branded hex-digest fixture; `as never`
-      // widens the plain fixture string into the branded PatchHash type.
-      patchHash: patchHash as never,
-    },
-    fullPatch:
-      "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
-    pullRequest: {
-      ref: {
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        number: 42,
-      },
-      title: "Canonical workbench",
-      author: "fixture",
-      headBranch: "feature",
-      baseBranch: "main",
-      headSha: sha,
-      isOpen: true,
-      isDraft: false,
-      reviewState: "none",
-      mergeability: "mergeable",
-      labels: [],
-      updatedAt: "2026-08-01T00:00:00.000Z",
-    },
-    commits: [],
-    insights: {
-      analysis: { status: "not_generated" },
-      walkthrough: { status: "not_generated" },
-    },
-    conversation: { prDescription: "Represented description", entries: [] },
-    checks: { overall: "passing", checks: [] },
-    mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
-    mergeReasons: [],
-    directSummary: { state: "idle" },
-    ...overrides,
-  } as WorkbenchResponse;
-}
 
 function mount(
   workbench: WorkbenchResponse,
@@ -163,85 +87,6 @@ async function typePastPierreScrollSuspend(
   await user.type(element, text, { skipClick: true });
 }
 
-const analysisResult = {
-  changeSummary: "The current change adds a guarded branch.",
-  verdict: "comment" as const,
-  summary: "The branch needs a boundary check.",
-  findings: [
-    {
-      id: "finding-1",
-      severity: "P1" as const,
-      title: "Missing boundary check",
-      file: "src/a.ts",
-      lineStart: 1,
-      lineEnd: 1,
-      diffSide: "new" as const,
-      explanation: "The added branch accepts an invalid value.",
-      suggestedComment: "Reject invalid values before this branch.",
-      confidence: "high" as const,
-      mappingStatus: "mapped" as const,
-    },
-  ],
-  validationPlan: ["Verify invalid values are rejected."],
-  assumptions: [],
-};
-
-const providerCatalog = {
-  providers: [
-    {
-      id: "pi",
-      label: "Pi",
-      available: true,
-      guidance: "Available for local review.",
-    },
-  ],
-  models: [
-    {
-      provider: "pi",
-      id: "fixture-model",
-      label: "Fixture model",
-      reasoning: ["medium"],
-      defaultReasoning: "medium",
-    },
-  ],
-};
-
-function withAnalysis(
-  findingState: "actionable" | "pending_review",
-  mappingStatus: "mapped" | "invalid_line" = "mapped",
-): WorkbenchResponse {
-  // SAFETY: `analysisReviewActions`/`pendingReview` here are wider fixture
-  // shapes than the strict unions `projection()`'s parameter type expects;
-  // this is fixture data, not a runtime-decoded value.
-  return projection({
-    insights: {
-      analysis: {
-        status: "current",
-        artifactStatus: "verified",
-        retained: {
-          runId: "insight-analysis-1-fixture",
-          sessionId: "session-a",
-          headSha: sha,
-          generatedAt: "2026-08-01T00:00:00.000Z",
-          value: {
-            ...analysisResult,
-            findings: analysisResult.findings.map((finding) => ({
-              ...finding,
-              mappingStatus,
-            })),
-          },
-        },
-      },
-      walkthrough: { status: "not_generated" },
-    },
-    analysisReviewActions: {
-      findings: { "finding-1": { state: findingState } },
-      canFinishWithAnalysisSummary: findingState === "pending_review",
-    },
-    pendingReview: pending(findingState === "actionable" ? "none" : "pending"),
-  } as never);
-}
-
 async function openAddedLineComposer(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<HTMLElement> {
@@ -252,32 +97,6 @@ async function openAddedLineComposer(
   if (add === undefined) throw new Error("missing added-line comment action");
   await user.click(add);
   return screen.getByRole("region", { name: "Inline comment composer" });
-}
-
-function pending(
-  state: "none" | "pending" | "unavailable" | "recovery_required" = "pending",
-): NonNullable<WorkbenchResponse["pendingReview"]> {
-  if (state === "none") return { state };
-  if (state === "unavailable") return { state, action: "refresh" };
-  if (state === "recovery_required") return { state, action: "start" };
-  return {
-    state,
-    count: 1,
-    review: {
-      nodeId: "PRR_1",
-      headSha: sha,
-      comments: [
-        {
-          threadId: "PRRT_1",
-          body: "Finding",
-          path: "src/a.ts",
-          startLine: 1,
-          line: 1,
-          side: "new",
-        },
-      ],
-    },
-  };
 }
 
 afterEach(() => {
@@ -494,383 +313,65 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     ).toBeNull();
   });
 
-  it("waits for active detection before submitting a review summary", async () => {
-    vi.useFakeTimers();
-    try {
-      let resolveDetection: DeferredResolve = () => undefined;
-      const detection = new Promise<unknown>((resolve) => {
-        resolveDetection = resolve;
-      });
-      const request = bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates") return detection;
-        if (input.path === "/v1/reviews/direct-summary/submit")
-          return {
-            directSummary: {
-              state: "confirmed",
-              receipt: { reviewId: "9002", event: "COMMENT" },
-            },
-          };
-        throw new Error(input.path);
-      });
-      // SAFETY: `pending("none")` returns a wider fixture shape than the
-      // strict `pendingReview` union; this is test fixture data, not a
-      // runtime-decoded value.
-      mount(projection({ pendingReview: pending("none") as never }));
-      await vi.advanceTimersByTimeAsync(0);
-
-      fireEvent.click(screen.getByRole("button", { name: "Start a review" }));
-      fireEvent.change(
-        screen.getByRole("textbox", { name: "Review summary" }),
-        { target: { value: "Current review" } },
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/direct-summary/submit",
-        ),
-      ).toHaveLength(0);
-
-      resolveDetection({ updatesAvailable: false });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/direct-summary/submit",
-        ),
-      ).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("waits for active detection before merging", async () => {
-    vi.useFakeTimers();
-    try {
-      let resolveDetection: DeferredResolve = () => undefined;
-      const detection = new Promise<unknown>((resolve) => {
-        resolveDetection = resolve;
-      });
-      const request = bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates") return detection;
-        if (input.path === "/v1/reviews/merge") return undefined;
-        if (input.path === "/v1/reviews/load")
-          return projection({ review: { id: "review-42", status: "merged" } });
-        throw new Error(input.path);
-      });
-      mount(projection());
-      await vi.advanceTimersByTimeAsync(0);
-
-      fireEvent.click(screen.getByRole("button", { name: "Merge" }));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/merge",
-        ),
-      ).toHaveLength(0);
-
-      resolveDetection({ updatesAvailable: false });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/merge",
-        ),
-      ).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("waits for active detection before adding an Analysis Finding to review", async () => {
-    vi.useFakeTimers();
-    try {
-      let resolveDetection: DeferredResolve = () => undefined;
-      const detection = new Promise<unknown>((resolve) => {
-        resolveDetection = resolve;
-      });
-      const request = bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates") return detection;
-        if (input.path === "/v1/reviews/pending-review/command") return {};
-        if (input.path === "/v1/reviews/load")
-          return withAnalysis("pending_review");
-        throw new Error(input.path);
-      });
-      mount(withAnalysis("actionable"));
-      await vi.advanceTimersByTimeAsync(0);
-
-      fireEvent.click(screen.getByRole("button", { name: "Insights" }));
-      fireEvent.click(screen.getByRole("button", { name: "Add to review" }));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
-        ),
-      ).toHaveLength(0);
-
-      resolveDetection({ updatesAvailable: false });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
-        ),
-      ).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it.each(["Reconciled", "RevisionChanged", "Unavailable", "Terminal"])(
-    "does not apply a stale direct-summary %s observation after Refresh",
-    async (outcome) => {
-      let observe!: DeferredResolve;
-      let detectCalls = 0;
-      const deferred = new Promise((resolve) => {
-        observe = resolve;
-      });
-      const refreshed = projection({
-        session: { ...projection().session, id: "session-b" },
-        revision: {
-          ...projection().revision,
-          refreshedAt: "2026-08-02T00:00:00.000Z",
-        },
-      });
-      const request = bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates") {
-          detectCalls += 1;
-          return detectCalls === 1 ? { updatesAvailable: false } : deferred;
-        }
-        if (input.path === "/v1/reviews/direct-summary/submit")
-          return {
-            directSummary: {
-              state: "confirmed",
-              receipt: { reviewId: "9002", event: "COMMENT" },
-            },
-          };
-        if (input.path === "/v1/reviews/refresh") return refreshed;
-        throw new Error(input.path);
-      });
-      // SAFETY: `pending("none")` returns a wider fixture shape than the
-      // strict `pendingReview` union; this is test fixture data, not a
-      // runtime-decoded value.
-      const { replace, patch } = mount(
+  /**
+   * The one wiring proof no hook test can make: `useReviewObservation` returns
+   * `runDirectCommand`, and `ReviewWorkbenchFlow` must hand it to every writer
+   * on the screen (`review-workbench-flow.tsx`). A `renderHook` test supplies
+   * its own `runDirectCommand`, so it cannot see whether a given writer got
+   * the real one. Each row below is a different writer whose request must not
+   * leave while a detection is still in flight; the hook test
+   * "holds a direct command until the in-flight detection completes" owns the
+   * gate's own behaviour.
+   */
+  const gatedWriters = [
+    {
+      name: "a review summary",
+      workbench: (): WorkbenchResponse =>
+        // SAFETY: `pending("none")` returns a wider fixture shape than the
+        // strict `pendingReview` union; this is test fixture data, not a
+        // runtime-decoded value.
         projection({ pendingReview: pending("none") as never }),
-      );
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("button", { name: "Start a review" }));
-      await user.type(
-        screen.getByRole("textbox", { name: "Review summary" }),
-        "Confirmed body",
-      );
-      await user.click(screen.getByRole("button", { name: "Submit review" }));
-      await waitFor(() =>
-        expect(
-          within(screen.getByRole("dialog")).getByRole("status").textContent,
-        ).toBe("Review summary #9002 was published to GitHub."),
-      );
-      expect(request).toHaveBeenCalledWith(
-        expect.objectContaining({
-          path: "/v1/reviews/detect-updates",
-          body: expect.objectContaining({
-            recentWrites: [{ _tag: "DirectSummaryReview", reviewId: "9002" }],
-          }),
-        }),
-      );
-      const close = within(screen.getByRole("dialog"))
-        .getAllByRole("button", { name: "Close" })
-        .at(0);
-      if (close === undefined) throw new Error("missing summary close button");
-      await user.click(close);
-      await user.click(
-        screen.getByRole("button", { name: "Refresh GitHub state" }),
-      );
-      await waitFor(() => expect(replace).toHaveBeenCalledWith(refreshed));
-      observe(
-        outcome === "Reconciled"
-          ? { _tag: outcome, projection: refreshed }
-          : outcome === "Terminal"
-            ? { _tag: outcome, status: "merged" }
-            : { _tag: outcome },
-      );
-      await Promise.resolve();
-      expect(patch).not.toHaveBeenCalled();
+      path: "/v1/reviews/direct-summary/submit",
+      answer: {
+        directSummary: {
+          state: "confirmed",
+          receipt: { reviewId: "9002", event: "COMMENT" },
+        },
+      },
+      write: (): void => {
+        fireEvent.click(screen.getByRole("button", { name: "Start a review" }));
+        fireEvent.change(
+          screen.getByRole("textbox", { name: "Review summary" }),
+          { target: { value: "Current review" } },
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+      },
     },
-  );
-
-  it("keeps a confirmed direct-summary receipt visible before deferred observation", async () => {
-    let observe!: DeferredResolve;
-    let detectCalls = 0;
-    const request = bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates") {
-        detectCalls += 1;
-        if (detectCalls === 1) return { updatesAvailable: false };
-        return new Promise((resolve) => {
-          observe = resolve;
-        });
-      }
-      if (input.path === "/v1/reviews/direct-summary/submit")
-        return {
-          directSummary: {
-            state: "confirmed",
-            receipt: { reviewId: "exact-receipt", event: "COMMENT" },
-          },
-        };
-      throw new Error(input.path);
-    });
-    // SAFETY: `pending("none")` returns a wider fixture shape than the
-    // strict `pendingReview` union; this is test fixture data, not a
-    // runtime-decoded value.
-    mount(projection({ pendingReview: pending("none") as never }));
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Start a review" }));
-    await user.type(
-      screen.getByRole("textbox", { name: "Review summary" }),
-      "Body",
-    );
-    await user.click(screen.getByRole("button", { name: "Submit review" }));
-    await waitFor(() =>
-      expect(
-        within(screen.getByRole("dialog")).getByRole("status").textContent,
-      ).toBe("Review summary #exact-receipt was published to GitHub."),
-    );
-    expect(request).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: "/v1/reviews/detect-updates",
-        body: expect.objectContaining({
-          recentWrites: [
-            { _tag: "DirectSummaryReview", reviewId: "exact-receipt" },
-          ],
-        }),
-      }),
-    );
-    observe({ _tag: "Unavailable" });
-  });
-
-  it("advances the summary dialog to its confirmation panel after a confirmed submit, even though the projection always carries an idle directSummary", async () => {
-    let detectCalls = 0;
-    bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates") {
-        detectCalls += 1;
-        if (detectCalls === 1) return { updatesAvailable: false };
-        return new Promise(() => {
-          // Left pending: this regression is about the dialog reacting to
-          // the submit response itself, not to a later detect-updates read.
-        });
-      }
-      if (input.path === "/v1/reviews/direct-summary/submit")
-        return {
-          directSummary: {
-            state: "confirmed",
-            receipt: { reviewId: "9100", event: "COMMENT" },
-          },
-        };
-      throw new Error(input.path);
-    });
-    // The base fixture's `directSummary: { state: "idle" }` matches what the
-    // server always sends (see `projectDirectSummaryReview`); a naive `??`
-    // fallback onto that value would mask the fresh submit result and leave
-    // the dialog stuck on the submit form.
-    // SAFETY: `pending("none")` returns a wider fixture shape than the
-    // strict `pendingReview` union; this is test fixture data, not a
-    // runtime-decoded value.
-    mount(projection({ pendingReview: pending("none") as never }));
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Start a review" }));
-    await user.type(
-      screen.getByRole("textbox", { name: "Review summary" }),
-      "Approve this",
-    );
-    await user.click(screen.getByRole("button", { name: "Submit review" }));
-    await waitFor(() =>
-      expect(
-        within(screen.getByRole("dialog")).getByRole("status").textContent,
-      ).toBe("Review summary #9100 was published to GitHub."),
-    );
-  });
-
-  it("sends a pending-review Start command with the represented anchor and revision", async () => {
-    const nextPending = pending("pending");
-    const request = bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates")
-        return { updatesAvailable: false };
-      if (input.path === "/v1/reviews/pending-review/command")
-        return { pendingReview: nextPending };
-      throw new Error(input.path);
-    });
-    // SAFETY: `pending("none")` returns a wider fixture shape than the
-    // strict `pendingReview` union; this is test fixture data, not a
-    // runtime-decoded value.
-    const { patch } = mount(
-      projection({ pendingReview: pending("none") as never }),
-    );
-    const user = userEvent.setup();
-    const composer = await openAddedLineComposer(user);
-    await user.type(
-      within(composer).getByRole("textbox", { name: "Inline comment" }),
-      "Start with this finding",
-    );
-    await user.click(
-      within(composer).getByRole("button", { name: "Start a review" }),
-    );
-
-    await waitFor(() =>
-      expect(request).toHaveBeenCalledWith(
-        expect.objectContaining({
-          path: "/v1/reviews/pending-review/command",
-          body: {
-            profileId: "profile",
-            reviewId: "review-42",
-            command: expect.objectContaining({
-              _tag: "Start",
-              expected: {
-                sessionId: "session-a",
-                headSha: sha,
-                patchHash,
-              },
-              anchor: expect.objectContaining({
-                path: "src/a.ts",
-                side: "new",
-              }),
-              body: "Start with this finding",
-            }),
-          },
-        }),
-      ),
-    );
-    expect(patch).toHaveBeenCalledWith({ pendingReview: nextPending });
-  });
-
-  it.each([
-    ["Start", "none", "Start a review"],
-    ["AddThread", "pending", "Add review comment"],
-  ] as const)(
-    "does not apply a detection result that started before pending-review %s",
-    async (_command, pendingState, buttonName) => {
-      vi.useFakeTimers();
-      try {
-        let resolveDetection: DeferredResolve = () => undefined;
-        const detection = new Promise((resolve) => {
-          resolveDetection = resolve;
-        });
-        const initial = projection({ pendingReview: pending(pendingState) });
-        const currentPullRequest = initial.pullRequest;
-        if (currentPullRequest === undefined) throw new Error("fixture");
-        const stale = projection({
-          pullRequest: { ...currentPullRequest, title: "Stale title" },
-        });
-        const request = bridge(async (input) => {
-          if (input.path === "/v1/reviews/detect-updates") return detection;
-          if (input.path === "/v1/reviews/pending-review/command")
-            return { pendingReview: pending("pending") };
-          throw new Error(input.path);
-        });
-        const { replace } = mount(initial);
-        await vi.advanceTimersByTimeAsync(0);
-        expect(
-          request.mock.calls.filter(
-            ([input]) => callPath(input) === "/v1/reviews/detect-updates",
-          ),
-        ).toHaveLength(1);
-
+    {
+      name: "a merge",
+      workbench: (): WorkbenchResponse => projection(),
+      path: "/v1/reviews/merge",
+      answer: undefined,
+      write: (): void => {
+        fireEvent.click(screen.getByRole("button", { name: "Merge" }));
+      },
+    },
+    {
+      name: "an Analysis Finding added to review",
+      workbench: (): WorkbenchResponse => withAnalysis("actionable"),
+      path: "/v1/reviews/pending-review/command",
+      answer: {},
+      write: (): void => {
+        fireEvent.click(screen.getByRole("button", { name: "Insights" }));
+        fireEvent.click(screen.getByRole("button", { name: "Add to review" }));
+      },
+    },
+    {
+      name: "an inline comment",
+      workbench: (): WorkbenchResponse => projection(),
+      path: "/v1/reviews/inline-conversations/command",
+      answer: { _tag: "CommentCreated", commentId: "comment-1" },
+      write: (): void => {
         fireEvent.click(screen.getByRole("button", { name: "Diff" }));
         const add = screen
           .getAllByRole("button", { name: "Add comment on src/a.ts" })
@@ -881,52 +382,45 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
           screen.getByRole("textbox", { name: "Inline comment" }),
           { target: { value: "Current comment" } },
         );
-        fireEvent.click(
-          within(
-            screen.getByRole("region", { name: "Inline comment composer" }),
-          ).getByRole("button", { name: buttonName }),
-        );
-        await vi.advanceTimersByTimeAsync(0);
+        fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+      },
+    },
+  ];
 
-        resolveDetection({ _tag: "Reconciled", projection: stale });
+  it.each(gatedWriters)(
+    "holds $name until the active detection completes",
+    async ({ workbench, path, answer, write }) => {
+      vi.useFakeTimers();
+      try {
+        let resolveDetection: DeferredResolve = () => undefined;
+        const detection = new Promise<unknown>((resolve) => {
+          resolveDetection = resolve;
+        });
+        const request = bridge(async (input) => {
+          if (input.path === "/v1/reviews/detect-updates") return detection;
+          if (input.path === path) return answer;
+          if (input.path === "/v1/insight-providers") return providerCatalog;
+          if (input.path === "/v1/reviews/load") return projection();
+          throw new Error(input.path);
+        });
+        mount(workbench());
         await vi.advanceTimersByTimeAsync(0);
-        expect(replace).not.toHaveBeenCalledWith(stale);
+        const writes = (): number =>
+          request.mock.calls.filter(([input]) => callPath(input) === path)
+            .length;
+
+        write();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(writes()).toBe(0);
+
+        resolveDetection({ updatesAvailable: false });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(writes()).toBe(1);
       } finally {
         vi.useRealTimers();
       }
     },
   );
-
-  it("requires pending-review recovery after a malformed successful command response", async () => {
-    const request = bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates")
-        return { updatesAvailable: false };
-      if (input.path === "/v1/reviews/pending-review/command")
-        return { pendingReview: {} };
-      throw new Error(input.path);
-    });
-    const { patch } = mount(projection({ pendingReview: pending("none") }));
-    const user = userEvent.setup();
-    const composer = await openAddedLineComposer(user);
-    await user.type(
-      within(composer).getByRole("textbox", { name: "Inline comment" }),
-      "Cannot confirm this command",
-    );
-    await user.click(
-      within(composer).getByRole("button", { name: "Start a review" }),
-    );
-
-    await waitFor(() =>
-      expect(patch).toHaveBeenCalledWith({
-        pendingReview: { state: "recovery_required", action: "start" },
-      }),
-    );
-    expect(
-      request.mock.calls.filter(
-        ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
-      ),
-    ).toHaveLength(1);
-  });
 
   it("opens the Analysis run dialog with the default set in Settings", async () => {
     // Settings and the run dialog now share one storage key
@@ -1197,222 +691,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
       ),
     ).toBe(false);
-  });
-
-  it("rejects a detector response from a replaced snapshot", async () => {
-    let resolveDetection!: DeferredResolve;
-    const detection = new Promise<unknown>((resolve) => {
-      resolveDetection = resolve;
-    });
-    bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates") return detection;
-      throw new Error(input.path);
-    });
-    const patch = vi.fn();
-    const replace = vi.fn();
-    const rendered = mount(projection(), { patch, replace });
-    const newer = projection({
-      session: { ...projection().session, id: "session-b" },
-    });
-    rendered.view.rerender(
-      <ReviewWorkbenchFlow
-        workbench={newer}
-        onWorkbenchReplace={replace}
-        onWorkbenchPatch={patch}
-        onNavigationStateChange={vi.fn()}
-      />,
-    );
-    await act(async () => {
-      resolveDetection({ _tag: "RevisionChanged" });
-      await detection;
-    });
-    expect(patch).not.toHaveBeenCalled();
-    expect(replace).not.toHaveBeenCalled();
-  });
-
-  it("coalesces focus and visibility events while detection is active", async () => {
-    vi.useFakeTimers();
-    try {
-      const detection = new Promise<unknown>(() => undefined);
-      const request = bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates") return detection;
-        throw new Error(input.path);
-      });
-      mount(projection());
-      fireEvent.focus(window);
-      fireEvent(document, new Event("visibilitychange"));
-      await vi.advanceTimersByTimeAsync(500);
-      expect(
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/detect-updates",
-        ),
-      ).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("delivers a same-generation result to the latest committed callback", async () => {
-    let resolveDetection!: DeferredResolve;
-    const detection = new Promise<unknown>((resolve) => {
-      resolveDetection = resolve;
-    });
-    bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates") return detection;
-      throw new Error(input.path);
-    });
-    const firstPatch = vi.fn();
-    const secondPatch = vi.fn();
-    const rendered = mount(projection(), { patch: firstPatch });
-    rendered.view.rerender(
-      <ReviewWorkbenchFlow
-        workbench={projection()}
-        onWorkbenchReplace={vi.fn()}
-        onWorkbenchPatch={secondPatch}
-        onNavigationStateChange={vi.fn()}
-      />,
-    );
-    await act(async () => {
-      resolveDetection({ _tag: "RevisionChanged" });
-      await detection;
-    });
-    expect(firstPatch).not.toHaveBeenCalled();
-    expect(secondPatch).toHaveBeenCalledWith({
-      revision: { ...projection().revision, freshness: "updates_available" },
-    });
-  });
-
-  it("clears scheduled detection and ignores its late response after unmount", async () => {
-    vi.useFakeTimers();
-    try {
-      let resolveDetection!: DeferredResolve;
-      const detection = new Promise<unknown>((resolve) => {
-        resolveDetection = resolve;
-      });
-      bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates") return detection;
-        throw new Error(input.path);
-      });
-      const patch = vi.fn();
-      const { view } = mount(projection(), { patch });
-      view.unmount();
-      await vi.advanceTimersByTimeAsync(90_000);
-      await act(async () => {
-        resolveDetection({ _tag: "RevisionChanged" });
-        await detection;
-      });
-      expect(patch).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-  it("does not apply a detection result that started before a direct comment", async () => {
-    vi.useFakeTimers();
-    try {
-      let resolveDetection: DeferredResolve = () => undefined;
-      const detection = new Promise((resolve) => {
-        resolveDetection = resolve;
-      });
-      const currentPullRequest = projection().pullRequest;
-      if (currentPullRequest === undefined) throw new Error("fixture");
-      const stale = projection({
-        pullRequest: { ...currentPullRequest, title: "Stale title" },
-      });
-      const request = bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates") return detection;
-        if (input.path === "/v1/reviews/inline-conversations/command")
-          return { _tag: "CommentCreated", commentId: "comment-1" };
-        throw new Error(input.path);
-      });
-      const { replace } = mount(projection());
-      await vi.advanceTimersByTimeAsync(0);
-      expect(
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/detect-updates",
-        ),
-      ).toHaveLength(1);
-
-      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
-      const add = screen
-        .getAllByRole("button", { name: "Add comment on src/a.ts" })
-        .at(-1);
-      if (add === undefined) throw new Error("missing comment action");
-      fireEvent.click(add);
-      fireEvent.change(
-        screen.getByRole("textbox", { name: "Inline comment" }),
-        { target: { value: "Current comment" } },
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-      await vi.advanceTimersByTimeAsync(0);
-
-      resolveDetection({ _tag: "Reconciled", projection: stale });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(replace).not.toHaveBeenCalledWith(stale);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("pauses detection until all overlapping direct commands complete", async () => {
-    vi.useFakeTimers();
-    try {
-      const commands: Array<DeferredResolve> = [];
-      const request = bridge(async (input) => {
-        if (input.path === "/v1/reviews/detect-updates")
-          return { updatesAvailable: false };
-        if (input.path === "/v1/reviews/inline-conversations/command")
-          return await new Promise((resolve) => commands.push(resolve));
-        throw new Error(input.path);
-      });
-      mount(projection());
-      const detectCount = (): number =>
-        request.mock.calls.filter(
-          ([input]) => callPath(input) === "/v1/reviews/detect-updates",
-        ).length;
-      await vi.advanceTimersByTimeAsync(0);
-      expect(detectCount()).toBe(1);
-
-      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
-      const firstAdd = screen
-        .getAllByRole("button", { name: "Add comment on src/a.ts" })
-        .at(0);
-      if (firstAdd === undefined)
-        throw new Error("missing first comment action");
-      fireEvent.click(firstAdd);
-      fireEvent.change(
-        screen.getByRole("textbox", { name: "Inline comment" }),
-        { target: { value: "First" } },
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-      await vi.advanceTimersByTimeAsync(0);
-
-      const secondAdd = screen
-        .getAllByRole("button", { name: "Add comment on src/a.ts" })
-        .at(-1);
-      if (secondAdd === undefined)
-        throw new Error("missing second comment action");
-      fireEvent.click(secondAdd);
-      fireEvent.change(
-        screen.getByRole("textbox", { name: "Inline comment" }),
-        { target: { value: "Second" } },
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(commands).toHaveLength(2);
-
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(1);
-      commands[0]?.({ _tag: "CommentCreated", commentId: "comment-1" });
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(1);
-      commands[1]?.({ _tag: "CommentCreated", commentId: "comment-2" });
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(detectCount()).toBe(2);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("treats a malformed direct-comment receipt as an unconfirmed bounded failure", async () => {
@@ -1690,39 +968,21 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     }
   });
 
-  it("locks unavailable pending state until explicit recovery reloads the Review", async () => {
+  it("shows the pending-review recovery banner while the pending state is unavailable", () => {
+    bridge(async () => ({ updatesAvailable: false }));
     // SAFETY: `pending(...)` returns a wider fixture shape than the strict
-    // `pendingReview` union; this is test fixture data, not a
-    // runtime-decoded value.
-    const reloaded = projection({ pendingReview: pending("none") as never });
-    const request = bridge(async (input) =>
-      input.path === "/v1/reviews/detect-updates"
-        ? { updatesAvailable: false }
-        : input.path === "/v1/reviews/pending-review/recover"
-          ? { pendingReview: pending("none") }
-          : input.path === "/v1/reviews/load"
-            ? reloaded
-            : Promise.reject(new Error(input.path)),
-    );
-    // SAFETY: `pending(...)` returns a wider fixture shape than the strict
-    // `pendingReview` union; this is test fixture data, not a
-    // runtime-decoded value.
-    const { replace } = mount(
-      projection({ pendingReview: pending("unavailable") as never }),
-    );
+    // `pendingReview` union; this is test fixture data, not a runtime-decoded
+    // value.
+    mount(projection({ pendingReview: pending("unavailable") as never }));
+    // `usePendingReviewActions` decides what recovery does (see
+    // `use-pending-review-actions.test.ts`); only a mounted Review shows that
+    // the header renders the lock and its one recovery control.
     expect(
       document.querySelector("[data-review-pending-recovery]")?.textContent,
     ).toMatch(/pending review state is unavailable/i);
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "Check GitHub again" }));
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(reloaded));
-    expect(request).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: "/v1/reviews/pending-review/recover",
-        body: { profileId: "profile", reviewId: "review-42" },
-      }),
-    );
+    expect(
+      screen.getByRole("button", { name: "Check GitHub again" }),
+    ).toBeTruthy();
   });
 
   it("hides Review writes after a terminal remote state", () => {
