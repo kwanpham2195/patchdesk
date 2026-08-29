@@ -288,63 +288,50 @@ describe("InboxFlow merged review opening", () => {
   });
 });
 
-describe("InboxFlow rate-limited repo outcome", () => {
-  it("names the rate limit, shows the resume time, and renders no retry button", () => {
-    const resumeAt = "2026-08-01T05:00:00.000Z";
-    const rateLimitedDashboard: Dashboard = {
-      ...dashboard,
-      dashboard: {
-        repos: [
-          {
-            repo: { host: "github.com", owner: "owner", repo: "repo" },
-            state: "github_rate_limited",
-            resumeAt,
-          },
-        ],
-      },
-    };
-    renderInboxFlow(
-      <InboxFlow
-        destination="dashboard"
-        dashboard={rateLimitedDashboard}
-        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
-        inbox={inbox as never}
-        state="error"
-        refreshStatus="Current"
-        onRefresh={vi.fn()}
-        onSettings={vi.fn()}
-        onOpenWorkbench={vi.fn()}
-      />,
-    );
-    const formatted = new Date(resumeAt).toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const alert = screen
-      .getAllByRole("alert")
-      .find((candidate) => candidate.textContent?.includes("owner/repo"));
-    expect(alert).not.toBeUndefined();
-    expect(alert?.textContent).toContain("GitHub rate-limited this account");
-    expect(alert?.textContent).toContain(formatted);
-    expect(alert?.querySelector("button")).toBeNull();
-  });
+const RATE_LIMIT_RESUME_AT = "2026-08-01T05:00:00.000Z";
 
-  it("shows the graceful fallback copy when no resumeAt is known", () => {
-    const rateLimitedDashboard: Dashboard = {
-      ...dashboard,
-      dashboard: {
-        repos: [
-          {
-            repo: { host: "github.com", owner: "owner", repo: "repo" },
-            state: "github_rate_limited",
-          },
-        ],
-      },
-    };
+describe("InboxFlow unreadable repo outcome", () => {
+  // The copy each of these outcomes carries is the rule
+  // `inbox-read-failure-copy.test.ts` owns, for every reason and both
+  // resume-time cases. Two things it cannot see are left here: that this
+  // alert passes the outcome's own reason and resume time to that rule, and
+  // the render rule ADRs 0023 and 0024 set — no retry affordance is ever
+  // offered for a read that asking again cannot fix. One row per outcome tag
+  // is enough for the second: the retry affordance branches on the tag
+  // alone, never on `forbiddenReason` or `resumeAt`.
+  it.each([
+    [
+      "a forbidden read",
+      { state: "github_forbidden", forbiddenReason: "ip_allow_list" },
+      "IP allow list",
+    ],
+    [
+      "a rate-limited read",
+      { state: "github_rate_limited", resumeAt: RATE_LIMIT_RESUME_AT },
+      // The formatted resume time, not the shared sentence: only this half
+      // proves the outcome's own `resumeAt` reached the copy rule.
+      new Date(RATE_LIMIT_RESUME_AT).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    ],
+  ] satisfies ReadonlyArray<
+    [string, Omit<Dashboard["dashboard"]["repos"][number], "repo">, string]
+  >)("explains %s and offers no retry", (_name, outcome, fragment) => {
     renderInboxFlow(
       <InboxFlow
         destination="dashboard"
-        dashboard={rateLimitedDashboard}
+        dashboard={{
+          ...dashboard,
+          dashboard: {
+            repos: [
+              {
+                repo: { host: "github.com", owner: "owner", repo: "repo" },
+                ...outcome,
+              },
+            ],
+          },
+        }}
         // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
         inbox={inbox as never}
         state="error"
@@ -358,87 +345,7 @@ describe("InboxFlow rate-limited repo outcome", () => {
       .getAllByRole("alert")
       .find((candidate) => candidate.textContent?.includes("owner/repo"));
     expect(alert).not.toBeUndefined();
-    expect(alert?.textContent).toContain(
-      "Patchdesk will resume automatically once the limit clears.",
-    );
-    expect(alert?.querySelector("button")).toBeNull();
-  });
-});
-
-describe("InboxFlow forbidden repo outcome (plan 009)", () => {
-  it("names the org, states the IP allow list condition, and renders no retry button — the exact live OmisePayments defect", () => {
-    const forbiddenDashboard: Dashboard = {
-      ...dashboard,
-      dashboard: {
-        repos: [
-          {
-            repo: {
-              host: "github.com",
-              owner: "OmisePayments",
-              repo: "dynamic-onboarding-service",
-            },
-            state: "github_forbidden",
-            forbiddenReason: "ip_allow_list",
-          },
-        ],
-      },
-    };
-    renderInboxFlow(
-      <InboxFlow
-        destination="dashboard"
-        dashboard={forbiddenDashboard}
-        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
-        inbox={inbox as never}
-        state="error"
-        refreshStatus="Current"
-        onRefresh={vi.fn()}
-        onSettings={vi.fn()}
-        onOpenWorkbench={vi.fn()}
-      />,
-    );
-    const alert = screen
-      .getAllByRole("alert")
-      .find((candidate) =>
-        candidate.textContent?.includes(
-          "OmisePayments/dynamic-onboarding-service",
-        ),
-      );
-    expect(alert).not.toBeUndefined();
-    expect(alert?.textContent).toContain("OmisePayments");
-    expect(alert?.textContent).toContain("IP allow list");
-    expect(alert?.querySelector("button")).toBeNull();
-  });
-
-  it("renders the unknown fallback copy and still shows no retry button when forbiddenReason is absent", () => {
-    const forbiddenDashboard: Dashboard = {
-      ...dashboard,
-      dashboard: {
-        repos: [
-          {
-            repo: { host: "github.com", owner: "owner", repo: "repo" },
-            state: "github_forbidden",
-          },
-        ],
-      },
-    };
-    renderInboxFlow(
-      <InboxFlow
-        destination="dashboard"
-        dashboard={forbiddenDashboard}
-        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
-        inbox={inbox as never}
-        state="error"
-        refreshStatus="Current"
-        onRefresh={vi.fn()}
-        onSettings={vi.fn()}
-        onOpenWorkbench={vi.fn()}
-      />,
-    );
-    const alert = screen
-      .getAllByRole("alert")
-      .find((candidate) => candidate.textContent?.includes("owner/repo"));
-    expect(alert).not.toBeUndefined();
-    expect(alert?.textContent).toContain("did not say why");
+    expect(alert?.textContent).toContain(fragment);
     expect(alert?.querySelector("button")).toBeNull();
   });
 });

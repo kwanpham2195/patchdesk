@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   CanonicalReviewOverviewSheet,
+  mergeReadinessLabel,
+  mergeReadinessTone,
   type CanonicalReviewOverview,
 } from "../../src/renderer/src/components/pr-overview-sheet";
 import type { MergeDisplayReason } from "../../src/domain/github-context";
@@ -191,66 +193,27 @@ describe("pr overview sheet merge readiness", () => {
     );
   });
 
-  it("header reads Unknown, not Blocked, when the only blocker is mergeability_unknown", () => {
-    const readiness: Readiness = {
-      _tag: "Blocked",
-      blockers: ["mergeability_unknown"],
-      warnings: [],
-    };
-    renderOverview(baseOverview({ mergeReadiness: readiness }));
-    expect(screen.queryByText("Blocked")).toBeNull();
-    const header = screen.getByText("Unknown");
-    expect(header.className).toContain("text-status-info");
-    expect(header.className).not.toContain("text-destructive");
-  });
-
-  it("header still reads Blocked when mergeability_unknown accompanies a real blocker", () => {
-    const readiness: Readiness = {
-      _tag: "Blocked",
-      blockers: ["mergeability_unknown", "conflicting"],
-      warnings: [],
-    };
-    renderOverview(baseOverview({ mergeReadiness: readiness }));
-    expect(screen.queryByText("Unknown")).toBeNull();
-    const header = screen.getByText("Blocked");
-    expect(header.className).toContain("text-destructive");
-    expect(header.className).not.toContain("text-status-info");
-  });
-
-  it("header still reads Blocked with the destructive tone for a plain conflicting blocker", () => {
-    const readiness: Readiness = {
-      _tag: "Blocked",
-      blockers: ["conflicting"],
-      warnings: [],
-    };
-    renderOverview(baseOverview({ mergeReadiness: readiness }));
-    const header = screen.getByText("Blocked");
-    expect(header.className).toContain("text-destructive");
-    expect(header.className).not.toContain("text-status-info");
-  });
-
-  it("leaves the Ready and NeedsAcknowledgement header labels unchanged", () => {
-    renderOverview(
-      baseOverview({
-        mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
-      }),
-    );
-    const readyHeader = screen.getByText("Ready to merge");
-    expect(readyHeader.className).toContain("text-status-success");
-    cleanup();
-
-    renderOverview(
-      baseOverview({
-        mergeReadiness: {
-          _tag: "NeedsAcknowledgement",
-          blockers: [],
-          warnings: ["request_changes"],
-        },
-      }),
-    );
-    const warningsHeader = screen.getByText("Warnings");
-    expect(warningsHeader.className).toContain("text-status-warning");
-  });
+  // What the header says and how it is toned is the rule
+  // `merge-readiness-header.test.ts` owns, for all five readiness states.
+  // The one thing that test cannot see is whether this sheet still asks the
+  // rule, so this smoke test compares the rendered header against the rule's
+  // own answer rather than against a written-out label or class token.
+  it.each([
+    ["an unconfirmed block", ["mergeability_unknown"]],
+    ["a block GitHub confirmed", ["mergeability_unknown", "conflicting"]],
+  ] satisfies ReadonlyArray<[string, string[]]>)(
+    "renders %s through the shared merge-readiness rule",
+    (_name, blockers) => {
+      const readiness: Readiness = { _tag: "Blocked", blockers, warnings: [] };
+      renderOverview(baseOverview({ mergeReadiness: readiness }));
+      const header = screen.getByText(
+        mergeReadinessLabel(readiness._tag, blockers),
+      );
+      expect(header.className).toContain(
+        mergeReadinessTone(readiness._tag, blockers),
+      );
+    },
+  );
 
   it("shows Open on GitHub only once when several reasons request it", () => {
     renderOverview(

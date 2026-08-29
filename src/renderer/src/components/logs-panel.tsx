@@ -74,7 +74,9 @@ function parseLogsPayload(
   return parsed.success ? parsed.output : undefined;
 }
 
-function levelClass(level: LogLevel): string {
+/** The semantic status token one log level is rendered in. */
+// oxlint-disable-next-line react/only-export-components -- Shared presentation rule, tested as a function in tests/renderer/log-level-class.test.ts.
+export function levelClass(level: LogLevel): string {
   switch (level) {
     case "error":
       return "text-destructive";

@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import type { CheckSummary } from "../../src/domain/github-context";
-import { ReviewChecks } from "../../src/renderer/src/components/review-checks";
+import {
+  ReviewChecks,
+  presentOverallCheckResult,
+} from "../../src/renderer/src/components/review-checks";
 import { installDesktopDouble } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;
@@ -120,36 +123,29 @@ describe("review checks", () => {
     ).toBeTruthy();
   });
 
-  it("maps every aggregate outcome through the shared label rule", () => {
-    const cases: ReadonlyArray<[CheckSummary["overall"], string]> = [
-      ["passing", "Passing"],
-      ["failing", "Failing"],
-      ["pending", "In progress"],
-      ["skipped", "Skipped"],
-      ["unknown", "Unknown"],
-    ];
-    for (const [overall, label] of cases) {
-      cleanup();
-      render(<ReviewChecks checks={{ overall, checks: [] }} />);
-      expect(screen.getByText(label)).toBeTruthy();
-    }
-    cleanup();
-    render(
-      <ReviewChecks
-        checks={{ overall: "passing", checks: [] }}
-        freshness="not_refreshed"
-      />,
-    );
-    expect(screen.getByText("Not refreshed")).toBeTruthy();
-    cleanup();
-    render(
-      <ReviewChecks
-        checks={{ overall: "passing", checks: [] }}
-        freshness="unavailable"
-      />,
-    );
-    expect(screen.getByText("Unavailable")).toBeTruthy();
-  });
+  // Which label every outcome and freshness maps to is the rule
+  // `check-result-presentation.test.ts` owns. What that test cannot see is
+  // whether this component still asks the rule, and asks it with both of its
+  // inputs — so one row per input compares the rendered aggregate against
+  // the rule's own answer rather than against a written-out label.
+  it.each([
+    ["the aggregate outcome", "failing" as const, undefined],
+    ["the freshness override", "passing" as const, "not_refreshed" as const],
+  ])(
+    "renders %s through the shared label rule",
+    (_name, overall, freshness) => {
+      const checks: CheckSummary = { overall, checks: [] };
+      render(
+        <ReviewChecks
+          checks={checks}
+          {...(freshness === undefined ? {} : { freshness })}
+        />,
+      );
+      expect(
+        screen.getByText(presentOverallCheckResult(overall, freshness).label),
+      ).toBeTruthy();
+    },
+  );
 
   it("opens a same-host check URL through the desktop bridge instead of a native anchor", async () => {
     const user = userEvent.setup();

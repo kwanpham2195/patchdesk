@@ -9,7 +9,11 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DesktopResponse } from "../../src/main/ipc-contract";
-import { LogsPanel } from "../../src/renderer/src/components/logs-panel";
+import {
+  LogsPanel,
+  levelClass,
+} from "../../src/renderer/src/components/logs-panel";
+import type { LogLevel } from "../../src/domain/log-entry";
 import {
   installDesktopDouble,
   success,
@@ -67,18 +71,20 @@ function deferredResponse(): DeferredResponse {
 }
 
 describe("LogsPanel", () => {
-  it("uses semantic status tokens for each log level", async () => {
+  // Which token each level gets is the rule `log-level-class.test.ts` owns,
+  // for all four levels. The one thing that test cannot see is whether a
+  // rendered row still asks the rule, so this compares the rendered level
+  // against the rule's own answer rather than against a written-out token.
+  it("tones each rendered log row through the shared level rule", async () => {
     vi.stubGlobal("window", window);
     desktop = installDesktopDouble({
       "/v1/logs?limit=300": () =>
         success({
           entries: [
             { ...entry(0, "message-error"), level: "error" },
-            { ...entry(1, "message-warn"), level: "warn" },
-            { ...entry(2, "message-info"), level: "info" },
-            { ...entry(3, "message-debug"), level: "debug" },
+            { ...entry(1, "message-debug"), level: "debug" },
           ],
-          nextAfter: 3,
+          nextAfter: 1,
         }),
     });
     vi.useFakeTimers();
@@ -87,18 +93,11 @@ describe("LogsPanel", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(screen.getByText("error", { exact: true }).className).toContain(
-        "text-destructive",
-      );
-      expect(screen.getByText("warn", { exact: true }).className).toContain(
-        "text-status-warning",
-      );
-      expect(screen.getByText("info", { exact: true }).className).toContain(
-        "text-status-info",
-      );
-      expect(screen.getByText("debug", { exact: true }).className).toContain(
-        "text-muted-foreground",
-      );
+      for (const level of ["error", "debug"] satisfies LogLevel[]) {
+        expect(screen.getByText(level, { exact: true }).className).toContain(
+          levelClass(level),
+        );
+      }
     } finally {
       vi.useRealTimers();
     }

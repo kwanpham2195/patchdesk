@@ -51,7 +51,11 @@ describe("Conversation", () => {
     expect(screen.queryByText("No conversation yet.")).toBeNull();
   });
 
-  it("uses shared Markdown hierarchy for the PR description and timeline entries", () => {
+  // The heading hierarchy and task-state rules themselves belong to
+  // `generated-markdown.ui.test.tsx`. What only this file can see is that
+  // both surfaces route their text through that shared renderer at all — the
+  // timeline entry especially, which no other test renders as Markdown.
+  it("routes the PR description and a timeline comment through the shared Markdown renderer", () => {
     render(
       <Conversation
         conversation={{
@@ -73,11 +77,11 @@ describe("Conversation", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Pull request heading" }).className,
-    ).toContain("text-xl");
+      screen.getByRole("heading", { name: "Pull request heading" }),
+    ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Timeline heading" }).className,
-    ).toContain("text-lg");
+      screen.getByRole("heading", { name: "Timeline heading" }),
+    ).toBeTruthy();
     expect(screen.getByLabelText("Completed task")).toBeTruthy();
     expect(screen.getByLabelText("Incomplete task")).toBeTruthy();
   });

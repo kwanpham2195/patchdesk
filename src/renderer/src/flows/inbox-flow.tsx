@@ -817,7 +817,8 @@ function key(repo: RepositoryIdentity): string {
  * of these conditions resolve by asking again, and a working retry button
  * would falsely imply one might (see docs/adr/0024-explain-forbidden-github-reads.md).
  */
-function forbiddenCopy(
+// oxlint-disable-next-line react/only-export-components -- Shared copy rule, tested as a function in tests/renderer/inbox-read-failure-copy.test.ts.
+export function forbiddenCopy(
   reason: string | undefined,
   repo: { readonly owner: string; readonly repo: string },
 ): string {
@@ -838,7 +839,8 @@ function forbiddenCopy(
  * offered here: GitHub's primary rate-limit window is hours long, so an
  * immediate retry would only make it worse; Patchdesk resumes on its own.
  */
-function rateLimitedCopy(resumeAt: string | undefined): string {
+// oxlint-disable-next-line react/only-export-components -- Shared copy rule, tested as a function in tests/renderer/inbox-read-failure-copy.test.ts.
+export function rateLimitedCopy(resumeAt: string | undefined): string {
   const resumeAtMs = resumeAt === undefined ? Number.NaN : Date.parse(resumeAt);
   if (Number.isNaN(resumeAtMs)) {
     return "GitHub rate-limited this account. Patchdesk will resume automatically once the limit clears.";

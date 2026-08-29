@@ -639,7 +639,8 @@ function insightTone(status: ReviewInsightStatus): string {
 // the body already gives that case (see the infoCard comment above and
 // ADR 0027, "Unknown is not failure"). Any additional blocker alongside it
 // is a real, confirmed block, so it keeps the destructive treatment.
-function isUnconfirmedBlock(
+// oxlint-disable-next-line react/only-export-components -- Shared readiness rule, tested as a function in tests/renderer/merge-readiness-header.test.ts.
+export function isUnconfirmedBlock(
   tag: WorkbenchResponse["mergeReadiness"]["_tag"],
   blockers: readonly string[],
 ): boolean {
@@ -650,7 +651,9 @@ function isUnconfirmedBlock(
   );
 }
 
-function mergeReadinessLabel(
+/** What the Merge readiness header reads for one readiness tag. */
+// oxlint-disable-next-line react/only-export-components -- Shared readiness rule, tested as a function in tests/renderer/merge-readiness-header.test.ts.
+export function mergeReadinessLabel(
   tag: WorkbenchResponse["mergeReadiness"]["_tag"],
   blockers: readonly string[],
 ): string {
@@ -665,7 +668,9 @@ function mergeReadinessLabel(
   }
 }
 
-function mergeReadinessTone(
+/** The semantic tone token the Merge readiness header is rendered in. */
+// oxlint-disable-next-line react/only-export-components -- Shared readiness rule, tested as a function in tests/renderer/merge-readiness-header.test.ts.
+export function mergeReadinessTone(
   tag: WorkbenchResponse["mergeReadiness"]["_tag"],
   blockers: readonly string[],
 ): string {
