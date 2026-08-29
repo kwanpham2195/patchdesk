@@ -2,8 +2,6 @@ import { createHash } from "node:crypto";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import { readFile } from "node:fs/promises";
 
-import * as v from "valibot";
-
 import {
   avatarDataUri,
   hashAvatarUrl,
@@ -42,28 +40,23 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
-import type {
-  InsightArtifactStatus,
-  InsightProjection,
-  InsightScopeProjection,
+import {
+  projectStoredInsight,
+  type InsightProjection,
 } from "../domain/insight";
 import { definedProps } from "../domain/defined-props";
-import { parseUnifiedPatch } from "../domain/patch";
+import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import {
-  normalizeNarrativeWalkthrough,
-  type NarrativeWalkthrough,
-} from "../domain/narrative-walkthrough";
-import {
-  deriveCheckReasons,
   evaluateMergeReadiness,
   readinessMergeability,
   type MergeReadiness,
 } from "../domain/merge-readiness";
+import { deriveMergeReasons } from "../domain/merge-display-reasons";
 import {
-  sameInsightRevision,
-  type InsightRecord,
-  type RetainedInsight,
-} from "../domain/insight-record";
+  projectAnalysisReviewActions,
+  type AnalysisReviewActionsProjection,
+  type WorkbenchRevisionFreshness,
+} from "../domain/analysis-review-actions";
 import {
   analysisMergeInput,
   mergeGateFindings,
@@ -75,12 +68,11 @@ import {
   type DirectSummaryReviewProjection,
 } from "./direct-summary-review-service";
 import { projectPendingReview } from "./pending-review-service";
-import { isPendingReviewLocked } from "../domain/pending-review";
 import type { PendingReviewState } from "../domain/pending-review";
-import { parseReviewResult, type ReviewResult } from "../domain/review-result";
+import type { ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
 import { err, ok, type Result } from "../domain/result";
-import { readObjectField } from "./read-object-field";
+import { RetainedInsightReader } from "./retained-insight-reader";
 
 /** Renderer-safe Session identity. It deliberately omits patch/worktree paths and durable internals. */
 type WorkbenchSessionProjection = {
@@ -94,17 +86,6 @@ type WorkbenchSessionProjection = {
     readonly headSha: GitSha;
   };
 };
-type AnalysisFindingReviewStatus =
-  | { readonly state: "actionable" }
-  | { readonly state: "pending_review" }
-  | { readonly state: "published" }
-  | { readonly state: "locked" };
-
-type AnalysisReviewActionsProjection = {
-  readonly findings: Readonly<Record<string, AnalysisFindingReviewStatus>>;
-  readonly canFinishWithAnalysisSummary: boolean;
-};
-
 export type ReviewWorkbenchProjection = {
   readonly state: "review";
   readonly review: {
@@ -120,11 +101,7 @@ export type ReviewWorkbenchProjection = {
     readonly reviewedHeadSha: GitSha;
     readonly patchHash?: ContentHash;
     readonly currentHeadSha?: GitSha;
-    readonly freshness:
-      | "fresh"
-      | "updates_available"
-      | "unavailable"
-      | "not_refreshed";
+    readonly freshness: WorkbenchRevisionFreshness;
     readonly refreshedAt: IsoTimestamp;
   };
   readonly fullPatch?: string;
@@ -173,13 +150,20 @@ type ProjectRemoteInput = {
  * projection.
  */
 export class ReviewWorkbenchProjectionService {
+  private readonly retainedInsights: RetainedInsightReader;
+
   constructor(
     private readonly profiles: ProfileStore,
     private readonly sessions: ReviewSessionStore,
     private readonly reviews: Pick<ReviewStore, "load">,
     private readonly insights: Pick<InsightStore, "loadTyped">,
     private readonly paths: PatchdeskPaths,
-  ) {}
+  ) {
+    this.retainedInsights = new RetainedInsightReader(
+      this.sessions,
+      this.insights,
+    );
+  }
 
   /** Projects the exact remote snapshot represented by the durable Review. */
   async loadRepresented(input: {
@@ -328,7 +312,7 @@ export class ReviewWorkbenchProjectionService {
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
     const [fullPatch, storedInsights] = await Promise.all([
       readFile(session.patchPath, "utf8").catch(() => undefined),
-      this.loadStoredInsights(session),
+      this.retainedInsights.loadStoredInsights(session),
     ]);
     if (storedInsights._tag === "err") return storedInsights;
     const rawPatchHash =
@@ -507,305 +491,6 @@ export class ReviewWorkbenchProjectionService {
     };
     return ok(projection);
   }
-
-  private async loadStoredInsights(
-    session: ReviewSession,
-  ): Promise<Result<StoredInsightRecords, WorkbenchProjectionFailure>> {
-    // A retained Walkthrough belongs to the Session that produced it. Never
-    // validate it against the currently represented Session's patch: Refresh
-    // intentionally changes that artifact while old reading evidence remains.
-    const [analysis, walkthrough] = await Promise.all([
-      this.insights.loadTyped(
-        session.key.profileId,
-        createReviewId(session.key),
-        "analysis",
-        // The callback's parameter is left uninferred here (rather than
-        // annotated `unknown`) so it takes its type from `loadTyped`'s
-        // signature; this is the actual I/O boundary where a stored
-        // Insight's `retained` value first becomes available to parse. The
-        // envelope around it is already parsed -- see `parseRetainedInsight`.
-        (input) => parseReviewResult(input),
-      ),
-      this.loadWalkthroughRecord(session),
-    ]);
-    // A corrupt or schema-drifted Insight record is ignored: the Review still
-    // opens and the Insight reads as not generated, so a re-run heals it.
-    if (
-      analysis._tag === "err" &&
-      analysis.error.reason !== "not_found" &&
-      analysis.error.reason !== "invalid_stored_value"
-    )
-      return err({ _tag: "SessionStorageUnavailable" });
-    if (
-      walkthrough._tag === "err" &&
-      walkthrough.error.reason !== "not_found" &&
-      walkthrough.error.reason !== "invalid_stored_value"
-    )
-      return err({ _tag: "SessionStorageUnavailable" });
-    const analysisArtifact =
-      analysis._tag === "ok" && analysis.value.retained !== undefined
-        ? await this.readInsightScope(
-            session.key.profileId,
-            analysis.value.retained,
-          )
-        : undefined;
-    const records: StoredInsightRecords = definedProps({
-      analysis: analysis._tag === "ok" ? analysis.value : undefined,
-      walkthrough:
-        walkthrough._tag === "ok" ? walkthrough.value.record : undefined,
-      analysisScope: analysisArtifact?.scope,
-      analysisArtifactStatus: analysisArtifact?.artifactStatus,
-      walkthroughArtifactStatus:
-        walkthrough._tag === "ok"
-          ? walkthrough.value.artifactStatus
-          : undefined,
-    });
-    return ok(records);
-  }
-
-  private async readInsightScope(
-    profileId: WorkspaceProfileId,
-    retained: RetainedInsight<ReviewResult>,
-  ): Promise<{
-    readonly scope?: InsightScopeProjection;
-    readonly artifactStatus: InsightArtifactStatus;
-  }> {
-    const retainedSession = await this.sessions.load(
-      profileId,
-      retained.revision.sessionId,
-    );
-    if (retainedSession._tag === "err") return { artifactStatus: "mismatch" };
-    const patch = await readFile(retainedSession.value.patchPath, "utf8").catch(
-      () => undefined,
-    );
-    if (patch === undefined) return { artifactStatus: "mismatch" };
-    const actualHash = createHash("sha256").update(patch).digest("hex");
-    if (actualHash !== retained.revision.patchHash)
-      return { artifactStatus: "mismatch" };
-    const files = parseUnifiedPatch(patch);
-    return {
-      artifactStatus: "verified",
-      scope: {
-        baseShort: (retainedSession.value.pr.baseSha ?? "unknown").slice(0, 7),
-        headShort: retained.revision.headSha.slice(0, 7),
-        commitCount: 0,
-        fileCount: files.length,
-        additions: files.reduce((total, file) => total + file.additions, 0),
-        deletions: files.reduce((total, file) => total + file.deletions, 0),
-        changedFiles: files.map((file) => ({
-          path: file.newPath,
-          additions: file.additions,
-          deletions: file.deletions,
-        })),
-      },
-    };
-  }
-
-  private async loadWalkthroughRecord(session: ReviewSession): Promise<
-    Result<
-      {
-        readonly record: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
-        readonly artifactStatus?: InsightArtifactStatus;
-      },
-      {
-        readonly reason: "not_found" | "invalid_stored_value" | "storage";
-      }
-    >
-  > {
-    const loaded = await this.insights.loadTyped(
-      session.key.profileId,
-      createReviewId(session.key),
-      "walkthrough",
-      // The stored Walkthrough is normalized against its own session's patch
-      // below, which needs the patch bytes this parser cannot read, so the
-      // value is carried through unparsed and normalized after the envelope.
-      (input) => ok(input),
-    );
-    if (loaded._tag === "err") {
-      if (loaded.error.reason === "not_found")
-        return err({ reason: "not_found" });
-      if (loaded.error.reason === "invalid_stored_value")
-        return err({ reason: "invalid_stored_value" });
-      return err({ reason: "storage" });
-    }
-    const base = loaded.value.retained;
-    if (base === undefined) {
-      // SAFETY: `loaded.value.retained` is undefined here, so the generic
-      // `RetainedInsight<NarrativeWalkthrough>` parameter names no runtime
-      // data this branch actually inspects; only the `retained?` field's
-      // absence, which is what the check above already confirmed, matters.
-      return ok({
-        record: loaded.value as InsightRecord<
-          RetainedInsight<NarrativeWalkthrough>
-        >,
-      });
-    }
-    const rawValue = base.value;
-    // Readable-without-artifact fallback: preserves bounded prose while
-    // dropping hunk coordinates that no longer have trusted patch bytes to
-    // resolve against. Each stored field degrades independently instead of
-    // rejecting the whole record, matching the original hand-walked reader.
-    const fallback = (): Result<
-      {
-        readonly record: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
-        readonly artifactStatus: InsightArtifactStatus;
-      },
-      {
-        readonly reason: "not_found" | "invalid_stored_value" | "storage";
-      }
-    > => {
-      const rawChapters = readObjectField(rawValue, "chapters");
-      const chapters = Array.isArray(rawChapters)
-        ? rawChapters.slice(0, 12).map((chapter, chapterIndex) => {
-            const rawSections = readObjectField(chapter, "sections");
-            const sections = Array.isArray(rawSections)
-              ? rawSections.slice(0, 32).map((section, sectionIndex) => ({
-                  id: `section-${chapterIndex + 1}-${sectionIndex + 1}`,
-                  title: v.parse(
-                    boundedTextSchema(160, "Untitled section"),
-                    readObjectField(section, "title"),
-                  ),
-                  prose: v.parse(
-                    boundedTextSchema(
-                      4_000,
-                      "Stored section text is unavailable.",
-                    ),
-                    readObjectField(section, "prose"),
-                  ),
-                  hunkIds: [],
-                  hunks: [],
-                }))
-              : [];
-            return {
-              id: `chapter-${chapterIndex + 1}`,
-              title: v.parse(
-                boundedTextSchema(80, "Untitled chapter"),
-                readObjectField(chapter, "title"),
-              ),
-              sections,
-            };
-          })
-        : [];
-      const value: NarrativeWalkthrough = {
-        snapshot: { profileId: session.key.profileId, ...base.revision },
-        citationStatus: "unverified",
-        title: v.parse(
-          boundedTextSchema(200, "Stored Walkthrough"),
-          readObjectField(rawValue, "title"),
-        ),
-        focus: v.parse(
-          boundedTextSchema(2_000, "Stored source evidence is unavailable."),
-          readObjectField(rawValue, "focus"),
-        ),
-        chapters,
-        support: { id: "support", title: "Support", hunkIds: [], hunks: [] },
-      };
-      return ok({
-        record: { ...loaded.value, retained: { ...base, value } },
-        artifactStatus: "mismatch",
-      });
-    };
-    const retainedSession = await this.sessions.load(
-      session.key.profileId,
-      base.revision.sessionId,
-    );
-    if (retainedSession._tag === "err") return fallback();
-    const retainedPatch = await readFile(
-      retainedSession.value.patchPath,
-      "utf8",
-    ).catch(() => undefined);
-    if (retainedPatch === undefined) return fallback();
-    const actualHash = createHash("sha256").update(retainedPatch).digest("hex");
-    if (actualHash !== base.revision.patchHash) return fallback();
-    const normalized = normalizeNarrativeWalkthrough(rawValue, retainedPatch, {
-      profileId: session.key.profileId,
-      sessionId: base.revision.sessionId,
-      headSha: base.revision.headSha,
-      patchHash: base.revision.patchHash,
-    });
-    if (normalized._tag === "err") return err({ reason: "storage" });
-    return ok({
-      record: {
-        ...loaded.value,
-        retained: { ...base, value: normalized.value },
-      },
-      artifactStatus: "verified",
-    });
-  }
-}
-
-function projectAnalysisReviewActions(input: {
-  readonly analysis: InsightProjection<ReviewResult>;
-  readonly session: ReviewSession;
-  readonly freshness: ReviewWorkbenchProjection["revision"]["freshness"];
-  readonly patchHash: ContentHash | undefined;
-  readonly pendingReview: PendingReviewState | undefined;
-}): AnalysisReviewActionsProjection {
-  const retained = input.analysis.retained;
-  const current =
-    retained !== undefined &&
-    retained.runId !== undefined &&
-    input.analysis.status === "current" &&
-    input.analysis.artifactStatus === "verified" &&
-    input.freshness === "fresh" &&
-    input.patchHash !== undefined &&
-    retained.sessionId === input.session.id &&
-    retained.headSha === input.session.key.headSha;
-  if (
-    !current ||
-    retained === undefined ||
-    retained.runId === undefined ||
-    input.patchHash === undefined
-  )
-    return { findings: {}, canFinishWithAnalysisSummary: false };
-  const locked = isPendingReviewLocked(input.pendingReview);
-  const receipts = input.session.findingReviewReceipts ?? [];
-  const findings: Record<string, AnalysisFindingReviewStatus> = {};
-  for (const finding of retained.value.findings) {
-    if (finding.disposition === "dismissed") continue;
-    const receipt = receipts.find(
-      (candidate) =>
-        candidate.analysisRunId === retained.runId &&
-        candidate.findingId === finding.id &&
-        candidate.sessionId === input.session.id &&
-        candidate.headSha === input.session.key.headSha &&
-        candidate.patchHash === input.patchHash,
-    );
-    const unresolved =
-      input.pendingReview?._tag === "Pending" &&
-      input.pendingReview.unresolvedFinding?.analysisRunId === retained.runId &&
-      input.pendingReview.unresolvedFinding.findingId === finding.id &&
-      input.pendingReview.unresolvedFinding.sessionId === input.session.id &&
-      input.pendingReview.unresolvedFinding.headSha ===
-        input.session.key.headSha &&
-      input.pendingReview.unresolvedFinding.patchHash === input.patchHash;
-    findings[finding.id] =
-      receipt === undefined
-        ? locked || unresolved
-          ? { state: "locked" }
-          : { state: "actionable" }
-        : receipt.state === "pending"
-          ? { state: "pending_review" }
-          : { state: "published" };
-  }
-  const pendingReviewNodeId =
-    input.pendingReview?._tag === "Pending"
-      ? input.pendingReview.review.nodeId
-      : undefined;
-  return {
-    findings,
-    canFinishWithAnalysisSummary:
-      pendingReviewNodeId !== undefined &&
-      receipts.some(
-        (receipt) =>
-          receipt.state === "pending" &&
-          receipt.pendingReviewNodeId === pendingReviewNodeId &&
-          receipt.analysisRunId === retained.runId &&
-          receipt.sessionId === input.session.id &&
-          receipt.headSha === input.session.key.headSha &&
-          receipt.patchHash === input.patchHash,
-      ),
-  };
 }
 
 function directSummaryDecision(
@@ -846,153 +531,6 @@ function projectLocalCheckoutWarning(
   };
 }
 
-// Ordering: most-actionable-first. A maintainer reading this list top to
-// bottom sees the reasons whose next action is on them (get another review,
-// address feedback, resolve a named rule, update the branch, resolve
-// conflicts, wait on a check) before the admittedly vague generic blocked
-// fallback, which is pushed last and only when nothing more specific was
-// already collected, so it never buries a real answer under a vague one.
-function deriveMergeReasons(
-  aggregate: GitHubMergeEvidence | undefined,
-  checks: CheckSummary,
-): ReadonlyArray<MergeDisplayReason> {
-  if (aggregate === undefined) return [];
-
-  const branchProtection = aggregate.policy?.branchProtection;
-  // Only a positive classic branch-protection count matches an approval
-  // requirement. Zero and rules that do not expose approval configuration are
-  // unavailable evidence, not an exact policy claim.
-  const classicCount =
-    branchProtection?.state === "available" &&
-    branchProtection.value.requiredApprovingReviewCount !== undefined &&
-    branchProtection.value.requiredApprovingReviewCount > 0
-      ? branchProtection.value.requiredApprovingReviewCount
-      : undefined;
-
-  const appliedRuleset = aggregate.policy?.appliedRuleset;
-  const pullRequestRule =
-    appliedRuleset?.state === "available"
-      ? appliedRuleset.value.rules.find(
-          (rule) => rule.pullRequestParameters !== undefined,
-        )?.pullRequestParameters
-      : undefined;
-  // Same "only a positive count is evidence" rule as classic protection.
-  const rulesetCount =
-    pullRequestRule?.requiredApprovingReviewCount !== undefined &&
-    pullRequestRule.requiredApprovingReviewCount > 0
-      ? pullRequestRule.requiredApprovingReviewCount
-      : undefined;
-  // Ruleset evidence is preferred: on a repo governed by Rulesets the classic
-  // `branches/{branch}/protection` endpoint legitimately 404s, so a
-  // ruleset-sourced count is the more direct evidence when both exist.
-  const requiredCount = rulesetCount ?? classicCount;
-  const requiredCountSource: MergeDisplayReason["source"] =
-    rulesetCount === undefined ? "branch_protection" : "ruleset_configuration";
-
-  const policyReadable =
-    branchProtection?.state === "available" ||
-    appliedRuleset?.state === "available";
-  const blocked =
-    aggregate.mergeStateStatus === "blocked" ||
-    aggregate.mergeable === "blocked";
-
-  const reasons: MergeDisplayReason[] = [];
-
-  // `reviewDecision` reconciliation: GraphQL `reviewDecision` stays the gate
-  // for whether a review is outstanding at all, because it reflects live
-  // approval state no static ruleset field can express. It can under-report
-  // (null, mapped to "unknown", on a ruleset-governed repo whose PR already
-  // had a genuine approval) but never over-report, so ruleset evidence never
-  // invents a requirement by itself — this branch stays gated strictly on
-  // `review_required` — and only supplies a higher-confidence count/source
-  // once the gate already says a review is outstanding.
-  if (aggregate.reviewDecision === "review_required") {
-    reasons.push({
-      code: "review_required",
-      message:
-        requiredCount === undefined
-          ? "Approval required by GitHub."
-          : `${requiredCount} approving review${requiredCount === 1 ? "" : "s"} required by ${requiredCountSource === "ruleset_configuration" ? "ruleset configuration" : "branch protection"}.`,
-      source:
-        requiredCount === undefined ? "github_pr_state" : requiredCountSource,
-      availability: requiredCount === undefined ? "partial" : "available",
-      openOnGitHub: requiredCount === undefined,
-    });
-  } else if (aggregate.reviewDecision === "changes_requested") {
-    reasons.push({
-      code: "changes_requested",
-      message: "Changes requested.",
-      source: "github_pr_state",
-      availability: "available",
-      openOnGitHub: false,
-    });
-  }
-
-  // GitHub says blocked and the ruleset says why: name the specific rules,
-  // matching what GitHub's own UI renders for each.
-  if (blocked && pullRequestRule?.requireLastPushApproval === true)
-    reasons.push({
-      code: "review_required",
-      message:
-        "New changes require approval from someone other than the last pusher.",
-      source: "ruleset_configuration",
-      availability: "available",
-      openOnGitHub: false,
-    });
-  if (blocked && pullRequestRule?.requiredReviewThreadResolution === true)
-    reasons.push({
-      code: "blocked",
-      message: "All review threads must be resolved before this can merge.",
-      source: "ruleset_configuration",
-      availability: "available",
-      openOnGitHub: false,
-    });
-
-  if (aggregate.mergeStateStatus === "behind")
-    reasons.push({
-      code: "behind",
-      message: "Update this branch with the base branch.",
-      source: "github_pr_state",
-      availability: "available",
-      openOnGitHub: false,
-    });
-
-  if (
-    aggregate.mergeStateStatus === "dirty" ||
-    aggregate.mergeable === "conflicting"
-  )
-    reasons.push({
-      code: "conflicts",
-      message: "Resolve merge conflicts.",
-      source: "github_pr_state",
-      availability: "available",
-      openOnGitHub: false,
-    });
-
-  reasons.push(...deriveCheckReasons(checks));
-
-  // `has_hooks` and `unstable` are both mergeable states per GitHub's own
-  // `MergeStateStatus` semantics, so neither contributes a reason here.
-  // Surfacing them as information is a display concern for a later slice.
-
-  // The generic fallback only fires when GitHub reports blocked and nothing
-  // above already explained why — including the two named rules above, but
-  // also any review/checks reason from another axis, since a maintainer
-  // shown a specific reason does not need an additional vague one.
-  if (blocked && reasons.length === 0)
-    reasons.push({
-      code: "blocked",
-      message: policyReadable
-        ? "GitHub reports this merge is blocked, but none of the readable merge rules explain why."
-        : "Patchdesk could not read this repository's merge rules, so it cannot say why GitHub blocked this merge.",
-      source: "github_pr_state",
-      availability: policyReadable ? "available" : "partial",
-      openOnGitHub: true,
-    });
-
-  return reasons;
-}
-
 // A Review projected without a merge-policy read falls back to the pull
 // request summary's own review verdict. `unavailable` is the honest value for
 // the missing aggregate field: it is not a merge-state claim.
@@ -1014,125 +552,4 @@ function aggregateMergeEvidence(
             ? "review_required"
             : "unknown",
   };
-}
-
-type StoredInsightRecords = {
-  readonly analysis?: InsightRecord<RetainedInsight<ReviewResult>>;
-  readonly walkthrough?: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
-  readonly analysisScope?: InsightScopeProjection;
-  readonly analysisArtifactStatus?: InsightArtifactStatus;
-  readonly walkthroughArtifactStatus?: InsightArtifactStatus;
-};
-/**
- * `projectStoredInsight` is generic in `T`, so a locally declared
- * `-readonly [K in keyof InsightProjection<T>]` draft type (the pattern used
- * elsewhere in this file for concrete, non-generic shapes) is flagged by
- * `anti-slop/no-known-value-widening`: a generic mapped-type alias is always
- * treated as a container that can silently swallow the literal evidence in
- * an assigned object. Building and returning each branch's literal directly,
- * omitting an optional key with `...(cond && { key })` instead of a typed
- * draft plus assignment, keeps every branch checked against this function's
- * own `InsightProjection<T>` return type and avoids that widening entirely.
- * `cond && {...}` (a `LogicalExpression`) also isn't the ternary-with-`{}`
- * shape `no-conditional-empty-object-spread` matches: when `cond` is false
- * it spreads `false`, which — like spreading `undefined` or `null` —
- * contributes no properties, so omission behaves identically to the
- * original conditional spread.
- */
-function projectStoredInsight<T>(
-  record: InsightRecord<RetainedInsight<T>> | undefined,
-  session: ReviewSession,
-  patchHash: ContentHash | undefined,
-  decorate: (value: T, record: InsightRecord<RetainedInsight<T>>) => T = (
-    value,
-  ) => value,
-  scope?: InsightScopeProjection,
-  artifactStatus?: InsightArtifactStatus,
-): InsightProjection<T> {
-  const retained =
-    record?.retained === undefined
-      ? undefined
-      : {
-          runId: record.retained.runId,
-          sessionId: record.retained.revision.sessionId,
-          headSha: record.retained.revision.headSha,
-          generatedAt: record.retained.generatedAt,
-          value: decorate(record.retained.value, record),
-          ...(scope !== undefined && { scope }),
-        };
-  if (record?.activeRun !== undefined) {
-    return {
-      status: "running",
-      ...(artifactStatus !== undefined && { artifactStatus }),
-      ...(record.walkthroughProgress !== undefined && {
-        progress: record.walkthroughProgress,
-      }),
-      ...(retained !== undefined && { retained }),
-      activeRun: {
-        runId: record.activeRun.id,
-        sessionId: record.activeRun.revision.sessionId,
-        startedAt: record.activeRun.startedAt,
-      },
-    };
-  }
-  if (record?.replacementFailure !== undefined) {
-    return {
-      status: "failed",
-      ...(artifactStatus !== undefined && { artifactStatus }),
-      ...(record.walkthroughProgress !== undefined && {
-        progress: record.walkthroughProgress,
-      }),
-      ...(retained !== undefined && { retained }),
-      replacementFailure: {
-        runId: record.replacementFailure.runId,
-        ...(record.replacementFailure.category !== undefined && {
-          category: record.replacementFailure.category,
-        }),
-        model: record.replacementFailure.model,
-        reasoning: record.replacementFailure.reasoning,
-        retryable: record.replacementFailure.retryable,
-      },
-    };
-  }
-  if (retained === undefined)
-    return {
-      status: "not_generated",
-      ...(record?.walkthroughProgress !== undefined && {
-        progress: record.walkthroughProgress,
-      }),
-    };
-  const retainedRecord = record?.retained;
-  const isCurrent =
-    retainedRecord !== undefined &&
-    patchHash !== undefined &&
-    sameInsightRevision(retainedRecord.revision, {
-      sessionId: session.id,
-      headSha: session.key.headSha,
-      patchHash,
-    });
-  return {
-    status: isCurrent ? "current" : "outdated",
-    ...(artifactStatus !== undefined && { artifactStatus }),
-    ...(record?.walkthroughProgress !== undefined && {
-      progress: record.walkthroughProgress,
-    }),
-    retained,
-  };
-}
-
-/**
- * A bounded-text field that never fails: a non-blank string is truncated to
- * `maxLength` (its original, untrimmed bytes — matching the prior
- * `value.slice(0, maxLength)` behavior exactly), anything else falls back.
- */
-function boundedTextSchema(maxLength: number, fallback: string) {
-  return v.pipe(
-    v.unknown(),
-    v.transform((value) => {
-      const parsed = v.safeParse(v.string(), value);
-      return parsed.success && parsed.output.trim().length > 0
-        ? parsed.output.slice(0, maxLength)
-        : fallback;
-    }),
-  );
 }
