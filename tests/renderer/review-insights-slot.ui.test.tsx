@@ -72,9 +72,8 @@ describe("InsightsSlot run requests", () => {
     expect(starting.querySelector('[data-icon="inline-start"]')).toBeTruthy();
 
     start.resolve(failure({ message: "runtime unavailable" }));
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Analysis could not start",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Analysis could not start");
     expect(screen.getByRole("button", { name: "Start run" })).toBeTruthy();
   });
 
@@ -112,6 +111,14 @@ describe("InsightsSlot run requests", () => {
           ),
       ).toBe(true),
     );
+    expect(
+      screen
+        .getAllByRole("alert")
+        .find((alert) =>
+          alert.textContent?.includes("Analysis status could not be refreshed"),
+        )
+        ?.getAttribute("data-slot"),
+    ).toBe("inline-error");
     expect(
       screen.getByRole("button", { name: "Cancel Analysis" }),
     ).toBeTruthy();
@@ -160,9 +167,9 @@ describe("InsightsSlot run requests", () => {
         screen.getByRole("button", { name: "Cancel Analysis" }),
       ).toBeTruthy(),
     );
-    expect(screen.getByRole("alert").textContent).toContain(
-      "Analysis cancellation failed",
-    );
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Analysis cancellation failed");
+    expect(alert.getAttribute("data-slot")).toBe("inline-error");
     expect(screen.getByText("Analysis is running")).toBeTruthy();
   });
 });

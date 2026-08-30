@@ -273,7 +273,9 @@ describe("AnalysisReader", () => {
     expect(onDismissFinding).toHaveBeenCalledTimes(1);
 
     act(() => dismissal.reject());
-    expect(await within(firstRow).findByRole("alert")).toBeTruthy();
+    expect(
+      (await within(firstRow).findByRole("alert")).getAttribute("data-slot"),
+    ).toBe("inline-error");
     expect(within(secondRow).queryByRole("alert")).toBeNull();
     expect(reason.value).toBe("Keep this reason");
   });
@@ -304,7 +306,9 @@ describe("AnalysisReader", () => {
     });
 
     act(() => second.reject());
-    expect(await within(secondRow).findByRole("alert")).toBeTruthy();
+    expect(
+      (await within(secondRow).findByRole("alert")).getAttribute("data-slot"),
+    ).toBe("inline-error");
     expect(within(firstRow).queryByRole("alert")).toBeNull();
     expect(
       within(firstRow).getByRole("button", { name: /Adding/ }),

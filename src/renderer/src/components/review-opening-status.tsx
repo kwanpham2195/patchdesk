@@ -1,4 +1,5 @@
 import { Spinner } from "@/components/ui/spinner";
+import { InlineError } from "@/components/ui/inline-error";
 
 export type ReviewOpeningState =
   | {
@@ -22,11 +23,11 @@ export function ReviewOpeningNotice({
     );
   if (state?.status === "error")
     return (
-      <span role="alert" className={className}>
+      <InlineError className={className}>
         <span className="font-medium">Could not open review</span>
         {" — "}
         {state.error}
-      </span>
+      </InlineError>
     );
   return null;
 }

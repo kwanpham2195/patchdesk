@@ -24,6 +24,7 @@ import {
 } from "./ui/collapsible";
 import { Field, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
+import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
 import {
   Popover,
@@ -479,9 +480,7 @@ function AnalysisFindingRow({
         </p>
       ) : null}
       {actionError === undefined ? null : (
-        <p role="alert" className="mt-2 text-sm text-destructive">
-          {actionError}
-        </p>
+        <InlineError className="mt-2">{actionError}</InlineError>
       )}
       {evidencePatch === undefined || evidenceAnchor === undefined ? null : (
         <Collapsible className="mt-2">

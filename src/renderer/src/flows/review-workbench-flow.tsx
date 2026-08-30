@@ -30,6 +30,7 @@ import {
   AlertTitle,
 } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
+import { InlineError } from "../components/ui/inline-error";
 import { Spinner } from "../components/ui/spinner";
 
 export type { ReviewWorkbenchPatch } from "./use-review-observation";
@@ -307,10 +308,10 @@ export function ReviewWorkbenchFlow({
         </Alert>
       )}
       {refreshError ? (
-        <p role="alert" className="border-t px-4 py-2 text-sm text-destructive">
+        <InlineError className="border-t px-4 py-2">
           GitHub state could not be refreshed. The represented Review remains
           readable.
-        </p>
+        </InlineError>
       ) : null}
     </>
   );

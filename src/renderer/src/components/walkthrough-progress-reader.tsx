@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { requestJson } from "../api-client";
 import { NarrativeWalkthrough } from "./narrative-walkthrough";
+import { InlineError } from "./ui/inline-error";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
 type WalkthroughProgressReaderProps = Omit<
@@ -46,9 +47,9 @@ export function WalkthroughProgressReader({
   return (
     <>
       {progressError ? (
-        <p role="alert" className="py-2 text-sm text-destructive">
+        <InlineError className="py-2">
           Walkthrough progress could not be saved.
-        </p>
+        </InlineError>
       ) : null}
       <NarrativeWalkthrough
         {...props}

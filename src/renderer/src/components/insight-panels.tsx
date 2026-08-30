@@ -1,3 +1,4 @@
+import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Spinner } from "./ui/spinner";
 import type { InsightFailureCategory } from "../../../domain/insight-record";
@@ -172,24 +173,25 @@ export function InsightFailed({
         : "This Insight run failed. The previous retained result remains available below."
       : failureMessage(failure.category);
   return (
-    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 border border-amber-500/50 bg-amber-500/10 px-3 py-4">
-      <p role="alert" className="text-sm text-amber-900 dark:text-amber-100">
-        {message}
-      </p>
-      {projection.retained === undefined ? (
-        <p className="text-sm text-muted-foreground">
-          No retained result is available.
-        </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Retained evidence from {projection.retained.headSha.slice(0, 8)} is
-          still readable: {retainedDescription ?? "retained document"}
-        </p>
-      )}
+    <Alert
+      variant="warning"
+      className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 px-3 py-4"
+    >
+      <AlertDescription className="contents">
+        <p>{message}</p>
+        {projection.retained === undefined ? (
+          <p>No retained result is available.</p>
+        ) : (
+          <p>
+            Retained evidence from {projection.retained.headSha.slice(0, 8)} is
+            still readable: {retainedDescription ?? "retained document"}
+          </p>
+        )}
+      </AlertDescription>
       <Button size="sm" onClick={onRetry}>
         Try again
       </Button>
-    </div>
+    </Alert>
   );
 }
 
@@ -249,14 +251,13 @@ export function InsightArtifactMismatch({
   readonly type: "analysis" | "walkthrough" | "overview";
 }): React.JSX.Element {
   return (
-    <p
-      role="alert"
-      className="border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-    >
-      Stored {type === "overview" ? "Insight" : type} source bytes do not match
-      the retained revision. Source scope and hunk navigation are unavailable;
-      the bounded document remains readable.
-    </p>
+    <Alert variant="warning" className="px-3 py-2">
+      <AlertDescription>
+        Stored {type === "overview" ? "Insight" : type} source bytes do not
+        match the retained revision. Source scope and hunk navigation are
+        unavailable; the bounded document remains readable.
+      </AlertDescription>
+    </Alert>
   );
 }
 

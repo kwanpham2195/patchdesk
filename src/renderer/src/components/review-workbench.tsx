@@ -75,6 +75,7 @@ import {
 } from "../navigator-width-preferences";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
+import { InlineError } from "./ui/inline-error";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import type { GitHubReviewEvent } from "../../../domain/pending-review";
 import type {
@@ -796,12 +797,9 @@ export function ReviewWorkbench({
                       </>
                     )}
                     {commitDiffError ? (
-                      <p
-                        role="alert"
-                        className="border-t px-4 py-2 text-sm text-destructive"
-                      >
+                      <InlineError className="border-t px-4 py-2">
                         This commit diff could not be loaded.
-                      </p>
+                      </InlineError>
                     ) : null}
                   </div>
                 </div>

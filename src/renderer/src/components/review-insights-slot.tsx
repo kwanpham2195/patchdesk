@@ -5,6 +5,7 @@ import { definedProps } from "../../../domain/defined-props";
 import type { InsightProvider } from "../../../domain/insight-provider";
 import { InsightRunDialog } from "./insight-run-dialog";
 import { Button } from "./ui/button";
+import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
 import {
   InsightArtifactMismatch,
@@ -237,16 +238,16 @@ export function InsightsSlot({
               {catalogError ||
               !hasAvailableProvider ||
               (provider === "pi" && models.length === 0) ? (
-                <p role="alert" className="py-2 text-sm text-destructive">
+                <InlineError className="py-2">
                   {catalogError || !hasAvailableProvider
                     ? "No eligible model configured. Set an API key or ambient provider credentials in the Electron process, then reload."
                     : "No Pi model is configured. Open a run and select Codex CLI account to load its models."}
-                </p>
+                </InlineError>
               ) : null}
               {selectedRequestFailureMessage === undefined ? null : (
-                <p role="alert" className="py-2 text-sm text-destructive">
+                <InlineError className="py-2">
                   {selectedRequestFailureMessage}
-                </p>
+                </InlineError>
               )}
               {selectedProjection?.artifactStatus === "mismatch" ? (
                 <InsightArtifactMismatch type={selectedInsight} />

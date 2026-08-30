@@ -16,6 +16,7 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
+import { InlineError } from "./ui/inline-error";
 
 /** The workbench toolbar: title, status pills, external link, review actions. */
 export function ReviewWorkbenchHeader({
@@ -260,9 +261,9 @@ function PendingReviewNotice({
         Check GitHub again
       </button>
       {pendingReview?.recoveryError === undefined ? null : (
-        <span role="alert" className="ml-2 font-medium">
+        <InlineError className="ml-2 inline font-medium">
           {pendingReview.recoveryError}
-        </span>
+        </InlineError>
       )}
     </div>
   );
