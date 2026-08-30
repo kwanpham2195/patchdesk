@@ -8,6 +8,7 @@ import { changeScopeFromPatch } from "../../src/domain/change-scope";
 import { definedProps } from "../../src/domain/defined-props";
 import {
   briefCitationChipLabel,
+  briefCitationChipTitle,
   briefCitationStatusLine,
   briefOwnershipTree,
 } from "../../src/renderer/src/brief-contracts";
@@ -385,8 +386,15 @@ describe("brief citation labels", () => {
   it("names each evidence kind by its shortest identifier", () => {
     const [description, hunk, commit] = briefValue.goal[0]?.citations ?? [];
     expect(description && briefCitationChipLabel(description)).toBe("desc ¶1");
-    expect(hunk && briefCitationChipLabel(hunk)).toBe("src/a.ts");
+    expect(hunk && briefCitationChipLabel(hunk)).toBe("a.ts · h1");
     expect(commit && briefCitationChipLabel(commit)).toBe("c6d5d41");
+  });
+
+  it("keeps the whole path a hunk chip shortened away in its title", () => {
+    const [, hunk] = briefValue.goal[0]?.citations ?? [];
+    expect(hunk && briefCitationChipTitle(hunk)).toBe(
+      "hunk: src/a.ts @@ -1 +1 @@",
+    );
   });
 
   it("counts resolved citations against assumptions", () => {

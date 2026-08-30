@@ -376,6 +376,16 @@ describe("insightOutputGuidance", () => {
       "Cite every sentence.",
     );
   });
+
+  it("keeps verification results out of the Brief's description drift", () => {
+    const guidance = insightOutputGuidance("brief");
+    expect(guidance).toContain(
+      "list a claim about behavior -- what the code does, or no longer does",
+    );
+    expect(guidance).toContain(
+      "Do not put a claim about a build, a test run, a benchmark, lint, CI, a screenshot, or a manual check in descriptionDrift.claimed.",
+    );
+  });
 });
 
 describe("normalizeBrief start here", () => {

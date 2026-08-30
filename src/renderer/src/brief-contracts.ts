@@ -266,13 +266,30 @@ export const NOT_GENERATED_BRIEF: BriefInsight = { status: "not_generated" };
  * The short text one citation chip carries. The manifest label is the whole
  * evidence -- a paragraph, a commit subject, a hunk header -- so the chip shows
  * the shortest thing that names it and the full label stays in the chip title.
+ *
+ * A hunk chip is the file name and the hunk alias (`repository.go · h3`), not
+ * the repository-relative path: several of these sit inline inside one Goal
+ * sentence, and a path-shaped chip wraps the sentence onto its own line.
  */
 export function briefCitationChipLabel(citation: BriefCitation): string {
   if (citation.kind === "description")
     return `desc ¶${citation.alias.slice(1)}`;
   if (citation.kind === "commit")
     return citation.label.split(" ")[0] ?? citation.alias;
-  return citation.path ?? citation.label;
+  if (citation.path === undefined) return citation.label;
+  return `${citation.path.slice(citation.path.lastIndexOf("/") + 1)} · ${citation.alias}`;
+}
+
+/**
+ * The whole evidence one citation chip stands for, shown on hover. A hunk chip
+ * shortens its path away, so the title carries the path back.
+ */
+export function briefCitationChipTitle(citation: BriefCitation): string {
+  const source =
+    citation.path === undefined
+      ? citation.label
+      : `${citation.path} ${citation.label}`;
+  return `${citation.kind}: ${source}`;
 }
 
 /** One line of the Ownership tree: a changed file, how it changed, and its note. */

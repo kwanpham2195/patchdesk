@@ -9,6 +9,7 @@ import { parseReviewDiff } from "@/review-diff-data";
 import {
   BRIEF_REACH_UNAVAILABLE_LABELS,
   briefCitationChipLabel,
+  briefCitationChipTitle,
   briefCitationStatusLine,
   briefOwnershipTree,
   type BriefCitation,
@@ -484,7 +485,7 @@ function CitationChip({
   const Icon = CITATION_ICONS[citation.kind];
   return (
     <span
-      title={`${citation.kind}: ${citation.label}`}
+      title={briefCitationChipTitle(citation)}
       className="mx-0.5 inline-flex items-center gap-1 rounded border bg-accent px-1.5 align-baseline font-mono text-[10px] text-muted-foreground"
     >
       <Icon aria-hidden="true" className="size-3" />

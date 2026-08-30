@@ -219,7 +219,15 @@ export const briefOutputSchema = v.strictObject({
   ),
 });
 
-/** The JSON contract every Brief child is given, stated once for both providers. */
+/**
+ * The JSON contract every Brief child is given, stated once for both providers.
+ *
+ * `descriptionDrift.claimed` holds behavior claims only -- what the code does,
+ * or no longer does. A description line about a build, a test run, a benchmark,
+ * lint, CI, a screenshot, or a manual check is not drift, because a patch can
+ * never carry a verification result; `insightOutputGuidance("brief")` states
+ * that rule to the model in the same prompt as this shape.
+ */
 export const BRIEF_RESULT_CONTRACT =
   '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"assumptions":[string],"reachSymbols":[string]}';
 
