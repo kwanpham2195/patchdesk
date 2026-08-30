@@ -203,7 +203,9 @@ describe("MaintainerInbox", () => {
     expect(within(header).queryByLabelText("Go to next page")).toBeNull();
     expect(within(header).queryByLabelText("Rows per page")).toBeNull();
 
-    const pagination = screen.getByRole("navigation", { name: "Inbox pages" });
+    const pagination = screen.getByRole("navigation", {
+      name: "Pull requests pages",
+    });
     const footer = pagination.closest("footer");
     if (footer === null) throw new Error("Expected pagination in a footer");
     expect(within(footer).getByText("Rows per page")).toBeTruthy();

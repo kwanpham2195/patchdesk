@@ -4,6 +4,7 @@
 
 ## 0.1.0 - 2026-08-30
 
+- Renamed the Maintainer inbox to **Pull requests** everywhere it is shown: the navigation, the page heading, the window title, and the Navigate palette.
 - Patchdesk draws its own window header on macOS: the native title bar is gone and the traffic lights sit inside the app header, as in other desktop apps.
 - Fixed a downloaded Patchdesk.app opening with "is damaged and can't be opened" and no way past it; the unsigned build now carries an intact ad-hoc signature, so macOS offers Open Anyway (or right-click then Open) instead, and `xattr -cr` is only a fallback.
 - Patchdesk is now distributed as a `.dmg` you open and drag onto Applications, built and attached to a draft GitHub release when a version tag is pushed; the build is signed and notarized with Apple when the maintainer's signing secrets are configured, and otherwise stays the unsigned build that needs `xattr -cr` before first launch.

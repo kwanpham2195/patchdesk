@@ -95,7 +95,7 @@ describe("App Review route loading", () => {
         fixtureContentLoader={fixtureLoader}
       />,
     );
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await screen.findByRole("dialog", { name: "Settings" });
     expect(reviewCalls).toBe(0);
@@ -110,7 +110,7 @@ describe("App Review route loading", () => {
     });
     render(<App />);
 
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     // There is no header refresh control (ADR 0032): the menu's View →
     // Refresh is the only manual trigger, reaching the renderer through the
     // desktop menu-action channel exercised here.
@@ -142,7 +142,7 @@ describe("App Review route loading", () => {
       { operations: APP_BOOT_OPERATIONS },
     );
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     expect(paths).toEqual(["/v1/inbox?state=open&pageSize=25"]);
 
     const select = screen.getByRole("combobox", { name: "Rows per page" });
@@ -171,7 +171,7 @@ describe("App Review route loading", () => {
       { operations: APP_BOOT_OPERATIONS },
     );
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     // Exactly one request, already sized from the saved preference — not the
     // default-size bootstrap request followed by a corrective refetch.
     expect(paths).toEqual(["/v1/inbox?state=open&pageSize=10"]);
@@ -304,7 +304,7 @@ describe("App inbox state switch", () => {
       { operations: APP_BOOT_OPERATIONS },
     );
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     const rowList = screen.getByRole("listbox", { name: "Pull requests" });
     expect(await within(rowList).findByText("#1 Open PR title")).toBeTruthy();
 
@@ -337,7 +337,7 @@ describe("App repository picker", () => {
     const user = userEvent.setup();
     const desktop = installRepoDesktop();
     const { unmount } = render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     // The bootstrap request never carries a repository; the correction
     // fetch that follows resolves it to the first watched repository.
     await waitFor(() =>
@@ -363,7 +363,7 @@ describe("App repository picker", () => {
     unmount();
     desktop.paths.length = 0;
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     await waitFor(() =>
       expect(desktop.paths.at(-1)).toContain(`owner=${repoB.owner}`),
     );
@@ -382,7 +382,7 @@ describe("App repository picker", () => {
     });
     const desktop = installRepoDesktop();
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     await waitFor(() =>
       expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
     );
@@ -394,7 +394,7 @@ describe("App repository picker", () => {
   it("still shows the picker for exactly one watched repository", async () => {
     const desktop = installRepoDesktop([repoA]);
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     await waitFor(() =>
       expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
     );
@@ -410,7 +410,7 @@ describe("App repository picker", () => {
       path.includes(`repo=${repoB.repo}`) ? gate.promise : undefined,
     );
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     const rowList = screen.getByRole("listbox", { name: "Pull requests" });
     expect(
       await within(rowList).findByText(`#1 ${repoA.owner}/${repoA.repo} PR`),
@@ -459,7 +459,7 @@ describe("App repository picker", () => {
       path.includes("awaitingMyReview=1") ? gate.promise : undefined,
     );
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     const rowList = screen.getByRole("listbox", { name: "Pull requests" });
     expect(
       await within(rowList).findByText(`#1 ${repoA.owner}/${repoA.repo} PR`),
@@ -503,7 +503,7 @@ describe("App repository picker", () => {
     const user = userEvent.setup();
     const desktop = installRepoDesktop();
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     await waitFor(() =>
       expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
     );
@@ -539,7 +539,7 @@ describe("App repository picker", () => {
     });
     const desktop = installRepoDesktop();
     render(<App />);
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     await waitFor(() =>
       expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
     );

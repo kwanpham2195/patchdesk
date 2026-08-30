@@ -6,7 +6,7 @@ export type AppDestination =
     };
 
 export const primaryDestinations = [
-  { kind: "dashboard", label: "Inbox" },
+  { kind: "dashboard", label: "Pull requests" },
 ] as const;
 
 export function destinationKey(destination: AppDestination): string {
@@ -18,7 +18,7 @@ export function destinationKey(destination: AppDestination): string {
 export function destinationTitle(destination: AppDestination): string {
   switch (destination.kind) {
     case "dashboard":
-      return "Maintainer inbox";
+      return "Pull requests";
     case "workbench":
       return "Review workbench";
   }

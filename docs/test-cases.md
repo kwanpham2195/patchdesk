@@ -184,7 +184,7 @@ The renderer re-validates every projection. A 200 response does not mean the wor
 
 - `automated:` `tests/renderer/renderer-contracts.test.ts` (strict projections, forbidden fields), `tests/browser/local-api-workbench.spec.ts` (bridge opens the canonical workbench, denies removed routes).
 - `manual:`
-  - Open a PR with review-attached comments (inline threads): the workbench must open, not stay silently on the inbox.
+  - Open a PR with review-attached comments (inline threads): the workbench must open, not stay silently on the Pull requests screen.
   - After any renderer contract change, open three PRs with different shapes (clean, threaded, walkthrough-carrying) and watch for the `[contracts] parseWorkbenchResponse FAILED` console line.
 - `run when:` anything changes in `renderer-contracts.ts`, `review-workbench-projection.ts`, or any domain type that the projection serializes.
 

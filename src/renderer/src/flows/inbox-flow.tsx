@@ -373,7 +373,7 @@ function BootstrapOutcome({
         <div>
           <p className="text-sm text-muted-foreground">First run</p>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Maintainer inbox
+            Pull requests
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Review requests, review freshness, checks, and current Review state

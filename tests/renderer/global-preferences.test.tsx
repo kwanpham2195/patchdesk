@@ -180,7 +180,7 @@ describe("file-backed renderer preferences", () => {
 
     render(<App initialState="empty" />);
 
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await screen.findByRole("dialog", { name: "Settings" });
 
@@ -199,7 +199,7 @@ describe("file-backed renderer preferences", () => {
 
     render(<App initialState="empty" />);
 
-    await screen.findByRole("heading", { name: "Maintainer inbox" });
+    await screen.findByRole("heading", { name: "Pull requests" });
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await screen.findByRole("dialog", { name: "Settings" });
 

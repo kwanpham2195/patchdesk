@@ -347,11 +347,10 @@ function InboxHeader({
           {profileLabel}
         </p>
         <h1 className="mt-0.5 text-[17px] leading-5 font-semibold tracking-tight">
-          Maintainer inbox
+          Pull requests
         </h1>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-          Pull requests for the selected repository, filtered and ordered by
-          GitHub.
+          One repository at a time, filtered and ordered by GitHub.
         </p>
       </div>
       <div className="flex items-center gap-2">
@@ -437,7 +436,7 @@ function InboxFiltersBar({
   return (
     <section
       className="sticky top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur"
-      aria-label="Inbox filters"
+      aria-label="Pull requests filters"
     >
       <Select
         value={state}
@@ -869,7 +868,7 @@ function InboxFooter({
        * operable and clickable when "disabled". A native `disabled` button
        * is genuinely inert. The `Pagination`/`PaginationContent`/
        * `PaginationItem` wrapper is unchanged. */}
-      <Pagination aria-label="Inbox pages" className="mx-0 w-auto">
+      <Pagination aria-label="Pull requests pages" className="mx-0 w-auto">
         <PaginationContent>
           <PaginationItem>
             <Button

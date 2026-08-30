@@ -79,13 +79,14 @@ export function AppShell({
   readonly activeProfileId?: string;
   readonly profileSwitchState?: ProfileSwitchState;
   readonly onProfileSwitch?: (id: string) => void;
-  /** Jumps the Maintainer inbox to an open/merged preset from
+  /** Jumps the Pull requests screen to an open/merged preset from
    * `INBOX_STATE_FILTERS` — the palette and the filter bar share this one
    * list so the two surfaces cannot drift. A prop, not a window
-   * event: `App` renders both `AppShell` and the inbox screen from the same
-   * call, so the state change reaches it directly. Absent before the inbox
-   * screen exists (fixture routes, first paint) — the "Inbox" command group
-   * hides itself in that case rather than dispatching into nothing. */
+   * event: `App` renders both `AppShell` and the Pull requests screen from
+   * the same call, so the state change reaches it directly. Absent before
+   * the Pull requests screen exists (fixture routes, first paint) — the
+   * "Pull requests" command group hides itself in that case rather than
+   * dispatching into nothing. */
   readonly onInboxStateChange?: (state: InboxStateFilter) => void;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
@@ -324,7 +325,7 @@ export function AppShell({
               </CommandItem>
             </CommandGroup>
             <CommandSeparator />
-            <CommandGroup heading="Inbox">
+            <CommandGroup heading="Pull requests">
               {INBOX_STATE_FILTERS.map((option) => (
                 <CommandItem
                   key={option.state}
