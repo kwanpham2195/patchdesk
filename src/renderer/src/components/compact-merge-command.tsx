@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { GitMerge, ShieldAlert } from "lucide-react";
 
 import type { MergeDisplayReason } from "../../../domain/github-context";
-import type { PullRequestRef } from "../../../domain/pull-request";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
+import type { PullRequestRef } from "../../../domain/pull-request";
+import { PatchdeskApiError } from "../api-client";
 import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
 } from "../external-links";
-import { PatchdeskApiError } from "../api-client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -22,8 +22,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 
 export type MergeMethod = "merge" | "squash" | "rebase";
+
+/** Confirmation returned after the merge receipt is committed locally. */
+export type MergeCommandResult = {
+  readonly state: "confirmed" | "confirmed_refresh_required";
+  readonly mergeCommitSha?: string;
+};
 
 type MergeContext = {
   readonly repo: string;
@@ -33,6 +40,14 @@ type MergeContext = {
   readonly head: string;
   readonly headSha: string;
 };
+
+type MergeOutcome =
+  | { readonly state: "idle" }
+  | { readonly state: "retryable_error"; readonly message: string }
+  | { readonly state: "recovery_required"; readonly message: string }
+  | ({ readonly state: "confirmed" | "confirmed_refresh_required" } & {
+      readonly mergeCommitSha?: string;
+    });
 
 /** Compact, explicit merge command with revision-bound warning acknowledgement. */
 export function CompactMergeCommand(props: {
@@ -45,7 +60,7 @@ export function CompactMergeCommand(props: {
   readonly onMerge: (
     method: MergeMethod,
     warningCodes: ReadonlyArray<string>,
-  ) => Promise<{ readonly mergeCommitSha?: string }>;
+  ) => Promise<MergeCommandResult>;
   readonly onRecoverMerge?: () => Promise<void>;
 }): React.JSX.Element {
   const [method, setMethod] = useState<MergeMethod>(
@@ -53,51 +68,136 @@ export function CompactMergeCommand(props: {
   );
   const [acknowledged, setAcknowledged] = useState(false);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string>();
-  const [merged, setMerged] = useState<string>();
+  const [outcome, setOutcome] = useState<MergeOutcome>({ state: "idle" });
   const [recovering, setRecovering] = useState(false);
+  const pendingRef = useRef(false);
+  const recoveringRef = useRef(false);
 
   const merge = async (): Promise<void> => {
-    if (pending) return;
+    if (
+      pendingRef.current ||
+      recoveringRef.current ||
+      outcome.state === "recovery_required" ||
+      outcome.state === "confirmed" ||
+      outcome.state === "confirmed_refresh_required"
+    )
+      return;
+    pendingRef.current = true;
     setPending(true);
-    setError(undefined);
+    setOutcome({ state: "idle" });
     try {
       const result = await props.onMerge(
         method,
         acknowledged ? props.readiness.warnings : [],
       );
-      setMerged(result.mergeCommitSha ?? "pull request");
-    } catch (cause) {
-      setError(
+      setOutcome(confirmedOutcome(result.state, result.mergeCommitSha));
+    } catch (cause: unknown) {
+      setOutcome(
         cause instanceof PatchdeskApiError && cause.kind === "merge_in_progress"
-          ? cause.message
-          : "GitHub did not confirm the merge. Restart Patchdesk to run recovery before you try again.",
+          ? { state: "retryable_error", message: cause.message }
+          : {
+              state: "recovery_required",
+              message:
+                "GitHub did not confirm the merge. Check GitHub status before another merge; Patchdesk will not retry it.",
+            },
       );
     } finally {
+      pendingRef.current = false;
       setPending(false);
     }
   };
+
   const recover = async (): Promise<void> => {
-    if (recovering || pending || props.onRecoverMerge === undefined) return;
+    if (
+      recoveringRef.current ||
+      pendingRef.current ||
+      props.onRecoverMerge === undefined
+    )
+      return;
+    recoveringRef.current = true;
     setRecovering(true);
-    setError(undefined);
     try {
       await props.onRecoverMerge();
+      if (outcome.state === "confirmed_refresh_required") {
+        setOutcome(confirmedOutcome("confirmed", outcome.mergeCommitSha));
+      } else if (outcome.state === "recovery_required") {
+        setOutcome({ state: "idle" });
+      }
     } catch {
-      setError(
-        "GitHub still cannot confirm the merge. Check GitHub status again later; Patchdesk will not retry the merge.",
-      );
+      if (outcome.state === "recovery_required") {
+        setOutcome({
+          state: "recovery_required",
+          message:
+            "GitHub still cannot confirm the merge. Check GitHub status again later; Patchdesk will not retry the merge.",
+        });
+      }
     } finally {
+      recoveringRef.current = false;
       setRecovering(false);
     }
   };
 
-  if (merged !== undefined)
+  if (
+    outcome.state === "confirmed" ||
+    outcome.state === "confirmed_refresh_required"
+  ) {
     return (
-      <p role="status" className="text-sm text-primary">
-        Merged {merged}.
-      </p>
+      <section aria-label="Merge result" className="flex flex-col gap-2">
+        <p role="status" aria-label="Merged" className="text-sm text-primary">
+          Merged {outcome.mergeCommitSha ?? "pull request"}.
+        </p>
+        {outcome.state === "confirmed_refresh_required" ? (
+          <Alert>
+            <AlertTitle>Merge confirmed; refresh required</AlertTitle>
+            <AlertDescription>
+              <p>
+                GitHub confirmed the merge, but Patchdesk could not refresh the
+                Review projection.
+              </p>
+              {props.onRecoverMerge === undefined ? null : (
+                <Button
+                  className="mt-2"
+                  variant="outline"
+                  disabled={recovering}
+                  onClick={() => void recover()}
+                >
+                  {recovering ? (
+                    <Spinner aria-hidden="true" data-icon="inline-start" />
+                  ) : null}
+                  {recovering ? "Checking…" : "Check GitHub status"}
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+      </section>
     );
+  }
+
+  if (outcome.state === "recovery_required") {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Merge not confirmed</AlertTitle>
+        <AlertDescription>
+          <p>{outcome.message}</p>
+          {props.onRecoverMerge === undefined ? null : (
+            <Button
+              className="mt-2"
+              variant="outline"
+              disabled={recovering}
+              onClick={() => void recover()}
+            >
+              {recovering ? (
+                <Spinner aria-hidden="true" data-icon="inline-start" />
+              ) : null}
+              {recovering ? "Checking…" : "Check GitHub status"}
+            </Button>
+          )}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   if (props.readiness._tag === "Blocked") {
     return (
       <Alert variant="destructive" aria-label="Merge readiness">
@@ -145,29 +245,18 @@ export function CompactMergeCommand(props: {
         {props.context.repo}#{props.context.prNumber} · {props.context.base} ←{" "}
         {props.context.head} · <code>{props.context.headSha.slice(0, 8)}</code>
       </p>
-      {error === undefined ? null : (
+      {outcome.state === "retryable_error" ? (
         <Alert variant="destructive">
-          <AlertTitle>Merge not confirmed</AlertTitle>
-          <AlertDescription>
-            <p>{error}</p>
-            {props.onRecoverMerge === undefined ? null : (
-              <Button
-                className="mt-2"
-                variant="outline"
-                disabled={recovering || pending}
-                onClick={() => void recover()}
-              >
-                {recovering ? "Checking GitHub…" : "Check GitHub status"}
-              </Button>
-            )}
-          </AlertDescription>
+          <AlertTitle>Merge not submitted</AlertTitle>
+          <AlertDescription>{outcome.message}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
       {needsAcknowledgement ? (
         <div className="flex items-start gap-2">
           <Checkbox
             id="merge-ack"
             checked={acknowledged}
+            disabled={pending || recovering}
             onCheckedChange={(checked) => setAcknowledged(checked === true)}
           />
           <Label htmlFor="merge-ack" className="leading-5">
@@ -186,6 +275,7 @@ export function CompactMergeCommand(props: {
         <ButtonGroup aria-label="Merge action">
           <Select
             value={method}
+            disabled={pending || recovering}
             items={props.methods.map((candidate) => ({
               label: candidate,
               value: candidate,
@@ -212,13 +302,24 @@ export function CompactMergeCommand(props: {
             onClick={() => void merge()}
             disabled={pending || (needsAcknowledgement && !acknowledged)}
           >
-            <GitMerge data-icon="inline-start" />
+            {pending ? (
+              <Spinner aria-hidden="true" data-icon="inline-start" />
+            ) : (
+              <GitMerge data-icon="inline-start" />
+            )}
             {pending ? "Merging…" : "Merge"}
           </Button>
         </ButtonGroup>
       </div>
     </section>
   );
+}
+
+function confirmedOutcome(
+  state: "confirmed" | "confirmed_refresh_required",
+  mergeCommitSha: string | undefined,
+): MergeOutcome {
+  return mergeCommitSha === undefined ? { state } : { state, mergeCommitSha };
 }
 
 function mergeBlockerLabel(

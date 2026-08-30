@@ -339,6 +339,7 @@ export function canonicalWorkbenchModel(
   // enums; only that intentional widening needs bridging here.
   return {
     state: "review",
+    viewerLogin: "fixture",
     review: { id: "fixture-review", status: "open" },
     session: {
       id: "fixture-session",

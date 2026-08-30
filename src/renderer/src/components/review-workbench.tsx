@@ -92,7 +92,8 @@ type ConversationTabProps = {
 
 /** Direct conversation actions for both `<Conversation>` (the Conversation
  * tab) and the diff view, derived from the same underlying `actions` so
- * Reply/Resolve/Edit/Delete wiring never drifts between the two surfaces.
+ * Reply/Resolve/Edit/Delete wiring never drifts between the two surfaces;
+ * Dismiss is consumed only by the Conversation tab's review summaries.
  * The diff view additionally only wires them when `selectedCommitSha` is
  * unset (viewing the full Review diff, not one commit's slice); the
  * Conversation tab is independent of that selection. */
@@ -103,7 +104,11 @@ type DirectConversationActionProps = {
 function directConversationActionProps(
   actions: Pick<
     ReviewWorkbenchActions,
-    "setThreadState" | "replyToThread" | "editComment" | "deleteComment"
+    | "setThreadState"
+    | "replyToThread"
+    | "editComment"
+    | "deleteComment"
+    | "dismissReview"
   >,
   selectedCommitSha: string | undefined,
 ): DirectConversationActionProps {
@@ -111,12 +116,14 @@ function directConversationActionProps(
     actions.setThreadState !== undefined ||
     actions.replyToThread !== undefined ||
     actions.editComment !== undefined ||
-    actions.deleteComment !== undefined;
+    actions.deleteComment !== undefined ||
+    actions.dismissReview !== undefined;
   const wired: ReviewConversationActions = definedProps({
     setThreadState: actions.setThreadState,
     replyToThread: actions.replyToThread,
     editComment: actions.editComment,
     deleteComment: actions.deleteComment,
+    dismissReview: actions.dismissReview,
   });
   return {
     // `exactOptionalPropertyTypes` treats `conversationActions={undefined}` as
@@ -280,6 +287,10 @@ export type ReviewWorkbenchActions = {
   ) => Promise<string | void>;
   readonly editComment?: (commentId: string, body: string) => Promise<void>;
   readonly deleteComment?: (commentId: string) => Promise<void>;
+  readonly dismissReview?: (
+    publishedReviewId: string,
+    message: string,
+  ) => Promise<void>;
   readonly labels?: LabelPickerActions;
   readonly assignees?: AssigneesSectionActions;
   readonly reviewers?: ReviewerPickerActions;

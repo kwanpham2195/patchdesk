@@ -12,8 +12,8 @@ type InsightReaderBuilderInput = {
   readonly selectedInsight: InsightSelection;
   readonly profileId: string;
   readonly reviewId: string;
-  readonly onFinishWithAnalysisSummary: (summary: string) => void;
-  readonly addFinding: (finding: AnalysisFinding) => Promise<void>;
+  readonly onFinishWithAnalysisSummary?: (summary: string) => void;
+  readonly addFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly dismissFinding: (
     finding: AnalysisFinding,
     reason: string,
@@ -73,7 +73,9 @@ export function buildInsightReaders({
           workbench.analysisReviewActions?.canFinishWithAnalysisSummary ?? false
         }
         {...(workbench.analysisReviewActions?.canFinishWithAnalysisSummary ===
-          true && analysisResult !== undefined
+          true &&
+        analysisResult !== undefined &&
+        onFinishWithAnalysisSummary !== undefined
           ? {
               onFinishWithAnalysisSummary: () =>
                 onFinishWithAnalysisSummary(
@@ -84,9 +86,12 @@ export function buildInsightReaders({
                 ),
             }
           : {})}
-        {...(workbench.insights.analysis.status === "current"
+        {...(workbench.insights.analysis.status === "current" &&
+        addFinding !== undefined
           ? { onAddFinding: addFinding, onDismissFinding: dismissFinding }
-          : {})}
+          : workbench.insights.analysis.status === "current"
+            ? { onDismissFinding: dismissFinding }
+            : {})}
       />
     ) : null;
   const walkthroughRetained = workbench.insights.walkthrough.retained;

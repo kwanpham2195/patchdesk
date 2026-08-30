@@ -4,6 +4,7 @@ import {
   parseAssigneeReceipt,
   parseDirectConversationReceipt,
   parseLabelReceipt,
+  parsePublishedFeedbackReceipt,
   parseReviewerReceipt,
 } from "../../src/renderer/src/flows/review-workbench-receipts";
 
@@ -52,6 +53,67 @@ describe("review workbench receipt parsers", () => {
         commentId: "comment-1",
       }),
     ).toBeUndefined();
+    expect(
+      parseDirectConversationReceipt({
+        _tag: "CommentCreated",
+        commentId: "comment-1",
+        rawProviderResponse: "not renderer-safe",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("strictly parses published-feedback receipts", () => {
+    expect(
+      parsePublishedFeedbackReceipt({
+        _tag: "PublishedCommentEdited",
+        commentId: "comment-1",
+        reconciliation: "complete",
+      }),
+    ).toEqual({
+      _tag: "PublishedCommentEdited",
+      commentId: "comment-1",
+      reconciliation: "complete",
+    });
+    expect(
+      parsePublishedFeedbackReceipt({
+        _tag: "PublishedCommentDeleted",
+        commentId: "comment-1",
+        reconciliation: "required",
+      }),
+    ).toMatchObject({
+      _tag: "PublishedCommentDeleted",
+      reconciliation: "required",
+    });
+    expect(
+      parsePublishedFeedbackReceipt({
+        _tag: "PublishedReviewDismissed",
+        publishedReviewId: "101",
+        reconciliation: "complete",
+      }),
+    ).toMatchObject({
+      _tag: "PublishedReviewDismissed",
+      publishedReviewId: "101",
+    });
+  });
+
+  it.each([
+    {
+      _tag: "PublishedCommentEdited",
+      commentId: "comment-1",
+    },
+    {
+      _tag: "PublishedCommentDeleted",
+      commentId: "comment-1",
+      reconciliation: "retryable",
+    },
+    {
+      _tag: "PublishedReviewDismissed",
+      publishedReviewId: "101",
+      reconciliation: "complete",
+      rawProviderResponse: "not renderer-safe",
+    },
+  ])("rejects malformed published-feedback receipt %#", (receipt) => {
+    expect(parsePublishedFeedbackReceipt(receipt)).toBeUndefined();
   });
 
   it("parses metadata receipts and keeps their item arrays", () => {

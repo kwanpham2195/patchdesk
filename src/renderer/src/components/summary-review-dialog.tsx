@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Textarea } from "./ui/textarea";
+import { Spinner } from "./ui/spinner";
 
 const labels = {
   COMMENT: "Comment",
@@ -71,6 +72,7 @@ function SummaryReviewDialogContent({
   const [localError, setLocalError] = useState<string | undefined>();
   const [writeAnother, setWriteAnother] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const actionInFlightRef = useRef(false);
   const locked = busy || submitting || recovering;
   const effectiveState = writeAnother ? "idle" : state;
   const recovery =
@@ -85,11 +87,13 @@ function SummaryReviewDialogContent({
 
   const submit = async (): Promise<void> => {
     if (
+      actionInFlightRef.current ||
       locked ||
       body.trim().length === 0 ||
       (event === "APPROVE" && approvalCapability === "blocked_author")
     )
       return;
+    actionInFlightRef.current = true;
     setSubmitting(true);
     setLocalError(undefined);
     try {
@@ -101,11 +105,13 @@ function SummaryReviewDialogContent({
           "Patchdesk could not confirm the review. Check GitHub again before trying again.",
       );
     } finally {
+      actionInFlightRef.current = false;
       setSubmitting(false);
     }
   };
   const recover = async (): Promise<void> => {
-    if (locked) return;
+    if (actionInFlightRef.current || locked) return;
+    actionInFlightRef.current = true;
     setRecovering(true);
     setLocalError(undefined);
     try {
@@ -116,6 +122,7 @@ function SummaryReviewDialogContent({
           "Patchdesk could not check GitHub. Try again before submitting another review.",
       );
     } finally {
+      actionInFlightRef.current = false;
       setRecovering(false);
     }
   };
@@ -199,7 +206,8 @@ function SummaryReviewDialogContent({
                 </Button>
               )}
               <Button disabled={locked} onClick={() => void recover()}>
-                {recovering ? "Checking GitHub…" : "Check GitHub status"}
+                {recovering ? <Spinner data-icon="inline-start" /> : null}
+                {recovering ? "Checking…" : "Check GitHub status"}
               </Button>
             </div>
           </Alert>
@@ -217,6 +225,7 @@ function SummaryReviewDialogContent({
                 ref={bodyRef}
                 className="mt-1 min-h-28"
                 value={body}
+                disabled={locked}
                 onChange={(change) => setBody(change.target.value)}
                 aria-label="Review summary"
                 placeholder="Write the review summary that GitHub will publish"
@@ -231,6 +240,7 @@ function SummaryReviewDialogContent({
               </label>
               <Select
                 value={event}
+                disabled={locked}
                 items={Object.entries(labels).map(([value, label]) => ({
                   value,
                   label,
@@ -299,6 +309,7 @@ function SummaryReviewDialogContent({
                 }
                 onClick={() => void submit()}
               >
+                {submitting ? <Spinner data-icon="inline-start" /> : null}
                 {submitting ? "Submitting…" : "Submit review"}
               </Button>
             </div>
@@ -313,10 +324,5 @@ function SummaryReviewDialogContent({
 export function SummaryReviewDialog(
   props: Parameters<typeof SummaryReviewDialogContent>[0],
 ): React.JSX.Element {
-  return (
-    <SummaryReviewDialogContent
-      key={`${props.open}:${props.receipt?.reviewId ?? ""}:${props.state}`}
-      {...props}
-    />
-  );
+  return <SummaryReviewDialogContent key={String(props.open)} {...props} />;
 }

@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { XIcon } from "lucide-react";
+import { definedProps } from "../../../domain/defined-props";
 
 import type { InsightProvider } from "../../../domain/insight-provider";
 import { InsightRunDialog } from "./insight-run-dialog";
 import { Button } from "./ui/button";
+import { Spinner } from "./ui/spinner";
 import {
   InsightArtifactMismatch,
   InsightEmpty,
@@ -24,6 +27,19 @@ const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
+function insightRequestFailureMessage(
+  insightName: string,
+  requestFailure: "start" | "cancel" | "status" | undefined,
+): string | undefined {
+  if (requestFailure === "start")
+    return `${insightName} could not start. Check the run options and try again.`;
+  if (requestFailure === "cancel")
+    return `${insightName} cancellation failed. The current run is still active; try cancelling again.`;
+  if (requestFailure === "status")
+    return `${insightName} status could not be refreshed. The current run is still active; Patchdesk will check again.`;
+  return undefined;
+}
+
 function formatInsightTimestamp(value: string): string {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) return value;
@@ -42,8 +58,8 @@ export function InsightsSlot({
   readonly initialDetail?: "analysis" | "walkthrough";
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
-  readonly onAddFinding: (finding: AnalysisFinding) => Promise<void>;
-  readonly onFinishWithAnalysisSummary: (summary: string) => void;
+  readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
+  readonly onFinishWithAnalysisSummary?: (summary: string) => void;
 }): React.JSX.Element {
   const [selectedInsight, setSelectedInsight] = useState<
     "overview" | "analysis" | "walkthrough"
@@ -76,7 +92,6 @@ export function InsightsSlot({
     catalog?.providers.some((candidate) => candidate.available) ?? false;
   const runEnabled =
     !catalogError && hasAvailableProvider && workbench.review.status === "open";
-  const addFinding = onAddFinding;
   const selectedProjection =
     selectedInsight === "analysis"
       ? workbench.insights.analysis
@@ -102,8 +117,10 @@ export function InsightsSlot({
     selectedInsight,
     profileId,
     reviewId,
-    onFinishWithAnalysisSummary,
-    addFinding,
+    ...definedProps({
+      onFinishWithAnalysisSummary,
+      addFinding: onAddFinding,
+    }),
     dismissFinding,
     walkthroughFocused,
     setWalkthroughFocused,
@@ -116,6 +133,13 @@ export function InsightsSlot({
     selectedInsight === "analysis" &&
     selectedProjection?.status === "running" &&
     selectedProjection.retained === undefined;
+  const selectedRequestFailure = selectedRunning?.requestFailure;
+  const selectedInsightName =
+    selectedInsight === "analysis" ? "Analysis" : "Walkthrough";
+  const selectedRequestFailureMessage = insightRequestFailureMessage(
+    selectedInsightName,
+    selectedRequestFailure,
+  );
   return (
     <section
       aria-label="Review insights"
@@ -175,11 +199,25 @@ export function InsightsSlot({
                     {selectedRunning?.busy ||
                     selectedProjection?.status === "running" ? (
                       <Button
-                        size="sm"
+                        size="icon-sm"
                         variant="outline"
                         onClick={selectedRunning?.cancel}
+                        disabled={
+                          selectedRunning === undefined ||
+                          selectedRunning.starting ||
+                          selectedRunning.cancelling
+                        }
+                        aria-label={
+                          selectedRunning?.cancelling
+                            ? `Cancelling ${selectedInsightName}…`
+                            : `Cancel ${selectedInsightName}`
+                        }
                       >
-                        Cancel
+                        {selectedRunning?.cancelling ? (
+                          <Spinner aria-hidden="true" />
+                        ) : (
+                          <XIcon aria-hidden="true" />
+                        )}
                       </Button>
                     ) : analysisFirstRunActive ||
                       selectedIsOutdated ||
@@ -205,6 +243,11 @@ export function InsightsSlot({
                     : "No Pi model is configured. Open a run and select Codex CLI account to load its models."}
                 </p>
               ) : null}
+              {selectedRequestFailureMessage === undefined ? null : (
+                <p role="alert" className="py-2 text-sm text-destructive">
+                  {selectedRequestFailureMessage}
+                </p>
+              )}
               {selectedProjection?.artifactStatus === "mismatch" ? (
                 <InsightArtifactMismatch type={selectedInsight} />
               ) : null}
@@ -265,6 +308,21 @@ export function InsightsSlot({
         changeProvider={changeProvider}
         activateCodex={activateCodex}
         confirmRun={confirmRun}
+        runPending={
+          configuration.runDialogType === "analysis"
+            ? analysisRun.starting
+            : walkthroughRun.starting
+        }
+        {...definedProps({
+          runErrorMessage: insightRequestFailureMessage(
+            configuration.runDialogType === "analysis"
+              ? "Analysis"
+              : "Walkthrough",
+            configuration.runDialogType === "analysis"
+              ? analysisRun.requestFailure
+              : walkthroughRun.requestFailure,
+          ),
+        })}
       />
     </section>
   );
@@ -277,6 +335,8 @@ function InsightRunControls({
   changeProvider,
   activateCodex,
   confirmRun,
+  runPending,
+  runErrorMessage,
 }: {
   readonly configuration: InsightRunConfiguration;
   readonly closeRunDialog: () => void;
@@ -284,6 +344,8 @@ function InsightRunControls({
   readonly changeProvider: (provider: InsightProvider) => void;
   readonly activateCodex: () => void;
   readonly confirmRun: () => void;
+  readonly runPending: boolean;
+  readonly runErrorMessage?: string;
 }): React.JSX.Element | null {
   const {
     models,
@@ -332,6 +394,8 @@ function InsightRunControls({
         setConfiguration({ reasoning: nextReasoning })
       }
       onConfirm={confirmRun}
+      pending={runPending}
+      {...definedProps({ errorMessage: runErrorMessage })}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { err, ok } from "../../src/domain/result";
+import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import { InlineConversationService } from "../../src/services/inline-conversation-service";
 import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
@@ -16,37 +17,12 @@ import {
 import {
   recentWritesJournal,
   recorded,
-  recordingSessions,
-  sessionIntentTag,
   unavailable,
   type Trace,
   type WriteFlow,
 } from "./write-invariant-harness";
 
-/**
- * WHAT F1 HAS TO CHANGE HERE, for both groups below.
- *
- * Not just `todo`. Every row in this file builds a `recordingSessions` store
- * and reads `sessions.current()` for its `intentTag`, but never hands that
- * store to the service — because it cannot. `InlineConversationService`'s
- * constructor is `(gate, github, writeCoordinator, now, recentWrites)` and
- * `PublishedFeedbackService`'s is `(gate, github, coordinator, refresh?)`;
- * neither takes a `ReviewSessionStore`, and the gate they do take is a
- * `Pick<ReviewWriteGate, …>` that returns session VALUES with no save path.
- * So the stores below are inert today and the rows are red for a real
- * reason, not a wiring slip.
- *
- * When F1 lands, three edits are needed per group, not one: add the session
- * store to the service constructor, pass `sessions` into BOTH constructions
- * in this file, and then drop the row's `todo`. Only the third is a flag
- * flip.
- */
-
-/**
- * The five Diff-conversation writes. None of them touches a session store at
- * all: `InlineConversationService`'s constructor takes no `ReviewSessionStore`,
- * so no intent can be persisted and a retry re-issues the write.
- */
+/** The five Diff-conversation writes share the durable operation store. */
 function inlineConversationFlows(): ReadonlyArray<WriteFlow> {
   const commands = [
     {
@@ -97,10 +73,34 @@ function inlineConversationFlows(): ReadonlyArray<WriteFlow> {
   ];
   return commands.map(({ name, command }) => ({
     name: `inline conversation: ${name}`,
-    todo: "F1 — InlineConversationService persists no write intent",
     run: async () => {
       const trace: Trace = [];
-      const sessions = recordingSessions(trace, values.session);
+      let operation: ReviewWriteOperation | undefined;
+      const operations = {
+        load: async () => ok(operation),
+        begin: async (next: ReviewWriteOperation) => {
+          operation = next;
+          trace.push(`intent:${next.state._tag}`);
+          return ok(undefined);
+        },
+        markOutcomeUnknown: async (next: ReviewWriteOperation) => {
+          operation = next;
+          trace.push(`intent:${next.state._tag}`);
+          return ok(undefined);
+        },
+        confirm: async (next: ReviewWriteOperation) => {
+          operation = next;
+          return ok(undefined);
+        },
+        reject: async () => {
+          operation = undefined;
+          return ok(undefined);
+        },
+        remove: async () => {
+          operation = undefined;
+          return ok(undefined);
+        },
+      };
       const gateway = {
         getPullRequest: async () => ok(values.snapshot.pullRequest),
         getReviewThreadTarget: async () => ok({ found: true }),
@@ -125,28 +125,25 @@ function inlineConversationFlows(): ReadonlyArray<WriteFlow> {
         new ReviewOperationCoordinator(),
         now,
         recentWritesJournal(trace),
+        operations,
       );
       const issue = () => service.execute({ profileId, reviewId, command });
       await issue();
       return {
         trace,
         again: issue,
-        intentTag: () => sessionIntentTag(sessions.current()),
+        intentTag: () => operation?.state._tag,
       };
     },
   }));
 }
 
-/**
- * The three published-feedback writes. Like the inline conversation ones,
- * `PublishedFeedbackService` takes no session store; `afterWrite` maps every
- * gateway failure, unavailable included, to `github_write_failed`.
- */
+/** The three published-feedback writes retain unavailable outcomes without replay. */
 function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
   const feedback = {
     reviews: [
       {
-        id: "published-1",
+        id: "101",
         author: "fixture",
         body: "",
         event: "APPROVED" as const,
@@ -178,6 +175,7 @@ function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
         service.editComment({
           profileId,
           reviewId,
+          expected,
           commentId: "comment-1",
           body: "edited",
         }),
@@ -188,6 +186,7 @@ function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
         service.deleteComment({
           profileId,
           reviewId,
+          expected,
           commentId: "comment-1",
           confirmation: true,
         }),
@@ -198,7 +197,8 @@ function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
         service.dismissReview({
           profileId,
           reviewId,
-          publishedReviewId: "published-1",
+          expected,
+          publishedReviewId: "101",
           message: "stale",
           confirmation: true,
         }),
@@ -206,10 +206,34 @@ function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
   ];
   return commands.map(({ name, issue }) => ({
     name: `published feedback: ${name}`,
-    todo: "F1 — PublishedFeedbackService persists no write intent",
     run: async () => {
       const trace: Trace = [];
-      const sessions = recordingSessions(trace, values.session);
+      let operation: ReviewWriteOperation | undefined;
+      const operations = {
+        load: async () => ok(operation),
+        begin: async (next: ReviewWriteOperation) => {
+          operation = next;
+          trace.push(`intent:${next.state._tag}`);
+          return ok(undefined);
+        },
+        markOutcomeUnknown: async (next: ReviewWriteOperation) => {
+          operation = next;
+          trace.push(`intent:${next.state._tag}`);
+          return ok(undefined);
+        },
+        confirm: async (next: ReviewWriteOperation) => {
+          operation = next;
+          return ok(undefined);
+        },
+        reject: async () => {
+          operation = undefined;
+          return ok(undefined);
+        },
+        remove: async () => {
+          operation = undefined;
+          return ok(undefined);
+        },
+      };
       const gateway = {
         getPullRequest: async () => ok(values.snapshot.pullRequest),
         getPullRequestComments: async () => ok(values.snapshot.comments),
@@ -234,12 +258,15 @@ function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
         // write this flow performs; no other gateway method is reached.
         recorded(trace, gateway) as never,
         new ReviewOperationCoordinator(),
+        now,
+        recentWritesJournal(trace),
+        operations,
       );
       await issue(service);
       return {
         trace,
         again: () => issue(service),
-        intentTag: () => sessionIntentTag(sessions.current()),
+        intentTag: () => operation?.state._tag,
       };
     },
   }));

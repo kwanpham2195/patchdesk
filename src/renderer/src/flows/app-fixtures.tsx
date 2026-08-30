@@ -297,7 +297,10 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
           }}
           methods={["squash", "merge"]}
           onRecoverMerge={async () => undefined}
-          onMerge={async () => ({ mergeCommitSha: "abcdef" })}
+          onMerge={async () => ({
+            state: "confirmed",
+            mergeCommitSha: "abcdef",
+          })}
         />
       </div>
     ),
@@ -397,7 +400,7 @@ function renderMergeReadinessFixture(
               },
               methods: ["squash", "merge", "rebase"] as const,
               onRecoverMerge: async () => undefined,
-              onMerge: async () => ({}),
+              onMerge: async () => ({ state: "confirmed" as const }),
             },
           })}
     />

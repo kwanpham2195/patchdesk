@@ -38,6 +38,8 @@ export type InvalidDomainValue = {
 };
 
 const safeSlug = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+/** GitHub limits account login names to 39 characters. */
+export const GITHUB_LOGIN_MAX_LENGTH = 39;
 const hostSyntax = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
 const shaSyntax = /^[a-f0-9]{40,64}$/;
 const reviewIdSyntax =
@@ -174,6 +176,12 @@ export function parseGitHubLogin(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the GitHub-login JSON boundary parser; no earlier parser can establish the branded value.
   input: unknown,
 ): Result<GitHubLogin, InvalidDomainValue> {
+  if (
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw boundary input before applying GitHub's account-login length invariant.
+    typeof input !== "string" ||
+    input.length > GITHUB_LOGIN_MAX_LENGTH
+  )
+    return err({ _tag: "InvalidDomainValue", field: "githubLogin" });
   return parseSafeSlug<"GitHubLogin">(input, "githubLogin");
 }
 

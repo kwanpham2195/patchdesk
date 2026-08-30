@@ -17,11 +17,20 @@ import { useDirectSummaryActions } from "./use-direct-summary-actions";
 import { usePendingReviewActions } from "./use-pending-review-actions";
 import { useReviewMetadataActions } from "./use-review-metadata-actions";
 import { useReviewMergeAction } from "./use-review-merge-action";
+import { useReviewWriteRecovery } from "./use-review-write-recovery";
 import {
   useReviewObservation,
   type ReviewWorkbenchPatch,
 } from "./use-review-observation";
 import type { WorkbenchPosition } from "../lib/screen-restore";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "../components/ui/alert";
+import { Button } from "../components/ui/button";
+import { Spinner } from "../components/ui/spinner";
 
 export type { ReviewWorkbenchPatch } from "./use-review-observation";
 
@@ -60,23 +69,33 @@ export function ReviewWorkbenchFlow({
     onWorkbenchReplace,
     onWorkbenchPatch,
   });
+  const writeRecovery = useReviewWriteRecovery({
+    workbench,
+    onWorkbenchReplace: replaceWorkbench,
+  });
   const {
     saveInlineComment,
     setThreadState,
     replyToThread,
     editComment,
     deleteComment,
+    dismissReview,
   } = useDirectConversationActions({
     workbench,
     runDirectCommand,
     appendRecentWrites,
+    observeConfirmedReviewWrite,
+    requireRecovery: writeRecovery.requireRecovery,
   });
   // Labels, assignees, and reviewers are pull-request-level metadata. Their
   // eligibility remains a projection concern; the hook owns only their reads,
   // writes, receipt parsing, and recent-write journal entries.
-  const canWriteLabels = workbench.review.status === "open";
-  const canWriteAssignees = workbench.review.status === "open";
-  const canWriteReviewers = workbench.review.status === "open";
+  const canWriteLabels =
+    workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
+  const canWriteAssignees =
+    workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
+  const canWriteReviewers =
+    workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
   const {
     fetchLabels,
     addLabels,
@@ -92,9 +111,12 @@ export function ReviewWorkbenchFlow({
     workbench,
     runDirectCommand,
     appendRecentWrites,
+    observeConfirmedReviewWrite,
+    requireRecovery: writeRecovery.requireRecovery,
   });
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
+    !writeRecovery.githubWritesLocked &&
     workbench.revision.freshness === "fresh" &&
     workbench.revision.patchHash !== undefined;
   const { pendingReviewComposer, pendingReview, openFinishDialogWithSummary } =
@@ -136,7 +158,13 @@ export function ReviewWorkbenchFlow({
   });
 
   const conversationActions = canWriteDirectConversation
-    ? { setThreadState, replyToThread, editComment, deleteComment }
+    ? {
+        setThreadState,
+        replyToThread,
+        editComment,
+        deleteComment,
+        dismissReview,
+      }
     : undefined;
   const labelActions: LabelPickerActions | undefined = canWriteLabels
     ? { fetchLabels, addLabels, removeLabels }
@@ -168,7 +196,7 @@ export function ReviewWorkbenchFlow({
       ? { ...workbenchActionsWithRefreshing, refreshError: true as const }
       : workbenchActionsWithRefreshing;
   const workbenchActionsWithMerge =
-    mergeAction === undefined
+    mergeAction === undefined || writeRecovery.githubWritesLocked
       ? workbenchActionsWithRefreshError
       : { ...workbenchActionsWithRefreshError, merge: mergeAction };
   const workbenchActionsWithLocalCommentAuthoring =
@@ -176,21 +204,21 @@ export function ReviewWorkbenchFlow({
       ? workbenchActionsWithMerge
       : { ...workbenchActionsWithMerge, localCommentAuthoring };
   const workbenchActionsWithPendingReviewComposer =
-    pendingReviewComposer === undefined
+    pendingReviewComposer === undefined || writeRecovery.githubWritesLocked
       ? workbenchActionsWithLocalCommentAuthoring
       : {
           ...workbenchActionsWithLocalCommentAuthoring,
           pendingReviewComposer,
         };
   const workbenchActionsWithPendingReviewPanel =
-    pendingReview === undefined
+    pendingReview === undefined || writeRecovery.githubWritesLocked
       ? workbenchActionsWithPendingReviewComposer
       : {
           ...workbenchActionsWithPendingReviewComposer,
           pendingReview,
         };
   const workbenchActionsWithDirectSummaryPanel =
-    directSummary === undefined
+    directSummary === undefined || writeRecovery.githubWritesLocked
       ? workbenchActionsWithPendingReviewPanel
       : {
           ...workbenchActionsWithPendingReviewPanel,
@@ -233,14 +261,51 @@ export function ReviewWorkbenchFlow({
                 : { initialDetail: initialUiState.insightDetail })}
               onWorkbenchReplace={replaceWorkbench}
               onWorkbenchPatch={onWorkbenchPatch}
-              onAddFinding={addFindingToPendingReview}
-              onFinishWithAnalysisSummary={openFinishDialogWithSummary}
+              {...(writeRecovery.githubWritesLocked
+                ? {}
+                : {
+                    onAddFinding: addFindingToPendingReview,
+                    onFinishWithAnalysisSummary: openFinishDialogWithSummary,
+                  })}
             />
           ),
           conversation: null,
           mergeAction: null,
         }}
       />
+      {writeRecovery.recovery === undefined ? null : (
+        <Alert className="mx-4 my-2" data-review-write-recovery>
+          <AlertTitle>GitHub writes are paused</AlertTitle>
+          <AlertDescription>
+            {writeRecovery.recovery.resolution === "manual_resolution_required"
+              ? "Patchdesk found more than one possible GitHub result. Review the pull request on GitHub before continuing."
+              : "A GitHub write may have completed. Check GitHub again before making another change."}
+            {writeRecovery.recoveryError === undefined ? null : (
+              <p data-review-write-recovery-error>
+                {writeRecovery.recoveryError === "invalid_response"
+                  ? "Patchdesk received an invalid recovery response. GitHub writes remain paused."
+                  : "Patchdesk could not check GitHub. GitHub writes remain paused."}
+              </p>
+            )}
+          </AlertDescription>
+          {writeRecovery.recovery.resolution ===
+          "manual_resolution_required" ? null : (
+            <AlertAction>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={writeRecovery.checking}
+                onClick={() => void writeRecovery.checkGitHubAgain()}
+              >
+                {writeRecovery.checking ? (
+                  <Spinner data-icon="inline-start" />
+                ) : null}
+                {writeRecovery.checking ? "Checking…" : "Check GitHub again"}
+              </Button>
+            </AlertAction>
+          )}
+        </Alert>
+      )}
       {refreshError ? (
         <p role="alert" className="border-t px-4 py-2 text-sm text-destructive">
           GitHub state could not be refreshed. The represented Review remains

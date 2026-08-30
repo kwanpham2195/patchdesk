@@ -1,5 +1,11 @@
 import * as v from "valibot";
-
+import {
+  mergeReadinessSchema,
+  parseMergeReceipt,
+  remoteWriteRecoverySchema,
+  type MergeReceipt,
+  viewerLoginSchema,
+} from "./review-write-receipts";
 import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
 import { FINDING_MAPPING_STATUSES } from "../../domain/review-result";
@@ -11,7 +17,6 @@ import {
   INBOX_STATE_FILTER_VALUES,
 } from "../../domain/maintainer-inbox";
 import { GITHUB_REVIEW_EVENTS } from "../../domain/pending-review";
-
 /** The one renderer-side spelling of the domain's closed forbidden-reason set. */
 const forbiddenReasonSchema = v.optional(v.picklist(FORBIDDEN_REASONS));
 
@@ -176,7 +181,6 @@ export function parseInboxResponse(input: unknown): InboxResponse | undefined {
 export function inboxIdentityKey(row: InboxRow): string {
   return `${row.identity.host}/${row.identity.owner}/${row.identity.repo}#${row.identity.number}`;
 }
-
 // `GET /v1/environment` carries app metadata (productName, version, ...)
 // this parser does not care about, so it stays a plain `v.object` — the same
 // choice `inboxResponseSchema` makes for `profile` — rather than a
@@ -213,7 +217,6 @@ export function parseEnvironmentCheckResponse(
   const parsed = v.safeParse(environmentCheckResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
-
 // `GET /v1/watchlist/suggestions` returns a flat array of not-yet-watched
 // repositories discovered under the active profile's workspace roots
 // (`DashboardService.discoverWorkspaceRepos`). `localPath` is the only field
@@ -253,7 +256,6 @@ export function parseGitHubAccessCheckResponse(
   const parsed = v.safeParse(githubAccessCheckResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
-
 // `GET /v1/reviews/labels` is a local-API payload Patchdesk owns on both
 // sides (ADR "Choose a validation style by data boundary"), so it gets a
 // `v.strictObject` schema parsed with `v.safeParse` — the same style
@@ -300,7 +302,6 @@ export function parseRepositoryLabelListResponse(
   const parsed = v.safeParse(repositoryLabelListResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
-
 // `GET /v1/reviews/assignees` mirrors `repositoryLabelListResponseSchema`
 // exactly in structure and validation style; see its comment above. It
 // fails closed the same way: a consumer applies `permission ?? "unknown"`
@@ -349,7 +350,6 @@ export function parseAssignableUserListResponse(
   const parsed = v.safeParse(assignableUserListResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
-
 // `GET /v1/reviews/reviewers` mirrors `assignableUserListResponseSchema`
 // exactly in structure and validation style; see its comment above. Each
 // reviewer row carries its Revision-bound review verdict (absent for a
@@ -435,7 +435,6 @@ export function parseReviewerListResponse(
   const parsed = v.safeParse(reviewerListResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
-
 // The main process projects a renderer-safe Session identity only. Patch,
 // worktree, and comparison artifact paths never cross this boundary; the strict
 // objects below reject any response that still carries them.
@@ -776,11 +775,6 @@ const conversationSchema = v.strictObject({
     v.picklist(["thread_cap", "comment_cap", "pagination", "unavailable"]),
   ),
 });
-const mergeReadinessSchema = v.strictObject({
-  _tag: v.picklist(["Ready", "Blocked", "NeedsAcknowledgement"]),
-  blockers: v.array(v.string()),
-  warnings: v.array(v.string()),
-});
 const mergeReasonSchema = v.strictObject({
   code: v.picklist([
     "review_required",
@@ -869,6 +863,7 @@ const analysisReviewActionsSchema = v.strictObject({
 
 const workbenchProjectionSchema = v.strictObject({
   state: v.literal("review"),
+  viewerLogin: viewerLoginSchema,
   review: v.strictObject({
     id: v.pipe(v.string(), v.minLength(1)),
     status: v.picklist(["open", "merged", "closed"]),
@@ -909,8 +904,13 @@ const workbenchProjectionSchema = v.strictObject({
   checks: checkSchema,
   mergeReadiness: mergeReadinessSchema,
   mergeReasons: v.optional(v.array(mergeReasonSchema)),
+  remoteWriteRecovery: v.optional(remoteWriteRecoverySchema),
 });
 export type WorkbenchResponse = v.InferOutput<typeof workbenchProjectionSchema>;
+export type RemoteWriteRecovery = v.InferOutput<
+  typeof remoteWriteRecoverySchema
+>;
+export { parseMergeReceipt, type MergeReceipt };
 export type PendingReviewProjection = v.InferOutput<
   typeof pendingReviewProjectionSchema
 >;

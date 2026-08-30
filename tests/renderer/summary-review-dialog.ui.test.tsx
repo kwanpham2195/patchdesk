@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -7,7 +13,154 @@ import { SummaryReviewDialog } from "../../src/renderer/src/components/summary-r
 
 afterEach(cleanup);
 
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {
+    throw new Error("deferred resolve was not initialized");
+  };
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
+function expectDisabled(element: HTMLElement): void {
+  if (
+    !(element instanceof HTMLButtonElement) &&
+    !(element instanceof HTMLTextAreaElement)
+  )
+    throw new Error("expected a disableable control");
+  expect(element.disabled).toBe(true);
+}
+
 describe("SummaryReviewDialog", () => {
+  it("shows pending submit feedback and disables conflicting controls", async () => {
+    const submitted = deferred<{
+      readonly state: "confirmed";
+      readonly receipt: {
+        readonly reviewId: string;
+        readonly event: "COMMENT";
+      };
+    }>();
+    const onSubmit = vi.fn(() => submitted.promise);
+    render(
+      <SummaryReviewDialog
+        open
+        busy={false}
+        state="idle"
+        onOpenChange={vi.fn()}
+        onSubmit={onSubmit}
+        onRecover={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Review summary" }), {
+      target: { value: "Pending summary" },
+    });
+
+    const submit = screen.getByRole("button", { name: "Submit review" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    const pendingSubmit = screen.getByRole("button", { name: /Submitting…$/ });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expectDisabled(pendingSubmit);
+    expect(within(pendingSubmit).getByRole("status")).toBeTruthy();
+    const close = screen.getAllByRole("button", { name: "Close" })[0];
+    if (close === undefined)
+      throw new Error("expected the dialog close action");
+    expectDisabled(close);
+    expectDisabled(screen.getByRole("textbox", { name: "Review summary" }));
+    expectDisabled(screen.getByRole("combobox", { name: "Review decision" }));
+
+    submitted.resolve({
+      state: "confirmed",
+      receipt: { reviewId: "9002", event: "COMMENT" },
+    });
+    await submitted.promise;
+  });
+
+  it("shows pending recovery feedback and disables conflicting controls", async () => {
+    const recovered = deferred<{ readonly state: "idle" }>();
+    const onRecover = vi.fn(() => recovered.promise);
+    const onOpenPullRequest = vi.fn();
+    render(
+      <SummaryReviewDialog
+        open
+        busy={false}
+        state="recovery_required"
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onRecover={onRecover}
+        onOpenPullRequest={onOpenPullRequest}
+      />,
+    );
+
+    const check = screen.getByRole("button", { name: "Check GitHub status" });
+    fireEvent.click(check);
+    fireEvent.click(check);
+
+    const pendingCheck = screen.getByRole("button", { name: /Checking…$/ });
+    expect(onRecover).toHaveBeenCalledTimes(1);
+    expectDisabled(pendingCheck);
+    expect(within(pendingCheck).getByRole("status")).toBeTruthy();
+    const close = screen.getAllByRole("button", { name: "Close" })[0];
+    if (close === undefined)
+      throw new Error("expected the dialog close action");
+    expectDisabled(close);
+    expectDisabled(
+      screen.getByRole("button", { name: "Open pull request on GitHub" }),
+    );
+
+    recovered.resolve({ state: "idle" });
+    await recovered.promise;
+  });
+
+  it.each(["rejected", "uncertain", "malformed"])(
+    "preserves the decision and body after a %s response",
+    async (outcome) => {
+      const user = userEvent.setup();
+      const props = {
+        open: true,
+        busy: false,
+        onOpenChange: vi.fn(),
+        onSubmit: vi.fn(async () => {
+          throw new Error(outcome);
+        }),
+        onRecover: vi.fn(async () => ({ state: "idle" as const })),
+      };
+      const { rerender } = render(
+        <SummaryReviewDialog {...props} state="idle" />,
+      );
+      fireEvent.change(
+        screen.getByRole("textbox", { name: "Review summary" }),
+        { target: { value: "Keep this draft" } },
+      );
+      await user.click(
+        screen.getByRole("combobox", { name: "Review decision" }),
+      );
+      await user.click(await screen.findByRole("option", { name: "Approve" }));
+      await user.click(screen.getByRole("button", { name: "Submit review" }));
+
+      if (outcome !== "rejected") {
+        rerender(
+          <SummaryReviewDialog
+            {...props}
+            state="recovery_required"
+            recoveryResolution="check_required"
+          />,
+        );
+        rerender(<SummaryReviewDialog {...props} state="idle" />);
+      }
+
+      const body = screen.getByRole("textbox", { name: "Review summary" });
+      if (!(body instanceof HTMLTextAreaElement))
+        throw new Error("expected the review summary textarea");
+      expect(body.value).toBe("Keep this draft");
+      expect(
+        screen.getByRole("combobox", { name: "Review decision" }).textContent,
+      ).toContain("Approve");
+    },
+  );
+
   it("makes an uncertain submission recoverable before allowing another submit", async () => {
     const user = userEvent.setup();
     const onRecover = vi.fn(async () => ({ state: "idle" as const }));

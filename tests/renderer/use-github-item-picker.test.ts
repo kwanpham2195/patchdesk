@@ -371,6 +371,26 @@ describe("useGithubItemPicker", () => {
     );
   });
 
+  it("admits one same-item mutation per tick while different items remain concurrent", async () => {
+    let settle: () => void = () => undefined;
+    const add = vi.fn(
+      async () =>
+        await new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const rendered = await renderOpened(actionsFixture({ add }));
+    act(() => {
+      rendered.result.current.toggle(hubot, true);
+      rendered.result.current.toggle(hubot, true);
+      rendered.result.current.toggle(octocat, true);
+    });
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenNthCalledWith(1, hubot);
+    expect(add).toHaveBeenNthCalledWith(2, octocat);
+    await act(async () => settle());
+  });
+
   it("never lets a slow, stale response overwrite a newer one", async () => {
     let resolveFirst: (value: ListResponse) => void = () => undefined;
     const first = new Promise<ListResponse>((resolve) => {

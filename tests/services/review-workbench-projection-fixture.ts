@@ -11,17 +11,17 @@ export const paths = PatchdeskPaths.forTest(
   "/does-not-exist/patchdesk-projection-test",
 );
 
-// SAFETY: `as never` casts throughout this file bypass branded-primitive
-// construction for test-only fixture literals; the brands only exist for
-// compile-time cross-boundary safety, and every cast value already
-// satisfies its branded type's runtime shape.
-export const profileId = "cfw" as never;
-// SAFETY: a 40-char hex string already satisfies GitSha's runtime shape.
-export const headSha = "a".repeat(40) as never;
-// SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape.
-export const at = "2026-08-09T11:35:00.000Z" as never;
-// SAFETY: a composite `host__owner__repo__pr-N__sha-...__hash` string already satisfies SessionId's runtime shape.
+export const profileId =
+  // SAFETY: this profile fixture satisfies the branded profile id's runtime shape.
+  "cfw" as never;
+export const headSha =
+  // SAFETY: a 40-char hex string already satisfies GitSha's runtime shape.
+  "a".repeat(40) as never;
+export const at =
+  // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape.
+  "2026-08-09T11:35:00.000Z" as never;
 export const sessionId =
+  // SAFETY: this composite string satisfies SessionId's runtime shape.
   "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca" as never;
 export const identity = {
   profileId,
@@ -35,8 +35,9 @@ export const identity = {
   prNumber: 42 as never,
 };
 export const reviewId = createReviewId(identity);
-// SAFETY: a 64-char hex string already satisfies ContentHash's runtime shape.
-export const hash = "b".repeat(64) as never;
+export const hash =
+  // SAFETY: a 64-char hex string already satisfies ContentHash's runtime shape.
+  "b".repeat(64) as never;
 export function session(
   localCheckoutWarning?: "missing_local_path" | "local_checkout_unavailable",
   // A real, readable patch file. Only the tests that need the projection to
@@ -144,8 +145,9 @@ export const snapshotData = {
     reviewDecision: "approved",
   },
 };
-// SAFETY: see the file-level note above `const snapshotData`.
-export const snapshot = snapshotData as never;
+export const snapshot =
+  // SAFETY: snapshotData matches the parsed ReviewRemoteSnapshot fixture shape.
+  snapshotData as never;
 export function review(
   // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- each call site overrides a different, differently-shaped subset of the Review fixture below; the merged result is narrowed to `never` at the return, same as the base fixture fields it's merged with.
   overrides: Record<string, unknown> = {},
@@ -185,6 +187,9 @@ export function fixture(
   const insights = {
     loadTyped: vi.fn(async () => err({ reason: "not_found" })),
   };
+  const writeOperations = {
+    load: vi.fn(async () => ok(undefined)),
+  };
   return {
     // SAFETY: each mock below only stubs the one method this service
     // actually calls; casting to `never` stands in for the full repository
@@ -195,10 +200,12 @@ export function fixture(
       reviews as never,
       insights as never,
       paths,
+      writeOperations as never,
     ),
     profiles,
     sessions,
     reviews,
     insights,
+    writeOperations,
   };
 }

@@ -13,6 +13,7 @@ type ReviewWriteFailureReason =
   | "forbidden"
   | "github_read_failed"
   | "github_write_failed"
+  | "outcome_unknown"
   | "rate_limited"
   | "review_write_in_progress";
 
@@ -31,6 +32,7 @@ const sharedReviewWriteFailureStatus: SharedReviewWriteFailureStatuses = {
   forbidden: 403,
   permission_denied: 409,
   review_write_in_progress: 409,
+  outcome_unknown: 409,
   github_read_failed: 503,
   github_write_failed: 503,
   rate_limited: 503,

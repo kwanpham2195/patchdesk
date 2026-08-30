@@ -60,6 +60,7 @@ describe("ReviewWorkbenchProjectionService", () => {
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
+        viewerLogin: "fixture",
         review: { id: reviewId, status: "open" },
         revision: {
           freshness: "fresh",
@@ -687,6 +688,7 @@ describe("ReviewWorkbenchProjectionService walkthrough fallback degradation", ()
     // `loadStoredInsights` calls `loadTyped` twice -- once for the analysis
     // record, once for the walkthrough -- so the stub answers by the `type`
     // argument rather than by call order.
+    // SAFETY: this implementation matches the loadTyped arguments and result variants used by the service.
     fx.insights.loadTyped.mockImplementation((async (
       ...args: ReadonlyArray<unknown>
     ) =>

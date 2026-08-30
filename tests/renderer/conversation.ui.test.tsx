@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Conversation } from "../../src/renderer/src/components/conversation";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function generalThreadEntry(
   overrides: Partial<WorkbenchResponse["conversation"]["entries"][number]> = {},
@@ -352,5 +355,111 @@ describe("Conversation", () => {
     const avatar = container.querySelector('[data-slot="avatar"]');
     expect(avatar?.tagName).toBe("SPAN");
     expect(avatar?.textContent).toBe("A");
+  });
+});
+
+it("keeps a confirmed deletion removed when detached read reconciliation fails", async () => {
+  vi.stubGlobal(
+    "confirm",
+    vi.fn(() => true),
+  );
+  const deleteComment = vi.fn(async () => {
+    await Promise.reject(new Error("detached reconciliation failed")).catch(
+      () => undefined,
+    );
+  });
+  render(
+    <Conversation
+      conversation={{ prDescription: "", entries: [generalThreadEntry()] }}
+      conversationActions={{ deleteComment }}
+    />,
+  );
+
+  await userEvent.setup().click(screen.getByRole("button", { name: "Delete" }));
+
+  expect(deleteComment).toHaveBeenCalledOnce();
+  expect(screen.queryByText("General comment.")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+describe("published review dismissal", () => {
+  it("admits one dismissal, preserves failed drafts, and represents confirmed dismissal", async () => {
+    let reject!: () => void;
+    const pending = new Promise<void>((_resolve, rejectPromise) => {
+      reject = rejectPromise;
+    });
+    const dismissReview = vi.fn(() => pending);
+    render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          entries: [
+            {
+              _tag: "ReviewSummary",
+              review: {
+                id: "101",
+                author: "reviewer",
+                body: "",
+                event: "APPROVED",
+                submittedAt: "2026-08-01T00:00:00.000Z",
+                canDismiss: true,
+              },
+            },
+          ],
+        }}
+        conversationActions={{ dismissReview }}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Dismiss review" }));
+    const reason = screen.getByRole("textbox", { name: "Dismissal reason" });
+    await user.type(reason, "obsolete");
+    const submit = screen.getByRole("button", { name: "Dismiss review" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    expect(dismissReview).toHaveBeenCalledOnce();
+    expect(
+      screen
+        .getByRole("button", { name: /Dismissing/ })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    reject();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    if (!(reason instanceof HTMLTextAreaElement))
+      throw new Error("expected dismissal reason textarea");
+    expect(reason.value).toBe("obsolete");
+    cleanup();
+
+    const confirmed = vi.fn(async () => undefined);
+    render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          entries: [
+            {
+              _tag: "ReviewSummary",
+              review: {
+                id: "102",
+                author: "reviewer",
+                body: "",
+                event: "APPROVED",
+                submittedAt: "2026-08-01T00:00:00.000Z",
+                canDismiss: true,
+              },
+            },
+          ],
+        }}
+        conversationActions={{ dismissReview: confirmed }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Dismiss review" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Dismissal reason" }),
+      "obsolete",
+    );
+    await user.click(screen.getByRole("button", { name: "Dismiss review" }));
+    expect(confirmed).toHaveBeenCalledWith("102", "obsolete");
+    expect(screen.getByText("Dismissed")).toBeTruthy();
   });
 });

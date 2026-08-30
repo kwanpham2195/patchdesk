@@ -1,10 +1,11 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { GitHubThreadId } from "../../../domain/ids";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
@@ -31,6 +32,10 @@ export type ReviewConversationActions = {
   ) => Promise<string | void>;
   readonly editComment?: (commentId: string, body: string) => Promise<void>;
   readonly deleteComment?: (commentId: string) => Promise<void>;
+  readonly dismissReview?: (
+    publishedReviewId: string,
+    message: string,
+  ) => Promise<void>;
 };
 
 /**
@@ -79,6 +84,9 @@ function ConversationCommentRow({
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
   const [error, setError] = useState<string>();
   const editorId = `comment-editor-${useId()}`;
   const errorId = `${editorId}-error`;
@@ -112,10 +120,11 @@ function ConversationCommentRow({
                 onClick={async () => {
                   if (
                     editBody.trim().length === 0 ||
-                    saving ||
+                    savingRef.current ||
                     onEdit === undefined
                   )
                     return;
+                  savingRef.current = true;
                   setSaving(true);
                   setError(undefined);
                   try {
@@ -124,12 +133,19 @@ function ConversationCommentRow({
                   } catch {
                     setError("Patchdesk could not edit this comment.");
                   } finally {
+                    savingRef.current = false;
                     setSaving(false);
                   }
                 }}
                 disabled={editBody.trim().length === 0 || saving}
               >
-                {saving ? "Saving…" : "Save"}
+                {saving ? (
+                  <>
+                    <Spinner data-icon="inline-start" /> Saving…
+                  </>
+                ) : (
+                  "Save"
+                )}
               </Button>
               <Button
                 size="sm"
@@ -155,6 +171,7 @@ function ConversationCommentRow({
               <button
                 type="button"
                 className="text-xs font-medium text-sky-400 hover:underline"
+                disabled={deleting}
                 onClick={() => {
                   setEditing(true);
                   setEditBody(comment.body);
@@ -164,19 +181,37 @@ function ConversationCommentRow({
               </button>
             ) : null}
             {canDelete ? (
-              <button
+              <Button
                 type="button"
-                className="text-xs font-medium text-destructive hover:underline"
-                onClick={() => {
+                variant="link"
+                size="xs"
+                className="h-auto p-0 text-xs text-destructive"
+                disabled={deleting}
+                onClick={async () => {
+                  if (deletingRef.current) return;
                   if (!window.confirm("Delete this published comment?")) return;
                   if (onDelete === undefined) return;
-                  void onDelete(comment.id).catch(() =>
-                    setError("Patchdesk could not delete this comment."),
-                  );
+                  deletingRef.current = true;
+                  setDeleting(true);
+                  setError(undefined);
+                  try {
+                    await onDelete(comment.id);
+                  } catch {
+                    setError("Patchdesk could not delete this comment.");
+                  } finally {
+                    deletingRef.current = false;
+                    setDeleting(false);
+                  }
                 }}
               >
-                Delete
-              </button>
+                {deleting ? (
+                  <>
+                    <Spinner data-icon="inline-start" /> Deleting…
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </Button>
             ) : null}
           </div>
         ) : null}
@@ -197,9 +232,11 @@ export function ConversationThreadCard({
   readonly navAnchorId?: string;
 }): React.JSX.Element {
   const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
   const [expanded, setExpanded] = useState(false);
   const [replyBody, setReplyBody] = useState("");
   const [replying, setReplying] = useState(false);
+  const replyingRef = useRef(false);
   const [error, setError] = useState<string>();
   const [replyError, setReplyError] = useState<string>();
   const replyEditorId = `thread-reply-${useId()}`;
@@ -229,6 +266,7 @@ export function ConversationThreadCard({
   // cards (fresh REST creates) have none, and their callbacks never exist.
   const threadId =
     thread.target._tag === "thread" ? thread.target.id : undefined;
+  const threadWriteBusy = pending || replying;
   const hiddenReplyCount = Math.max(
     0,
     thread.comments.length - (opening === latest ? 1 : 2),
@@ -354,25 +392,37 @@ export function ConversationThreadCard({
           className="mt-3"
           size="sm"
           variant="outline"
-          disabled={pending}
-          onClick={() => {
-            setPending(true);
-            setError(undefined);
+          disabled={threadWriteBusy}
+          onClick={async () => {
+            if (pendingRef.current || replyingRef.current) return;
             const action = thread.onSetState;
             if (action === undefined || threadId === undefined) return;
-            void action(
-              threadId,
-              thread.state === "resolved" ? "open" : "resolved",
-            )
-              .catch(() => setError("Patchdesk could not update this thread."))
-              .finally(() => setPending(false));
+            pendingRef.current = true;
+            setPending(true);
+            setError(undefined);
+            try {
+              await action(
+                threadId,
+                thread.state === "resolved" ? "open" : "resolved",
+              );
+            } catch {
+              setError("Patchdesk could not update this thread.");
+            } finally {
+              pendingRef.current = false;
+              setPending(false);
+            }
           }}
         >
-          {pending
-            ? "Updating…"
-            : thread.state === "resolved"
-              ? "Unresolve"
-              : "Resolve"}
+          {pending ? (
+            <>
+              <Spinner data-icon="inline-start" />
+              {thread.state === "resolved" ? "Unresolving…" : "Resolving…"}
+            </>
+          ) : thread.state === "resolved" ? (
+            "Unresolve"
+          ) : (
+            "Resolve"
+          )}
         </Button>
       )}
       {error === undefined ? null : (
@@ -384,7 +434,7 @@ export function ConversationThreadCard({
         <div className="mt-4 border-t pt-3">
           <Field
             data-invalid={replyError !== undefined || undefined}
-            data-disabled={replying || undefined}
+            data-disabled={threadWriteBusy || undefined}
           >
             <Textarea
               id={replyEditorId}
@@ -396,7 +446,7 @@ export function ConversationThreadCard({
               value={replyBody}
               onChange={(event) => setReplyBody(event.target.value)}
               placeholder="Write a reply…"
-              disabled={replying}
+              disabled={threadWriteBusy}
             />
             <FieldError id={replyErrorId}>{replyError}</FieldError>
           </Field>
@@ -404,21 +454,28 @@ export function ConversationThreadCard({
             <Button
               size="sm"
               onClick={async () => {
-                if (replyBody.trim().length === 0 || replying) return;
+                if (
+                  replyBody.trim().length === 0 ||
+                  replyingRef.current ||
+                  pendingRef.current
+                )
+                  return;
+                const action = thread.onReply;
+                if (action === undefined || threadId === undefined) return;
+                const submittedBody = replyBody;
+                replyingRef.current = true;
                 setReplying(true);
                 setError(undefined);
                 setReplyError(undefined);
                 try {
-                  const action = thread.onReply;
-                  if (action === undefined || threadId === undefined) return;
-                  const commentId = await action(threadId, replyBody);
+                  const commentId = await action(threadId, submittedBody);
                   setReplyBody("");
                   if (commentId !== undefined) {
                     setOptimisticReplies((current) => [
                       ...current,
                       {
                         id: commentId,
-                        body: replyBody,
+                        body: submittedBody,
                         createdAt: new Date().toISOString(),
                       },
                     ]);
@@ -426,12 +483,19 @@ export function ConversationThreadCard({
                 } catch {
                   setReplyError("Patchdesk could not publish this reply.");
                 } finally {
+                  replyingRef.current = false;
                   setReplying(false);
                 }
               }}
-              disabled={replyBody.trim().length === 0 || replying}
+              disabled={replyBody.trim().length === 0 || threadWriteBusy}
             >
-              {replying ? "Replying…" : "Reply"}
+              {replying ? (
+                <>
+                  <Spinner data-icon="inline-start" /> Replying…
+                </>
+              ) : (
+                "Reply"
+              )}
             </Button>
           </div>
         </div>

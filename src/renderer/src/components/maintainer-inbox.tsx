@@ -4,10 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
-  CircleDashed,
-  CircleSlash,
   Clock3,
-  GitPullRequest,
   UserRoundCheck,
 } from "lucide-react";
 
@@ -24,6 +21,7 @@ import {
   type RepositoryLabelReadState,
 } from "@/github-read-failure-copy";
 import { LabelChip } from "./label-chip";
+import { InboxRowItem } from "./inbox-row-item";
 import { useInboxView } from "../hooks/use-inbox-view";
 import { formatInboxAge, type InboxFreshnessLabel } from "@/inbox-freshness";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
@@ -60,6 +58,10 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  ReviewOpeningButtonContent,
+  type ReviewOpeningState,
+} from "./review-opening-status";
 import {
   Select,
   SelectContent,
@@ -149,6 +151,10 @@ type MaintainerInboxProps = {
     readonly refreshedAt?: string | undefined;
   };
   readonly refreshStatus: InboxFreshnessLabel;
+  readonly openingOperations?: ReadonlyMap<
+    string,
+    Exclude<ReviewOpeningState, undefined>
+  >;
   readonly onOpenReview: (row: InboxRow) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
 };
@@ -180,6 +186,7 @@ export function MaintainerInbox({
   freshness,
   snapshot,
   refreshStatus,
+  openingOperations = new Map(),
   onOpenReview,
   onOpenReviewId,
 }: MaintainerInboxProps): React.JSX.Element {
@@ -244,6 +251,7 @@ export function MaintainerInbox({
         onKeyDown={onListKeyDown}
         onSelectRow={selectRow}
         onActionRow={triggerAction}
+        openingOperations={openingOperations}
       />
       <InboxFooter
         pageSize={pageSize}
@@ -280,6 +288,7 @@ export function MaintainerInbox({
         onAction={() =>
           selected === undefined ? undefined : triggerAction(selected)
         }
+        openingOperations={openingOperations}
       />
     </div>
   );
@@ -720,6 +729,7 @@ function InboxRowsPanel({
   onKeyDown,
   onSelectRow,
   onActionRow,
+  openingOperations,
 }: {
   readonly listRef: React.RefObject<HTMLDivElement | null>;
   readonly rows: ReadonlyArray<InboxRow>;
@@ -731,6 +741,10 @@ function InboxRowsPanel({
   readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   readonly onSelectRow: (row: InboxRow) => void;
   readonly onActionRow: (row: InboxRow) => void;
+  readonly openingOperations: ReadonlyMap<
+    string,
+    Exclude<ReviewOpeningState, undefined>
+  >;
 }): React.JSX.Element {
   return (
     <>
@@ -779,6 +793,7 @@ function InboxRowsPanel({
                   selected={active}
                   onSelect={() => onSelectRow(row)}
                   onAction={() => onActionRow(row)}
+                  openingState={openingOperations.get(key)}
                 />
               );
             })}
@@ -900,6 +915,7 @@ function ReviewDetailsPanel({
   freshness,
   onToggleInspector,
   onAction,
+  openingOperations,
 }: {
   readonly inspectorOpen: boolean;
   readonly narrow: boolean;
@@ -907,7 +923,15 @@ function ReviewDetailsPanel({
   readonly freshness: InboxDataFreshness;
   readonly onToggleInspector: () => void;
   readonly onAction: () => void;
+  readonly openingOperations: ReadonlyMap<
+    string,
+    Exclude<ReviewOpeningState, undefined>
+  >;
 }): React.JSX.Element {
+  const openingState =
+    selected === undefined
+      ? undefined
+      : openingOperations.get(inboxIdentityKey(selected));
   return (
     <>
       <aside
@@ -922,6 +946,7 @@ function ReviewDetailsPanel({
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
             onAction={onAction}
+            {...(openingState === undefined ? {} : { openingState })}
           />
         </ScrollArea>
       </aside>
@@ -939,6 +964,7 @@ function ReviewDetailsPanel({
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
             onAction={onAction}
+            {...(openingState === undefined ? {} : { openingState })}
           />
         </SheetContent>
       </Sheet>
@@ -1005,127 +1031,16 @@ function InboxFreshness({
   );
 }
 
-function InboxRowItem({
-  row,
-  selected,
-  onSelect,
-  onAction,
-}: {
-  readonly row: InboxRow;
-  readonly selected: boolean;
-  readonly onSelect: () => void;
-  readonly onAction: () => void;
-}): React.JSX.Element {
-  const key = inboxIdentityKey(row);
-  return (
-    <button
-      id={`inbox-row-${key}`}
-      type="button"
-      role="option"
-      aria-selected={selected}
-      // Roving tabindex: only the selected option sits in the Tab order,
-      // the way a native `<select>`'s options do. Arrow keys move both the
-      // selection and real DOM focus (see `onListKeyDown` in
-      // `use-inbox-view.ts`); Tab never has to step through every row.
-      tabIndex={selected ? 0 : -1}
-      onClick={() => {
-        onSelect();
-        onAction();
-      }}
-      className={cn(
-        "block w-full content-auto border-l-2 border-transparent px-3 py-2 text-left transition-colors [contain-intrinsic-size:auto_60px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-        selected && "border-l-primary bg-primary/8",
-      )}
-    >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 min-[1280px]:grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem]">
-        <div className="flex min-w-0 items-start gap-2">
-          <GitPullRequest className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <p
-                data-slot="pull-request-title"
-                className="min-w-0 line-clamp-2 text-[13px] leading-5 font-medium"
-                title={`#${row.identity.number} ${row.title}`}
-              >
-                #{row.identity.number} {row.title}
-              </p>
-              {row.isDraft ? (
-                <Badge variant="outline" className="h-4 px-1 text-[10px]">
-                  Draft
-                </Badge>
-              ) : null}
-              {row.remoteState === "merged" ? (
-                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                  Merged
-                </Badge>
-              ) : null}
-            </div>
-            <PullRequestLabelColumn
-              labels={row.labels}
-              className="mt-1 min-[1280px]:hidden"
-              slot="pull-request-labels-mobile"
-            />
-          </div>
-        </div>
-        <PullRequestLabelColumn
-          labels={row.labels}
-          className="hidden min-[1280px]:flex"
-          slot="pull-request-label-column"
-        />
-        <span
-          className="hidden truncate text-[11px] text-muted-foreground min-[1280px]:block"
-          title={row.author}
-        >
-          {row.author}
-        </span>
-        <span className="hidden min-[1280px]:block">
-          <ChangeSize stats={row.changeStats} />
-        </span>
-        <span className="hidden min-[1280px]:block">
-          <CheckIcon overall={row.checks.overall} />
-        </span>
-        <span className="text-right text-[11px] leading-5 text-muted-foreground">
-          {relativeTime(row.updatedAt)}
-        </span>
-        <div className="col-span-2 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground min-[1280px]:hidden">
-          <CheckIcon overall={row.checks.overall} />
-          <span className="truncate">{row.author}</span>
-          <ChangeSize stats={row.changeStats} />
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function PullRequestLabelColumn({
-  labels,
-  className,
-  slot,
-}: {
-  readonly labels: InboxRow["labels"];
-  readonly className: string;
-  readonly slot: "pull-request-label-column" | "pull-request-labels-mobile";
-}): React.JSX.Element {
-  return (
-    <div
-      data-slot={slot}
-      className={cn("min-w-0 flex-col items-start gap-1", className)}
-    >
-      {labels.map((label) => (
-        <LabelChip key={label.name} label={label} />
-      ))}
-    </div>
-  );
-}
-
 function Inspector({
   row,
   freshness,
   onAction,
+  openingState,
 }: {
   readonly row?: InboxRow;
   readonly freshness: InboxDataFreshness;
   readonly onAction: () => void | undefined;
+  readonly openingState?: Exclude<ReviewOpeningState, undefined>;
 }): React.JSX.Element {
   if (row === undefined)
     return (
@@ -1216,13 +1131,21 @@ function Inspector({
         className="h-8 w-full text-xs"
         onClick={onAction}
         disabled={
-          freshness === "cached" &&
-          row.recommendedAction.kind === "open_merge_readiness"
+          openingState?.status === "opening" ||
+          (freshness === "cached" &&
+            row.recommendedAction.kind === "open_merge_readiness")
         }
       >
-        {actionIcon(row.recommendedAction.kind)}
-        {inboxActionLabel(row.recommendedAction.kind)}
+        <ReviewOpeningButtonContent state={openingState}>
+          {actionIcon(row.recommendedAction.kind)}
+          {inboxActionLabel(row.recommendedAction.kind)}
+        </ReviewOpeningButtonContent>
       </Button>
+      {openingState?.status === "error" ? (
+        <p aria-live="polite" className="text-xs text-destructive">
+          {openingState.error}
+        </p>
+      ) : null}
       <p className="text-[11px] leading-4 text-muted-foreground">
         Starting a review is read-only. Patchdesk requires a separate
         confirmation for every GitHub write.
@@ -1248,73 +1171,6 @@ function Detail({
   );
 }
 /** Check status as a single glyph, with the state kept for assistive technology. */
-function CheckIcon({
-  overall,
-}: {
-  readonly overall: InboxRow["checks"]["overall"];
-}): React.JSX.Element {
-  const icon =
-    overall === "passing" ? (
-      <CheckCircle2 className="size-3.5 text-emerald-700 dark:text-emerald-400" />
-    ) : overall === "failing" ? (
-      <CircleAlert className="size-3.5 text-rose-700 dark:text-rose-400" />
-    ) : overall === "pending" ? (
-      <Clock3 className="size-3.5 text-muted-foreground" />
-    ) : overall === "skipped" ? (
-      <CircleSlash className="size-3.5 text-muted-foreground" />
-    ) : (
-      <CircleDashed className="size-3.5 text-muted-foreground" />
-    );
-  return (
-    <span className="inline-flex items-center" title={`Checks ${overall}`}>
-      {icon}
-    </span>
-  );
-}
-
-/** Change size with the workbench diff colors, so scale reads before the title does. */
-function ChangeSize({
-  stats,
-}: {
-  readonly stats: InboxRow["changeStats"];
-}): React.JSX.Element {
-  const { additions, deletions, changedFiles } = stats;
-  if (
-    additions === undefined &&
-    deletions === undefined &&
-    changedFiles === undefined
-  )
-    return <span className="text-[11px] text-muted-foreground">—</span>;
-  return (
-    <span
-      className="inline-flex min-w-0 items-center gap-1.5 font-mono text-[11px] tabular-nums"
-      title={changeStatsText(stats)}
-    >
-      {changedFiles === undefined ? null : (
-        <span className="text-muted-foreground">
-          {changedFiles} {changedFiles === 1 ? "file" : "files"}
-        </span>
-      )}
-      {additions === undefined ? null : (
-        <span className="text-emerald-700 dark:text-emerald-400">
-          +{compactCount(additions)}
-        </span>
-      )}
-      {deletions === undefined ? null : (
-        <span className="text-rose-700 dark:text-rose-400">
-          -{compactCount(deletions)}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** Keeps large line counts inside the column; the title attribute carries the exact value. */
-function compactCount(value: number): string {
-  if (value < 1_000) return String(value);
-  if (value < 1_000_000) return `${Math.round(value / 100) / 10}k`;
-  return `${Math.round(value / 100_000) / 10}M`;
-}
 function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
   switch (kind) {
     case "run_review":
@@ -1344,14 +1200,6 @@ function changeStatsText(stats: InboxRow["changeStats"]): string {
     deletions === undefined ? undefined : `-${deletions}`,
   ].filter((value): value is string => value !== undefined);
   return parts.length === 0 ? "Not available" : parts.join(" · ");
-}
-function relativeTime(iso: string): string {
-  const timestamp = Date.parse(iso);
-  if (Number.isNaN(timestamp)) return "";
-  const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 1_440) return `${Math.round(minutes / 60)}h`;
-  return `${Math.round(minutes / 1_440)}d`;
 }
 function inboxPageSizeFrom(value: string | null): InboxPageSize | undefined {
   return INBOX_PAGE_SIZES.find((size) => String(size) === value);

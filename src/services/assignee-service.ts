@@ -8,6 +8,7 @@ import {
   withAvatarDataUri,
 } from "../adapters/storage/avatar-cache-store";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type {
   AssignableUser,
   PullRequestAssigneePermission,
@@ -28,6 +29,7 @@ import {
   pullRequestRefForSession,
   resolvePullRequestWritePermission,
   runGuardedMetadataWrite,
+  type PreparedMetadataWrite,
   type PullRequestMetadataListFailure,
   type PullRequestMetadataReadFailure,
   type PullRequestMetadataWriteFailure,
@@ -125,6 +127,10 @@ export class AssigneeService {
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
     private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly operations: Pick<
+      ReviewWriteOperationStore,
+      "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
+    >,
     /** Best-effort; see `AvatarRailDependencies`. Absent in tests/paths that never exercise avatar behaviour, in which case `list` returns every user with no `avatarDataUri`. */
     private readonly avatars?: AvatarRailDependencies,
   ) {}
@@ -134,16 +140,19 @@ export class AssigneeService {
     readonly reviewId: ReviewId;
     readonly command: AssigneeCommand;
   }): Promise<Result<AssigneeReceipt, AssigneeWriteFailure>> {
-    return await runGuardedMetadataWrite({
-      profileId: input.profileId,
-      reviewId: input.reviewId,
-      coordinator: this.writeCoordinator,
-      recentWrites: this.recentWrites,
-      now: this.now,
-      validate: () => validateLocalCommand(input.command),
-      write: () => this.executeUnlocked(input),
-      journalEntry: journalEntryFor,
-    });
+    return await runGuardedMetadataWrite<AssigneeReceipt, AssigneeWriteFailure>(
+      {
+        profileId: input.profileId,
+        reviewId: input.reviewId,
+        coordinator: this.writeCoordinator,
+        operations: this.operations,
+        recentWrites: this.recentWrites,
+        now: this.now,
+        validate: () => validateLocalCommand(input.command),
+        prepare: () => this.prepareWrite(input),
+        journalEntry: journalEntryFor,
+      },
+    );
   }
 
   /**
@@ -290,17 +299,23 @@ export class AssigneeService {
     });
     if (listed._tag === "err") return err("github_read_failed");
     const match = listed.value.users.find(
-      (user) => user.login === account.value.account,
+      (user) =>
+        user.login.toLowerCase() === account.value.account.toLowerCase(),
     );
     if (match === undefined) return err("github_read_failed");
     return ok({ id: match.id, login: match.login });
   }
 
-  private async executeUnlocked(input: {
+  private async prepareWrite(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly command: AssigneeCommand;
-  }): Promise<Result<AssigneeReceipt, AssigneeWriteFailure>> {
+  }): Promise<
+    Result<
+      PreparedMetadataWrite<AssigneeReceipt, AssigneeWriteFailure>,
+      AssigneeWriteFailure
+    >
+  > {
     const current = await this.gate.requireCurrentSession(
       input.profileId,
       input.reviewId,
@@ -345,7 +360,9 @@ export class AssigneeService {
       input.command._tag === "AddAssignees" ||
       input.command._tag === "AssignSelf"
     ) {
-      const resultantLogins = new Set(pullRequest.value.assignees ?? []);
+      if (pullRequest.value.assignees === undefined)
+        return err("github_read_failed");
+      const resultantLogins = new Set(pullRequest.value.assignees);
       for (const login of assigneeLogins) resultantLogins.add(login);
       // Enforced before ever calling GitHub so a request that would exceed
       // the cap fails with a distinct, nameable reason instead of a generic
@@ -354,25 +371,43 @@ export class AssigneeService {
         return err("assignee_cap_exceeded");
       if (this.github.addAssigneesToAssignable === undefined)
         return err("github_write_failed");
-      const written = await this.github.addAssigneesToAssignable({
-        profile: current.value.profile,
-        assignableId,
-        assigneeIds,
+      const writer = this.github.addAssigneesToAssignable;
+      return ok({
+        sessionId: current.value.session.id,
+        intent: { _tag: "AddAssignees" as const, logins: assigneeLogins },
+        write: async (): Promise<
+          Result<AssigneeReceipt, AssigneeWriteFailure>
+        > => {
+          const written = await writer({
+            profile: current.value.profile,
+            assignableId,
+            assigneeIds,
+          });
+          return written._tag === "err"
+            ? err(mapGitHubWriteFailure(written.error))
+            : ok({ _tag: "AssigneesAdded", added: assigneeLogins });
+        },
       });
-      return written._tag === "err"
-        ? err(mapGitHubWriteFailure(written.error))
-        : ok({ _tag: "AssigneesAdded", added: assigneeLogins });
     }
     if (this.github.removeAssigneesFromAssignable === undefined)
       return err("github_write_failed");
-    const written = await this.github.removeAssigneesFromAssignable({
-      profile: current.value.profile,
-      assignableId,
-      assigneeIds,
+    const writer = this.github.removeAssigneesFromAssignable;
+    return ok({
+      sessionId: current.value.session.id,
+      intent: { _tag: "RemoveAssignees" as const, logins: assigneeLogins },
+      write: async (): Promise<
+        Result<AssigneeReceipt, AssigneeWriteFailure>
+      > => {
+        const written = await writer({
+          profile: current.value.profile,
+          assignableId,
+          assigneeIds,
+        });
+        return written._tag === "err"
+          ? err(mapGitHubWriteFailure(written.error))
+          : ok({ _tag: "AssigneesRemoved", removed: assigneeLogins });
+      },
     });
-    return written._tag === "err"
-      ? err(mapGitHubWriteFailure(written.error))
-      : ok({ _tag: "AssigneesRemoved", removed: assigneeLogins });
   }
 }
 

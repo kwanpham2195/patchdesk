@@ -243,6 +243,41 @@ describe.each(pickers)(
       expect(write).toHaveBeenCalledTimes(2);
     });
 
+    it("shows scoped Updating feedback beside only the pending row", async () => {
+      const user = userEvent.setup();
+      let settle: () => void = () => undefined;
+      const write = vi.fn(
+        async () =>
+          await new Promise<void>((resolve) => {
+            settle = resolve;
+          }),
+      );
+      mount(READY, write);
+      await openPicker(user, trigger);
+      await user.click(
+        await screen.findByRole("checkbox", { name: detachedRow }),
+      );
+      expect(
+        document.querySelectorAll('[data-slot="picker-item-pending"]'),
+      ).toHaveLength(1);
+      expect(
+        screen
+          .getByRole("checkbox", { name: new RegExp(`^${detachedRow}`) })
+          .getAttribute("aria-disabled"),
+      ).toBe("true");
+      expect(
+        screen
+          .getByRole("checkbox", { name: attachedRow })
+          .getAttribute("aria-disabled"),
+      ).not.toBe("true");
+      settle();
+      await waitFor(() =>
+        expect(
+          document.querySelector('[data-slot="picker-item-pending"]'),
+        ).toBeNull(),
+      );
+    });
+
     it("keeps GitHub's own reason for a forbidden read, and says so when there is none", async () => {
       const user = userEvent.setup();
       const write = vi.fn(async () => undefined);

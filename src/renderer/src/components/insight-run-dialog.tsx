@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { Spinner } from "./ui/spinner";
 
 export type InsightRunDialogType = "analysis" | "walkthrough";
 export type InsightModelOption = {
@@ -41,6 +42,8 @@ export function InsightRunDialog({
   reasoning,
   codexActivationPending,
   codexActivationError,
+  pending,
+  errorMessage,
   onOpenChange,
   onProviderChange,
   onActivateCodex,
@@ -58,6 +61,8 @@ export function InsightRunDialog({
   readonly reasoning: InsightReasoning;
   readonly codexActivationPending: boolean;
   readonly codexActivationError: boolean;
+  readonly pending: boolean;
+  readonly errorMessage?: string;
   readonly onOpenChange: (open: boolean) => void;
   readonly onProviderChange: (provider: InsightProvider) => void;
   readonly onActivateCodex: () => void;
@@ -80,8 +85,16 @@ export function InsightRunDialog({
     "high",
   ];
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="insight-run-dialog">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!pending) onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent
+        data-testid="insight-run-dialog"
+        showCloseButton={!pending}
+      >
         <DialogHeader>
           <DialogTitle>{actionLabel}</DialogTitle>
           <DialogDescription>
@@ -89,6 +102,12 @@ export function InsightRunDialog({
             this bounded {noun} run.
           </DialogDescription>
         </DialogHeader>
+        {errorMessage === undefined ? null : (
+          <Alert variant="destructive">
+            <AlertTitle>Insight run did not start.</AlertTitle>
+            <AlertDescription>{errorMessage}</AlertDescription>
+          </Alert>
+        )}
         <div className="grid gap-4">
           <label
             className="grid gap-1.5 text-sm font-medium"
@@ -97,6 +116,7 @@ export function InsightRunDialog({
             Provider
             <Select
               value={provider}
+              disabled={pending}
               items={[
                 { label: "Pi", value: "pi" },
                 { label: "Codex CLI account", value: "codex-cli-account" },
@@ -127,7 +147,7 @@ export function InsightRunDialog({
               <p>Codex models are loaded only after this explicit action.</p>
               <Button
                 variant="outline"
-                disabled={codexActivationPending}
+                disabled={codexActivationPending || pending}
                 onClick={onActivateCodex}
               >
                 {codexActivationPending
@@ -150,7 +170,7 @@ export function InsightRunDialog({
                 variant="ghost"
                 size="sm"
                 className="justify-self-start"
-                disabled={codexActivationPending}
+                disabled={codexActivationPending || pending}
                 onClick={onRefreshCodexModels}
               >
                 {codexActivationPending
@@ -178,6 +198,7 @@ export function InsightRunDialog({
               options={models}
               value={model}
               onValueChange={onModelChange}
+              disabled={pending}
             />
           </label>
           <label
@@ -187,6 +208,7 @@ export function InsightRunDialog({
             Reasoning
             <Select
               value={reasoning}
+              disabled={pending}
               items={reasoningOptions.map((option) => ({
                 label: option,
                 value: option,
@@ -228,18 +250,30 @@ export function InsightRunDialog({
           </p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
           <Button
             data-testid="insight-run-confirm"
             disabled={
+              pending ||
               model === null ||
               (provider === "codex-cli-account" && models.length === 0)
             }
             onClick={onConfirm}
           >
-            Start run
+            {pending ? (
+              <>
+                <Spinner data-icon="inline-start" aria-hidden="true" />
+                Starting…
+              </>
+            ) : (
+              "Start run"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

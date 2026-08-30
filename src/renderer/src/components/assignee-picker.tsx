@@ -273,6 +273,14 @@ function AssigneePickerList({
                       className="size-5 text-[10px]"
                     />
                     {user.login}
+                    {busy ? (
+                      <span
+                        data-slot="picker-item-pending"
+                        className="text-[10px] text-muted-foreground"
+                      >
+                        Updating…
+                      </span>
+                    ) : null}
                   </FieldLabel>
                 </Field>
               </li>

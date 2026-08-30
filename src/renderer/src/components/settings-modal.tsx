@@ -29,6 +29,10 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { cn } from "../lib/utils";
+import type {
+  ProfileSwitchResult,
+  ProfileSwitchState,
+} from "../hooks/use-profile-switch";
 
 export type SettingsModalProps = {
   readonly open: boolean;
@@ -40,8 +44,11 @@ export type SettingsModalProps = {
   readonly onDiffThemeChange: (value: DiffThemePreferences) => void;
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
+  readonly profileSwitchState?: ProfileSwitchState;
+  readonly onProfileSwitch?: (
+    profileId: string,
+  ) => Promise<ProfileSwitchResult>;
   readonly opener?: HTMLElement | null | undefined;
-  readonly onProfileSwitchStart?: () => void;
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;
   readonly preferenceError?: string | undefined;
   readonly onRetryPreferences?: () => void;
@@ -234,7 +241,6 @@ export function SettingsModal({
                     }}
                     onSaveProfileReady={onSaveProfileReady}
                     onDiscardProfileReady={onDiscardProfileReady}
-                    onProfileSwitchStart={flowProps.onProfileSwitchStart}
                   />
                 </TabsContent>
               </ScrollArea>

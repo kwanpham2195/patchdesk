@@ -31,11 +31,7 @@ import {
   type WriteFlow,
 } from "./write-invariant-harness";
 import { conversationFlows } from "./write-invariant-conversation-flows";
-import {
-  issueAgainstUnavailable,
-  issueTwiceAgainstSetBackedRemote,
-  metadataFlows,
-} from "./write-invariant-metadata-flows";
+import { metadataFlows } from "./write-invariant-metadata-flows";
 
 /**
  * One table over EVERY GitHub write entry point in the application, asserting
@@ -61,12 +57,9 @@ import {
  * them pass. Their exact observed failure is recorded in
  * `.agents/PLANS/program/reports/E12.md`; the one-line reason is on the row.
  *
- * The seven pull-request metadata writes — labels, assignees, reviewers — are
- * NOT rows in this table. They are exempt, and the exemption is executable:
- * see the second `describe` below and the file docstring of
- * `write-invariant-metadata-flows.ts` for why holding them to invariant 2
- * would make a timed-out label click worse rather than better, and for the
- * two places the exemption still fails a future appending metadata write.
+ * Pull-request metadata writes are ordinary rows in this table. Replaying a
+ * reviewer request can notify a human again, and all metadata uncertainty
+ * must retain the same durable no-replay lock as conversation writes.
  */
 
 const writeFlows: ReadonlyArray<WriteFlow> = [
@@ -149,6 +142,7 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
     },
   },
   ...conversationFlows(),
+  ...metadataFlows,
   {
     name: "merge",
     run: async () => {
@@ -180,40 +174,38 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
           }),
         mergePullRequest: async () => err(unavailable),
       };
+      // SAFETY: the merge controller reads only the deterministic requireFresh result supplied here.
+      const mergeWriteGate = {
+        requireFresh: async () =>
+          ok({
+            profile: values.profile,
+            review: values.review,
+            session: mergeSession,
+            snapshot: values.snapshot,
+          }),
+      } as never;
+      // SAFETY: the merge controller reads only the recorded Review stores and current-Analysis absence supplied here.
+      const mergeDependencies = {
+        reviews: {
+          load: async () => ok(values.review),
+          save: async () => ok(undefined),
+        },
+        insights: {
+          loadTyped: async () =>
+            err({
+              _tag: "StorageFailure",
+              operation: "read",
+              reason: "not_found",
+            }),
+        },
+      } as never;
       const controller = new MergeWriteController(
-        // SAFETY: the recorded gateway implements exactly the reads and the one
-        // write this flow performs; no other gateway method is reached.
-        recorded(trace, gateway) as never,
+        recorded(trace, gateway),
         ["squash"],
         now,
         operations,
-        // SAFETY: this fixture gate answers with the parsed fixture Review and
-        // session; the controller reads no other gate field.
-        {
-          requireFresh: async () =>
-            ok({
-              profile: values.profile,
-              review: values.review,
-              session: mergeSession,
-              snapshot: values.snapshot,
-            }),
-        } as never,
-        {
-          reviews: {
-            load: async () => ok(values.review),
-            save: async () => ok(undefined),
-          },
-          // SAFETY: this fixture answers the one Insight read the merge gate
-          // makes -- the current Analysis -- with "no Analysis stored".
-          insights: {
-            loadTyped: async () =>
-              err({
-                _tag: "StorageFailure",
-                operation: "read",
-                reason: "not_found",
-              }),
-          },
-        } as never,
+        mergeWriteGate,
+        mergeDependencies,
         new ReviewOperationCoordinator(),
       );
       const command = () =>
@@ -293,70 +285,5 @@ describe("every GitHub write persists intent before the remote boundary", () => 
         );
       },
     );
-  }
-});
-
-/**
- * The inverted rows: the seven metadata writes, asserting the property that
- * makes their exemption from the two invariants above SAFE, rather than
- * asserting invariants that would make a timed-out label click worse.
- *
- * Read together, the three assertions per row say: the flow issues exactly
- * one write, that write is a keyed set operation, and issuing it again is a
- * no-op on the member set. So a crash between the request and the response
- * leaves either "applied" or "not applied" — never "half applied", and never
- * a duplicate — and the user's re-click is free. That is why these flows need
- * no durable intent and must not be locked into `OutcomeUnknown`.
- *
- * `reviewers: request` is the one row that pays something for its re-click,
- * and it says so in a passing assertion rather than in a comment.
- */
-describe("every pull request metadata write is an idempotent set operation", () => {
-  for (const flow of metadataFlows) {
-    it(`${flow.name} issues exactly one gateway write and never retries it itself`, async () => {
-      const writes = await issueAgainstUnavailable(flow);
-      expect(
-        writes,
-        `${flow.name} did not issue exactly one gateway write, so a crash could leave it half applied`,
-      ).toHaveLength(1);
-    });
-
-    it(`${flow.name} addresses its members by key, so a duplicate is not representable`, async () => {
-      const run = await issueTwiceAgainstSetBackedRemote(flow);
-      expect(
-        run.operations.length,
-        `${flow.name} reached no modelled metadata write: ${flow.reason}`,
-      ).toBe(2);
-      const [first, second] = run.operations;
-      expect(
-        first?.members,
-        `${flow.name} named no members, so its write is not keyed`,
-      ).not.toEqual([]);
-      expect(
-        second,
-        `${flow.name} did not re-issue the identical set operation`,
-      ).toEqual(first);
-    });
-
-    it(`${flow.name} leaves the member set unchanged when issued a second time`, async () => {
-      const run = await issueTwiceAgainstSetBackedRemote(flow);
-      expect(
-        run.afterSecond,
-        `${flow.name} changed the member set on the second issue: ${flow.reason}`,
-      ).toEqual(run.afterFirst);
-      // The one honest asymmetry: a re-request re-opens an answered review
-      // request and pings the reviewer again, so its second issue is NOT free.
-      if (flow.retryCost === "notifies-a-human") {
-        expect(
-          run.notifiedBySecond,
-          `${flow.name} is recorded as notifying a human on retry: ${flow.reason}`,
-        ).toBeGreaterThan(0);
-        return;
-      }
-      expect(
-        run.notifiedBySecond,
-        `${flow.name} notified somebody on the second issue, so its retry is not free`,
-      ).toBe(0);
-    });
   }
 });

@@ -8,6 +8,7 @@ import {
 import type { LocalApiConfiguration } from "./local-api-configuration";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
+import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import { WorkspaceOriginFinder } from "../adapters/github/workspace-origin-finder";
 import { systemNow } from "../adapters/process/system-clock";
 import type {
@@ -30,6 +31,7 @@ import { AvatarSyncService } from "../services/avatar-sync-service";
 import { ReviewWorkbenchController } from "../services/review-workbench-controller";
 import { ReviewRefreshService } from "../services/review-refresh-service";
 import { ReviewObservationService } from "../services/review-observation-service";
+import { ReviewWriteRecoveryService } from "../services/review-write-recovery-service";
 import { ReviewSessionPreparation } from "../services/review-session-preparation";
 import { ReviewWorkbenchProjectionService } from "../services/review-workbench-projection";
 import { ReviewCommitService } from "../services/review-commit-service";
@@ -62,6 +64,7 @@ export type LocalApiContainer = {
   readonly reviewDiffSources: ReviewDiffSourceService;
   readonly mergeWrites: MergeWriteController | undefined;
   readonly inlineConversations: InlineConversationService;
+  readonly reviewWriteRecovery: ReviewWriteRecoveryService;
   readonly labelWrites: LabelService;
   readonly assigneeWrites: AssigneeService;
   readonly reviewerWrites: ReviewerService;
@@ -121,6 +124,7 @@ export async function buildLocalApiContainer(
   if (configuredProfiles._tag === "err") return { _tag: "recovery-failed" };
   const reviewOperations =
     configuration.reviewOperations ?? new ReviewOperationCoordinator();
+  const reviewWriteOperations = new ReviewWriteOperationStore(paths);
 
   const recovery = new ReviewRecoveryService(profiles, sessions, systemNow, {
     paths,
@@ -162,6 +166,7 @@ export async function buildLocalApiContainer(
     reviews,
     insights,
     paths,
+    reviewWriteOperations,
   );
   const inlineConversations = new InlineConversationService(
     reviewWriteGate,
@@ -169,6 +174,15 @@ export async function buildLocalApiContainer(
     reviewOperations,
     systemNow,
     recentWriteJournals,
+    reviewWriteOperations,
+  );
+  const reviewWriteRecovery = new ReviewWriteRecoveryService(
+    reviewWriteGate,
+    github,
+    reviewWriteOperations,
+    recentWriteJournals,
+    reviewOperations,
+    systemNow,
   );
   const labelWrites = new LabelService(
     reviewWriteGate,
@@ -176,6 +190,7 @@ export async function buildLocalApiContainer(
     reviewOperations,
     systemNow,
     recentWriteJournals,
+    reviewWriteOperations,
   );
   // Shared with `reviewRefresh` below: one `AvatarSyncService` per profile
   // process, not one per consumer, so every caller warms and reads the same
@@ -192,6 +207,7 @@ export async function buildLocalApiContainer(
     reviewOperations,
     systemNow,
     recentWriteJournals,
+    reviewWriteOperations,
     avatarRailDependencies,
   );
   const reviewerWrites = new ReviewerService(
@@ -200,6 +216,7 @@ export async function buildLocalApiContainer(
     reviewOperations,
     systemNow,
     recentWriteJournals,
+    reviewWriteOperations,
     avatarRailDependencies,
   );
   const pendingReviewGateway = isGitHubPendingReviewGateway(github)
@@ -322,6 +339,9 @@ export async function buildLocalApiContainer(
     reviewWriteGate,
     github,
     reviewOperations,
+    systemNow,
+    recentWriteJournals,
+    reviewWriteOperations,
     async ({ profileId, reviewId }) => {
       const refreshed = await reviewRefresh.refresh({ profileId, reviewId });
       return refreshed._tag === "ok" ? ok(undefined) : err(refreshed.error);
@@ -395,6 +415,7 @@ export async function buildLocalApiContainer(
       reviewDiffSources,
       mergeWrites,
       inlineConversations,
+      reviewWriteRecovery,
       labelWrites,
       assigneeWrites,
       reviewerWrites,

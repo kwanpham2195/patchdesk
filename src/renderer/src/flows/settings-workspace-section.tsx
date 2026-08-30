@@ -17,6 +17,11 @@ import {
   FieldSet,
 } from "../components/ui/field";
 import { Input } from "../components/ui/input";
+import { Spinner } from "../components/ui/spinner";
+import type {
+  ProfileSwitchResult,
+  ProfileSwitchState,
+} from "../hooks/use-profile-switch";
 import {
   Tooltip,
   TooltipContent,
@@ -77,7 +82,10 @@ type WorkspaceProfileSectionProps = {
     | ((save: () => Promise<boolean>) => void)
     | undefined;
   readonly onDiscardProfileReady: ((discard: () => void) => void) | undefined;
-  readonly onProfileSwitchStart: (() => void) | undefined;
+  readonly profileSwitchState: ProfileSwitchState | undefined;
+  readonly onProfileSwitch:
+    | ((profileId: string) => Promise<ProfileSwitchResult>)
+    | undefined;
 };
 
 /**
@@ -97,7 +105,8 @@ export function WorkspaceProfileSection({
   onProfileSwitchRequest,
   onSaveProfileReady,
   onDiscardProfileReady,
-  onProfileSwitchStart,
+  profileSwitchState,
+  onProfileSwitch,
 }: WorkspaceProfileSectionProps): React.JSX.Element | null {
   const {
     profileDraft,
@@ -121,7 +130,7 @@ export function WorkspaceProfileSection({
     onProfileSwitchRequest,
     onSaveProfileReady,
     onDiscardProfileReady,
-    onProfileSwitchStart,
+    onProfileSwitch,
   });
 
   const { reviewingAs, recheck } = useReviewingAsProbe(
@@ -215,6 +224,25 @@ export function WorkspaceProfileSection({
                   </SelectGroup>
                 </SelectContent>
               </Select>
+              {profileSwitchState?.pendingOwner === "settings" ? (
+                <p
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground"
+                  role="status"
+                >
+                  <Spinner aria-hidden="true" />
+                  Switching to{" "}
+                  {profiles.find(
+                    (profile) =>
+                      profile.id === profileSwitchState.pendingTarget,
+                  )?.label ?? "profile"}
+                  …
+                </p>
+              ) : null}
+              {profileSwitchState?.error?.owner === "settings" ? (
+                <p className="text-sm text-destructive" role="alert">
+                  {profileSwitchState.error.message}
+                </p>
+              ) : null}
             </Field>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={startNewProfile}>
@@ -288,10 +316,7 @@ export function WorkspaceProfileSection({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
-            <WatchlistToggleStatus
-              error={watchlistToggle.error}
-              feedback={watchlistToggle.feedback}
-            />
+            <WatchlistToggleStatus feedback={watchlistToggle.feedback} />
             <ProfileListEditor
               label="Workspace roots"
               field="workspaceRoots"
@@ -313,7 +338,9 @@ export function WorkspaceProfileSection({
                       <RepositoryChecklist
                         entries={byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES}
                         isWatched={isWatched}
-                        pending={watchlistToggle.pending}
+                        pendingKeys={watchlistToggle.pendingKeys}
+                        errorsByKey={watchlistToggle.errorsByKey}
+                        draftWatchedByKey={watchlistToggle.draftWatchedByKey}
                         onToggle={handleToggle}
                         ariaLabel={`Repositories under ${trimmedRoot}`}
                       />
@@ -326,7 +353,9 @@ export function WorkspaceProfileSection({
               <WatchedOutsideRootsSection
                 entries={other}
                 isWatched={isWatched}
-                pending={watchlistToggle.pending}
+                pendingKeys={watchlistToggle.pendingKeys}
+                errorsByKey={watchlistToggle.errorsByKey}
+                draftWatchedByKey={watchlistToggle.draftWatchedByKey}
                 onToggle={handleToggle}
               />
             )}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import type {
   GitHubComment,
@@ -9,6 +9,9 @@ import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Spinner } from "./ui/spinner";
+import { Textarea } from "./ui/textarea";
 import {
   ConversationThreadCard,
   type ConversationThreadCardData,
@@ -34,6 +37,11 @@ type GeneralThreadOverrides = {
   readonly onReply?: (threadId: string, body: string) => Promise<string | void>;
   readonly onEditComment?: (commentId: string, body: string) => Promise<void>;
   readonly onDeleteComment?: (commentId: string) => Promise<void>;
+  readonly dismissedReviewIds: ReadonlySet<string>;
+  readonly onDismissReview?: (
+    publishedReviewId: string,
+    message: string,
+  ) => Promise<void>;
 };
 
 export function Conversation({
@@ -60,10 +68,14 @@ export function Conversation({
   const [deletedCommentIds, setDeletedCommentIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
+  const [dismissedReviewIds, setDismissedReviewIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
 
   const setThreadState = conversationActions?.setThreadState;
   const editComment = conversationActions?.editComment;
   const deleteComment = conversationActions?.deleteComment;
+  const dismissReview = conversationActions?.dismissReview;
 
   const onSetState: GeneralThreadOverrides["onSetState"] =
     setThreadState === undefined
@@ -98,15 +110,26 @@ export function Conversation({
             return next;
           });
         };
+  const onDismissReview: GeneralThreadOverrides["onDismissReview"] =
+    dismissReview === undefined
+      ? undefined
+      : async (publishedReviewId, message) => {
+          await dismissReview(publishedReviewId, message);
+          setDismissedReviewIds((current) =>
+            new Set(current).add(publishedReviewId),
+          );
+        };
   const generalThreadOverrides: GeneralThreadOverrides = {
     resolvedThreads,
     editedBodies,
     deletedCommentIds,
+    dismissedReviewIds,
     ...definedProps({
       onReply: conversationActions?.replyToThread,
       onSetState,
       onEditComment,
       onDeleteComment,
+      onDismissReview,
     }),
   };
 
@@ -236,7 +259,17 @@ function ConversationTimelineEntry({
     case "ReviewSummary":
       // SAFETY: the wire review schema validates `submittedAt` as an ISO
       // timestamp and otherwise matches `PublishedReview` field for field.
-      return <ReviewSummaryEntry review={entry.review as PublishedReview} />;
+      return (
+        <ReviewSummaryEntry
+          review={entry.review as PublishedReview}
+          dismissed={generalThreadOverrides.dismissedReviewIds.has(
+            entry.review.id,
+          )}
+          {...definedProps({
+            onDismiss: generalThreadOverrides.onDismissReview,
+          })}
+        />
+      );
     case "GeneralThread":
       return (
         <GeneralThreadEntry
@@ -272,16 +305,28 @@ function IssueCommentEntry({
 
 function ReviewSummaryEntry({
   review,
+  dismissed,
+  onDismiss,
 }: {
   readonly review: PublishedReview;
+  readonly dismissed: boolean;
+  readonly onDismiss?: (
+    publishedReviewId: string,
+    message: string,
+  ) => Promise<void>;
 }): React.JSX.Element {
+  const [editingDismissal, setEditingDismissal] = useState(false);
+  const [message, setMessage] = useState("");
+  const [dismissing, setDismissing] = useState(false);
+  const dismissingRef = useRef(false);
+  const [error, setError] = useState<string>();
   const verdictLabel =
-    review.event === "APPROVED"
-      ? "Approved"
-      : review.event === "CHANGES_REQUESTED"
-        ? "Changes requested"
-        : review.event === "DISMISSED"
-          ? "Dismissed"
+    dismissed || review.event === "DISMISSED"
+      ? "Dismissed"
+      : review.event === "APPROVED"
+        ? "Approved"
+        : review.event === "CHANGES_REQUESTED"
+          ? "Changes requested"
           : "Commented";
   return (
     <div className="flex gap-3 border-b py-3">
@@ -304,6 +349,73 @@ function ReviewSummaryEntry({
             <PullRequestDescriptionPreview markdown={review.body} />
           </div>
         )}
+        {onDismiss !== undefined &&
+        review.canDismiss &&
+        !dismissed &&
+        review.event !== "DISMISSED" ? (
+          editingDismissal ? (
+            <div className="mt-2">
+              <Textarea
+                aria-label="Dismissal reason"
+                value={message}
+                disabled={dismissing}
+                onChange={(event) => setMessage(event.target.value)}
+              />
+              {error === undefined ? null : (
+                <p role="alert" className="mt-1 text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              <div className="mt-2 flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={dismissing || message.trim().length === 0}
+                  onClick={async () => {
+                    if (dismissingRef.current || message.trim().length === 0)
+                      return;
+                    dismissingRef.current = true;
+                    setDismissing(true);
+                    setError(undefined);
+                    try {
+                      await onDismiss(review.id, message);
+                      setEditingDismissal(false);
+                    } catch {
+                      setError("Patchdesk could not dismiss this review.");
+                    } finally {
+                      dismissingRef.current = false;
+                      setDismissing(false);
+                    }
+                  }}
+                >
+                  {dismissing ? (
+                    <>
+                      <Spinner data-icon="inline-start" /> Dismissing…
+                    </>
+                  ) : (
+                    "Dismiss review"
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={dismissing}
+                  onClick={() => setEditingDismissal(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="xs"
+              variant="link"
+              className="h-auto p-0 text-xs text-destructive"
+              onClick={() => setEditingDismissal(true)}
+            >
+              Dismiss review
+            </Button>
+          )
+        ) : null}
       </div>
     </div>
   );

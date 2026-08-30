@@ -12,6 +12,7 @@ import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
+import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import {
   sessionRepresentsReview,
   type ReviewFreshness,
@@ -29,6 +30,7 @@ import type {
 } from "../domain/github-context";
 import {
   createReviewId,
+  parseGitHubLogin,
   type GitHubHost,
   type GitHubOwner,
   type GitSha,
@@ -86,8 +88,30 @@ type WorkbenchSessionProjection = {
     readonly headSha: GitSha;
   };
 };
+/** Bounded renderer view of the one durable Review write awaiting recovery. */
+type RemoteWriteRecoveryProjection = {
+  readonly operation:
+    | "CreateComment"
+    | "Reply"
+    | "SetThreadState"
+    | "EditComment"
+    | "DeleteComment"
+    | "AddLabels"
+    | "RemoveLabels"
+    | "AddAssignees"
+    | "RemoveAssignees"
+    | "RequestReviewers"
+    | "RemoveReviewers"
+    | "EditPublishedComment"
+    | "DeletePublishedComment"
+    | "DismissPublishedReview";
+  readonly resolution: "check_required" | "manual_resolution_required";
+};
+
 export type ReviewWorkbenchProjection = {
   readonly state: "review";
+  /** Configured GitHub account identity used to verify self-assignment receipts. */
+  readonly viewerLogin: string;
   readonly review: {
     readonly id: ReviewId;
     readonly status: "open" | "merged" | "closed";
@@ -120,6 +144,7 @@ export type ReviewWorkbenchProjection = {
   readonly checks: CheckSummary;
   readonly mergeReadiness: MergeReadiness;
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
+  readonly remoteWriteRecovery?: RemoteWriteRecoveryProjection;
 };
 
 export type LoadWorkbenchInput = {
@@ -158,6 +183,7 @@ export class ReviewWorkbenchProjectionService {
     private readonly reviews: Pick<ReviewStore, "load">,
     private readonly insights: Pick<InsightStore, "loadTyped">,
     private readonly paths: PatchdeskPaths,
+    private readonly writeOperations: Pick<ReviewWriteOperationStore, "load">,
   ) {
     this.retainedInsights = new RetainedInsightReader(
       this.sessions,
@@ -310,6 +336,9 @@ export class ReviewWorkbenchProjectionService {
       readonly unavailable: boolean;
     },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
+    const viewerLogin = parseGitHubLogin(profile.ghAccount);
+    if (viewerLogin._tag === "err")
+      return err({ _tag: "SessionStorageUnavailable" });
     const [fullPatch, storedInsights] = await Promise.all([
       readFile(session.patchPath, "utf8").catch(() => undefined),
       this.retainedInsights.loadStoredInsights(session),
@@ -426,14 +455,16 @@ export class ReviewWorkbenchProjectionService {
       storedInsights.value.walkthroughArtifactStatus,
     );
     const reviewId = createReviewId(session.key);
-    const stableReview = await this.reviews.load(
-      session.key.profileId,
-      reviewId,
-    );
+    const [stableReview, activeWrite] = await Promise.all([
+      this.reviews.load(session.key.profileId, reviewId),
+      this.writeOperations.load(session.key.profileId, reviewId),
+    ]);
     if (stableReview._tag === "err")
       return stableReview.error.reason === "not_found"
         ? err({ _tag: "ReviewNotFound" })
         : err({ _tag: "SessionStorageUnavailable" });
+    if (activeWrite._tag === "err")
+      return err({ _tag: "SessionStorageUnavailable" });
     if (
       stableReview.value.id !== reviewId ||
       stableReview.value.currentSessionId !== session.id ||
@@ -462,6 +493,7 @@ export class ReviewWorkbenchProjectionService {
 
     const projection: ReviewWorkbenchProjection = {
       state: "review",
+      viewerLogin: viewerLogin.value,
       review: { id: reviewId, status: reviewStatus },
       session: projectSession(session),
       revision,
@@ -481,6 +513,18 @@ export class ReviewWorkbenchProjectionService {
       checks,
       mergeReadiness,
       mergeReasons,
+      ...definedProps({
+        remoteWriteRecovery:
+          activeWrite.value === undefined
+            ? undefined
+            : {
+                operation: activeWrite.value.intent._tag,
+                resolution:
+                  activeWrite.value.state._tag === "OutcomeUnknown"
+                    ? activeWrite.value.state.resolution
+                    : "check_required",
+              },
+      }),
       ...definedProps({
         localCheckout: projectLocalCheckoutWarning(
           session.localCheckoutWarning,

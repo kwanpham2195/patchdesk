@@ -15,17 +15,15 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
-import { PatchdeskApiError, requestJson } from "../api-client";
+import { requestJson } from "../api-client";
 import {
   useApiProbe,
   useEnvironmentCheck,
   type ApiProbeState,
 } from "../hooks/use-api-probe";
-import { useBusy } from "../hooks/use-busy";
 import {
   parseGitHubAccessCheckResponse,
   parseRepositoryLabelListResponse,
-  parseWorkbenchResponse,
 } from "../renderer-contracts";
 import type { InboxFreshnessLabel } from "../inbox-freshness";
 import {
@@ -47,6 +45,8 @@ import type {
   RepositoryLabelListResponse,
 } from "../renderer-contracts";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
+import { definedProps } from "../../../domain/defined-props";
+import { useInboxReviewOpening } from "./use-inbox-review-opening";
 
 export function InboxFlow({
   destination,
@@ -114,16 +114,13 @@ export function InboxFlow({
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenWorkbench: (workbench: WorkbenchPayload) => void;
 }): React.JSX.Element {
-  const [openedPr, setOpenedPr] = useState<string>();
-  const [openError, setOpenError] = useState<string>();
-  const dashboardProfileId = dashboard?.profile.id;
-  const { runBusy } = useBusy();
-
-  // Feeds the label filter popover the Selected repository's real,
-  // repository-wide labels (`GET /v1/inbox/labels`) rather than deriving
-  // them from the loaded page — mirrors `useReviewMetadataActions.fetchLabels`
-  // for the same read. Undefined only before a repository is selected; the
-  // popover withholds its trigger entirely in that case.
+  const {
+    openedPr,
+    openError,
+    openingOperations,
+    openInboxRow,
+    openStoredReviewById,
+  } = useInboxReviewOpening({ dashboard, onOpenWorkbench });
   const fetchInboxLabels = useCallback(async (): Promise<
     RepositoryLabelListResponse | undefined
   > => {
@@ -133,122 +130,16 @@ export function InboxFlow({
       owner: selectedRepository.owner,
       repo: selectedRepository.repo,
     });
-    const value = await requestJson(`/v1/inbox/labels?${query.toString()}`);
-    return parseRepositoryLabelListResponse(value);
+    return parseRepositoryLabelListResponse(
+      await requestJson(`/v1/inbox/labels?${query.toString()}`),
+    );
   }, [selectedRepository]);
   const labelActions: InboxLabelActions | undefined =
     selectedRepository === undefined
       ? undefined
       : { fetchLabels: fetchInboxLabels };
+  const dashboardProfileId = dashboard?.profile.id;
 
-  type PrRef = {
-    readonly host?: string;
-    readonly owner: string;
-    readonly repo: string;
-    readonly number: number;
-  };
-
-  const openPullRequest = useCallback(
-    async (
-      pr: PrRef,
-      profileId = dashboard?.profile.id,
-      endpoint:
-        | "/v1/reviews/open"
-        | "/v1/reviews/open-merged" = "/v1/reviews/open",
-    ): Promise<void> => {
-      setOpenedPr(undefined);
-      setOpenError(undefined);
-      await runBusy(async () => {
-        try {
-          const value = await requestJson(endpoint, {
-            method: "POST",
-            body: {
-              profileId,
-              host: pr.host ?? dashboard?.profile.githubHost ?? "github.com",
-              owner: pr.owner,
-              repo: pr.repo,
-              number: pr.number,
-            },
-          });
-          const parsed = parseWorkbenchResponse(value);
-          if (parsed === undefined)
-            throw new Error("Invalid workbench projection");
-          setOpenedPr(`${pr.owner}/${pr.repo}#${pr.number}`);
-          onOpenWorkbench(parsed);
-        } catch (cause: unknown) {
-          // Mirrors the dashboard's `github_auth` copy above, adapted from
-          // refreshing pull requests to opening one: the generic "auth" API
-          // message doesn't name the fix, and opening a Review is exactly
-          // where a missing profile credential first becomes user-visible.
-          const detail =
-            cause instanceof PatchdeskApiError && cause.kind === "auth"
-              ? "GitHub authentication is required to open this Review. Run gh auth login for the exact GitHub account entered in Settings -> Workspace."
-              : cause instanceof Error
-                ? cause.message
-                : String(cause);
-          setOpenError(
-            `Could not prepare ${pr.owner}/${pr.repo}#${pr.number}. ${detail}`,
-          );
-        }
-      }, "Opening pull request…");
-    },
-    [
-      dashboard?.profile.githubHost,
-      dashboard?.profile.id,
-      onOpenWorkbench,
-      runBusy,
-    ],
-  );
-
-  const openStoredReview = useCallback(
-    async (
-      profileId: string,
-      reference: { readonly reviewId: string },
-      identity?: PrRef,
-      isActive: () => boolean = () => true,
-    ): Promise<void> => {
-      await runBusy(async () => {
-        try {
-          const value = await requestJson("/v1/reviews/load", {
-            method: "POST",
-            body: { profileId, ...reference },
-          });
-          const parsed = parseWorkbenchResponse(value);
-          if (parsed === undefined) {
-            if (isActive())
-              setOpenError(
-                "Could not open the saved review. The review projection could not be validated; refresh the review and try again.",
-              );
-            return;
-          }
-          if (!isActive()) return;
-          onOpenWorkbench(parsed);
-        } catch (cause: unknown) {
-          // The stored review cannot be loaded: its record is missing or its
-          // snapshot no longer parses. Opening by PR identity heals or recreates
-          // it, and returns the same projection for a healthy review.
-          if (identity !== undefined) {
-            await openPullRequest(identity);
-            return;
-          }
-          const detail = cause instanceof Error ? cause.message : String(cause);
-          setOpenError(`Could not open the saved review. ${detail}`);
-        }
-      }, "Loading review…");
-    },
-    [onOpenWorkbench, openPullRequest, runBusy],
-  );
-  const openStoredReviewById = useCallback(
-    async (
-      profileId: string,
-      reviewId: string,
-      identity?: PrRef,
-      isActive: () => boolean = () => true,
-    ): Promise<void> => {
-      await openStoredReview(profileId, { reviewId }, identity, isActive);
-    },
-    [openStoredReview],
-  );
   useEffect(() => {
     if (
       destination !== "workbench" ||
@@ -257,16 +148,15 @@ export function InboxFlow({
     )
       return;
     let active = true;
-    void openStoredReviewById(
-      dashboardProfileId,
-      reviewId,
-      undefined,
-      () => active,
-    );
+    void openStoredReviewById(dashboardProfileId, reviewId, () => active);
     return () => {
       active = false;
     };
   }, [dashboardProfileId, destination, openStoredReviewById, reviewId]);
+
+  const rowOpenError = [...openingOperations.values()].find(
+    ({ status }) => status === "error",
+  )?.error;
 
   if (inbox === undefined || dashboard === undefined)
     return state === "loading" ? (
@@ -276,7 +166,7 @@ export function InboxFlow({
         state={state}
         onRefresh={onRefresh}
         onSettings={onSettings}
-        {...(openError === undefined ? {} : { openError })}
+        {...definedProps({ openError: openError ?? rowOpenError })}
       />
     );
 
@@ -305,16 +195,9 @@ export function InboxFlow({
       onRepositoryChange={onRepositoryChange}
       onPreviousInboxPage={onPreviousInboxPage}
       onNextInboxPage={onNextInboxPage}
+      openingOperations={openingOperations}
       onSettings={onSettings}
-      onOpenReview={(row) =>
-        void openPullRequest(
-          row.identity,
-          undefined,
-          row.recommendedAction.kind === "open_merged_review"
-            ? "/v1/reviews/open-merged"
-            : "/v1/reviews/open",
-        )
-      }
+      onOpenReview={openInboxRow}
       onOpenReviewId={(savedReviewId) => {
         const row = inbox.inbox.rows.find(
           (candidate) =>
@@ -322,11 +205,7 @@ export function InboxFlow({
               candidate.recommendedAction.kind === "open_merge_readiness") &&
             candidate.recommendedAction.reviewId === savedReviewId,
         );
-        void openStoredReviewById(
-          dashboard.profile.id,
-          savedReviewId,
-          row?.identity,
-        );
+        if (row !== undefined) openInboxRow(row);
       }}
     />
   );
@@ -353,6 +232,7 @@ function InboxScreen({
   onRepositoryChange,
   onPreviousInboxPage,
   onNextInboxPage,
+  openingOperations,
   refreshStatus,
   onSettings,
   onOpenReview,
@@ -382,6 +262,10 @@ function InboxScreen({
   readonly onRepositoryChange: (repository: RepositoryIdentity) => void;
   readonly onPreviousInboxPage: () => void;
   readonly onNextInboxPage: () => void;
+  readonly openingOperations: ReadonlyMap<
+    string,
+    { readonly status: "opening" | "error"; readonly error?: string }
+  >;
   readonly refreshStatus: InboxFreshnessLabel;
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenReview: (row: InboxResponse["inbox"]["rows"][number]) => void;
@@ -449,6 +333,7 @@ function InboxScreen({
           onPageSizeChange={onInboxPageSizeChange}
           onPreviousPage={onPreviousInboxPage}
           onNextPage={onNextInboxPage}
+          openingOperations={openingOperations}
           onOpenReview={onOpenReview}
           onOpenReviewId={onOpenReviewId}
         />

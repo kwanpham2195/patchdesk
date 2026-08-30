@@ -716,16 +716,16 @@ function containsRecentWrites(
       );
     }
     if (write._tag === "AssigneeChange") {
-      const assigneeLogins = new Set(snapshot.pullRequest.assignees ?? []);
+      if (snapshot.pullRequest.assignees === undefined) return false;
+      const assigneeLogins = new Set(snapshot.pullRequest.assignees);
       return (
         write.added.every((login) => assigneeLogins.has(login)) &&
         write.removed.every((login) => !assigneeLogins.has(login))
       );
     }
     if (write._tag === "ReviewerChange") {
-      const requestedLogins = new Set(
-        snapshot.pullRequest.requestedReviewers ?? [],
-      );
+      if (snapshot.pullRequest.requestedReviewers === undefined) return false;
+      const requestedLogins = new Set(snapshot.pullRequest.requestedReviewers);
       return (
         write.requested.every((login) => requestedLogins.has(login)) &&
         write.removed.every((login) => !requestedLogins.has(login))

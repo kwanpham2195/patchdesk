@@ -31,8 +31,13 @@ const WORKBENCH_PATHS = [
   "/v1/reviews/merge/recover",
   "/v1/reviews/direct-summary/submit",
   "/v1/reviews/inline-conversations/command",
+  "/v1/reviews/published-comments/edit",
+  "/v1/reviews/published-comments/delete",
+  "/v1/reviews/published-reviews/dismiss",
+  "/v1/reviews/write/recover",
   "/v1/reviews/pending-review/command",
   "/v1/reviews/pending-review/recover",
+  "/v1/reviews/insights/analysis/findings/finding-1/dismiss",
 ] as const;
 
 /**

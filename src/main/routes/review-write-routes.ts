@@ -36,6 +36,7 @@ import type {
   InlineConversationService,
 } from "../../services/inline-conversation-service";
 import type { LabelCommand, LabelService } from "../../services/label-service";
+import type { ReviewWriteRecoveryFailure } from "../../services/review-write-recovery-service";
 import type {
   ReviewerCommand,
   ReviewerService,
@@ -46,7 +47,7 @@ import {
   labelListResponse,
   reviewerListResponse,
 } from "./github-listing-response";
-import { mapReviewWriteFailureStatus } from "./http-status";
+import { mapReviewWriteFailureStatus, response } from "./http-status";
 import { jsonBody } from "./json-body";
 
 /** The Review-scoped writes that change a pull request's own metadata and conversation. */
@@ -68,6 +69,43 @@ export function registerReviewWriteRoutes(
       parseInlineConversationCommand(await jsonBody(context), logs),
     ),
   );
+  app.post("/v1/reviews/write/recover", async (context) => {
+    const parsed = safeParse(
+      reviewWriteRecoverySchema,
+      await jsonBody(context),
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const input = { profileId: profileId.value, reviewId: reviewId.value };
+    const recovered = await container.reviewWriteRecovery.recover(input);
+    if (recovered._tag === "err")
+      return context.json(
+        { error: recovered.error },
+        reviewWriteRecoveryFailureStatus(recovered.error),
+      );
+    if (
+      recovered.value._tag === "Confirmed" ||
+      recovered.value._tag === "NoOperation"
+    ) {
+      const receipt =
+        recovered.value._tag === "Confirmed"
+          ? recovered.value.receipt
+          : undefined;
+      // The renderer can raise an ephemeral lock after a confirmed refresh
+      // failure, so NoOperation still needs a read before that lock may clear.
+      const detected = await container.reviewWorkbench.detectUpdates(
+        receipt === undefined ? input : { ...input, recentWrites: [receipt] },
+      );
+      if (detected._tag === "err") return response(context, detected);
+    }
+    return response(
+      context,
+      await container.reviewWorkbench.load(parsed.output),
+    );
+  });
   app.post("/v1/reviews/labels/command", async (context) =>
     labelResponse(context, labelWrites, await jsonBody(context)),
   );
@@ -124,6 +162,19 @@ export function registerReviewWriteRoutes(
       }),
     );
   });
+}
+
+const reviewWriteRecoverySchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+});
+function reviewWriteRecoveryFailureStatus(
+  failure: ReviewWriteRecoveryFailure,
+): 404 | 409 | 503 {
+  if (failure === "not_found") return 404;
+  if (failure === "not_fresh" || failure === "review_write_in_progress")
+    return 409;
+  return 503;
 }
 
 const labelRefSchema = strictObject({
@@ -201,6 +252,7 @@ async function inlineConversationResponse(
       not_fresh: 409,
       pending_review: 409,
       confirmation_required: 409,
+      outcome_unknown: 409,
     }),
   );
 }

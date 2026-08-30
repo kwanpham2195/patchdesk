@@ -62,6 +62,7 @@ const allowedRoutes = new Set([
   "POST /v1/github/access",
   "GET /v1/environment",
   "POST /v1/reviews/inline-conversations/command",
+  "POST /v1/reviews/write/recover",
   "POST /v1/reviews/labels/command",
   "GET /v1/reviews/labels",
   "POST /v1/reviews/assignees/command",

@@ -129,6 +129,16 @@ export class PatchdeskPaths {
       "recent-writes.json",
     );
   }
+  /** One active GitHub-write intent for a Review, retained until recovery proves its outcome. */
+  reviewWriteOperationFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "write-operation.json",
+    );
+  }
 
   reviewFile(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
     return join(this.reviewDirectory(profileId, reviewId), "review.json");

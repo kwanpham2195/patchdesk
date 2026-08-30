@@ -145,8 +145,8 @@ export function workbenchController(
   coordinator: ReviewOperationCoordinator,
   track: Recorder,
 ): ReviewWorkbenchController {
+  // SAFETY: recorded partial dependencies expose lock timing; each service's own suite covers its result behavior.
   return new ReviewWorkbenchController(
-    // SAFETY: recorded stubs; every row asserts lock timing, not the outcome.
     {
       prepare: track.stub(
         "prepare",
@@ -194,82 +194,72 @@ export function observationService(
   coordinator: ReviewOperationCoordinator,
   track: Recorder,
 ): ReviewObservationService {
-  return new ReviewObservationService(
-    // SAFETY: recorded stubs; every row asserts lock timing, not the outcome.
-    {
-      profiles: { load: track.stub("profiles.load", ok(values.profile)) },
-      reviews: {
-        load: track.stub("reviews.load", err({ reason: "not_found" })),
-        save: track.stub("reviews.save", ok(undefined)),
-      },
-      sessions: sessionStore(track),
-      remote: {
-        load: track.stub("remote.load", ok(values.snapshot)),
-        saveCandidate: track.stub(
-          "remote.saveCandidate",
-          err({ reason: "io" }),
-        ),
-      },
-      journals: {
-        load: track.stub("journals.load", ok(undefined)),
-        save: track.stub("journals.save", ok(undefined)),
-        remove: track.stub("journals.remove", ok(undefined)),
-      },
-      recentWrites: recentWrites(track),
-      github: gateway(track),
-      pendingReview: { adoptObservedState: () => ({}) },
-      coordinator,
-      now,
-    } as never,
-  );
+  // SAFETY: recorded partial dependencies expose lock timing; each service's own suite covers its result behavior.
+  return new ReviewObservationService({
+    profiles: { load: track.stub("profiles.load", ok(values.profile)) },
+    reviews: {
+      load: track.stub("reviews.load", err({ reason: "not_found" })),
+      save: track.stub("reviews.save", ok(undefined)),
+    },
+    sessions: sessionStore(track),
+    remote: {
+      load: track.stub("remote.load", ok(values.snapshot)),
+      saveCandidate: track.stub("remote.saveCandidate", err({ reason: "io" })),
+    },
+    journals: {
+      load: track.stub("journals.load", ok(undefined)),
+      save: track.stub("journals.save", ok(undefined)),
+      remove: track.stub("journals.remove", ok(undefined)),
+    },
+    recentWrites: recentWrites(track),
+    github: gateway(track),
+    pendingReview: { adoptObservedState: () => ({}) },
+    coordinator,
+    now,
+  } as never);
 }
 
 export function refreshService(
   coordinator: ReviewOperationCoordinator,
   track: Recorder,
 ): ReviewRefreshService {
-  return new ReviewRefreshService(
-    // SAFETY: recorded stubs; every row asserts lock timing, not the outcome.
-    {
-      profiles: { load: track.stub("profiles.load", ok(values.profile)) },
-      reviews: {
-        load: track.stub("reviews.load", err({ reason: "not_found" })),
-        save: track.stub("reviews.save", ok(undefined)),
-      },
-      sessions: sessionStore(track),
-      remote: {
-        load: track.stub("remote.load", ok(values.snapshot)),
-        saveCandidate: track.stub(
-          "remote.saveCandidate",
-          err({ reason: "io" }),
-        ),
-      },
-      github: gateway(track),
-      preparation: {
-        prepare: track.stub(
-          "prepare",
-          err({ _tag: "SessionStorageUnavailable" }),
-        ),
-      },
-      now,
-      pendingReview: {
-        reconcileWithinReviewLock: track.stub(
-          "reconcileWithinReviewLock",
-          err({ reason: "storage" }),
-        ),
-      },
-      recentWrites: recentWrites(track),
-      operationCoordinator: coordinator,
-    } as never,
-  );
+  // SAFETY: recorded partial dependencies expose lock timing; each service's own suite covers its result behavior.
+  return new ReviewRefreshService({
+    profiles: { load: track.stub("profiles.load", ok(values.profile)) },
+    reviews: {
+      load: track.stub("reviews.load", err({ reason: "not_found" })),
+      save: track.stub("reviews.save", ok(undefined)),
+    },
+    sessions: sessionStore(track),
+    remote: {
+      load: track.stub("remote.load", ok(values.snapshot)),
+      saveCandidate: track.stub("remote.saveCandidate", err({ reason: "io" })),
+    },
+    github: gateway(track),
+    preparation: {
+      prepare: track.stub(
+        "prepare",
+        err({ _tag: "SessionStorageUnavailable" }),
+      ),
+    },
+    now,
+    pendingReview: {
+      reconcileWithinReviewLock: track.stub(
+        "reconcileWithinReviewLock",
+        err({ reason: "storage" }),
+      ),
+    },
+    recentWrites: recentWrites(track),
+    operationCoordinator: coordinator,
+  } as never);
 }
 
 export function recoveryService(
   coordinator: ReviewOperationCoordinator,
   track: Recorder,
 ): ReviewRecoveryService {
+  // SAFETY: recorded partial dependencies expose lock timing; each service's own suite covers its result behavior.
   return new ReviewRecoveryService(
-    // SAFETY: recorded stubs; every row asserts lock timing, not the outcome.
     {
       list: track.stub("profiles.list", ok([])),
       load: track.stub("profiles.load", ok({})),
@@ -309,8 +299,8 @@ export function pendingReviewService(
   coordinator: ReviewOperationCoordinator,
   track: Recorder,
 ): PendingReviewService {
+  // SAFETY: recorded partial dependencies expose lock timing; each service's own suite covers its result behavior.
   return new PendingReviewService(
-    // SAFETY: recorded stubs; every row asserts lock timing, not the outcome.
     writeGate(track) as never,
     sessionStore(track),
     gateway(track) as never,
@@ -324,8 +314,8 @@ export function directSummaryService(
   coordinator: ReviewOperationCoordinator,
   track: Recorder,
 ): DirectSummaryReviewService {
+  // SAFETY: recorded partial dependencies expose lock timing; each service's own suite covers its result behavior.
   return new DirectSummaryReviewService(
-    // SAFETY: recorded stubs; every row asserts lock timing, not the outcome.
     writeGate(track) as never,
     sessionStore(track),
     gateway(track) as never,
@@ -339,10 +329,23 @@ export function publishedFeedbackService(
   coordinator: ReviewOperationCoordinator,
   track: Recorder,
 ): PublishedFeedbackService {
+  // SAFETY: recorded partial dependencies expose lock timing; each service's own suite covers its result behavior.
   return new PublishedFeedbackService(
-    // SAFETY: recorded stubs; every row asserts lock timing, not the outcome.
     writeGate(track) as never,
     gateway(track) as never,
     coordinator,
+    now,
+    recentWrites(track),
+    {
+      load: track.stub("reviewWriteOperations.load", ok(undefined)),
+      begin: track.stub("reviewWriteOperations.begin", ok(undefined)),
+      markOutcomeUnknown: track.stub(
+        "reviewWriteOperations.markOutcomeUnknown",
+        ok(undefined),
+      ),
+      confirm: track.stub("reviewWriteOperations.confirm", ok(undefined)),
+      reject: track.stub("reviewWriteOperations.reject", ok(undefined)),
+      remove: track.stub("reviewWriteOperations.remove", ok(undefined)),
+    },
   );
 }

@@ -66,14 +66,13 @@ const APP_BOOT_OPERATIONS = {
 
 /**
  * Projects a fixture into the JSON grammar `DesktopResponse.body` carries.
- * The real bridge serialises every response across the IPC boundary, so this
- * is that same round trip: `WorkbenchResponse` declares optional members the
- * JSON grammar has no way to express.
+ * `WorkbenchResponse` declares optional members the JSON grammar has no way
+ * to express.
  */
 function asJsonBody(value: WorkbenchResponse): RawJsonValue {
-  // SAFETY: `JSON.parse` of `JSON.stringify` output is by construction a
-  // value of the JSON grammar; `JSON.parse` is simply typed `any`.
-  return JSON.parse(JSON.stringify(value)) as RawJsonValue;
+  // SAFETY: this fixture contains only JSON-compatible data, so its cloned
+  // form satisfies the raw bridge-body grammar.
+  return structuredClone(value) as RawJsonValue;
 }
 
 describe("App Review route loading", () => {
@@ -781,6 +780,7 @@ function projection(
 ): WorkbenchResponse {
   return {
     state: "review",
+    viewerLogin: "fixture",
     review: { id: "review-42", status: "open" },
     session: {
       id: "session-42",

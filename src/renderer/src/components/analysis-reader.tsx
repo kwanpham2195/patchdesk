@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
@@ -24,6 +24,7 @@ import {
 } from "./ui/collapsible";
 import { Field, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
+import { Spinner } from "./ui/spinner";
 import {
   Popover,
   PopoverContent,
@@ -39,6 +40,7 @@ type AnalysisResult = NonNullable<
 type AnalysisFinding = AnalysisResult["findings"][number];
 type FindingStatus = "actionable" | "pending_review" | "published" | "locked";
 type CheckStatus = WorkbenchResponse["checks"]["overall"];
+type FindingActionState = "adding" | "dismissing";
 
 type SupportingDetail = {
   readonly key: string;
@@ -78,7 +80,13 @@ export function AnalysisReader({
   canFinishWithAnalysisSummary = false,
   onFinishWithAnalysisSummary,
 }: AnalysisReaderProps): React.JSX.Element {
-  const [actionError, setActionError] = useState<string | undefined>();
+  const admittedFindingIds = useRef<Set<string>>(new Set());
+  const [findingActions, setFindingActions] = useState<
+    ReadonlyMap<string, FindingActionState>
+  >(new Map());
+  const [findingErrors, setFindingErrors] = useState<
+    ReadonlyMap<string, string>
+  >(new Map());
   const [verifiedSteps, setVerifiedSteps] = useState<ReadonlySet<number>>(
     new Set(),
   );
@@ -91,12 +99,43 @@ export function AnalysisReader({
     0,
   );
   const recommendation = recommendationFor(result.verdict);
-  const runAction = async (action: () => Promise<void>): Promise<void> => {
-    setActionError(undefined);
+  const runFindingAction = async (
+    findingId: string,
+    state: FindingActionState,
+    action: () => Promise<void>,
+  ): Promise<boolean> => {
+    if (admittedFindingIds.current.has(findingId)) return false;
+    admittedFindingIds.current.add(findingId);
+    setFindingActions((current) => {
+      const next = new Map(current);
+      next.set(findingId, state);
+      return next;
+    });
+    setFindingErrors((current) => {
+      const next = new Map(current);
+      next.delete(findingId);
+      return next;
+    });
     try {
       await action();
+      return true;
     } catch {
-      setActionError("The Finding action could not be saved. Try again.");
+      setFindingErrors((current) => {
+        const next = new Map(current);
+        next.set(
+          findingId,
+          "The Finding action could not be saved. Try again.",
+        );
+        return next;
+      });
+      return false;
+    } finally {
+      admittedFindingIds.current.delete(findingId);
+      setFindingActions((current) => {
+        const next = new Map(current);
+        next.delete(findingId);
+        return next;
+      });
     }
   };
   const setStepChecked = (index: number, checked: boolean): void => {
@@ -113,12 +152,6 @@ export function AnalysisReader({
       aria-label="Analysis reader"
       className="flex w-full flex-col gap-3 pb-4"
     >
-      {actionError === undefined ? null : (
-        <p role="alert" className="text-sm text-destructive">
-          {actionError}
-        </p>
-      )}
-
       <Card size="sm">
         <CardHeader>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -170,18 +203,30 @@ export function AnalysisReader({
                   key={finding.id}
                   finding={finding}
                   status={findingStatuses?.[finding.id]}
+                  actionState={findingActions.get(finding.id)}
+                  actionError={findingErrors.get(finding.id)}
                   {...(evidencePatch === undefined ? {} : { evidencePatch })}
                   {...(onAddFinding === undefined
                     ? {}
                     : {
-                        onAddFinding: (value) =>
-                          runAction(() => onAddFinding(value)),
+                        onAddFinding: async (value) => {
+                          await runFindingAction(value.id, "adding", () =>
+                            onAddFinding(value),
+                          );
+                        },
                       })}
                   {...(onDismissFinding === undefined
                     ? {}
                     : {
-                        onDismissFinding: (value, reason) =>
-                          runAction(() => onDismissFinding(value, reason)),
+                        onDismissFinding: async (value, reason) => {
+                          const succeeded = await runFindingAction(
+                            value.id,
+                            "dismissing",
+                            () => onDismissFinding(value, reason),
+                          );
+                          if (!succeeded)
+                            throw new Error("Finding dismissal failed");
+                        },
                       })}
                 />
               ))}
@@ -251,12 +296,16 @@ export function AnalysisReader({
 function AnalysisFindingRow({
   finding,
   status,
+  actionState,
+  actionError,
   evidencePatch,
   onAddFinding,
   onDismissFinding,
 }: {
   readonly finding: AnalysisFinding;
   readonly status?: FindingStatus | undefined;
+  readonly actionState?: FindingActionState | undefined;
+  readonly actionError?: string | undefined;
   readonly evidencePatch?: string | undefined;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly onDismissFinding?: (
@@ -267,6 +316,7 @@ function AnalysisFindingRow({
   const [reason, setReason] = useState("");
   const [dismissOpen, setDismissOpen] = useState(false);
   const disposition = finding.disposition ?? "open";
+  const actionPending = actionState !== undefined;
   const reviewStatus =
     status ?? (disposition === "dismissed" ? "dismissed" : "unavailable");
   const evidenceAnchor =
@@ -300,9 +350,13 @@ function AnalysisFindingRow({
         })();
   const dismiss = async (): Promise<void> => {
     if (onDismissFinding === undefined || reason.trim().length === 0) return;
-    await onDismissFinding(finding, reason.trim());
-    setDismissOpen(false);
-    setReason("");
+    try {
+      await onDismissFinding(finding, reason.trim());
+      setDismissOpen(false);
+      setReason("");
+    } catch {
+      // The parent owns the row-local error; this row keeps the dismissal draft.
+    }
   };
 
   return (
@@ -349,14 +403,31 @@ function AnalysisFindingRow({
             <Button
               size="xs"
               variant="outline"
+              disabled={actionPending}
               onClick={() => onAddFinding(finding)}
             >
-              Add to review
+              {actionState === "adding" ? (
+                <>
+                  <Spinner data-icon="inline-start" />
+                  Adding…
+                </>
+              ) : (
+                "Add to review"
+              )}
             </Button>
           ) : null}
           {disposition === "open" && onDismissFinding !== undefined ? (
-            <Popover open={dismissOpen} onOpenChange={setDismissOpen}>
-              <PopoverTrigger render={<Button size="xs" variant="ghost" />}>
+            <Popover
+              open={dismissOpen}
+              onOpenChange={(open) => {
+                if (!actionPending) setDismissOpen(open);
+              }}
+            >
+              <PopoverTrigger
+                render={
+                  <Button size="xs" variant="ghost" disabled={actionPending} />
+                }
+              >
                 Dismiss
               </PopoverTrigger>
               <PopoverContent align="end">
@@ -376,16 +447,24 @@ function AnalysisFindingRow({
                   <Button
                     size="xs"
                     variant="ghost"
+                    disabled={actionPending}
                     onClick={() => setDismissOpen(false)}
                   >
                     Cancel
                   </Button>
                   <Button
                     size="xs"
-                    disabled={reason.trim().length === 0}
+                    disabled={reason.trim().length === 0 || actionPending}
                     onClick={() => dismiss()}
                   >
-                    Confirm dismissal
+                    {actionState === "dismissing" ? (
+                      <>
+                        <Spinner data-icon="inline-start" />
+                        Dismissing…
+                      </>
+                    ) : (
+                      "Confirm dismissal"
+                    )}
                   </Button>
                 </div>
               </PopoverContent>
@@ -399,6 +478,11 @@ function AnalysisFindingRow({
           comment is not confirmed.
         </p>
       ) : null}
+      {actionError === undefined ? null : (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {actionError}
+        </p>
+      )}
       {evidencePatch === undefined || evidenceAnchor === undefined ? null : (
         <Collapsible className="mt-2">
           <CollapsibleTrigger render={<Button size="xs" variant="ghost" />}>

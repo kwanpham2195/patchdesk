@@ -494,6 +494,41 @@ describe("ReviewObservationService", () => {
     });
   });
 
+  it.each([
+    {
+      name: "assignee",
+      receipt: {
+        _tag: "AssigneeChange" as const,
+        added: [],
+        removed: ["octocat"],
+      },
+    },
+    {
+      name: "reviewer",
+      receipt: {
+        _tag: "ReviewerChange" as const,
+        requested: [],
+        removed: ["hubot"],
+      },
+    },
+  ])(
+    "does not represent or prune a $name removal when its optional array is omitted",
+    async ({ receipt }) => {
+      const value = await fixture({ project: true });
+      const result = await value.observation.observe({
+        profileId,
+        reviewId: value.review.id,
+        recentWrites: [receipt],
+      });
+      expect(result).toMatchObject({
+        _tag: "ok",
+        value: { _tag: "Reconciled" },
+      });
+      if (result._tag === "ok" && result.value._tag === "Reconciled")
+        expect(result.value.projection).toBeUndefined();
+    },
+  );
+
   it("replays a journal left by a failed Review save without exposing a mixed state", async () => {
     const value = await fixture({ failReviewSave: true });
     await expect(

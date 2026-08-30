@@ -14,8 +14,11 @@ import {
 const sha = "a".repeat(40);
 const patchHash = "b".repeat(64);
 const reviewProjection = (): WorkbenchResponse =>
+  // SAFETY: this fixture literal supplies every WorkbenchResponse field used
+  // by the hook, including valid wire-format identity values.
   ({
     state: "review",
+    viewerLogin: "fixture",
     review: { id: "review-42", status: "open" },
     session: {
       id: "session-a",
@@ -93,14 +96,13 @@ type BridgeBody = InsightRunFixture | WorkbenchResponse;
 
 /**
  * Projects a fixture into the JSON grammar `DesktopResponse.body` carries.
- * The real bridge serialises every response across the IPC boundary, so this
- * is the same round trip, not a cast around one: `WorkbenchResponse` declares
- * optional members the JSON grammar has no way to express.
+ * `WorkbenchResponse` declares optional members the JSON grammar has no way
+ * to express.
  */
 function asJsonBody(value: BridgeBody): RawJsonValue {
-  // SAFETY: `JSON.parse` of `JSON.stringify` output is by construction a
-  // value of the JSON grammar; `JSON.parse` is simply typed `any`.
-  return JSON.parse(JSON.stringify(value)) as RawJsonValue;
+  // SAFETY: this fixture contains only JSON-compatible data, so its cloned
+  // form satisfies the raw bridge-body grammar.
+  return structuredClone(value) as RawJsonValue;
 }
 
 /**
@@ -109,6 +111,7 @@ function asJsonBody(value: BridgeBody): RawJsonValue {
  * for an id no test scripted is a bug, not a route to answer quietly.
  */
 const INSIGHT_RUN_PATHS = [
+  "/v1/logs",
   "/v1/reviews/insights/analysis/run",
   "/v1/reviews/insights/analysis/cancel",
   "/v1/reviews/insights/runs/run-a",
@@ -127,7 +130,7 @@ function installBridge(
       ok: true,
       status: 200,
       correlationId: input.path,
-      body: asJsonBody(await handler(input)),
+      body: input.path === "/v1/logs" ? null : asJsonBody(await handler(input)),
     };
   };
   desktop = installDesktopDouble(
@@ -143,6 +146,12 @@ const started = {
   type: "analysis" as const,
   status: "running" as const,
 };
+
+const activeRun = (runId: string) => ({
+  runId,
+  sessionId: `session-${runId}`,
+  startedAt: "2026-08-01T00:00:00.000Z",
+});
 
 afterEach(() => {
   desktop?.restore();
@@ -397,9 +406,147 @@ describe("useInsightRun", () => {
     });
     act(() => result.current.cancel());
     await waitFor(() => expect(result.current.error).toBe(true));
+    expect(result.current.requestFailure).toBe("cancel");
+    expect(result.current.runId).toBe("run-a");
+    expect(result.current.status).toBe("running");
     expect(completed).toHaveLength(0);
     expect(calls.filter(({ path }) => path.endsWith("/cancel"))).toHaveLength(
       1,
     );
+  });
+  it("admits one same-tick cancellation and exposes its owning pending state", async () => {
+    const cancellation = deferred<InsightRunFixture>();
+    const calls = installBridge((input) => {
+      if (input.path.endsWith("/cancel")) return cancellation.promise;
+      if (input.path.includes("/runs/")) return new Promise(() => undefined);
+      throw new Error(input.path);
+    });
+    const { result } = renderHook(() =>
+      useInsightRun({
+        profileId: "profile",
+        reviewId: "review-42",
+        type: "analysis",
+        activeRun: activeRun("run-a"),
+      }),
+    );
+
+    act(() => {
+      result.current.cancel();
+      result.current.cancel();
+    });
+    expect(calls.filter(({ path }) => path.endsWith("/cancel"))).toHaveLength(
+      1,
+    );
+    expect(result.current.cancelling).toBe(true);
+    await act(async () => {
+      cancellation.resolve({ ...started, status: "cancelling" });
+      await cancellation.promise;
+    });
+    expect(result.current.cancelling).toBe(false);
+    expect(result.current.status).toBe("cancelling");
+  });
+
+  it("ignores reverse-order start settlement from an obsolete Review generation", async () => {
+    const oldStart = deferred<InsightRunFixture>();
+    const newStart = deferred<InsightRunFixture>();
+    let startCount = 0;
+    const calls = installBridge((input) => {
+      if (input.path.endsWith("/run")) {
+        startCount += 1;
+        return startCount === 1 ? oldStart.promise : newStart.promise;
+      }
+      if (input.path.includes("/runs/")) return new Promise(() => undefined);
+      throw new Error(input.path);
+    });
+    const { result, rerender } = renderHook(
+      ({ reviewId }) =>
+        useInsightRun({ profileId: "profile", reviewId, type: "analysis" }),
+      { initialProps: { reviewId: "review-42" } },
+    );
+
+    act(() => result.current.run("pi", "fixture-model", "medium"));
+    rerender({ reviewId: "review-43" });
+    act(() => result.current.run("pi", "fixture-model", "medium"));
+    expect(calls.filter(({ path }) => path.endsWith("/run"))).toHaveLength(2);
+    await act(async () => {
+      newStart.resolve({ ...started, runId: "run-new" });
+      await newStart.promise;
+    });
+    await act(async () => {
+      oldStart.resolve({ ...started, runId: "run-old" });
+      await oldStart.promise;
+    });
+    expect(result.current.runId).toBe("run-new");
+    expect(result.current.status).toBe("running");
+    expect(result.current.error).toBe(false);
+  });
+
+  it("retains run identity and retries polling after a status failure", async () => {
+    let pollCount = 0;
+    const nextPoll = deferred<InsightRunFixture>();
+    const calls = installBridge((input) => {
+      if (input.path.endsWith("/run")) return started;
+      if (input.path.includes("/runs/")) {
+        pollCount += 1;
+        if (pollCount === 1) throw new Error("transient status failure");
+        return nextPoll.promise;
+      }
+      throw new Error(input.path);
+    });
+    const { result } = renderHook(() =>
+      useInsightRun({
+        profileId: "profile",
+        reviewId: "review-42",
+        type: "analysis",
+      }),
+    );
+
+    act(() => result.current.run("pi", "fixture-model", "medium"));
+    await waitFor(() => expect(result.current.requestFailure).toBe("status"));
+    expect(result.current.runId).toBe("run-a");
+    expect(result.current.busy).toBe(true);
+    await waitFor(
+      () =>
+        expect(
+          calls.filter(({ path }) => path.includes("/runs/")),
+        ).toHaveLength(2),
+      { timeout: 2_000 },
+    );
+    expect(result.current.runId).toBe("run-a");
+  });
+
+  it("ignores obsolete cancellation settlement after a newer persisted run takes ownership", async () => {
+    const cancellation = deferred<InsightRunFixture>();
+    installBridge((input) => {
+      if (input.path.endsWith("/cancel")) return cancellation.promise;
+      if (input.path.includes("/runs/")) return new Promise(() => undefined);
+      throw new Error(input.path);
+    });
+    const { result, rerender } = renderHook(
+      ({ persistedRunId }) =>
+        useInsightRun({
+          profileId: "profile",
+          reviewId: "review-42",
+          type: "analysis",
+          activeRun: activeRun(persistedRunId),
+        }),
+      { initialProps: { persistedRunId: "run-old" } },
+    );
+
+    act(() => result.current.cancel());
+    rerender({ persistedRunId: "run-new" });
+    expect(result.current.runId).toBe("run-new");
+    await act(async () => {
+      cancellation.resolve({
+        ...started,
+        runId: "run-old",
+        status: "cancelled",
+      });
+      await cancellation.promise;
+    });
+    expect(result.current.runId).toBe("run-new");
+    expect(result.current.status).toBe("running");
+    expect(result.current.cancelling).toBe(false);
+    expect(result.current.error).toBe(false);
   });
 });

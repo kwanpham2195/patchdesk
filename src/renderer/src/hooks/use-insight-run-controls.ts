@@ -1,11 +1,9 @@
 import { useCallback } from "react";
+import * as v from "valibot";
 
 import type { InsightProvider } from "../../../domain/insight-provider";
 import { requestJson } from "../api-client";
-import {
-  parseWorkbenchResponse,
-  type WorkbenchResponse,
-} from "../renderer-contracts";
+import type { WorkbenchResponse } from "../renderer-contracts";
 import { saveInsightRunPreference } from "../insight-run-preferences";
 import { useInsightRun, type InsightRunController } from "./use-insight-run";
 import {
@@ -15,6 +13,11 @@ import {
 import type { InsightSelection } from "../components/insight-panels";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
+
+const dismissedFindingResponseSchema = v.strictObject({
+  findingId: v.pipe(v.string(), v.minLength(1)),
+  status: v.literal("dismissed"),
+});
 
 /** Every run-side value the Insights slot renders from: the run configuration, the two per-type run controllers, and the run-dialog and finding-dismissal commands. */
 type InsightRunControlsHook = {
@@ -96,27 +99,36 @@ export function useInsightRunControls({
     selectedInsight,
   });
   const { catalog, provider, model, reasoning, catalogError } = configuration;
-  const reloadWorkbench = async (): Promise<void> => {
-    const value = await requestJson("/v1/reviews/load", {
-      method: "POST",
-      body: { profileId, reviewId },
-    });
-    const next = parseWorkbenchResponse(value);
-    if (next === undefined)
-      throw new Error("Invalid Review projection response");
-    onWorkbenchReplace(next);
-  };
   const dismissFinding = async (
     finding: AnalysisFinding,
     reason: string,
   ): Promise<void> => {
     const runId = workbench.insights.analysis.retained?.runId;
     if (runId === undefined) throw new Error("Analysis run is unavailable");
-    await requestJson(
+    const value = await requestJson(
       `/v1/reviews/insights/analysis/findings/${encodeURIComponent(finding.id)}/dismiss`,
       { method: "POST", body: { profileId, reviewId, runId, reason } },
     );
-    await reloadWorkbench();
+    const parsed = v.safeParse(dismissedFindingResponseSchema, value);
+    if (!parsed.success || parsed.output.findingId !== finding.id)
+      throw new Error("Invalid dismissed Finding response");
+    const analysis = workbench.insights.analysis;
+    const retained = analysis.retained;
+    if (retained === undefined) throw new Error("Analysis run is unavailable");
+    onInsightPatch("analysis", {
+      ...analysis,
+      retained: {
+        ...retained,
+        value: {
+          ...retained.value,
+          findings: retained.value.findings.map((candidate) =>
+            candidate.id === finding.id
+              ? { ...candidate, disposition: "dismissed" as const }
+              : candidate,
+          ),
+        },
+      },
+    });
   };
   const runSelected = (onAccepted?: () => void): void => {
     if (model === null || selectedInsight === "overview") return;
@@ -149,8 +161,8 @@ export function useInsightRunControls({
   const closeRunDialog = (): void => setConfiguration({ runDialogType: null });
   const confirmRun = (): void => {
     if (model === null || selectedInsight === "overview") return;
-    closeRunDialog();
     runSelected(() => {
+      closeRunDialog();
       saveInsightRunPreference(profileId, selectedInsight, {
         provider,
         model,

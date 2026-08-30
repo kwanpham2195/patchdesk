@@ -58,6 +58,7 @@ export function projection(
   // runtime-decoded value.
   return {
     state: "review",
+    viewerLogin: "octocat",
     review: { id: "review-42", status: "open" },
     session: {
       id: "session-a",

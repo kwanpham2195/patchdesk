@@ -30,6 +30,20 @@ import {
   writeGate,
 } from "./review-lock-invariant-services";
 
+function reviewWriteOperations(track: Recorder) {
+  return {
+    load: track.stub("reviewWriteOperations.load", ok(undefined)),
+    begin: track.stub("reviewWriteOperations.begin", ok(undefined)),
+    markOutcomeUnknown: track.stub(
+      "reviewWriteOperations.markOutcomeUnknown",
+      ok(undefined),
+    ),
+    confirm: track.stub("reviewWriteOperations.confirm", ok(undefined)),
+    reject: track.stub("reviewWriteOperations.reject", ok(undefined)),
+    remove: track.stub("reviewWriteOperations.remove", ok(undefined)),
+  };
+}
+
 /**
  * Every entry point that can touch one Review, and the shape in which each
  * respects the coordinator lock. The two shapes are not a style choice:
@@ -266,10 +280,13 @@ export const lockRows: ReadonlyArray<LockRow> = [
       const service = new InlineConversationService(
         // SAFETY: recorded stubs; this row refuses before reaching either.
         writeGate(track) as never,
+        // SAFETY: this row refuses before the recorded gateway is called.
         gateway(track) as never,
         coordinator,
         now,
         recentWrites(track),
+        // SAFETY: this row is refused by the coordinator before operation storage is reached.
+        {} as never,
       );
       return () =>
         service.execute({
@@ -289,6 +306,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
         service.editComment({
           profileId,
           reviewId,
+          expected,
           commentId: "comment-1",
           body: "edited",
         });
@@ -304,6 +322,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
         service.deleteComment({
           profileId,
           reviewId,
+          expected,
           commentId: "comment-1",
           confirmation: true,
         });
@@ -319,7 +338,8 @@ export const lockRows: ReadonlyArray<LockRow> = [
         service.dismissReview({
           profileId,
           reviewId,
-          publishedReviewId: "published-1",
+          expected,
+          publishedReviewId: "101",
           message: "stale",
           confirmation: true,
         });
@@ -335,6 +355,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
         gateway(track) as never,
         ["squash"],
         now,
+        // SAFETY: this row refuses before the partial operation-store fixture is read.
         {
           begin: track.stub("mergeOperations.begin", ok(undefined)),
           markOutcomeUnknown: track.stub(
@@ -348,6 +369,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
             ok(undefined),
           ),
         } as never,
+        // SAFETY: this row refuses before the recorded write gate is called.
         writeGate(track) as never,
         // SAFETY: recorded stubs; this row refuses before it reads either.
         {
@@ -390,10 +412,12 @@ export const lockRows: ReadonlyArray<LockRow> = [
       const service = new LabelService(
         // SAFETY: recorded stubs; this row refuses before reaching either.
         writeGate(track) as never,
+        // SAFETY: this row refuses before the recorded gateway is called.
         gateway(track) as never,
         coordinator,
         now,
         recentWrites(track),
+        reviewWriteOperations(track),
       );
       return () =>
         service.execute({
@@ -411,10 +435,12 @@ export const lockRows: ReadonlyArray<LockRow> = [
       const service = new AssigneeService(
         // SAFETY: recorded stubs; this row refuses before reaching either.
         writeGate(track) as never,
+        // SAFETY: this row refuses before the recorded gateway is called.
         gateway(track) as never,
         coordinator,
         now,
         recentWrites(track),
+        reviewWriteOperations(track),
       );
       return () =>
         service.execute({
@@ -435,10 +461,12 @@ export const lockRows: ReadonlyArray<LockRow> = [
       const service = new ReviewerService(
         // SAFETY: recorded stubs; this row refuses before reaching either.
         writeGate(track) as never,
+        // SAFETY: this row refuses before the recorded gateway is called.
         gateway(track) as never,
         coordinator,
         now,
         recentWrites(track),
+        reviewWriteOperations(track),
       );
       return () =>
         service.execute({

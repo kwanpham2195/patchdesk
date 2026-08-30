@@ -22,7 +22,11 @@ import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
 } from "../external-links";
-import { CompactMergeCommand, type MergeMethod } from "./compact-merge-command";
+import {
+  CompactMergeCommand,
+  type MergeCommandResult,
+  type MergeMethod,
+} from "./compact-merge-command";
 import { ReviewChecks, presentOverallCheckResult } from "./review-checks";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,7 +60,7 @@ export type PullRequestOverviewMerge = {
   readonly onMerge: (
     method: MergeMethod,
     warningCodes: ReadonlyArray<string>,
-  ) => Promise<{ readonly mergeCommitSha?: string }>;
+  ) => Promise<MergeCommandResult>;
   readonly onRecoverMerge: () => Promise<void>;
 };
 

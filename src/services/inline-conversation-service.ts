@@ -3,9 +3,13 @@ import type {
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type { GitHubReviewCoordinates } from "../domain/patch";
 import {
+  parseGitHubLogin,
+  parseGitHubReviewCommentId,
   parseGitHubThreadId,
+  parseRepoRelativePath,
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
@@ -17,6 +21,13 @@ import {
 } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
+import type { GitHubWriteFailure } from "../domain/github-write";
+import {
+  confirmReviewWrite,
+  markReviewWriteOutcomeUnknown,
+  type ReviewWriteIntent,
+  type ReviewWriteOperation,
+} from "../domain/review-write-operation";
 import { err, ok, type Result } from "../domain/result";
 
 export type DirectConversationCommand =
@@ -85,6 +96,7 @@ export type DirectConversationFailure =
   | "pending_review"
   | "github_read_failed"
   | "github_write_failed"
+  | "outcome_unknown"
   | "rate_limited"
   | "review_write_in_progress"
   | "confirmation_required";
@@ -110,6 +122,10 @@ export class InlineConversationService {
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
     private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly operations: Pick<
+      ReviewWriteOperationStore,
+      "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
+    >,
   ) {}
 
   async execute(input: {
@@ -123,21 +139,13 @@ export class InlineConversationService {
     if (!this.writeCoordinator.acquire(key))
       return err("review_write_in_progress");
     try {
-      const result = await this.executeUnlocked(input);
-      if (result._tag === "ok") {
-        const entry = journalEntryFor(result.value);
-        if (entry !== undefined) {
-          // Best effort: the GitHub write already succeeded, so a durable
-          // journal failure here must not fail the confirmed command.
-          await this.recentWrites.append(
-            input.profileId,
-            input.reviewId,
-            entry,
-            this.now(),
-          );
-        }
-      }
-      return result;
+      const active = await this.operations.load(
+        input.profileId,
+        input.reviewId,
+      );
+      if (active._tag === "err" || active.value !== undefined)
+        return err("outcome_unknown");
+      return await this.executeUnlocked(input);
     } finally {
       this.writeCoordinator.release(key);
     }
@@ -191,46 +199,55 @@ export class InlineConversationService {
 
     switch (input.command._tag) {
       case "CreateComment": {
-        if (this.github.createInlineComment === undefined)
+        const command = input.command;
+        const actor = parseGitHubLogin(fresh.value.profile.ghAccount);
+        const path = parseRepoRelativePath(command.anchor.path);
+        if (actor._tag === "err" || path._tag === "err")
+          return err("invalid_input");
+        const createInlineComment = this.github.createInlineComment;
+        if (createInlineComment === undefined)
           return err("github_write_failed");
-        const coordinates = coordinatesFor(input.command.anchor);
+        const coordinates = coordinatesFor(command.anchor);
         if (coordinates === undefined) return err("invalid_input");
-        const created = await this.github.createInlineComment({
-          profile: fresh.value.profile,
-          pr,
-          headSha: fresh.value.session.key.headSha,
-          coordinates,
-          body: input.command.body.trim(),
-        });
-        if (created._tag === "err") {
-          return err(
-            created.error.category === "pending_review"
-              ? "pending_review"
-              : created.error.category === "rate_limited"
-                ? "rate_limited"
-                : created.error.category === "forbidden"
-                  ? "forbidden"
-                  : "github_write_failed",
-          );
-        }
-        const receipt = {
-          _tag: "CommentCreated" as const,
-          commentId: created.value.commentId,
-        };
-        const withReviewId =
-          created.value.reviewId === undefined
-            ? receipt
-            : { ...receipt, reviewId: created.value.reviewId };
-        return ok(
-          created.value.threadId === undefined
-            ? withReviewId
-            : { ...withReviewId, threadId: created.value.threadId },
+        return this.runDurableWrite(
+          input,
+          {
+            _tag: "CreateComment",
+            expected: command.expected,
+            actor: actor.value,
+            anchor: { ...command.anchor, path: path.value },
+            body: command.body.trim(),
+          },
+          () =>
+            createInlineComment({
+              profile: fresh.value.profile,
+              pr,
+              headSha: fresh.value.session.key.headSha,
+              coordinates,
+              body: command.body.trim(),
+            }),
+          (created) => {
+            const receipt = {
+              _tag: "CommentCreated" as const,
+              commentId: created.commentId,
+            };
+            const withReviewId =
+              created.reviewId === undefined
+                ? receipt
+                : { ...receipt, reviewId: created.reviewId };
+            return created.threadId === undefined
+              ? withReviewId
+              : { ...withReviewId, threadId: created.threadId };
+          },
         );
       }
       case "Reply": {
-        if (this.github.createThreadReply === undefined)
-          return err("github_write_failed");
-        const threadId = parseGitHubThreadId(input.command.threadId);
+        const command = input.command;
+        const actor = parseGitHubLogin(fresh.value.profile.ghAccount);
+        if (actor._tag === "err") return err("invalid_input");
+        const createThreadReply = this.github.createThreadReply;
+        if (createThreadReply === undefined) return err("github_write_failed");
+        const threadId = parseGitHubThreadId(command.threadId);
         if (threadId._tag === "err") return err("not_found");
         const target = await this.github.getReviewThreadTarget({
           profile: fresh.value.profile,
@@ -239,26 +256,37 @@ export class InlineConversationService {
         });
         if (target._tag === "err") return err("github_read_failed");
         if (!target.value.found) return err("not_found");
-        const created = await this.github.createThreadReply({
-          profile: fresh.value.profile,
-          threadId: threadId.value,
-          body: input.command.body.trim(),
-        });
-        if (created._tag === "err") return err("github_write_failed");
-        return ok(
-          created.value.reviewId === undefined
-            ? { _tag: "ReplyCreated", commentId: created.value.commentId }
-            : {
-                _tag: "ReplyCreated",
-                commentId: created.value.commentId,
-                reviewId: created.value.reviewId,
-              },
+        return this.runDurableWrite(
+          input,
+          {
+            _tag: "Reply",
+            expected: command.expected,
+            actor: actor.value,
+            threadId: threadId.value,
+            body: command.body.trim(),
+          },
+          () =>
+            createThreadReply({
+              profile: fresh.value.profile,
+              threadId: threadId.value,
+              body: command.body.trim(),
+            }),
+          (created) =>
+            created.reviewId === undefined
+              ? { _tag: "ReplyCreated", commentId: created.commentId }
+              : {
+                  _tag: "ReplyCreated",
+                  commentId: created.commentId,
+                  reviewId: created.reviewId,
+                },
         );
       }
       case "SetThreadState": {
-        if (this.github.setReviewThreadState === undefined)
+        const command = input.command;
+        const setReviewThreadState = this.github.setReviewThreadState;
+        if (setReviewThreadState === undefined)
           return err("github_write_failed");
-        const threadId = parseGitHubThreadId(input.command.threadId);
+        const threadId = parseGitHubThreadId(command.threadId);
         if (threadId._tag === "err") return err("not_found");
         const target = await this.github.getReviewThreadTarget({
           profile: fresh.value.profile,
@@ -267,21 +295,31 @@ export class InlineConversationService {
         });
         if (target._tag === "err") return err("github_read_failed");
         if (!target.value.found) return err("not_found");
-        const changed = await this.github.setReviewThreadState({
-          profile: fresh.value.profile,
-          threadId: threadId.value,
-          state: input.command.state,
-        });
-        return changed._tag === "err"
-          ? err("github_write_failed")
-          : ok({
-              _tag: "ThreadStateChanged",
-              threadId: input.command.threadId,
-              state: input.command.state,
-            });
+        return this.runDurableWrite(
+          input,
+          {
+            _tag: "SetThreadState",
+            expected: command.expected,
+            threadId: threadId.value,
+            state: command.state,
+          },
+          () =>
+            setReviewThreadState({
+              profile: fresh.value.profile,
+              threadId: threadId.value,
+              state: command.state,
+            }),
+          () => ({
+            _tag: "ThreadStateChanged",
+            threadId: command.threadId,
+            state: command.state,
+          }),
+        );
       }
       case "EditComment":
       case "DeleteComment": {
+        const commentId = parseGitHubReviewCommentId(input.command.commentId);
+        if (commentId._tag === "err") return err("invalid_input");
         const authorized = await this.ownedComment(
           fresh.value.profile,
           pr,
@@ -289,28 +327,119 @@ export class InlineConversationService {
         );
         if (authorized._tag === "err") return authorized;
         if (input.command._tag === "EditComment") {
-          if (this.github.updateThreadComment === undefined)
+          const command = input.command;
+          const updateThreadComment = this.github.updateThreadComment;
+          if (updateThreadComment === undefined)
             return err("github_write_failed");
-          const changed = await this.github.updateThreadComment({
-            profile: fresh.value.profile,
-            commentId: input.command.commentId,
-            body: input.command.body.trim(),
-          });
-          return changed._tag === "err"
-            ? err("github_write_failed")
-            : ok({ _tag: "CommentEdited", commentId: input.command.commentId });
+          return this.runDurableWrite(
+            input,
+            {
+              _tag: "EditComment",
+              expected: command.expected,
+              commentId: commentId.value,
+              body: command.body.trim(),
+            },
+            () =>
+              updateThreadComment({
+                profile: fresh.value.profile,
+                commentId: command.commentId,
+                body: command.body.trim(),
+              }),
+            () => ({
+              _tag: "CommentEdited",
+              commentId: command.commentId,
+            }),
+          );
         }
-        if (this.github.deleteThreadComment === undefined)
+        const deleteThreadComment = this.github.deleteThreadComment;
+        if (deleteThreadComment === undefined)
           return err("github_write_failed");
-        const deleted = await this.github.deleteThreadComment({
-          profile: fresh.value.profile,
-          commentId: input.command.commentId,
-        });
-        return deleted._tag === "err"
-          ? err("github_write_failed")
-          : ok({ _tag: "CommentDeleted", commentId: input.command.commentId });
+        const command = input.command;
+        return this.runDurableWrite(
+          input,
+          {
+            _tag: "DeleteComment",
+            expected: command.expected,
+            commentId: commentId.value,
+          },
+          () =>
+            deleteThreadComment({
+              profile: fresh.value.profile,
+              commentId: command.commentId,
+            }),
+          () => ({
+            _tag: "CommentDeleted",
+            commentId: command.commentId,
+          }),
+        );
       }
     }
+  }
+
+  private async runDurableWrite<T>(
+    input: {
+      readonly profileId: WorkspaceProfileId;
+      readonly reviewId: ReviewId;
+      readonly command: DirectConversationCommand;
+    },
+    intent: Extract<ReviewWriteIntent, { readonly expected: unknown }>,
+    write: () => Promise<Result<T, GitHubWriteFailure>>,
+    toReceipt: (value: T) => DirectConversationReceipt,
+  ): Promise<Result<DirectConversationReceipt, DirectConversationFailure>> {
+    const operation: ReviewWriteOperation = {
+      schemaVersion: 1,
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      sessionId: intent.expected.sessionId,
+      intent,
+      state: { _tag: "Requested" },
+      startedAt: this.now(),
+    };
+    const begun = await this.operations.begin(operation);
+    if (begun._tag === "err") return err("outcome_unknown");
+    const outcomeUnknown = markReviewWriteOutcomeUnknown(operation);
+    if (outcomeUnknown._tag === "err") return err("outcome_unknown");
+    const marked = await this.operations.markOutcomeUnknown(
+      outcomeUnknown.value,
+    );
+    if (marked._tag === "err") return err("outcome_unknown");
+    let result: Result<T, GitHubWriteFailure>;
+    try {
+      result = await write();
+    } catch {
+      return err("outcome_unknown");
+    }
+    if (result._tag === "err") {
+      if (result.error.category === "unavailable")
+        return err("outcome_unknown");
+      const rejected = await this.operations.reject(operation);
+      if (rejected._tag === "err") return err("outcome_unknown");
+      return err(mapWriteFailure(result.error));
+    }
+    const receipt = toReceipt(result.value);
+    const journalEntry = journalEntryFor(receipt);
+    const confirmedOperation = confirmReviewWrite(
+      outcomeUnknown.value,
+      journalEntry,
+    );
+    if (confirmedOperation._tag === "err") return err("outcome_unknown");
+    const confirmed = await this.operations.confirm(confirmedOperation.value);
+    if (confirmed._tag === "err") return err("outcome_unknown");
+    if (journalEntry !== undefined) {
+      const appended = await this.recentWrites.append(
+        input.profileId,
+        input.reviewId,
+        journalEntry,
+        this.now(),
+      );
+      if (appended._tag === "err") return err("outcome_unknown");
+    }
+    const removed = await this.operations.remove(
+      input.profileId,
+      input.reviewId,
+    );
+    if (removed._tag === "err") return err("outcome_unknown");
+    return ok(receipt);
   }
 
   private async ownedComment(
@@ -361,8 +490,9 @@ function journalEntryFor(
           };
     }
     case "CommentEdited":
-    case "CommentDeleted":
       return { _tag: "Comment", commentId: receipt.commentId };
+    case "CommentDeleted":
+      return undefined;
   }
 }
 
@@ -414,4 +544,23 @@ function coordinatesFor(
         line: anchor.line,
         side,
       };
+}
+
+function mapWriteFailure(
+  failure: GitHubWriteFailure,
+): DirectConversationFailure {
+  switch (failure.category) {
+    case "pending_review":
+      return "pending_review";
+    case "rate_limited":
+      return "rate_limited";
+    case "forbidden":
+      return "forbidden";
+    case "auth":
+      return "permission_denied";
+    case "rejected":
+      return "github_write_failed";
+    case "unavailable":
+      return "outcome_unknown";
+  }
 }

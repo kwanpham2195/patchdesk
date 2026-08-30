@@ -5,12 +5,24 @@ import type {
 } from "../adapters/github/github-adapter";
 import type { ForbiddenReason } from "../adapters/github/command-runner";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type {
+  IsoTimestamp,
+  ReviewId,
+  ReviewSessionId,
+  WorkspaceProfileId,
+} from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import type { ReviewSessionKey } from "../domain/review-session";
-import { err, type Result } from "../domain/result";
+import {
+  confirmReviewWrite,
+  markReviewWriteOutcomeUnknown,
+  type ReviewWriteIntent,
+  type ReviewWriteOperation,
+} from "../domain/review-write-operation";
+import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewWriteGateFailure } from "./review-write-gate";
@@ -46,6 +58,7 @@ export type PullRequestMetadataWriteFailure =
   | "forbidden"
   | "github_read_failed"
   | "github_write_failed"
+  | "outcome_unknown"
   | "rate_limited"
   | "review_write_in_progress";
 
@@ -79,7 +92,8 @@ export function pullRequestRefForSession(
 /** Keeps a refused or rate-limited write distinguishable from a generic one. */
 export function mapGitHubWriteFailure(
   failure: GitHubWriteFailure,
-): "rate_limited" | "forbidden" | "github_write_failed" {
+): "rate_limited" | "forbidden" | "github_write_failed" | "outcome_unknown" {
+  if (failure.category === "unavailable") return "outcome_unknown";
   if (failure.category === "rate_limited") return "rate_limited";
   if (failure.category === "forbidden") return "forbidden";
   return "github_write_failed";
@@ -160,16 +174,16 @@ export async function resolvePullRequestWritePermission<Permission>(input: {
 }
 
 /**
- * Runs one pull request metadata write under the guards every such write
- * takes: local validation first, then a per-Review exclusive lock, then the
- * write itself, then a best-effort journal entry.
- *
- * Validation runs *before* the lock so a request that cannot succeed never
- * blocks a concurrent one. The journal append is best effort: the GitHub
- * write has already succeeded by then, so a durable journal failure must not
- * fail a confirmed command. The lock is released in a `finally` so a thrown
- * write cannot strand the Review.
+ * Runs one metadata write through local validation, synchronous admission,
+ * deterministic preflight, durable intent, remote mutation, and confirmation.
  */
+/** Deterministic metadata preflight result captured before durable admission. */
+export type PreparedMetadataWrite<Receipt, Failure> = {
+  readonly sessionId: ReviewSessionId;
+  readonly intent: ReviewWriteIntent;
+  readonly write: () => Promise<Result<Receipt, Failure>>;
+};
+
 export async function runGuardedMetadataWrite<
   Receipt,
   Failure extends string,
@@ -177,26 +191,73 @@ export async function runGuardedMetadataWrite<
   readonly profileId: WorkspaceProfileId;
   readonly reviewId: ReviewId;
   readonly coordinator: ReviewOperationCoordinator;
+  readonly operations: Pick<
+    ReviewWriteOperationStore,
+    "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
+  >;
   readonly recentWrites: Pick<RecentWriteJournalStore, "append">;
   readonly now: () => IsoTimestamp;
   readonly validate: () => Result<void, Failure>;
-  readonly write: () => Promise<Result<Receipt, Failure>>;
+  readonly prepare: () => Promise<
+    Result<PreparedMetadataWrite<Receipt, Failure>, Failure>
+  >;
   readonly journalEntry: (receipt: Receipt) => RecentReviewWrite;
-}): Promise<Result<Receipt, Failure | "review_write_in_progress">> {
+}): Promise<
+  Result<Receipt, Failure | "review_write_in_progress" | "outcome_unknown">
+> {
   const validated = input.validate();
   if (validated._tag === "err") return validated;
   const key = `${input.profileId}:${input.reviewId}`;
   if (!input.coordinator.acquire(key)) return err("review_write_in_progress");
   try {
-    const result = await input.write();
-    if (result._tag === "ok")
-      await input.recentWrites.append(
-        input.profileId,
-        input.reviewId,
-        input.journalEntry(result.value),
-        input.now(),
-      );
-    return result;
+    const active = await input.operations.load(input.profileId, input.reviewId);
+    if (active._tag === "err" || active.value !== undefined)
+      return err("outcome_unknown");
+    const prepared = await input.prepare();
+    if (prepared._tag === "err") return prepared;
+    const operation: ReviewWriteOperation = {
+      schemaVersion: 1,
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      sessionId: prepared.value.sessionId,
+      intent: prepared.value.intent,
+      state: { _tag: "Requested" },
+      startedAt: input.now(),
+    };
+    const begun = await input.operations.begin(operation);
+    if (begun._tag === "err") return err("outcome_unknown");
+    const unknown = markReviewWriteOutcomeUnknown(operation);
+    if (unknown._tag === "err") return err("outcome_unknown");
+    const marked = await input.operations.markOutcomeUnknown(unknown.value);
+    if (marked._tag === "err") return err("outcome_unknown");
+    let result: Result<Receipt, Failure>;
+    try {
+      result = await prepared.value.write();
+    } catch {
+      return err("outcome_unknown");
+    }
+    if (result._tag === "err") {
+      if (result.error === "outcome_unknown") return result;
+      const rejected = await input.operations.reject(operation);
+      return rejected._tag === "err" ? err("outcome_unknown") : result;
+    }
+    const receipt = input.journalEntry(result.value);
+    const confirmedOperation = confirmReviewWrite(unknown.value, receipt);
+    if (confirmedOperation._tag === "err") return err("outcome_unknown");
+    const confirmed = await input.operations.confirm(confirmedOperation.value);
+    if (confirmed._tag === "err") return err("outcome_unknown");
+    const appended = await input.recentWrites.append(
+      input.profileId,
+      input.reviewId,
+      receipt,
+      input.now(),
+    );
+    if (appended._tag === "err") return err("outcome_unknown");
+    const removed = await input.operations.remove(
+      input.profileId,
+      input.reviewId,
+    );
+    return removed._tag === "err" ? err("outcome_unknown") : ok(result.value);
   } finally {
     input.coordinator.release(key);
   }

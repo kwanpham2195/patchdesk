@@ -6,6 +6,7 @@ import {
   type SetStateAction,
 } from "react";
 import { requestJson, selectDirectory } from "../api-client";
+import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
 import type { Dashboard, Profile } from "../renderer-models";
 
 export type ProfileDraft = {
@@ -60,7 +61,7 @@ export function useWorkspaceProfileDraft({
   onProfileSwitchRequest,
   onSaveProfileReady,
   onDiscardProfileReady,
-  onProfileSwitchStart,
+  onProfileSwitch,
 }: {
   readonly dashboard: Dashboard | undefined;
   readonly profiles: ReadonlyArray<Profile>;
@@ -73,7 +74,9 @@ export function useWorkspaceProfileDraft({
     | ((save: () => Promise<boolean>) => void)
     | undefined;
   readonly onDiscardProfileReady: ((discard: () => void) => void) | undefined;
-  readonly onProfileSwitchStart: (() => void) | undefined;
+  readonly onProfileSwitch:
+    | ((profileId: string) => Promise<ProfileSwitchResult>)
+    | undefined;
 }): WorkspaceProfileDraftHook {
   const [profileDraft, setProfileDraft] = useState(() =>
     profileDraftFor(dashboard?.profile),
@@ -194,39 +197,17 @@ export function useWorkspaceProfileDraft({
 
   const performSelectProfile = async (id: string): Promise<void> => {
     const selected = profiles.find((profile) => profile.id === id);
-    if (selected === undefined) return;
-    const previousDraft = profileDraft;
-    const previousBaseline = profileBaseline.current;
+    if (selected === undefined || onProfileSwitch === undefined) return;
     const draftGeneration = profileDraftGeneration.current;
+    const next = profileDraftFor(selected);
+    const result = await onProfileSwitch(id);
+    if (result !== "applied") return;
     setCreatingProfile(false);
     setProfileError(undefined);
-    const next = profileDraftFor(selected);
-    try {
-      await requestJson("/v1/profiles/select", {
-        method: "POST",
-        body: { id },
-      });
-      onProfileSwitchStart?.();
-      if (profileDraftGeneration.current === draftGeneration) {
-        profileBaseline.current = next;
-        setProfileDraft(next);
-        onProfileDirtyChange?.(false);
-      }
-      await onWorkspaceReload();
-    } catch (cause: unknown) {
-      if (profileDraftGeneration.current === draftGeneration) {
-        profileBaseline.current = previousBaseline;
-        setProfileDraft(previousDraft);
-        onProfileDirtyChange?.(
-          JSON.stringify(previousDraft) !== JSON.stringify(previousBaseline),
-        );
-      }
-      setProfileError(
-        cause instanceof Error
-          ? cause.message
-          : "Patchdesk could not switch profiles.",
-      );
-    }
+    if (profileDraftGeneration.current !== draftGeneration) return;
+    profileBaseline.current = next;
+    setProfileDraft(next);
+    onProfileDirtyChange?.(false);
   };
 
   const selectProfile = (id: string): void => {

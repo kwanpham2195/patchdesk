@@ -1,11 +1,17 @@
 import { useCallback } from "react";
 
-import { requestJson } from "../api-client";
+import type { RecentReviewWrite } from "../../../domain/recent-review-write";
+import {
+  PatchdeskApiError,
+  isOutcomeUnknownRetry,
+  requestJson,
+} from "../api-client";
 import {
   parseAssignableUserListResponse,
   parseRepositoryLabelListResponse,
   parseReviewerListResponse,
   type AssignableUserListResponse,
+  type RemoteWriteRecovery,
   type RepositoryLabelListResponse,
   type ReviewerListResponse,
   type WorkbenchResponse,
@@ -16,8 +22,8 @@ import {
   parseReviewerReceipt,
 } from "./review-workbench-receipts";
 import type {
-  RunDirectCommand,
   AppendRecentWrites,
+  RunDirectCommand,
 } from "./use-review-observation";
 
 export type ReviewMetadataActions = {
@@ -53,228 +59,238 @@ export type ReviewMetadataActionsInput = {
   readonly workbench: WorkbenchResponse;
   readonly runDirectCommand: RunDirectCommand;
   readonly appendRecentWrites: AppendRecentWrites;
+  readonly observeConfirmedReviewWrite: (
+    recentWrites?: ReadonlyArray<RecentReviewWrite>,
+  ) => Promise<void>;
+  readonly requireRecovery: (
+    operation: RemoteWriteRecovery["operation"],
+  ) => void;
 };
 
-/** Owns pull-request metadata reads, writes, and their local write receipts. */
+/** Owns pull request metadata reads and strict confirmation handling. */
 export function useReviewMetadataActions({
   workbench,
   runDirectCommand,
   appendRecentWrites,
+  observeConfirmedReviewWrite,
+  requireRecovery,
 }: ReviewMetadataActionsInput): ReviewMetadataActions {
-  const fetchLabels = useCallback(async (): Promise<
-    RepositoryLabelListResponse | undefined
-  > => {
-    const value = await requestJson(
-      `/v1/reviews/labels?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}`,
-    );
-    return parseRepositoryLabelListResponse(value);
-  }, [workbench]);
+  const profileId = workbench.session.key.profileId;
+  const reviewId = workbench.review.id;
+  const runConfirmed = useCallback(
+    async <T>(input: {
+      readonly path: string;
+      readonly command: object;
+      readonly operation: RemoteWriteRecovery["operation"];
+      readonly parse: (
+        value: Awaited<ReturnType<typeof requestJson>>,
+      ) => T | undefined;
+      readonly matches: (receipt: T) => boolean;
+      readonly recentWrite: (receipt: T) => RecentReviewWrite;
+    }): Promise<T> => {
+      try {
+        const value = await runDirectCommand(() =>
+          requestJson(input.path, {
+            method: "POST",
+            body: { profileId, reviewId, command: input.command },
+          }),
+        );
+        const receipt = input.parse(value);
+        if (receipt === undefined || !input.matches(receipt)) {
+          requireRecovery(input.operation);
+          throw new Error("Invalid metadata confirmation response");
+        }
+        const recentWrite = input.recentWrite(receipt);
+        appendRecentWrites(recentWrite);
+        void observeConfirmedReviewWrite([recentWrite]).catch(() => undefined);
+        return receipt;
+      } catch (cause: unknown) {
+        if (
+          isOutcomeUnknownRetry(cause) ||
+          (cause instanceof PatchdeskApiError && cause.kind === "unavailable")
+        )
+          requireRecovery(input.operation);
+        throw cause;
+      }
+    },
+    [
+      appendRecentWrites,
+      profileId,
+      reviewId,
+      observeConfirmedReviewWrite,
+      requireRecovery,
+      runDirectCommand,
+    ],
+  );
+
+  const fetchLabels = useCallback(
+    async () =>
+      parseRepositoryLabelListResponse(
+        await requestJson(
+          `/v1/reviews/labels?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}`,
+        ),
+      ),
+    [profileId, reviewId],
+  );
+  const fetchAssignableUsers = useCallback(
+    async (query?: string) =>
+      parseAssignableUserListResponse(
+        await requestJson(
+          `/v1/reviews/assignees?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}${query === undefined || query === "" ? "" : `&query=${encodeURIComponent(query)}`}`,
+        ),
+      ),
+    [profileId, reviewId],
+  );
+  const fetchReviewers = useCallback(
+    async (query?: string) =>
+      parseReviewerListResponse(
+        await requestJson(
+          `/v1/reviews/reviewers?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}${query === undefined || query === "" ? "" : `&query=${encodeURIComponent(query)}`}`,
+        ),
+      ),
+    [profileId, reviewId],
+  );
 
   const addLabels = useCallback(
     async (
       labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/labels/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "AddLabels", labels },
-          },
-        }),
-      );
-      const receipt = parseLabelReceipt(value);
-      if (receipt?._tag === "LabelsAdded") {
-        appendRecentWrites({
-          _tag: "LabelChange",
-          added: receipt.added,
-          removed: [],
-        });
-      }
+    ) => {
+      const names = labels.map((label) => label.name);
+      await runConfirmed({
+        path: "/v1/reviews/labels/command",
+        command: { _tag: "AddLabels", labels },
+        operation: "AddLabels",
+        parse: parseLabelReceipt,
+        matches: (receipt) =>
+          receipt._tag === "LabelsAdded" && sameMembers(receipt.added, names),
+        recentWrite: () => ({ _tag: "LabelChange", added: names, removed: [] }),
+      });
     },
-    [appendRecentWrites, runDirectCommand, workbench],
+    [runConfirmed],
   );
-
   const removeLabels = useCallback(
     async (
       labels: ReadonlyArray<{ readonly id: string; readonly name: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/labels/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "RemoveLabels", labels },
-          },
-        }),
-      );
-      const receipt = parseLabelReceipt(value);
-      if (receipt?._tag === "LabelsRemoved") {
-        appendRecentWrites({
-          _tag: "LabelChange",
-          added: [],
-          removed: receipt.removed,
-        });
-      }
+    ) => {
+      const names = labels.map((label) => label.name);
+      await runConfirmed({
+        path: "/v1/reviews/labels/command",
+        command: { _tag: "RemoveLabels", labels },
+        operation: "RemoveLabels",
+        parse: parseLabelReceipt,
+        matches: (receipt) =>
+          receipt._tag === "LabelsRemoved" &&
+          sameMembers(receipt.removed, names),
+        recentWrite: () => ({ _tag: "LabelChange", added: [], removed: names }),
+      });
     },
-    [appendRecentWrites, runDirectCommand, workbench],
+    [runConfirmed],
   );
-
-  const fetchAssignableUsers = useCallback(
-    async (query?: string): Promise<AssignableUserListResponse | undefined> => {
-      const queryField =
-        query === undefined || query === ""
-          ? ""
-          : `&query=${encodeURIComponent(query)}`;
-      const value = await requestJson(
-        `/v1/reviews/assignees?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}${queryField}`,
-      );
-      return parseAssignableUserListResponse(value);
-    },
-    [workbench],
-  );
-
   const addAssignees = useCallback(
     async (
       assignees: ReadonlyArray<{ readonly id: string; readonly login: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/assignees/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "AddAssignees", assignees },
-          },
-        }),
-      );
-      const receipt = parseAssigneeReceipt(value);
-      if (receipt?._tag === "AssigneesAdded") {
-        appendRecentWrites({
+    ) => {
+      const logins = assignees.map((assignee) => assignee.login);
+      await runConfirmed({
+        path: "/v1/reviews/assignees/command",
+        command: { _tag: "AddAssignees", assignees },
+        operation: "AddAssignees",
+        parse: parseAssigneeReceipt,
+        matches: (receipt) =>
+          receipt._tag === "AssigneesAdded" &&
+          sameMembers(receipt.added, logins),
+        recentWrite: () => ({
           _tag: "AssigneeChange",
-          added: receipt.added,
+          added: logins,
           removed: [],
-        });
-      }
+        }),
+      });
     },
-    [appendRecentWrites, runDirectCommand, workbench],
+    [runConfirmed],
   );
-
   const removeAssignees = useCallback(
     async (
       assignees: ReadonlyArray<{ readonly id: string; readonly login: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/assignees/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "RemoveAssignees", assignees },
-          },
-        }),
-      );
-      const receipt = parseAssigneeReceipt(value);
-      if (receipt?._tag === "AssigneesRemoved") {
-        appendRecentWrites({
+    ) => {
+      const logins = assignees.map((assignee) => assignee.login);
+      await runConfirmed({
+        path: "/v1/reviews/assignees/command",
+        command: { _tag: "RemoveAssignees", assignees },
+        operation: "RemoveAssignees",
+        parse: parseAssigneeReceipt,
+        matches: (receipt) =>
+          receipt._tag === "AssigneesRemoved" &&
+          sameMembers(receipt.removed, logins),
+        recentWrite: () => ({
           _tag: "AssigneeChange",
           added: [],
-          removed: receipt.removed,
-        });
-      }
-    },
-    [appendRecentWrites, runDirectCommand, workbench],
-  );
-
-  const assignSelf = useCallback(async (): Promise<ReadonlyArray<string>> => {
-    const value = await runDirectCommand(() =>
-      requestJson("/v1/reviews/assignees/command", {
-        method: "POST",
-        body: {
-          profileId: workbench.session.key.profileId,
-          reviewId: workbench.review.id,
-          command: { _tag: "AssignSelf" },
-        },
-      }),
-    );
-    const receipt = parseAssigneeReceipt(value);
-    if (receipt?._tag === "AssigneesAdded") {
-      appendRecentWrites({
-        _tag: "AssigneeChange",
-        added: receipt.added,
-        removed: [],
+          removed: logins,
+        }),
       });
-      return receipt.added;
-    }
-    return [];
-  }, [appendRecentWrites, runDirectCommand, workbench]);
-
-  const fetchReviewers = useCallback(
-    async (query?: string): Promise<ReviewerListResponse | undefined> => {
-      const queryField =
-        query === undefined || query === ""
-          ? ""
-          : `&query=${encodeURIComponent(query)}`;
-      const value = await requestJson(
-        `/v1/reviews/reviewers?profileId=${encodeURIComponent(workbench.session.key.profileId)}&reviewId=${encodeURIComponent(workbench.review.id)}${queryField}`,
-      );
-      return parseReviewerListResponse(value);
     },
-    [workbench],
+    [runConfirmed],
   );
-
+  const assignSelf = useCallback(async () => {
+    const receipt = await runConfirmed({
+      path: "/v1/reviews/assignees/command",
+      command: { _tag: "AssignSelf" },
+      operation: "AddAssignees",
+      parse: parseAssigneeReceipt,
+      matches: (value) =>
+        value._tag === "AssigneesAdded" &&
+        value.added.length === 1 &&
+        value.added[0]?.toLowerCase() === workbench.viewerLogin.toLowerCase(),
+      recentWrite: (value) => ({
+        _tag: "AssigneeChange",
+        added: value._tag === "AssigneesAdded" ? value.added : [],
+        removed: [],
+      }),
+    });
+    return receipt._tag === "AssigneesAdded" ? receipt.added : [];
+  }, [runConfirmed, workbench.viewerLogin]);
   const requestReviewers = useCallback(
     async (
       reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/reviewers/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "RequestReviewers", reviewers },
-          },
-        }),
-      );
-      const receipt = parseReviewerReceipt(value);
-      if (receipt?._tag === "ReviewersRequested") {
-        appendRecentWrites({
+    ) => {
+      const logins = reviewers.map((reviewer) => reviewer.login);
+      await runConfirmed({
+        path: "/v1/reviews/reviewers/command",
+        command: { _tag: "RequestReviewers", reviewers },
+        operation: "RequestReviewers",
+        parse: parseReviewerReceipt,
+        matches: (receipt) =>
+          receipt._tag === "ReviewersRequested" &&
+          sameMembers(receipt.requested, logins),
+        recentWrite: () => ({
           _tag: "ReviewerChange",
-          requested: receipt.requested,
+          requested: logins,
           removed: [],
-        });
-      }
+        }),
+      });
     },
-    [appendRecentWrites, runDirectCommand, workbench],
+    [runConfirmed],
   );
-
   const removeReviewers = useCallback(
     async (
       reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
-    ): Promise<void> => {
-      const value = await runDirectCommand(() =>
-        requestJson("/v1/reviews/reviewers/command", {
-          method: "POST",
-          body: {
-            profileId: workbench.session.key.profileId,
-            reviewId: workbench.review.id,
-            command: { _tag: "RemoveReviewers", reviewers },
-          },
-        }),
-      );
-      const receipt = parseReviewerReceipt(value);
-      if (receipt?._tag === "ReviewersRemoved") {
-        appendRecentWrites({
+    ) => {
+      const logins = reviewers.map((reviewer) => reviewer.login);
+      await runConfirmed({
+        path: "/v1/reviews/reviewers/command",
+        command: { _tag: "RemoveReviewers", reviewers },
+        operation: "RemoveReviewers",
+        parse: parseReviewerReceipt,
+        matches: (receipt) =>
+          receipt._tag === "ReviewersRemoved" &&
+          sameMembers(receipt.removed, logins),
+        recentWrite: () => ({
           _tag: "ReviewerChange",
           requested: [],
-          removed: receipt.removed,
-        });
-      }
+          removed: logins,
+        }),
+      });
     },
-    [appendRecentWrites, runDirectCommand, workbench],
+    [runConfirmed],
   );
 
   return {
@@ -289,4 +305,14 @@ export function useReviewMetadataActions({
     requestReviewers,
     removeReviewers,
   };
+}
+
+function sameMembers(
+  actual: ReadonlyArray<string>,
+  expected: ReadonlyArray<string>,
+): boolean {
+  return (
+    actual.length === expected.length &&
+    actual.every((value, index) => value === expected[index])
+  );
 }

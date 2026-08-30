@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -46,6 +47,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 const icons = {
   dashboard: GitPullRequest,
   settings: Settings,
@@ -63,6 +65,7 @@ export function AppShell({
   onOpenSettings,
   profiles,
   activeProfileId,
+  profileSwitchState,
   onProfileSwitch,
   onInboxStateChange,
   children,
@@ -73,6 +76,7 @@ export function AppShell({
   readonly onOpenSettings: (opener?: HTMLElement) => void;
   readonly profiles?: ReadonlyArray<ProfileEntry>;
   readonly activeProfileId?: string;
+  readonly profileSwitchState?: ProfileSwitchState;
   readonly onProfileSwitch?: (id: string) => void;
   /** Jumps the Maintainer inbox to an open/merged preset from
    * `INBOX_STATE_FILTERS` — the palette and the filter bar share this one
@@ -168,37 +172,58 @@ export function AppShell({
         </div>
         <div className="flex items-center gap-1.5">
           {profiles !== undefined && profiles.length > 0 ? (
-            <Select
-              value={activeProfileId ?? ""}
-              items={profiles.map((profile) => ({
-                label: profile.label,
-                value: profile.id,
-              }))}
-              onValueChange={(value) => {
-                if (value !== null && onProfileSwitch !== undefined)
-                  onProfileSwitch(value);
-              }}
-            >
-              <SelectTrigger
-                aria-label="Active profile"
-                className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted"
+            <div className="flex items-center gap-1.5">
+              <Select
+                value={activeProfileId ?? ""}
+                items={profiles.map((profile) => ({
+                  label: profile.label,
+                  value: profile.id,
+                }))}
+                onValueChange={(value) => {
+                  if (value !== null && onProfileSwitch !== undefined)
+                    onProfileSwitch(value);
+                }}
               >
-                <User className="size-3" />
-                <SelectValue placeholder="Select profile">
-                  {profiles.find((p) => p.id === activeProfileId)?.label ??
-                    "Profile"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {profiles.map((profile) => (
-                    <SelectItem key={profile.id} value={profile.id}>
-                      {profile.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  aria-label="Active profile"
+                  className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted"
+                >
+                  <User className="size-3" />
+                  <SelectValue placeholder="Select profile">
+                    {profiles.find((p) => p.id === activeProfileId)?.label ??
+                      "Profile"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {profiles.map((profile) => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {profileSwitchState?.pendingOwner === "header" ? (
+                <span
+                  className="flex items-center gap-1 text-xs text-muted-foreground"
+                  role="status"
+                >
+                  <Spinner aria-hidden="true" className="size-3" />
+                  Switching to{" "}
+                  {profiles.find(
+                    (profile) =>
+                      profile.id === profileSwitchState.pendingTarget,
+                  )?.label ?? "profile"}
+                  …
+                </span>
+              ) : null}
+              {profileSwitchState?.error?.owner === "header" ? (
+                <span className="text-xs text-destructive" role="alert">
+                  {profileSwitchState.error.message}
+                </span>
+              ) : null}
+            </div>
           ) : null}
           <Tooltip>
             <TooltipTrigger

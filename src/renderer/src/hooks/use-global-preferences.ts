@@ -21,8 +21,9 @@ import { record } from "../json-guards";
  * through `PATCH /v1/settings`, and migrated out of local storage on first
  * load.
  *
- * `preferenceError` is the one piece of copy the screen shows for a failed
- * load or save; `retryPreferences` re-runs whichever of the two failed last.
+ * Each field owns its generation and failed value. A settlement can therefore
+ * affect only the intent that started it, while the shared retry control runs
+ * the most recently failed field without replaying obsolete intent.
  */
 export type GlobalPreferences = {
   readonly appearance: AppearancePreference;
@@ -33,14 +34,32 @@ export type GlobalPreferences = {
   readonly retryPreferences: () => void;
 };
 
+type PreferenceFailure = {
+  readonly message: string;
+  readonly order: number;
+};
+
+type PreferenceRetry = {
+  readonly order: number;
+  readonly run: () => Promise<void>;
+};
+
 export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
   const [appearance, setAppearance] = useState<AppearancePreference>(() =>
     loadAppearancePreference(),
   );
   const [diffThemePreferences, setDiffThemePreferences] =
     useState<DiffThemePreferences>(() => loadDiffThemePreferences());
-  const [preferenceError, setPreferenceError] = useState<string>();
-  const preferenceRetry = useRef<(() => Promise<void>) | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string>();
+  const [appearanceFailure, setAppearanceFailure] =
+    useState<PreferenceFailure>();
+  const [diffThemeFailure, setDiffThemeFailure] = useState<PreferenceFailure>();
+  const appearanceGeneration = useRef(0);
+  const diffThemeGeneration = useRef(0);
+  const failureOrder = useRef(0);
+  const loadRetry = useRef<(() => Promise<void>) | undefined>(undefined);
+  const appearanceRetry = useRef<PreferenceRetry | undefined>(undefined);
+  const diffThemeRetry = useRef<PreferenceRetry | undefined>(undefined);
 
   useEffect(() => {
     const apply = (): void => {
@@ -59,8 +78,10 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
     if (fixtureMode || window.patchdesk?.request === undefined) return;
     let active = true;
     const loadGlobalPreferences = async (): Promise<void> => {
-      preferenceRetry.current = loadGlobalPreferences;
-      if (active) setPreferenceError(undefined);
+      const appearanceOwner = appearanceGeneration.current;
+      const diffThemeOwner = diffThemeGeneration.current;
+      loadRetry.current = loadGlobalPreferences;
+      if (active) setLoadError(undefined);
       let stored: GlobalSettings;
       try {
         stored = parseGlobalSettings(await api("/v1/settings"));
@@ -68,16 +89,27 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
         // A missing config file is a genuine first run and is already
         // normalized to an empty settings object upstream, so any rejection
         // here is a real load failure (corrupt file, I/O error, ...).
-        if (active)
-          setPreferenceError(
+        if (
+          active &&
+          loadRetry.current === loadGlobalPreferences &&
+          appearanceGeneration.current === appearanceOwner &&
+          diffThemeGeneration.current === diffThemeOwner
+        )
+          setLoadError(
             "Could not load saved preferences. Appearance and diff theme are using defaults; retry to reload the saved settings, or change a preference to overwrite the stored file.",
           );
         return;
       }
+      if (!active) return;
+      loadRetry.current = undefined;
+      const ownsAppearance = appearanceGeneration.current === appearanceOwner;
+      const ownsDiffTheme = diffThemeGeneration.current === diffThemeOwner;
       const appearanceFromStorage = stored.appearance;
       const diffThemeFromStorage = stored.diffTheme;
-      const migratedAppearance = appearanceFromStorage === undefined;
-      const migratedDiffTheme = diffThemeFromStorage === undefined;
+      const migratedAppearance =
+        ownsAppearance && appearanceFromStorage === undefined;
+      const migratedDiffTheme =
+        ownsDiffTheme && diffThemeFromStorage === undefined;
       const nextAppearance =
         appearanceFromStorage ?? loadAppearancePreference();
       const nextDiffTheme =
@@ -85,12 +117,13 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
           ? loadDiffThemePreferences()
           : parseDiffThemePreferences(diffThemeFromStorage);
       const correctedDiffTheme =
+        ownsDiffTheme &&
         diffThemeFromStorage !== undefined &&
         !sameDiffTheme(diffThemeFromStorage, nextDiffTheme);
 
-      if (!active) return;
-      if (appearanceFromStorage !== undefined) setAppearance(nextAppearance);
-      if (diffThemeFromStorage !== undefined)
+      if (ownsAppearance && appearanceFromStorage !== undefined)
+        setAppearance(nextAppearance);
+      if (ownsDiffTheme && diffThemeFromStorage !== undefined)
         setDiffThemePreferences(nextDiffTheme);
 
       if (!migratedAppearance && !migratedDiffTheme && !correctedDiffTheme)
@@ -112,8 +145,13 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
         return;
       }
       if (!active) return;
-      if (migratedAppearance) clearAppearancePreference();
-      if (migratedDiffTheme) clearDiffThemePreferences();
+      if (
+        migratedAppearance &&
+        appearanceGeneration.current === appearanceOwner
+      )
+        clearAppearancePreference();
+      if (migratedDiffTheme && diffThemeGeneration.current === diffThemeOwner)
+        clearDiffThemePreferences();
     };
     void loadGlobalPreferences();
     return () => {
@@ -123,9 +161,12 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
 
   const updateAppearance = useCallback(
     async (next: AppearancePreference): Promise<void> => {
-      preferenceRetry.current = async () => updateAppearance(next);
+      const generation = ++appearanceGeneration.current;
+      appearanceRetry.current = undefined;
       setAppearance(next);
-      setPreferenceError(undefined);
+      setAppearanceFailure(undefined);
+      setLoadError(undefined);
+      loadRetry.current = undefined;
       try {
         const stored = parseGlobalSettings(
           await api("/v1/settings", {
@@ -133,20 +174,36 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
             body: { appearance: next },
           }),
         );
+        if (appearanceGeneration.current !== generation) return;
         if (stored.appearance !== undefined) setAppearance(stored.appearance);
       } catch {
-        setPreferenceError(
-          "Could not save appearance. The visible change is active; retry to persist it.",
-        );
+        if (appearanceGeneration.current !== generation) return;
+        const order = ++failureOrder.current;
+        const retry: PreferenceRetry = {
+          order,
+          run: async () => {
+            if (appearanceRetry.current !== retry) return;
+            await updateAppearance(next);
+          },
+        };
+        appearanceRetry.current = retry;
+        setAppearanceFailure({
+          order,
+          message:
+            "Could not save appearance. The visible change is active; retry to persist it.",
+        });
       }
     },
     [],
   );
   const updateDiffTheme = useCallback(
     async (next: DiffThemePreferences): Promise<void> => {
-      preferenceRetry.current = async () => updateDiffTheme(next);
+      const generation = ++diffThemeGeneration.current;
+      diffThemeRetry.current = undefined;
       setDiffThemePreferences(next);
-      setPreferenceError(undefined);
+      setDiffThemeFailure(undefined);
+      setLoadError(undefined);
+      loadRetry.current = undefined;
       try {
         const stored = parseGlobalSettings(
           await api("/v1/settings", {
@@ -154,23 +211,56 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
             body: { diffTheme: next },
           }),
         );
+        if (diffThemeGeneration.current !== generation) return;
         if (stored.diffTheme !== undefined)
           setDiffThemePreferences(parseDiffThemePreferences(stored.diffTheme));
       } catch {
-        setPreferenceError(
-          "Could not save diff theme. The visible change is active; retry to persist it.",
-        );
+        if (diffThemeGeneration.current !== generation) return;
+        const order = ++failureOrder.current;
+        const retry: PreferenceRetry = {
+          order,
+          run: async () => {
+            if (diffThemeRetry.current !== retry) return;
+            await updateDiffTheme(next);
+          },
+        };
+        diffThemeRetry.current = retry;
+        setDiffThemeFailure({
+          order,
+          message:
+            "Could not save diff theme. The visible change is active; retry to persist it.",
+        });
       }
     },
     [],
   );
   const retryPreferences = useCallback((): void => {
-    void preferenceRetry.current?.();
+    const appearanceOwner = appearanceRetry.current;
+    const diffThemeOwner = diffThemeRetry.current;
+    const owner =
+      appearanceOwner === undefined
+        ? diffThemeOwner
+        : diffThemeOwner === undefined ||
+            appearanceOwner.order > diffThemeOwner.order
+          ? appearanceOwner
+          : diffThemeOwner;
+    if (owner !== undefined) {
+      void owner.run();
+      return;
+    }
+    void loadRetry.current?.();
   }, []);
+  const preferenceFailure =
+    appearanceFailure === undefined
+      ? diffThemeFailure
+      : diffThemeFailure === undefined ||
+          appearanceFailure.order > diffThemeFailure.order
+        ? appearanceFailure
+        : diffThemeFailure;
   return {
     appearance,
     diffThemePreferences,
-    preferenceError,
+    preferenceError: preferenceFailure?.message ?? loadError,
     updateAppearance,
     updateDiffTheme,
     retryPreferences,

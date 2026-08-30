@@ -111,6 +111,7 @@ export function useGithubItemPicker<
   const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const admittedKeysRef = useRef(new Set<string>());
   const [writeError, setWriteError] = useState<string>();
   // Tracks the last `attached` prop identity rendered, so a change to it can
   // be adjusted for during rendering (the pattern React recommends over an
@@ -161,8 +162,13 @@ export function useGithubItemPicker<
 
   const toggle = (item: TItem, nextAttached: boolean): void => {
     const key = keyOf(item);
-    if (actions === undefined || busyKeys.has(key) || permission === "denied")
+    if (
+      actions === undefined ||
+      admittedKeysRef.current.has(key) ||
+      permission === "denied"
+    )
       return;
+    admittedKeysRef.current.add(key);
     setWriteError(undefined);
     setBusyKeys((current) => new Set(current).add(key));
     if (nextAttached) {
@@ -189,6 +195,7 @@ export function useGithubItemPicker<
         setWriteError(`${describeWriteFailure(item, nextAttached)}${reason}`);
       })
       .finally(() => {
+        admittedKeysRef.current.delete(key);
         setBusyKeys((current) => withoutMember(current, key));
       });
   };

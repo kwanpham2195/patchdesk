@@ -3,6 +3,7 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import type { StorageFailure } from "../../src/adapters/storage/json-file";
 import type { MergeOperation } from "../../src/domain/merge-operation";
 import type { PendingReviewState } from "../../src/domain/pending-review";
+import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import {
   createReviewSession,
   type ReviewSession,
@@ -220,11 +221,37 @@ export type WriteFlow = {
  * invisible.
  */
 export function recentWritesJournal(trace: Trace) {
+  let operation: ReviewWriteOperation | undefined;
   return {
     append: async () => {
       trace.push("journal:append");
       return ok(undefined);
     },
+    load: async () => ok(operation),
+    begin: async (next: ReviewWriteOperation) => {
+      trace.push(`intent:${next.state._tag}`);
+      operation = next;
+      return ok(undefined);
+    },
+    markOutcomeUnknown: async (next: ReviewWriteOperation) => {
+      trace.push(`intent:${next.state._tag}`);
+      operation = next;
+      return ok(undefined);
+    },
+    confirm: async (next: ReviewWriteOperation) => {
+      trace.push(`intent:${next.state._tag}`);
+      operation = next;
+      return ok(undefined);
+    },
+    reject: async () => {
+      operation = undefined;
+      return ok(undefined);
+    },
+    remove: async () => {
+      operation = undefined;
+      return ok(undefined);
+    },
+    current: () => operation,
   };
 }
 

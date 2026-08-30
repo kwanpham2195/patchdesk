@@ -51,6 +51,10 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import type { Dashboard, Profile } from "../renderer-models";
+import type {
+  ProfileSwitchResult,
+  ProfileSwitchState,
+} from "../hooks/use-profile-switch";
 import { WorkspaceProfileSection } from "./settings-workspace-section";
 
 export type SettingsSection =
@@ -121,7 +125,10 @@ type SettingsFlowProps = {
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;
   readonly onSaveProfileReady?: (save: () => Promise<boolean>) => void;
   readonly onDiscardProfileReady?: (discard: () => void) => void;
-  readonly onProfileSwitchStart?: (() => void) | undefined;
+  readonly profileSwitchState?: ProfileSwitchState;
+  readonly onProfileSwitch?: (
+    profileId: string,
+  ) => Promise<ProfileSwitchResult>;
 };
 
 /** Renders one focused Settings section inside the global Settings overlay. */
@@ -139,7 +146,8 @@ export function SettingsFlow({
   onCleanupSuccess,
   onSaveProfileReady,
   onDiscardProfileReady,
-  onProfileSwitchStart,
+  profileSwitchState,
+  onProfileSwitch,
 }: SettingsFlowProps): React.JSX.Element {
   // `WorkspaceProfileSection` is always mounted — not just while the
   // Workspace tab is showing — so its profile draft, baseline/generation
@@ -156,7 +164,8 @@ export function SettingsFlow({
       onProfileSwitchRequest={onProfileSwitchRequest}
       onSaveProfileReady={onSaveProfileReady}
       onDiscardProfileReady={onDiscardProfileReady}
-      onProfileSwitchStart={onProfileSwitchStart}
+      profileSwitchState={profileSwitchState}
+      onProfileSwitch={onProfileSwitch}
     />
   );
 

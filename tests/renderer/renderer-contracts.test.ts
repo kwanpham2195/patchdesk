@@ -4,6 +4,7 @@ import {
   parseCommitDiffResponse,
   parseInboxResponse,
   parseInsightProviderCatalog,
+  parseMergeReceipt,
   parseModelCatalog,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
@@ -23,6 +24,7 @@ const sessionProjection = {
 
 const reviewProjection = {
   state: "review",
+  viewerLogin: "fixture",
   review: {
     id: "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456",
     status: "open",
@@ -267,6 +269,68 @@ describe("parseWorkbenchResponse", () => {
     expect(parseWorkbenchResponse(reviewProjection)).toMatchObject({
       state: "review",
     });
+  });
+
+  it("requires a bounded safe GitHub login for viewerLogin", () => {
+    const maximum = "a".repeat(39);
+    expect(
+      parseWorkbenchResponse({ ...reviewProjection, viewerLogin: maximum }),
+    ).toMatchObject({ viewerLogin: maximum });
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        viewerLogin: `${maximum}a`,
+      }),
+    ).toBeUndefined();
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        viewerLogin: "invalid/login",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("strictly parses bounded remote-write recovery", () => {
+    expect(
+      parseWorkbenchResponse({
+        ...reviewProjection,
+        remoteWriteRecovery: {
+          operation: "DeleteComment",
+          resolution: "manual_resolution_required",
+        },
+      })?.remoteWriteRecovery,
+    ).toEqual({
+      operation: "DeleteComment",
+      resolution: "manual_resolution_required",
+    });
+    for (const operation of [
+      "EditPublishedComment",
+      "DeletePublishedComment",
+      "DismissPublishedReview",
+    ] as const) {
+      expect(
+        parseWorkbenchResponse({
+          ...reviewProjection,
+          remoteWriteRecovery: { operation, resolution: "check_required" },
+        })?.remoteWriteRecovery,
+      ).toEqual({ operation, resolution: "check_required" });
+    }
+    for (const remoteWriteRecovery of [
+      { operation: "UnknownWrite", resolution: "check_required" },
+      { operation: "Reply", resolution: "retry_allowed" },
+      {
+        operation: "Reply",
+        resolution: "check_required",
+        rawError: "secret",
+      },
+    ]) {
+      expect(
+        parseWorkbenchResponse({
+          ...reviewProjection,
+          remoteWriteRecovery,
+        }),
+      ).toBeUndefined();
+    }
   });
 
   it("accepts a pull request summary carrying a GraphQL nodeId", () => {
@@ -525,6 +589,21 @@ describe("parseWorkbenchResponse", () => {
         },
       }),
     ).toBeDefined();
+  });
+});
+
+describe("parseMergeReceipt", () => {
+  const receipt = {
+    readiness: { _tag: "Ready", blockers: [], warnings: [] },
+    mergeCommitSha: "c".repeat(40),
+  };
+
+  it("accepts only a strict confirmed merge receipt", () => {
+    expect(parseMergeReceipt(receipt)).toEqual(receipt);
+    expect(
+      parseMergeReceipt({ ...receipt, mergeCommitSha: "short" }),
+    ).toBeUndefined();
+    expect(parseMergeReceipt({ ...receipt, response: "raw" })).toBeUndefined();
   });
 });
 

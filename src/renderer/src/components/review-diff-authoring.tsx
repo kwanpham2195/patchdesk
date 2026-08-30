@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { PatchdeskApiError } from "../api-client";
 import type {
@@ -8,6 +8,7 @@ import type {
 import { composerErrorMessage } from "./review-diff-authoring-errors";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
 export function PendingConversationCard({
@@ -255,19 +256,30 @@ export function InlineCommentComposer({
   readonly onSave: (body: string) => Promise<void>;
   readonly pendingReview?: PendingReviewComposerActions;
 }): React.JSX.Element {
+  type ComposerAction = "comment" | "start" | "add" | "comment-now";
   const [body, setBody] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [pendingAction, setPendingAction] = useState<ComposerAction>();
+  const pendingActionRef = useRef<ComposerAction | undefined>(undefined);
   const [error, setError] = useState<string>();
   const pendingState = pendingReview?.state.state;
   const writeDisabled =
     pendingState === "unavailable" || pendingState === "recovery_required";
-  const run = async (action: () => Promise<void>): Promise<void> => {
-    if (body.trim().length === 0 || saving || pendingReview?.busy === true)
+  const run = async (
+    actionKey: ComposerAction,
+    action: (submittedBody: string) => Promise<void>,
+  ): Promise<void> => {
+    if (
+      body.trim().length === 0 ||
+      pendingActionRef.current !== undefined ||
+      pendingReview?.busy === true
+    )
       return;
-    setSaving(true);
+    const submittedBody = body;
+    pendingActionRef.current = actionKey;
+    setPendingAction(actionKey);
     setError(undefined);
     try {
-      await action();
+      await action(submittedBody);
     } catch (cause: unknown) {
       if (cause instanceof PatchdeskApiError) {
         console.error("Inline review comment failed", {
@@ -278,16 +290,21 @@ export function InlineCommentComposer({
       }
       setError(composerErrorMessage(cause));
     } finally {
-      setSaving(false);
+      pendingActionRef.current = undefined;
+      setPendingAction(undefined);
     }
   };
   const anchor = { path, startLine, line, side };
-  const startOrAdd = (): Promise<void> => {
-    if (pendingReview === undefined) return onSave(body);
+  const startOrAdd = (submittedBody: string): Promise<void> => {
+    if (pendingReview === undefined) return onSave(submittedBody);
     const state = pendingReview.state;
     if (state.state === "pending")
-      return pendingReview.onAddReviewComment(state.nodeId, anchor, body);
-    return pendingReview.onStartReview(anchor, body);
+      return pendingReview.onAddReviewComment(
+        state.nodeId,
+        anchor,
+        submittedBody,
+      );
+    return pendingReview.onStartReview(anchor, submittedBody);
   };
   const cancel = (): void => {
     if (
@@ -297,7 +314,13 @@ export function InlineCommentComposer({
       return;
     onCancel();
   };
-  const busy = saving || pendingReview?.busy === true;
+  const busy = pendingAction !== undefined || pendingReview?.busy === true;
+  const keyboardAction: ComposerAction =
+    pendingState === "pending"
+      ? "add"
+      : pendingReview === undefined
+        ? "comment"
+        : "start";
   return (
     <section
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 shadow-sm"
@@ -329,20 +352,26 @@ export function InlineCommentComposer({
             !writeDisabled
           ) {
             event.preventDefault();
-            void run(startOrAdd);
+            void run(keyboardAction, startOrAdd);
           }
         }}
         placeholder="Write an inline comment"
-        disabled={writeDisabled}
+        disabled={writeDisabled || busy}
       />
       <div className="mt-2 flex gap-2">
         {pendingReview === undefined ? (
           <Button
             size="sm"
-            onClick={() => void run(() => onSave(body))}
+            onClick={() => void run("comment", onSave)}
             disabled={body.trim().length === 0 || busy}
           >
-            Comment
+            {pendingAction === "comment" ? (
+              <>
+                <Spinner data-icon="inline-start" /> Commenting…
+              </>
+            ) : (
+              "Comment"
+            )}
           </Button>
         ) : writeDisabled ? (
           <p className="text-sm text-amber-600 dark:text-amber-400">
@@ -352,27 +381,45 @@ export function InlineCommentComposer({
         ) : pendingState === "pending" ? (
           <Button
             size="sm"
-            onClick={() => void run(startOrAdd)}
+            onClick={() => void run("add", startOrAdd)}
             disabled={body.trim().length === 0 || busy}
           >
-            Add review comment
+            {pendingAction === "add" ? (
+              <>
+                <Spinner data-icon="inline-start" /> Adding…
+              </>
+            ) : (
+              "Add review comment"
+            )}
           </Button>
         ) : (
           <>
             <Button
               size="sm"
-              onClick={() => void run(startOrAdd)}
+              onClick={() => void run("start", startOrAdd)}
               disabled={body.trim().length === 0 || busy}
             >
-              Start a review
+              {pendingAction === "start" ? (
+                <>
+                  <Spinner data-icon="inline-start" /> Starting…
+                </>
+              ) : (
+                "Start a review"
+              )}
             </Button>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => void run(() => onSave(body))}
+              onClick={() => void run("comment-now", onSave)}
               disabled={body.trim().length === 0 || busy}
             >
-              Comment now
+              {pendingAction === "comment-now" ? (
+                <>
+                  <Spinner data-icon="inline-start" /> Commenting…
+                </>
+              ) : (
+                "Comment now"
+              )}
             </Button>
           </>
         )}

@@ -41,6 +41,7 @@ import {
   headSha,
   makeGate,
   makeRecentWrites,
+  makeReviewWriteOperations,
   now,
   profileId,
   reviewId,
@@ -96,6 +97,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       recentWrites,
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -138,6 +140,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       recentWrites,
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -178,6 +181,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     await service.execute({
       profileId,
@@ -215,13 +219,15 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       recentWrites,
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
       reviewId,
       command: command(),
     });
-    expect(result).toEqual({ _tag: "err", error: "github_write_failed" });
+    expect(result).toEqual({ _tag: "err", error: "outcome_unknown" });
+    expect(requestReviews).toHaveBeenCalledOnce();
     expect(recentWrites.append).not.toHaveBeenCalled();
   });
 
@@ -243,6 +249,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -252,7 +259,7 @@ describe("ReviewerService", () => {
         reviewers: [{ id: "U_target", login: "target-reviewer" }],
       }),
     });
-    expect(result).toEqual({ _tag: "err", error: "github_write_failed" });
+    expect(result).toEqual({ _tag: "err", error: "outcome_unknown" });
     // The failure is generic, but the write attempt itself still names
     // exactly who it was for — the service never loses or substitutes the
     // target identity on a failed write.
@@ -280,6 +287,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -306,6 +314,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -335,6 +344,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -354,6 +364,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -378,6 +389,7 @@ describe("ReviewerService", () => {
       coordinator,
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -405,6 +417,7 @@ describe("ReviewerService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -459,6 +472,7 @@ describe("ReviewerService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result._tag).toBe("ok");
@@ -501,6 +515,7 @@ describe("ReviewerService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result._tag).toBe("ok");
@@ -527,6 +542,7 @@ describe("ReviewerService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({
@@ -556,6 +572,7 @@ describe("ReviewerService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({
@@ -581,6 +598,7 @@ describe("ReviewerService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({ _tag: "ok", value: { _tag: "github_auth" } });
@@ -603,6 +621,7 @@ describe("ReviewerService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({ _tag: "ok", value: { _tag: "github_read" } });
@@ -624,6 +643,7 @@ describe("ReviewerService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({ _tag: "err", error: "not_found" });
@@ -671,6 +691,7 @@ describe("ReviewerService", () => {
           new ReviewOperationCoordinator(),
           now,
           makeRecentWrites(),
+          makeReviewWriteOperations(),
           { paths: store, sync: { warmAvatarUrls } },
         );
         const result = await service.list({ profileId, reviewId });
@@ -717,6 +738,7 @@ describe("ReviewerService", () => {
           new ReviewOperationCoordinator(),
           now,
           makeRecentWrites(),
+          makeReviewWriteOperations(),
           { paths: store, sync: { warmAvatarUrls } },
         );
         const result = await service.list({ profileId, reviewId });
@@ -775,6 +797,7 @@ describe("ReviewerService", () => {
           new ReviewOperationCoordinator(),
           now,
           makeRecentWrites(),
+          makeReviewWriteOperations(),
           { paths: store, sync },
         );
         const result = await service.list({ profileId, reviewId });

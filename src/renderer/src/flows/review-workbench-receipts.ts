@@ -25,27 +25,27 @@ export type DirectConversationReceipt =
   | { readonly _tag: "CommentDeleted"; readonly commentId: string };
 
 const directConversationReceiptSchema = v.variant("_tag", [
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("CommentCreated"),
     commentId: v.pipe(v.string(), v.minLength(1)),
     reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
     threadId: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("ReplyCreated"),
     commentId: v.pipe(v.string(), v.minLength(1)),
     reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("ThreadStateChanged"),
     threadId: v.string(),
     state: v.picklist(["open", "resolved"]),
   }),
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("CommentEdited"),
     commentId: v.pipe(v.string(), v.minLength(1)),
   }),
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("CommentDeleted"),
     commentId: v.pipe(v.string(), v.minLength(1)),
   }),
@@ -87,11 +87,11 @@ export function parseDirectConversationReceipt(
 }
 
 const labelReceiptSchema = v.variant("_tag", [
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("LabelsAdded"),
     added: v.array(v.string()),
   }),
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("LabelsRemoved"),
     removed: v.array(v.string()),
   }),
@@ -113,11 +113,11 @@ export function parseLabelReceipt(
 }
 
 const assigneeReceiptSchema = v.variant("_tag", [
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("AssigneesAdded"),
     added: v.array(v.string()),
   }),
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("AssigneesRemoved"),
     removed: v.array(v.string()),
   }),
@@ -138,11 +138,11 @@ export function parseAssigneeReceipt(
 }
 
 const reviewerReceiptSchema = v.variant("_tag", [
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("ReviewersRequested"),
     requested: v.array(v.string()),
   }),
-  v.looseObject({
+  v.strictObject({
     _tag: v.literal("ReviewersRemoved"),
     removed: v.array(v.string()),
   }),
@@ -162,5 +162,49 @@ export function parseReviewerReceipt(
   value: RawJsonValue | undefined,
 ): ReviewerReceipt | undefined {
   const parsed = v.safeParse(reviewerReceiptSchema, value);
+  return parsed.success ? parsed.output : undefined;
+}
+
+export type PublishedFeedbackReceipt =
+  | {
+      readonly _tag: "PublishedCommentEdited";
+      readonly commentId: string;
+      readonly reconciliation: "complete" | "required";
+    }
+  | {
+      readonly _tag: "PublishedCommentDeleted";
+      readonly commentId: string;
+      readonly reconciliation: "complete" | "required";
+    }
+  | {
+      readonly _tag: "PublishedReviewDismissed";
+      readonly publishedReviewId: string;
+      readonly reconciliation: "complete" | "required";
+    };
+
+const publishedFeedbackReceiptSchema = v.variant("_tag", [
+  v.strictObject({
+    _tag: v.literal("PublishedCommentEdited"),
+    commentId: v.pipe(v.string(), v.minLength(1)),
+    reconciliation: v.picklist(["complete", "required"]),
+  }),
+  v.strictObject({
+    _tag: v.literal("PublishedCommentDeleted"),
+    commentId: v.pipe(v.string(), v.minLength(1)),
+    reconciliation: v.picklist(["complete", "required"]),
+  }),
+  v.strictObject({
+    _tag: v.literal("PublishedReviewDismissed"),
+    publishedReviewId: v.pipe(v.string(), v.minLength(1)),
+    reconciliation: v.picklist(["complete", "required"]),
+  }),
+]);
+
+/** Parses only the exact receipts the published-feedback write routes emit. */
+export function parsePublishedFeedbackReceipt(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function owns the loopback JSON boundary for published-feedback receipts.
+  value: unknown,
+): PublishedFeedbackReceipt | undefined {
+  const parsed = v.safeParse(publishedFeedbackReceiptSchema, value);
   return parsed.success ? parsed.output : undefined;
 }

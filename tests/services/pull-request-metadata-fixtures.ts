@@ -5,11 +5,14 @@ import {
   parseGitHubOwner,
   parseGitHubRepoName,
   parseGitSha,
+  parseIsoTimestamp,
   parsePullRequestNumber,
   parseReviewId,
+  parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { ok, type Result } from "../../src/domain/result";
+import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 
 /**
  * The fixture preamble the three pull request metadata write suites share —
@@ -33,6 +36,11 @@ export const reviewId = must(
   parseReviewId("cfw__centraldigital__patchdesk__pr-42__review-abcdef123456"),
 );
 export const headSha = must(parseGitSha("1".repeat(40)));
+export const sessionId = must(
+  parseReviewSessionId(
+    "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
+  ),
+);
 export const sessionKey = {
   profileId,
   host: must(parseGitHubHost("github.com")),
@@ -44,21 +52,52 @@ export const sessionKey = {
 
 /** Minimal current-session gate: every command passes against the fixture review. */
 export const makeGate = () => ({
-  requireCurrentSession: vi.fn(async () =>
-    // SAFETY: the service only reads `session.key` and `profile.ghAccount`
-    // from this stub; `review` is forwarded opaquely and never read.
-    ok({
+  requireCurrentSession: vi.fn(async () => {
+    // SAFETY: metadata services read only the profile account and parsed session identity supplied by this fixture.
+    const currentSession = {
       profile: { ghAccount: "octocat" },
       review: {},
-      session: { key: sessionKey },
-    } as never),
-  ),
+      session: { id: sessionId, key: sessionKey },
+    } as never;
+    return ok(currentSession);
+  }),
 });
 
-// SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
-// branded IsoTimestamp contract the service's `now` dependency expects.
-export const now = () => "2026-01-01T00:00:00.000Z" as never;
+const nowValue = must(parseIsoTimestamp("2026-01-01T00:00:00.000Z"));
+export const now = () => nowValue;
 
-export const makeRecentWrites = () => ({
-  append: vi.fn(async () => ok(undefined)),
-});
+export const makeRecentWrites = () => {
+  return { append: vi.fn(async () => ok(undefined)) };
+};
+
+export const makeReviewWriteOperations = () => {
+  let operation: ReviewWriteOperation | undefined;
+  return {
+    load: vi.fn(async () => ok(operation)),
+    begin: vi.fn(async (next: ReviewWriteOperation) => {
+      if (operation !== undefined)
+        return {
+          _tag: "err" as const,
+          error: { _tag: "ReviewWriteOperationExists" as const },
+        };
+      operation = next;
+      return ok(undefined);
+    }),
+    markOutcomeUnknown: vi.fn(async (next: ReviewWriteOperation) => {
+      operation = next;
+      return ok(undefined);
+    }),
+    confirm: vi.fn(async (next: ReviewWriteOperation) => {
+      operation = next;
+      return ok(undefined);
+    }),
+    reject: vi.fn(async () => {
+      operation = undefined;
+      return ok(undefined);
+    }),
+    remove: vi.fn(async () => {
+      operation = undefined;
+      return ok(undefined);
+    }),
+  };
+};

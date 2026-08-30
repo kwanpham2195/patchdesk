@@ -4,6 +4,7 @@ import { definedProps } from "./defined-props";
 import {
   parseAbsolutePath,
   parseGitHubHost,
+  parseGitHubLogin,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseWorkspaceProfileId,
@@ -67,6 +68,7 @@ const workspaceProfileConfigSchema = v.strictObject({
 
 /** Parse unknown profile configuration into refined Patchdesk domain values. */
 export function parseWorkspaceProfileConfig(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the persisted workspace-profile JSON boundary parser and immediately validates the raw record.
   input: unknown,
 ): Result<WorkspaceProfileConfig, InvalidWorkspaceProfileConfig> {
   const parsed = v.safeParse(workspaceProfileConfigSchema, input);
@@ -76,6 +78,7 @@ export function parseWorkspaceProfileConfig(
 
   const id = parseWorkspaceProfileId(parsed.output.id);
   const githubHost = parseGitHubHost(parsed.output.githubHost);
+  const ghAccount = parseGitHubLogin(parsed.output.ghAccount);
   const ownerFilters = parseAll(parsed.output.ownerFilters, parseGitHubOwner);
   const workspaceRoots = parseAll(
     parsed.output.workspaceRoots,
@@ -86,6 +89,7 @@ export function parseWorkspaceProfileConfig(
   if (
     id._tag === "err" ||
     githubHost._tag === "err" ||
+    ghAccount._tag === "err" ||
     ownerFilters._tag === "err" ||
     workspaceRoots._tag === "err" ||
     rulePaths._tag === "err" ||
@@ -98,7 +102,7 @@ export function parseWorkspaceProfileConfig(
     id: id.value,
     label: parsed.output.label,
     githubHost: githubHost.value,
-    ghAccount: parsed.output.ghAccount,
+    ghAccount: ghAccount.value,
     ownerFilters: ownerFilters.value,
     workspaceRoots: workspaceRoots.value,
     rulePaths: rulePaths.value,

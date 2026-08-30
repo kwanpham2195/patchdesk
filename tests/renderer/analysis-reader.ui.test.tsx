@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -27,6 +27,33 @@ const result: Parameters<typeof AnalysisReader>[0]["result"] = {
   validationPlan: [],
   assumptions: [],
 };
+
+const findingFixture = result.findings[0];
+if (findingFixture === undefined) throw new Error("missing Finding fixture");
+
+const twoFindingResult: Parameters<typeof AnalysisReader>[0]["result"] = {
+  ...result,
+  findings: [
+    findingFixture,
+    {
+      ...findingFixture,
+      id: "finding-2",
+      title: "Second boundary issue",
+      lineStart: 3,
+      lineEnd: 3,
+    },
+  ],
+};
+
+function deferred() {
+  let resolve = (): void => undefined;
+  let reject = (): void => undefined;
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = () => rejectPromise(new Error("fixture failure"));
+  });
+  return { promise, resolve, reject };
+}
 
 const patch = [
   "diff --git a/src/a.ts b/src/a.ts",
@@ -136,6 +163,158 @@ describe("AnalysisReader", () => {
     );
     expect(screen.getByText("published")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
+  });
+
+  it("admits Add synchronously once and leaves another Finding usable", async () => {
+    const first = deferred();
+    const second = deferred();
+    const onAddFinding = vi.fn(
+      (finding: (typeof twoFindingResult.findings)[number]) =>
+        finding.id === "finding-1" ? first.promise : second.promise,
+    );
+    render(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{
+          "finding-1": "actionable",
+          "finding-2": "actionable",
+        }}
+        onAddFinding={onAddFinding}
+        onDismissFinding={vi.fn(async () => undefined)}
+      />,
+    );
+    const [firstRow, secondRow] = screen.getAllByRole("listitem");
+    if (firstRow === undefined || secondRow === undefined)
+      throw new Error("missing Finding rows");
+    const firstAdd = within(firstRow).getByRole("button", {
+      name: "Add to review",
+    });
+
+    act(() => {
+      firstAdd.click();
+      firstAdd.click();
+    });
+
+    const adding = within(firstRow).getByRole("button", { name: /Adding/ });
+    expect(adding.hasAttribute("disabled")).toBe(true);
+    expect(
+      within(adding)
+        .getByRole("status", { name: "Loading" })
+        .getAttribute("data-icon"),
+    ).toBe("inline-start");
+    expect(
+      within(firstRow)
+        .getByRole("button", { name: "Dismiss" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    const secondAdd = within(secondRow).getByRole("button", {
+      name: "Add to review",
+    });
+    expect(secondAdd.hasAttribute("disabled")).toBe(false);
+    act(() => secondAdd.click());
+    expect(onAddFinding).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      second.resolve();
+      first.resolve();
+    });
+    expect(
+      await within(firstRow).findByRole("button", { name: "Add to review" }),
+    ).toBeTruthy();
+  });
+
+  it("admits Dismiss synchronously once and preserves its reason on row-local failure", async () => {
+    const dismissal = deferred();
+    const onDismissFinding = vi.fn(() => dismissal.promise);
+    render(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{
+          "finding-1": "actionable",
+          "finding-2": "actionable",
+        }}
+        onAddFinding={vi.fn(async () => undefined)}
+        onDismissFinding={onDismissFinding}
+      />,
+    );
+    const user = userEvent.setup();
+    const [firstRow, secondRow] = screen.getAllByRole("listitem");
+    if (firstRow === undefined || secondRow === undefined)
+      throw new Error("missing Finding rows");
+    await user.click(within(firstRow).getByRole("button", { name: "Dismiss" }));
+    const reason = screen.getByLabelText<HTMLInputElement>(
+      "Dismiss reason for Missing boundary check",
+    );
+    await user.type(reason, "Keep this reason");
+    const confirm = screen.getByRole("button", { name: "Confirm dismissal" });
+
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+
+    const dismissing = screen.getByRole("button", { name: /Dismissing/ });
+    expect(dismissing.hasAttribute("disabled")).toBe(true);
+    expect(
+      within(dismissing)
+        .getByRole("status", { name: "Loading" })
+        .getAttribute("data-icon"),
+    ).toBe("inline-start");
+    expect(
+      within(firstRow)
+        .getByRole("button", { name: "Add to review" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      within(secondRow)
+        .getByRole("button", { name: "Dismiss" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    expect(onDismissFinding).toHaveBeenCalledTimes(1);
+
+    act(() => dismissal.reject());
+    expect(await within(firstRow).findByRole("alert")).toBeTruthy();
+    expect(within(secondRow).queryByRole("alert")).toBeNull();
+    expect(reason.value).toBe("Keep this reason");
+  });
+
+  it("keeps concurrent Finding errors owned after reverse settlement", async () => {
+    const first = deferred();
+    const second = deferred();
+    const onAddFinding = vi.fn(
+      (finding: (typeof twoFindingResult.findings)[number]) =>
+        finding.id === "finding-1" ? first.promise : second.promise,
+    );
+    render(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{
+          "finding-1": "actionable",
+          "finding-2": "actionable",
+        }}
+        onAddFinding={onAddFinding}
+      />,
+    );
+    const [firstRow, secondRow] = screen.getAllByRole("listitem");
+    if (firstRow === undefined || secondRow === undefined)
+      throw new Error("missing Finding rows");
+    act(() => {
+      within(firstRow).getByRole("button", { name: "Add to review" }).click();
+      within(secondRow).getByRole("button", { name: "Add to review" }).click();
+    });
+
+    act(() => second.reject());
+    expect(await within(secondRow).findByRole("alert")).toBeTruthy();
+    expect(within(firstRow).queryByRole("alert")).toBeNull();
+    expect(
+      within(firstRow).getByRole("button", { name: /Adding/ }),
+    ).toBeTruthy();
+
+    act(() => first.resolve());
+    expect(
+      await within(firstRow).findByRole("button", { name: "Add to review" }),
+    ).toBeTruthy();
+    expect(within(secondRow).getByRole("alert")).toBeTruthy();
   });
 });
 

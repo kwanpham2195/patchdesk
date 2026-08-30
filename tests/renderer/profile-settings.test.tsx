@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { Profile } from "../../src/renderer/src/renderer-models";
+import type { ProfileSwitchResult } from "../../src/renderer/src/hooks/use-profile-switch";
 import {
   failure,
   installDesktopDouble,
@@ -164,6 +165,41 @@ describe("workspace profile settings", () => {
         ([input]) => "path" in input && input.path === "/v1/profiles",
       ),
     ).toBe(true);
+  });
+  it("preserves every profile draft field when profile switching fails", async () => {
+    installDesktopApi();
+    const user = userEvent.setup();
+    const otherProfile: Profile = {
+      ...profile,
+      id: "other",
+      label: "Other",
+      workspaceRoots: ["/workspace/other"],
+    };
+
+    renderSettings(undefined, profile, {
+      profiles: [profile, otherProfile],
+      onProfileSwitch: async () => "failed",
+    });
+    await user.clear(screen.getByLabelText("Label"));
+    await user.type(screen.getByLabelText("Label"), "Draft label");
+    await user.clear(screen.getByLabelText("workspace root 1"));
+    await user.type(
+      screen.getByLabelText("workspace root 1"),
+      "/workspace/draft",
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Active profile" }));
+    await user.click(await screen.findByRole("option", { name: "Other" }));
+
+    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+      "Draft label",
+    );
+    expect(
+      screen.getByLabelText<HTMLInputElement>("workspace root 1").value,
+    ).toBe("/workspace/draft");
+    expect(
+      screen.getByLabelText<HTMLInputElement>("GitHub account").value,
+    ).toBe(profile.ghAccount);
   });
 });
 
@@ -380,6 +416,10 @@ async function repositoryCheckbox(
 function renderSettings(
   onWorkspaceReload: () => Promise<void> = async () => undefined,
   activeProfile: Profile = profile,
+  options: {
+    readonly profiles?: ReadonlyArray<Profile>;
+    readonly onProfileSwitch?: () => Promise<ProfileSwitchResult>;
+  } = {},
 ): void {
   render(
     <SettingsFlow
@@ -388,8 +428,12 @@ function renderSettings(
       onAppearanceChange={() => undefined}
       diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
       onDiffThemeChange={() => undefined}
-      profiles={[activeProfile]}
+      profiles={options.profiles ?? [activeProfile]}
       onWorkspaceReload={onWorkspaceReload}
+      onProfileSwitchRequest={(_profileId, proceed) => proceed()}
+      {...(options.onProfileSwitch === undefined
+        ? {}
+        : { onProfileSwitch: options.onProfileSwitch })}
       section="workspace"
     />,
   );

@@ -15,7 +15,8 @@ import {
   parseReviewId,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
+import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 
 const must = <T>(result: Result<T, unknown>): T => {
@@ -41,7 +42,10 @@ const makeGate = () => ({
   requireFresh: vi.fn(async () =>
     // SAFETY: the service only reads `session.key` from this stub; `profile`
     // is forwarded opaquely into the gateway mocks below, which ignore it.
-    ok({ session: { key: sessionKey }, profile: {} } as never),
+    ok({
+      session: { key: sessionKey },
+      profile: { ghAccount: "reviewer" },
+    } as never),
   ),
 });
 
@@ -50,6 +54,36 @@ const expected = { sessionId: "session-a", headSha, patchHash: "patch-hash" };
 // branded IsoTimestamp contract the service's `now` dependency expects.
 const now = () => "2026-01-01T00:00:00.000Z" as never;
 const makeRecentWrites = () => ({ append: vi.fn(async () => ok(undefined)) });
+
+function makeOperations() {
+  let current: ReviewWriteOperation | undefined;
+  return {
+    load: vi.fn(async () => ok(current)),
+    begin: vi.fn(async (operation: ReviewWriteOperation) => {
+      if (current !== undefined)
+        return err({ _tag: "ReviewWriteOperationExists" as const });
+      current = operation;
+      return ok(undefined);
+    }),
+    markOutcomeUnknown: vi.fn(async (operation: ReviewWriteOperation) => {
+      current = operation;
+      return ok(undefined);
+    }),
+    confirm: vi.fn(async (operation: ReviewWriteOperation) => {
+      current = operation;
+      return ok(undefined);
+    }),
+    reject: vi.fn(async () => {
+      current = undefined;
+      return ok(undefined);
+    }),
+    remove: vi.fn(async () => {
+      current = undefined;
+      return ok(undefined);
+    }),
+    current: () => current,
+  };
+}
 
 function command(
   overrides: Partial<DirectConversationCommand>,
@@ -104,6 +138,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -126,6 +161,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -148,6 +184,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -177,6 +214,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -203,6 +241,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -234,6 +273,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -260,6 +300,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -289,6 +330,7 @@ describe("InlineConversationService", () => {
       coordinator,
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -313,6 +355,7 @@ describe("InlineConversationService", () => {
       coordinator,
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -337,6 +380,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -370,6 +414,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -405,6 +450,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -431,6 +477,7 @@ describe("InlineConversationService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -445,6 +492,207 @@ describe("InlineConversationService", () => {
       _tag: "ok",
       value: { _tag: "CommentCreated", commentId: "PRRC_new" },
     });
+  });
+});
+
+describe("InlineConversationService durable write lifecycle", () => {
+  it("retains a rejected writer promise as outcome-unknown and blocks a later write", async () => {
+    const operations = makeOperations();
+    const createThreadReply = vi.fn(async () => {
+      throw new Error("transport rejected after dispatch");
+    });
+    const service = new InlineConversationService(
+      makeGate(),
+      // SAFETY: this gateway fixture implements every method exercised by the rejected reply lifecycle.
+      makeGateway({ createThreadReply }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+      operations,
+    );
+    const input = {
+      profileId,
+      reviewId,
+      command: command({ _tag: "Reply", threadId: "PRRT_thread" }),
+    };
+
+    await expect(service.execute(input)).resolves.toEqual({
+      _tag: "err",
+      error: "outcome_unknown",
+    });
+    expect(operations.current()?.state).toEqual({
+      _tag: "OutcomeUnknown",
+      resolution: "check_required",
+    });
+    await expect(service.execute(input)).resolves.toEqual({
+      _tag: "err",
+      error: "outcome_unknown",
+    });
+    expect(createThreadReply).toHaveBeenCalledOnce();
+  });
+
+  it("removes a deterministically rejected operation so a corrected command can retry", async () => {
+    const operations = makeOperations();
+    const createThreadReply = vi
+      .fn()
+      .mockResolvedValueOnce(
+        err({
+          _tag: "GitHubWriteFailure",
+          category: "forbidden",
+          message: "forbidden",
+        }),
+      )
+      .mockResolvedValueOnce(ok({ commentId: "PRRC_retry" }));
+    const service = new InlineConversationService(
+      makeGate(),
+      // SAFETY: this gateway fixture implements every method exercised by the rejected-then-corrected reply lifecycle.
+      makeGateway({ createThreadReply }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+      operations,
+    );
+    const input = {
+      profileId,
+      reviewId,
+      command: command({ _tag: "Reply", threadId: "PRRT_thread" }),
+    };
+
+    await expect(service.execute(input)).resolves.toEqual({
+      _tag: "err",
+      error: "forbidden",
+    });
+    expect(operations.current()).toBeUndefined();
+    await expect(service.execute(input)).resolves.toEqual({
+      _tag: "ok",
+      value: { _tag: "ReplyCreated", commentId: "PRRC_retry" },
+    });
+    expect(createThreadReply).toHaveBeenCalledTimes(2);
+  });
+
+  it("retains an unavailable reply as outcome-unknown and blocks a second write", async () => {
+    const operations = makeOperations();
+    const createThreadReply = vi.fn(async () =>
+      err({
+        _tag: "GitHubWriteFailure" as const,
+        category: "unavailable" as const,
+        message: "lost response",
+      }),
+    );
+    const service = new InlineConversationService(
+      makeGate(),
+      // SAFETY: this gateway fixture implements every method exercised by the unavailable reply lifecycle.
+      makeGateway({ createThreadReply }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+      operations,
+    );
+    const input = {
+      profileId,
+      reviewId,
+      command: command({ _tag: "Reply", threadId: "PRRT_thread" }),
+    };
+    await expect(service.execute(input)).resolves.toEqual({
+      _tag: "err",
+      error: "outcome_unknown",
+    });
+    expect(operations.current()?.state).toEqual({
+      _tag: "OutcomeUnknown",
+      resolution: "check_required",
+    });
+    await expect(service.execute(input)).resolves.toEqual({
+      _tag: "err",
+      error: "outcome_unknown",
+    });
+    expect(createThreadReply).toHaveBeenCalledOnce();
+  });
+
+  it("confirms a delete without appending a misleading comment-exists receipt", async () => {
+    const operations = makeOperations();
+    const append = vi.fn(async () => ok(undefined));
+    const deleteThreadComment = vi.fn(async () => ok(undefined));
+    const service = new InlineConversationService(
+      makeGate(),
+      // SAFETY: this gateway fixture implements every method exercised by the confirmed delete lifecycle.
+      makeGateway({ deleteThreadComment }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      { append },
+      operations,
+    );
+    await expect(
+      service.execute({
+        profileId,
+        reviewId,
+        command: command({
+          _tag: "DeleteComment",
+          commentId: "PRRC_comment",
+          confirmation: true,
+        }),
+      }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: { _tag: "CommentDeleted", commentId: "PRRC_comment" },
+    });
+    expect(operations.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ state: { _tag: "Confirmed" } }),
+    );
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it("persists confirmation and the recent-write receipt before clearing the operation", async () => {
+    const operations = makeOperations();
+    const append = vi.fn(async () => ok(undefined));
+    const createThreadReply = vi.fn(async () =>
+      ok({ commentId: "PRRC_reply", reviewId: "PRR_review" }),
+    );
+    const service = new InlineConversationService(
+      makeGate(),
+      // SAFETY: this gateway fixture implements every method exercised by the confirmed reply lifecycle.
+      makeGateway({ createThreadReply }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      { append },
+      operations,
+    );
+    await expect(
+      service.execute({
+        profileId,
+        reviewId,
+        command: command({ _tag: "Reply", threadId: "PRRT_thread" }),
+      }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        _tag: "ReplyCreated",
+        commentId: "PRRC_reply",
+        reviewId: "PRR_review",
+      },
+    });
+    expect(operations.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: {
+          _tag: "Confirmed",
+          receipt: {
+            _tag: "Comment",
+            commentId: "PRRC_reply",
+            reviewId: "PRR_review",
+          },
+        },
+      }),
+    );
+    expect(append).toHaveBeenCalledWith(
+      profileId,
+      reviewId,
+      {
+        _tag: "Comment",
+        commentId: "PRRC_reply",
+        reviewId: "PRR_review",
+      },
+      now(),
+    );
+    expect(operations.current()).toBeUndefined();
   });
 });
 
@@ -522,6 +770,7 @@ describe("FakeGitHubAdapter ownership parity", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeOperations(),
     );
     const result = await service.execute({
       profileId,

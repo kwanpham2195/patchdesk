@@ -63,6 +63,43 @@ describe("MaintainerInbox", () => {
     expect(open).toHaveBeenCalledWith("review-1");
   });
 
+  it("scopes pending and failure feedback to the owning row and inspector action", () => {
+    const key = "github.com/owner/repo#1";
+    const { rerender } = render(
+      <MaintainerInbox
+        profileId="opening"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        openingOperations={new Map([[key, { status: "opening" }]])}
+        onOpenReview={() => undefined}
+        onOpenReviewId={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("option").hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: /Opening…/ }).hasAttribute("disabled"),
+    ).toBe(true);
+
+    rerender(
+      <MaintainerInbox
+        profileId="opening"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        openingOperations={
+          new Map([[key, { status: "error", error: "Request failed" }]])
+        }
+        onOpenReview={() => undefined}
+        onOpenReviewId={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("option").hasAttribute("disabled")).toBe(false);
+    expect(within(screen.getByRole("option")).getByRole("alert")).toBeTruthy();
+  });
+
   it("delegates page navigation through callbacks without loading an inbox itself", () => {
     const previous = vi.fn();
     const next = vi.fn();

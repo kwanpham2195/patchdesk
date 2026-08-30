@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { requestJson } from "../api-client";
 import type { DiscoveredRepo } from "../renderer-contracts";
 import { repositoryKey, type Repo } from "../renderer-models";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Checkbox } from "../components/ui/checkbox";
 import { Label } from "../components/ui/label";
+import { Spinner } from "../components/ui/spinner";
 
 /** A repository shown in a workspace-scope repository checklist, merged from discovery and the saved profile's watchlist. Structurally a `Repo` with `localPath` narrowed to a required (possibly empty) string, so `repositoryKey` from renderer-models works for both. */
 export type WatchlistEntry = {
@@ -80,8 +80,9 @@ export function groupWatchlistEntries(
 }
 
 export type WatchlistToggleHook = {
-  readonly pending: string | undefined;
-  readonly error: string | undefined;
+  readonly pendingKeys: ReadonlySet<string>;
+  readonly errorsByKey: ReadonlyMap<string, string>;
+  readonly draftWatchedByKey: ReadonlyMap<string, boolean>;
   readonly feedback: string | undefined;
   readonly toggleRepo: (
     entry: WatchlistEntry,
@@ -90,18 +91,24 @@ export type WatchlistToggleHook = {
 };
 
 /**
- * Owns the busy/error/feedback state for ticking or unticking a repository
- * in the watchlist. `POST`/`DELETE /v1/watchlist`, matching the request
- * bodies the previous standalone `WatchlistPanel` sent; the caller's
- * `onWorkspaceReload` refreshes the saved profile (and so which repos read
- * as watched) after either request settles.
+ * Owns repository-scoped pending, draft, and error state for watchlist
+ * changes. A synchronous key guard rejects duplicate same-row submissions
+ * while allowing requests for different repositories to run concurrently.
  */
 // oxlint-disable-next-line react/only-export-components -- Merge/group helpers and the toggle hook share this module with the components that consume them.
 export function useWatchlistToggle(
   onWorkspaceReload: () => Promise<void>,
 ): WatchlistToggleHook {
-  const [pending, setPending] = useState<string>();
-  const [error, setError] = useState<string>();
+  const pendingKeysRef = useRef(new Set<string>());
+  const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [errorsByKey, setErrorsByKey] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const [draftWatchedByKey, setDraftWatchedByKey] = useState<
+    ReadonlyMap<string, boolean>
+  >(() => new Map());
   const [feedback, setFeedback] = useState<string>();
 
   const toggleRepo = async (
@@ -109,8 +116,19 @@ export function useWatchlistToggle(
     currentlyWatched: boolean,
   ): Promise<void> => {
     const key = repositoryKey(entry);
-    setPending(key);
-    setError(undefined);
+    if (pendingKeysRef.current.has(key)) return;
+
+    pendingKeysRef.current.add(key);
+    setPendingKeys((current) => new Set(current).add(key));
+    setDraftWatchedByKey((current) =>
+      new Map(current).set(key, !currentlyWatched),
+    );
+    setErrorsByKey((current) => {
+      if (!current.has(key)) return current;
+      const next = new Map(current);
+      next.delete(key);
+      return next;
+    });
     try {
       if (currentlyWatched) {
         await requestJson("/v1/watchlist", {
@@ -132,35 +150,41 @@ export function useWatchlistToggle(
       }
       await onWorkspaceReload();
     } catch (cause: unknown) {
-      setError(
+      const message =
         cause instanceof Error
           ? cause.message
-          : "Patchdesk could not update the watchlist.",
-      );
+          : "Patchdesk could not update the watchlist.";
+      setErrorsByKey((current) => new Map(current).set(key, message));
     } finally {
-      setPending(undefined);
+      pendingKeysRef.current.delete(key);
+      setPendingKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      setDraftWatchedByKey((current) => {
+        const next = new Map(current);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
-  return { pending, error, feedback, toggleRepo };
+  return {
+    pendingKeys,
+    errorsByKey,
+    draftWatchedByKey,
+    feedback,
+    toggleRepo,
+  };
 }
 
-/** Renders the toggle hook's error/feedback state, once, for the surrounding card. */
+/** Renders the toggle hook's success feedback once for the surrounding card. */
 export function WatchlistToggleStatus({
-  error,
   feedback,
 }: {
-  readonly error: string | undefined;
   readonly feedback: string | undefined;
 }): React.JSX.Element | null {
-  if (error !== undefined) {
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>Watchlist action failed</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    );
-  }
   if (feedback !== undefined) {
     return (
       <p role="status" className="text-xs text-muted-foreground">
@@ -175,13 +199,17 @@ export function WatchlistToggleStatus({
 export function RepositoryChecklist({
   entries,
   isWatched,
-  pending,
+  pendingKeys,
+  errorsByKey,
+  draftWatchedByKey,
   onToggle,
   ariaLabel,
 }: {
   readonly entries: ReadonlyArray<WatchlistEntry>;
   readonly isWatched: (entry: WatchlistEntry) => boolean;
-  readonly pending: string | undefined;
+  readonly pendingKeys: ReadonlySet<string>;
+  readonly errorsByKey: ReadonlyMap<string, string>;
+  readonly draftWatchedByKey: ReadonlyMap<string, boolean>;
   readonly onToggle: (entry: WatchlistEntry, currentlyWatched: boolean) => void;
   readonly ariaLabel: string;
 }): React.JSX.Element | null {
@@ -190,8 +218,10 @@ export function RepositoryChecklist({
     <div className="flex flex-col gap-1" aria-label={ariaLabel}>
       {entries.map((entry) => {
         const key = repositoryKey(entry);
-        const currentlyWatched = isWatched(entry);
-        const busy = pending === key;
+        const savedWatched = isWatched(entry);
+        const currentlyWatched = draftWatchedByKey.get(key) ?? savedWatched;
+        const busy = pendingKeys.has(key);
+        const error = errorsByKey.get(key);
         return (
           <label
             key={key}
@@ -201,7 +231,8 @@ export function RepositoryChecklist({
               className="mt-0.5"
               disabled={busy}
               checked={currentlyWatched}
-              onCheckedChange={() => onToggle(entry, currentlyWatched)}
+              aria-invalid={error === undefined ? undefined : true}
+              onCheckedChange={() => onToggle(entry, savedWatched)}
             />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">
@@ -210,6 +241,17 @@ export function RepositoryChecklist({
               <p className="truncate text-xs text-muted-foreground">
                 {entry.localPath}
               </p>
+              {busy ? (
+                <Spinner
+                  className="mt-1 size-3.5"
+                  aria-label={`Updating ${entry.owner}/${entry.repo}`}
+                />
+              ) : null}
+              {error === undefined ? null : (
+                <p className="text-xs text-destructive" role="alert">
+                  {error}
+                </p>
+              )}
             </div>
           </label>
         );
@@ -222,12 +264,16 @@ export function RepositoryChecklist({
 export function WatchedOutsideRootsSection({
   entries,
   isWatched,
-  pending,
+  pendingKeys,
+  errorsByKey,
+  draftWatchedByKey,
   onToggle,
 }: {
   readonly entries: ReadonlyArray<WatchlistEntry>;
   readonly isWatched: (entry: WatchlistEntry) => boolean;
-  readonly pending: string | undefined;
+  readonly pendingKeys: ReadonlySet<string>;
+  readonly errorsByKey: ReadonlyMap<string, string>;
+  readonly draftWatchedByKey: ReadonlyMap<string, boolean>;
   readonly onToggle: (entry: WatchlistEntry, currentlyWatched: boolean) => void;
 }): React.JSX.Element {
   return (
@@ -238,7 +284,9 @@ export function WatchedOutsideRootsSection({
       <RepositoryChecklist
         entries={entries}
         isWatched={isWatched}
-        pending={pending}
+        pendingKeys={pendingKeys}
+        errorsByKey={errorsByKey}
+        draftWatchedByKey={draftWatchedByKey}
         onToggle={onToggle}
         ariaLabel="Repositories watched outside current workspace roots"
       />

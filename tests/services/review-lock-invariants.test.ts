@@ -6,7 +6,9 @@ import { ok, type Result } from "../../src/domain/result";
 import {
   at,
   barrier,
+  expected,
   lockKey,
+  now,
   profileId,
   recorder,
   reviewId,
@@ -110,37 +112,7 @@ describe("every Review entry point waits for the coordinator lock", () => {
   }
 });
 
-/**
- * Fixed by F2. `PublishedFeedbackService.serialized` takes the Review lock
- * through `coordinator.acquire` and releases it in a `finally` once its
- * `operation` settles. The write used to call the injected `refresh` from
- * INSIDE that `operation` (via the old `afterWrite`), and `refresh` is
- * `ReviewRefreshService.refresh`, which takes the SAME key through
- * `withReviewLock`. `KeyedMutex` is not reentrant, so that refresh queued
- * behind a lock its own caller was holding and neither ever completed.
- *
- * The fix keeps the write itself inside `serialized` (`classifyWrite` only
- * classifies the GitHub write's outcome, taking no lock of its own) and
- * moves the refresh to `refreshAfterWrite`, called only after `serialized`
- * returns — i.e. after the lock is already released. `refresh` is otherwise
- * unchanged: it still takes the coordinator lock itself, which is now safe
- * because nothing holds it when `refreshAfterWrite` runs. Three routes reach
- * this shape: comment edit, comment delete, and review dismiss.
- *
- * Cost: releasing before the refresh opens a window where another command
- * can acquire the same key and run before the refresh does. That is
- * acceptable here — the write has already succeeded against GitHub by then,
- * and the refresh is a read reconciliation of local state, not part of the
- * durable write. A user who hits that window sees their edit/delete/dismiss
- * succeed and the local view catch up on the next refresh, exactly as if
- * they had triggered that refresh a moment later by hand.
- *
- * Each row below wires a REAL `ReviewOperationCoordinator` and a REAL
- * `ReviewRefreshService` — sharing one coordinator instance with the service
- * under test, the exact shape that deadlocks if the refresh ever moves back
- * inside `serialized` — and asserts the command settles well inside the
- * deadline instead of hanging.
- */
+/** Refresh remains outside the non-reentrant Review lock held by the confirmed write. */
 describe("a published-feedback write does not re-enter the lock it holds", () => {
   const routes: ReadonlyArray<{
     readonly name: string;
@@ -154,6 +126,7 @@ describe("a published-feedback write does not re-enter the lock it holds", () =>
         service.editComment({
           profileId,
           reviewId,
+          expected,
           commentId: "comment-1",
           body: "edited",
         }),
@@ -164,6 +137,7 @@ describe("a published-feedback write does not re-enter the lock it holds", () =>
         service.deleteComment({
           profileId,
           reviewId,
+          expected,
           commentId: "comment-1",
           confirmation: true,
         }),
@@ -174,7 +148,8 @@ describe("a published-feedback write does not re-enter the lock it holds", () =>
         service.dismissReview({
           profileId,
           reviewId,
-          publishedReviewId: "published-1",
+          expected,
+          publishedReviewId: "101",
           message: "stale",
           confirmation: true,
         }),
@@ -188,7 +163,7 @@ describe("a published-feedback write does not re-enter the lock it holds", () =>
       ok({
         reviews: [
           {
-            id: "published-1",
+            id: "101",
             author: "fixture",
             body: "",
             event: "APPROVED" as const,
@@ -218,11 +193,21 @@ describe("a published-feedback write does not re-enter the lock it holds", () =>
       const coordinator = new ReviewOperationCoordinator();
       const track = recorder();
       const refresh = refreshService(coordinator, track);
+      // SAFETY: recorded partial dependencies isolate whether refresh re-enters the held lock; service behavior has dedicated tests.
       const service = new PublishedFeedbackService(
-        // SAFETY: recorded stubs; this row asserts settling, not the outcome.
         writeGate(track) as never,
         gatewayReachingTheWrite() as never,
         coordinator,
+        now,
+        { append: async () => ok(undefined) },
+        {
+          load: async () => ok(undefined),
+          begin: async () => ok(undefined),
+          markOutcomeUnknown: async () => ok(undefined),
+          confirm: async () => ok(undefined),
+          reject: async () => ok(undefined),
+          remove: async () => ok(undefined),
+        },
         (input) => refresh.refresh(input) as Promise<Result<unknown, unknown>>,
       );
       await expect(

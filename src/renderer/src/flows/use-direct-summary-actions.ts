@@ -76,6 +76,9 @@ export function useDirectSummaryActions({
   >(undefined);
   const [observedDirectSummarySignature, setObservedDirectSummarySignature] =
     useState<string | undefined>(undefined);
+  const commandInFlightRef = useRef<
+    Promise<DirectSummaryReviewProjection> | undefined
+  >(undefined);
   const projectedDirectSummary: DirectSummaryReviewProjection =
     workbench.directSummary ?? { state: "idle" };
   const projectedDirectSummarySignature = directSummarySignature(
@@ -100,58 +103,76 @@ export function useDirectSummaryActions({
   );
 
   const submitDirectSummary = useCallback(
-    async (
+    (
       event: GitHubReviewEvent,
       body: string,
     ): Promise<DirectSummaryReviewProjection> => {
+      if (commandInFlightRef.current !== undefined)
+        return commandInFlightRef.current;
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
-        throw new Error("The current Diff cannot accept a review summary.");
-      setDirectSummaryBusy(true);
-      try {
-        const value = await runDirectCommand(() =>
-          requestJson("/v1/reviews/direct-summary/submit", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-              expected: {
-                sessionId: workbench.session.id,
-                headSha: workbench.revision.reviewedHeadSha,
-                patchHash,
+        return Promise.reject(
+          new Error("The current Diff cannot accept a review summary."),
+        );
+      const operation = (async (): Promise<DirectSummaryReviewProjection> => {
+        setDirectSummaryBusy(true);
+        try {
+          const value = await runDirectCommand(() =>
+            requestJson("/v1/reviews/direct-summary/submit", {
+              method: "POST",
+              body: {
+                profileId: workbench.session.key.profileId,
+                reviewId: workbench.review.id,
+                expected: {
+                  sessionId: workbench.session.id,
+                  headSha: workbench.revision.reviewedHeadSha,
+                  patchHash,
+                },
+                event,
+                body,
               },
-              event,
-              body,
-            },
-          }),
-        );
-        const result = parseDirectSummaryReviewResponse(value);
-        if (result === undefined)
-          throw new Error("Invalid direct summary review response");
-        setDirectSummaryOverride(result);
-        if (result.state === "confirmed") {
-          const write = {
-            _tag: "DirectSummaryReview" as const,
-            reviewId: result.receipt.reviewId,
-          };
-          appendRecentWrites(write);
-          observeDirectSummaryReceipt(result.receipt.reviewId);
+            }),
+          );
+          const result = parseDirectSummaryReviewResponse(value);
+          if (
+            result === undefined ||
+            result.state === "idle" ||
+            (result.state === "confirmed" && result.receipt.event !== event)
+          ) {
+            setDirectSummaryOverride({
+              state: "recovery_required",
+              resolution: "check_required",
+            });
+            throw new Error("Invalid direct summary review response");
+          }
+          setDirectSummaryOverride(result);
+          if (result.state === "confirmed") {
+            const write = {
+              _tag: "DirectSummaryReview" as const,
+              reviewId: result.receipt.reviewId,
+            };
+            appendRecentWrites(write);
+            observeDirectSummaryReceipt(result.receipt.reviewId);
+          }
+          setDirectSummaryError(undefined);
+          return result;
+        } catch (cause) {
+          if (isOutcomeUnknownRetry(cause))
+            setDirectSummaryOverride({
+              state: "recovery_required",
+              resolution: "check_required",
+            });
+          setDirectSummaryError(
+            contextualMessage(cause, DIRECT_SUMMARY_MESSAGES),
+          );
+          throw cause;
+        } finally {
+          commandInFlightRef.current = undefined;
+          setDirectSummaryBusy(false);
         }
-        setDirectSummaryError(undefined);
-        return result;
-      } catch (cause) {
-        if (isOutcomeUnknownRetry(cause))
-          setDirectSummaryOverride({
-            state: "recovery_required",
-            resolution: "check_required",
-          });
-        setDirectSummaryError(
-          contextualMessage(cause, DIRECT_SUMMARY_MESSAGES),
-        );
-        throw cause;
-      } finally {
-        setDirectSummaryBusy(false);
-      }
+      })();
+      commandInFlightRef.current = operation;
+      return operation;
     },
     [
       appendRecentWrites,
@@ -162,39 +183,46 @@ export function useDirectSummaryActions({
   );
 
   const recoverDirectSummary =
-    useCallback(async (): Promise<DirectSummaryReviewProjection> => {
-      setDirectSummaryBusy(true);
-      try {
-        const value = await runDirectCommand(() =>
-          requestJson("/v1/reviews/direct-summary/recover", {
-            method: "POST",
-            body: {
-              profileId: workbench.session.key.profileId,
-              reviewId: workbench.review.id,
-            },
-          }),
-        );
-        const result = parseDirectSummaryReviewResponse(value);
-        if (result === undefined)
-          throw new Error("Invalid direct summary recovery response");
-        setDirectSummaryOverride(result);
-        if (result.state === "confirmed") {
-          appendRecentWrites({
-            _tag: "DirectSummaryReview",
-            reviewId: result.receipt.reviewId,
-          });
-          observeDirectSummaryReceipt(result.receipt.reviewId);
+    useCallback((): Promise<DirectSummaryReviewProjection> => {
+      if (commandInFlightRef.current !== undefined)
+        return commandInFlightRef.current;
+      const operation = (async (): Promise<DirectSummaryReviewProjection> => {
+        setDirectSummaryBusy(true);
+        try {
+          const value = await runDirectCommand(() =>
+            requestJson("/v1/reviews/direct-summary/recover", {
+              method: "POST",
+              body: {
+                profileId: workbench.session.key.profileId,
+                reviewId: workbench.review.id,
+              },
+            }),
+          );
+          const result = parseDirectSummaryReviewResponse(value);
+          if (result === undefined)
+            throw new Error("Invalid direct summary recovery response");
+          setDirectSummaryOverride(result);
+          if (result.state === "confirmed") {
+            appendRecentWrites({
+              _tag: "DirectSummaryReview",
+              reviewId: result.receipt.reviewId,
+            });
+            observeDirectSummaryReceipt(result.receipt.reviewId);
+          }
+          setDirectSummaryError(undefined);
+          return result;
+        } catch (cause) {
+          setDirectSummaryError(
+            contextualMessage(cause, DIRECT_SUMMARY_MESSAGES),
+          );
+          throw cause;
+        } finally {
+          commandInFlightRef.current = undefined;
+          setDirectSummaryBusy(false);
         }
-        setDirectSummaryError(undefined);
-        return result;
-      } catch (cause) {
-        setDirectSummaryError(
-          contextualMessage(cause, DIRECT_SUMMARY_MESSAGES),
-        );
-        throw cause;
-      } finally {
-        setDirectSummaryBusy(false);
-      }
+      })();
+      commandInFlightRef.current = operation;
+      return operation;
     }, [
       appendRecentWrites,
       observeDirectSummaryReceipt,

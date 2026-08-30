@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -34,7 +34,7 @@ describe("compact merge command", () => {
           headSha: "abcdef1234567890",
         }}
         methods={["squash"]}
-        onMerge={async () => ({})}
+        onMerge={async () => ({ state: "confirmed" })}
       />,
     );
 
@@ -80,7 +80,7 @@ describe("compact merge command", () => {
           headSha: "abcdef1234567890",
         }}
         methods={["squash"]}
-        onMerge={async () => ({})}
+        onMerge={async () => ({ state: "confirmed" })}
       />,
     );
     await userEvent
@@ -93,7 +93,10 @@ describe("compact merge command", () => {
 
   it("shows context and requires acknowledgement for merge warnings before one explicit merge", async () => {
     const user = userEvent.setup();
-    const merge = vi.fn(async () => ({ mergeCommitSha: "abcdef" }));
+    const merge = vi.fn(async () => ({
+      state: "confirmed" as const,
+      mergeCommitSha: "abcdef",
+    }));
     render(
       <CompactMergeCommand
         readiness={{
@@ -142,7 +145,7 @@ describe("compact merge command", () => {
           headSha: "abcdef1234567890",
         }}
         methods={["squash", "merge"]}
-        onMerge={async () => ({})}
+        onMerge={async () => ({ state: "confirmed" })}
       />,
     );
 
@@ -170,7 +173,7 @@ describe("compact merge command", () => {
           headSha: "abcdef1234567890",
         }}
         methods={["squash"]}
-        onMerge={async () => ({})}
+        onMerge={async () => ({ state: "confirmed" })}
       />,
     );
 
@@ -220,7 +223,12 @@ describe("compact merge command", () => {
   });
 
   it("reports a non-cancellable merge until GitHub returns a final result", async () => {
-    let resolveMerge: ((value: { mergeCommitSha: string }) => void) | undefined;
+    let resolveMerge:
+      | ((value: {
+          readonly state: "confirmed";
+          readonly mergeCommitSha: string;
+        }) => void)
+      | undefined;
     const user = userEvent.setup();
     render(
       <CompactMergeCommand
@@ -235,7 +243,10 @@ describe("compact merge command", () => {
         }}
         methods={["squash"]}
         onMerge={async () =>
-          await new Promise((resolve) => {
+          await new Promise<{
+            readonly state: "confirmed";
+            readonly mergeCommitSha: string;
+          }>((resolve) => {
             resolveMerge = resolve;
           })
         }
@@ -246,7 +257,7 @@ describe("compact merge command", () => {
     const mergingButton = screen.getByRole("button", { name: "Merging…" });
     // SAFETY: The Merging role query returns the native button rendered by Button.
     expect((mergingButton as HTMLButtonElement).disabled).toBe(true);
-    resolveMerge?.({ mergeCommitSha: "abcdef" });
+    resolveMerge?.({ state: "confirmed", mergeCommitSha: "abcdef" });
     expect(await screen.findByText("Merged abcdef.")).toBeTruthy();
   });
 
@@ -287,7 +298,7 @@ describe("compact merge command", () => {
             headSha: "abcdef1234567890",
           }}
           methods={["squash"]}
-          onMerge={async () => ({})}
+          onMerge={async () => ({ state: "confirmed" })}
         />,
       );
 
@@ -337,4 +348,102 @@ it("offers read-side recovery after a failed merge without issuing a second merg
   await user.click(check);
   expect(recover).toHaveBeenCalledTimes(1);
   expect(merge).toHaveBeenCalledTimes(1);
+});
+
+it("preserves confirmed terminal merge UI when refresh is required", async () => {
+  const user = userEvent.setup();
+  const merge = vi.fn(async () => ({
+    state: "confirmed_refresh_required" as const,
+    mergeCommitSha: "c".repeat(40),
+  }));
+  const recover = vi.fn(async () => undefined);
+  render(
+    <CompactMergeCommand
+      readiness={{
+        _tag: "NeedsAcknowledgement",
+        blockers: [],
+        warnings: ["request_changes"],
+      }}
+      context={{
+        repo: "centraldigital/patchdesk",
+        prNumber: 42,
+        title: "Protect review writes",
+        base: "sit",
+        head: "feat/review",
+        headSha: "abcdef1234567890",
+      }}
+      methods={["squash"]}
+      onMerge={merge}
+      onRecoverMerge={recover}
+    />,
+  );
+
+  await user.click(screen.getByRole("checkbox", { name: /I acknowledge:/ }));
+  await user.click(screen.getByRole("button", { name: "Merge" }));
+
+  expect(await screen.findByRole("status", { name: /Merged/ })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Check GitHub status" }));
+  expect(recover).toHaveBeenCalledTimes(1);
+  expect(merge).toHaveBeenCalledTimes(1);
+});
+
+it("guards submit and check in the same tick while showing pending spinners", async () => {
+  let resolveMerge:
+    | ((value: { readonly state: "confirmed_refresh_required" }) => void)
+    | undefined;
+  let resolveCheck: (() => void) | undefined;
+  const merge = vi.fn(
+    async () =>
+      await new Promise<{ readonly state: "confirmed_refresh_required" }>(
+        (resolve) => {
+          resolveMerge = resolve;
+        },
+      ),
+  );
+  const recover = vi.fn(
+    async () =>
+      await new Promise<void>((resolve) => {
+        resolveCheck = resolve;
+      }),
+  );
+  render(
+    <CompactMergeCommand
+      readiness={{ _tag: "Ready", blockers: [], warnings: [] }}
+      context={{
+        repo: "centraldigital/patchdesk",
+        prNumber: 42,
+        title: "Protect review writes",
+        base: "sit",
+        head: "feat/review",
+        headSha: "abcdef1234567890",
+      }}
+      methods={["squash"]}
+      onMerge={merge}
+      onRecoverMerge={recover}
+    />,
+  );
+
+  const submit = screen.getByRole("button", { name: "Merge" });
+  fireEvent.click(submit);
+  fireEvent.click(submit);
+  expect(merge).toHaveBeenCalledTimes(1);
+  // SAFETY: the role query returns the native button rendered by Button.
+  expect(
+    (screen.getByRole("button", { name: "Merging…" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  resolveMerge?.({ state: "confirmed_refresh_required" });
+  expect(await screen.findByRole("status", { name: /Merged/ })).toBeTruthy();
+
+  const check = screen.getByRole("button", { name: "Check GitHub status" });
+  fireEvent.click(check);
+  fireEvent.click(check);
+  expect(recover).toHaveBeenCalledTimes(1);
+  // SAFETY: the role query returns the native button rendered by Button.
+  expect(
+    (screen.getByRole("button", { name: "Checking…" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  resolveCheck?.();
 });

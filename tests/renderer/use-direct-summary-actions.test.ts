@@ -116,9 +116,9 @@ function panelOf(result: {
 }
 
 const reviewable = projection({
-  pendingReview: pending("none") as never,
+  pendingReview: pending("none"),
   directSummaryDecision: "allowed",
-} as never);
+});
 
 describe("useDirectSummaryActions submit", () => {
   it("submits through runDirectCommand with the represented revision", async () => {
@@ -166,7 +166,14 @@ describe("useDirectSummaryActions submit", () => {
   });
 
   it("keeps the confirmed receipt visible over the projection's idle state", async () => {
-    installSummaryDouble({ submit: () => confirmed });
+    installSummaryDouble({
+      submit: () => ({
+        directSummary: {
+          state: "confirmed",
+          receipt: { reviewId: "9002", event: "APPROVE" },
+        },
+      }),
+    });
     const { result, rerender } = renderDirectSummary(reviewable);
     expect(panelOf(result).state).toBe("idle");
 
@@ -177,7 +184,7 @@ describe("useDirectSummaryActions submit", () => {
     expect(panelOf(result).state).toBe("confirmed");
     expect(panelOf(result).receipt).toEqual({
       reviewId: "9002",
-      event: "COMMENT",
+      event: "APPROVE",
     });
 
     // The server keeps projecting `idle`; re-rendering on it must not reset
@@ -196,12 +203,12 @@ describe("useDirectSummaryActions submit", () => {
 
     rerender({
       workbench: projection({
-        pendingReview: pending("none") as never,
+        pendingReview: pending("none"),
         directSummary: {
           state: "confirmed",
           receipt: { reviewId: "9500", event: "APPROVE" },
         },
-      } as never),
+      }),
     });
 
     expect(panelOf(result).receipt).toEqual({
@@ -243,18 +250,131 @@ describe("useDirectSummaryActions recovery", () => {
     );
   });
 
-  it("reports a malformed submit response without locking recovery", async () => {
-    installSummaryDouble({ submit: () => ({ directSummary: {} }) });
+  it.each([
+    ["missing projection", {}],
+    ["missing receipt", { directSummary: { state: "confirmed" } }],
+    [
+      "wrong state tag",
+      {
+        directSummary: {
+          state: "complete",
+          receipt: confirmed.directSummary.receipt,
+        },
+      },
+    ],
+    [
+      "wrong receipt id",
+      {
+        directSummary: {
+          state: "confirmed",
+          receipt: { reviewId: 9002, event: "COMMENT" },
+        },
+      },
+    ],
+    [
+      "wrong receipt event",
+      {
+        directSummary: {
+          state: "confirmed",
+          receipt: { reviewId: "9002", event: "COMMENTED" },
+        },
+      },
+    ],
+    ["event that does not match the submitted decision", confirmed],
+    ["extra response field", { ...confirmed, unexpected: true }],
+    ["idle submit result", { directSummary: { state: "idle" } }],
+  ])("locks recovery for a %s 2xx response", async (_case, response) => {
+    installSummaryDouble({ submit: () => response });
     const { result, appendRecentWrites } = renderDirectSummary(reviewable);
 
     await act(async () => {
-      await expect(panelOf(result).onSubmit("COMMENT", "Body")).rejects.toThrow(
-        /Invalid direct summary review response/,
-      );
+      await expect(
+        panelOf(result).onSubmit(
+          _case === "event that does not match the submitted decision"
+            ? "APPROVE"
+            : "COMMENT",
+          "Body",
+        ),
+      ).rejects.toThrow(/Invalid direct summary review response/);
     });
-    expect(panelOf(result).state).toBe("idle");
+    expect(panelOf(result).state).toBe("recovery_required");
+    expect(panelOf(result).recoveryResolution).toBe("check_required");
     expect(panelOf(result).error).toBeTruthy();
     expect(appendRecentWrites).not.toHaveBeenCalled();
+  });
+
+  it("admits only one submit in the same tick", async () => {
+    let resolveSubmit: ((value: typeof confirmed) => void) | undefined;
+    const response = new Promise<typeof confirmed>((resolve) => {
+      resolveSubmit = resolve;
+    });
+    const request = installSummaryDouble({ submit: () => response });
+    const { result } = renderDirectSummary(reviewable);
+
+    let first: Promise<unknown> | undefined;
+    let second: Promise<unknown> | undefined;
+    await act(async () => {
+      first = panelOf(result).onSubmit("COMMENT", "First");
+      second = panelOf(result).onSubmit("COMMENT", "Second");
+      await Promise.resolve();
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSubmit?.(confirmed);
+      await Promise.all([first, second]);
+    });
+  });
+
+  it("keeps recovery checks single-flight and preserves the server resolution", async () => {
+    let resolveRecovery:
+      | ((value: {
+          readonly directSummary: {
+            readonly state: "recovery_required";
+            readonly resolution: "manual_resolution_required";
+          };
+        }) => void)
+      | undefined;
+    const response = new Promise<{
+      readonly directSummary: {
+        readonly state: "recovery_required";
+        readonly resolution: "manual_resolution_required";
+      };
+    }>((resolve) => {
+      resolveRecovery = resolve;
+    });
+    const request = installSummaryDouble({ recover: () => response });
+    const recovering = projection({
+      pendingReview: pending("none"),
+      directSummary: {
+        state: "recovery_required",
+        resolution: "check_required",
+      },
+    });
+    const { result } = renderDirectSummary(recovering);
+
+    let first: Promise<unknown> | undefined;
+    let second: Promise<unknown> | undefined;
+    await act(async () => {
+      first = panelOf(result).onRecover();
+      second = panelOf(result).onRecover();
+      await Promise.resolve();
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRecovery?.({
+        directSummary: {
+          state: "recovery_required",
+          resolution: "manual_resolution_required",
+        },
+      });
+      await Promise.all([first, second]);
+    });
+    expect(panelOf(result).state).toBe("recovery_required");
+    expect(panelOf(result).recoveryResolution).toBe(
+      "manual_resolution_required",
+    );
   });
 });
 
@@ -262,7 +382,7 @@ describe("useDirectSummaryActions eligibility", () => {
   it("offers no panel while a pending review is still open", () => {
     installSummaryDouble({});
     const { result } = renderDirectSummary(
-      projection({ pendingReview: pending("pending") as never }),
+      projection({ pendingReview: pending("pending") }),
     );
 
     expect(result.current.directSummary).toBeUndefined();
@@ -271,7 +391,7 @@ describe("useDirectSummaryActions eligibility", () => {
   it("reports an unknown approval capability when the projection omits it", () => {
     installSummaryDouble({});
     const { result } = renderDirectSummary(
-      projection({ pendingReview: pending("none") as never }),
+      projection({ pendingReview: pending("none") }),
     );
 
     expect(panelOf(result).approvalCapability).toBe("unknown");

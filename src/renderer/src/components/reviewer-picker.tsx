@@ -257,6 +257,14 @@ function ReviewerCandidateRow({
             className="size-5 text-[10px]"
           />
           <span className="min-w-0 truncate">{candidate.login}</span>
+          {busy ? (
+            <span
+              data-slot="picker-item-pending"
+              className="text-[10px] text-muted-foreground"
+            >
+              Updating…
+            </span>
+          ) : null}
         </FieldLabel>
       </Field>
       {caption === undefined ? null : (

@@ -4,6 +4,7 @@ import type {
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type {
   RepositoryLabel,
   RepositoryLabelPermission,
@@ -22,6 +23,7 @@ import {
   pullRequestRefForSession,
   resolvePullRequestWritePermission,
   runGuardedMetadataWrite,
+  type PreparedMetadataWrite,
   type PullRequestMetadataListFailure,
   type PullRequestMetadataReadFailure,
   type PullRequestMetadataWriteFailure,
@@ -98,6 +100,10 @@ export class LabelService {
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
     private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly operations: Pick<
+      ReviewWriteOperationStore,
+      "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
+    >,
   ) {}
 
   async execute(input: {
@@ -105,14 +111,15 @@ export class LabelService {
     readonly reviewId: ReviewId;
     readonly command: LabelCommand;
   }): Promise<Result<LabelReceipt, LabelWriteFailure>> {
-    return await runGuardedMetadataWrite({
+    return await runGuardedMetadataWrite<LabelReceipt, LabelWriteFailure>({
       profileId: input.profileId,
       reviewId: input.reviewId,
       coordinator: this.writeCoordinator,
+      operations: this.operations,
       recentWrites: this.recentWrites,
       now: this.now,
       validate: () => validateLocalCommand(input.command),
-      write: () => this.executeUnlocked(input),
+      prepare: () => this.prepareWrite(input),
       journalEntry: journalEntryFor,
     });
   }
@@ -173,11 +180,16 @@ export class LabelService {
     });
   }
 
-  private async executeUnlocked(input: {
+  private async prepareWrite(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly command: LabelCommand;
-  }): Promise<Result<LabelReceipt, LabelWriteFailure>> {
+  }): Promise<
+    Result<
+      PreparedMetadataWrite<LabelReceipt, LabelWriteFailure>,
+      LabelWriteFailure
+    >
+  > {
     const current = await this.gate.requireCurrentSession(
       input.profileId,
       input.reviewId,
@@ -209,25 +221,39 @@ export class LabelService {
     if (input.command._tag === "AddLabels") {
       if (this.github.addLabelsToLabelable === undefined)
         return err("github_write_failed");
-      const written = await this.github.addLabelsToLabelable({
-        profile: current.value.profile,
-        labelableId,
-        labelIds,
+      const writer = this.github.addLabelsToLabelable;
+      return ok({
+        sessionId: current.value.session.id,
+        intent: { _tag: "AddLabels" as const, names: labelNames },
+        write: async (): Promise<Result<LabelReceipt, LabelWriteFailure>> => {
+          const written = await writer({
+            profile: current.value.profile,
+            labelableId,
+            labelIds,
+          });
+          return written._tag === "err"
+            ? err(mapGitHubWriteFailure(written.error))
+            : ok({ _tag: "LabelsAdded", added: labelNames });
+        },
       });
-      return written._tag === "err"
-        ? err(mapGitHubWriteFailure(written.error))
-        : ok({ _tag: "LabelsAdded", added: labelNames });
     }
     if (this.github.removeLabelsFromLabelable === undefined)
       return err("github_write_failed");
-    const written = await this.github.removeLabelsFromLabelable({
-      profile: current.value.profile,
-      labelableId,
-      labelIds,
+    const writer = this.github.removeLabelsFromLabelable;
+    return ok({
+      sessionId: current.value.session.id,
+      intent: { _tag: "RemoveLabels" as const, names: labelNames },
+      write: async (): Promise<Result<LabelReceipt, LabelWriteFailure>> => {
+        const written = await writer({
+          profile: current.value.profile,
+          labelableId,
+          labelIds,
+        });
+        return written._tag === "err"
+          ? err(mapGitHubWriteFailure(written.error))
+          : ok({ _tag: "LabelsRemoved", removed: labelNames });
+      },
     });
-    return written._tag === "err"
-      ? err(mapGitHubWriteFailure(written.error))
-      : ok({ _tag: "LabelsRemoved", removed: labelNames });
   }
 }
 

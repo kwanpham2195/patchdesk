@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -8,7 +14,36 @@ import {
 } from "../../src/renderer/src/components/conversation-thread-card";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+function deferred<T>() {
+  let resolve: (value: T | PromiseLike<T>) => void = () => {
+    throw new Error("deferred resolve was not initialized");
+  };
+  let reject: (reason: Error) => void = () => {
+    throw new Error("deferred reject was not initialized");
+  };
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function expectPendingButton(button: HTMLElement): void {
+  expect(button.hasAttribute("disabled")).toBe(true);
+  const spinner = within(button).getByRole("status", { name: "Loading" });
+  expect(spinner.getAttribute("data-icon")).toBe("inline-start");
+}
+
+function expectTextareaValue(element: HTMLElement, value: string): void {
+  if (!(element instanceof HTMLTextAreaElement))
+    throw new Error("expected a textarea");
+  expect(element.value).toBe(value);
+}
 
 const threadId = parseGitHubThreadId("thread-1");
 if (threadId._tag === "err")
@@ -17,6 +52,7 @@ if (threadId._tag === "err")
 const thread = (
   overrides: {
     readonly target?: ConversationThreadTarget;
+    readonly state?: "open" | "resolved" | "outdated" | "unknown";
     readonly onReply?: (
       threadId: string,
       body: string,
@@ -186,34 +222,31 @@ describe("ConversationThreadCard", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });
 
-  it("disables the edit textarea and prevents typing while saving", async () => {
+  it("admits one edit synchronously and preserves its draft after failure", async () => {
     const user = userEvent.setup();
-    let resolveEdit: (() => void) | undefined;
-    const onEditComment = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveEdit = resolve;
-        }),
-    );
+    const edit = deferred<void>();
+    const onEditComment = vi.fn(() => edit.promise);
     render(<ConversationThreadCard thread={thread({ onEditComment })} />);
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
     const editor = screen.getByRole("textbox", { name: "Edit comment" });
-    if (!(editor instanceof HTMLTextAreaElement))
-      throw new Error("Expected the edit control to be a textarea");
     await user.clear(editor);
     await user.type(editor, "Edited while waiting");
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const save = screen.getByRole("button", { name: "Save" });
+    fireEvent.click(save);
+    fireEvent.click(save);
 
     expect(onEditComment).toHaveBeenCalledWith("c-1", "Edited while waiting");
-    expect(editor.disabled).toBe(true);
+    expect(onEditComment).toHaveBeenCalledOnce();
+    expectPendingButton(screen.getByRole("button", { name: /Saving/ }));
     expect(
-      editor.closest('[data-slot="field"]')?.getAttribute("data-disabled"),
-    ).toBe("true");
-    await user.type(editor, " blocked");
-    expect(editor.value).toBe("Edited while waiting");
+      screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(editor.hasAttribute("disabled")).toBe(true);
 
-    resolveEdit?.();
+    edit.reject(new Error("edit failed"));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expectTextareaValue(editor, "Edited while waiting");
   });
 
   it("associates edit errors with the editor control", async () => {
@@ -240,32 +273,127 @@ describe("ConversationThreadCard", () => {
     ).toBe("true");
   });
 
-  it("disables the reply textarea and prevents typing while publishing", async () => {
+  it.each([
+    { state: "open" as const, idle: "Resolve", pending: "Resolving…" },
+    {
+      state: "resolved" as const,
+      idle: "Unresolve",
+      pending: "Unresolving…",
+    },
+  ])(
+    "admits one $idle request and blocks the reply controls until settlement",
+    async ({ state, idle, pending: pendingCopy }) => {
+      const threadState = deferred<void>();
+      const onSetState = vi.fn(() => threadState.promise);
+      const onReply = vi.fn(async () => undefined);
+      render(
+        <ConversationThreadCard
+          thread={thread({ state, onSetState, onReply })}
+        />,
+      );
+      const reply = screen.getByRole("textbox", { name: "Reply" });
+      await userEvent.setup().type(reply, "Preserved reply draft");
+      const stateButton = screen.getByRole("button", { name: idle });
+      fireEvent.click(stateButton);
+      fireEvent.click(stateButton);
+
+      expect(onSetState).toHaveBeenCalledOnce();
+      expectPendingButton(
+        screen.getByRole("button", { name: new RegExp(pendingCopy) }),
+      );
+      expect(reply.hasAttribute("disabled")).toBe(true);
+      expectTextareaValue(reply, "Preserved reply draft");
+      expect(
+        screen.getByRole("button", { name: "Reply" }).hasAttribute("disabled"),
+      ).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+      expect(onReply).not.toHaveBeenCalled();
+
+      threadState.resolve(undefined);
+      await screen.findByRole("button", { name: idle });
+    },
+  );
+
+  it("admits one reply synchronously and preserves its draft after failure", async () => {
     const user = userEvent.setup();
-    let resolveReply: (() => void) | undefined;
-    const onReply = vi.fn(
-      () =>
-        new Promise<string | void>((resolve) => {
-          resolveReply = resolve;
-        }),
-    );
-    render(<ConversationThreadCard thread={thread({ onReply })} />);
+    const replyRequest = deferred<string | void>();
+    const onReply = vi.fn(() => replyRequest.promise);
+    const onSetState = vi.fn(async () => undefined);
+    render(<ConversationThreadCard thread={thread({ onReply, onSetState })} />);
 
     const reply = screen.getByRole("textbox", { name: "Reply" });
-    if (!(reply instanceof HTMLTextAreaElement))
-      throw new Error("Expected the reply control to be a textarea");
     await user.type(reply, "Reply while waiting");
-    await user.click(screen.getByRole("button", { name: "Reply" }));
+    const replyButton = screen.getByRole("button", { name: "Reply" });
+    fireEvent.click(replyButton);
+    fireEvent.click(replyButton);
 
     expect(onReply).toHaveBeenCalledWith("thread-1", "Reply while waiting");
-    expect(reply.disabled).toBe(true);
+    expect(onReply).toHaveBeenCalledOnce();
+    expectPendingButton(screen.getByRole("button", { name: /Replying/ }));
+    expect(reply.hasAttribute("disabled")).toBe(true);
     expect(
-      reply.closest('[data-slot="field"]')?.getAttribute("data-disabled"),
-    ).toBe("true");
-    await user.type(reply, " blocked");
-    expect(reply.value).toBe("Reply while waiting");
+      screen.getByRole("button", { name: "Resolve" }).hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
+    expect(onSetState).not.toHaveBeenCalled();
 
-    resolveReply?.();
+    replyRequest.reject(new Error("reply failed"));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expectTextareaValue(reply, "Reply while waiting");
+  });
+
+  it("owns deletion per comment row and keeps the comment after failure", async () => {
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    const deletion = deferred<void>();
+    const onDeleteComment = vi.fn(() => deletion.promise);
+    render(
+      <ConversationThreadCard
+        thread={thread({
+          onEditComment: vi.fn(async () => undefined),
+          onDeleteComment,
+          comments: [
+            {
+              id: "c-1",
+              author: "reviewer",
+              body: "First comment",
+              createdAt: "2026-08-01T00:00:00.000Z",
+              viewerDidAuthor: true,
+            },
+            {
+              id: "c-2",
+              author: "reviewer",
+              body: "Second comment",
+              createdAt: "2026-08-01T00:01:00.000Z",
+              viewerDidAuthor: true,
+            },
+          ],
+        })}
+      />,
+    );
+    const deleteButtons = screen.getAllByRole("button", { name: "Delete" });
+    const firstDelete = deleteButtons[0];
+    if (firstDelete === undefined) throw new Error("missing first Delete");
+    fireEvent.click(firstDelete);
+    fireEvent.click(firstDelete);
+
+    expect(onDeleteComment).toHaveBeenCalledWith("c-1");
+    expect(onDeleteComment).toHaveBeenCalledOnce();
+    expectPendingButton(screen.getByRole("button", { name: /Deleting/ }));
+    const editButtons = screen.getAllByRole("button", { name: "Edit" });
+    expect(editButtons[0]?.hasAttribute("disabled")).toBe(true);
+    expect(editButtons[1]?.hasAttribute("disabled")).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Delete" }).hasAttribute("disabled"),
+    ).toBe(false);
+    expect(screen.getByText("First comment")).toBeTruthy();
+
+    deletion.reject(new Error("delete failed"));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByText("First comment")).toBeTruthy();
+    expect(screen.getByText("Second comment")).toBeTruthy();
   });
 
   it("edits a viewer-authored reply through its row controls", async () => {

@@ -430,6 +430,7 @@ function createProjection(
 ): ReviewWorkbenchProjection {
   return {
     state: "review",
+    viewerLogin: "fixture",
     review: {
       id: review.id,
       status: review.status._tag === "Open" ? "open" : review.status.state,

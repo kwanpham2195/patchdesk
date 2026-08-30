@@ -358,7 +358,7 @@ export interface GitHubReviewWriter {
   dismissReview?(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
-    readonly reviewId: string;
+    readonly reviewId: GitHubReviewRestId;
     readonly message: string;
   }): Promise<Result<void, GitHubWriteFailure>>;
 }
@@ -1070,7 +1070,7 @@ export class GitHubAdapter
   async dismissReview(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
-    readonly reviewId: string;
+    readonly reviewId: GitHubReviewRestId;
     readonly message: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {

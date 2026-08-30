@@ -18,6 +18,7 @@ const baseProps = {
   provider: "pi" as const,
   codexActivationPending: false,
   codexActivationError: false,
+  pending: false,
   onProviderChange: vi.fn(),
   onActivateCodex: vi.fn(),
   onRefreshCodexModels: vi.fn(),
@@ -113,6 +114,31 @@ describe("InsightRunDialog model picker", () => {
     await user.click(reasoning);
     await user.click(await screen.findByRole("option", { name: "high" }));
     expect(onReasoningChange).toHaveBeenCalledWith("high");
+  });
+});
+
+describe("InsightRunDialog pending state", () => {
+  it("shows a disabled shadcn start spinner and blocks dismissal", async () => {
+    const onOpenChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <InsightRunDialog
+        {...baseProps}
+        model="provider/model-0"
+        pending
+        onOpenChange={onOpenChange}
+      />,
+    );
+
+    const start = screen.getByRole("button", { name: "Starting…" });
+    expect(start.getAttribute("disabled")).not.toBeNull();
+    expect(start.querySelector('[data-icon="inline-start"]')).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Cancel" }).getAttribute("disabled"),
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+    await user.keyboard("{Escape}");
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 });
 

@@ -10,6 +10,7 @@ import { ReviewOperationCoordinator } from "../../src/services/review-operation-
 import {
   makeGate,
   makeRecentWrites,
+  makeReviewWriteOperations,
   now,
   profileId,
   reviewId,
@@ -61,6 +62,7 @@ describe("LabelService", () => {
       new ReviewOperationCoordinator(),
       now,
       recentWrites,
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -99,6 +101,7 @@ describe("LabelService", () => {
       new ReviewOperationCoordinator(),
       now,
       recentWrites,
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -141,13 +144,19 @@ describe("LabelService", () => {
       new ReviewOperationCoordinator(),
       now,
       recentWrites,
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
       reviewId,
       command: command(),
     });
-    expect(result).toEqual({ _tag: "err", error: "github_write_failed" });
+    expect(result).toEqual({ _tag: "err", error: "outcome_unknown" });
+    expect(addLabelsToLabelable).toHaveBeenCalledOnce();
+    await expect(
+      service.execute({ profileId, reviewId, command: command() }),
+    ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
+    expect(addLabelsToLabelable).toHaveBeenCalledOnce();
     expect(recentWrites.append).not.toHaveBeenCalled();
   });
 
@@ -170,6 +179,7 @@ describe("LabelService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -196,6 +206,7 @@ describe("LabelService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -225,6 +236,7 @@ describe("LabelService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -244,6 +256,7 @@ describe("LabelService", () => {
       new ReviewOperationCoordinator(),
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -268,6 +281,7 @@ describe("LabelService", () => {
       coordinator,
       now,
       makeRecentWrites(),
+      makeReviewWriteOperations(),
     );
     const result = await service.execute({
       profileId,
@@ -296,6 +310,7 @@ describe("LabelService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({
@@ -333,6 +348,7 @@ describe("LabelService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({
@@ -370,6 +386,7 @@ describe("LabelService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({
@@ -404,6 +421,7 @@ describe("LabelService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({
@@ -435,6 +453,7 @@ describe("LabelService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({
@@ -464,6 +483,7 @@ describe("LabelService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({
@@ -488,6 +508,7 @@ describe("LabelService", () => {
         new ReviewOperationCoordinator(),
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       );
       const result = await service.list({ profileId, reviewId });
       expect(result).toEqual({ _tag: "err", error: "not_found" });

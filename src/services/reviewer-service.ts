@@ -8,6 +8,7 @@ import {
   withAvatarDataUri,
 } from "../adapters/storage/avatar-cache-store";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type {
   AssignableUser,
   PullRequestAssigneePermission,
@@ -33,6 +34,7 @@ import {
   pullRequestRefForSession,
   resolvePullRequestWritePermission,
   runGuardedMetadataWrite,
+  type PreparedMetadataWrite,
   type PullRequestMetadataListFailure,
   type PullRequestMetadataReadFailure,
   type PullRequestMetadataWriteFailure,
@@ -125,6 +127,10 @@ export class ReviewerService {
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
     private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly operations: Pick<
+      ReviewWriteOperationStore,
+      "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
+    >,
     /** Best-effort; see `AvatarRailDependencies`. Absent in tests/paths that never exercise avatar behaviour, in which case `list` returns every row with no `avatarDataUri`. */
     private readonly avatars?: AvatarRailDependencies,
   ) {}
@@ -134,16 +140,19 @@ export class ReviewerService {
     readonly reviewId: ReviewId;
     readonly command: ReviewerCommand;
   }): Promise<Result<ReviewerReceipt, ReviewerWriteFailure>> {
-    return await runGuardedMetadataWrite({
-      profileId: input.profileId,
-      reviewId: input.reviewId,
-      coordinator: this.writeCoordinator,
-      recentWrites: this.recentWrites,
-      now: this.now,
-      validate: () => validateLocalCommand(input.command),
-      write: () => this.executeUnlocked(input),
-      journalEntry: journalEntryFor,
-    });
+    return await runGuardedMetadataWrite<ReviewerReceipt, ReviewerWriteFailure>(
+      {
+        profileId: input.profileId,
+        reviewId: input.reviewId,
+        coordinator: this.writeCoordinator,
+        operations: this.operations,
+        recentWrites: this.recentWrites,
+        now: this.now,
+        validate: () => validateLocalCommand(input.command),
+        prepare: () => this.prepareWrite(input),
+        journalEntry: journalEntryFor,
+      },
+    );
   }
 
   /**
@@ -294,11 +303,16 @@ export class ReviewerService {
     });
   }
 
-  private async executeUnlocked(input: {
+  private async prepareWrite(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly command: ReviewerCommand;
-  }): Promise<Result<ReviewerReceipt, ReviewerWriteFailure>> {
+  }): Promise<
+    Result<
+      PreparedMetadataWrite<ReviewerReceipt, ReviewerWriteFailure>,
+      ReviewerWriteFailure
+    >
+  > {
     const current = await this.gate.requireCurrentSession(
       input.profileId,
       input.reviewId,
@@ -332,25 +346,43 @@ export class ReviewerService {
       // cap `AssigneeService` enforces, so none is invented here.
       if (this.github.requestReviews === undefined)
         return err("github_write_failed");
-      const written = await this.github.requestReviews({
-        profile: current.value.profile,
-        pullRequestId,
-        userIds: reviewerIds,
+      const writer = this.github.requestReviews;
+      return ok({
+        sessionId: current.value.session.id,
+        intent: { _tag: "RequestReviewers" as const, logins: reviewerLogins },
+        write: async (): Promise<
+          Result<ReviewerReceipt, ReviewerWriteFailure>
+        > => {
+          const written = await writer({
+            profile: current.value.profile,
+            pullRequestId,
+            userIds: reviewerIds,
+          });
+          return written._tag === "err"
+            ? err(mapGitHubWriteFailure(written.error))
+            : ok({ _tag: "ReviewersRequested", requested: reviewerLogins });
+        },
       });
-      return written._tag === "err"
-        ? err(mapGitHubWriteFailure(written.error))
-        : ok({ _tag: "ReviewersRequested", requested: reviewerLogins });
     }
     if (this.github.removeRequestedReviewers === undefined)
       return err("github_write_failed");
-    const written = await this.github.removeRequestedReviewers({
-      profile: current.value.profile,
-      pr,
-      logins: reviewerLogins,
+    const writer = this.github.removeRequestedReviewers;
+    return ok({
+      sessionId: current.value.session.id,
+      intent: { _tag: "RemoveReviewers" as const, logins: reviewerLogins },
+      write: async (): Promise<
+        Result<ReviewerReceipt, ReviewerWriteFailure>
+      > => {
+        const written = await writer({
+          profile: current.value.profile,
+          pr,
+          logins: reviewerLogins,
+        });
+        return written._tag === "err"
+          ? err(mapGitHubWriteFailure(written.error))
+          : ok({ _tag: "ReviewersRemoved", removed: reviewerLogins });
+      },
     });
-    return written._tag === "err"
-      ? err(mapGitHubWriteFailure(written.error))
-      : ok({ _tag: "ReviewersRemoved", removed: reviewerLogins });
   }
 }
 

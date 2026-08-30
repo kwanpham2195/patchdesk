@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { requestJson } from "../api-client";
 import { useLatestCommitted } from "./use-latest-committed";
@@ -16,12 +22,16 @@ import {
 
 export type InsightRunType = "analysis" | "walkthrough";
 type InsightRunState = InsightRunResponse["status"] | "idle" | "error";
+type InsightRunRequestFailure = "start" | "cancel" | "status";
 
 export type InsightRunController = {
   readonly status: InsightRunState;
   readonly runId?: string;
   readonly error: boolean;
+  readonly requestFailure?: InsightRunRequestFailure;
   readonly failureReason?: InsightRunResponse["failureReason"];
+  readonly starting: boolean;
+  readonly cancelling: boolean;
   readonly busy: boolean;
   readonly run: (
     provider: InsightProvider,
@@ -32,6 +42,7 @@ export type InsightRunController = {
   readonly cancel: () => void;
 };
 
+/** Owns one generation-safe Insight start, poll, and cancellation lifecycle. */
 export function useInsightRun(input: {
   readonly profileId: string;
   readonly reviewId: string;
@@ -54,35 +65,69 @@ export function useInsightRun(input: {
     onCompleted,
   } = input;
   const persistedRunId = activeRun?.runId;
+  const scope = `${profileId}\u0000${reviewId}\u0000${type}`;
   const [status, setStatus] = useState<InsightRunState>(() =>
     persistedRunId === undefined ? "idle" : "running",
   );
   const [runId, setRunId] = useState<string | undefined>(persistedRunId);
-  const [error, setError] = useState(false);
+  const [requestFailure, setRequestFailure] =
+    useState<InsightRunRequestFailure>();
   const [failureReason, setFailureReason] =
     useState<InsightRunResponse["failureReason"]>();
   const [starting, setStarting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const scopeRef = useRef(scope);
+  const persistedRunIdRef = useRef(persistedRunId);
+  const generationRef = useRef(0);
   const activeRunRef = useRef<string | undefined>(persistedRunId);
   const startingRef = useRef(false);
+  const cancellingRef = useRef(false);
+  const mountedRef = useRef(true);
   const onWorkbenchReplaceRef = useLatestCommitted(onWorkbenchReplace);
   const onInsightPatchRef = useLatestCommitted(onInsightPatch);
   const onCompletedRef = useLatestCommitted(onCompleted);
 
-  const [previousPersistedRunId, setPreviousPersistedRunId] =
-    useState(persistedRunId);
-  if (
-    persistedRunId !== previousPersistedRunId &&
-    !startingRef.current &&
-    activeRunRef.current === undefined
-  ) {
-    setPreviousPersistedRunId(persistedRunId);
-    if (persistedRunId !== undefined) {
+  useLayoutEffect(() => {
+    if (scopeRef.current !== scope) {
+      scopeRef.current = scope;
+      persistedRunIdRef.current = persistedRunId;
+      generationRef.current += 1;
+      activeRunRef.current = persistedRunId;
+      startingRef.current = false;
+      cancellingRef.current = false;
       setRunId(persistedRunId);
-      setStatus("running");
-      setError(false);
+      setStatus(persistedRunId === undefined ? "idle" : "running");
+      setRequestFailure(undefined);
       setFailureReason(undefined);
+      setStarting(false);
+      setCancelling(false);
+      return;
     }
-  }
+    if (persistedRunIdRef.current === persistedRunId) return;
+    persistedRunIdRef.current = persistedRunId;
+    if (
+      persistedRunId === undefined ||
+      persistedRunId === activeRunRef.current ||
+      startingRef.current
+    )
+      return;
+    generationRef.current += 1;
+    activeRunRef.current = persistedRunId;
+    cancellingRef.current = false;
+    setRunId(persistedRunId);
+    setStatus("running");
+    setRequestFailure(undefined);
+    setFailureReason(undefined);
+    setCancelling(false);
+  }, [persistedRunId, scope]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+    };
+  }, []);
 
   const run = useCallback(
     (
@@ -93,13 +138,15 @@ export function useInsightRun(input: {
     ): void => {
       if (
         startingRef.current ||
-        activeRunRef.current !== undefined ||
-        runId !== undefined
+        cancellingRef.current ||
+        activeRunRef.current !== undefined
       )
         return;
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
       startingRef.current = true;
       setStarting(true);
-      setError(false);
+      setRequestFailure(undefined);
       setFailureReason(undefined);
       void requestJson(`/v1/reviews/insights/${type}/run`, {
         method: "POST",
@@ -109,59 +156,107 @@ export function useInsightRun(input: {
           const parsed = parseInsightRunResponse(value);
           if (parsed === undefined || parsed.type !== type)
             throw new Error("Invalid Insight run response");
+          if (!mountedRef.current || generationRef.current !== generation)
+            return;
           activeRunRef.current = parsed.runId;
-          startingRef.current = false;
-          setStarting(false);
           setRunId(parsed.runId);
           setStatus(parsed.status);
           onAccepted?.();
         })
         .catch(() => {
+          if (!mountedRef.current || generationRef.current !== generation)
+            return;
+          setRequestFailure("start");
+          setStatus("error");
+        })
+        .finally(() => {
+          if (!mountedRef.current || generationRef.current !== generation)
+            return;
           startingRef.current = false;
           setStarting(false);
-          setError(true);
-          setStatus("error");
         });
     },
-    [profileId, reviewId, runId, type],
+    [profileId, reviewId, type],
   );
 
   const cancel = useCallback((): void => {
-    const activeRunId = activeRunRef.current ?? runId;
-    if (activeRunId === undefined) return;
+    const activeRunId = activeRunRef.current;
+    if (
+      activeRunId === undefined ||
+      startingRef.current ||
+      cancellingRef.current
+    )
+      return;
+    const generation = generationRef.current;
+    cancellingRef.current = true;
+    setCancelling(true);
+    setRequestFailure(undefined);
     void requestJson(`/v1/reviews/insights/${type}/cancel`, {
       method: "POST",
       body: { profileId, reviewId, type, runId: activeRunId },
     })
       .then((value) => {
         const parsed = parseInsightRunResponse(value);
-        if (parsed === undefined)
+        if (
+          parsed === undefined ||
+          parsed.type !== type ||
+          parsed.runId !== activeRunId
+        )
           throw new Error("Invalid Insight cancellation response");
+        if (
+          !mountedRef.current ||
+          generationRef.current !== generation ||
+          activeRunRef.current !== activeRunId
+        )
+          return;
         setStatus(parsed.status);
       })
-      .catch(() => setError(true));
-  }, [profileId, reviewId, runId, type]);
+      .catch(() => {
+        if (
+          !mountedRef.current ||
+          generationRef.current !== generation ||
+          activeRunRef.current !== activeRunId
+        )
+          return;
+        setRequestFailure("cancel");
+      })
+      .finally(() => {
+        if (
+          !mountedRef.current ||
+          generationRef.current !== generation ||
+          activeRunRef.current !== activeRunId
+        )
+          return;
+        cancellingRef.current = false;
+        setCancelling(false);
+      });
+  }, [profileId, reviewId, type]);
 
   useEffect(() => {
     if (runId === undefined) return undefined;
-    let cancelled = false;
+    const generation = generationRef.current;
+    let disposed = false;
     let timer: number | undefined;
+    const ownsRun = (): boolean =>
+      !disposed &&
+      generationRef.current === generation &&
+      activeRunRef.current === runId;
     const poll = (): void => {
       void requestJson(
         `/v1/reviews/insights/runs/${encodeURIComponent(runId)}?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}&type=${type}`,
       )
         .then((value) => {
-          if (
-            cancelled ||
-            (activeRunRef.current !== undefined &&
-              activeRunRef.current !== runId)
-          )
-            return undefined;
+          if (!ownsRun()) return undefined;
           const parsed = parseInsightRunResponse(value);
-          if (parsed === undefined || parsed.type !== type)
+          if (
+            parsed === undefined ||
+            parsed.type !== type ||
+            parsed.runId !== runId
+          )
             throw new Error("Invalid Insight status response");
           setStatus(parsed.status);
           setFailureReason(parsed.failureReason);
+          setRequestFailure(undefined);
           if (
             parsed.status !== "completed" &&
             parsed.status !== "failed" &&
@@ -174,36 +269,32 @@ export function useInsightRun(input: {
           }).then((workbenchValue) => ({ parsed, workbenchValue }));
         })
         .then((terminal) => {
-          if (terminal === undefined) return;
+          if (terminal === undefined || !ownsRun()) return;
           const workbench = parseWorkbenchResponse(terminal.workbenchValue);
           if (workbench === undefined)
             throw new Error("Invalid Review projection response");
-          if (!cancelled && activeRunRef.current === runId) {
-            if (onInsightPatchRef.current !== undefined)
-              onInsightPatchRef.current(type, workbench.insights[type]);
-            else onWorkbenchReplaceRef.current?.(workbench);
-          }
+          if (onInsightPatchRef.current !== undefined)
+            onInsightPatchRef.current(type, workbench.insights[type]);
+          else onWorkbenchReplaceRef.current?.(workbench);
           if (terminal.parsed.status === "completed")
             onCompletedRef.current?.();
           activeRunRef.current = undefined;
+          cancellingRef.current = false;
+          setCancelling(false);
           setRunId(undefined);
         })
         .catch(() => {
-          if (!cancelled) {
-            setError(true);
-            setStatus("error");
-            activeRunRef.current = undefined;
-            setRunId(undefined);
-          }
+          if (!ownsRun()) return;
+          setRequestFailure("status");
+          setStatus("error");
         })
         .finally(() => {
-          if (!cancelled && activeRunRef.current === runId)
-            timer = window.setTimeout(poll, 500);
+          if (ownsRun()) timer = window.setTimeout(poll, 500);
         });
     };
     poll();
     return () => {
-      cancelled = true;
+      disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [
@@ -219,8 +310,10 @@ export function useInsightRun(input: {
   return {
     status,
     ...definedProps({ runId }),
-    error,
-    ...definedProps({ failureReason }),
+    error: requestFailure !== undefined,
+    ...definedProps({ requestFailure, failureReason }),
+    starting,
+    cancelling,
     busy: starting || runId !== undefined || activeRun !== undefined,
     run,
     cancel,

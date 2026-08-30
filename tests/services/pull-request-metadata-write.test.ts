@@ -8,6 +8,7 @@ import { ok } from "../../src/domain/result";
 import {
   makeGate,
   makeRecentWrites,
+  makeReviewWriteOperations,
   now,
   profileId,
   reviewId,
@@ -22,8 +23,8 @@ import {
  * Each service's own suite keeps everything specific to its write. What is
  * here is only what the three genuinely share, and specifically the two
  * guarantees no per-service suite covered before the consolidation: that a
- * thrown write releases the Review lock, and that validation is refused
- * ahead of the lock rather than behind it.
+ * rejected post-boundary writer retains durable outcome-unknown state and is
+ * not replayed, and that validation is refused ahead of admission.
  */
 
 const permissionEvidence = ok({
@@ -67,6 +68,7 @@ const services = [
         coordinator,
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       ),
     valid: { _tag: "AddLabels", labels: [{ id: "LA_bug", name: "bug" }] },
     empty: { _tag: "AddLabels", labels: [] },
@@ -76,10 +78,12 @@ const services = [
     build: (coordinator: ReviewOperationCoordinator) =>
       new AssigneeService(
         makeGate(),
+        // SAFETY: the gateway supplies every method reached by this assignee-write scenario.
         { ...baseGateway(), addAssigneesToAssignable: throwingWrite } as never,
         coordinator,
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       ),
     valid: {
       _tag: "AddAssignees",
@@ -92,10 +96,12 @@ const services = [
     build: (coordinator: ReviewOperationCoordinator) =>
       new ReviewerService(
         makeGate(),
+        // SAFETY: the gateway supplies every method reached by this reviewer-write scenario.
         { ...baseGateway(), requestReviews: throwingWrite } as never,
         coordinator,
         now,
         makeRecentWrites(),
+        makeReviewWriteOperations(),
       ),
     valid: {
       _tag: "RequestReviewers",
@@ -103,25 +109,27 @@ const services = [
     },
     empty: { _tag: "RequestReviewers", reviewers: [] },
   },
+  // SAFETY: every table row constructs and invokes the command variant owned by its paired service.
 ] as const;
 
 describe.each(services)(
   "$name guarded pull request metadata write",
   ({ build, valid, empty }) => {
-    it("releases the Review lock when the GitHub write throws", async () => {
+    it("retains the durable lock when the GitHub writer rejects", async () => {
+      throwingWrite.mockClear();
       const coordinator = new ReviewOperationCoordinator();
       // SAFETY: each entry's command literal is a valid variant of that
       // service's own command union.
       const service = build(coordinator);
       await expect(
+        // SAFETY: each valid command comes from the same table row as its owning service.
         service.execute({ profileId, reviewId, command: valid as never }),
-      ).rejects.toThrow("github write threw");
-      // The throw escaped, but the Review must not be stranded: a second
-      // attempt reaches the write again rather than being refused as
-      // already in flight.
+      ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
+      // SAFETY: each valid command comes from the same table row as its owning service.
       await expect(
         service.execute({ profileId, reviewId, command: valid as never }),
-      ).rejects.toThrow("github write threw");
+      ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
+      expect(throwingWrite).toHaveBeenCalledOnce();
     });
 
     it("refuses an invalid command ahead of the lock, not behind it", async () => {
@@ -133,6 +141,7 @@ describe.each(services)(
       // that might.
       expect(coordinator.acquire(`${profileId}:${reviewId}`)).toBe(true);
       await expect(
+        // SAFETY: each empty command preserves the discriminant owned by its paired service.
         service.execute({ profileId, reviewId, command: empty as never }),
       ).resolves.toEqual({ _tag: "err", error: "invalid_input" });
     });

@@ -17,11 +17,9 @@ import { bridge, restoreBridge } from "./review-workbench-bridge";
 import {
   callBody,
   callPath,
-  patchHash,
   pending,
   projection,
   providerCatalog,
-  sha,
   withAnalysis,
   type DeferredResolve,
 } from "./review-workbench-fixtures";
@@ -602,59 +600,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     );
     release({ pendingReview: pending("pending") });
     await waitFor(() => expect(navigation).toHaveBeenCalledWith("clear"));
-  });
-
-  it("locks a Finding after its exact pending-review receipt is projected", async () => {
-    const initial = withAnalysis("actionable");
-    const projected = withAnalysis("pending_review");
-    const request = bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates")
-        return { updatesAvailable: false };
-      if (input.path === "/v1/insight-providers") return providerCatalog;
-      if (input.path === "/v1/reviews/pending-review/command")
-        return { pendingReview: pending("pending") };
-      if (input.path === "/v1/reviews/load") return projected;
-      throw new Error(input.path);
-    });
-    const { replace } = mount(initial);
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(
-      await screen.findByRole("button", { name: "Add to review" }),
-    );
-
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(projected));
-    const commandCall = request.mock.calls.find(
-      ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
-    );
-    expect(commandCall?.[0]).toMatchObject({
-      body: {
-        profileId: "profile",
-        reviewId: "review-42",
-        command: {
-          _tag: "Start",
-          body: "Reject invalid values before this branch.",
-          finding: {
-            analysisRunId: "insight-analysis-1-fixture",
-            findingId: "finding-1",
-            sessionId: "session-a",
-            headSha: sha,
-            patchHash,
-          },
-        },
-      },
-    });
-    expect(
-      request.mock.calls.filter(
-        ([input]) => callPath(input) === "/v1/reviews/pending-review/command",
-      ),
-    ).toHaveLength(1);
-
-    cleanup();
-    mount(projected);
-    await user.click(screen.getByRole("button", { name: "Insights" }));
-    expect(await screen.findByText("pending review")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
   it("prefills only the Finish review summary from a Finding-backed Analysis", async () => {

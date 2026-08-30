@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
+import { BusyIndicator } from "../../src/renderer/src/components/busy-indicator";
 import { InboxFlow } from "../../src/renderer/src/flows/inbox-flow";
 import type { RawJsonValue } from "../../src/domain/json";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
@@ -80,6 +81,7 @@ const inbox = {
 
 const projection: WorkbenchResponse = {
   state: "review",
+  viewerLogin: "fixture",
   review: { id: "review-1", status: "open" },
   session: {
     id: "session-1",
@@ -129,7 +131,31 @@ const projection: WorkbenchResponse = {
 };
 
 function renderInboxFlow(ui: ReactNode): ReturnType<typeof render> {
-  return render(<BusyProvider>{ui}</BusyProvider>);
+  return render(
+    <BusyProvider>
+      {ui}
+      <BusyIndicator />
+    </BusyProvider>,
+  );
+}
+
+type Deferred<T> = {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+};
+
+function deferred<T>(): Deferred<T> {
+  let resolve: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return {
+    promise,
+    resolve: (value) => {
+      if (resolve === undefined) throw new Error("Deferred is not ready");
+      resolve(value);
+    },
+  };
 }
 
 let desktop: DesktopDouble | undefined;
@@ -171,14 +197,13 @@ function reviewRequestPaths(double: DesktopDouble): ReadonlyArray<string> {
  */
 /**
  * Projects a fixture into the JSON grammar `DesktopResponse.body` carries.
- * The real bridge serialises every response across the IPC boundary, so this
- * is that same round trip: `WorkbenchResponse` declares optional members the
- * JSON grammar has no way to express.
+ * `WorkbenchResponse` declares optional members the JSON grammar has no way
+ * to express.
  */
 function asJsonBody(value: WorkbenchResponse): RawJsonValue {
-  // SAFETY: `JSON.parse` of `JSON.stringify` output is by construction a
-  // value of the JSON grammar; `JSON.parse` is simply typed `any`.
-  return JSON.parse(JSON.stringify(value)) as RawJsonValue;
+  // SAFETY: this fixture contains only JSON-compatible data, so its cloned
+  // form satisfies the raw bridge-body grammar.
+  return structuredClone(value) as RawJsonValue;
 }
 
 /** The destructive alert InboxFlow raises when opening a review fails. */
@@ -575,5 +600,114 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
 
     expect(await screen.findByText("First run")).toBeTruthy();
     expect(openErrorAlert()).toBeDefined();
+  });
+});
+
+describe("InboxFlow Review opening ownership", () => {
+  it("admits one same-tick request for the same row across every entry point", async () => {
+    const load = deferred<ReturnType<typeof success>>();
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/load": () => load.promise,
+    });
+    const opened: WorkbenchResponse[] = [];
+    renderInboxFlow(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={dashboard}
+        // SAFETY: InboxFlow reads only the fixture fields supplied here.
+        inbox={inbox as never}
+        state="success"
+        refreshStatus="Current"
+        onRefresh={() => undefined}
+        onSettings={() => undefined}
+        onOpenWorkbench={(value) => opened.push(value)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Review" }));
+    fireEvent.click(screen.getByRole("option"));
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+    window.dispatchEvent(new Event("patchdesk:inbox-action"));
+
+    expect(reviewRequestPaths(desktop)).toEqual(["/v1/reviews/load"]);
+    const openingRow = screen.getByRole("option");
+    expect(openingRow.hasAttribute("disabled")).toBe(true);
+    expect(within(openingRow).getByText("Opening…")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Opening…/ }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen.getByRole("progressbar", { name: "Opening Review…" }),
+    ).toBeTruthy();
+
+    load.resolve(success(asJsonBody(projection)));
+    await waitFor(() => expect(opened).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).toBeNull());
+  });
+
+  it("keeps unrelated rows interactive and clears concurrent openings by owning key under reverse settlement", async () => {
+    const first = deferred<ReturnType<typeof success>>();
+    const second = deferred<ReturnType<typeof success>>();
+    let requestNumber = 0;
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/open": () => {
+        requestNumber += 1;
+        return requestNumber === 1 ? first.promise : second.promise;
+      },
+    });
+    const firstRow = {
+      ...savedRow,
+      latestReview: undefined,
+      recommendedAction: { kind: "run_review", label: "Run review" },
+    };
+    const secondRow = {
+      ...firstRow,
+      identity: { ...firstRow.identity, number: 2 },
+      title: "Second PR",
+    };
+    const concurrentInbox = {
+      ...inbox,
+      inbox: { ...inbox.inbox, rows: [firstRow, secondRow] },
+    };
+    renderInboxFlow(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={dashboard}
+        // SAFETY: InboxFlow reads only the fixture fields supplied here.
+        inbox={concurrentInbox as never}
+        state="success"
+        refreshStatus="Current"
+        onRefresh={() => undefined}
+        onSettings={() => undefined}
+        onOpenWorkbench={() => undefined}
+      />,
+    );
+
+    const [rowOne, rowTwo] = screen.getAllByRole("option");
+    if (rowOne === undefined || rowTwo === undefined)
+      throw new Error("Expected two inbox rows");
+    fireEvent.click(rowOne);
+    expect(rowOne.hasAttribute("disabled")).toBe(true);
+    expect(rowTwo.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(rowTwo);
+    expect(reviewRequestPaths(desktop)).toEqual([
+      "/v1/reviews/open",
+      "/v1/reviews/open",
+    ]);
+    expect(rowOne.hasAttribute("disabled")).toBe(true);
+    expect(rowTwo.hasAttribute("disabled")).toBe(true);
+
+    second.resolve(success(asJsonBody(projection)));
+    await waitFor(() => expect(rowTwo.hasAttribute("disabled")).toBe(false));
+    expect(rowOne.hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("progressbar", { name: "Opening Review…" }),
+    ).toBeTruthy();
+
+    first.resolve(success(asJsonBody(projection)));
+    await waitFor(() => expect(rowOne.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(screen.queryByRole("progressbar")).toBeNull());
   });
 });

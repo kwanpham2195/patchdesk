@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Ban,
   CheckCircle2,
@@ -437,6 +437,7 @@ function AssigneesSection({
     ReadonlyArray<string>
   >([]);
   const [selfAssignBusy, setSelfAssignBusy] = useState(false);
+  const selfAssignInFlightRef = useRef(false);
   const [selfAssignError, setSelfAssignError] = useState<string>();
   // Drops each optimistically self-assigned login once the authoritative
   // `assignees` prop catches up with it, mirroring `LabelPicker`'s
@@ -456,7 +457,8 @@ function AssigneesSection({
       : [...assignees, ...selfAssignPending];
 
   const onSelfAssign = (): void => {
-    if (actions === undefined || selfAssignBusy) return;
+    if (actions === undefined || selfAssignInFlightRef.current) return;
+    selfAssignInFlightRef.current = true;
     setSelfAssignError(undefined);
     setSelfAssignBusy(true);
     actions
@@ -477,7 +479,10 @@ function AssigneesSection({
           `Patchdesk could not assign you to this pull request.${reason}`,
         );
       })
-      .finally(() => setSelfAssignBusy(false));
+      .finally(() => {
+        selfAssignInFlightRef.current = false;
+        setSelfAssignBusy(false);
+      });
   };
 
   return (
@@ -505,8 +510,8 @@ function AssigneesSection({
                 disabled={selfAssignBusy || actions === undefined}
                 onClick={onSelfAssign}
               >
-                {selfAssignBusy ? <Spinner className="size-3" /> : null}
-                Assign yourself
+                {selfAssignBusy ? <Spinner data-icon="inline-start" /> : null}
+                {selfAssignBusy ? "Assigning…" : "Assign yourself"}
               </Button>
               {permission === "unknown" ? (
                 <p className="text-xs text-muted-foreground">

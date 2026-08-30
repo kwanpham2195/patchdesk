@@ -1,4 +1,11 @@
-import { Component, lazy, Suspense, useMemo, type ReactNode } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useCallback,
+  useMemo,
+  type ReactNode,
+} from "react";
 import { AppShell } from "./components/app-shell";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
@@ -28,13 +35,13 @@ import {
 } from "./hooks/use-review-workbench-route";
 import { useSettingsOverlay } from "./hooks/use-settings-overlay";
 import { useWorkspaceInbox } from "./hooks/use-workspace-inbox";
+import { useProfileSwitch } from "./hooks/use-profile-switch";
 import type { AppDestination } from "./routes";
 import {
   clearSettingsRestore,
   saveSettingsRestore,
   saveWorkbenchUiState,
 } from "./lib/screen-restore";
-import { api } from "./api-client";
 import type { WorkbenchResponse } from "./renderer-contracts";
 import { saveInboxViewPreferences } from "./inbox-view-preferences";
 import { inboxFreshnessLabel } from "./inbox-freshness";
@@ -165,6 +172,33 @@ export function App({
     inboxRefreshGeneration,
     resetInboxStateOnProfileLoad,
   } = useWorkspaceInbox({ fixtureMode, initialState });
+  const applyLatestProfileSwitch = useCallback(
+    async (id: string): Promise<void> => {
+      saveInboxViewPreferences(id, { state: "open" });
+      resetInboxStateOnProfileLoad.current = true;
+      setWorkbench(undefined);
+      dispatchWorkspace({ _tag: "cleared" });
+      activeInboxProfileId.current = undefined;
+      inboxRefreshGeneration.current += 1;
+      updateInboxRequest(firstInboxRequest);
+      setDestination({ kind: "dashboard" });
+      window.localStorage.setItem("patchdesk.destination", "dashboard");
+      await loadWorkspace();
+    },
+    [
+      activeInboxProfileId,
+      dispatchWorkspace,
+      inboxRefreshGeneration,
+      loadWorkspace,
+      resetInboxStateOnProfileLoad,
+      setDestination,
+      setWorkbench,
+      updateInboxRequest,
+    ],
+  );
+  const { profileSwitchState, switchProfile } = useProfileSwitch(
+    applyLatestProfileSwitch,
+  );
   useDesktopMenuBridge({
     fixtureMode,
     navigationState,
@@ -185,15 +219,10 @@ export function App({
           onOpenSettings={openSettings}
           profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
           activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
+          profileSwitchState={profileSwitchState}
           onInboxStateChange={changeInboxState}
-          onProfileSwitch={async (id) => {
-            await api("/v1/profiles/select", { method: "POST", body: { id } });
-            saveInboxViewPreferences(id, { state: "open" });
-            resetInboxStateOnProfileLoad.current = true;
-            setWorkbench(undefined);
-            dispatchWorkspace({ _tag: "cleared" });
-            updateInboxRequest(firstInboxRequest);
-            await loadWorkspace();
+          onProfileSwitch={(id) => {
+            void switchProfile(id, "header");
           }}
         >
           {content}
@@ -221,18 +250,10 @@ export function App({
           }}
           profiles={profiles}
           onWorkspaceReload={loadWorkspace}
+          profileSwitchState={profileSwitchState}
+          onProfileSwitch={(id) => switchProfile(id, "settings")}
           onCleanupSuccess={(action) => {
             if (action === "local") performNavigation({ kind: "dashboard" });
-          }}
-          onProfileSwitchStart={() => {
-            setWorkbench(undefined);
-            dispatchWorkspace({ _tag: "cleared" });
-            activeInboxProfileId.current = undefined;
-            inboxRefreshGeneration.current += 1;
-            resetInboxStateOnProfileLoad.current = true;
-            updateInboxRequest(firstInboxRequest);
-            setDestination({ kind: "dashboard" });
-            window.localStorage.setItem("patchdesk.destination", "dashboard");
           }}
           preferenceError={preferenceError}
           onRetryPreferences={retryPreferences}

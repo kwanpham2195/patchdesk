@@ -255,6 +255,14 @@ function LabelPickerList({
                         label={{ name: label.name, color: label.color }}
                       />
                     </FieldLabel>
+                    {busy ? (
+                      <span
+                        data-slot="picker-item-pending"
+                        className="text-[10px] text-muted-foreground"
+                      >
+                        Updating…
+                      </span>
+                    ) : null}
                     {label.description === undefined ? null : (
                       <span
                         id={descriptionId}
