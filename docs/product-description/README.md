@@ -171,7 +171,7 @@ Status is one of `not started`, `drafted`, or `verified`.
 | Document | Status |
 | --- | --- |
 | glossary.md | drafted |
-| bug-triage.md | not started |
+| bug-triage.md | drafted |
 | verification/ (4 checklists) | drafted |
 | foundations/task-lifecycle-and-interruption.md | drafted |
 | foundations/navigation-and-overlays.md | drafted |
