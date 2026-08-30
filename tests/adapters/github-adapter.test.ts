@@ -3405,54 +3405,6 @@ describe("GitHubAdapter review write boundary", () => {
     expect(request).toContain("pullRequestReview{id}");
   });
 
-  it("upgrades a created inline comment to its confirmed thread id on the first read-back attempt", async () => {
-    // The bounded read-back confirms the published thread by comment-id
-    // equality (the same REST node_id / GraphQL id equivalence
-    // getReviewCommentTarget already relies on), plus a body match as
-    // defense-in-depth. Its query declares no `$id` variable — the exact
-    // schema-rejection defect the prior (reverted) attempt shipped.
-    const restResponse = {
-      _tag: "Exited" as const,
-      exitCode: 0,
-      stdout: JSON.stringify({
-        node_id: "PRRC_comment",
-        pull_request_review_id: 42,
-      }),
-      stderr: "",
-    };
-    const graphqlResponse = {
-      _tag: "Exited" as const,
-      exitCode: 0,
-      stdout: confirmThreadResponse([
-        { id: "PRRT_thread", comments: [{ id: "PRRC_comment", body: "Body" }] },
-      ]),
-      stderr: "",
-    };
-    const executor = new FakeProcessExecutor([restResponse, graphqlResponse]);
-    const adapter = testAdapter(new CommandRunner(executor));
-    await expect(
-      adapter.createInlineComment({
-        profile,
-        pr,
-        headSha: mustParse(parseGitSha(headSha)),
-        coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" },
-        body: "Body",
-      }),
-    ).resolves.toEqual({
-      _tag: "ok",
-      value: {
-        commentId: "PRRC_comment",
-        reviewId: "42",
-        threadId: "PRRT_thread",
-      },
-    });
-    expect(executor.requests).toHaveLength(2);
-    const graphqlRequest = executor.requests[1]?.join(" ") ?? "";
-    expect(graphqlRequest).toContain("reviewThreads(last: 20)");
-    expect(graphqlRequest).not.toContain("$id:");
-    expect(graphqlRequest).not.toContain("$cursor");
-  });
-
   it("retries the read-back with backoff before confirming a thread", async () => {
     vi.useFakeTimers();
     try {

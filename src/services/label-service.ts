@@ -221,7 +221,7 @@ export class LabelService {
     if (input.command._tag === "AddLabels") {
       if (this.github.addLabelsToLabelable === undefined)
         return err("github_write_failed");
-      const writer = this.github.addLabelsToLabelable;
+      const writer = this.github.addLabelsToLabelable.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
         intent: { _tag: "AddLabels" as const, names: labelNames },
@@ -239,7 +239,7 @@ export class LabelService {
     }
     if (this.github.removeLabelsFromLabelable === undefined)
       return err("github_write_failed");
-    const writer = this.github.removeLabelsFromLabelable;
+    const writer = this.github.removeLabelsFromLabelable.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
       intent: { _tag: "RemoveLabels" as const, names: labelNames },

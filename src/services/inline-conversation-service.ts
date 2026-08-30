@@ -204,7 +204,9 @@ export class InlineConversationService {
         const path = parseRepoRelativePath(command.anchor.path);
         if (actor._tag === "err" || path._tag === "err")
           return err("invalid_input");
-        const createInlineComment = this.github.createInlineComment;
+        const createInlineComment = this.github.createInlineComment?.bind(
+          this.github,
+        );
         if (createInlineComment === undefined)
           return err("github_write_failed");
         const coordinates = coordinatesFor(command.anchor);
@@ -245,7 +247,9 @@ export class InlineConversationService {
         const command = input.command;
         const actor = parseGitHubLogin(fresh.value.profile.ghAccount);
         if (actor._tag === "err") return err("invalid_input");
-        const createThreadReply = this.github.createThreadReply;
+        const createThreadReply = this.github.createThreadReply?.bind(
+          this.github,
+        );
         if (createThreadReply === undefined) return err("github_write_failed");
         const threadId = parseGitHubThreadId(command.threadId);
         if (threadId._tag === "err") return err("not_found");
@@ -283,7 +287,9 @@ export class InlineConversationService {
       }
       case "SetThreadState": {
         const command = input.command;
-        const setReviewThreadState = this.github.setReviewThreadState;
+        const setReviewThreadState = this.github.setReviewThreadState?.bind(
+          this.github,
+        );
         if (setReviewThreadState === undefined)
           return err("github_write_failed");
         const threadId = parseGitHubThreadId(command.threadId);
@@ -328,7 +334,9 @@ export class InlineConversationService {
         if (authorized._tag === "err") return authorized;
         if (input.command._tag === "EditComment") {
           const command = input.command;
-          const updateThreadComment = this.github.updateThreadComment;
+          const updateThreadComment = this.github.updateThreadComment?.bind(
+            this.github,
+          );
           if (updateThreadComment === undefined)
             return err("github_write_failed");
           return this.runDurableWrite(
@@ -351,7 +359,9 @@ export class InlineConversationService {
             }),
           );
         }
-        const deleteThreadComment = this.github.deleteThreadComment;
+        const deleteThreadComment = this.github.deleteThreadComment?.bind(
+          this.github,
+        );
         if (deleteThreadComment === undefined)
           return err("github_write_failed");
         const command = input.command;

@@ -81,6 +81,7 @@ export const reviewCommentTargetSchema = v.looseObject({
 export const writtenNodeSchema = v.looseObject({ node_id: v.string() });
 /** REST inline-comment receipt: the comment plus the COMMENTED review it submitted. */
 export const createdInlineCommentSchema = v.looseObject({
+  id: v.optional(v.union([v.string(), v.number()])),
   node_id: v.string(),
   pull_request_review_id: v.nullish(v.union([v.string(), v.number()])),
 });

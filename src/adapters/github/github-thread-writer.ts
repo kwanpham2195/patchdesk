@@ -164,7 +164,12 @@ export class GitHubThreadWriter {
     // already posted successfully, and the card falls back to an explicit
     // refresh. The comment itself remains editable and deletable by its
     // authoritative node id regardless of the read-back's outcome.
-    const receipt = { commentId: created.output.node_id };
+    const receipt = {
+      commentId:
+        created.output.id === undefined
+          ? created.output.node_id
+          : String(created.output.id),
+    };
     const withReviewId =
       reviewId === undefined || reviewId.length === 0
         ? receipt
@@ -331,7 +336,7 @@ export class GitHubThreadWriter {
     readonly pr: PullRequestRef;
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.ghJson(input.profile, {
+    const response = await this.requests.ghText(input.profile, {
       argv: [
         "gh",
         "api",

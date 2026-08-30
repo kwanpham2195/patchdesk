@@ -162,7 +162,7 @@ export class ReviewWriteRecoveryService {
       };
     },
   ): Promise<Result<ReviewWriteRecovery, ReviewWriteRecoveryFailure>> {
-    const read = this.github.getPullRequestPublishedFeedback;
+    const read = this.github.getPullRequestPublishedFeedback?.bind(this.github);
     if (read === undefined) return err("github_read_failed");
     const feedback = await read({
       profile,

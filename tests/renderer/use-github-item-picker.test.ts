@@ -15,10 +15,8 @@ import {
  * clicking three checkboxes; the pickers' own suites now only prove they are
  * wired to this hook.
  *
- * The hook is deliberately not fed through `installDesktopDouble`: it never
- * touches `window.patchdesk`. It takes the reads and writes as callbacks, and
- * every picker adapts its own local-API client into them, so the fake here is
- * the callback triple itself.
+ * The hook never touches `window.patchdesk`; callback triples stand in for
+ * each picker's local-API adapter.
  */
 
 /** A stand-in for the row shape each picker toggles (`{id, login}`, `{id, name}`). */

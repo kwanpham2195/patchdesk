@@ -109,8 +109,10 @@ export class PublishedFeedbackService {
     },
   ): Promise<Result<PublishedFeedbackReceipt, PublishedFeedbackFailure>> {
     const body = input.body.trim();
-    const commentId = parseGitHubReviewCommentId(input.commentId);
-    if (body.length === 0 || commentId._tag === "err")
+    if (
+      body.length === 0 ||
+      parseGitHubReviewCommentId(input.commentId)._tag === "err"
+    )
       return err("invalid_input");
     return this.serialized(input, async () => {
       const prepared = await this.prepare(input);
@@ -121,28 +123,30 @@ export class PublishedFeedbackService {
         "edit",
       );
       if (allowed._tag === "err") return allowed;
-      const writer = this.github.updateReviewComment;
+      const canonicalCommentId = parseGitHubReviewCommentId(allowed.value.id);
+      if (canonicalCommentId._tag === "err") return err("github_read_failed");
+      const writer = this.github.updateReviewComment?.bind(this.github);
       if (writer === undefined) return err("github_write_failed");
       return this.runDurableWrite(
         input,
         {
           _tag: "EditPublishedComment",
           expected: revision(input.expected),
-          commentId: commentId.value,
+          commentId: canonicalCommentId.value,
           body,
         },
         () =>
           writer({
             profile: prepared.value.fresh.profile,
             pr: sessionPr(prepared.value.fresh.session),
-            commentId: input.commentId,
+            commentId: allowed.value.id,
             body,
           }),
         {
           _tag: "PublishedCommentEdited",
           commentId: input.commentId,
         },
-        { _tag: "Comment", commentId: input.commentId },
+        { _tag: "Comment", commentId: allowed.value.id },
       );
     });
   }
@@ -154,8 +158,8 @@ export class PublishedFeedbackService {
     },
   ): Promise<Result<PublishedFeedbackReceipt, PublishedFeedbackFailure>> {
     if (!input.confirmation) return err("confirmation_required");
-    const commentId = parseGitHubReviewCommentId(input.commentId);
-    if (commentId._tag === "err") return err("invalid_input");
+    if (parseGitHubReviewCommentId(input.commentId)._tag === "err")
+      return err("invalid_input");
     return this.serialized(input, async () => {
       const prepared = await this.prepare(input);
       if (prepared._tag === "err") return prepared;
@@ -165,20 +169,22 @@ export class PublishedFeedbackService {
         "delete",
       );
       if (allowed._tag === "err") return allowed;
-      const writer = this.github.deleteReviewComment;
+      const canonicalCommentId = parseGitHubReviewCommentId(allowed.value.id);
+      if (canonicalCommentId._tag === "err") return err("github_read_failed");
+      const writer = this.github.deleteReviewComment?.bind(this.github);
       if (writer === undefined) return err("github_write_failed");
       return this.runDurableWrite(
         input,
         {
           _tag: "DeletePublishedComment",
           expected: revision(input.expected),
-          commentId: commentId.value,
+          commentId: canonicalCommentId.value,
         },
         () =>
           writer({
             profile: prepared.value.fresh.profile,
             pr: sessionPr(prepared.value.fresh.session),
-            commentId: input.commentId,
+            commentId: allowed.value.id,
           }),
         { _tag: "PublishedCommentDeleted", commentId: input.commentId },
       );
@@ -205,7 +211,7 @@ export class PublishedFeedbackService {
         input.publishedReviewId,
       );
       if (allowed._tag === "err") return allowed;
-      const writer = this.github.dismissReview;
+      const writer = this.github.dismissReview?.bind(this.github);
       if (writer === undefined) return err("github_write_failed");
       return this.runDurableWrite(
         input,
@@ -291,7 +297,9 @@ export class PublishedFeedbackService {
             ? "permission_denied"
             : "not_found",
       );
-    const getFeedback = this.github.getPullRequestPublishedFeedback;
+    const getFeedback = this.github.getPullRequestPublishedFeedback?.bind(
+      this.github,
+    );
     if (getFeedback === undefined) return err("permission_denied");
     const feedback = await getFeedback({
       profile: fresh.value.profile,
@@ -316,13 +324,17 @@ export class PublishedFeedbackService {
     feedback: GitHubPublishedFeedback,
     commentId: string,
     action: "edit" | "delete",
-  ): Result<void, PublishedFeedbackFailure> {
+  ): Result<
+    GitHubPublishedFeedback["comments"][number],
+    PublishedFeedbackFailure
+  > {
     const comment = feedback.comments.find(
-      (candidate) => candidate.id === commentId,
+      (candidate) =>
+        candidate.id === commentId || candidate.nodeId === commentId,
     );
     if (comment === undefined) return err("not_found");
     return (action === "edit" ? comment.canEdit : comment.canDelete)
-      ? ok(undefined)
+      ? ok(comment)
       : err("permission_denied");
   }
 

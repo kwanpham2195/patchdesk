@@ -401,6 +401,40 @@ describe("InlineConversationService", () => {
     );
   });
 
+  it("calls the GitHub writer with its gateway receiver intact", async () => {
+    const github = {
+      ...makeGateway(),
+      receipt: { commentId: "PRRC_bound" },
+      async createInlineComment() {
+        return ok(this.receipt);
+      },
+    };
+    const service = new InlineConversationService(
+      makeGate(),
+      // SAFETY: this binding-sensitive gateway implements every method the create path reads.
+      github as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+      makeOperations(),
+    );
+
+    await expect(
+      service.execute({
+        profileId,
+        reviewId,
+        command: command({
+          _tag: "CreateComment",
+          anchor: { path: "src/a.ts", startLine: 5, line: 5, side: "new" },
+          body: "New comment",
+        }),
+      }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: { _tag: "CommentCreated", commentId: "PRRC_bound" },
+    });
+  });
+
   it("passes through a created comment's confirmed threadId", async () => {
     const gate = makeGate();
     const createInlineComment = vi.fn(async () =>

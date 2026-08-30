@@ -371,7 +371,7 @@ export class AssigneeService {
         return err("assignee_cap_exceeded");
       if (this.github.addAssigneesToAssignable === undefined)
         return err("github_write_failed");
-      const writer = this.github.addAssigneesToAssignable;
+      const writer = this.github.addAssigneesToAssignable.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
         intent: { _tag: "AddAssignees" as const, logins: assigneeLogins },
@@ -391,7 +391,7 @@ export class AssigneeService {
     }
     if (this.github.removeAssigneesFromAssignable === undefined)
       return err("github_write_failed");
-    const writer = this.github.removeAssigneesFromAssignable;
+    const writer = this.github.removeAssigneesFromAssignable.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
       intent: { _tag: "RemoveAssignees" as const, logins: assigneeLogins },

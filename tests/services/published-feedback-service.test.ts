@@ -1,9 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { GitHubReviewWriter } from "../../src/adapters/github/github-adapter";
 import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import { err, ok } from "../../src/domain/result";
 import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+
+type UpdateReviewCommentInput = Parameters<
+  NonNullable<GitHubReviewWriter["updateReviewComment"]>
+>[0];
+type DeleteReviewCommentInput = Parameters<
+  NonNullable<GitHubReviewWriter["deleteReviewComment"]>
+>[0];
+type DismissReviewInput = Parameters<
+  NonNullable<GitHubReviewWriter["dismissReview"]>
+>[0];
+type PublishedFeedbackWriteInput =
+  | UpdateReviewCommentInput
+  | DeleteReviewCommentInput
+  | DismissReviewInput;
 
 // SAFETY: literals model already-validated revision evidence; this test owns write ordering, not parser coverage.
 const expected = {
@@ -47,6 +62,7 @@ const feedback = {
   comments: [
     {
       id: "201",
+      nodeId: "PRRC_201",
       author: "reviewer",
       body: "old",
       createdAt: "2026-08-01T00:00:00.000Z" as never,
@@ -80,7 +96,7 @@ function fixture(
     trace.push("journal");
     return ok(undefined);
   });
-  const writer = vi.fn(async () => {
+  const writer = vi.fn(async (_input: PublishedFeedbackWriteInput) => {
     trace.push("write");
     return options.write === undefined ? ok(undefined) : options.write();
   });
@@ -112,28 +128,46 @@ function fixture(
       return ok(undefined);
     }),
   };
+  const gateway = {
+    receiver: "published-feedback-gateway",
+    async getPullRequest() {
+      if (this.receiver !== "published-feedback-gateway")
+        throw new Error("GitHub gateway receiver was lost");
+      trace.push("head");
+      // SAFETY: this gateway read exposes only the branded head SHA consumed by requireCurrentHead.
+      return ok({
+        headSha: (options.headSha ?? expected.headSha) as never,
+      } as never);
+    },
+    async getPullRequestPublishedFeedback() {
+      if (this.receiver !== "published-feedback-gateway")
+        throw new Error("GitHub gateway receiver was lost");
+      trace.push("authorization");
+      return ok(options.publishedFeedback ?? feedback);
+    },
+    async updateReviewComment(input: UpdateReviewCommentInput) {
+      if (this.receiver !== "published-feedback-gateway")
+        throw new Error("GitHub gateway receiver was lost");
+      return writer(input);
+    },
+    async deleteReviewComment(input: DeleteReviewCommentInput) {
+      if (this.receiver !== "published-feedback-gateway")
+        throw new Error("GitHub gateway receiver was lost");
+      return writer(input);
+    },
+    async dismissReview(input: DismissReviewInput) {
+      if (this.receiver !== "published-feedback-gateway")
+        throw new Error("GitHub gateway receiver was lost");
+      return writer(input);
+    },
+  };
   // SAFETY: the fixture supplies only dependencies this suite observes; omitted gate snapshot and review fields are never read.
   const service = new PublishedFeedbackService(
     {
       requireFresh: async () =>
         ok({ profile, review: {} as never, session, snapshot: {} as never }),
     },
-    {
-      async getPullRequest() {
-        trace.push("head");
-        // SAFETY: this gateway read exposes only the branded head SHA consumed by requireCurrentHead.
-        return ok({
-          headSha: (options.headSha ?? expected.headSha) as never,
-        } as never);
-      },
-      async getPullRequestPublishedFeedback() {
-        trace.push("authorization");
-        return ok(options.publishedFeedback ?? feedback);
-      },
-      updateReviewComment: writer,
-      deleteReviewComment: writer,
-      dismissReview: writer,
-    },
+    gateway,
     new ReviewOperationCoordinator(),
     () => "2026-08-01T00:00:00.000Z" as never,
     { append },
@@ -265,6 +299,33 @@ describe("PublishedFeedbackService", () => {
       expect(built.trace.slice(-2)).toEqual(["intent:Confirmed", "remove"]);
     },
   );
+
+  it("canonicalizes a GraphQL comment node id to the REST id before writing", async () => {
+    const built = fixture();
+
+    await expect(
+      built.service.deleteComment({
+        ...input,
+        commentId: "PRRC_201",
+        confirmation: true,
+      }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: {
+        _tag: "PublishedCommentDeleted",
+        commentId: "PRRC_201",
+        reconciliation: "complete",
+      },
+    });
+    expect(built.writer).toHaveBeenCalledWith(
+      expect.objectContaining({ commentId: "201" }),
+    );
+    expect(built.operations.begin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intent: expect.objectContaining({ commentId: "201" }),
+      }),
+    );
+  });
 
   it("retains an unavailable or thrown write as outcome-unknown and refuses a second write", async () => {
     for (const write of [

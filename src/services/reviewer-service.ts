@@ -346,7 +346,7 @@ export class ReviewerService {
       // cap `AssigneeService` enforces, so none is invented here.
       if (this.github.requestReviews === undefined)
         return err("github_write_failed");
-      const writer = this.github.requestReviews;
+      const writer = this.github.requestReviews.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
         intent: { _tag: "RequestReviewers" as const, logins: reviewerLogins },
@@ -366,7 +366,7 @@ export class ReviewerService {
     }
     if (this.github.removeRequestedReviewers === undefined)
       return err("github_write_failed");
-    const writer = this.github.removeRequestedReviewers;
+    const writer = this.github.removeRequestedReviewers.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
       intent: { _tag: "RemoveReviewers" as const, logins: reviewerLogins },
