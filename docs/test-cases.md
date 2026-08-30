@@ -117,6 +117,32 @@ The coordinator owns the run lifecycle; the child is a throwaway; results are va
   - Run a Walkthrough on a large patch (over 2 MiB): the run must fail with a clear diagnostic, not a crash. This case changes when chunked passes land.
 - `run when:` anything changes in `insight-run-coordinator.ts`, the Flue child (`runtime/flue/src/`), `model-review-runner.ts`, `walkthrough-operation.ts`, or the insight record state machine in `src/domain/insight-record.ts`.
 
+## Insight runs: Brief
+
+The Brief is a third Insight type with one extra rule: every model sentence cites a manifest alias, and every number comes from a tool. An uncited sentence is demoted to an Assumption, an all-uncited Brief is rejected, and the Reach counts come from `git grep` in the main process, never from the model.
+
+- `automated:` `tests/domain/brief.test.ts` (the three alias namespaces, a verified Brief, an uncited sentence demoted to an Assumption with partial verification, an all-uncited Brief rejected, a manifest that survives an unindexable patch, the drift block's kind requirement and its absence with no description, the Start here order cut to changed paths, the stored round-trip and a Brief retained before a later block existed), `tests/domain/brief-ownership.test.ts` (one status per changed file, ordered skeleton, generated files left out, a note on a path outside the diff dropped and counted, the contract hunk cut from the patch), `tests/domain/brief-reach.test.ts` (a proposed name kept only when the patch carries it as a whole word, the exported-declaration fallback, removed declarations, surfaces reported lit and unlit, untested reach, the block labelled a one-hop text match), `tests/services/brief-reach-service.test.ts` (caller files outside the pull request counted, a silent nonzero `git grep` exit read as no match, unavailable on search error and on timeout, a worktree outside the profile's own directory refused, a worktree no longer at the run's revision refused), `tests/services/insight-run-coordinator.test.ts` (a Brief run retained with its citations resolved, and with the Reach block the service counted), `tests/main/local-api-insight-brief-route.test.ts` (the `brief/run` and `brief/cancel` routes), `runtime/flue/tests/flue-2-insight-runtime.test.ts` (one Brief prompt built from a real production invocation, a result the Brief schema rejects, no model prompt text accepted on a production Brief invocation, and no sandbox, MCP connection, subagent, or inspector tool on the Brief child), `tests/renderer/brief-reader.ui.test.tsx` (the five blocks and their absent forms, the Reach rows and their unavailable line, the Start here card opening or generating the Walkthrough, the citation chip labels and counts), `tests/services/maintainer-inbox-brief-tag.test.ts` and `tests/renderer/inbox-row-item.ui.test.tsx` (the row tag present only for a Brief bound to the row's current head).
+- `manual:`
+  - Run a Brief on a real PR: the five blocks must appear in order — Goal with its Assumptions, Description vs diff, Shape, Reach — with Start here, Scope, and Provenance in the side column, and every Goal sentence must carry at least one citation chip.
+  - Open a citation chip's evidence: an `h*` chip must name a hunk of this patch, a `d*` chip a paragraph of the description, a `c*` chip a commit of this revision.
+  - Run a Brief on a PR with no description: the Description vs diff block must be absent, not empty.
+  - Confirm the Provenance card names the provider and model chosen in the run dialog.
+  - Delete or move the session worktree and run again: the Reach block must be replaced by one line saying why it was not counted, and the Brief must still be retained.
+  - Push a commit, then reopen the Pull requests screen: the Brief tag must disappear from the row, because the retained Brief is no longer bound to the current head.
+- `run when:` anything changes in `src/domain/brief.ts`, `stored-brief.ts`, `brief-ownership.ts`, `brief-reach.ts`, `brief-start-here.ts`, `brief-operation.ts`, `brief-reach-service.ts`, `insight-result-validation.ts`, the Brief branch of `insight-output-guidance.ts`, `codex-brief-prompt.ts`, the Brief arm of `runtime/flue/src/`, `brief-contracts.ts`, `brief-reader.tsx`, or `brief-reach-block.tsx`.
+
+## Scope gauge
+
+The gauge is deterministic: the same patch always gives the same buckets. Colours are categorical, never the status hues, and an unreadable patch means no gauge rather than an all-zero one.
+
+- `automated:` `tests/domain/change-scope.test.ts` (one bucket per path over the rule table, generated preferred over every later rule, the banner read from the first three lines only, `linguist-generated` honoured, per-bucket sums with empty buckets omitted, the segment floor that never drops a bucket or overruns the bar, a unified patch counted per bucket, a deleted file attributed to the path it had), `tests/renderer/scope-gauge.ui.test.tsx` (every bucket named in the bar's accessible label at both sizes, one segment per bucket and none for an empty scope).
+- `gap:` nothing tests the gauge on a Pull requests row. `maintainer-inbox-cache-store.test.ts` round-trips a row carrying `briefReady` but never one carrying `scope`, and no service test asserts that `readCurrentHeadScope` fills the field only for a session at the current head. Until it does, the last manual case below is the only cover.
+- `manual:`
+  - Open a review whose patch mixes source, tests, and a lockfile: the workbench header chip and the Scope card must show the same buckets and totals, and the generated share must be a hatch rather than a status colour.
+  - Switch the app between light and dark: no bucket may take on the failure or warning hue in either theme.
+  - On the Pull requests screen, confirm the gauge appears only on a row whose review is at the current head, and disappears once a new commit is pushed to that pull request.
+- `run when:` anything changes in `src/domain/change-scope.ts`, `scope-gauge.tsx`, the `--scope-*` tokens in `styles.css`, the scope branch of `review-workbench-projection.ts`, or `readCurrentHeadScope` in `maintainer-inbox-service.ts`.
+
 ## GitHub write flows
 
 Writes require a Fresh Review, explicit action, durable intent, and a read-only post-write reconciliation. Uncertainty locks, never replays.

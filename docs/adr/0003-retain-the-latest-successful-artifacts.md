@@ -1,5 +1,12 @@
 # Retain the latest successful analysis and walkthrough
 
+> **Amended 2026-08-30: the Brief is a third retained artifact.** ADR 0036 adds
+> the Brief Insight, and every rule below applies to it unchanged. Read
+> "analysis result and walkthrough" as "analysis result, walkthrough, and
+> Brief": one retained artifact per Insight type per review, replaced only by a
+> successful run of the same type, bound to the revision that produced it, and
+> readable but marked outdated once the code moves.
+
 Each review retains one successful analysis result and one successful walkthrough until the maintainer requests a replacement. Starting a replacement does not remove the retained result. A successful run replaces it; a failed or cancelled run leaves it intact.
 
 Every retained result remains bound to the pull request revision that produced it. After the code changes, Patchdesk may keep the result available but must mark it outdated and exclude it from current findings, evidence mapping, and readiness decisions. Patchdesk does not maintain a user-facing history of earlier generations.

@@ -54,7 +54,7 @@ A maintainer opens a Review for an open pull request, inspects the represented r
 On the highest level, Patchdesk accepts two kinds of input:
 
 - Remote state from GitHub: the pull request, its diff, comments, review threads, checks, and merge policy.
-- Actions from the maintainer: open a review, refresh, run an Analysis or Walkthrough, comment, resolve a thread, submit a review, merge.
+- Actions from the maintainer: open a review, refresh, run an Analysis, Walkthrough, or Brief, comment, resolve a thread, submit a review, merge.
 
 The ground state is local:
 
@@ -144,6 +144,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-write-gate.ts` is the shared precondition for every GitHub write: the Review must be Fresh.
 - `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results.
 - `flue-insight-child-invoker.ts` and `codex-insight-invoker.ts` start model children.
+- `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` over the represented-review worktree, so no model gains a search capability (ADR 0036).
 - `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows.
 - `review-worktree-service.ts` owns the read-only git commands that create a session checkout.
 - `review-diff-source-service.ts`, `review-patch-index.ts`, and `review-inspector.ts` read the diff and expose a bounded, immutable inspector to model agents.
@@ -192,7 +193,8 @@ It re-validates every projection: a 200 response from the API does not mean the 
 ### `runtime/flue/`
 
 The isolated model runtime (ADR "Run Flue 2 Insights in Patchdesk-owned one-shot children").
-Each Analysis run or Walkthrough runs in one dedicated one-shot child built on the Flue 2 programmatic Node API.
+Each Analysis run, Walkthrough, or Brief runs in one dedicated one-shot child built on the Flue 2 programmatic Node API.
+The Brief child is the narrowest of the three: it mounts only the result-submission tool, and its evidence — the patch, the pull request description, and the commit subjects — is supplied on the invocation rather than fetched, so the child reads nothing for itself.
 
 The parent sends one bounded, strictly parsed invocation through stdin.
 The child starts one in-memory Flue runtime, runs one finite request, submits one strict result, and exits.

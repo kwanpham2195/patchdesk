@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added **Brief**, a third Insight beside Analysis and Walkthrough: a short, cited answer to what a change is for, in five blocks — Goal with its Assumptions, Description vs diff, Shape, Reach, and Start here. Every model sentence must cite a diff hunk, a description paragraph, or a commit; an uncited sentence is shown as an Assumption, a Brief with no cited sentence at all is rejected, and every count comes from Patchdesk rather than from the model.
+- Added a **Scope** gauge that buckets a pull request's changed files into core, tests, generated, docs, and config with added and removed lines per bucket, shown in the review header, as a card in the Insights tab, and on a Pull requests row already reviewed at its current head.
+- Fixed Analysis and Walkthrough runs through the Pi provider failing immediately with an invalid-input error in the packaged app; the packaged insight child had rejected every run since 2026-08-22, when review session ids gained a base-revision segment that the child's own copy of the pattern never learned.
 - Standardized renderer errors with shared field, action-local, dialog, and recovery treatments.
 - Replaced the bundled code font with Geist Mono and added packaged font-loading checks.
 - Made GitHub mutations single-flight and recoverable: uncertain writes now stay locked behind **Check GitHub again**, confirmed writes remain confirmed when refresh fails, and action-local spinners and errors preserve drafts and selections.

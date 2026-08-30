@@ -75,8 +75,40 @@ The latest successful Review body and Findings produced by an analysis run. It r
 _Avoid_: Completed review, model review
 
 **Insight**:
-A revision-bound aid that helps a maintainer understand or evaluate a pull request change. Analysis results and walkthroughs are insight types.
+A revision-bound aid that helps a maintainer understand or evaluate a pull request change. Analysis results, walkthroughs, and Briefs are insight types.
 _Avoid_: Model feature, alternate review
+
+**Brief**:
+The latest successful short answer to "what is this change for, and where do I start reading it?" for a pinned pull request revision. It has five blocks in one fixed order: Goal with its Assumptions, Description vs diff, Shape, Reach, and Start here. Every model sentence in it carries a Brief citation; it states no verdict and lists no Findings, which stay with the Analysis result.
+_Avoid_: Summary, TL;DR, PR overview, explainer
+
+**Brief citation**:
+One alias from the citation manifest, resolved and stored on the sentence that used it. The manifest is the fixed alias-to-evidence list Patchdesk builds before the run and hands to the model: `h*` a diff hunk, `d*` a paragraph of the pull request description, `c*` a commit. An alias that resolves is evidence a reviewer can open; an alias that does not resolve is dropped, and a Brief with any drop reads as partially verified.
+_Avoid_: Reference, source, link, footnote
+
+**Assumption**:
+A Brief line that states something the evidence does not support. There are two kinds and the Brief reader distinguishes them: a line the model itself declared as an assumption, and a Goal sentence that cited nothing resolvable and was demoted rather than deleted. A Brief whose every Goal sentence is demoted is rejected and never retained.
+_Avoid_: Guess, caveat, note, unverified finding
+
+**Description vs diff**:
+The Brief block that compares the pull request description against the patch, in two columns. One column lists what the description claims and the patch does not support, quoting the description paragraph it doubts; this column is model judgment, because no evidence can prove that a diff does not do something. The other lists behaviour the patch changes that the description never mentions, citing the hunks that show it. A pull request with no description has no such block.
+_Avoid_: Drift, mismatch, inconsistency report
+
+**Shape**:
+The Brief block that says who owns what after the change: a deterministic tree of the changed, non-generated files with their status and line counts, one short model note per file, and the single hunk whose signature or type explains the rest of the patch. The tree and the hunk are cut from the patch by Patchdesk; only the notes and the caption are model-written. The code names this block `ownership` — the `anti-slop/no-shape-in-symbol-names` lint rule rejects the word in any identifier, including an object key — so the heading and the stored key differ on purpose.
+_Avoid_: Structure, layout, file inventory, tree view
+
+**Reach**:
+The Brief block that says what depends on the changed code, one hop out, by text match. The model proposes symbol names only; Patchdesk keeps a name only when the patch itself carries it, then counts it with `git grep` over the represented-review worktree at the pinned head. The counts are file counts, not call counts, and the block is labelled "text match" and never "call graph". It also reports which surfaces the changed paths cross, which changed files no changed test mentions, and which removed declarations are still named elsewhere.
+_Avoid_: Call graph, dependency graph, blast radius, impact analysis
+
+**Start here**:
+The Brief card that gives a reading order: one sentence of advice, then the first three to five changed files in the order to read them. Patchdesk keeps only a path that is a file this patch changed, and drops the card whole when none is. The card also offers the Walkthrough for the same revision.
+_Avoid_: Reading guide, entry point, suggested files, tour
+
+**Scope gauge**:
+The deterministic bar that buckets a pull request's changed files by path, with added and removed lines per bucket. There are five buckets, drawn in the order core, tests, generated, docs, config; a path lands in exactly one. Its colours are categorical and never the status hues, because a large generated or docs share is a fact about the change and not a warning. It needs no model run and is always on where it is shown. When the patch cannot be read the gauge is absent, never all-zero.
+_Avoid_: Size badge, diffstat, complexity score, risk meter
 
 **Finding**:
 A concern or observation in an analysis result, supported by evidence from the analyzed pull request revision.
