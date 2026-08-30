@@ -1,5 +1,6 @@
 import {
   MarkdownContent,
+  MarkdownInline,
   type MarkdownContentPolicy,
 } from "./markdown-content";
 
@@ -26,5 +27,20 @@ export function GeneratedMarkdown({
       policy={generatedMarkdownPolicy}
       className={cn("text-foreground", className)}
     />
+  );
+}
+
+/**
+ * Model prose that must stay inside its caller's own element: one sentence of
+ * a Brief carries its citation chips in the same paragraph, so the block
+ * renderer's wrapper would break the line.
+ */
+export function GeneratedMarkdownInline({
+  markdown,
+}: {
+  readonly markdown: string;
+}): React.JSX.Element {
+  return (
+    <MarkdownInline markdown={markdown} policy={generatedMarkdownPolicy} />
   );
 }

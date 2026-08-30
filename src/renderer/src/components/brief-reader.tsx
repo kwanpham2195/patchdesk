@@ -20,6 +20,7 @@ import {
 } from "../brief-contracts";
 import type { ChangeScope } from "../../../domain/change-scope";
 import { ReachBlock } from "./brief-reach-block";
+import { GeneratedMarkdownInline } from "./generated-markdown";
 import { ReviewDiffView } from "./review-diff-view";
 import { ScopeGauge } from "./scope-gauge";
 import { Button } from "./ui/button";
@@ -98,7 +99,7 @@ export function BriefReader({
           <div className="flex max-w-[66ch] flex-col gap-2 text-sm">
             {brief.goal.map((item) => (
               <p key={item.text}>
-                {item.text}{" "}
+                <GeneratedMarkdownInline markdown={item.text} />{" "}
                 {item.citations.map((citation) => (
                   <CitationChip key={citation.alias} citation={citation} />
                 ))}
@@ -120,7 +121,9 @@ export function BriefReader({
                       ? "Assumption · uncited claim"
                       : "Assumption"}
                   </span>
-                  <span>{assumption.text}</span>
+                  <span>
+                    <GeneratedMarkdownInline markdown={assumption.text} />
+                  </span>
                 </li>
               ))}
             </ul>
@@ -145,8 +148,10 @@ export function BriefReader({
                     markClassName="bg-status-warning/15 text-status-warning"
                     citations={item.citations}
                   >
-                    <q className="text-muted-foreground">{item.quote}</q>{" "}
-                    {item.note}
+                    <q className="text-muted-foreground">
+                      <GeneratedMarkdownInline markdown={item.quote} />
+                    </q>{" "}
+                    <GeneratedMarkdownInline markdown={item.note} />
                   </DriftItem>
                 ))}
               </DriftColumn>
@@ -161,7 +166,7 @@ export function BriefReader({
                     markClassName="bg-status-info/15 text-status-info"
                     citations={item.citations}
                   >
-                    {item.text}
+                    <GeneratedMarkdownInline markdown={item.text} />
                   </DriftItem>
                 ))}
               </DriftColumn>
@@ -251,14 +256,21 @@ function StartHereCard({
       className="flex flex-col gap-3 rounded-md border border-primary/40 p-3"
     >
       <h3 className="text-sm font-medium">Start here</h3>
-      <p className="text-xs">{startHere.lead}</p>
+      <p className="text-xs">
+        <GeneratedMarkdownInline markdown={startHere.lead} />
+      </p>
       <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-xs text-muted-foreground">
         {startHere.order.map((entry) => (
           <li key={entry.path} className="min-w-0">
             <span className="break-all font-mono text-foreground">
               {entry.path}
             </span>
-            {entry.why === undefined ? null : <> — {entry.why}</>}
+            {entry.why === undefined ? null : (
+              <>
+                {" "}
+                — <GeneratedMarkdownInline markdown={entry.why} />
+              </>
+            )}
           </li>
         ))}
       </ol>
@@ -356,7 +368,8 @@ function OwnershipContract({
   return (
     <div className="overflow-hidden rounded-md border">
       <p className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-mono">{contract.path}</span> · {contract.caption}
+        <span className="font-mono">{contract.path}</span> ·{" "}
+        <GeneratedMarkdownInline markdown={contract.caption} />
       </p>
       <div className="max-h-96 overflow-auto">
         <ReviewDiffView

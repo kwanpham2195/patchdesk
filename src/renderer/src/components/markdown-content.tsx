@@ -64,6 +64,29 @@ export function MarkdownContent({
   );
 }
 
+/**
+ * Renders one line of Markdown inline tokens with no block wrapper, so a
+ * caller can put model prose inside its own sentence-level element (a `<p>`
+ * that also carries citation chips, a list item, a table cell).
+ */
+export function MarkdownInline({
+  markdown,
+  policy,
+}: {
+  readonly markdown: string;
+  readonly policy: MarkdownContentPolicy;
+}): React.JSX.Element {
+  return <>{renderInline(lexInlineSafely(markdown), policy)}</>;
+}
+
+function lexInlineSafely(markdown: string): ReadonlyArray<Token> {
+  try {
+    return marked.Lexer.lexInline(markdown);
+  } catch {
+    return [{ type: "text", raw: markdown, text: markdown }];
+  }
+}
+
 function lexSafely(markdown: string): TokensList {
   try {
     return marked.lexer(markdown);
@@ -230,7 +253,10 @@ function renderInline(
         return (
           <code
             key={key}
-            className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground"
+            // A model writes file paths as inline code; without a break the
+            // chip cannot wrap and pushes itself onto a line of its own in a
+            // narrow column.
+            className="rounded bg-muted px-1 py-0.5 font-mono text-xs break-words text-foreground"
           >
             {token.text}
           </code>
