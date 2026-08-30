@@ -104,24 +104,26 @@ And others — see `src/adapters/pi/pi-provider-catalog.ts` for the full list.
 Amazon Bedrock and Google Vertex use your normal AWS or GCP credentials
 instead of a key.
 
-Patchdesk reads these variables from its own process, not from your shell
-profile. An app launched from the Dock or Finder does not see variables you
-exported in `.zshrc` or `.bashrc`. Two ways to get a variable to Patchdesk:
+Export the variable in your shell profile (`~/.zshrc`), then restart
+Patchdesk:
 
-- Set it for your whole login session, then launch Patchdesk normally:
+```bash
+export ANTHROPIC_API_KEY="sk-..."
+```
 
-  ```bash
-  launchctl setenv ANTHROPIC_API_KEY "sk-..."
-  ```
+Patchdesk runs your login shell once at startup and reads back the provider
+keys and your PATH, so a Dock or Finder launch sees the same key a terminal
+does. It reads nothing else from your shell, and it never overwrites a
+variable Patchdesk already has. A key you add later needs a restart.
 
-  This lasts until you log out or restart.
+If Patchdesk cannot read your shell's startup files, set the variable for the
+whole login session instead:
 
-- Or start Patchdesk from a terminal where the variable is already
-  exported:
+```bash
+launchctl setenv ANTHROPIC_API_KEY "sk-..."
+```
 
-  ```bash
-  open -a Patchdesk
-  ```
+That lasts until you log out.
 
 Only the variables the selected provider needs reach the model process, and
 only that process sees them — keys never reach the app's UI. The model list
@@ -132,15 +134,9 @@ you see is Pi's catalog, filtered to providers you have a key for.
 This provider uses your existing Codex CLI login. Install Codex and run
 `codex login` yourself; Patchdesk never starts a login for you.
 
-Patchdesk finds `codex` by searching your PATH only, the same narrower PATH
-a Dock launch sees. If Codex is installed through Homebrew or npm, a Dock
-launch often cannot see it. The fix is the same as for Pi:
-
-```bash
-launchctl setenv PATH "/opt/homebrew/bin:$PATH"
-```
-
-or start Patchdesk from a terminal where `codex` is already on PATH.
+Patchdesk finds `codex` by searching your PATH only. It reads PATH from your
+login shell, so a Homebrew or npm install is found, and Patchdesk runs the
+same `codex` your terminal runs.
 
 If Patchdesk cannot find Codex, the dialog says so directly: "Install Codex
 and expose codex on the app launch PATH, then log in externally."

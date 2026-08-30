@@ -4,6 +4,7 @@
 
 ## 0.1.0 - 2026-08-30
 
+- Patchdesk opened from the Dock or Finder now finds the provider keys you exported in your shell profile and the `codex` you installed with Homebrew or npm; it reads your login shell's PATH and provider keys once at startup, so `launchctl setenv` and launching from a terminal are no longer needed.
 - Renamed the Maintainer inbox to **Pull requests** everywhere it is shown: the navigation, the page heading, the window title, and the Navigate palette.
 - Patchdesk draws its own window header on macOS: the native title bar is gone and the traffic lights sit inside the app header, as in other desktop apps.
 - Fixed a downloaded Patchdesk.app opening with "is damaged and can't be opened" and no way past it; the unsigned build now carries an intact ad-hoc signature, so macOS offers Open Anyway (or right-click then Open) instead, and `xattr -cr` is only a fallback.

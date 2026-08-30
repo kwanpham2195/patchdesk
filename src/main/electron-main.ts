@@ -53,6 +53,7 @@ import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
 import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
+import { importLoginShellEnvironment } from "../adapters/process/login-shell-environment";
 import { briefReachComputer } from "../services/brief-reach-service";
 import { CodexInsightInvoker } from "../services/codex-insight-invoker";
 import { InsightProviderCatalog } from "../services/insight-provider-catalog";
@@ -386,6 +387,21 @@ async function recoverInsights(
   return coordinator;
 }
 
+/** Imports the login shell's PATH and provider keys into this process, then records what changed by name. */
+async function importLoginShellEnvironmentOnce(): Promise<void> {
+  const imported = await importLoginShellEnvironment();
+  logs.write({
+    process: "main",
+    level: "info",
+    topic: "login-shell-environment",
+    message: `imported ${imported.importedNames.length} variables from the login shell`,
+    meta: {
+      names: imported.importedNames,
+      pathReplaced: imported.pathReplaced,
+    },
+  });
+}
+
 app.setName("Patchdesk");
 process.on("uncaughtException", (cause: unknown) => {
   logs.write({
@@ -420,6 +436,10 @@ if (!app.requestSingleInstanceLock()) {
 
 function registerDesktopEvents(): void {
   void app.whenReady().then(async () => {
+    // Before anything reads a provider key or PATH: a Dock or Finder launch
+    // inherits the minimal launchd environment, so the login shell is where
+    // the maintainer's keys and their `codex` install actually are.
+    await importLoginShellEnvironmentOnce();
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         ...createDesktopMenuTemplate(

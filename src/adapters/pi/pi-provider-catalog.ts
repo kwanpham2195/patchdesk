@@ -325,6 +325,19 @@ export function providerEnvironmentNames(id: string): ReadonlyArray<string> {
   ];
 }
 
+/**
+ * Every environment name any built-in Pi provider reads, across all providers.
+ * The one source of truth for what Patchdesk may import from the login shell
+ * (see `login-shell-environment.ts`); values never cross this boundary.
+ */
+export function providerCredentialEnvironmentNames(): ReadonlyArray<string> {
+  return [
+    ...new Set(
+      PROVIDERS.flatMap((provider) => providerEnvironmentNames(provider.id)),
+    ),
+  ];
+}
+
 function hasValue(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0;
 }

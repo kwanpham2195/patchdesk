@@ -90,7 +90,7 @@ The Electron composition root.
 This directory builds every service and adapter and wires them together.
 It is the only place that knows about Electron.
 
-- `electron-main.ts` is the entry point. It enforces a single instance, registers window and lifecycle events, and records crashes before exit.
+- `electron-main.ts` is the entry point. It enforces a single instance, registers window and lifecycle events, imports the login shell's PATH and provider keys before anything reads either, and records crashes before exit.
 - `app-lifecycle.ts` owns startup order: local API start, health check, workbench display, then shutdown in reverse.
 - `local-api.ts` starts the Hono API on `127.0.0.1` with a random port. It builds the container (`local-api-container.ts` over `local-api-stores.ts`), registers the route modules in `routes/`, and listens. Every route parses its input with a Valibot schema, calls a service, and serializes the typed result.
 - `desktop-bridge.ts` is the only IPC surface the renderer can reach. It validates the requested route against an allowlist, forwards the request to the local API with the capability and renderer-origin headers, caps responses at 8 MiB, and applies a 30-second timeout.
@@ -168,6 +168,7 @@ The I/O layer. This is the only place that touches GitHub, files, and processes.
 - `storage/review-artifact-storage.ts` stores artifacts and quarantines corrupt or unexpected files.
 - `storage/patchdesk-paths.ts` builds every app-owned path without doing I/O.
 - `process/executable-discovery.ts` finds executable files on PATH and macOS desktop paths as process I/O.
+- `process/login-shell-environment.ts` runs the maintainer's login shell once at startup and imports two things from it: PATH, and the Pi provider credential names (ADR "Import provider credentials and PATH from the login shell"). It never overwrites a variable this process already has, and a failure or timeout imports nothing. This is the only place the main process's own environment is written.
 - `pi/` holds the model catalogs: the generated catalog and the runtime catalog that the main process consults.
 - `codex/codex-app-server-client.ts` talks to the maintainer's local Codex CLI account (ADR "Use the local Codex CLI account") without reading or persisting its credentials.
 
@@ -212,7 +213,7 @@ It is analysis guidance, never permission: no shell commands, no GitHub writes, 
 
 The architecture decision records, one file per decision, numbered in the order they were made.
 They document why the system looks the way it does:
-the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, one-shot Flue children, and GitHub calls authenticated as the profile's account.
+the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, one-shot Flue children, GitHub calls authenticated as the profile's account, and the narrow login-shell import that makes a Dock launch find the maintainer's keys and `codex`.
 
 ### `tests/`
 

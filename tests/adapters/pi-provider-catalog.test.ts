@@ -167,6 +167,24 @@ describe("provider environment allowlist", () => {
     expect(providerEnvironmentNames("unknown")).toEqual([]);
   });
 
+  it("collects every provider credential name once, and nothing else", async () => {
+    const { providerCredentialEnvironmentNames, providerEnvironmentNames } =
+      await import("../../src/adapters/pi/pi-provider-catalog");
+    const names = providerCredentialEnvironmentNames();
+
+    expect(names).toContain("DEEPSEEK_API_KEY");
+    expect(names).toContain("CLOUDFLARE_GATEWAY_ID");
+    expect(names).toContain("AWS_PROFILE");
+    expect(names).toContain("GOOGLE_CLOUD_PROJECT");
+    expect(names).not.toContain("GH_TOKEN");
+    expect(names).not.toContain("PATH");
+    // MOONSHOT_API_KEY belongs to two providers; the allowlist lists it once.
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toEqual(
+      expect.arrayContaining([...providerEnvironmentNames("google-vertex")]),
+    );
+  });
+
   it("keeps the ambient environment table readonly at both levels", async () => {
     const { AMBIENT_ENVIRONMENT } =
       await import("../../src/adapters/pi/pi-provider-catalog");
