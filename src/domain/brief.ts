@@ -98,7 +98,7 @@ const BRIEF_ALIAS_SYNTAX = /^[hdc][1-9]\d*$/;
  * Reach block counts them with a tool in a later slice, and the model never
  * writes the number.
  */
-const briefOutputSchema = v.strictObject({
+export const briefOutputSchema = v.strictObject({
   goal: v.pipe(
     v.array(
       v.strictObject({

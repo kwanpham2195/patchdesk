@@ -8,6 +8,7 @@ import * as v from "valibot";
 
 import { CommandRunner } from "../../../src/adapters/github/command-runner";
 import { PatchdeskPaths } from "../../../src/adapters/storage/patchdesk-paths";
+import { definedProps } from "../../../src/domain/defined-props";
 import type { RawJsonValue } from "../../../src/domain/json";
 import {
   parseReviewSessionId,
@@ -19,16 +20,21 @@ import {
   type PreparedModelReview,
 } from "../../../src/services/model-review-runner";
 import type { ReviewInspector } from "../../../src/services/review-inspector";
+import { prepareBriefPrompt } from "../../../src/services/brief-operation";
 import { prepareWalkthroughPrompt } from "../../../src/services/walkthrough-operation";
 
 import {
   MAX_RUNTIME_STDIN_BYTES,
   MAX_RUNTIME_STDOUT_BYTES,
   analysisInvocationSchema,
+  briefInvocationSchema,
+  briefResultSchema,
   productionAnalysisInvocationSchema,
+  productionBriefInvocationSchema,
   productionWalkthroughInvocationSchema,
   assertSupportedNode,
   createAnalysisAgent,
+  createBriefAgent,
   createWalkthroughAgent,
   loadPatchdeskReviewSkill,
   modelReviewResultSchema,
@@ -46,6 +52,10 @@ const childProtocolSchema = v.variant("type", [
     type: v.literal("walkthrough"),
     input: walkthroughInvocationSchema,
   }),
+  v.strictObject({
+    type: v.literal("brief"),
+    input: briefInvocationSchema,
+  }),
 ]);
 
 const productionProtocolSchema = v.variant("type", [
@@ -56,6 +66,10 @@ const productionProtocolSchema = v.variant("type", [
   v.strictObject({
     type: v.literal("walkthrough"),
     input: productionWalkthroughInvocationSchema,
+  }),
+  v.strictObject({
+    type: v.literal("brief"),
+    input: productionBriefInvocationSchema,
   }),
 ]);
 
@@ -138,10 +152,7 @@ export async function runPatchdeskChild(
         return { ok: false, reason: "invalid_result" };
       }
       const value = values[0];
-      const parsed =
-        invocation.type === "analysis"
-          ? v.safeParse(modelReviewResultSchema, value)
-          : v.safeParse(walkthroughResultSchema, value);
+      const parsed = v.safeParse(resultSchemaFor(invocation.type), value);
       return parsed.success
         ? { ok: true, value: parsed.output }
         : { ok: false, reason: "invalid_result" };
@@ -160,6 +171,23 @@ export async function runPatchdeskChild(
   }
 }
 
+/** The one result schema the child parses each insight's submitted data with. */
+function resultSchemaFor(
+  type: PatchdeskChildInvocation["type"],
+):
+  | typeof modelReviewResultSchema
+  | typeof walkthroughResultSchema
+  | typeof briefResultSchema {
+  switch (type) {
+    case "analysis":
+      return modelReviewResultSchema;
+    case "walkthrough":
+      return walkthroughResultSchema;
+    case "brief":
+      return briefResultSchema;
+  }
+}
+
 async function createAgent(
   invocation: PatchdeskChildInvocation,
   options: {
@@ -169,6 +197,7 @@ async function createAgent(
 ) {
   if (invocation.type === "walkthrough")
     return createWalkthroughAgent(invocation.input);
+  if (invocation.type === "brief") return createBriefAgent(invocation.input);
   if (options.skillPath === undefined || options.inspectors === undefined)
     return undefined;
   const skill = await loadPatchdeskReviewSkill(options.skillPath);
@@ -218,7 +247,8 @@ export async function runPatchdeskChildProcess(
   }
 }
 
-function parseProductionInvocation(
+/** Parses one bounded stdin protocol object sent by the installed app. */
+export function parseProductionInvocation(
   input: RawJsonValue,
 ): ProductionChildInvocation | undefined {
   const parsed = v.safeParse(productionProtocolSchema, input);
@@ -239,18 +269,47 @@ async function readBoundedStdin(
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/**
+ * Runs one invocation that arrived over the production protocol: it carries
+ * paths and identity only, and the prompt is built here. `providers` and
+ * `paths` are in-process seams like `runPatchdeskChild`'s: the stdin protocol
+ * can name neither, so a packaged child always uses the built-in provider
+ * catalog and the installed app's own directories.
+ */
 export async function runProductionChild(
   invocation: ProductionChildInvocation,
   signal: AbortSignal,
-  options: { readonly onHandle: (abort: () => Promise<void>) => void },
+  options: {
+    readonly onHandle: (abort: () => Promise<void>) => void;
+    readonly providers?: ReadonlyArray<Provider>;
+    readonly paths?: PatchdeskPaths;
+  },
 ): Promise<PatchdeskChildResult> {
-  const canonical = canonicalizeProductionInvocation(invocation);
+  const canonical = canonicalizeProductionInvocation(invocation, options.paths);
   if (canonical === undefined) return { ok: false, reason: "invalid_input" };
+  const childOptions = {
+    signal,
+    onHandle: options.onHandle,
+    ...definedProps({ providers: options.providers }),
+  };
   if (canonical.type === "walkthrough") {
     const prompt = await prepareWalkthroughPrompt(canonical.input);
     return await runPatchdeskChild(
       { type: "walkthrough", input: { ...canonical.input, prompt } },
-      { signal, onHandle: options.onHandle },
+      childOptions,
+    );
+  }
+  if (canonical.type === "brief") {
+    const prompt = await prepareBriefPrompt({
+      ...canonical.input,
+      evidence: {
+        ...definedProps({ description: canonical.input.evidence.description }),
+        commits: canonical.input.evidence.commits,
+      },
+    });
+    return await runPatchdeskChild(
+      { type: "brief", input: { ...canonical.input, prompt } },
+      childOptions,
     );
   }
   const commands = new CommandRunner();
@@ -279,8 +338,7 @@ export async function runProductionChild(
       input: { ...canonical.input, prompt: prepared.prompt },
     },
     {
-      signal,
-      onHandle: options.onHandle,
+      ...childOptions,
       skillPath: resolvePatchdeskReviewSkillPath(),
       inspectors: inspectorOperations(prepared.inspector),
     },
@@ -332,9 +390,15 @@ export function canonicalizeProductionInvocation(
   const session = parseReviewSessionId(invocation.input.sessionId);
   if (profile._tag === "err" || session._tag === "err") return undefined;
   if (
-    invocation.input.contextPath !==
-      paths.preparedContextFile(profile.value, session.value) ||
     invocation.input.patchPath !== paths.patchFile(profile.value, session.value)
+  )
+    return undefined;
+  // A Brief is built from the patch and the invocation's own evidence, so it
+  // has no prepared context artifact to bind.
+  if (invocation.type === "brief") return invocation;
+  if (
+    invocation.input.contextPath !==
+    paths.preparedContextFile(profile.value, session.value)
   )
     return undefined;
   if (invocation.type === "walkthrough") return invocation;

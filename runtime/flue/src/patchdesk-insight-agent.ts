@@ -11,6 +11,8 @@ import {
 } from "@flue/runtime";
 import * as v from "valibot";
 
+import { briefOutputSchema } from "../../../src/domain/brief";
+import { parseReviewSessionId } from "../../../src/domain/ids";
 import { modelReviewResultSchema } from "../../../src/domain/review-result";
 import { walkthroughOutputSchema } from "../../../src/services/walkthrough-operation";
 
@@ -25,12 +27,18 @@ const profileId = v.pipe(
   v.regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),
   v.maxLength(128),
 );
+/**
+ * The review session identity, checked by the one domain parser that owns its
+ * syntax. A copy of the pattern silently rejected every real invocation once
+ * the domain id gained its `__base-` segment, so the child never restates it.
+ */
 const sessionId = v.pipe(
   v.string(),
-  v.regex(
-    /^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__pr-[1-9]\d*__sha-[a-f0-9]{8}__[a-f0-9]{12}$/,
-  ),
   v.maxLength(256),
+  v.check(
+    (value) => parseReviewSessionId(value)._tag === "ok",
+    "Not a Patchdesk review session identifier",
+  ),
 );
 
 export const analysisInvocationSchema = v.strictObject({
@@ -57,6 +65,36 @@ export const walkthroughInvocationSchema = v.strictObject({
   prompt: v.pipe(v.string(), v.minLength(1), v.maxLength(4 * 1024 * 1024)),
 });
 
+export const briefResultSchema = briefOutputSchema;
+
+/**
+ * The non-patch citation sources a Brief prompt is built from. They travel with
+ * the invocation because they come from the represented GitHub snapshot, not
+ * from an app-owned artifact the child can read for itself.
+ */
+const briefEvidenceSchema = v.strictObject({
+  description: v.optional(v.pipe(v.string(), v.maxLength(256 * 1024))),
+  commits: v.pipe(
+    v.array(
+      v.strictObject({
+        sha: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
+        subject: v.pipe(v.string(), v.maxLength(1_000)),
+      }),
+    ),
+    v.maxLength(500),
+  ),
+});
+
+export const briefInvocationSchema = v.strictObject({
+  profileId,
+  sessionId,
+  patchPath: boundedPath,
+  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  reasoning: reasoningSchema,
+  evidence: briefEvidenceSchema,
+  prompt: v.pipe(v.string(), v.minLength(1), v.maxLength(4 * 1024 * 1024)),
+});
+
 /** Production child input is path/identity/model metadata only; it never accepts model prompt text. */
 export const productionAnalysisInvocationSchema = v.strictObject({
   profileId,
@@ -79,10 +117,24 @@ export const productionWalkthroughInvocationSchema = v.strictObject({
   reasoning: reasoningSchema,
 });
 
+/**
+ * Production child Brief input likewise never accepts model prompt text: the
+ * child builds the Brief prompt itself from the patch path and this evidence.
+ */
+export const productionBriefInvocationSchema = v.strictObject({
+  profileId,
+  sessionId,
+  patchPath: boundedPath,
+  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  reasoning: reasoningSchema,
+  evidence: briefEvidenceSchema,
+});
+
 export type AnalysisInvocation = v.InferOutput<typeof analysisInvocationSchema>;
 export type WalkthroughInvocation = v.InferOutput<
   typeof walkthroughInvocationSchema
 >;
+export type BriefInvocation = v.InferOutput<typeof briefInvocationSchema>;
 export type InspectorOperations = {
   readonly listChangedFiles: () => Promise<
     { readonly files: Array<string> } | { readonly denied: true }
@@ -156,7 +208,8 @@ export async function loadPatchdeskReviewSkill(
 /** The one result schema each agent submits through `submit_patchdesk_result`. */
 type PatchdeskResultSchema =
   | typeof modelReviewResultSchema
-  | typeof walkthroughResultSchema;
+  | typeof walkthroughResultSchema
+  | typeof briefResultSchema;
 
 function createResultTool<TSchema extends PatchdeskResultSchema>(
   schema: TSchema,
@@ -311,6 +364,34 @@ export function createWalkthroughAgent(
   }
   return {
     agent: PatchdeskWalkthroughAgent,
+    state: { duplicateSubmissionAttempted: () => state.duplicate },
+    capabilities: {
+      customTools: ["submit_patchdesk_result"],
+      usesSkill: false,
+      usesSandbox: false,
+      usesMcp: false,
+      usesSubagent: false,
+    },
+  };
+}
+
+/**
+ * Creates an invocation-scoped Brief agent with only result submission. A Brief
+ * cites the evidence its prompt already carries, so it mounts no inspector: the
+ * inspector can only see the changed-file snapshots the prompt is built from.
+ */
+export function createBriefAgent(input: BriefInvocation): CreatedInsightAgent {
+  const state = { submitted: false, duplicate: false };
+  function PatchdeskBriefAgent() {
+    useModel(input.model, { thinkingLevel: input.reasoning });
+    const write = useDataWriter("patchdeskResult", {
+      schema: briefResultSchema,
+    });
+    useTool(createResultTool(briefResultSchema, write, state));
+    return `${input.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`;
+  }
+  return {
+    agent: PatchdeskBriefAgent,
     state: { duplicateSubmissionAttempted: () => state.duplicate },
     capabilities: {
       customTools: ["submit_patchdesk_result"],
