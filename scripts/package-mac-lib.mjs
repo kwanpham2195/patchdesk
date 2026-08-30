@@ -55,7 +55,7 @@ export function resolveMacSigningEnvironment(environment) {
       mode: "unsigned",
       notarized: false,
       summary:
-        "Packaging unsigned: no CSC_LINK certificate, so code signing and notarization are skipped. The app needs `xattr -cr` on the machine it is installed on.",
+        "Packaging unsigned: no CSC_LINK certificate, so code signing and notarization are skipped. The afterPack hook ad-hoc signs the bundle instead, and macOS asks whoever installs it to confirm an unverified developer.",
       environment: resolved,
     };
   }

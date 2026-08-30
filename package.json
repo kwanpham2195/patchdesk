@@ -96,6 +96,7 @@
     "asar": true,
     "asarUnpack": [],
     "npmRebuild": false,
+    "afterPack": "scripts/sign-mac-adhoc.mjs",
     "extraResources": [
       {
         "from": "out/workflow-runtime",

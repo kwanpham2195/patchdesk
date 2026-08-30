@@ -4,6 +4,7 @@
 
 ## 0.1.0 - 2026-08-30
 
+- Fixed a downloaded Patchdesk.app opening with "is damaged and can't be opened" and no way past it; the unsigned build now carries an intact ad-hoc signature, so macOS offers Open Anyway (or right-click then Open) instead, and `xattr -cr` is only a fallback.
 - Patchdesk is now distributed as a `.dmg` you open and drag onto Applications, built and attached to a draft GitHub release when a version tag is pushed; the build is signed and notarized with Apple when the maintainer's signing secrets are configured, and otherwise stays the unsigned build that needs `xattr -cr` before first launch.
 - Added **Brief**, a third Insight beside Analysis and Walkthrough: a short, cited answer to what a change is for, in five blocks — Goal with its Assumptions, Description vs diff, Shape, Reach, and Start here. Every model sentence must cite a diff hunk, a description paragraph, or a commit; an uncited sentence is shown as an Assumption, a Brief with no cited sentence at all is rejected, and every count comes from Patchdesk rather than from the model.
 - Added a **Scope** gauge that buckets a pull request's changed files into core, tests, generated, docs, and config with added and removed lines per bucket, shown in the review header, as a card in the Insights tab, and on a Pull requests row already reviewed at its current head.

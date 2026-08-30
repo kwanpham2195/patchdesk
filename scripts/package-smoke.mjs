@@ -71,6 +71,7 @@ if (!executableKind.includes(process.arch))
   throw new Error(
     `Packaged executable architecture mismatch: ${executableKind.trim()}`,
   );
+await validateCodeSignature(bundle);
 
 // Both handoff downloads sit directly in `release/`, beside the unpacked app
 // this smoke reads: the disk image people install from and the zip.
@@ -346,6 +347,72 @@ async function runRuntimeSmoke(executable, runtime, home) {
       else process.env[key] = value;
     }
   }
+}
+
+/**
+ * Check that the bundle's code signature seals it, and report what kind of
+ * signature it is.
+ *
+ * This is the one thing about the download nothing else here can see. An
+ * unsigned build keeps Electron's own linker-signed signature, which covers
+ * the executable and nothing else, so `--verify --deep --strict` fails with
+ * "code has no resources but signature indicates they must be present" and
+ * macOS refuses a downloaded copy as "damaged" with no way past the dialog.
+ * `scripts/sign-mac-adhoc.mjs` replaces that with an ad-hoc seal over the whole
+ * bundle during packaging; this is where that is proved.
+ *
+ * `spctl` is reported and not enforced. It answers a different question --
+ * whether the app is notarized -- and an ad-hoc signature is expected to be
+ * rejected by it. A valid seal is what this smoke is asserting.
+ *
+ * @param {string} bundle
+ * @returns {Promise<void>}
+ */
+async function validateCodeSignature(bundle) {
+  try {
+    await execute("codesign", ["--verify", "--deep", "--strict", bundle]);
+  } catch (cause) {
+    throw new Error(
+      `Packaged bundle has no valid code signature: ${commandOutput(cause)}`,
+      { cause },
+    );
+  }
+  // `codesign -dv` writes its description to stderr and exits 0.
+  const { stderr: description } = await execute("codesign", ["-dv", bundle]);
+  const details = description
+    .split("\n")
+    .filter(
+      (line) => line.startsWith("Identifier=") || line.startsWith("Signature="),
+    )
+    .join(", ");
+  let assessment;
+  try {
+    const { stdout, stderr } = await execute("spctl", [
+      "--assess",
+      "--type",
+      "execute",
+      bundle,
+    ]);
+    assessment = `${stdout}${stderr}`.trim();
+  } catch (cause) {
+    assessment = commandOutput(cause);
+  }
+  console.log(
+    `Packaged signature: ${details} (sealed and verified). spctl --assess: ${assessment || "no output"}`,
+  );
+}
+
+/**
+ * `execFile` rejects with an error carrying the child's own output. Reading it
+ * back off the rejection is what makes a signing failure say why instead of
+ * "Command failed".
+ *
+ * @param {unknown} cause
+ * @returns {string}
+ */
+function commandOutput(cause) {
+  const error = Object(cause);
+  return `${error.stdout ?? ""}${error.stderr ?? ""}`.trim() || String(cause);
 }
 
 async function validatePackagedRuntime(executable, runtime) {

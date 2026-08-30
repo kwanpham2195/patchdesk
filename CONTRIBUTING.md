@@ -347,8 +347,23 @@ repository secrets are set, and builds unsigned when they are not:
 `APPLE_` secrets, the download opens on any Mac with a double-click. With
 `CSC_LINK` but no `APPLE_` secrets, the app is signed but not notarized. With
 none of them the build still succeeds and produces the unsigned app this
-project has always shipped, which needs `xattr -cr` before first launch (see
-`README.md`, "Install") — say so when you hand it to someone.
+project has always shipped, which needs one confirmation before first launch
+(see `README.md`, "Install") — say so when you hand it to someone.
+
+The unsigned build is still signed, just anonymously: the `afterPack` hook in
+`scripts/sign-mac-adhoc.mjs` runs `codesign --force --deep --sign -` over the
+finished bundle before the `.dmg` and `.zip` are built. Without it the app
+keeps the signature Electron's binary was linker-signed with, which covers the
+executable alone and seals no resources, so `codesign --verify --deep --strict`
+fails and macOS rejects a downloaded copy as "Patchdesk.app is damaged and
+can't be opened" — a dialog with no way past it. An ad-hoc seal proves nothing
+about who built the app, but it does let macOS confirm the download arrived
+whole, which turns that dead end into the ordinary "cannot verify the
+developer" dialog people pass with right-click → Open or Privacy & Security →
+Open Anyway. The hook stands down whenever `CSC_LINK` is set: electron-builder
+signs and notarizes that build itself, and an anonymous signature has nothing
+to add to a real one. `pnpm test:package-smoke` checks the seal and prints
+which kind it is.
 
 A secret that was never configured reaches the build as an empty string, not
 as an absent variable, and electron-builder reads an empty `CSC_LINK` as "sign

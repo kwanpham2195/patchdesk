@@ -26,15 +26,25 @@ Patchdesk is distributed as a `.dmg`, with a `.zip` of the same app beside it
 on the release page. Open the `.dmg` and drag `Patchdesk` onto the
 `Applications` folder in the window.
 
-An unsigned build — one that is not Apple-signed or notarized — will not open
-until you clear the quarantine attribute macOS puts on downloads:
+An unsigned build — one that is not Apple-signed or notarized — needs one
+extra step the first time. Double-clicking it shows "macOS cannot verify the
+developer of Patchdesk.app". Get past that in either of these ways:
+
+- Right-click `Patchdesk.app` in `Applications` → **Open** → **Open** in the
+  dialog; or
+- open it once, then go to **System Settings → Privacy & Security** and press
+  **Open Anyway** beside the message about Patchdesk.
+
+macOS remembers the choice, so later launches are a plain double-click. If
+neither route appears, clear the quarantine attribute macOS puts on downloads
+and open it normally:
 
 ```bash
 xattr -cr /Applications/Patchdesk.app
 ```
 
-or right-click `Patchdesk.app` → Open → "Open Anyway". A signed and notarized
-build needs none of this and opens with a double-click.
+A signed and notarized build needs none of this and opens with a
+double-click.
 
 ## First run
 
