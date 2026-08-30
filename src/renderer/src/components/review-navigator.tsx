@@ -208,11 +208,13 @@ export function ReviewNavigator({
                     key={row.id}
                     type="button"
                     aria-pressed={selectedThreadId === row.id}
-                    className="flex flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
+                    className="flex w-full min-w-0 flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
                     onClick={() => onThreadSelect(row)}
                   >
-                    <span className="flex w-full items-center justify-between gap-2">
-                      <span className="truncate font-medium">{row.author}</span>
+                    <span className="flex w-full min-w-0 items-center justify-between gap-2">
+                      <span className="min-w-0 truncate font-medium">
+                        {row.author}
+                      </span>
                       <Badge
                         variant={badge.variant}
                         className={cn("shrink-0", badge.className)}
@@ -220,10 +222,10 @@ export function ReviewNavigator({
                         {badge.label}
                       </Badge>
                     </span>
-                    <span className="line-clamp-2 text-xs text-muted-foreground">
+                    <span className="line-clamp-2 w-full text-xs text-muted-foreground">
                       {row.preview.length === 0 ? "(no body)" : row.preview}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="block w-full min-w-0 truncate text-xs text-muted-foreground">
                       {row.path}:
                       {row.start === row.end
                         ? row.start
