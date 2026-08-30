@@ -255,7 +255,6 @@ export class GitHubPendingReviews {
       ],
       stdin: JSON.stringify({
         commit_id: input.headSha,
-        body: input.body,
         comments: [pendingReviewComment(input.anchor, input.body)],
       }),
       timeoutMs: commandTimeoutMs,

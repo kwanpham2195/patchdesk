@@ -4136,14 +4136,14 @@ describe("GitHubAdapter pending-review gateway", () => {
     if (result._tag !== "ok") return;
     expect(result.value.review.restId).toBe("9001");
     expect(result.value.createdThreadId).toBe(threadId);
-    // The REST create passes the head SHA and the single inline comment.
+    // REST Start owns the inline comment; Finish owns general feedback.
     expect(JSON.parse(executor.stdin[0] ?? "{}")).toEqual({
       commit_id: headSha,
-      body: "Comment body",
       comments: [
         { path: "src/review.ts", line: 7, side: "RIGHT", body: "Comment body" },
       ],
     });
+    expect(JSON.parse(executor.stdin[0] ?? "{}")).not.toHaveProperty("body");
   });
 
   it("never fabricates a pending owner when the create read-back cannot be proven", async () => {
