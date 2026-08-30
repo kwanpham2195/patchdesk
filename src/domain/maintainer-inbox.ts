@@ -1,3 +1,4 @@
+import type { ChangeScope } from "./change-scope";
 import type {
   CheckSummary,
   GitHubLabel,
@@ -135,6 +136,13 @@ export type MaintainerInboxRow = {
   readonly checks: CheckSummary;
   readonly reviewState: PullRequestSummary["reviewState"];
   readonly mergeability: PullRequestSummary["mergeability"];
+  /**
+   * Present only when Patchdesk already holds a Review session whose retained
+   * patch describes this row's current head. GitHub's inbox query returns
+   * totals but no per-file lines, so a row Patchdesk has never reviewed has
+   * nothing to bucket and shows no gauge rather than a guessed one.
+   */
+  readonly scope?: ChangeScope;
   readonly latestReview?: InboxReviewSummary;
   readonly labels: ReadonlyArray<GitHubLabel>;
   readonly labelCount?: number;
@@ -149,6 +157,7 @@ export function projectMaintainerInboxRow(input: {
   readonly checks: CheckSummary;
   readonly activeAccount: string;
   readonly latestReview?: InboxReviewSummary;
+  readonly scope?: ChangeScope;
   readonly dataFreshness: InboxDataFreshness;
 }): MaintainerInboxRow {
   if (!input.summary.isOpen) return projectMergedMaintainerInboxRow(input);
@@ -184,6 +193,7 @@ export function projectMaintainerInboxRow(input: {
       : { changedFiles: input.summary.changedFileCount };
   const latestReviewField =
     review === undefined ? {} : { latestReview: review };
+  const scopeField = input.scope === undefined ? {} : { scope: input.scope };
   const labelCountField =
     input.summary.labelCount === undefined
       ? {}
@@ -206,6 +216,7 @@ export function projectMaintainerInboxRow(input: {
     checks: input.checks,
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
+    ...scopeField,
     ...latestReviewField,
     labels: input.summary.labels,
     ...labelCountField,
@@ -218,6 +229,7 @@ export function projectMaintainerInboxRow(input: {
 function projectMergedMaintainerInboxRow(input: {
   readonly summary: PullRequestSummary;
   readonly checks: CheckSummary;
+  readonly scope?: ChangeScope;
   readonly dataFreshness: InboxDataFreshness;
 }): MaintainerInboxRow {
   const additionsField =
@@ -236,6 +248,7 @@ function projectMergedMaintainerInboxRow(input: {
     input.summary.labelCount === undefined
       ? {}
       : { labelCount: input.summary.labelCount };
+  const scopeField = input.scope === undefined ? {} : { scope: input.scope };
   return {
     remoteState: "merged",
     identity: input.summary.ref,
@@ -250,6 +263,7 @@ function projectMergedMaintainerInboxRow(input: {
     checks: input.checks,
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
+    ...scopeField,
     labels: input.summary.labels,
     ...labelCountField,
     categories: [],

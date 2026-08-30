@@ -6,6 +6,7 @@ import {
   type MergeReceipt,
   viewerLoginSchema,
 } from "./review-write-receipts";
+import { changeScopeSchema } from "../../domain/change-scope";
 import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
 import { FINDING_MAPPING_STATUSES } from "../../domain/review-result";
@@ -48,6 +49,14 @@ const checkSchema = v.strictObject({
   overall: v.picklist(["passing", "failing", "pending", "skipped", "unknown"]),
   checks: v.array(checkRunSchema),
 });
+/** GitHub's aggregate review verdict; one spelling for the inbox row and the pull-request summary. */
+const reviewStateSchema = v.picklist([
+  "none",
+  "review_pending",
+  "approved",
+  "changes_requested",
+  "unknown",
+]);
 
 const actionSchema = v.variant("kind", [
   v.strictObject({
@@ -86,14 +95,10 @@ const inboxRowSchema = v.strictObject({
     changedFiles: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   }),
   checks: checkSchema,
-  reviewState: v.picklist([
-    "none",
-    "review_pending",
-    "approved",
-    "changes_requested",
-    "unknown",
-  ]),
+  reviewState: reviewStateSchema,
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
+  /** Present only for a row whose retained Review session still matches the current head; see `MaintainerInboxRow.scope`. */
+  scope: v.optional(changeScopeSchema),
   latestReview: v.optional(
     v.strictObject({
       reviewId: v.pipe(v.string(), v.minLength(1)),
@@ -513,13 +518,7 @@ const pullRequestSummarySchema = v.strictObject({
   baseSha: v.optional(v.pipe(v.string(), v.minLength(7))),
   isDraft: v.boolean(),
   isOpen: v.boolean(),
-  reviewState: v.picklist([
-    "none",
-    "review_pending",
-    "approved",
-    "changes_requested",
-    "unknown",
-  ]),
+  reviewState: reviewStateSchema,
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
   labels: v.array(v.strictObject({ name: v.string(), color: v.string() })),
   requestedReviewers: v.optional(v.array(v.string())),
@@ -888,6 +887,7 @@ const workbenchProjectionSchema = v.strictObject({
     refreshedAt: v.pipe(v.string(), v.isoTimestamp()),
   }),
   fullPatch: v.optional(v.string()),
+  scope: v.optional(changeScopeSchema),
   pullRequest: v.optional(pullRequestSummarySchema),
   commits: v.array(commitSchema),
   insights: v.strictObject({

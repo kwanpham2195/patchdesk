@@ -167,6 +167,7 @@ export function InsightsSlot({
             <InsightOverview
               analysis={workbench.insights.analysis}
               walkthrough={workbench.insights.walkthrough}
+              scope={workbench.scope}
               onSelect={setSelectedInsight}
             />
           ) : (

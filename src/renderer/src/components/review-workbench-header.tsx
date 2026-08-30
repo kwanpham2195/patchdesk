@@ -14,6 +14,7 @@ import {
 } from "../external-links";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { ReviewWorkbenchActions } from "./review-workbench";
+import { ScopeGauge } from "./scope-gauge";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
@@ -63,6 +64,9 @@ export function ReviewWorkbenchHeader({
           className="flex flex-wrap items-center gap-2"
           aria-label="Pull request status and actions"
         >
+          {model.scope === undefined ? null : (
+            <ScopeGauge scope={model.scope} size="mini" />
+          )}
           <Button
             variant="outline"
             size="xs"

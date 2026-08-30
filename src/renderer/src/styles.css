@@ -48,6 +48,13 @@
   --sidebar-ring: #5e6ad2;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  /* Scope gauge buckets. Categorical, never the status hues: a large
+     generated or docs share is a fact about the change, not a warning. */
+  --scope-core: var(--primary);
+  --scope-tests: oklch(0.68 0.11 150);
+  --scope-generated: oklch(0.8 0.005 270);
+  --scope-docs: oklch(0.7 0.08 240);
+  --scope-config: oklch(0.78 0.11 70);
 }
 
 .dark {
@@ -76,6 +83,25 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: #7c85e0;
+  --scope-core: #7c85e0;
+  --scope-generated: oklch(0.4 0.005 270);
+}
+
+/* The `generated` bucket reads as machine-written rather than as a sixth
+   hue, so it is a hatch over `--scope-generated` in both themes. */
+.scope-gauge-hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--scope-generated),
+    var(--scope-generated) 2px,
+    transparent 2px,
+    transparent 4px
+  );
+  background-color: color-mix(
+    in oklab,
+    var(--scope-generated) 35%,
+    transparent
+  );
 }
 
 @theme inline {

@@ -46,6 +46,7 @@ import {
   projectStoredInsight,
   type InsightProjection,
 } from "../domain/insight";
+import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
 import { definedProps } from "../domain/defined-props";
 import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import {
@@ -129,6 +130,12 @@ export type ReviewWorkbenchProjection = {
     readonly refreshedAt: IsoTimestamp;
   };
   readonly fullPatch?: string;
+  /**
+   * The represented patch bucketed into core/tests/generated/docs/config.
+   * Absent exactly when `fullPatch` is: an all-zero gauge would claim the
+   * pull request changes nothing rather than that its bytes were unreadable.
+   */
+  readonly scope?: ChangeScope;
   readonly pullRequest?: PullRequestSummary;
   readonly commits: ReadonlyArray<PullRequestCommit>;
   readonly insights: {
@@ -530,6 +537,8 @@ export class ReviewWorkbenchProjectionService {
           session.localCheckoutWarning,
         ),
         fullPatch,
+        scope:
+          fullPatch === undefined ? undefined : changeScopeFromPatch(fullPatch),
         pullRequest,
       }),
     };

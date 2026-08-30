@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import * as v from "valibot";
 
 import type { ForbiddenReason } from "../adapters/github/command-runner";
@@ -8,6 +10,7 @@ import type {
   MaintainerInboxCacheStore,
 } from "../adapters/storage/maintainer-inbox-cache-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
 import type { PullRequestSummary } from "../domain/github-context";
 import {
   createReviewId,
@@ -305,21 +308,29 @@ export class MaintainerInboxService {
     );
     if (searched._tag === "err")
       return failedRepositoryRead(repo, searched.error);
-    const entries = searched.value.entries.map(
-      ({ cursor: entryCursor, pullRequest }) => {
-        const latestReview = latestReviewFor(pullRequest.summary, sessions);
-        const input = {
-          summary: pullRequest.summary,
-          checks: pullRequest.checks,
-          activeAccount: profile.ghAccount,
-          dataFreshness: "fresh" as const,
-        };
-        const row =
-          latestReview === undefined
-            ? projectMaintainerInboxRow(input)
-            : projectMaintainerInboxRow({ ...input, latestReview });
-        return { cursor: entryCursor, row };
-      },
+    const entries = await Promise.all(
+      searched.value.entries.map(
+        async ({ cursor: entryCursor, pullRequest }) => {
+          const latestReview = latestReviewFor(pullRequest.summary, sessions);
+          const scope = await readCurrentHeadScope(
+            pullRequest.summary,
+            sessions,
+          );
+          const scopeField = scope === undefined ? {} : { scope };
+          const input = {
+            summary: pullRequest.summary,
+            checks: pullRequest.checks,
+            activeAccount: profile.ghAccount,
+            dataFreshness: "fresh" as const,
+            ...scopeField,
+          };
+          const row =
+            latestReview === undefined
+              ? projectMaintainerInboxRow(input)
+              : projectMaintainerInboxRow({ ...input, latestReview });
+          return { cursor: entryCursor, row };
+        },
+      ),
     );
     const emptyPageEndCursor =
       entries.length === 0 && searched.value.hasNextPage
@@ -554,6 +565,32 @@ function decodeInboxPageToken(
 function encodeInboxPageToken(token: InboxPageToken): string {
   return Buffer.from(JSON.stringify(token)).toString("base64url");
 }
+/**
+ * The Scope gauge for a row Patchdesk has already reviewed at this exact head.
+ * GitHub's inbox query returns totals but no per-file lines, so the only
+ * per-file evidence available here is a retained session patch — and only
+ * while its head still matches, because a patch for an earlier revision would
+ * describe a change the row no longer shows.
+ */
+async function readCurrentHeadScope(
+  summary: PullRequestSummary,
+  sessions: ReadonlyArray<ReviewSession>,
+): Promise<ChangeScope | undefined> {
+  const session = sessions.find(
+    (candidate) =>
+      candidate.key.host === summary.ref.host &&
+      candidate.key.owner === summary.ref.owner &&
+      candidate.key.repo === summary.ref.repo &&
+      candidate.key.prNumber === summary.ref.number &&
+      candidate.key.headSha === summary.headSha,
+  );
+  if (session === undefined) return undefined;
+  const patch = await readFile(session.patchPath, "utf8").catch(
+    () => undefined,
+  );
+  return patch === undefined ? undefined : changeScopeFromPatch(patch);
+}
+
 function latestReviewFor(
   summary: PullRequestSummary,
   sessions: ReadonlyArray<ReviewSession>,

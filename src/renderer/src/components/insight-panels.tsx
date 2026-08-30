@@ -1,5 +1,6 @@
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
+import { ScopeGauge } from "./scope-gauge";
 import { Spinner } from "./ui/spinner";
 import type { InsightFailureCategory } from "../../../domain/insight-record";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -87,10 +88,13 @@ function InsightRailButton({
 export function InsightOverview({
   analysis,
   walkthrough,
+  scope,
   onSelect,
 }: {
   readonly analysis: InsightProjection;
   readonly walkthrough: InsightProjection;
+  /** Absent when the represented patch bytes were unreadable; see `ReviewWorkbenchProjection.scope`. */
+  readonly scope: WorkbenchResponse["scope"];
   readonly onSelect: (value: "analysis" | "walkthrough") => void;
 }): React.JSX.Element {
   return (
@@ -102,6 +106,7 @@ export function InsightOverview({
           independently.
         </p>
       </div>
+      {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
       <div className="grid gap-3 sm:grid-cols-2">
         <button
           type="button"

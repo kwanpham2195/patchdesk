@@ -13,6 +13,7 @@ import {
   ReviewOpeningNotice,
   type ReviewOpeningState,
 } from "./review-opening-status";
+import { ScopeGauge } from "./scope-gauge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -95,6 +96,9 @@ export function InboxRowItem({
         </span>
         <span className="hidden min-[1280px]:block">
           <ChangeSize stats={row.changeStats} />
+          {row.scope === undefined ? null : (
+            <ScopeGauge scope={row.scope} size="mini" className="mt-0.5 flex" />
+          )}
         </span>
         <span className="hidden min-[1280px]:block">
           <CheckIcon overall={row.checks.overall} />
