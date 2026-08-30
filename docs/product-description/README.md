@@ -197,10 +197,10 @@ Status is one of `not started`, `drafted`, or `verified`.
 | settings/review-defaults.md | drafted |
 | settings/data-and-recovery.md | drafted |
 | settings/logs-and-diagnostics.md | drafted |
-| cross-cutting/write-safety-and-freshness.md | not started |
-| cross-cutting/errors-and-recovery.md | not started |
-| cross-cutting/local-storage-and-privacy.md | not started |
-| cross-cutting/keyboard-focus-and-desktop.md | not started |
+| cross-cutting/write-safety-and-freshness.md | drafted |
+| cross-cutting/errors-and-recovery.md | drafted |
+| cross-cutting/local-storage-and-privacy.md | drafted |
+| cross-cutting/keyboard-focus-and-desktop.md | drafted |
 
 ## Reference
 
