@@ -5,9 +5,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { changeScopeFromPatch } from "../../src/domain/change-scope";
+import { definedProps } from "../../src/domain/defined-props";
 import {
   briefCitationChipLabel,
   briefCitationStatusLine,
+  briefOwnershipTree,
 } from "../../src/renderer/src/brief-contracts";
 import { BriefReader } from "../../src/renderer/src/components/brief-reader";
 import { briefInsight, briefValue } from "./review-workbench-fixtures";
@@ -44,6 +46,51 @@ const retainedWithDrift = () => {
   };
 };
 
+const CONTRACT_PATCH = [
+  "diff --git a/src/a.ts b/src/a.ts",
+  "--- a/src/a.ts",
+  "+++ b/src/a.ts",
+  "@@ -1 +1 @@",
+  "-old",
+  "+new",
+  "",
+].join("\n");
+
+const CONTRACT = {
+  path: "src/a.ts",
+  header: "@@ -1 +1 @@",
+  raw: CONTRACT_PATCH,
+  caption: "the writer's new return type",
+};
+
+const retainedWithOwnership = (withContract: boolean) => {
+  const base = retained();
+  return {
+    ...base,
+    value: {
+      ...briefValue,
+      ownership: {
+        files: [
+          {
+            path: "src/a.ts",
+            status: "modified" as const,
+            additions: 1,
+            deletions: 1,
+          },
+          {
+            path: "tests/a.test.ts",
+            status: "added" as const,
+            additions: 12,
+            deletions: 0,
+          },
+        ],
+        notes: [{ path: "src/a.ts", note: "owns the read-back" }],
+        ...definedProps({ contract: withContract ? CONTRACT : undefined }),
+      },
+    },
+  };
+};
+
 afterEach(() => cleanup());
 
 describe("BriefReader", () => {
@@ -67,6 +114,7 @@ describe("BriefReader", () => {
     expect(
       screen.queryByRole("region", { name: "Description vs diff" }),
     ).toBeNull();
+    expect(screen.queryByRole("region", { name: "Shape" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Regenerate" }));
     expect(onRegenerate).toHaveBeenCalledTimes(1);
@@ -91,6 +139,34 @@ describe("BriefReader", () => {
     ).toBeTruthy();
   });
 
+  it("renders the Shape tree and its contract hunk", () => {
+    render(
+      <BriefReader
+        retained={retainedWithOwnership(true)}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: "Shape" })).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Plain text diff" }),
+    ).toBeTruthy();
+  });
+
+  it("renders the Shape tree without a contract hunk", () => {
+    render(
+      <BriefReader
+        retained={retainedWithOwnership(false)}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: "Shape" })).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Plain text diff" }),
+    ).toBeNull();
+  });
+
   it("disables regeneration when no run may start", () => {
     render(
       <BriefReader
@@ -105,6 +181,33 @@ describe("BriefReader", () => {
         .getByRole("button", { name: "Regenerate" })
         .hasAttribute("disabled"),
     ).toBe(true);
+  });
+});
+
+describe("briefOwnershipTree", () => {
+  const files = (count: number, directory: string) =>
+    Array.from({ length: count }, (_, index) => ({
+      path: `${directory}file-${String(index).padStart(2, "0")}.ts`,
+      status: "modified" as const,
+      additions: 1,
+      deletions: 0,
+    }));
+
+  it("groups the skeleton by directory and attaches each note to its file", () => {
+    const tree = briefOwnershipTree({
+      files: [...files(1, "src/"), ...files(1, "tests/")],
+      notes: [{ path: "src/file-00.ts", note: "owns the read-back" }],
+    });
+    expect(tree.map((group) => group.directory)).toEqual(["src/", "tests/"]);
+    expect(tree[0]?.files[0]?.name).toBe("file-00.ts");
+    expect(tree[0]?.files[0]?.note).toBe("owns the read-back");
+    expect(tree[1]?.files[0]?.note).toBeUndefined();
+  });
+
+  it("collapses a directory past twelve files to a counted remainder", () => {
+    const tree = briefOwnershipTree({ files: files(15, "src/"), notes: [] });
+    expect(tree[0]?.files).toHaveLength(12);
+    expect(tree[0]?.hidden).toBe(3);
   });
 });
 

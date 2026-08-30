@@ -1,16 +1,47 @@
 import { FileDiffIcon, GitCommitHorizontalIcon, QuoteIcon } from "lucide-react";
+import { useMemo } from "react";
 
+import {
+  DEFAULT_REVIEW_VIEW_PREFERENCES,
+  type ReviewViewPreferences,
+} from "@/review-view-preferences";
+import { parseReviewDiff } from "@/review-diff-data";
 import {
   briefCitationChipLabel,
   briefCitationStatusLine,
+  briefOwnershipTree,
   type BriefCitation,
   type BriefInsight,
+  type BriefOwnership,
+  type BriefOwnershipContract,
+  type BriefOwnershipRow,
 } from "../brief-contracts";
 import type { ChangeScope } from "../../../domain/change-scope";
+import { ReviewDiffView } from "./review-diff-view";
 import { ScopeGauge } from "./scope-gauge";
 import { Button } from "./ui/button";
 
 type RetainedBrief = NonNullable<BriefInsight["retained"]>;
+
+/**
+ * The glyph and hue each status carries in the tree. The hues are the ones the
+ * app already spends on added and removed lines; `renamed` gets the changed
+ * glyph in plain text, because a rename is a move rather than an edit.
+ */
+const OWNERSHIP_STATUS_MARKS = {
+  added: { glyph: "+", className: "text-emerald-700 dark:text-emerald-400" },
+  removed: { glyph: "−", className: "text-rose-700 dark:text-rose-400" },
+  modified: { glyph: "~", className: "text-amber-600 dark:text-amber-400" },
+  renamed: { glyph: "~", className: "text-muted-foreground" },
+} as const satisfies Record<
+  BriefOwnershipRow["status"],
+  { readonly glyph: string; readonly className: string }
+>;
+
+const contractPreferences: ReviewViewPreferences = {
+  ...DEFAULT_REVIEW_VIEW_PREFERENCES,
+  fileMode: "all",
+};
 
 const CITATION_ICONS = {
   hunk: FileDiffIcon,
@@ -129,6 +160,9 @@ export function BriefReader({
             </div>
           </section>
         )}
+        {brief.ownership === undefined ? null : (
+          <OwnershipBlock ownership={brief.ownership} />
+        )}
         <p className="text-xs text-muted-foreground">
           Citations: {briefCitationStatusLine(brief)}
         </p>
@@ -167,6 +201,105 @@ export function BriefReader({
             Regenerate
           </Button>
         </section>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Ownership block: a shallow file tree saying who owns what after the change,
+ * then the one hunk that explains the rest of the patch.
+ */
+function OwnershipBlock({
+  ownership,
+}: {
+  readonly ownership: BriefOwnership;
+}): React.JSX.Element {
+  const tree = useMemo(() => briefOwnershipTree(ownership), [ownership]);
+  return (
+    <section aria-label="Shape" className="flex min-w-0 flex-col gap-2">
+      <h3 className="flex items-baseline gap-2 text-sm font-medium">
+        Shape
+        <span className="text-xs font-normal text-muted-foreground">
+          who owns what after the change
+        </span>
+      </h3>
+      <div className="flex min-w-0 flex-col gap-2 rounded-md border p-3 font-mono text-xs">
+        {tree.map((group) => (
+          <div key={group.directory} className="flex min-w-0 flex-col">
+            <span className="text-muted-foreground">
+              {group.directory === "" ? "./" : group.directory}
+            </span>
+            {group.files.map((row) => (
+              <OwnershipRow key={row.path} row={row} />
+            ))}
+            {group.hidden === 0 ? null : (
+              <span className="pl-4 text-muted-foreground">
+                … {group.hidden} more files
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      {ownership.contract === undefined ? null : (
+        <OwnershipContract contract={ownership.contract} />
+      )}
+    </section>
+  );
+}
+
+/** One file of the tree. The glyph carries the status; the title spells it out. */
+function OwnershipRow({
+  row,
+}: {
+  readonly row: BriefOwnershipRow;
+}): React.JSX.Element {
+  const mark = OWNERSHIP_STATUS_MARKS[row.status];
+  return (
+    <span
+      title={`${row.status} ${row.path}`}
+      className="flex min-w-0 items-baseline gap-2 pl-4"
+    >
+      <span className={mark.className}>{mark.glyph}</span>
+      <span className="shrink-0">{row.name}</span>
+      {row.note === undefined ? null : (
+        <span className="min-w-0 truncate font-sans text-muted-foreground">
+          {row.note}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The contract hunk, drawn by the one diff renderer. `raw` is a complete
+ * one-hunk unified patch the main process cut from the session patch, so this
+ * reparses app-owned bytes rather than anything the model wrote.
+ */
+function OwnershipContract({
+  contract,
+}: {
+  readonly contract: BriefOwnershipContract;
+}): React.JSX.Element | null {
+  const parsed = useMemo(() => parseReviewDiff(contract.raw), [contract.raw]);
+  if (parsed.files.length === 0) return null;
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <p className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <span className="font-mono">{contract.path}</span> · {contract.caption}
+      </p>
+      <div className="max-h-96 overflow-auto">
+        <ReviewDiffView
+          patch={contract.raw}
+          parsedFiles={parsed.files}
+          fileStatsByPath={parsed.statsByPath}
+          selectedPath={contract.path}
+          preferences={contractPreferences}
+          collapsedPaths={new Set()}
+          onPreferencesChange={() => undefined}
+          onCollapsedPathsChange={() => undefined}
+          virtualized={false}
+        />
       </div>
     </div>
   );

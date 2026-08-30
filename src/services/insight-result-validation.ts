@@ -92,6 +92,7 @@ export async function validateInsightResult(
         ...definedProps({ description: input.briefEvidence?.description }),
         commits: input.briefEvidence?.commits ?? [],
       }),
+      patch,
       {
         profileId: input.profileId,
         sessionId: revision.sessionId,

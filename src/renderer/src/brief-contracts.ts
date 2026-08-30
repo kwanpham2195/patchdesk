@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { definedProps } from "../../domain/defined-props";
 import { insightFields, retainedInsightFields } from "./insight-contracts";
 
 /**
@@ -16,6 +17,37 @@ const briefCitationSchema = v.strictObject({
   kind: v.picklist(["hunk", "description", "commit"]),
   label: v.pipe(v.string(), v.maxLength(200)),
   path: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(1_024))),
+});
+
+/**
+ * The Ownership block. `files` is Patchdesk's own skeleton of the patch, so the
+ * renderer draws it as given; `notes` and `contract.caption` are the only
+ * model-written text here, and `contract.raw` was cut from the session patch by
+ * the main process.
+ */
+const briefOwnershipSchema = v.strictObject({
+  files: v.array(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
+      status: v.picklist(["added", "removed", "modified", "renamed"]),
+      additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    }),
+  ),
+  notes: v.array(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
+      note: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+    }),
+  ),
+  contract: v.optional(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
+      header: v.pipe(v.string(), v.maxLength(400)),
+      raw: v.pipe(v.string(), v.minLength(1)),
+      caption: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+    }),
+  ),
 });
 
 const briefSchema = v.strictObject({
@@ -53,6 +85,8 @@ const briefSchema = v.strictObject({
       ),
     }),
   ),
+  /** Absent on a Brief retained before the Ownership block existed. */
+  ownership: v.optional(briefOwnershipSchema),
 });
 
 /** The Brief's own Insight projection: the shared run envelope around one Brief. */
@@ -66,6 +100,8 @@ export const briefInsightSchema = v.strictObject({
 export type BriefInsight = v.InferOutput<typeof briefInsightSchema>;
 export type Brief = v.InferOutput<typeof briefSchema>;
 export type BriefCitation = v.InferOutput<typeof briefCitationSchema>;
+export type BriefOwnership = v.InferOutput<typeof briefOwnershipSchema>;
+export type BriefOwnershipContract = NonNullable<BriefOwnership["contract"]>;
 
 /** A Brief the projection did not carry reads as one that was never generated. */
 export const NOT_GENERATED_BRIEF: BriefInsight = { status: "not_generated" };
@@ -81,6 +117,56 @@ export function briefCitationChipLabel(citation: BriefCitation): string {
   if (citation.kind === "commit")
     return citation.label.split(" ")[0] ?? citation.alias;
   return citation.path ?? citation.label;
+}
+
+/** One line of the Ownership tree: a changed file, how it changed, and its note. */
+export type BriefOwnershipRow = {
+  readonly path: string;
+  /** The file name alone; the directory is printed once, on the group above. */
+  readonly name: string;
+  readonly status: BriefOwnership["files"][number]["status"];
+  readonly note?: string;
+};
+
+/** One directory of the Ownership tree, already cut to what the reader draws. */
+export type BriefOwnershipDirectory = {
+  /** `""` for a file at the repository root. */
+  readonly directory: string;
+  readonly files: ReadonlyArray<BriefOwnershipRow>;
+  /** Files past the collapse limit, reported as a count instead of drawn. */
+  readonly hidden: number;
+};
+
+/** Past this many files, one directory would push the rest of the tree off screen. */
+const MAX_OWNERSHIP_DIRECTORY_FILES = 12;
+
+/**
+ * Groups the Ownership skeleton into the directory rows the tree draws, keeping the
+ * skeleton's path order. A directory with more than 12 files is cut to 12 and
+ * reports the rest as a count, so a wide directory cannot bury the others.
+ */
+export function briefOwnershipTree(
+  ownership: BriefOwnership,
+): ReadonlyArray<BriefOwnershipDirectory> {
+  const notes = new Map(ownership.notes.map((note) => [note.path, note.note]));
+  const groups = new Map<string, Array<BriefOwnershipRow>>();
+  for (const file of ownership.files) {
+    const cut = file.path.lastIndexOf("/");
+    const directory = cut < 0 ? "" : file.path.slice(0, cut + 1);
+    const rows = groups.get(directory) ?? [];
+    rows.push({
+      path: file.path,
+      name: file.path.slice(cut + 1),
+      status: file.status,
+      ...definedProps({ note: notes.get(file.path) }),
+    });
+    groups.set(directory, rows);
+  }
+  return [...groups].map(([directory, rows]) => ({
+    directory,
+    files: rows.slice(0, MAX_OWNERSHIP_DIRECTORY_FILES),
+    hidden: Math.max(0, rows.length - MAX_OWNERSHIP_DIRECTORY_FILES),
+  }));
 }
 
 /** "6 verified · 1 assumption": what the Brief could cite, and what it could not. */

@@ -118,6 +118,7 @@ describe("normalizeBrief", () => {
         assumptions: ["The crash was seen in production."],
       },
       MANIFEST,
+      PATCH,
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
@@ -143,6 +144,7 @@ describe("normalizeBrief", () => {
         assumptions: [],
       },
       MANIFEST,
+      PATCH,
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
@@ -163,6 +165,7 @@ describe("normalizeBrief", () => {
           assumptions: [],
         },
         MANIFEST,
+        PATCH,
         SNAPSHOT,
       ),
     ).toEqual({
@@ -183,6 +186,7 @@ describe("normalizeBrief", () => {
         assumptions: [],
       },
       MANIFEST,
+      PATCH,
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
@@ -194,7 +198,7 @@ describe("normalizeBrief", () => {
 
   it("rejects output that is not the Brief schema", () => {
     expect(
-      normalizeBrief({ goal: "one sentence" }, MANIFEST, SNAPSHOT),
+      normalizeBrief({ goal: "one sentence" }, MANIFEST, PATCH, SNAPSHOT),
     ).toEqual({
       _tag: "err",
       error: { _tag: "InvalidBrief", reason: "malformed" },
@@ -211,13 +215,36 @@ describe("normalizeBrief", () => {
         reachSymbols: ["recover"],
       },
       MANIFEST,
+      PATCH,
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
     expect(normalized.value.descriptionDrift).toBeUndefined();
+    expect(normalized.value.ownership?.files).toHaveLength(1);
     expect(
       parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
     ).toEqual({ _tag: "ok", value: normalized.value });
+  });
+
+  it("still reads a Brief retained before the Ownership block existed", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: [{ text: "Recovery restarts after a crash.", citations: ["h1"] }],
+        assumptions: [],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    const { ownership, ...withoutOwnership } = normalized.value;
+    expect(ownership).toBeDefined();
+    expect(
+      parseStoredBrief(JSON.parse(JSON.stringify(withoutOwnership))),
+    ).toEqual({
+      _tag: "ok",
+      value: withoutOwnership,
+    });
   });
 });
 
@@ -233,6 +260,7 @@ describe("normalizeBrief description drift", () => {
     const normalized = normalizeBrief(
       { goal: GOAL, assumptions: [], descriptionDrift },
       manifest,
+      PATCH,
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");

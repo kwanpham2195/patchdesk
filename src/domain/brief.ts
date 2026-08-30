@@ -1,5 +1,10 @@
 import * as v from "valibot";
 
+import {
+  briefOwnershipOutputSchema,
+  normalizeBriefOwnership,
+  type BriefOwnership,
+} from "./brief-ownership";
 import { definedProps } from "./defined-props";
 import type { RepoRelativePath } from "./ids";
 import {
@@ -86,6 +91,12 @@ export type NormalizedBrief = {
   }>;
   /** Absent when the pull request has no description to compare the diff against. */
   readonly descriptionDrift?: BriefDescriptionDrift;
+  /**
+   * Absent only on a Brief retained before the Ownership block existed:
+   * `normalizeBrief` always produces one, because its skeleton is computed from
+   * the patch rather than asked of the model.
+   */
+  readonly ownership?: BriefOwnership;
 };
 
 /** Reasons a Brief result is rejected before it can be retained. */
@@ -165,6 +176,7 @@ export const briefOutputSchema = v.strictObject({
       ),
     }),
   ),
+  ownership: briefOwnershipOutputSchema,
   assumptions: v.pipe(
     v.array(
       v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_ASSUMPTION_LENGTH)),
@@ -187,7 +199,7 @@ export const briefOutputSchema = v.strictObject({
 
 /** The JSON contract every Brief child is given, stated once for both providers. */
 export const BRIEF_RESULT_CONTRACT =
-  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"assumptions":[string],"reachSymbols":[string]}';
+  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"assumptions":[string],"reachSymbols":[string]}';
 
 export type BriefOutput = v.InferOutput<typeof briefOutputSchema>;
 export type InvalidBriefOutput = { readonly _tag: "InvalidBriefOutput" };
@@ -265,11 +277,16 @@ export function renderBriefManifest(manifest: BriefManifest): string {
  * undescribed item must cite an `h*` alias, because it names what the diff
  * does. An item that cites neither is dropped, exactly like a rejected Goal
  * citation, and never fails the run.
+ *
+ * The patch is passed beside the manifest because the Ownership block's skeleton
+ * and its one contract hunk are cut from the patch itself, never asked of the
+ * model.
  */
 export function normalizeBrief(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the Brief result's normalization boundary; the very next statement runs `safeParse(briefOutputSchema, raw)` against it before anything else touches it.
   raw: unknown,
   manifest: BriefManifest,
+  patch: string,
   snapshot: BriefSnapshot,
 ): Result<NormalizedBrief, BriefError> {
   const parsed = v.safeParse(briefOutputSchema, raw);
@@ -298,6 +315,9 @@ export function normalizeBrief(
   );
   rejectedCitationCount += drift.rejected;
 
+  const ownership = normalizeBriefOwnership(parsed.output.ownership, patch);
+  rejectedCitationCount += ownership.rejected;
+
   return ok({
     snapshot,
     citationStatus:
@@ -313,6 +333,7 @@ export function normalizeBrief(
       ...demoted.map((text) => ({ text, demoted: true })),
     ],
     ...definedProps({ descriptionDrift: drift.value }),
+    ownership: ownership.value,
   });
 }
 

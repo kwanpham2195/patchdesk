@@ -7,6 +7,7 @@ import {
   type BriefError,
   type NormalizedBrief,
 } from "./brief";
+import type { BriefOwnership } from "./brief-ownership";
 import { definedProps } from "./defined-props";
 import {
   parseContentHash,
@@ -22,6 +23,31 @@ const storedCitationSchema = v.strictObject({
   kind: v.picklist(["hunk", "description", "commit"]),
   label: v.string(),
   path: v.optional(v.string()),
+});
+const storedLineCountSchema = v.pipe(v.number(), v.integer(), v.minValue(0));
+const storedOwnershipSchema = v.strictObject({
+  files: v.array(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1)),
+      status: v.picklist(["added", "removed", "modified", "renamed"]),
+      additions: storedLineCountSchema,
+      deletions: storedLineCountSchema,
+    }),
+  ),
+  notes: v.array(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1)),
+      note: v.pipe(v.string(), v.minLength(1)),
+    }),
+  ),
+  contract: v.optional(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1)),
+      header: v.string(),
+      raw: v.pipe(v.string(), v.minLength(1)),
+      caption: v.pipe(v.string(), v.minLength(1)),
+    }),
+  ),
 });
 const storedBriefSchema = v.strictObject({
   snapshot: v.strictObject({
@@ -61,6 +87,8 @@ const storedBriefSchema = v.strictObject({
       ),
     }),
   ),
+  /** Absent on every Brief retained before the Ownership block existed. */
+  ownership: v.optional(storedOwnershipSchema),
 });
 
 type StoredBriefCitation = v.InferOutput<typeof storedCitationSchema>;
@@ -119,8 +147,21 @@ export function parseStoredBrief(
     ...definedProps({
       descriptionDrift:
         drift === undefined ? undefined : { claimed, undescribed },
+      ownership: storedOwnership(parsed.output.ownership),
     }),
   });
+}
+
+/** Rebuilds the Ownership block; `undefined` is a Brief retained before it existed. */
+function storedOwnership(
+  stored: v.InferOutput<typeof storedOwnershipSchema> | undefined,
+): BriefOwnership | undefined {
+  if (stored === undefined) return undefined;
+  return {
+    files: stored.files,
+    notes: stored.notes,
+    ...definedProps({ contract: stored.contract }),
+  };
 }
 
 /** Re-parses one stored citation list; `undefined` means a path no longer parses. */
