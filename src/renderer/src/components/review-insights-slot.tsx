@@ -187,6 +187,7 @@ export function InsightsSlot({
         >
           {selectedInsight === "overview" ? (
             <InsightOverview
+              brief={brief}
               analysis={workbench.insights.analysis}
               walkthrough={workbench.insights.walkthrough}
               scope={workbench.scope}

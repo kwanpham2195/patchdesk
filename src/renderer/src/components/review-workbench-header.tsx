@@ -65,7 +65,12 @@ export function ReviewWorkbenchHeader({
           aria-label="Pull request status and actions"
         >
           {model.scope === undefined ? null : (
-            <ScopeGauge scope={model.scope} size="mini" />
+            // The Checks and Merge chips beside it are outline `xs` buttons;
+            // the Scope chip carries no action, so it borrows their geometry
+            // without their hover affordance.
+            <span className="inline-flex h-6 items-center rounded-[min(var(--radius-md),10px)] border border-border bg-background px-2 dark:border-input dark:bg-input/30">
+              <ScopeGauge scope={model.scope} size="mini" />
+            </span>
           )}
           <Button
             variant="outline"

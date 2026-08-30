@@ -97,56 +97,72 @@ function InsightRailButton({
 }
 
 export function InsightOverview({
+  brief,
   analysis,
   walkthrough,
   scope,
   onSelect,
 }: {
+  readonly brief: InsightProjection;
   readonly analysis: InsightProjection;
   readonly walkthrough: InsightProjection;
   /** Absent when the represented patch bytes were unreadable; see `ReviewWorkbenchProjection.scope`. */
   readonly scope: WorkbenchResponse["scope"];
-  readonly onSelect: (value: "analysis" | "walkthrough") => void;
+  readonly onSelect: (value: "brief" | "analysis" | "walkthrough") => void;
 }): React.JSX.Element {
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-lg font-semibold">Insights overview</h2>
         <p className="text-sm text-muted-foreground">
-          Choose one retained document. Analysis and Walkthrough run
-          independently.
+          Choose one retained document. Each Insight runs independently.
         </p>
       </div>
       {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          className="rounded-md border p-4 text-left hover:bg-accent"
-          onClick={() => onSelect("analysis")}
-        >
-          <p className="font-medium">Analysis</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {insightStatusLabel(analysis.status)} ·{" "}
-            {analysis.retained === undefined
-              ? "No retained result"
-              : "Retained result available"}
-          </p>
-        </button>
-        <button
-          type="button"
-          className="rounded-md border p-4 text-left hover:bg-accent"
-          onClick={() => onSelect("walkthrough")}
-        >
-          <p className="font-medium">Walkthrough</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {insightStatusLabel(walkthrough.status)} ·{" "}
-            {walkthrough.retained === undefined
-              ? "No retained result"
-              : "Retained result available"}
-          </p>
-        </button>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <InsightOverviewCard
+          name="Brief"
+          projection={brief}
+          onSelect={() => onSelect("brief")}
+        />
+        <InsightOverviewCard
+          name="Analysis"
+          projection={analysis}
+          onSelect={() => onSelect("analysis")}
+        />
+        <InsightOverviewCard
+          name="Walkthrough"
+          projection={walkthrough}
+          onSelect={() => onSelect("walkthrough")}
+        />
       </div>
     </div>
+  );
+}
+
+function InsightOverviewCard({
+  name,
+  projection,
+  onSelect,
+}: {
+  readonly name: string;
+  readonly projection: InsightProjection;
+  readonly onSelect: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className="rounded-md border p-4 text-left hover:bg-accent"
+      onClick={onSelect}
+    >
+      <p className="font-medium">{name}</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {insightStatusLabel(projection.status)} ·{" "}
+        {projection.retained === undefined
+          ? "No retained result"
+          : "Retained result available"}
+      </p>
+    </button>
   );
 }
 
