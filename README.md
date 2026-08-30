@@ -1,85 +1,185 @@
 # Patchdesk
 
-Patchdesk is a local-first Electron workbench for preparing, inspecting, and
-explicitly running pull-request reviews. It is a desktop app that runs on
-your machine, reads pull requests from your watched repositories on GitHub,
-and lets you review and act on them without a hosted service in between.
+Patchdesk is a desktop app for reviewing GitHub pull requests. It runs on
+your Mac, next to your local checkouts, with no server in between.
+
+You open the Pull requests screen, pick a Selected repository, and see the
+list GitHub gives you for it. From there you read diffs, comment, resolve
+conversations, submit a Review, and merge. None of that needs a model.
+Models are optional, and only add Insights: a summary, a walkthrough, or an
+analysis of the diff.
 
 ## Requirements
 
-- macOS on Apple Silicon (arm64) only — there is no Windows, Linux, Intel, or
-  universal build; the packaged app will not run on an Intel Mac.
-- The GitHub CLI (`gh`), installed and authenticated:
+- macOS on Apple Silicon (arm64). Patchdesk does not run on Intel Macs,
+  Windows, or Linux.
+- `git`.
+- The GitHub CLI (`gh`), logged in:
+
   ```bash
   gh auth login
   ```
-- `git`.
 
-Patchdesk never stores GitHub credentials itself. The entire GitHub
-read/write path shells out to `gh auth token --hostname <host> --user
-<account>` (see `src/adapters/github/github-credentials.ts`); Patchdesk holds
-no token of its own.
+Patchdesk never stores a GitHub token. It runs `gh auth token` each time it
+needs one.
+
+You do not need Node.js installed. The part of Patchdesk that runs Insights
+ships inside the app and runs on Electron's own Node.
 
 ## Install
 
-Patchdesk is distributed as a `.dmg`, with a `.zip` of the same app beside it
-on the release page. Open the `.dmg` and drag `Patchdesk` onto the
-`Applications` folder in the window.
+1. Download the `.dmg` from the
+   [Releases page](https://github.com/kwanpham2195/patchdesk/releases).
+2. Open the `.dmg` and drag Patchdesk into Applications.
 
-An unsigned build — one that is not Apple-signed or notarized — needs one
-extra step the first time. Double-clicking it shows "macOS cannot verify the
-developer of Patchdesk.app". Get past that in either of these ways:
+The first time you open Patchdesk, macOS shows "Apple could not verify
+Patchdesk.app". This is expected: the build is not signed with an Apple Developer ID
+or notarized. Open it anyway, using either of these:
 
-- Right-click `Patchdesk.app` in `Applications` → **Open** → **Open** in the
-  dialog; or
-- open it once, then go to **System Settings → Privacy & Security** and press
-  **Open Anyway** beside the message about Patchdesk.
+- System Settings → Privacy & Security → Open Anyway, or
+- right-click `Patchdesk.app` → Open.
 
-macOS remembers the choice, so later launches are a plain double-click. If
-neither route appears, clear the quarantine attribute macOS puts on downloads
-and open it normally:
+If neither works, clear the quarantine flag macOS adds to downloads:
 
 ```bash
 xattr -cr /Applications/Patchdesk.app
 ```
 
-A signed and notarized build needs none of this and opens with a
-double-click.
+Opening Patchdesk a second time while it is already running quits the new
+copy right away; the existing window comes to the front instead.
 
 ## First run
 
-Launch the app. If you have not already authenticated `gh`, run `gh auth
-login` first. Patchdesk resolves the rest of its setup from the machine —
-your GitHub account and a starting workspace root — then asks which
-repositories under that root to watch.
+The Pull requests screen starts with a checklist:
 
-## Safety statement
+1. Confirm GitHub access — choose the account Patchdesk should use.
+2. Check local tools — Patchdesk checks for `git` and `gh`, and that `gh` is
+   logged in. Fix anything missing in a terminal, then press Re-check.
+3. Add your first repository — a local checkout Patchdesk can work in.
 
-The renderer is sandboxed and has no Node.js access. Preload exposes its IPC
-bridge. The main process starts a Hono loopback API on `127.0.0.1` with a random
-port, then waits for its authenticated health check before opening the
-workbench. The main process holds and sends the per-launch capability for each
-local API request. Every route also requires the matching renderer origin;
-cross-site and navigation-shaped requests are rejected.
+After that, go to Settings → Workspace to point Patchdesk at a workspace
+root. It finds repositories under that root for you to add.
 
-Patchdesk does not persist GitHub credentials or expose a renderer shell.
-Normal GitHub writes happen only from a named maintainer action. Finding **Add
-to review** is one explicit action for one GitHub write; it never runs when
-Analysis completes. If Patchdesk cannot confirm a write outcome, it locks the
-write for explicit GitHub reconciliation and never retries it automatically.
+## Reviewing pull requests
 
-Pull-request descriptions and check links are rendered as untrusted content;
-only a user click may open an HTTPS link on the configured GitHub host through
-the main process.
+Open the Pull requests screen and pick a Selected repository. Patchdesk
+shows one repository's list at a time; GitHub decides what is in it, the
+order, and the count.
 
-## Documentation
+From a pull request you can read the diff, leave comments, resolve
+conversations, submit a Review, and merge. This is the core flow, and it
+needs no model.
 
-- [Architecture](docs/architecture.md) describes the high-level architecture.
-- [Test cases](docs/test-cases.md) lists the canonical automated and manual checks per flow.
-- [CONTEXT.md](CONTEXT.md) is the glossary of domain terms.
-- [docs/adr/](docs/adr/) holds the architecture decision records.
+## Insights
 
-## Building from source
+An Insight is optional. It helps you understand or evaluate a change, but it
+never replaces a Review. Patchdesk offers three: Analysis, Walkthrough, and
+Brief. A fourth, the Scope gauge, needs no model at all — it buckets changed
+files by path and is always on wherever it is shown.
 
-To build Patchdesk yourself or contribute changes, see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Each run opens a dialog where you choose the Insight provider, the model,
+and the reasoning level. Patchdesk asks every time; it does not remember a
+choice for you.
+
+There are two Insight providers.
+
+### Pi
+
+Pi is a model client bundled with Patchdesk — you do not install anything
+separate. Pi talks directly to a model API, and you supply the key through
+an environment variable; there is no key field in the app.
+
+Common providers and the variable each reads:
+
+- Anthropic — `ANTHROPIC_API_KEY`
+- OpenAI — `OPENAI_API_KEY`
+- DeepSeek — `DEEPSEEK_API_KEY`
+- Google Gemini — `GEMINI_API_KEY`
+- OpenRouter — `OPENROUTER_API_KEY`
+- Groq — `GROQ_API_KEY`
+- Mistral — `MISTRAL_API_KEY`
+- xAI — `XAI_API_KEY`
+
+And others — see `src/adapters/pi/pi-provider-catalog.ts` for the full list.
+Amazon Bedrock and Google Vertex use your normal AWS or GCP credentials
+instead of a key.
+
+Patchdesk reads these variables from its own process, not from your shell
+profile. An app launched from the Dock or Finder does not see variables you
+exported in `.zshrc` or `.bashrc`. Two ways to get a variable to Patchdesk:
+
+- Set it for your whole login session, then launch Patchdesk normally:
+
+  ```bash
+  launchctl setenv ANTHROPIC_API_KEY "sk-..."
+  ```
+
+  This lasts until you log out or restart.
+
+- Or start Patchdesk from a terminal where the variable is already
+  exported:
+
+  ```bash
+  open -a Patchdesk
+  ```
+
+Only the variables the selected provider needs reach the model process, and
+only that process sees them — keys never reach the app's UI. The model list
+you see is Pi's catalog, filtered to providers you have a key for.
+
+### Codex CLI account
+
+This provider uses your existing Codex CLI login. Install Codex and run
+`codex login` yourself; Patchdesk never starts a login for you.
+
+Patchdesk finds `codex` by searching your PATH only, the same narrower PATH
+a Dock launch sees. If Codex is installed through Homebrew or npm, a Dock
+launch often cannot see it. The fix is the same as for Pi:
+
+```bash
+launchctl setenv PATH "/opt/homebrew/bin:$PATH"
+```
+
+or start Patchdesk from a terminal where `codex` is already on PATH.
+
+If Patchdesk cannot find Codex, the dialog says so directly: "Install Codex
+and expose codex on the app launch PATH, then log in externally."
+
+With either provider, the model never touches GitHub, your checkout, or the
+network beyond the model API itself.
+
+## Where Patchdesk keeps its files
+
+- Config: `~/.config/patchdesk`
+- Data: `~/.local/share/patchdesk`
+- Cache: `~/.cache/patchdesk`
+- Logs: `~/.local/share/patchdesk/logs/patchdesk.jsonl`
+
+Patchdesk does not use `~/Library`.
+
+## How Patchdesk stays safe
+
+The local API only listens on `127.0.0.1`, and the app window is sandboxed:
+it has no direct access to Node.js or your filesystem.
+
+A GitHub write only happens from an action you name explicitly, like Add to
+review. Finishing an Insight never triggers one on its own. If Patchdesk
+cannot confirm that a write went through, it locks further writes until you
+check GitHub again — it never retries a write on its own.
+
+## Known limits
+
+- GitHub rate limits and blocked reads (an IP allow list, SAML, a missing
+  scope) show up as what they are, with no retry button — retrying cannot
+  fix either one.
+- Patchdesk is built for a sighted person using a keyboard and mouse. It has
+  no screen reader support.
+- The Pull requests screen only refreshes when you ask: opening the screen,
+  changing a filter or page, or pressing ⌘R.
+
+## Contributing
+
+To build Patchdesk from source or contribute changes, see
+[CONTRIBUTING.md](CONTRIBUTING.md) and
+[docs/architecture.md](docs/architecture.md). Patchdesk is
+[MIT licensed](LICENSE).
