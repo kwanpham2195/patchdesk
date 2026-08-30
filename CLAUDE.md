@@ -3,8 +3,9 @@ AGENTS.md
 ## Delegate to subagents
 
 The main session reviews and delegates. It decides what to do, hands the work
-to subagents on the `opus` model, reviews what comes back, and reports.
-It does not carry out the work itself.
+to subagents, reviews what comes back, and reports. It does not carry out the
+work itself. Generators run on `sonnet`; evaluators run on `opus`, because
+breaking a claim is harder than making one.
 
 Delegate:
 
