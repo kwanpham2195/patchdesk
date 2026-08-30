@@ -28,12 +28,15 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Verification commands live in `CONTRIBUTING.md`. `pnpm check` (typecheck,
   root test suite, staged lint) is the pre-handoff command.
 - For live verification of the running app, drive it with `agent-browser` over CDP 9233. Read-only by default; ask before any write.
+- Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use a low-cost model such as `gpt-5.6-luna` on the Codex CLI account provider, not `gpt-5.6-sol`; pick it in the run dialog rather than changing the maintainer's stored preference.
+- `pnpm dev` exposes CDP only with `REMOTE_DEBUGGING_PORT=9233` in the environment.
 
 ## Code and Testing Conventions
 
 - Read files in full before wide-ranging changes, before editing files you have not fully inspected, and when asked to investigate or audit. Do not rely on search snippets for broad changes.
 - No `any` unless absolutely necessary.
 - Inline single-line helpers that have only one call site.
+- Comments preserve non-obvious intent, invariants, trade-offs, or external constraints. Prefer one sentence explaining why; let code describe what and how. Use longer comments only when a complex invariant cannot be expressed clearly in code.
 - Check node_modules for external API types; don't guess.
 - Always ask before removing functionality or code that appears intentional.
 - Do not preserve backward compatibility unless the user asks for it.
@@ -80,6 +83,7 @@ Committing:
 - Only commit files YOU changed in THIS session.
 - Stage explicit paths (`git add <path1> <path2>`); never `git add -A` / `git add .`.
 - Before committing, run `git status` and verify you are only staging your files.
+- Long multi-phase tasks: commit each accepted phase or milestone after its verification gate; do not collapse the entire task into one final commit.
 - Message format: informative and concise.
 
 Never run (destroys other agents' work or bypasses checks):
@@ -91,6 +95,20 @@ If rebase conflicts occur:
 - Resolve conflicts only in files you modified.
 - If a conflict is in a file you did not modify, abort and ask the user.
 - Never force push.
+
+## Skills
+
+Use the named skill when its trigger matches the task. Read the skill file before acting; it is the canonical workflow.
+
+- `react-doctor`: finishing React work or checking React diagnostics before handoff.
+- `diffs`: working with `@pierre/diffs`, code views, patches, or review surfaces.
+- `trees`: working with `@pierre/trees` file trees.
+- `shadcn`: adding, debugging, or composing shadcn/ui components.
+- `agent-browser`: live browser or Electron verification over CDP 9233.
+- `herdr`: dev servers, log tails, watchers, and named panes.
+- `github`: GitHub issues, pull requests, reviews, CI, or releases. Use its more specific leaf skill when applicable.
+- `librarian`: caching or consulting an upstream repository or dependency source.
+- `update-changelog`: before editing a changelog.
 
 ## References
 
