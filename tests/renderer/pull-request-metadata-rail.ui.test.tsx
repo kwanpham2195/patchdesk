@@ -67,7 +67,9 @@ describe("PullRequestMetadataRail assign yourself", () => {
     await user.click(
       await screen.findByRole("button", { name: "Assign yourself" }),
     );
-    await screen.findByRole("alert");
+    expect((await screen.findByRole("alert")).getAttribute("data-slot")).toBe(
+      "inline-error",
+    );
     expect(screen.queryByText("octocat")).toBeNull();
     await waitFor(() =>
       expect(

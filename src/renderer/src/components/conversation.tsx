@@ -10,6 +10,7 @@ import type { WorkbenchResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
 import {
@@ -362,9 +363,7 @@ function ReviewSummaryEntry({
                 onChange={(event) => setMessage(event.target.value)}
               />
               {error === undefined ? null : (
-                <p role="alert" className="mt-1 text-sm text-destructive">
-                  {error}
-                </p>
+                <InlineError className="mt-1">{error}</InlineError>
               )}
               <div className="mt-2 flex gap-2">
                 <Button

@@ -425,7 +425,9 @@ describe("published review dismissal", () => {
         .hasAttribute("disabled"),
     ).toBe(true);
     reject();
-    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect((await screen.findByRole("alert")).getAttribute("data-slot")).toBe(
+      "inline-error",
+    );
     if (!(reason instanceof HTMLTextAreaElement))
       throw new Error("expected dismissal reason textarea");
     expect(reason.value).toBe("obsolete");

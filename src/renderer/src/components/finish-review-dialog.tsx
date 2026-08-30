@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "./ui/badge";
+import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -222,9 +223,9 @@ function FinishReviewDialogContent({
           </div>
           {submitError === undefined ? null : (
             <div className="flex flex-col gap-2">
-              <p role="alert" className="text-sm text-destructive">
-                {submitError}
-              </p>
+              <Alert variant="destructive">
+                <AlertDescription>{submitError}</AlertDescription>
+              </Alert>
               {actions.onCheckGitHubAgain === undefined ? null : (
                 <Button
                   variant="outline"
@@ -237,10 +238,10 @@ function FinishReviewDialogContent({
               )}
             </div>
           )}
-          {error === undefined ? null : (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
+          {error === undefined || submitError !== undefined ? null : (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
           {/* Discard is destructive and stays visually separate from the
               Close/Submit group; both groups wrap independently at narrow

@@ -27,6 +27,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "./ui/popover";
+import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
 
 /** GitHub's per-pull-request assignee limit (enforced server-side by `AssigneeService`, `src/services/assignee-service.ts`); stated here so a maintainer understands why an add can be refused before they hit it. */
@@ -154,13 +155,11 @@ export function AssigneePicker({
           GitHub allows up to {MAX_ASSIGNEES} assignees on a pull request.
         </p>
         {readState._tag === "ready" && permission === "denied" ? (
-          <p
-            role="alert"
-            data-slot="picker-permission-denied"
-            className="text-xs text-destructive"
-          >
-            This account cannot manage assignees on this repository.
-          </p>
+          <div data-slot="picker-permission-denied">
+            <InlineError className="text-xs">
+              This account cannot manage assignees on this repository.
+            </InlineError>
+          </div>
         ) : readState._tag === "ready" && permission === "unknown" ? (
           <p
             data-slot="picker-permission-caveat"
@@ -171,13 +170,9 @@ export function AssigneePicker({
           </p>
         ) : null}
         {picker.writeError === undefined ? null : (
-          <p
-            role="alert"
-            data-slot="picker-write-error"
-            className="text-xs text-destructive"
-          >
-            {picker.writeError}
-          </p>
+          <div data-slot="picker-write-error">
+            <InlineError className="text-xs">{picker.writeError}</InlineError>
+          </div>
         )}
         <FieldGroup>
           <Field>
@@ -219,29 +214,29 @@ function AssigneePickerList({
     );
   if (readState._tag === "github_auth")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         GitHub authentication is required before Patchdesk can list this
         repository&apos;s assignable people.
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_read")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         Patchdesk could not load this repository&apos;s assignable people.
         Reopen this menu to retry.
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_rate_limited")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         {rateLimitedCopy(readState.resumeAt)}
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_forbidden")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         {forbiddenCopy(readState.reason)}
-      </p>
+      </InlineError>
     );
   if (readState.users.length === 0)
     return <p className="text-xs text-muted-foreground">No matching people.</p>;

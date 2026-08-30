@@ -122,13 +122,12 @@ describe("FinishReviewDialog", () => {
         actions={{ busy: false, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,
     );
-    expect(
-      (
-        screen.getByRole("textbox", {
-          name: "Final review summary",
-        }) as HTMLTextAreaElement
-      ).value,
-    ).toBe("# Review Scope\nAnalysis context");
+    const summary = screen.getByRole("textbox", {
+      name: "Final review summary",
+    });
+    if (!(summary instanceof HTMLTextAreaElement))
+      throw new Error("expected the final review summary textarea");
+    expect(summary.value).toBe("# Review Scope\nAnalysis context");
     expect(
       screen.getByRole("combobox", { name: "Review decision" }).textContent,
     ).toContain("Comment");
@@ -169,16 +168,16 @@ describe("FinishReviewDialog", () => {
         actions={{ busy: true, onSubmit: vi.fn(), onDiscard: vi.fn() }}
       />,
     );
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Submit review",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+    const submit = screen.getByRole("button", { name: "Submit review" });
+    if (!(submit instanceof HTMLButtonElement))
+      throw new Error("expected the submit review button");
+    expect(submit.disabled).toBe(true);
     const closeButtons = screen.getAllByRole("button", { name: "Close" });
     expect(closeButtons.length).toBeGreaterThan(0);
-    expect((closeButtons[0] as HTMLButtonElement).disabled).toBe(true);
+    const close = closeButtons[0];
+    if (!(close instanceof HTMLButtonElement))
+      throw new Error("expected the dialog close button");
+    expect(close.disabled).toBe(true);
   });
 
   it("surfaces a bounded submit failure and leaves recovery outside the modal", async () => {
@@ -199,7 +198,9 @@ describe("FinishReviewDialog", () => {
       { target: { value: "Summary" } },
     );
     fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
-    await vi.waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert").getAttribute("data-slot")).toBe("alert"),
+    );
     // The modal never hosts the recovery control; the unavailable/recovery
     // notice outside the modal owns Check GitHub again.
     expect(

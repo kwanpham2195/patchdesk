@@ -32,6 +32,7 @@ import { ReviewerPicker, type ReviewerPickerActions } from "./reviewer-picker";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
 import type { ForbiddenReason } from "../../../domain/github-forbidden-reason";
 
@@ -246,29 +247,29 @@ function ReviewersSectionBody({
     );
   if (readState._tag === "github_auth")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         GitHub authentication is required before Patchdesk can show this pull
         request&apos;s reviewers.
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_read")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         Patchdesk could not load this pull request&apos;s reviewers. Refresh to
         retry.
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_rate_limited")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         {rateLimitedCopy(readState.resumeAt)}
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_forbidden")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         {forbiddenCopy(readState.reason)}
-      </p>
+      </InlineError>
     );
   if (readState.reviewers.length === 0)
     return (
@@ -520,9 +521,7 @@ function AssigneesSection({
                 </p>
               ) : null}
               {selfAssignError === undefined ? null : (
-                <p role="alert" className="text-xs text-destructive">
-                  {selfAssignError}
-                </p>
+                <InlineError className="text-xs">{selfAssignError}</InlineError>
               )}
             </div>
           ) : null}

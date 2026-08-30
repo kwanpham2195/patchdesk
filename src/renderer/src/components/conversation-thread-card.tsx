@@ -5,6 +5,7 @@ import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
+import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -161,9 +162,7 @@ function ConversationCommentRow({
           <PullRequestDescriptionPreview markdown={comment.body} />
         )}
         {error !== undefined && !editing ? (
-          <p role="alert" className="mt-1 text-sm text-destructive">
-            {error}
-          </p>
+          <InlineError className="mt-1">{error}</InlineError>
         ) : null}
         {(canEdit || canDelete) && !editing ? (
           <div className="mt-1 flex gap-3">
@@ -426,9 +425,7 @@ export function ConversationThreadCard({
         </Button>
       )}
       {error === undefined ? null : (
-        <p role="alert" className="mt-2 text-sm text-destructive">
-          {error}
-        </p>
+        <InlineError className="mt-2">{error}</InlineError>
       )}
       {thread.onReply === undefined ? null : (
         <div className="mt-4 border-t pt-3">

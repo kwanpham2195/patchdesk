@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { PatchdeskApiError } from "../api-client";
 import type {
@@ -8,6 +8,8 @@ import type {
 import { composerErrorMessage } from "./review-diff-authoring-errors";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { Button } from "@/components/ui/button";
+import { Field, FieldError } from "@/components/ui/field";
+import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -37,10 +39,10 @@ export function PendingConversationCard({
       </div>
       {status === "failed" ? (
         <div className="mt-2">
-          <p role="alert" className="text-sm text-destructive">
+          <InlineError>
             Patchdesk could not publish this comment. Refresh GitHub state
             before composing it again.
-          </p>
+          </InlineError>
           <Button
             size="sm"
             variant="outline"
@@ -91,9 +93,7 @@ export function PendingReviewWriteCard({
       </div>
       {status === "failed" ? (
         <div className="mt-2">
-          <p role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
+          <InlineError>{message}</InlineError>
           <Button
             size="sm"
             variant="outline"
@@ -261,6 +261,7 @@ export function InlineCommentComposer({
   const [pendingAction, setPendingAction] = useState<ComposerAction>();
   const pendingActionRef = useRef<ComposerAction | undefined>(undefined);
   const [error, setError] = useState<string>();
+  const errorId = `inline-comment-${useId()}-error`;
   const pendingState = pendingReview?.state.state;
   const writeDisabled =
     pendingState === "unavailable" || pendingState === "recovery_required";
@@ -335,29 +336,37 @@ export function InlineCommentComposer({
             ? "publishes to GitHub"
             : "GitHub write is paused"}
       </p>
-      <Textarea
+      <Field
         className="mt-2"
-        autoFocus
-        aria-label="Inline comment"
-        value={body}
-        onChange={(event) => setBody(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            cancel();
-          }
-          if (
-            (event.metaKey || event.ctrlKey) &&
-            event.key === "Enter" &&
-            !writeDisabled
-          ) {
-            event.preventDefault();
-            void run(keyboardAction, startOrAdd);
-          }
-        }}
-        placeholder="Write an inline comment"
-        disabled={writeDisabled || busy}
-      />
+        data-invalid={error !== undefined || undefined}
+        data-disabled={writeDisabled || busy || undefined}
+      >
+        <Textarea
+          autoFocus
+          aria-label="Inline comment"
+          aria-invalid={error !== undefined || undefined}
+          aria-describedby={error === undefined ? undefined : errorId}
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              cancel();
+            }
+            if (
+              (event.metaKey || event.ctrlKey) &&
+              event.key === "Enter" &&
+              !writeDisabled
+            ) {
+              event.preventDefault();
+              void run(keyboardAction, startOrAdd);
+            }
+          }}
+          placeholder="Write an inline comment"
+          disabled={writeDisabled || busy}
+        />
+        <FieldError id={errorId}>{error}</FieldError>
+      </Field>
       <div className="mt-2 flex gap-2">
         {pendingReview === undefined ? (
           <Button
@@ -427,11 +436,6 @@ export function InlineCommentComposer({
           Cancel
         </Button>
       </div>
-      {error === undefined ? null : (
-        <p role="alert" className="mt-2 text-sm text-destructive">
-          {error}
-        </p>
-      )}
       <p className="mt-2 text-xs text-muted-foreground">
         Press ⌘/Ctrl+Enter to comment. Escape cancels.
       </p>

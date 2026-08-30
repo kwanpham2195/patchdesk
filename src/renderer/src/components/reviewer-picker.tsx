@@ -27,6 +27,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "./ui/popover";
+import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
 
 /** One candidate row's shape, taken from the parsed wire response — see
@@ -172,13 +173,11 @@ export function ReviewerPicker({
           <PopoverTitle>Reviewers</PopoverTitle>
         </PopoverHeader>
         {readState._tag === "ready" && permission === "denied" ? (
-          <p
-            role="alert"
-            data-slot="picker-permission-denied"
-            className="text-xs text-destructive"
-          >
-            This account cannot manage reviewers on this repository.
-          </p>
+          <div data-slot="picker-permission-denied">
+            <InlineError className="text-xs">
+              This account cannot manage reviewers on this repository.
+            </InlineError>
+          </div>
         ) : readState._tag === "ready" && permission === "unknown" ? (
           <p
             data-slot="picker-permission-caveat"
@@ -189,13 +188,9 @@ export function ReviewerPicker({
           </p>
         ) : null}
         {picker.writeError === undefined ? null : (
-          <p
-            role="alert"
-            data-slot="picker-write-error"
-            className="text-xs text-destructive"
-          >
-            {picker.writeError}
-          </p>
+          <div data-slot="picker-write-error">
+            <InlineError className="text-xs">{picker.writeError}</InlineError>
+          </div>
         )}
         <FieldGroup>
           <Field>
@@ -298,29 +293,29 @@ function ReviewerPickerList({
     );
   if (readState._tag === "github_auth")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         GitHub authentication is required before Patchdesk can list this
         repository&apos;s reviewer candidates.
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_read")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         Patchdesk could not load this repository&apos;s reviewer candidates.
         Reopen this menu to retry.
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_rate_limited")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         {rateLimitedCopy(readState.resumeAt)}
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_forbidden")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         {forbiddenCopy(readState.reason)}
-      </p>
+      </InlineError>
     );
 
   const candidatesByLogin = new Map(

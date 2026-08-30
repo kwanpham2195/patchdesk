@@ -31,6 +31,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "./ui/popover";
+import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
 
 export type LabelPickerActions = {
@@ -144,13 +145,11 @@ export function LabelPicker({
           <PopoverTitle>Labels</PopoverTitle>
         </PopoverHeader>
         {readState._tag === "ready" && permission === "denied" ? (
-          <p
-            role="alert"
-            data-slot="picker-permission-denied"
-            className="text-xs text-destructive"
-          >
-            This account cannot manage labels on this repository.
-          </p>
+          <div data-slot="picker-permission-denied">
+            <InlineError className="text-xs">
+              This account cannot manage labels on this repository.
+            </InlineError>
+          </div>
         ) : readState._tag === "ready" && permission === "unknown" ? (
           <p
             data-slot="picker-permission-caveat"
@@ -161,13 +160,9 @@ export function LabelPicker({
           </p>
         ) : null}
         {picker.writeError === undefined ? null : (
-          <p
-            role="alert"
-            data-slot="picker-write-error"
-            className="text-xs text-destructive"
-          >
-            {picker.writeError}
-          </p>
+          <div data-slot="picker-write-error">
+            <InlineError className="text-xs">{picker.writeError}</InlineError>
+          </div>
         )}
         <LabelPickerList
           readState={readState}
@@ -197,29 +192,29 @@ function LabelPickerList({
     );
   if (readState._tag === "github_auth")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         GitHub authentication is required before Patchdesk can list this
         repository&apos;s labels.
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_read")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         Patchdesk could not load this repository&apos;s labels. Reopen this menu
         to retry.
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_rate_limited")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         {rateLimitedCopy(readState.resumeAt)}
-      </p>
+      </InlineError>
     );
   if (readState._tag === "github_forbidden")
     return (
-      <p role="alert" className="text-xs text-destructive">
+      <InlineError className="text-xs">
         {forbiddenCopy(readState.reason)}
-      </p>
+      </InlineError>
     );
   return (
     <FieldSet data-disabled={disabled || undefined}>

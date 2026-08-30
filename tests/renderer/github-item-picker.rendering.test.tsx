@@ -25,7 +25,7 @@ import type {
  * forbidden reason, told a permitted account its writes may be refused, or
  * lost its own `totalCount` projection would leave that suite green. Each
  * promise below is therefore asserted once per picker, from the DOM, through
- * the markers the components carry (`data-slot="picker-…"`) rather than
+ * shared primitive and picker-state markers rather than
  * through sentences of copy (AGENTS.md Testing).
  *
  * What is picker-specific — the ten-assignee cap, the reviewer suggestion
@@ -222,7 +222,7 @@ describe.each(pickers)(
         }),
       );
       const added = await screen.findByRole("alert");
-      expect(added.getAttribute("data-slot")).toBe("picker-write-error");
+      expect(added.getAttribute("data-slot")).toBe("inline-error");
       const addFailure = added.textContent ?? "";
       expect(addFailure).toContain(detachedRow);
 

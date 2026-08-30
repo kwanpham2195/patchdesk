@@ -604,11 +604,8 @@ function LabelFilterPopover({
   );
 }
 
-/** The label filter popover's body: its read state's message, or its list
- * of toggleable repository labels. A GitHub read failure (auth/rate-limit/
- * forbidden) says exactly what went wrong, rather than rendering as an
- * empty list — an empty list here only ever means the ready, zero-label
- * case (`readState.labels.length === 0`), never a failed read. */
+/** Renders a GitHub read failure or the ready list; only a successful
+ * zero-label read may render the empty-list message. */
 function LabelFilterList({
   readState,
   selectedLabels,
@@ -646,6 +643,7 @@ function LabelFilterList({
         <AlertDescription className="text-xs">{failure[1]}</AlertDescription>
       </Alert>
     );
+  if (readState._tag !== "ready") throw new Error("Unexpected label state");
   if (readState.labels.length === 0)
     return (
       <p className="text-xs text-muted-foreground">

@@ -118,7 +118,10 @@ describe("InlineCommentComposer", () => {
         expect(button.hasAttribute("disabled")).toBe(true);
 
       request.reject(new Error("write failed"));
-      expect(await screen.findByRole("alert")).toBeTruthy();
+      const error = await screen.findByRole("alert");
+      expect(error.getAttribute("data-slot")).toBe("field-error");
+      expect(editor.getAttribute("aria-invalid")).toBe("true");
+      expect(editor.getAttribute("aria-describedby")).toBe(error.id);
       if (!(editor instanceof HTMLTextAreaElement))
         throw new Error("expected inline comment textarea");
       expect(editor.value).toBe("Draft under test");
@@ -154,7 +157,9 @@ describe("InlineCommentComposer", () => {
       screen.getByRole("button", { name: /Starting/ }).hasAttribute("disabled"),
     ).toBe(true);
     request.reject(new Error("write failed"));
-    expect(await screen.findByRole("alert")).toBeTruthy();
+    const error = await screen.findByRole("alert");
+    expect(error.getAttribute("data-slot")).toBe("field-error");
+    expect(editor.getAttribute("aria-describedby")).toBe(error.id);
     if (!(editor instanceof HTMLTextAreaElement))
       throw new Error("expected inline comment textarea");
     expect(editor.value).toBe("Keyboard draft");

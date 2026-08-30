@@ -391,7 +391,9 @@ describe("ConversationThreadCard", () => {
     expect(screen.getByText("First comment")).toBeTruthy();
 
     deletion.reject(new Error("delete failed"));
-    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect((await screen.findByRole("alert")).getAttribute("data-slot")).toBe(
+      "inline-error",
+    );
     expect(screen.getByText("First comment")).toBeTruthy();
     expect(screen.getByText("Second comment")).toBeTruthy();
   });
