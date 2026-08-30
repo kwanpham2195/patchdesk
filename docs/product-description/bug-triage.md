@@ -29,6 +29,8 @@ Six distinct candidates remain after deduplication: one high-severity work-loss 
 - **Status:** `suspected - static evidence, live unverified`.
 - **Issue:** —
 
+## Medium
+
 ### B-02: Scalar profile validation falls through to a generic request error
 
 - **Where the user meets it:** Settings > Workspace, after entering an empty or malformed scalar such as GitHub host, account, profile ID, or label and pressing Save.
@@ -40,8 +42,6 @@ Six distinct candidates remain after deduplication: one high-severity work-loss 
 - **Affected documents/checklists:** [`Workspace profile editor`](settings/workspace-profile-editor.md#open-questions-and-verification), [`SETUP-03`](verification/foundations-and-settings.md#settingsworkspace-profile-editormd).
 - **Status:** `suspected - static evidence, live unverified`.
 - **Issue:** —
-
-## Medium
 
 ### B-03: Open Review recommendation preempts ready-to-merge action
 
