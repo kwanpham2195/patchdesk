@@ -211,7 +211,21 @@ function createInsightCoordinator(
   operations: ReviewOperationCoordinator,
 ): InsightRunCoordinator {
   const paths = PatchdeskPaths.default();
-  const runtime = resolveInsightRuntime(app.getAppPath(), process.cwd());
+  const runtime = resolveInsightRuntime(
+    app.getAppPath(),
+    process.cwd(),
+    app.isPackaged,
+  );
+  logs.write({
+    process: "main",
+    level: runtime === undefined ? "warn" : "info",
+    topic: "insight-runtime",
+    message:
+      runtime === undefined
+        ? "no verified Insight runtime resolved"
+        : `Insight runtime resolved from the ${runtime.kind} build`,
+    meta: runtime === undefined ? {} : { runnerPath: runtime.runnerPath },
+  });
   const insightInvoker =
     runtime === undefined
       ? undefined

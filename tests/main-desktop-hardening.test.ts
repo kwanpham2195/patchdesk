@@ -249,10 +249,12 @@ describe("desktop hardening", () => {
       resolveInsightRuntime(
         "/Applications/Patchdesk.app/Contents/Resources/app.asar",
         "/workspace/patchdesk",
+        true,
         (path) => files.has(path),
         (path) => files.get(path) ?? "",
       ),
     ).toEqual({
+      kind: "packaged",
       root: packagedRoot,
       runnerPath: `${packagedRoot}/patchdesk-insight-runner.js`,
       manifestPath: `${packagedRoot}/runtime-manifest.json`,
@@ -272,9 +274,61 @@ describe("desktop hardening", () => {
       resolveInsightRuntime(
         "/Applications/Patchdesk.app/Contents/Resources/app.asar",
         "/workspace/patchdesk",
+        true,
         (path) => files.has(path),
         (path) => files.get(path) ?? "",
       ),
     ).toBeUndefined();
+  });
+
+  it("prefers the development build over a staged one only when unpackaged", () => {
+    const cwd = "/workspace/patchdesk";
+    const stagedRoot = `${cwd}/out/workflow-runtime`;
+    const developmentRoot = `${cwd}/runtime/flue`;
+    const lock = "lockfileVersion: '6.0'\n";
+    // SAFETY: as above -- the generated catalog literal always carries `digest`.
+    const catalogDigest = (generatedPiAiCatalog as { readonly digest: string })
+      .digest;
+    // Both roots pass every manifest check: the manifest pins the Flue and Pi
+    // versions, the catalog digest, the node floor and the lock digest, so a
+    // staging built before a request type existed is indistinguishable from a
+    // fresh one. Only the resolution order keeps the stale runner out of a
+    // `pnpm dev` run, which rebuilds `runtime/flue/dist` on every start.
+    const manifest = JSON.stringify({
+      flueVersion: "2.0.3",
+      piVersion: "0.84.1",
+      catalogDigest,
+      nodeFloor: ">=22.19.0",
+      lockDigest: createHash("sha256").update(lock).digest("hex"),
+    });
+    const files = new Map<string, string>([
+      [`${stagedRoot}/patchdesk-insight-runner.js`, ""],
+      [`${stagedRoot}/pnpm-lock.yaml`, lock],
+      [`${stagedRoot}/runtime-manifest.json`, manifest],
+      [`${developmentRoot}/dist/patchdesk-insight-runner.js`, ""],
+      [`${developmentRoot}/pnpm-lock.yaml`, lock],
+      [`${developmentRoot}/runtime-manifest.json`, manifest],
+    ]);
+    const resolve = (isPackaged: boolean) =>
+      resolveInsightRuntime(
+        `${cwd}/out/main/index.js`,
+        cwd,
+        isPackaged,
+        (path) => files.has(path),
+        (path) => files.get(path) ?? "",
+      );
+
+    expect(resolve(false)).toEqual({
+      kind: "development",
+      root: developmentRoot,
+      runnerPath: `${developmentRoot}/dist/patchdesk-insight-runner.js`,
+      manifestPath: `${developmentRoot}/runtime-manifest.json`,
+    });
+    expect(resolve(true)).toEqual({
+      kind: "staged",
+      root: stagedRoot,
+      runnerPath: `${stagedRoot}/patchdesk-insight-runner.js`,
+      manifestPath: `${stagedRoot}/runtime-manifest.json`,
+    });
   });
 });
