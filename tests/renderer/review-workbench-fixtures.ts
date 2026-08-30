@@ -165,6 +165,69 @@ export const analysisResult = {
   assumptions: [],
 };
 
+/** One retained Brief: cited Goal prose, one assumption, resolved labels. */
+export const briefValue = {
+  snapshot: {
+    profileId: "profile",
+    sessionId: "session-a",
+    headSha: sha,
+    patchHash,
+  },
+  citationStatus: "verified" as const,
+  goal: [
+    {
+      text: "Every live comment write now confirms its outcome with one read-back.",
+      citations: [
+        {
+          alias: "d1",
+          kind: "description" as const,
+          label: "The first paragraph of the pull request description.",
+        },
+        {
+          alias: "h1",
+          kind: "hunk" as const,
+          label: "@@ -1 +1 @@",
+          path: "src/a.ts",
+        },
+        {
+          alias: "c1",
+          kind: "commit" as const,
+          label: "c6d5d41 confirm the write before reporting it",
+        },
+      ],
+    },
+  ],
+  assumptions: [
+    {
+      text: "No issue is linked, so the Brief names no reporter.",
+      demoted: false,
+    },
+  ],
+};
+
+/** The Brief Insight projection every Brief test starts from. */
+export function briefInsight(
+  overrides: Partial<NonNullable<WorkbenchResponse["insights"]["brief"]>> = {},
+): NonNullable<WorkbenchResponse["insights"]["brief"]> {
+  return {
+    status: "current",
+    artifactStatus: "verified",
+    retained: {
+      runId: "insight-brief-1-fixture",
+      sessionId: "session-a",
+      headSha: sha,
+      generatedAt: "2026-08-01T00:00:00.000Z",
+      provenance: {
+        provider: "pi",
+        model: "fixture-model",
+        reasoning: "medium",
+      },
+      value: briefValue,
+    },
+    ...overrides,
+  };
+}
+
 export const providerCatalog = {
   providers: [
     {

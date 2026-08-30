@@ -6,7 +6,9 @@ import type {
 } from "../../../domain/insight-provider";
 import { requestJson } from "../api-client";
 import {
+  INSIGHT_PREFERENCE_TYPES,
   loadInsightRunPreference,
+  type InsightPreferenceType,
   type InsightRunPreference,
 } from "../insight-run-preferences";
 import { loadCodexModelCache, saveCodexModelCache } from "../codex-model-cache";
@@ -66,11 +68,12 @@ function mergeCodexModels(
     ...codexModels,
   ];
 }
+type InsightRunPreferences = Partial<
+  Record<InsightPreferenceType, InsightRunPreference>
+>;
 type InsightConfigurationController = {
   readonly configuration: InsightRunConfiguration;
-  readonly preferencesRef: React.MutableRefObject<
-    Partial<Record<"analysis" | "walkthrough", InsightRunPreference>>
-  >;
+  readonly preferencesRef: React.MutableRefObject<InsightRunPreferences>;
   readonly setConfiguration: (patch: Partial<InsightRunConfiguration>) => void;
   readonly changeProvider: (provider: InsightProvider) => void;
   readonly activateCodex: () => void;
@@ -88,24 +91,15 @@ export function useInsightConfiguration(input: {
   const { catalog, runDialogType } = configuration;
   const setConfiguration = (patch: Partial<InsightRunConfiguration>): void =>
     updateConfiguration({ type: "updated", patch });
-  const preferencesRef = useRef<
-    Partial<Record<"analysis" | "walkthrough", InsightRunPreference>>
-  >({});
+  const preferencesRef = useRef<InsightRunPreferences>({});
 
   useEffect(() => {
     let active = true;
-    const loadedPreferences: Partial<
-      Record<"analysis" | "walkthrough", InsightRunPreference>
-    > = {};
-    const analysisPreference = loadInsightRunPreference(profileId, "analysis");
-    const walkthroughPreference = loadInsightRunPreference(
-      profileId,
-      "walkthrough",
-    );
-    if (analysisPreference !== undefined)
-      loadedPreferences.analysis = analysisPreference;
-    if (walkthroughPreference !== undefined)
-      loadedPreferences.walkthrough = walkthroughPreference;
+    const loadedPreferences: InsightRunPreferences = {};
+    for (const type of INSIGHT_PREFERENCE_TYPES) {
+      const stored = loadInsightRunPreference(profileId, type);
+      if (stored !== undefined) loadedPreferences[type] = stored;
+    }
     preferencesRef.current = loadedPreferences;
     const initialPreference = loadedPreferences[initialDetail ?? "analysis"];
     if (initialPreference !== undefined) {
@@ -167,7 +161,7 @@ export function useInsightConfiguration(input: {
 
   const activePreferenceType =
     runDialogType ??
-    (selectedInsight === "walkthrough" ? "walkthrough" : "analysis");
+    (selectedInsight === "overview" ? "analysis" : selectedInsight);
   const changeProvider = (nextProvider: InsightProvider): void => {
     const nextModels =
       catalog?.models.filter(

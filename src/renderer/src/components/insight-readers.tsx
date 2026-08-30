@@ -1,4 +1,5 @@
 import { parseUnifiedPatch } from "../../../domain/patch";
+import { BriefReader } from "./brief-reader";
 import { renderAnalysisReviewSummary } from "../analysis-review-summary";
 import { AnalysisReader } from "./analysis-reader";
 import { projectReadOnlyConversationAnnotations } from "../inline-conversation-mapping";
@@ -20,6 +21,9 @@ type InsightReaderBuilderInput = {
   ) => Promise<void>;
   readonly walkthroughFocused: boolean;
   readonly setWalkthroughFocused: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Opens the run dialog from the Brief's own Provenance card. */
+  readonly onRegenerateBrief: () => void;
+  readonly runEnabled: boolean;
 };
 export function buildInsightReaders({
   workbench,
@@ -31,6 +35,8 @@ export function buildInsightReaders({
   dismissFinding,
   walkthroughFocused,
   setWalkthroughFocused,
+  onRegenerateBrief,
+  runEnabled,
 }: InsightReaderBuilderInput): React.ReactNode {
   const analysisSummaryScope = {
     baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7),
@@ -146,5 +152,15 @@ export function buildInsightReaders({
         onFocusedChange={setWalkthroughFocused}
       />
     ) : null;
-  return retainedAnalysis ?? retainedWalkthrough;
+  const briefRetained = workbench.insights.brief?.retained;
+  const retainedBrief =
+    selectedInsight === "brief" && briefRetained !== undefined ? (
+      <BriefReader
+        retained={briefRetained}
+        {...(workbench.scope === undefined ? {} : { scope: workbench.scope })}
+        onRegenerate={onRegenerateBrief}
+        regenerateDisabled={!runEnabled}
+      />
+    ) : null;
+  return retainedAnalysis ?? retainedWalkthrough ?? retainedBrief;
 }

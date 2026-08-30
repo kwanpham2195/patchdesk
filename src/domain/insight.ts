@@ -12,7 +12,7 @@ import {
   type RetainedInsight,
   type WalkthroughProgress,
 } from "./insight-record";
-import type { InsightReasoning } from "./insight-provider";
+import type { InsightProvenance, InsightReasoning } from "./insight-provider";
 import type { ReviewSession } from "./review-session";
 type InsightStatus =
   | "not_generated"
@@ -46,6 +46,8 @@ export type InsightProjection<T> = {
     readonly sessionId: ReviewSessionId;
     readonly headSha: GitSha;
     readonly generatedAt: IsoTimestamp;
+    /** The provider, model, and reasoning this Insight was actually produced with. */
+    readonly provenance: InsightProvenance;
     readonly value: T;
     readonly scope?: InsightScopeProjection;
   };
@@ -99,6 +101,7 @@ export function projectStoredInsight<T>(
           sessionId: record.retained.revision.sessionId,
           headSha: record.retained.revision.headSha,
           generatedAt: record.retained.generatedAt,
+          provenance: record.retained.provenance,
           value: decorate(record.retained.value, record),
           ...(scope !== undefined && { scope }),
         };

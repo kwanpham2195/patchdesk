@@ -6,7 +6,13 @@ import type {
 } from "../../domain/insight-provider";
 import { definePreference } from "./lib/local-preference";
 
-export type InsightPreferenceType = "analysis" | "walkthrough";
+/** Every Insight type that stores its own provider/model/reasoning choice. */
+export const INSIGHT_PREFERENCE_TYPES = [
+  "analysis",
+  "walkthrough",
+  "brief",
+] as const;
+export type InsightPreferenceType = (typeof INSIGHT_PREFERENCE_TYPES)[number];
 export type InsightRunPreference = {
   readonly provider: InsightProvider;
   readonly model: string;

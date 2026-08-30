@@ -3,12 +3,21 @@ import { Button } from "./ui/button";
 import { ScopeGauge } from "./scope-gauge";
 import { Spinner } from "./ui/spinner";
 import type { InsightFailureCategory } from "../../../domain/insight-record";
+import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
+import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
-export type InsightSelection = "overview" | "analysis" | "walkthrough";
+export type InsightSelection = "overview" | InsightRunDialogType;
 export type InsightProjection =
   | WorkbenchResponse["insights"]["analysis"]
-  | WorkbenchResponse["insights"]["walkthrough"];
+  | WorkbenchResponse["insights"]["walkthrough"]
+  | BriefInsight;
+/** Each type's call to action when nothing has been generated for this revision. */
+const GENERATE_LABELS = {
+  analysis: "Generate analysis",
+  walkthrough: "Generate Walkthrough",
+  brief: "Generate brief",
+} as const satisfies Record<InsightRunDialogType, string>;
 
 export function InsightNavRail({
   workbench,
@@ -21,6 +30,16 @@ export function InsightNavRail({
     React.SetStateAction<InsightSelection>
   >;
 }): React.JSX.Element {
+  // Brief first: it is the shortest read and the one that says what the pull
+  // request is for, so it comes before the two documents that judge or explain
+  // it. Overview stays leftmost as the landing selection.
+  const documents = [
+    ["brief", workbench.insights.brief ?? NOT_GENERATED_BRIEF],
+    ["analysis", workbench.insights.analysis],
+    ["walkthrough", workbench.insights.walkthrough],
+  ] as const satisfies ReadonlyArray<
+    readonly [InsightRunDialogType, InsightProjection]
+  >;
   return (
     <nav
       aria-label="Insight navigation"
@@ -32,26 +51,18 @@ export function InsightNavRail({
         title="Overview"
         status="Current"
       />
-      <InsightRailButton
-        selected={selectedInsight === "analysis"}
-        onClick={() => setSelectedInsight("analysis")}
-        title="Analysis"
-        status={insightStatusLabel(workbench.insights.analysis.status)}
-        {...(workbench.insights.analysis.retained === undefined
-          ? {}
-          : { revision: workbench.insights.analysis.retained.headSha })}
-      />
-      <InsightRailButton
-        selected={selectedInsight === "walkthrough"}
-        onClick={() => setSelectedInsight("walkthrough")}
-        title="Walkthrough"
-        status={insightStatusLabel(workbench.insights.walkthrough.status)}
-        {...(workbench.insights.walkthrough.retained === undefined
-          ? {}
-          : {
-              revision: workbench.insights.walkthrough.retained.headSha,
-            })}
-      />
+      {documents.map(([type, projection]) => (
+        <InsightRailButton
+          key={type}
+          selected={selectedInsight === type}
+          onClick={() => setSelectedInsight(type)}
+          title={INSIGHT_NOUNS[type]}
+          status={insightStatusLabel(projection.status)}
+          {...(projection.retained === undefined
+            ? {}
+            : { revision: projection.retained.headSha })}
+        />
+      ))}
     </nav>
   );
 }
@@ -143,14 +154,12 @@ export function InsightRunning({
   type,
   projection,
 }: {
-  readonly type: "analysis" | "walkthrough";
+  readonly type: InsightRunDialogType;
   readonly projection: InsightProjection | undefined;
 }): React.JSX.Element {
   return (
     <div className="flex flex-col gap-3 py-6">
-      <h3 className="font-medium">
-        {type === "analysis" ? "Analysis" : "Walkthrough"} is running
-      </h3>
+      <h3 className="font-medium">{INSIGHT_NOUNS[type]} is running</h3>
       <p className="text-sm text-muted-foreground">
         {projection?.activeRun === undefined
           ? "Preparing a bounded run…"
@@ -227,16 +236,14 @@ export function InsightOutdated({
   retainedRevision,
   currentRevision,
 }: {
-  readonly type: "analysis" | "walkthrough";
+  readonly type: InsightRunDialogType;
   readonly onRetry: () => void;
   readonly retainedRevision?: string;
   readonly currentRevision: string;
 }): React.JSX.Element {
   return (
     <div className="flex flex-col gap-3 py-6">
-      <h3 className="font-medium">
-        {type === "analysis" ? "Analysis" : "Walkthrough"} is outdated
-      </h3>
+      <h3 className="font-medium">{INSIGHT_NOUNS[type]} is outdated</h3>
       <p className="text-sm text-muted-foreground">
         Retained revision {retainedRevision?.slice(0, 8) ?? "unknown"} differs
         from current revision {currentRevision.slice(0, 8)}. This evidence
@@ -253,7 +260,7 @@ export function InsightOutdated({
 export function InsightArtifactMismatch({
   type,
 }: {
-  readonly type: "analysis" | "walkthrough" | "overview";
+  readonly type: InsightSelection;
 }): React.JSX.Element {
   return (
     <Alert variant="warning" className="px-3 py-2">
@@ -271,7 +278,7 @@ export function InsightEmpty({
   onRun,
   disabled,
 }: {
-  readonly type: "analysis" | "walkthrough";
+  readonly type: InsightRunDialogType;
   readonly onRun: () => void;
   readonly disabled: boolean;
 }): React.JSX.Element {
@@ -287,7 +294,7 @@ export function InsightEmpty({
         onClick={onRun}
         disabled={disabled}
       >
-        {type === "analysis" ? "Generate analysis" : "Generate Walkthrough"}
+        {GENERATE_LABELS[type]}
       </Button>
     </div>
   );

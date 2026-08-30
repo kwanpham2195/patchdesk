@@ -3,7 +3,7 @@ import { XIcon } from "lucide-react";
 import { definedProps } from "../../../domain/defined-props";
 
 import type { InsightProvider } from "../../../domain/insight-provider";
-import { InsightRunDialog } from "./insight-run-dialog";
+import { INSIGHT_NOUNS, InsightRunDialog } from "./insight-run-dialog";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
 import { Spinner } from "./ui/spinner";
@@ -15,7 +15,9 @@ import {
   InsightOutdated,
   InsightOverview,
   InsightRunning,
+  type InsightSelection,
 } from "./insight-panels";
+import { NOT_GENERATED_BRIEF } from "../brief-contracts";
 import { buildInsightReaders } from "./insight-readers";
 import type { InsightRunConfiguration } from "../hooks/use-insight-configuration";
 import { useInsightRunControls } from "../hooks/use-insight-run-controls";
@@ -28,6 +30,12 @@ const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
+function formatInsightTimestamp(value: string): string {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return value;
+  return insightTimestampFormatter.format(timestamp);
+}
+
 function insightRequestFailureMessage(
   insightName: string,
   requestFailure: "start" | "cancel" | "status" | undefined,
@@ -39,12 +47,6 @@ function insightRequestFailureMessage(
   if (requestFailure === "status")
     return `${insightName} status could not be refreshed. The current run is still active; Patchdesk will check again.`;
   return undefined;
-}
-
-function formatInsightTimestamp(value: string): string {
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  return insightTimestampFormatter.format(timestamp);
 }
 
 export function InsightsSlot({
@@ -62,9 +64,9 @@ export function InsightsSlot({
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
 }): React.JSX.Element {
-  const [selectedInsight, setSelectedInsight] = useState<
-    "overview" | "analysis" | "walkthrough"
-  >(initialDetail ?? "analysis");
+  const [selectedInsight, setSelectedInsight] = useState<InsightSelection>(
+    initialDetail ?? "analysis",
+  );
   const [walkthroughFocused, setWalkthroughFocused] = useState(false);
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
@@ -75,6 +77,7 @@ export function InsightsSlot({
     activateCodex,
     analysisRun,
     walkthroughRun,
+    briefRun,
     openRunDialog,
     closeRunDialog,
     confirmRun,
@@ -89,28 +92,31 @@ export function InsightsSlot({
     onWorkbenchPatch,
   });
   const { catalog, provider, models, catalogError } = configuration;
+  const brief = workbench.insights.brief ?? NOT_GENERATED_BRIEF;
+  const projections = {
+    analysis: workbench.insights.analysis,
+    walkthrough: workbench.insights.walkthrough,
+    brief,
+  };
+  const runs = {
+    analysis: analysisRun,
+    walkthrough: walkthroughRun,
+    brief: briefRun,
+  };
   const hasAvailableProvider =
     catalog?.providers.some((candidate) => candidate.available) ?? false;
   const runEnabled =
     !catalogError && hasAvailableProvider && workbench.review.status === "open";
   const selectedProjection =
-    selectedInsight === "analysis"
-      ? workbench.insights.analysis
-      : selectedInsight === "walkthrough"
-        ? workbench.insights.walkthrough
-        : undefined;
+    selectedInsight === "overview" ? undefined : projections[selectedInsight];
   const selectedRunning =
-    selectedInsight === "analysis"
-      ? analysisRun
-      : selectedInsight === "walkthrough"
-        ? walkthroughRun
-        : undefined;
+    selectedInsight === "overview" ? undefined : runs[selectedInsight];
   const retainedDescription =
     selectedInsight === "analysis"
       ? workbench.insights.analysis.retained?.value.summary
       : selectedInsight === "walkthrough"
         ? workbench.insights.walkthrough.retained?.value.focus
-        : undefined;
+        : brief.retained?.value.goal[0]?.text;
   const currentRevision =
     workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
   const retainedReader = buildInsightReaders({
@@ -125,6 +131,8 @@ export function InsightsSlot({
     dismissFinding,
     walkthroughFocused,
     setWalkthroughFocused,
+    onRegenerateBrief: () => openRunDialog("regenerate"),
+    runEnabled,
   });
   const walkthroughFocusActive =
     selectedInsight === "walkthrough" && walkthroughFocused;
@@ -136,7 +144,11 @@ export function InsightsSlot({
     selectedProjection.retained === undefined;
   const selectedRequestFailure = selectedRunning?.requestFailure;
   const selectedInsightName =
-    selectedInsight === "analysis" ? "Analysis" : "Walkthrough";
+    selectedInsight === "overview" ? "Insight" : INSIGHT_NOUNS[selectedInsight];
+  const dialogRun =
+    configuration.runDialogType === null
+      ? undefined
+      : runs[configuration.runDialogType];
   const selectedRequestFailureMessage = insightRequestFailureMessage(
     selectedInsightName,
     selectedRequestFailure,
@@ -181,11 +193,10 @@ export function InsightsSlot({
                           {selectedInsight}
                         </p>
                         <h2 className="truncate text-lg font-semibold">
-                          {selectedInsight === "walkthrough" &&
-                          workbench.insights.walkthrough.retained !== undefined
-                            ? workbench.insights.walkthrough.retained.value
-                                .title
-                            : "Walkthrough document"}
+                          {selectedInsight === "brief"
+                            ? "Brief"
+                            : (workbench.insights.walkthrough.retained?.value
+                                .title ?? "Walkthrough document")}
                         </h2>
                       </>
                     )}
@@ -310,20 +321,15 @@ export function InsightsSlot({
         changeProvider={changeProvider}
         activateCodex={activateCodex}
         confirmRun={confirmRun}
-        runPending={
-          configuration.runDialogType === "analysis"
-            ? analysisRun.starting
-            : walkthroughRun.starting
-        }
+        runPending={dialogRun?.starting ?? false}
         {...definedProps({
-          runErrorMessage: insightRequestFailureMessage(
-            configuration.runDialogType === "analysis"
-              ? "Analysis"
-              : "Walkthrough",
-            configuration.runDialogType === "analysis"
-              ? analysisRun.requestFailure
-              : walkthroughRun.requestFailure,
-          ),
+          runErrorMessage:
+            configuration.runDialogType === null
+              ? undefined
+              : insightRequestFailureMessage(
+                  INSIGHT_NOUNS[configuration.runDialogType],
+                  dialogRun?.requestFailure,
+                ),
         })}
       />
     </section>

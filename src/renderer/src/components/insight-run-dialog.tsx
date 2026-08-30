@@ -24,7 +24,13 @@ import {
 } from "./ui/select";
 import { Spinner } from "./ui/spinner";
 
-export type InsightRunDialogType = "analysis" | "walkthrough";
+export type InsightRunDialogType = "analysis" | "walkthrough" | "brief";
+/** The one spelling of each Insight type's name, for headings, buttons, and run copy. */
+export const INSIGHT_NOUNS = {
+  analysis: "Analysis",
+  walkthrough: "Walkthrough",
+  brief: "Brief",
+} as const satisfies Record<InsightRunDialogType, string>;
 export type InsightModelOption = {
   readonly id: string;
   readonly label: string;
@@ -71,7 +77,7 @@ export function InsightRunDialog({
   readonly onReasoningChange: (reasoning: InsightReasoning) => void;
   readonly onConfirm: () => void;
 }): React.JSX.Element {
-  const noun = type === "analysis" ? "Analysis" : "Walkthrough";
+  const noun = INSIGHT_NOUNS[type];
   const actionLabel =
     action === "regenerate"
       ? `Regenerate ${noun}`

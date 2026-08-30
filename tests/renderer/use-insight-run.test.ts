@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 
-import { useInsightRun } from "../../src/renderer/src/hooks/use-insight-run";
+import {
+  useInsightRun,
+  type InsightRunType,
+} from "../../src/renderer/src/hooks/use-insight-run";
 import {
   installDesktopDouble,
   type DesktopDouble,
@@ -113,6 +116,8 @@ function asJsonBody(value: BridgeBody): RawJsonValue {
 const INSIGHT_RUN_PATHS = [
   "/v1/logs",
   "/v1/reviews/insights/analysis/run",
+  "/v1/reviews/insights/walkthrough/run",
+  "/v1/reviews/insights/brief/run",
   "/v1/reviews/insights/analysis/cancel",
   "/v1/reviews/insights/runs/run-a",
   "/v1/reviews/insights/runs/run-old",
@@ -156,6 +161,38 @@ const activeRun = (runId: string) => ({
 afterEach(() => {
   desktop?.restore();
   desktop = undefined;
+});
+
+/** Every type the run routes are keyed by; each gets its own start route. */
+const INSIGHT_RUN_TYPES = [
+  "analysis",
+  "walkthrough",
+  "brief",
+] as const satisfies ReadonlyArray<InsightRunType>;
+
+describe("useInsightRun routes", () => {
+  it.each(INSIGHT_RUN_TYPES)(
+    "starts a %s run on its own route",
+    async (type) => {
+      const calls = installBridge(() => ({
+        runId: "run-a",
+        type,
+        status: "running",
+      }));
+      const { result, unmount } = renderHook(() =>
+        useInsightRun({ profileId: "profile", reviewId: "review-42", type }),
+      );
+
+      act(() => result.current.run("pi", "fixture-model", "medium"));
+      await waitFor(() => expect(result.current.runId).toBe("run-a"));
+      expect(
+        calls
+          .map(({ path }) => path)
+          .includes(`/v1/reviews/insights/${type}/run`),
+      ).toBe(true);
+      unmount();
+    },
+  );
 });
 
 describe("useInsightRun", () => {

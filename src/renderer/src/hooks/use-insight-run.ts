@@ -20,7 +20,8 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 
-export type InsightRunType = "analysis" | "walkthrough";
+/** The Insight types a run can be started for; the wire contract owns the list. */
+export type InsightRunType = InsightRunResponse["type"];
 type InsightRunState = InsightRunResponse["status"] | "idle" | "error";
 type InsightRunRequestFailure = "start" | "cancel" | "status";
 
@@ -47,11 +48,13 @@ export function useInsightRun(input: {
   readonly profileId: string;
   readonly reviewId: string;
   readonly type: InsightRunType;
-  readonly activeRun?: WorkbenchResponse["insights"][InsightRunType]["activeRun"];
+  readonly activeRun?: NonNullable<
+    WorkbenchResponse["insights"][InsightRunType]
+  >["activeRun"];
   readonly onWorkbenchReplace?: (workbench: WorkbenchResponse) => void;
   readonly onInsightPatch?: (
     type: InsightRunType,
-    projection: WorkbenchResponse["insights"][InsightRunType],
+    projection: NonNullable<WorkbenchResponse["insights"][InsightRunType]>,
   ) => void;
   readonly onCompleted?: () => void;
 }): InsightRunController {
@@ -273,8 +276,14 @@ export function useInsightRun(input: {
           const workbench = parseWorkbenchResponse(terminal.workbenchValue);
           if (workbench === undefined)
             throw new Error("Invalid Review projection response");
-          if (onInsightPatchRef.current !== undefined)
-            onInsightPatchRef.current(type, workbench.insights[type]);
+          // A projection that carries no Brief at all cannot be patched into
+          // place, so the whole workbench is replaced instead.
+          const projected = workbench.insights[type];
+          if (
+            onInsightPatchRef.current !== undefined &&
+            projected !== undefined
+          )
+            onInsightPatchRef.current(type, projected);
           else onWorkbenchReplaceRef.current?.(workbench);
           if (terminal.parsed.status === "completed")
             onCompletedRef.current?.();

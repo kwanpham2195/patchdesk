@@ -47,6 +47,7 @@ import {
   type InsightProjection,
 } from "../domain/insight";
 import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
+import type { NormalizedBrief } from "../domain/brief";
 import { definedProps } from "../domain/defined-props";
 import type { NarrativeWalkthrough } from "../domain/narrative-walkthrough";
 import {
@@ -141,6 +142,7 @@ export type ReviewWorkbenchProjection = {
   readonly insights: {
     readonly analysis: InsightProjection<ReviewResult>;
     readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
+    readonly brief: InsightProjection<NormalizedBrief>;
   };
   readonly analysisReviewActions: AnalysisReviewActionsProjection;
   readonly pendingReview?: PendingReviewProjection;
@@ -461,6 +463,17 @@ export class ReviewWorkbenchProjectionService {
       undefined,
       storedInsights.value.walkthroughArtifactStatus,
     );
+    // A retained Brief carries its own resolved citation labels, so it needs
+    // neither a decorator nor a scope read -- only its artifact status, which
+    // says whether the patch those citations were resolved against survives.
+    const brief = projectStoredInsight(
+      storedInsights.value.brief,
+      session,
+      patchHash,
+      undefined,
+      undefined,
+      storedInsights.value.briefArtifactStatus,
+    );
     const reviewId = createReviewId(session.key);
     const [stableReview, activeWrite] = await Promise.all([
       this.reviews.load(session.key.profileId, reviewId),
@@ -508,6 +521,7 @@ export class ReviewWorkbenchProjectionService {
       insights: {
         analysis,
         walkthrough,
+        brief,
       },
       analysisReviewActions,
       pendingReview: projectPendingReview(

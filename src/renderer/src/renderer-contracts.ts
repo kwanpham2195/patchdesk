@@ -6,6 +6,8 @@ import {
   type MergeReceipt,
   viewerLoginSchema,
 } from "./review-write-receipts";
+import { briefInsightSchema } from "./brief-contracts";
+import { insightFields, retainedInsightFields } from "./insight-contracts";
 import { changeScopeSchema } from "../../domain/change-scope";
 import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
@@ -642,49 +644,6 @@ const narrativeWalkthroughSchema = v.strictObject({
   }),
 });
 
-const insightFields = {
-  status: v.picklist([
-    "not_generated",
-    "running",
-    "current",
-    "outdated",
-    "failed",
-  ]),
-  artifactStatus: v.optional(v.picklist(["verified", "mismatch"])),
-  activeRun: v.optional(
-    v.strictObject({
-      runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-      sessionId: v.pipe(v.string(), v.minLength(1)),
-      startedAt: v.pipe(v.string(), v.isoTimestamp()),
-    }),
-  ),
-  replacementFailure: v.optional(
-    v.strictObject({
-      runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-      category: v.optional(
-        v.picklist([
-          "authentication_required",
-          "rate_limited",
-          "runtime_unavailable",
-          "timed_out",
-          "execution_failed",
-          "invalid_result",
-          "unexpected_failure",
-        ]),
-      ),
-      model: v.pipe(v.string(), v.minLength(1)),
-      reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
-      retryable: v.boolean(),
-    }),
-  ),
-  progress: v.optional(
-    v.strictObject({
-      reviewedSectionIds: v.array(v.pipe(v.string(), v.minLength(1))),
-      supportReviewed: v.boolean(),
-      currentSectionId: v.optional(v.pipe(v.string(), v.minLength(1))),
-    }),
-  ),
-} as const;
 const insightScopeSchema = v.strictObject({
   baseShort: v.string(),
   headShort: v.string(),
@@ -704,10 +663,7 @@ const analysisInsightSchema = v.strictObject({
   ...insightFields,
   retained: v.optional(
     v.strictObject({
-      runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-      sessionId: v.pipe(v.string(), v.minLength(1)),
-      headSha: v.pipe(v.string(), v.minLength(7)),
-      generatedAt: v.pipe(v.string(), v.isoTimestamp()),
+      ...retainedInsightFields,
       value: reviewResultSchema,
       scope: v.optional(insightScopeSchema),
     }),
@@ -717,10 +673,7 @@ const walkthroughInsightSchema = v.strictObject({
   ...insightFields,
   retained: v.optional(
     v.strictObject({
-      runId: v.optional(v.pipe(v.string(), v.minLength(1))),
-      sessionId: v.pipe(v.string(), v.minLength(1)),
-      headSha: v.pipe(v.string(), v.minLength(7)),
-      generatedAt: v.pipe(v.string(), v.isoTimestamp()),
+      ...retainedInsightFields,
       value: narrativeWalkthroughSchema,
     }),
   ),
@@ -893,6 +846,8 @@ const workbenchProjectionSchema = v.strictObject({
   insights: v.strictObject({
     analysis: analysisInsightSchema,
     walkthrough: walkthroughInsightSchema,
+    /** Optional for the same reason `mergeReasons` is: the projection always sends one, and a response without it reads as a Brief that was never generated. */
+    brief: v.optional(briefInsightSchema),
   }),
   analysisReviewActions: v.optional(analysisReviewActionsSchema),
   pendingReview: v.optional(pendingReviewProjectionSchema),
@@ -924,7 +879,7 @@ export function parsePendingReviewProjection(
 
 const insightRunResponseSchema = v.strictObject({
   runId: v.pipe(v.string(), v.minLength(1)),
-  type: v.picklist(["analysis", "walkthrough"]),
+  type: v.picklist(["analysis", "walkthrough", "brief"]),
   status: v.picklist([
     "queued",
     "running",

@@ -13,6 +13,7 @@ import {
   saveInboxViewPreferences,
 } from "../../src/renderer/src/inbox-view-preferences";
 import {
+  INSIGHT_PREFERENCE_TYPES,
   loadInsightRunPreference,
   saveInsightRunPreference,
 } from "../../src/renderer/src/insight-run-preferences";
@@ -260,6 +261,20 @@ describe("every renderer preference", () => {
     );
     expect(loadNavigatorWidthPreferences()).toEqual({ width: 18 });
     expect(loadReviewViewPreferences("profile").diffStyle).toBe("split");
+  });
+
+  it("gives every Insight type its own run preference key", () => {
+    for (const type of INSIGHT_PREFERENCE_TYPES)
+      saveInsightRunPreference("profile", type, {
+        provider: "pi",
+        model: `${type}-model`,
+        reasoning: "high",
+      });
+
+    for (const type of INSIGHT_PREFERENCE_TYPES)
+      expect(loadInsightRunPreference("profile", type)?.model).toBe(
+        `${type}-model`,
+      );
   });
 });
 

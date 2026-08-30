@@ -5,7 +5,11 @@ import type { InsightProvider } from "../../../domain/insight-provider";
 import { requestJson } from "../api-client";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { saveInsightRunPreference } from "../insight-run-preferences";
-import { useInsightRun, type InsightRunController } from "./use-insight-run";
+import {
+  useInsightRun,
+  type InsightRunController,
+  type InsightRunType,
+} from "./use-insight-run";
 import {
   useInsightConfiguration,
   type InsightRunConfiguration,
@@ -27,6 +31,7 @@ type InsightRunControlsHook = {
   readonly activateCodex: () => void;
   readonly analysisRun: InsightRunController;
   readonly walkthroughRun: InsightRunController;
+  readonly briefRun: InsightRunController;
   readonly openRunDialog: (action: "run" | "retry" | "regenerate") => void;
   readonly closeRunDialog: () => void;
   readonly confirmRun: () => void;
@@ -61,10 +66,8 @@ export function useInsightRunControls({
 }): InsightRunControlsHook {
   const onInsightPatch = useCallback(
     (
-      type: "analysis" | "walkthrough",
-      projection:
-        | WorkbenchResponse["insights"]["analysis"]
-        | WorkbenchResponse["insights"]["walkthrough"],
+      type: InsightRunType,
+      projection: NonNullable<WorkbenchResponse["insights"][InsightRunType]>,
     ): void => {
       onWorkbenchPatch({ insights: { [type]: projection } });
     },
@@ -83,6 +86,14 @@ export function useInsightRunControls({
     reviewId,
     type: "walkthrough",
     activeRun: workbench.insights.walkthrough.activeRun,
+    onWorkbenchReplace,
+    onInsightPatch,
+  });
+  const briefRun = useInsightRun({
+    profileId,
+    reviewId,
+    type: "brief",
+    activeRun: workbench.insights.brief?.activeRun,
     onWorkbenchReplace,
     onInsightPatch,
   });
@@ -130,13 +141,14 @@ export function useInsightRunControls({
       },
     });
   };
+  const runs = {
+    analysis: analysisRun,
+    walkthrough: walkthroughRun,
+    brief: briefRun,
+  } satisfies Record<InsightRunType, InsightRunController>;
   const runSelected = (onAccepted?: () => void): void => {
     if (model === null || selectedInsight === "overview") return;
-    if (selectedInsight === "analysis") {
-      analysisRun.run(provider, model, reasoning, onAccepted);
-    } else {
-      walkthroughRun.run(provider, model, reasoning, onAccepted);
-    }
+    runs[selectedInsight].run(provider, model, reasoning, onAccepted);
   };
   const openRunDialog = (action: "run" | "retry" | "regenerate"): void => {
     if (selectedInsight === "overview" || catalogError) return;
@@ -181,6 +193,7 @@ export function useInsightRunControls({
     activateCodex,
     analysisRun,
     walkthroughRun,
+    briefRun,
     openRunDialog,
     closeRunDialog,
     confirmRun,
