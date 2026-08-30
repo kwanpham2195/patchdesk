@@ -35,6 +35,24 @@ const briefSchema = v.strictObject({
   assumptions: v.array(
     v.strictObject({ text: v.string(), demoted: v.boolean() }),
   ),
+  /** Absent when the pull request carried no description to compare the diff against. */
+  descriptionDrift: v.optional(
+    v.strictObject({
+      claimed: v.array(
+        v.strictObject({
+          quote: v.pipe(v.string(), v.minLength(1)),
+          note: v.string(),
+          citations: v.array(briefCitationSchema),
+        }),
+      ),
+      undescribed: v.array(
+        v.strictObject({
+          text: v.pipe(v.string(), v.minLength(1)),
+          citations: v.array(briefCitationSchema),
+        }),
+      ),
+    }),
+  ),
 });
 
 /** The Brief's own Insight projection: the shared run envelope around one Brief. */

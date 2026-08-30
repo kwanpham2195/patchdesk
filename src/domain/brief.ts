@@ -1,14 +1,7 @@
 import * as v from "valibot";
 
 import { definedProps } from "./defined-props";
-import {
-  parseContentHash,
-  parseGitSha,
-  parseRepoRelativePath,
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-  type RepoRelativePath,
-} from "./ids";
+import type { RepoRelativePath } from "./ids";
 import {
   narrativeHunkManifest,
   type NarrativeSnapshot,
@@ -47,7 +40,7 @@ type BriefCitationKind = "hunk" | "description" | "commit";
  * `h*` hunks, `d*` description paragraphs, `c*` commits -- so a citation names
  * its evidence kind before anything looks it up.
  */
-type BriefCitation = {
+export type BriefCitation = {
   readonly alias: string;
   readonly kind: BriefCitationKind;
   readonly label: string;
@@ -56,6 +49,27 @@ type BriefCitation = {
 
 /** The immutable alias-to-source manifest supplied to the Brief model. */
 export type BriefManifest = ReadonlyArray<BriefCitation>;
+
+/**
+ * Where the pull request description and the diff disagree.
+ *
+ * `claimed` is model judgment and is labelled as such in the reader: no
+ * evidence can prove that a diff does *not* do something, so each item carries
+ * the description sentence it doubts and the note saying what was looked for.
+ * `undescribed` is the other direction -- behavior the diff changes that the
+ * description never mentions -- and each of those cites the hunks that show it.
+ */
+export type BriefDescriptionDrift = {
+  readonly claimed: ReadonlyArray<{
+    readonly quote: string;
+    readonly note: string;
+    readonly citations: ReadonlyArray<BriefCitation>;
+  }>;
+  readonly undescribed: ReadonlyArray<{
+    readonly text: string;
+    readonly citations: ReadonlyArray<BriefCitation>;
+  }>;
+};
 
 /** A normalized, snapshot-bound Brief ready for storage and renderer projection. */
 export type NormalizedBrief = {
@@ -70,6 +84,8 @@ export type NormalizedBrief = {
     /** True when this line was written as Goal prose but cited nothing that resolved. */
     readonly demoted: boolean;
   }>;
+  /** Absent when the pull request has no description to compare the diff against. */
+  readonly descriptionDrift?: BriefDescriptionDrift;
 };
 
 /** Reasons a Brief result is rejected before it can be retained. */
@@ -83,6 +99,8 @@ const MAX_GOAL_TEXT_LENGTH = 400;
 const MAX_ASSUMPTIONS = 12;
 const MAX_ASSUMPTION_LENGTH = 400;
 const MAX_CITATIONS_PER_ITEM = 8;
+const MAX_DRIFT_ITEMS = 6;
+const MAX_DRIFT_TEXT_LENGTH = 400;
 const MAX_ALIAS_LENGTH = 16;
 const MAX_REACH_SYMBOLS = 24;
 const MAX_REACH_SYMBOL_LENGTH = 200;
@@ -90,13 +108,25 @@ const MAX_DESCRIPTION_PARAGRAPHS = 40;
 const MAX_COMMIT_CITATIONS = 100;
 const MAX_LABEL_LENGTH = 200;
 /** `h*` hunks, `d*` description paragraphs, `c*` commits; anything else is not an alias. */
-const BRIEF_ALIAS_SYNTAX = /^[hdc][1-9]\d*$/;
+export const BRIEF_ALIAS_SYNTAX = /^[hdc][1-9]\d*$/;
+
+const citationAliasesSchema = v.pipe(
+  v.array(v.pipe(v.string(), v.maxLength(MAX_ALIAS_LENGTH))),
+  v.maxLength(MAX_CITATIONS_PER_ITEM),
+);
+
+const driftTextSchema = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.maxLength(MAX_DRIFT_TEXT_LENGTH),
+);
 
 /**
  * Raw structured output accepted from a Brief child before Patchdesk resolves
  * its citations. `reachSymbols` is parsed and carried no further here: the
  * Reach block counts them with a tool in a later slice, and the model never
- * writes the number.
+ * writes the number. `descriptionDrift` is optional because a pull request with
+ * no description has nothing to compare the diff against.
  */
 export const briefOutputSchema = v.strictObject({
   goal: v.pipe(
@@ -107,13 +137,33 @@ export const briefOutputSchema = v.strictObject({
           v.minLength(1),
           v.maxLength(MAX_GOAL_TEXT_LENGTH),
         ),
-        citations: v.pipe(
-          v.array(v.pipe(v.string(), v.maxLength(MAX_ALIAS_LENGTH))),
-          v.maxLength(MAX_CITATIONS_PER_ITEM),
-        ),
+        citations: citationAliasesSchema,
       }),
     ),
     v.maxLength(MAX_GOAL_ITEMS),
+  ),
+  descriptionDrift: v.optional(
+    v.strictObject({
+      claimed: v.pipe(
+        v.array(
+          v.strictObject({
+            quote: driftTextSchema,
+            citations: citationAliasesSchema,
+            note: driftTextSchema,
+          }),
+        ),
+        v.maxLength(MAX_DRIFT_ITEMS),
+      ),
+      undescribed: v.pipe(
+        v.array(
+          v.strictObject({
+            text: driftTextSchema,
+            citations: citationAliasesSchema,
+          }),
+        ),
+        v.maxLength(MAX_DRIFT_ITEMS),
+      ),
+    }),
   ),
   assumptions: v.pipe(
     v.array(
@@ -137,7 +187,7 @@ export const briefOutputSchema = v.strictObject({
 
 /** The JSON contract every Brief child is given, stated once for both providers. */
 export const BRIEF_RESULT_CONTRACT =
-  '{"goal":[{"text":string,"citations":[string]}],"assumptions":[string],"reachSymbols":[string]}';
+  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"assumptions":[string],"reachSymbols":[string]}';
 
 export type BriefOutput = v.InferOutput<typeof briefOutputSchema>;
 export type InvalidBriefOutput = { readonly _tag: "InvalidBriefOutput" };
@@ -209,6 +259,12 @@ export function renderBriefManifest(manifest: BriefManifest): string {
  * left with none is demoted to an Assumption instead of being deleted -- the
  * Brief may state something it cannot cite, but never as a Goal -- and a Brief
  * whose every sentence is demoted is rejected outright.
+ *
+ * Description drift follows the same rule with a kind requirement: a claimed
+ * item must cite a `d*` alias, because it quotes description text, and an
+ * undescribed item must cite an `h*` alias, because it names what the diff
+ * does. An item that cites neither is dropped, exactly like a rejected Goal
+ * citation, and never fails the run.
  */
 export function normalizeBrief(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the Brief result's normalization boundary; the very next statement runs `safeParse(briefOutputSchema, raw)` against it before anything else touches it.
@@ -224,27 +280,23 @@ export function normalizeBrief(
   let rejectedCitationCount = 0;
 
   for (const item of parsed.output.goal) {
-    const citations: Array<BriefCitation> = [];
-    const seen = new Set<string>();
-    for (const alias of item.citations) {
-      const entry = BRIEF_ALIAS_SYNTAX.test(alias)
-        ? byAlias.get(alias)
-        : undefined;
-      if (entry === undefined || seen.has(alias)) {
-        rejectedCitationCount += 1;
-        continue;
-      }
-      seen.add(alias);
-      citations.push(entry);
-    }
+    const resolved = resolveBriefCitations(item.citations, byAlias);
+    rejectedCitationCount += resolved.rejected;
     const text = item.text.trim();
-    if (citations.length === 0) {
+    if (resolved.citations.length === 0) {
       demoted.push(text);
       continue;
     }
-    goal.push({ text, citations });
+    goal.push({ text, citations: resolved.citations });
   }
   if (goal.length === 0) return invalidBrief("uncited");
+
+  const drift = normalizeDescriptionDrift(
+    parsed.output.descriptionDrift,
+    manifest,
+    byAlias,
+  );
+  rejectedCitationCount += drift.rejected;
 
   return ok({
     snapshot,
@@ -260,88 +312,82 @@ export function normalizeBrief(
       })),
       ...demoted.map((text) => ({ text, demoted: true })),
     ],
+    ...definedProps({ descriptionDrift: drift.value }),
   });
 }
 
-const storedCitationSchema = v.strictObject({
-  alias: v.pipe(v.string(), v.regex(BRIEF_ALIAS_SYNTAX)),
-  kind: v.picklist(["hunk", "description", "commit"]),
-  label: v.string(),
-  path: v.optional(v.string()),
-});
-const storedBriefSchema = v.strictObject({
-  snapshot: v.strictObject({
-    profileId: v.string(),
-    sessionId: v.string(),
-    headSha: v.string(),
-    patchHash: v.string(),
-  }),
-  citationStatus: v.picklist(["verified", "partially_verified"]),
-  goal: v.pipe(
-    v.array(
-      v.strictObject({
-        text: v.pipe(v.string(), v.minLength(1)),
-        citations: v.pipe(v.array(storedCitationSchema), v.minLength(1)),
-      }),
-    ),
-    v.minLength(1),
-  ),
-  assumptions: v.array(
-    v.strictObject({ text: v.string(), demoted: v.boolean() }),
-  ),
-});
+/** The aliases one item resolved to, and how many of them named nothing. */
+type ResolvedBriefCitations = {
+  readonly citations: ReadonlyArray<BriefCitation>;
+  readonly rejected: number;
+};
+
+/** The drift block that survived normalization, and what it cost in citations. */
+type NormalizedDescriptionDrift = {
+  readonly value: BriefDescriptionDrift | undefined;
+  readonly rejected: number;
+};
+
+function resolveBriefCitations(
+  aliases: ReadonlyArray<string>,
+  byAlias: ReadonlyMap<string, BriefCitation>,
+): ResolvedBriefCitations {
+  const citations: Array<BriefCitation> = [];
+  const seen = new Set<string>();
+  let rejected = 0;
+  for (const alias of aliases) {
+    const entry = BRIEF_ALIAS_SYNTAX.test(alias)
+      ? byAlias.get(alias)
+      : undefined;
+    if (entry === undefined || seen.has(alias)) {
+      rejected += 1;
+      continue;
+    }
+    seen.add(alias);
+    citations.push(entry);
+  }
+  return { citations, rejected };
+}
 
 /**
- * Parses one Brief that storage already holds. A retained Brief carries its own
- * resolved citation labels, so reading it back needs no patch bytes -- unlike a
- * Walkthrough, which must be renormalized against its session's patch.
+ * Keeps only the drift items whose citations resolve to the evidence kind the
+ * item is about. A pull request with no description has no `d*` alias to quote,
+ * so the whole block is omitted rather than half-shown or rejected.
  */
-export function parseStoredBrief(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the stored Brief's read boundary; the very next statement runs `safeParse(storedBriefSchema, input)` against it before anything else touches it.
-  input: unknown,
-): Result<NormalizedBrief, BriefError> {
-  const parsed = v.safeParse(storedBriefSchema, input);
-  if (!parsed.success) return invalidBrief("malformed");
-  const profileId = parseWorkspaceProfileId(parsed.output.snapshot.profileId);
-  const sessionId = parseReviewSessionId(parsed.output.snapshot.sessionId);
-  const headSha = parseGitSha(parsed.output.snapshot.headSha);
-  const patchHash = parseContentHash(parsed.output.snapshot.patchHash);
-  if (
-    profileId._tag === "err" ||
-    sessionId._tag === "err" ||
-    headSha._tag === "err" ||
-    patchHash._tag === "err"
-  )
-    return invalidBrief("malformed");
-  const goal: Array<NormalizedBrief["goal"][number]> = [];
-  for (const item of parsed.output.goal) {
-    const citations: Array<BriefCitation> = [];
-    for (const citation of item.citations) {
-      const path =
-        citation.path === undefined
-          ? undefined
-          : parseRepoRelativePath(citation.path);
-      if (path?._tag === "err") return invalidBrief("malformed");
-      citations.push({
-        alias: citation.alias,
-        kind: citation.kind,
-        label: citation.label,
-        ...definedProps({ path: path?.value }),
-      });
+function normalizeDescriptionDrift(
+  drift: BriefOutput["descriptionDrift"],
+  manifest: BriefManifest,
+  byAlias: ReadonlyMap<string, BriefCitation>,
+): NormalizedDescriptionDrift {
+  const hasDescription = manifest.some((entry) => entry.kind === "description");
+  if (drift === undefined || !hasDescription)
+    return { value: undefined, rejected: 0 };
+  let rejected = 0;
+  const claimed: Array<BriefDescriptionDrift["claimed"][number]> = [];
+  for (const item of drift.claimed) {
+    const resolved = resolveBriefCitations(item.citations, byAlias);
+    rejected += resolved.rejected;
+    if (!resolved.citations.some((entry) => entry.kind === "description")) {
+      rejected += 1;
+      continue;
     }
-    goal.push({ text: item.text, citations });
+    claimed.push({
+      quote: item.quote.trim(),
+      note: item.note.trim(),
+      citations: resolved.citations,
+    });
   }
-  return ok({
-    snapshot: {
-      profileId: profileId.value,
-      sessionId: sessionId.value,
-      headSha: headSha.value,
-      patchHash: patchHash.value,
-    },
-    citationStatus: parsed.output.citationStatus,
-    goal,
-    assumptions: parsed.output.assumptions,
-  });
+  const undescribed: Array<BriefDescriptionDrift["undescribed"][number]> = [];
+  for (const item of drift.undescribed) {
+    const resolved = resolveBriefCitations(item.citations, byAlias);
+    rejected += resolved.rejected;
+    if (!resolved.citations.some((entry) => entry.kind === "hunk")) {
+      rejected += 1;
+      continue;
+    }
+    undescribed.push({ text: item.text.trim(), citations: resolved.citations });
+  }
+  return { value: { claimed, undescribed }, rejected };
 }
 
 function invalidBrief(reason: BriefError["reason"]): Result<never, BriefError> {

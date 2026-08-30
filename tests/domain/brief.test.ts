@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   briefManifest,
   normalizeBrief,
-  parseStoredBrief,
   renderBriefManifest,
+  type BriefOutput,
   type BriefSnapshot,
+  type NormalizedBrief,
 } from "../../src/domain/brief";
 import {
   parseContentHash,
@@ -15,6 +16,7 @@ import {
 } from "../../src/domain/ids";
 import { insightOutputGuidance } from "../../src/domain/insight-output-guidance";
 import type { Result } from "../../src/domain/result";
+import { parseStoredBrief } from "../../src/domain/stored-brief";
 
 const PATCH = [
   "diff --git a/src/recovery.ts b/src/recovery.ts",
@@ -212,9 +214,126 @@ describe("normalizeBrief", () => {
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.descriptionDrift).toBeUndefined();
     expect(
       parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
     ).toEqual({ _tag: "ok", value: normalized.value });
+  });
+});
+
+describe("normalizeBrief description drift", () => {
+  const GOAL = [
+    { text: "Recovery restarts after a crash.", citations: ["h1"] },
+  ];
+
+  function drift(
+    descriptionDrift: BriefOutput["descriptionDrift"],
+    manifest = MANIFEST,
+  ): NormalizedBrief {
+    const normalized = normalizeBrief(
+      { goal: GOAL, assumptions: [], descriptionDrift },
+      manifest,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    return normalized.value;
+  }
+
+  it("keeps a claimed item that quotes a description paragraph", () => {
+    const normalized = drift({
+      claimed: [
+        {
+          quote: "This adds the guard and its regression test.",
+          citations: ["d2", "h1"],
+          note: "No guard appears on an added line.",
+        },
+      ],
+      undescribed: [],
+    });
+    expect(
+      normalized.descriptionDrift?.claimed.map((item) => ({
+        quote: item.quote,
+        aliases: item.citations.map((citation) => citation.alias),
+      })),
+    ).toEqual([
+      {
+        quote: "This adds the guard and its regression test.",
+        aliases: ["d2", "h1"],
+      },
+    ]);
+    expect(normalized.citationStatus).toBe("verified");
+  });
+
+  it("drops a claimed item that cites no description paragraph", () => {
+    const normalized = drift({
+      claimed: [
+        {
+          quote: "This adds the guard.",
+          citations: ["h1", "h2"],
+          note: "No guard appears on an added line.",
+        },
+      ],
+      undescribed: [],
+    });
+    expect(normalized.descriptionDrift?.claimed).toEqual([]);
+    expect(normalized.citationStatus).toBe("partially_verified");
+  });
+
+  it("keeps an undescribed item that cites a hunk", () => {
+    const normalized = drift({
+      claimed: [],
+      undescribed: [{ text: "A second constant is added.", citations: ["h2"] }],
+    });
+    expect(
+      normalized.descriptionDrift?.undescribed.map((item) => item.text),
+    ).toEqual(["A second constant is added."]);
+    expect(normalized.citationStatus).toBe("verified");
+  });
+
+  it("drops an undescribed item that cites only the description", () => {
+    const normalized = drift({
+      claimed: [],
+      undescribed: [{ text: "A second constant is added.", citations: ["d1"] }],
+    });
+    expect(normalized.descriptionDrift?.undescribed).toEqual([]);
+    expect(normalized.citationStatus).toBe("partially_verified");
+  });
+
+  it("omits the whole block when the pull request has no description", () => {
+    const normalized = drift(
+      {
+        claimed: [
+          {
+            quote: "This adds the guard.",
+            citations: ["d1"],
+            note: "Nothing to compare.",
+          },
+        ],
+        undescribed: [
+          { text: "A second constant is added.", citations: ["h2"] },
+        ],
+      },
+      briefManifest({ patch: PATCH, commits: [] }),
+    );
+    expect(normalized.descriptionDrift).toBeUndefined();
+    expect(normalized.citationStatus).toBe("verified");
+  });
+
+  it("round-trips the drift block through the stored-Brief parser", () => {
+    const normalized = drift({
+      claimed: [
+        {
+          quote: "This adds the guard and its regression test.",
+          citations: ["d2"],
+          note: "No guard appears on an added line.",
+        },
+      ],
+      undescribed: [{ text: "A second constant is added.", citations: ["h2"] }],
+    });
+    expect(parseStoredBrief(JSON.parse(JSON.stringify(normalized)))).toEqual({
+      _tag: "ok",
+      value: normalized,
+    });
   });
 });
 

@@ -19,6 +19,31 @@ const retained = () => {
   return projection.retained;
 };
 
+const retainedWithDrift = () => {
+  const base = retained();
+  return {
+    ...base,
+    value: {
+      ...briefValue,
+      descriptionDrift: {
+        claimed: [
+          {
+            quote: "Replies also reconcile after the write.",
+            note: "No reply path changes in the diff.",
+            citations: briefValue.goal[0]?.citations.slice(0, 1) ?? [],
+          },
+        ],
+        undescribed: [
+          {
+            text: "Three services now pass the session into the write gate.",
+            citations: briefValue.goal[0]?.citations.slice(1, 2) ?? [],
+          },
+        ],
+      },
+    },
+  };
+};
+
 afterEach(() => cleanup());
 
 describe("BriefReader", () => {
@@ -39,9 +64,31 @@ describe("BriefReader", () => {
     expect(screen.getByRole("region", { name: "Assumptions" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Provenance" })).toBeTruthy();
     expect(screen.getByRole("img", { name: /^Scope:/ })).toBeTruthy();
+    expect(
+      screen.queryByRole("region", { name: "Description vs diff" }),
+    ).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Regenerate" }));
     expect(onRegenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders both drift regions when the Brief compared the description", () => {
+    render(
+      <BriefReader
+        retained={retainedWithDrift()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Description vs diff" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Claimed, not in the diff" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "In the diff, not described" }),
+    ).toBeTruthy();
   });
 
   it("disables regeneration when no run may start", () => {

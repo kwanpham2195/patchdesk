@@ -46,6 +46,8 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
     SIMPLIFIED_TECHNICAL_ENGLISH,
     "Write a Brief: what this change is for, in 2 to 4 sentences, ordered from coarse to granular. State the goal first.",
     "Cite every sentence. Each sentence carries one or more aliases from the supplied citation manifest, and a sentence you cannot cite is written as an assumption instead.",
+    "Check each claim in the description against the patch. In descriptionDrift.claimed, list a claim the patch does not support: quote the sentence, cite the description paragraph it comes from, and say in the note what you looked for in the patch.",
+    "In descriptionDrift.undescribed, list behavior that the patch changes and the description does not mention, and cite the hunks that show it. Do not add an entry you cannot cite.",
     "Never invent motivation, intent, trade-offs, or product impact. If the evidence does not state why the change was made, say so as an assumption.",
     "Do not narrate the patch file by file and do not restate code that the diff already shows.",
     "Write no numbers and no counts. Patchdesk produces every count from a tool.",

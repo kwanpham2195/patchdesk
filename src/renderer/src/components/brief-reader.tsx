@@ -87,6 +87,48 @@ export function BriefReader({
             </ul>
           </section>
         )}
+        {brief.descriptionDrift === undefined ? null : (
+          <section
+            aria-label="Description vs diff"
+            className="flex flex-col gap-2"
+          >
+            <h3 className="text-sm font-medium">Description vs diff</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <DriftColumn
+                label="Claimed, not in the diff"
+                count={brief.descriptionDrift.claimed.length}
+                hint="Model judgment: nothing can prove absence."
+              >
+                {brief.descriptionDrift.claimed.map((item) => (
+                  <DriftItem
+                    key={item.quote}
+                    mark="!"
+                    markClassName="bg-status-warning/15 text-status-warning"
+                    citations={item.citations}
+                  >
+                    <q className="text-muted-foreground">{item.quote}</q>{" "}
+                    {item.note}
+                  </DriftItem>
+                ))}
+              </DriftColumn>
+              <DriftColumn
+                label="In the diff, not described"
+                count={brief.descriptionDrift.undescribed.length}
+              >
+                {brief.descriptionDrift.undescribed.map((item) => (
+                  <DriftItem
+                    key={item.text}
+                    mark="+"
+                    markClassName="bg-status-info/15 text-status-info"
+                    citations={item.citations}
+                  >
+                    {item.text}
+                  </DriftItem>
+                ))}
+              </DriftColumn>
+            </div>
+          </section>
+        )}
         <p className="text-xs text-muted-foreground">
           Citations: {briefCitationStatusLine(brief)}
         </p>
@@ -127,6 +169,74 @@ export function BriefReader({
         </section>
       </div>
     </div>
+  );
+}
+
+/** One side of the drift block: its own labelled region, with its own count. */
+function DriftColumn({
+  label,
+  count,
+  hint,
+  children,
+}: {
+  readonly label: string;
+  readonly count: number;
+  readonly hint?: string;
+  readonly children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <section
+      aria-label={label}
+      className="flex min-w-0 flex-col gap-2 rounded-md border p-3"
+    >
+      <h4 className="flex items-baseline justify-between gap-2 text-xs font-medium">
+        {label}
+        <span className="font-mono text-[11px] font-normal tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      </h4>
+      {hint === undefined ? null : (
+        <p className="text-[11px] text-muted-foreground">{hint}</p>
+      )}
+      {count === 0 ? (
+        <p className="text-xs text-muted-foreground">Nothing found.</p>
+      ) : (
+        <ul className="flex flex-col gap-2 text-sm">{children}</ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * One drift item. The mark is decorative: the column's own label already says
+ * which direction the drift runs, so the hue repeats it rather than carrying it.
+ */
+function DriftItem({
+  mark,
+  markClassName,
+  citations,
+  children,
+}: {
+  readonly mark: string;
+  readonly markClassName: string;
+  readonly citations: ReadonlyArray<BriefCitation>;
+  readonly children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <li className="flex items-start gap-2">
+      <span
+        aria-hidden="true"
+        className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded font-mono text-[11px] ${markClassName}`}
+      >
+        {mark}
+      </span>
+      <span className="min-w-0">
+        {children}{" "}
+        {citations.map((citation) => (
+          <CitationChip key={citation.alias} citation={citation} />
+        ))}
+      </span>
+    </li>
   );
 }
 

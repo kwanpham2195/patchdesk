@@ -5,7 +5,7 @@ import * as v from "valibot";
 
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
-import { parseStoredBrief, type NormalizedBrief } from "../domain/brief";
+import type { NormalizedBrief } from "../domain/brief";
 import { definedProps } from "../domain/defined-props";
 import { createReviewId, type WorkspaceProfileId } from "../domain/ids";
 import type {
@@ -21,6 +21,7 @@ import { parseUnifiedPatch } from "../domain/patch";
 import { err, ok, type Result } from "../domain/result";
 import { parseReviewResult, type ReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
+import { parseStoredBrief } from "../domain/stored-brief";
 import { readObjectField } from "./read-object-field";
 import type { WorkbenchProjectionFailure } from "./review-workbench-projection";
 
