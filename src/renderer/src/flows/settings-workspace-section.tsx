@@ -11,6 +11,7 @@ import {
 } from "../components/ui/card";
 import {
   Field,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
@@ -239,9 +240,7 @@ export function WorkspaceProfileSection({
                 </p>
               ) : null}
               {profileSwitchState?.error?.owner === "settings" ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {profileSwitchState.error.message}
-                </p>
+                <FieldError>{profileSwitchState.error.message}</FieldError>
               ) : null}
             </Field>
             <div className="flex flex-wrap gap-2">

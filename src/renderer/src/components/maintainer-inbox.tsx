@@ -35,6 +35,7 @@ import {
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { InlineError } from "@/components/ui/inline-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -302,7 +303,7 @@ function StaleInboxBanner({
   readonly refreshedAt: string;
 }): React.JSX.Element {
   return (
-    <Alert variant="destructive" className="mx-3 mt-2">
+    <Alert variant="warning" className="mx-3 mt-2">
       <AlertTitle>Priority order may be unreliable</AlertTitle>
       <AlertDescription>
         This queue reflects a snapshot from{" "}
@@ -623,31 +624,27 @@ function LabelFilterList({
         <Spinner className="size-3" /> Loading labels…
       </p>
     );
-  if (readState._tag === "github_auth")
+  const failure =
+    readState._tag === "github_auth"
+      ? ([
+          "destructive",
+          "GitHub authentication is required before Patchdesk can list this repository's labels.",
+        ] as const)
+      : readState._tag === "github_read"
+        ? ([
+            "destructive",
+            "Patchdesk could not load this repository's labels. Reopen this menu to retry.",
+          ] as const)
+        : readState._tag === "github_rate_limited"
+          ? (["warning", rateLimitedCopy(readState.resumeAt)] as const)
+          : readState._tag === "github_forbidden"
+            ? (["destructive", forbiddenCopy(readState.reason)] as const)
+            : undefined;
+  if (failure !== undefined)
     return (
-      <p role="alert" className="text-xs text-destructive">
-        GitHub authentication is required before Patchdesk can list this
-        repository&apos;s labels.
-      </p>
-    );
-  if (readState._tag === "github_read")
-    return (
-      <p role="alert" className="text-xs text-destructive">
-        Patchdesk could not load this repository&apos;s labels. Reopen this menu
-        to retry.
-      </p>
-    );
-  if (readState._tag === "github_rate_limited")
-    return (
-      <p role="alert" className="text-xs text-destructive">
-        {rateLimitedCopy(readState.resumeAt)}
-      </p>
-    );
-  if (readState._tag === "github_forbidden")
-    return (
-      <p role="alert" className="text-xs text-destructive">
-        {forbiddenCopy(readState.reason)}
-      </p>
+      <Alert variant={failure[0]}>
+        <AlertDescription className="text-xs">{failure[1]}</AlertDescription>
+      </Alert>
     );
   if (readState.labels.length === 0)
     return (
@@ -1142,9 +1139,7 @@ function Inspector({
         </ReviewOpeningButtonContent>
       </Button>
       {openingState?.status === "error" ? (
-        <p aria-live="polite" className="text-xs text-destructive">
-          {openingState.error}
-        </p>
+        <InlineError className="text-xs">{openingState.error}</InlineError>
       ) : null}
       <p className="text-[11px] leading-4 text-muted-foreground">
         Starting a review is read-only. Patchdesk requires a separate

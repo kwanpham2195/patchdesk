@@ -276,7 +276,7 @@ function InboxScreen({
   return (
     <div className="flex min-h-full min-w-0 flex-col">
       {openedPr === undefined ? null : (
-        <Alert className="mx-4 mt-4">
+        <Alert variant="success" className="mx-4 mt-4">
           <AlertTitle>Review opened</AlertTitle>
           <AlertDescription>{openedPr}</AlertDescription>
         </Alert>
@@ -642,7 +642,9 @@ function Outcome({
                   outcome === "github_read" ||
                   outcome === "github_forbidden"
                     ? "destructive"
-                    : "default"
+                    : outcome === "github_rate_limited"
+                      ? "warning"
+                      : "info"
                 }
               >
                 <AlertTitle>

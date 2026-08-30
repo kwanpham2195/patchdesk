@@ -20,6 +20,7 @@ import {
 import { BrandMark } from "@/components/brand-mark";
 import { BusyIndicator } from "@/components/busy-indicator";
 import { Button } from "@/components/ui/button";
+import { InlineError } from "@/components/ui/inline-error";
 import {
   Command,
   CommandDialog,
@@ -219,9 +220,9 @@ export function AppShell({
                 </span>
               ) : null}
               {profileSwitchState?.error?.owner === "header" ? (
-                <span className="text-xs text-destructive" role="alert">
+                <InlineError className="text-xs">
                   {profileSwitchState.error.message}
-                </span>
+                </InlineError>
               ) : null}
             </div>
           ) : null}

@@ -11,6 +11,10 @@ describe("RendererRecovery", () => {
     const reload = vi.fn();
     const user = userEvent.setup();
     render(<RendererRecovery onReload={reload} />);
+    expect(
+      screen.getByRole("heading").closest('[data-slot="card"]'),
+    ).not.toBeNull();
+    expect(screen.getByRole("alert").getAttribute("data-slot")).toBe("alert");
 
     const button = screen.getByRole("button", { name: "Reload Patchdesk" });
     expect(button.getAttribute("data-slot")).toBe("button");

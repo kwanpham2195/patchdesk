@@ -6,6 +6,7 @@ import { repositoryKey, type Repo } from "../renderer-models";
 import { Checkbox } from "../components/ui/checkbox";
 import { Label } from "../components/ui/label";
 import { Spinner } from "../components/ui/spinner";
+import { InlineError } from "../components/ui/inline-error";
 
 /** A repository shown in a workspace-scope repository checklist, merged from discovery and the saved profile's watchlist. Structurally a `Repo` with `localPath` narrowed to a required (possibly empty) string, so `repositoryKey` from renderer-models works for both. */
 export type WatchlistEntry = {
@@ -248,9 +249,7 @@ export function RepositoryChecklist({
                 />
               ) : null}
               {error === undefined ? null : (
-                <p className="text-xs text-destructive" role="alert">
-                  {error}
-                </p>
+                <InlineError className="text-xs">{error}</InlineError>
               )}
             </div>
           </label>

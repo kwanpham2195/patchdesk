@@ -173,7 +173,7 @@ export function SettingsModal({
               Set Patchdesk appearance and diff themes.
             </DialogDescription>
             {flowProps.preferenceError === undefined ? null : (
-              <Alert variant="destructive" role="alert" className="mt-3">
+              <Alert variant="destructive" className="mt-3">
                 <AlertTitle>Preference error</AlertTitle>
                 <AlertDescription>
                   {flowProps.preferenceError}{" "}

@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { Profile } from "../../src/renderer/src/renderer-models";
-import type { ProfileSwitchResult } from "../../src/renderer/src/hooks/use-profile-switch";
+import type {
+  ProfileSwitchResult,
+  ProfileSwitchState,
+} from "../../src/renderer/src/hooks/use-profile-switch";
 import {
   failure,
   installDesktopDouble,
@@ -166,6 +169,24 @@ describe("workspace profile settings", () => {
       ),
     ).toBe(true);
   });
+  it("uses the control-linked field error for a Settings-owned profile switch failure", () => {
+    installDesktopApi();
+
+    renderSettings(undefined, profile, {
+      profileSwitchState: {
+        pendingTarget: undefined,
+        pendingOwner: undefined,
+        error: { owner: "settings", message: "Profile switch failed" },
+      },
+    });
+
+    expect(
+      screen
+        .getAllByRole("alert")
+        .find((candidate) => candidate.dataset.slot === "field-error"),
+    ).toBeTruthy();
+  });
+
   it("preserves every profile draft field when profile switching fails", async () => {
     installDesktopApi();
     const user = userEvent.setup();
@@ -372,6 +393,32 @@ describe("watchlist toggling", () => {
     ).toBe("");
   });
 
+  it("renders a failed watchlist mutation as an action-local error", async () => {
+    installDesktopApi({
+      rejectWatchlist: true,
+      suggestions: [
+        {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          localPath: "/workspace/cfw/patchdesk",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderSettings();
+    await user.click(await repositoryCheckbox("centraldigital/patchdesk"));
+
+    await vi.waitFor(() =>
+      expect(
+        screen
+          .getAllByRole("alert")
+          .some((candidate) => candidate.dataset.slot === "inline-error"),
+      ).toBe(true),
+    );
+  });
+
   it("shows a watched repository whose local path matches no saved workspace root", async () => {
     installDesktopApi({ suggestions: [] });
     const watchedProfile: Profile = {
@@ -419,6 +466,7 @@ function renderSettings(
   options: {
     readonly profiles?: ReadonlyArray<Profile>;
     readonly onProfileSwitch?: () => Promise<ProfileSwitchResult>;
+    readonly profileSwitchState?: ProfileSwitchState;
   } = {},
 ): void {
   render(
@@ -431,6 +479,9 @@ function renderSettings(
       profiles={options.profiles ?? [activeProfile]}
       onWorkspaceReload={onWorkspaceReload}
       onProfileSwitchRequest={(_profileId, proceed) => proceed()}
+      {...(options.profileSwitchState === undefined
+        ? {}
+        : { profileSwitchState: options.profileSwitchState })}
       {...(options.onProfileSwitch === undefined
         ? {}
         : { onProfileSwitch: options.onProfileSwitch })}
@@ -442,6 +493,7 @@ function renderSettings(
 function installDesktopApi(
   options: {
     readonly rejectProfileSave?: boolean;
+    readonly rejectWatchlist?: boolean;
     readonly pendingProfileSave?: Promise<ReturnType<typeof success>>;
     readonly suggestions?:
       | "reject"
@@ -458,7 +510,10 @@ function installDesktopApi(
       "/v1/environment": () => success({}),
       "/v1/logs": () => success(null),
       "/v1/profiles/select": () => success({}),
-      "/v1/watchlist": () => success({}),
+      "/v1/watchlist": () =>
+        options.rejectWatchlist === true
+          ? failure({ error: "storage" })
+          : success({}),
       "/v1/watchlist/suggestions": () =>
         options.suggestions === "reject"
           ? failure({ error: "storage" })

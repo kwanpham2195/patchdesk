@@ -273,8 +273,12 @@ describe("App Review route loading", () => {
     window.localStorage.setItem("patchdesk.destination", "workbench:review-42");
     installDesktop();
     render(<App reviewWorkbenchLoader={reviewLoader} />);
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "could not load the Review workbench",
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("could not load the Review workbench");
+    expect(alert.getAttribute("data-slot")).toBe("alert");
+    expect(alert.closest('[data-slot="card"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" }).dataset.slot).toBe(
+      "button",
     );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Recovered review")).not.toBeNull();

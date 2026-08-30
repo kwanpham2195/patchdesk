@@ -7,6 +7,9 @@ import {
   type ReactNode,
 } from "react";
 import { AppShell } from "./components/app-shell";
+import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
+import { Button } from "./components/ui/button";
+import { Card, CardContent } from "./components/ui/card";
 import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
 import { SettingsModal } from "./components/settings-modal";
@@ -457,20 +460,27 @@ class RouteLoadBoundary extends Component<
   override render(): ReactNode {
     if (this.state.error === undefined) return this.props.children;
     return (
-      <div
-        className="flex min-h-0 flex-1 items-center justify-center p-6"
-        role="alert"
-      >
-        <div className="space-y-3 text-center">
-          <p>Patchdesk could not load the Review workbench.</p>
-          <button
-            type="button"
-            className="underline"
-            onClick={this.props.onRetry}
-          >
-            Retry
-          </button>
-        </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <Card className="w-full max-w-lg">
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertTitle>
+                Patchdesk could not load the Review workbench.
+              </AlertTitle>
+              <AlertDescription>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={this.props.onRetry}
+                >
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
       </div>
     );
   }

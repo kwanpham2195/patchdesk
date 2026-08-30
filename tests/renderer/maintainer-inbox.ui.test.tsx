@@ -397,9 +397,12 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={vi.fn()}
       />,
     );
-    expect(
-      within(container).getByText(/Priority order may be unreliable/),
-    ).toBeTruthy();
+    const warning = within(container).getByText(
+      /Priority order may be unreliable/,
+    );
+    const alert = warning.closest('[data-slot="alert"]');
+    expect(alert).not.toBeNull();
+    expect(alert?.className).toContain("status-warning");
   });
 
   it("renders each label in a dedicated column and clamps pull request titles to two lines", () => {
@@ -556,6 +559,7 @@ describe("MaintainerInbox", () => {
         "Patchdesk could not load this repository's labels. Reopen this menu to retry.",
       ),
     ).toBeTruthy();
+    expect(screen.getByRole("alert").getAttribute("data-slot")).toBe("alert");
     expect(screen.queryByRole("checkbox")).toBeNull();
   });
 

@@ -576,8 +576,8 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
     // while `InboxScreen` (dashboard/inbox still defined) is what renders it.
     // The alert and its title are the observable; the sentence inside it is
     // wording, which this test deliberately does not pin.
-    const raisedAlert = await screen.findByRole("alert");
-    expect(within(raisedAlert).getByText("Could not open review")).toBeTruthy();
+    const raisedAlert = await screen.findByText("Could not open review");
+    expect(raisedAlert.closest('[data-slot="inline-error"]')).not.toBeNull();
 
     // Simulates the profile switch that follows in the real app: a `cleared`
     // dispatch clears `dashboard`/`inbox` and forces `screen: "loading"`,
