@@ -30,7 +30,7 @@ Do not describe code. Describe what the maintainer sees and does. Technical deta
 - Use sentence case headings and direct, concrete language. Do not hedge or market.
 - State surprising behavior plainly. If it looks wrong, put it in Open questions and verification rather than smoothing it over.
 - Cross-reference the document that owns a behavior instead of repeating it. `foundations/task-lifecycle-and-interruption.md` owns task phases and interrupts. `foundations/review-session-and-revision.md` owns freshness and represented-revision rules. `foundations/persistence-and-recovery.md` owns durable state and recovery.
-- Every feature document ends with `## Open questions and verification`, then bullets, then `Checked against Patchdesk application source commit \`3100615\`.`
+- Every feature document ends with `## Open questions and verification`, then bullets, then `Verified against Patchdesk application source commit \`3100615\`.`
 - Use one Mermaid `stateDiagram-v2` per interaction. Include only the states the maintainer passes through.
 - Follow `/Users/kwanpham/.agents/skills/references/writing-guide.md` and `/Users/kwanpham/.agents/skills/references/docs-guide.md`. Preserve the canonical product wording in `CONTEXT.md`.
 

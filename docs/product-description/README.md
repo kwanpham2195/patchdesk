@@ -192,7 +192,7 @@ Status is one of `not started`, `drafted`, or `verified`.
 | review-workbench/walkthrough.md | not started |
 | review-workbench/pending-review-and-finish.md | not started |
 | review-workbench/merge.md | not started |
-| settings/workspace-profile-editor.md | not started |
+| settings/workspace-profile-editor.md | drafted |
 | settings/appearance-and-diff-theme.md | not started |
 | settings/review-defaults.md | not started |
 | settings/data-and-recovery.md | not started |

@@ -20,9 +20,17 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Active profile.** The workspace profile currently applied to the app. A profile draft shown in Settings is not active until its save and any required selection succeed.
 
+**Profile draft.** The editable copy of one workspace profile in Settings. Patchdesk compares it with the last saved baseline to decide whether it is *Dirty*.
+
 **GitHub account.** The authenticated `gh` identity Patchdesk resolves for a workspace profile. Patchdesk obtains a token when needed and does not store it.
 
 **Workspace root.** An absolute local folder Patchdesk scans for Git repositories with GitHub remotes. A root must be saved before repository discovery treats it as part of the active profile.
+
+**Owner filter.** A GitHub owner name that limits which discovered repositories belong to a workspace profile. A profile can have no owner filters.
+
+**Rule path.** An absolute path to an instruction file that Patchdesk includes when it prepares represented Review context. A profile can have no rule paths.
+
+**Reviewing as.** The Settings status that compares the workspace profile's configured GitHub account with the account the GitHub CLI currently resolves. Re-checking probes the local CLI again; it does not perform a GitHub write.
 
 **Watched repository.** A repository saved in a workspace profile for use on the Pull requests screen. A watched repository can remain listed even when its recorded local path is outside every current workspace root.
 
