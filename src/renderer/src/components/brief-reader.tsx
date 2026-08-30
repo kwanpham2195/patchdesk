@@ -7,6 +7,7 @@ import {
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
 import {
+  BRIEF_REACH_UNAVAILABLE_LABELS,
   briefCitationChipLabel,
   briefCitationStatusLine,
   briefOwnershipTree,
@@ -17,6 +18,7 @@ import {
   type BriefOwnershipRow,
 } from "../brief-contracts";
 import type { ChangeScope } from "../../../domain/change-scope";
+import { ReachBlock } from "./brief-reach-block";
 import { ReviewDiffView } from "./review-diff-view";
 import { ScopeGauge } from "./scope-gauge";
 import { Button } from "./ui/button";
@@ -162,6 +164,16 @@ export function BriefReader({
         )}
         {brief.ownership === undefined ? null : (
           <OwnershipBlock ownership={brief.ownership} />
+        )}
+        {brief.reach === undefined ? (
+          brief.reachUnavailable === undefined ? null : (
+            <p className="text-xs text-muted-foreground">
+              Reach was not counted:{" "}
+              {BRIEF_REACH_UNAVAILABLE_LABELS[brief.reachUnavailable]}.
+            </p>
+          )
+        ) : (
+          <ReachBlock reach={brief.reach} headSha={retained.headSha} />
         )}
         <p className="text-xs text-muted-foreground">
           Citations: {briefCitationStatusLine(brief)}

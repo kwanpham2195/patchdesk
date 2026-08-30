@@ -5,8 +5,11 @@ import * as v from "valibot";
 import {
   briefManifest,
   normalizeBrief,
+  parseBriefOutput,
   type BriefError,
+  type NormalizedBrief,
 } from "../domain/brief";
+import { candidateReachSymbols } from "../domain/brief-reach";
 import { definedProps } from "../domain/defined-props";
 import type { InsightRevision, InsightType } from "../domain/insight-record";
 import type { RawJsonValue } from "../domain/json";
@@ -15,11 +18,12 @@ import {
   type NarrativeWalkthroughError,
 } from "../domain/narrative-walkthrough";
 import { mapFindingLocation, parseUnifiedPatch } from "../domain/patch";
-import { err, type Result } from "../domain/result";
+import { err, ok, type Result } from "../domain/result";
 import {
   parseModelReviewResult,
   parseReviewResult,
 } from "../domain/review-result";
+import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightInvocationInput } from "./insight-run-coordinator";
 
 /** Bounded validateResult rejection reason, surfaced only in the diagnostic detail. */
@@ -33,6 +37,12 @@ export async function validateInsightResult(
   value: RawJsonValue,
   input: InsightInvocationInput,
   revision: InsightRevision,
+  /**
+   * Counts the Brief's Reach block. Absent wherever no worktree search is
+   * wired (every non-Brief type, and the tests that do not exercise it); the
+   * Brief is then retained with neither `reach` nor `reachUnavailable`.
+   */
+  reach?: BriefReachComputer,
 ): Promise<Result<unknown, ValidateResultReason>> {
   const patch = await readFile(input.patchPath, "utf8").catch(() => undefined);
   if (patch === undefined) return err("invalid_result");
@@ -100,9 +110,18 @@ export async function validateInsightResult(
         patchHash: revision.patchHash,
       },
     );
-    return normalizedBrief._tag === "ok"
-      ? normalizedBrief
-      : err(normalizedBrief.error.reason);
+    if (normalizedBrief._tag === "err")
+      return err(normalizedBrief.error.reason);
+    return ok(
+      await withBriefReach(
+        normalizedBrief.value,
+        value,
+        patch,
+        input,
+        revision,
+        reach,
+      ),
+    );
   }
   // This result came from the current alias-manifest workflow. Persist its
   // marker even when a provider omits the requested constant JSON field.
@@ -117,6 +136,39 @@ export async function validateInsightResult(
     },
   );
   return normalized._tag === "ok" ? normalized : err(normalized.error.reason);
+}
+
+/**
+ * Attaches the Reach block to a Brief that already normalized.
+ *
+ * The names come from the child's `reachSymbols`, filtered against the patch;
+ * every count comes from `computeBriefReach`. A search that cannot answer is
+ * recorded as `reachUnavailable` rather than failing the run: a Brief without
+ * Reach is still a Brief, and the reader says so in one line.
+ */
+async function withBriefReach(
+  brief: NormalizedBrief,
+  raw: RawJsonValue,
+  patch: string,
+  input: InsightInvocationInput,
+  revision: InsightRevision,
+  reach: BriefReachComputer | undefined,
+): Promise<NormalizedBrief> {
+  if (reach === undefined) return brief;
+  const parsed = parseBriefOutput(raw);
+  const proposed =
+    parsed._tag === "ok" ? (parsed.value.reachSymbols ?? []) : [];
+  const outcome = await reach({
+    profileId: input.profileId,
+    sessionId: input.sessionId,
+    worktree: input.worktreePath,
+    headSha: revision.headSha,
+    patch,
+    symbols: candidateReachSymbols(patch, proposed),
+  });
+  return outcome._tag === "ok"
+    ? { ...brief, reach: outcome.value }
+    : { ...brief, reachUnavailable: outcome.reason };
 }
 
 function currentWalkthroughOutput(value: RawJsonValue): RawJsonValue {

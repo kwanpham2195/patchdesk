@@ -19,6 +19,7 @@ import { err, type Result } from "../domain/result";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
+import type { BriefReachComputer } from "./brief-reach-service";
 import type {
   Active,
   InsightCoordinatorFailure,
@@ -53,6 +54,8 @@ export class InsightRunExecutor {
       Result<InsightRunResponse | undefined, InsightCoordinatorFailure>
     >,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
+    /** Counts a completed Brief's Reach block; absent leaves the block off. */
+    private readonly reach?: BriefReachComputer,
   ) {}
 
   async execute(
@@ -192,6 +195,7 @@ export class InsightRunExecutor {
           headSha: latestSession.value.key.headSha,
           patchHash: latestHash.value,
         },
+        this.reach,
       );
       if (validated._tag === "err") {
         await this.persistTerminal(

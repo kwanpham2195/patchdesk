@@ -38,6 +38,7 @@ import {
   canonicalModelId,
   type PiRuntimeModelCatalog,
 } from "../adapters/pi/pi-runtime-model-catalog";
+import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightProviderCatalog } from "./insight-provider-catalog";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { contentHash } from "./review-artifact-hash";
@@ -142,6 +143,11 @@ export class InsightRunCoordinator {
     private readonly providerCatalog?: InsightProviderCatalog,
     /** Only a Brief run reads it, for the commits its `c*` aliases name. */
     private readonly remotes?: Pick<ReviewRemoteStore, "load">,
+    /**
+     * Counts a completed Brief's Reach block against the represented worktree.
+     * Absent leaves the block off: every other Insight type ignores it.
+     */
+    private readonly reach?: BriefReachComputer,
   ) {
     this.recovery = new InsightRecovery(
       this.reviews,
@@ -162,6 +168,7 @@ export class InsightRunCoordinator {
       () => this.now(),
       (input) => this.recovery.recover(input),
       this.diagnostics,
+      this.reach,
     );
   }
 

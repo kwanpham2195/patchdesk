@@ -8,6 +8,7 @@ import {
   type NormalizedBrief,
 } from "./brief";
 import type { BriefOwnership } from "./brief-ownership";
+import type { BriefReach } from "./brief-reach";
 import { definedProps } from "./defined-props";
 import {
   parseContentHash,
@@ -49,6 +50,36 @@ const storedOwnershipSchema = v.strictObject({
     }),
   ),
 });
+const storedReachSchema = v.strictObject({
+  symbols: v.array(
+    v.strictObject({
+      name: v.pipe(v.string(), v.minLength(1)),
+      outsideCallerFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      outsidePaths: v.array(v.pipe(v.string(), v.minLength(1))),
+      insidePR: v.boolean(),
+    }),
+  ),
+  surfaces: v.array(
+    v.strictObject({
+      surface: v.pipe(v.string(), v.minLength(1)),
+      path: v.optional(v.pipe(v.string(), v.minLength(1))),
+    }),
+  ),
+  untested: v.array(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1)),
+      reason: v.literal("no_test_in_pr"),
+    }),
+  ),
+  removedStillReferenced: v.array(
+    v.strictObject({
+      name: v.pipe(v.string(), v.minLength(1)),
+      paths: v.array(v.pipe(v.string(), v.minLength(1))),
+    }),
+  ),
+  method: v.literal("text_match"),
+  hop: v.literal(1),
+});
 const storedBriefSchema = v.strictObject({
   snapshot: v.strictObject({
     profileId: v.string(),
@@ -89,6 +120,16 @@ const storedBriefSchema = v.strictObject({
   ),
   /** Absent on every Brief retained before the Ownership block existed. */
   ownership: v.optional(storedOwnershipSchema),
+  /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
+  reach: v.optional(storedReachSchema),
+  reachUnavailable: v.optional(
+    v.picklist([
+      "worktree_unavailable",
+      "head_mismatch",
+      "search_failed",
+      "timed_out",
+    ]),
+  ),
 });
 
 type StoredBriefCitation = v.InferOutput<typeof storedCitationSchema>;
@@ -148,8 +189,28 @@ export function parseStoredBrief(
       descriptionDrift:
         drift === undefined ? undefined : { claimed, undescribed },
       ownership: storedOwnership(parsed.output.ownership),
+      reach: storedReach(parsed.output.reach),
+      reachUnavailable: parsed.output.reachUnavailable,
     }),
   });
+}
+
+/**
+ * Rebuilds the Reach block. Only `surface.path` needs rewriting: valibot infers
+ * an optional key as `string | undefined`, which an `exactOptionalPropertyTypes`
+ * target reads as a present key holding `undefined`.
+ */
+function storedReach(
+  stored: v.InferOutput<typeof storedReachSchema> | undefined,
+): BriefReach | undefined {
+  if (stored === undefined) return undefined;
+  return {
+    ...stored,
+    surfaces: stored.surfaces.map((entry) => ({
+      surface: entry.surface,
+      ...definedProps({ path: entry.path }),
+    })),
+  };
 }
 
 /** Rebuilds the Ownership block; `undefined` is a Brief retained before it existed. */

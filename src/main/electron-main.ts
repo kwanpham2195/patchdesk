@@ -52,6 +52,7 @@ import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
 import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
+import { briefReachComputer } from "../services/brief-reach-service";
 import { CodexInsightInvoker } from "../services/codex-insight-invoker";
 import { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import {
@@ -349,6 +350,10 @@ function createInsightCoordinator(
     diagnostics,
     providerCatalog,
     new ReviewRemoteStore(paths),
+    briefReachComputer(
+      paths,
+      new CommandRunner(undefined, logUnclassifiedCommandFailure),
+    ),
   );
 }
 

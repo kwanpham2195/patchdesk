@@ -22,6 +22,10 @@ import type { InsightType } from "../../src/domain/insight-record";
 import { createReview } from "../../src/domain/review";
 import { createReviewSession } from "../../src/domain/review-session";
 import { ok, type Result } from "../../src/domain/result";
+import type {
+  BriefReachComputer,
+  BriefReachRequest,
+} from "../../src/services/brief-reach-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import {
   InsightRunCoordinator,
@@ -56,6 +60,7 @@ afterEach(async () => {
 async function fixture(
   invoker: InsightInvoker,
   operations = new ReviewOperationCoordinator(),
+  reach?: BriefReachComputer,
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-current-"));
   roots.push(root);
@@ -112,9 +117,11 @@ async function fixture(
     },
   };
   await mkdir(dirname(session.patchPath), { recursive: true });
+  // A real hunk header, not just a `diff --git` line: the Brief's Reach block
+  // reads added and removed lines, and a line outside a hunk is neither.
   await writeFile(
     session.patchPath,
-    "diff --git a/a.ts b/a.ts\n+guard\n",
+    "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -0,0 +1 @@\n+guard\n",
     "utf8",
   );
   await sessions.save(session);
@@ -144,6 +151,10 @@ async function fixture(
     { analysis: invoker, walkthrough: invoker, brief: invoker },
     operations,
     () => now,
+    undefined,
+    undefined,
+    undefined,
+    reach,
   );
   return {
     coordinator,
@@ -402,6 +413,79 @@ describe("InsightRunCoordinator current lifecycle", () => {
                 ],
               },
             ],
+          },
+        },
+      },
+    });
+  });
+
+  it("retains the Reach block the reach service counted for a Brief", async () => {
+    const requests: Array<BriefReachRequest> = [];
+    const value = await fixture(
+      {
+        async invoke() {
+          return ok({
+            goal: [{ text: "Recovery gains a guard.", citations: ["d1"] }],
+            assumptions: [],
+            reachSymbols: ["guard"],
+          });
+        },
+      },
+      new ReviewOperationCoordinator(),
+      async (request) => {
+        requests.push(request);
+        return {
+          _tag: "ok",
+          value: {
+            symbols: [
+              {
+                name: "guard",
+                outsideCallerFiles: 1,
+                outsidePaths: ["src/main/local-api.ts"],
+                insidePR: false,
+              },
+            ],
+            surfaces: [{ surface: "Public API" }],
+            untested: [],
+            removedStillReferenced: [],
+            method: "text_match",
+            hop: 1,
+          },
+        };
+      },
+    );
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "brief",
+      model: "model",
+      reasoning: "medium",
+    });
+    if (started._tag === "err") throw new Error("expected run");
+    expect(
+      await settled(
+        value.coordinator,
+        value.review.id,
+        started.value.runId,
+        "brief",
+      ),
+    ).toMatchObject({ status: "completed" });
+    // The model proposed `guard`; the patch's one added line carries it, so
+    // Patchdesk is the one that asked for a count of it.
+    expect(requests[0]?.symbols).toEqual(["guard"]);
+    expect(requests[0]?.headSha).toBe(headSha);
+    expect(
+      await value.insights.load(profileId, value.review.id, "brief"),
+    ).toMatchObject({
+      _tag: "ok",
+      value: {
+        retained: {
+          value: {
+            reach: {
+              method: "text_match",
+              hop: 1,
+              symbols: [{ name: "guard", outsideCallerFiles: 1 }],
+            },
           },
         },
       },

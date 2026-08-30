@@ -91,6 +91,40 @@ const retainedWithOwnership = (withContract: boolean) => {
   };
 };
 
+const REACH = {
+  symbols: [
+    {
+      name: "updateThreadComment",
+      outsideCallerFiles: 2,
+      outsidePaths: ["src/main/local-api.ts"],
+      insidePR: true,
+    },
+  ],
+  surfaces: [
+    { surface: "Public API" },
+    { surface: "Network write path", path: "src/adapters/writer.ts" },
+  ],
+  untested: [{ path: "src/a.ts", reason: "no_test_in_pr" as const }],
+  removedStillReferenced: [
+    { name: "updateComment", paths: ["src/main/local-api.ts"] },
+  ],
+  method: "text_match" as const,
+  hop: 1 as const,
+};
+
+const retainedWithReach = () => {
+  const base = retained();
+  return { ...base, value: { ...briefValue, reach: REACH } };
+};
+
+const retainedWithoutReach = () => {
+  const base = retained();
+  return {
+    ...base,
+    value: { ...briefValue, reachUnavailable: "timed_out" as const },
+  };
+};
+
 afterEach(() => cleanup());
 
 describe("BriefReader", () => {
@@ -165,6 +199,50 @@ describe("BriefReader", () => {
     expect(
       screen.queryByRole("region", { name: "Plain text diff" }),
     ).toBeNull();
+  });
+
+  it("renders the four Reach rows and states how the counts were made", () => {
+    render(
+      <BriefReader
+        retained={retainedWithReach()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: "Reach" })).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Changed contracts" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Surfaces crossed" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Untested reach" })).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Removed, still referenced" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/one hop out from the diff/)).toBeTruthy();
+    expect(screen.getByText(/not a call graph/)).toBeTruthy();
+  });
+
+  it("omits the Reach block and says why when the search could not answer", () => {
+    render(
+      <BriefReader
+        retained={retainedWithoutReach()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByRole("region", { name: "Reach" })).toBeNull();
+    expect(screen.getByText(/Reach was not counted/)).toBeTruthy();
+  });
+
+  it("omits the Reach block silently on a Brief retained before it existed", () => {
+    render(
+      <BriefReader retained={retained()} onRegenerate={() => undefined} />,
+    );
+
+    expect(screen.queryByRole("region", { name: "Reach" })).toBeNull();
+    expect(screen.queryByText(/Reach was not counted/)).toBeNull();
   });
 
   it("disables regeneration when no run may start", () => {

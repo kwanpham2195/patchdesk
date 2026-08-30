@@ -5,6 +5,7 @@ import {
   normalizeBriefOwnership,
   type BriefOwnership,
 } from "./brief-ownership";
+import type { BriefReach, BriefReachUnavailableReason } from "./brief-reach";
 import { definedProps } from "./defined-props";
 import type { RepoRelativePath } from "./ids";
 import {
@@ -97,6 +98,14 @@ export type NormalizedBrief = {
    * the patch rather than asked of the model.
    */
   readonly ownership?: BriefOwnership;
+  /**
+   * The counted Reach block. `normalizeBrief` never produces one: counting
+   * needs a `git grep` over the represented worktree, so the completion path
+   * attaches it afterwards (`computeBriefReach`).
+   */
+  readonly reach?: BriefReach;
+  /** Why there is no `reach`; present only when the search was attempted and could not answer. */
+  readonly reachUnavailable?: BriefReachUnavailableReason;
 };
 
 /** Reasons a Brief result is rejected before it can be retained. */
@@ -135,9 +144,10 @@ const driftTextSchema = v.pipe(
 /**
  * Raw structured output accepted from a Brief child before Patchdesk resolves
  * its citations. `reachSymbols` is parsed and carried no further here: the
- * Reach block counts them with a tool in a later slice, and the model never
- * writes the number. `descriptionDrift` is optional because a pull request with
- * no description has nothing to compare the diff against.
+ * Reach block filters the names against the patch (`candidateReachSymbols`) and
+ * counts them with `git grep`, so the model never writes the number.
+ * `descriptionDrift` is optional because a pull request with no description has
+ * nothing to compare the diff against.
  */
 export const briefOutputSchema = v.strictObject({
   goal: v.pipe(

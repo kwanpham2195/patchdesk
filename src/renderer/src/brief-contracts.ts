@@ -50,6 +50,44 @@ const briefOwnershipSchema = v.strictObject({
   ),
 });
 
+/**
+ * The Reach block. Every number here was produced by a `git grep` in the main
+ * process, never by the model, and `method`/`hop` travel with the counts so the
+ * reader's footer can state how they were made.
+ */
+const briefReachSchema = v.strictObject({
+  symbols: v.array(
+    v.strictObject({
+      name: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
+      outsideCallerFiles: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      outsidePaths: v.array(
+        v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
+      ),
+      insidePR: v.boolean(),
+    }),
+  ),
+  surfaces: v.array(
+    v.strictObject({
+      surface: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
+      path: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(1_024))),
+    }),
+  ),
+  untested: v.array(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
+      reason: v.literal("no_test_in_pr"),
+    }),
+  ),
+  removedStillReferenced: v.array(
+    v.strictObject({
+      name: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
+      paths: v.array(v.pipe(v.string(), v.minLength(1), v.maxLength(1_024))),
+    }),
+  ),
+  method: v.literal("text_match"),
+  hop: v.literal(1),
+});
+
 const briefSchema = v.strictObject({
   snapshot: v.strictObject({
     profileId: v.pipe(v.string(), v.minLength(1)),
@@ -87,6 +125,16 @@ const briefSchema = v.strictObject({
   ),
   /** Absent on a Brief retained before the Ownership block existed. */
   ownership: v.optional(briefOwnershipSchema),
+  /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
+  reach: v.optional(briefReachSchema),
+  reachUnavailable: v.optional(
+    v.picklist([
+      "worktree_unavailable",
+      "head_mismatch",
+      "search_failed",
+      "timed_out",
+    ]),
+  ),
 });
 
 /** The Brief's own Insight projection: the shared run envelope around one Brief. */
@@ -102,6 +150,96 @@ export type Brief = v.InferOutput<typeof briefSchema>;
 export type BriefCitation = v.InferOutput<typeof briefCitationSchema>;
 export type BriefOwnership = v.InferOutput<typeof briefOwnershipSchema>;
 export type BriefOwnershipContract = NonNullable<BriefOwnership["contract"]>;
+export type BriefReach = v.InferOutput<typeof briefReachSchema>;
+
+/** What the Reach footer says the counts are, so no reader mistakes them for a call graph. */
+export function briefReachMethodLine(
+  reach: BriefReach,
+  headSha: string,
+): string {
+  const method = reach.method === "text_match" ? "Text search" : reach.method;
+  return `${method} over the represented worktree at ${headSha.slice(0, 7)}, ${reach.hop === 1 ? "one hop" : `${String(reach.hop)} hops`} out from the diff. A name match is not a call graph; treat counts as places to look.`;
+}
+
+/** One named thing a Reach row lists, with the count Patchdesk made for it. */
+type BriefReachItem = {
+  readonly name: string;
+  /** Already written out, because the count and its unit belong in one phrase. */
+  readonly count: string;
+  /** True when something outside this pull request is reached; drawn in the warning hue. */
+  readonly hot: boolean;
+  readonly paths: ReadonlyArray<string>;
+};
+
+/** One list row of the Reach block, including what to say when it lists nothing. */
+export type BriefReachRow = {
+  readonly label: string;
+  readonly hint?: string;
+  readonly items: ReadonlyArray<BriefReachItem>;
+  readonly empty: string;
+};
+
+/** The Reach block's three list rows; the fourth row draws surface chips instead. */
+export type BriefReachRows = {
+  readonly contracts: BriefReachRow;
+  readonly untested: BriefReachRow;
+  readonly removed: BriefReachRow;
+};
+
+const files = (count: number) =>
+  `${String(count)} ${count === 1 ? "file" : "files"}`;
+
+/**
+ * Turns the counted block into the rows the reader draws. Every number here was
+ * produced by the main process; this only chooses the words around it.
+ */
+export function briefReachRows(reach: BriefReach): BriefReachRows {
+  return {
+    contracts: {
+      label: "Changed contracts",
+      hint: "callers outside this PR",
+      empty: "No changed contract to count.",
+      items: reach.symbols.map((symbol) => ({
+        name: symbol.name,
+        count:
+          symbol.outsideCallerFiles === 0 && symbol.insidePR
+            ? "0 files outside this PR · named only inside it"
+            : `${files(symbol.outsideCallerFiles)} outside this PR`,
+        hot: symbol.outsideCallerFiles > 0,
+        paths: symbol.outsidePaths,
+      })),
+    },
+    untested: {
+      label: "Untested reach",
+      hint: "changed code with no test in this PR",
+      empty: "Every changed file is named by a test this pull request changes.",
+      items: reach.untested.map((item) => ({
+        name: item.path,
+        count: "changed, no test in this PR names it",
+        hot: true,
+        paths: [],
+      })),
+    },
+    removed: {
+      label: "Removed, still referenced",
+      empty: "Nothing the patch removed is still named outside it.",
+      items: reach.removedStillReferenced.map((item) => ({
+        name: item.name,
+        count: `${files(item.paths.length)} still name it`,
+        hot: true,
+        paths: item.paths,
+      })),
+    },
+  };
+}
+
+/** Why the Reach block is missing, in the one line the reader shows in its place. */
+export const BRIEF_REACH_UNAVAILABLE_LABELS = {
+  worktree_unavailable: "the represented worktree could not be read",
+  head_mismatch: "the worktree no longer stands at this revision",
+  search_failed: "the search over the worktree failed",
+  timed_out: "the search over the worktree ran out of time",
+} as const satisfies Record<NonNullable<Brief["reachUnavailable"]>, string>;
 
 /** A Brief the projection did not carry reads as one that was never generated. */
 export const NOT_GENERATED_BRIEF: BriefInsight = { status: "not_generated" };

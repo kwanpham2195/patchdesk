@@ -52,7 +52,7 @@ export async function prepareBriefPrompt(input: {
     insightOutputGuidance("brief"),
     `Return exactly one JSON object shaped ${BRIEF_RESULT_CONTRACT}. Use no other keys, no Markdown code fence, and no prose before or after it.`,
     "Every entry in a goal item's citations must be an alias from the supplied BRIEF CITATION MANIFEST. A goal sentence whose citations do not resolve is moved to assumptions, and a Brief whose every sentence is uncited is rejected.",
-    "Put in reachSymbols only the exact identifier names, as written in the patch, whose callers a reviewer should check. Patchdesk counts them; do not count them yourself.",
+    "List in reachSymbols up to 12 exported functions, types, or constants whose signature or meaning this patch changes. Write the exact identifier names, as spelled in the patch, and nothing else: no counts, no paths, no prose. Patchdesk counts their callers itself.",
     `Profile ${input.profileId} and session ${input.sessionId} are provenance only; do not repeat them in prose.`,
     "BRIEF CITATION MANIFEST:",
     renderBriefManifest(manifest),
