@@ -184,14 +184,14 @@ Status is one of `not started`, `drafted`, or `verified`.
 | pull-requests/filters-pagination-and-refresh.md | not started |
 | pull-requests/repository-listing.md | not started |
 | pull-requests/opening-a-review.md | not started |
-| review-workbench/conversation-and-metadata.md | not started |
-| review-workbench/files-diff-and-navigation.md | not started |
-| review-workbench/inline-conversations.md | not started |
-| review-workbench/brief.md | not started |
-| review-workbench/analysis.md | not started |
-| review-workbench/walkthrough.md | not started |
-| review-workbench/pending-review-and-finish.md | not started |
-| review-workbench/merge.md | not started |
+| review-workbench/conversation-and-metadata.md | drafted |
+| review-workbench/files-diff-and-navigation.md | drafted |
+| review-workbench/inline-conversations.md | drafted |
+| review-workbench/brief.md | drafted |
+| review-workbench/analysis.md | drafted |
+| review-workbench/walkthrough.md | drafted |
+| review-workbench/pending-review-and-finish.md | drafted |
+| review-workbench/merge.md | drafted |
 | settings/workspace-profile-editor.md | drafted |
 | settings/appearance-and-diff-theme.md | not started |
 | settings/review-defaults.md | not started |

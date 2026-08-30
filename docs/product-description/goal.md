@@ -68,6 +68,13 @@ Do not describe code. Describe what the maintainer sees and does. Technical deta
 - Clear cache keeps durable Review history. Clear local review data removes non-running sessions, keeps active work protected, and leaves diagnostics. Terminal or orphaned sessions are retained for 14 days; quarantine entries for 30 days before background sweep.
 - A confirmed failure and an uncertain write outcome are different settled states. Confirmed failures can be retried when the feature permits; uncertain writes require reconciliation and are never retried automatically.
 - Documentation work may change only `docs/product-description/`. Other working-tree changes belong to other sessions and must remain untouched.
+- Conversation and metadata writes accept only their exact typed confirmation. Confirmed writes enter the recent-write journal; an unknown outcome restores a durable write pause while reads and Refresh remain available.
+- Diff hydration is owned by a patch generation and selected path. Duplicate requests coalesce, late old-generation responses are dropped, and local checkout or highlighting failures preserve a readable represented patch where possible.
+- Direct inline comments and pending-review comments are separate GitHub paths. Speculative cards never confirm a write; comment-only receipts remain without thread controls, and unknown outcomes delegate settlement to durable recovery.
+- Brief, Analysis, and Walkthrough remain bound to one represented session. Retained results survive failed regeneration. Generated content cannot write GitHub without a separate explicit maintainer action.
+- Analysis Finding actions are row-local and cumulative. Exact run, Finding, session, head, patch, and pending-review identities are required before a Finding becomes pending review or published.
+- Finish review uses GitHub's authoritative pending review. Its summary and decision are modal-local, submission is admitted once, Discard requires separate confirmation, and malformed or unknown results require recovery.
+- Merge authority is bound to exact head, base, patch, refresh revision, readiness, and acknowledged warnings. A typed receipt commits terminal state before refresh; every other uncertain outcome is non-retryable until read-side recovery.
 
 ## State ownership in the Review workbench
 
