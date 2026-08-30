@@ -17,6 +17,15 @@ export const DESKTOP_REQUEST_CHANNEL = "patchdesk:request";
 export const DESKTOP_MENU_ACTION_CHANNEL = "patchdesk:menu-action";
 export type DesktopMenuAction = "openSettings" | "refresh";
 
+/**
+ * The window's native-full-screen state, both directions on one channel.
+ * `desktop-full-screen-channel.ts` holds every half — main's push, preload's
+ * synchronous read of the current value, and preload's subscription — so the
+ * literal below is written exactly once in the repository.
+ */
+export const DESKTOP_WINDOW_FULL_SCREEN_CHANNEL =
+  "patchdesk:window-full-screen";
+
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
   readonly path: string;
@@ -67,6 +76,19 @@ export type PatchdeskDesktopApi = {
   request(input: DesktopRequest): Promise<DesktopResponse>;
   openExternalHttps(url: string): Promise<boolean>;
   onMenuAction(listener: (action: DesktopMenuAction) => void): () => void;
+  /**
+   * Fires whenever the window enters or leaves native macOS full screen,
+   * which the renderer cannot observe on its own: `(display-mode:
+   * fullscreen)` stays false in an Electron renderer. macOS hides the traffic
+   * lights in full screen, so the header's left inset is dead space there.
+   */
+  onWindowFullScreen(listener: (fullScreen: boolean) => void): () => void;
+  /**
+   * The window's full-screen state as this renderer loaded, read
+   * synchronously in preload so a reload inside full screen paints the right
+   * header on its first frame.
+   */
+  readonly windowFullScreenAtLoad: boolean;
   /** QA-only structural diagnostics are enabled by a main-process argument. */
   readonly qaScrollDiagnosticsEnabled: boolean;
 };

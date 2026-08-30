@@ -219,11 +219,7 @@ body {
    which centres the macOS traffic lights against it; change both together.
    The window hides the native titlebar, so the lights sit inside this header
    and the left inset keeps the brand clear of them. The last light ends near
-   x = 70px, so 6rem (96px) gives the brand clear room past it. The inset
-   stays in full screen, where macOS hides the lights and it is dead space:
-   an Electron renderer cannot see that state — `(display-mode: fullscreen)`
-   stays false there — so dropping it would need a new main-process IPC
-   channel for `enter-full-screen`/`leave-full-screen`. */
+   x = 70px, so 6rem (96px) gives the brand clear room past it. */
 .app-titlebar {
   height: 3rem;
   display: flex;
@@ -234,6 +230,15 @@ body {
   background: var(--background);
   padding: 0 0.875rem 0 6rem;
   -webkit-app-region: drag;
+}
+
+/* macOS hides the traffic lights in native full screen, so the inset above is
+   dead space there and the brand goes back to the ordinary padding. The
+   renderer cannot see full screen for itself — `(display-mode: fullscreen)`
+   stays false in an Electron renderer — so the flag comes from the main
+   process through `useWindowFullScreen`. */
+.app-titlebar[data-window-full-screen="true"] {
+  padding-left: 0.875rem;
 }
 
 /* Every control in a drag region must opt out, or macOS drags the window

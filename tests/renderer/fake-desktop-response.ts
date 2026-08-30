@@ -52,12 +52,13 @@ export type DesktopOperationRoute = (
 ) => DesktopResponse | Promise<DesktopResponse>;
 
 /**
- * The bridge members a test may override, minus the two the double owns:
- * `request`, which the route table answers, and `onMenuAction`, whose
- * listener `sendMenuAction` fires.
+ * The bridge members a test may override, minus the three the double owns:
+ * `request`, which the route table answers, and `onMenuAction` and
+ * `onWindowFullScreen`, whose listeners `sendMenuAction` and
+ * `sendWindowFullScreen` fire.
  */
 export type DesktopDoubleExtras = Partial<
-  Omit<PatchdeskDesktopApi, "request" | "onMenuAction">
+  Omit<PatchdeskDesktopApi, "request" | "onMenuAction" | "onWindowFullScreen">
 > & {
   /** Routes for privileged operations, keyed by `operation`. */
   readonly operations?: Readonly<
@@ -74,6 +75,19 @@ export type DesktopDouble = {
    * subscribed.
    */
   readonly sendMenuAction: (action: DesktopMenuAction) => void;
+  /**
+   * Fires the listener the renderer registered through `onWindowFullScreen`,
+   * the same way the main process does when the window enters or leaves
+   * native full screen. A no-op when nothing has subscribed.
+   */
+  readonly sendWindowFullScreen: (fullScreen: boolean) => void;
+  /**
+   * Whether a full-screen listener is currently registered, so a test can
+   * assert that a hook released its subscription instead of only asserting
+   * that no further state arrived — React drops updates to an unmounted
+   * component either way, which would let a missing cleanup pass.
+   */
+  readonly hasWindowFullScreenListener: () => boolean;
   /**
    * Drains the log of calls the double refused — see
    * `assertNoUnroutedDesktopCalls`. Taking a call accepts it: it no longer
@@ -112,6 +126,7 @@ export function installDesktopDouble(
   extras: DesktopDoubleExtras = {},
 ): DesktopDouble {
   let menuActionListener: ((action: DesktopMenuAction) => void) | undefined;
+  let windowFullScreenListener: ((fullScreen: boolean) => void) | undefined;
   const unrouted: string[] = [];
   const refuse = (description: string, remedy: string): never => {
     unrouted.push(description);
@@ -140,6 +155,13 @@ export function installDesktopDouble(
         menuActionListener = undefined;
       };
     },
+    onWindowFullScreen: (listener: (fullScreen: boolean) => void) => {
+      windowFullScreenListener = listener;
+      return () => {
+        windowFullScreenListener = undefined;
+      };
+    },
+    windowFullScreenAtLoad: extras.windowFullScreenAtLoad ?? false,
     qaScrollDiagnosticsEnabled: extras.qaScrollDiagnosticsEnabled ?? false,
   };
   Object.defineProperty(window, "patchdesk", {
@@ -149,6 +171,9 @@ export function installDesktopDouble(
   return {
     request,
     sendMenuAction: (action) => menuActionListener?.(action),
+    sendWindowFullScreen: (fullScreen) =>
+      windowFullScreenListener?.(fullScreen),
+    hasWindowFullScreenListener: () => windowFullScreenListener !== undefined,
     takeUnroutedCalls: () => unrouted.splice(0),
     restore: () => {
       Reflect.deleteProperty(window, "patchdesk");

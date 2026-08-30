@@ -11,6 +11,10 @@ import { join } from "node:path";
 
 import { createDesktopLifecycle, type StartedLocalApi } from "./app-lifecycle";
 import { createDesktopMenuTemplate } from "./desktop-menu";
+import {
+  answerWindowFullScreenReads,
+  sendWindowFullScreen,
+} from "./desktop-full-screen-channel";
 import { installDesktopRequestBridge } from "./desktop-bridge";
 import {
   resolveDesktopClose,
@@ -591,6 +595,17 @@ async function createWorkbenchWindow(
         return result.canceled ? undefined : result.filePaths[0];
       },
     },
+  );
+  // macOS hides the traffic lights in native full screen, and the renderer
+  // cannot see that state for itself, so the main process tells it.
+  answerWindowFullScreenReads(ipcMain, window.webContents.id, () =>
+    window.isFullScreen(),
+  );
+  window.on("enter-full-screen", () =>
+    sendWindowFullScreen(window.webContents, true),
+  );
+  window.on("leave-full-screen", () =>
+    sendWindowFullScreen(window.webContents, false),
   );
   installWebContentsSecurity(
     window.webContents,

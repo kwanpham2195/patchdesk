@@ -95,11 +95,11 @@ It is the only place that knows about Electron.
 - `local-api.ts` starts the Hono API on `127.0.0.1` with a random port. It builds the container (`local-api-container.ts` over `local-api-stores.ts`), registers the route modules in `routes/`, and listens. Every route parses its input with a Valibot schema, calls a service, and serializes the typed result.
 - `desktop-bridge.ts` is the only IPC surface the renderer can reach. It validates the requested route against an allowlist, forwards the request to the local API with the capability and renderer-origin headers, caps responses at 8 MiB, and applies a 30-second timeout.
 - `app-capability.ts` generates the per-launch capability and compares presented values with constant-time equality.
-- `preload.ts` exposes the minimal `window.patchdesk.request` bridge to the sandboxed renderer.
+- `preload.ts` exposes the minimal `window.patchdesk` bridge to the sandboxed renderer: `request`, `openExternalHttps`, `onMenuAction` for the native menu, and `onWindowFullScreen` with the `windowFullScreenAtLoad` value it reads as the renderer loads — the renderer cannot see native full screen for itself.
 - `renderer-origin.ts` parses and verifies the renderer origin.
 - `desktop-close-guard.ts` protects an unsaved review draft and an in-flight GitHub write during close.
 - `external-navigation.ts` lets only user clicks open external HTTPS links, and only on allowlisted hosts.
-- `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, and `desktop-menu.ts` hold small desktop concerns.
+- `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, `window-chrome.ts`, and `desktop-menu.ts` hold small desktop concerns. `desktop-menu-channel.ts` and `desktop-full-screen-channel.ts` each keep both halves of a main-to-renderer channel in one module, so the channel name is written once.
 
 **Architecture Invariant:** the renderer is sandboxed and has no Node.js access.
 The preload bridge is the only way out.

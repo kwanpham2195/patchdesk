@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+import {
+  readWindowFullScreen,
+  subscribeToWindowFullScreen,
+} from "./desktop-full-screen-channel";
 import { subscribeToMenuActions } from "./desktop-menu-channel";
 import {
   DESKTOP_REQUEST_CHANNEL,
@@ -36,6 +40,12 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
   onMenuAction(listener: (action: DesktopMenuAction) => void) {
     return subscribeToMenuActions(ipcRenderer, listener);
   },
+  onWindowFullScreen(listener: (fullScreen: boolean) => void) {
+    return subscribeToWindowFullScreen(ipcRenderer, listener);
+  },
+  // Read while preload runs, before the renderer paints, so a reload inside
+  // full screen never shows a frame with the traffic-light inset.
+  windowFullScreenAtLoad: readWindowFullScreen(ipcRenderer),
   qaScrollDiagnosticsEnabled,
 });
 

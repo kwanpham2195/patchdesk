@@ -49,6 +49,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
+import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 const icons = {
   dashboard: GitPullRequest,
   settings: Settings,
@@ -95,6 +96,7 @@ export function AppShell({
   const navigateOpenerRef = useRef<HTMLButtonElement | null>(null);
   const [initialDestinationKey] = useState(() => destinationKey(destination));
   const focusedDestination = useRef(initialDestinationKey);
+  const windowFullScreen = useWindowFullScreen();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -151,7 +153,10 @@ export function AppShell({
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <header className="app-titlebar relative">
+      <header
+        className="app-titlebar relative"
+        data-window-full-screen={windowFullScreen}
+      >
         <div className="flex min-w-0 items-center gap-2">
           {destination.kind === "workbench" ? (
             <Button
