@@ -178,8 +178,8 @@ Status is one of `not started`, `drafted`, or `verified`.
 | foundations/workspace-profile-and-identity.md | drafted |
 | foundations/review-session-and-revision.md | drafted |
 | foundations/persistence-and-recovery.md | drafted |
-| first-run/setup-checklist.md | not started |
-| first-run/repository-discovery.md | not started |
+| first-run/setup-checklist.md | drafted |
+| first-run/repository-discovery.md | drafted |
 | pull-requests/selected-repository.md | not started |
 | pull-requests/filters-pagination-and-refresh.md | not started |
 | pull-requests/repository-listing.md | not started |

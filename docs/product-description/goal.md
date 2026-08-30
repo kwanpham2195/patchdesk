@@ -56,8 +56,11 @@ Do not describe code. Describe what the maintainer sees and does. Technical deta
 - Destination changes move keyboard focus to the new screen's first `h1`. Settings normally returns focus to its opener.
 - Closing the window or quitting uses the same clear, dirty-draft, and write-pending state as renderer navigation. Dirty state can be discarded after confirmation; write-pending state cannot close until settlement.
 - The first-run Default profile is derived from the active `gh` account and home directory when those checks succeed. Patchdesk never fabricates an account and does not persist an invalid empty-account profile.
+- The first-run Pull requests card runs independent GitHub-access and local-tool probes on mount and on explicit Re-check. It reports missing tools, authentication, and probe failure separately; it never logs in or installs anything.
+- An empty watchlist is a successful empty inbox state that makes no repository GitHub read. The first repository enters scope only through the explicit Workspace watchlist action.
 - A workspace profile owns GitHub host and account, workspace roots, owner filters, rule paths, watched repositories, and the active-profile choice. It contains no credential.
 - Repository discovery is read-only. A repository enters the watchlist only through an explicit checkbox action, and editing other profile fields preserves the watchlist.
+- Repository discovery scans only saved workspace roots for supported Git origins, excludes already-watched identities from suggestions, preserves their rows in Workspace, and groups unmatched watched entries outside the current roots. A new root reports that it must be saved before scanning.
 - A Review identity is profile, GitHub host, owner, repository, and pull-request number. A Review session adds one exact head and base revision and never changes revisions in place.
 - Revision changed requires complete current head, base, and canonical patch-hash evidence. Incomplete or ambiguous evidence is Remote state unavailable, never a guessed change.
 - Explicit refresh reads a stable GitHub revision, saves a remote snapshot, reuses the current session for the same revision, or prepares a new immutable session for a new revision. A head change during refresh aborts adoption.
