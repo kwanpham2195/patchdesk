@@ -180,10 +180,10 @@ Status is one of `not started`, `drafted`, or `verified`.
 | foundations/persistence-and-recovery.md | drafted |
 | first-run/setup-checklist.md | drafted |
 | first-run/repository-discovery.md | drafted |
-| pull-requests/selected-repository.md | not started |
-| pull-requests/filters-pagination-and-refresh.md | not started |
-| pull-requests/repository-listing.md | not started |
-| pull-requests/opening-a-review.md | not started |
+| pull-requests/selected-repository.md | drafted |
+| pull-requests/filters-pagination-and-refresh.md | drafted |
+| pull-requests/repository-listing.md | drafted |
+| pull-requests/opening-a-review.md | drafted |
 | review-workbench/conversation-and-metadata.md | drafted |
 | review-workbench/files-diff-and-navigation.md | drafted |
 | review-workbench/inline-conversations.md | drafted |
