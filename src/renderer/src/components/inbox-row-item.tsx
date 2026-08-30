@@ -102,7 +102,7 @@ export function InboxRowItem({
         <span className="hidden min-[1280px]:block">
           <ChangeSize stats={row.changeStats} />
           {row.scope === undefined ? null : (
-            <ScopeGauge scope={row.scope} size="mini" className="mt-0.5 flex" />
+            <ScopeGauge scope={row.scope} size="bar" className="mt-0.5 flex" />
           )}
         </span>
         <span className="hidden min-[1280px]:block">

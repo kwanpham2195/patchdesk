@@ -29,10 +29,26 @@ const BUCKET_FILLS = {
 } satisfies Record<ChangeScopeBucket, string>;
 
 /**
+ * The card legend's row order. `ChangeScope.buckets` omits a bucket with no
+ * file, but the card still names all five: an em dash beside `Generated` says
+ * this diff has no generated lines, where a missing row would only say the
+ * gauge did not mention them.
+ */
+const LEGEND_BUCKETS: ReadonlyArray<ChangeScopeBucket> = [
+  "core",
+  "tests",
+  "generated",
+  "docs",
+  "config",
+];
+
+/**
  * The Scope gauge: one bar whose segments are the changed lines per bucket.
- * `mini` is the workbench header chip and the inbox row; `card` is the Scope
- * card in the Insights tab. Bucket colors are categorical (`--scope-*`) and
- * never the status hues, so a large generated diff never reads as a failure.
+ * `bar` is the inbox row, whose Changes cell already prints the totals; `mini`
+ * is the workbench header chip, which has no other place to show them; `card`
+ * is the Scope card in the Insights tab. Bucket colors are categorical
+ * (`--scope-*`) and never the status hues, so a large generated diff never
+ * reads as a failure.
  */
 export function ScopeGauge({
   scope,
@@ -40,10 +56,16 @@ export function ScopeGauge({
   className,
 }: {
   readonly scope: ChangeScope;
-  readonly size: "mini" | "card";
+  readonly size: "bar" | "mini" | "card";
   readonly className?: string;
 }): React.JSX.Element {
   const label = scopeGaugeLabel(scope);
+  if (size === "bar")
+    return (
+      <span className={cn("inline-flex", className)} title={label}>
+        <ScopeBar scope={scope} label={label} className="h-1.5 w-14" />
+      </span>
+    );
   if (size === "mini")
     return (
       <span
@@ -57,6 +79,9 @@ export function ScopeGauge({
         />
       </span>
     );
+  const counted = new Map(
+    scope.buckets.map((bucket) => [bucket.bucket, bucket]),
+  );
   return (
     <div className={cn("flex flex-col gap-2 rounded-md border p-3", className)}>
       <div className="flex items-baseline justify-between gap-3">
@@ -67,26 +92,42 @@ export function ScopeGauge({
       </div>
       <ScopeBar scope={scope} label={label} className="h-2.5 w-full" />
       <ul className="flex flex-wrap gap-x-4 gap-y-1">
-        {scope.buckets.map((bucket) => (
-          <li
-            key={bucket.bucket}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground"
-          >
-            <span
-              aria-hidden="true"
+        {LEGEND_BUCKETS.map((bucket) => {
+          const totals = counted.get(bucket);
+          return (
+            <li
+              key={bucket}
               className={cn(
-                "size-2 shrink-0 rounded-[2px]",
-                BUCKET_FILLS[bucket.bucket],
+                "flex items-center gap-1.5 text-xs",
+                totals === undefined
+                  ? "text-muted-foreground/60"
+                  : "text-muted-foreground",
               )}
-            />
-            <span>{BUCKET_LABELS[bucket.bucket]}</span>
-            <ScopeCounts
-              additions={bucket.additions}
-              deletions={bucket.deletions}
-            />
-          </li>
-        ))}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-2 shrink-0 rounded-[2px]",
+                  BUCKET_FILLS[bucket],
+                  totals === undefined ? "opacity-50" : undefined,
+                )}
+              />
+              <span>{BUCKET_LABELS[bucket]}</span>
+              {totals === undefined ? (
+                <span className="font-mono text-[11px] tabular-nums">—</span>
+              ) : (
+                <ScopeCounts
+                  additions={totals.additions}
+                  deletions={totals.deletions}
+                />
+              )}
+            </li>
+          );
+        })}
       </ul>
+      <p className="text-[11px] text-muted-foreground">
+        Buckets come from this repository&rsquo;s path rules. No model involved.
+      </p>
     </div>
   );
 }
