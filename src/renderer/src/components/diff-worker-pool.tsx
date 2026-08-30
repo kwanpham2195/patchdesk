@@ -11,29 +11,42 @@ import {
 // nested worker build instead of the main renderer bundle.
 import DiffSyntaxWorker from "@pierre/diffs/worker/worker.js?worker";
 
+import {
+  diffThemeFor,
+  loadDiffThemePreferences,
+} from "@/diff-theme-preferences";
+
 /**
  * Languages the workbench renders most often. Preloading these into the
  * shared highlighter avoids a per-file grammar fetch on first paint for the
  * common case; any other language still resolves lazily on first use.
  */
-const PRELOADED_LANGUAGES: WorkerInitializationRenderOptions["langs"] = [
-  "typescript",
-  "tsx",
-  "javascript",
-  "jsx",
-  "json",
-];
+const PRELOADED_LANGUAGES: NonNullable<
+  WorkerInitializationRenderOptions["langs"]
+> = ["typescript", "tsx", "javascript", "jsx", "json"];
 
 const POOL_OPTIONS: WorkerPoolOptions = {
   workerFactory: () => new DiffSyntaxWorker(),
 };
 
-const HIGHLIGHTER_OPTIONS: WorkerInitializationRenderOptions = {
-  langs: PRELOADED_LANGUAGES,
-  // Patchdesk bundles locally (no single-file constraint), so the faster
-  // WASM engine is preferred over the JS-only shiki-js fallback.
-  preferredHighlighter: "shiki-wasm",
-};
+/**
+ * Read at mount rather than declared as a module constant: the pool is a
+ * process-wide singleton built from the options of whichever provider mounts
+ * first, and it starts resolving its theme in its own constructor. Seeding
+ * `theme` from the saved preference means the very first highlight is already
+ * on the user's theme instead of Pierre's default; `useDiffWorkerPoolTheme`
+ * carries every later change, since the singleton ignores options passed by
+ * subsequent mounts.
+ */
+function highlighterOptions(): WorkerInitializationRenderOptions {
+  return {
+    langs: PRELOADED_LANGUAGES,
+    theme: diffThemeFor(loadDiffThemePreferences()),
+    // Patchdesk bundles locally (no single-file constraint), so the faster
+    // WASM engine is preferred over the JS-only shiki-js fallback.
+    preferredHighlighter: "shiki-wasm",
+  };
+}
 
 /**
  * Mounts `@pierre/diffs`' worker pool so syntax colouring for virtualized
@@ -56,7 +69,7 @@ export function DiffWorkerPoolProvider({
   return (
     <WorkerPoolContextProvider
       poolOptions={POOL_OPTIONS}
-      highlighterOptions={HIGHLIGHTER_OPTIONS}
+      highlighterOptions={highlighterOptions()}
     >
       {children}
     </WorkerPoolContextProvider>

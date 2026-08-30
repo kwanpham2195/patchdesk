@@ -68,6 +68,7 @@ import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigatio
 import { useReviewFileNavigation } from "@/hooks/use-review-file-navigation";
 import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
 import { useReviewDiffSelectionScroll } from "@/hooks/use-review-diff-scroll-state";
+import { useDiffWorkerPoolTheme } from "@/hooks/use-diff-worker-pool-theme";
 import {
   useReviewDiffModel,
   type ReviewDiffModel,
@@ -418,6 +419,7 @@ function ReviewDiffSurface({
     window.addEventListener("patchdesk:diff-theme", onTheme);
     return () => window.removeEventListener("patchdesk:diff-theme", onTheme);
   }, []);
+  useDiffWorkerPoolTheme(themePreferences);
   const {
     displayedAnnotations,
     localComposerAnnotation,
@@ -804,13 +806,6 @@ function ReviewDiffRenderSite({
             selectedLines={selectedLines}
             className="visual-diff review-diff-viewport size-full min-h-[24rem] overflow-x-auto overflow-y-auto font-mono outline-none [contain:strict] [overflow-anchor:none] focus-visible:ring-2 focus-visible:ring-ring"
             style={DIFF_CODE_METRICS}
-            // The @pierre/diffs Web Worker keeps its own highlighter and
-            // never redraws the theme CSS after a theme change, so the diff
-            // stays stuck on Pierre's default theme. Highlighting on the
-            // main thread does redraw it, at a cost: ~20% higher average
-            // frame time and 6x more frames over 32ms when scrolling a
-            // large diff. Remove this once @pierre/diffs fixes the worker.
-            disableWorkerPool
             options={codeViewOptions}
             renderCustomHeader={renderCodeViewHeader}
             renderAnnotation={renderAnnotation}
@@ -951,6 +946,11 @@ function NonVirtualizedReviewDiff({
     lineHoverHighlight: "both" as const,
     enableGutterUtility: localCommentAuthoring?.enabled === true,
   };
+  // `disableWorkerPool` on both renderers below predates the review diff's own
+  // (removed) opt-out and stays: these are the walkthrough, brief and analysis
+  // evidence surfaces, which render outside `DiffWorkbench` and so have no
+  // pool above them anyway. Highlighting on the main thread is what a filtered
+  // hunk of a few dozen lines wants.
   return selectedFile === undefined ? (
     <PatchDiff
       patch={selectedPatch}
