@@ -11,6 +11,10 @@ import {
   normalizeExternalHosts,
   openAllowedExternalUrl,
 } from "../src/main/external-navigation";
+import {
+  workbenchTitlebarHeight,
+  workbenchWindowChrome,
+} from "../src/main/window-chrome";
 import { clampWindowBounds } from "../src/main/window-state";
 import { generatedPiAiCatalog } from "../src/adapters/pi/pi-ai-catalog.generated";
 import { resolveInsightRuntime } from "../src/main/insight-runtime";
@@ -219,6 +223,19 @@ describe("desktop hardening", () => {
         { x: 0, y: 0, width: 800, height: 600 },
       ]),
     ).toEqual({ x: 0, y: 0, width: 800, height: 600 });
+  });
+
+  it("hides the native title bar and centres the traffic lights in the app header", () => {
+    expect(workbenchWindowChrome.titleBarStyle).toBe("hiddenInset");
+    expect(workbenchWindowChrome.trafficLightPosition).toEqual({
+      x: 18,
+      y: 18,
+    });
+    // A 12px-tall light is centred only when the space above and below match.
+    const light = 12;
+    expect(workbenchWindowChrome.trafficLightPosition.y * 2 + light).toBe(
+      workbenchTitlebarHeight,
+    );
   });
 
   it("prefers a packaged one-shot runtime with an exact manifest and lock digest", () => {

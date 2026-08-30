@@ -48,6 +48,7 @@ import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
+import { workbenchWindowChrome } from "./window-chrome";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
@@ -496,6 +497,7 @@ async function createWorkbenchWindow(
     title: "Patchdesk",
     show: false,
     backgroundColor: "#fafafa",
+    ...workbenchWindowChrome,
     ...restoredBounds,
     minWidth: 960,
     minHeight: 640,
