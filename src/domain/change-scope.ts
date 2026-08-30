@@ -69,6 +69,36 @@ const TEST_DIRECTORY_SEGMENTS: ReadonlyArray<string> = [
   "fixtures",
 ];
 
+/**
+ * Test file-name conventions, one row per ecosystem, matched against the file
+ * name alone. The JavaScript family marks a test with an infix (`a.test.ts`);
+ * every other row is a suffix convention that infix rule misses, which is what
+ * put a Go `refresh_cache_test.go` or a JUnit `RepositoryTest.java` in `core`.
+ */
+const TEST_FILE_NAME_RULES: ReadonlyArray<{
+  readonly convention: string;
+  readonly matches: RegExp;
+}> = [
+  {
+    convention: "JavaScript, TypeScript: a.test.ts, a.spec.tsx",
+    matches: /\.(?:test|spec)\./,
+  },
+  {
+    convention: "Go, Rust, C, C++: a_test.go, a_test.rs",
+    matches: /_test\.(?:go|rs|c|cc|cpp|cxx|h|hpp)$/,
+  },
+  {
+    convention: "Python: test_a.py, a_test.py",
+    matches: /^test_.+\.py$|_test\.py$/,
+  },
+  {
+    convention: "Java, Kotlin, C#, PHP, Swift, Scala: ATest.java, ATests.cs",
+    matches: /Tests?\.(?:java|kt|kts|cs|php|swift|scala)$/,
+  },
+  { convention: "Ruby: a_spec.rb, a_test.rb", matches: /_(?:spec|test)\.rb$/ },
+  { convention: "Elixir: a_test.exs", matches: /_test\.exs$/ },
+];
+
 const CONFIG_DATA_EXTENSIONS: ReadonlyArray<string> = [
   ".json",
   ".yaml",
@@ -231,7 +261,7 @@ function hasGeneratedBanner(head: string): boolean {
 function isTests(segments: ReadonlyArray<string>, name: string): boolean {
   if (segments.slice(0, -1).some((segment) => isTestSegment(segment)))
     return true;
-  return /\.test\./.test(name) || /\.spec\./.test(name);
+  return TEST_FILE_NAME_RULES.some((rule) => rule.matches.test(name));
 }
 
 function isTestSegment(segment: string): boolean {

@@ -172,6 +172,27 @@ describe("untestedReach", () => {
       ]),
     ).toEqual([]);
   });
+
+  it("reads a Go _test.go file as the test, not as untested code", () => {
+    expect(
+      untestedReach([
+        {
+          path: "internal/cache/refresh_cache.go",
+          changedText: "func RefreshCache() {}",
+        },
+        {
+          path: "internal/repository/repository.go",
+          changedText: "func FindRolePermission() {}",
+        },
+        {
+          path: "internal/cache/refresh_cache_test.go",
+          changedText: "func TestRefreshCache(t *testing.T) {}",
+        },
+      ]),
+    ).toEqual([
+      { path: "internal/repository/repository.go", reason: "no_test_in_pr" },
+    ]);
+  });
 });
 
 describe("briefReachFiles", () => {
