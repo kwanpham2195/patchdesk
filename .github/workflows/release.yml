@@ -56,6 +56,9 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium
 
+      # `electron-builder:mac` passes `--publish never`: on a tagged CI build
+      # electron-builder would otherwise try to upload the artifacts itself
+      # and fail without GH_TOKEN. The draft step below is what attaches them.
       # Every signing secret is optional. Unset secrets arrive as empty
       # strings, which scripts/package-mac-lib.mjs reads as "no certificate",
       # so this builds the same unsigned app a local build produces.
