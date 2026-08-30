@@ -169,6 +169,9 @@ describe("compact merge command", () => {
     }).parentElement;
     expect(acknowledgement?.className).toContain("w-full");
     expect(acknowledgement?.className).toContain("min-w-0");
+    // Without this override the acknowledgement keeps a 100% flex base in the
+    // `@2xl` row, starving the context line and the sections below it.
+    expect(acknowledgement?.className).toContain("@2xl/merge-command:w-auto");
 
     const controls = screen.getByRole("group", {
       name: "Merge action",

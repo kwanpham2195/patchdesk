@@ -253,8 +253,12 @@ export function CompactMergeCommand(props: {
             <AlertDescription>{outcome.message}</AlertDescription>
           </Alert>
         ) : null}
+        {/* `w-full` is the stacked width. Without the `@2xl` override the
+            acknowledgement keeps a 100% flex base in the row, which leaves no
+            space for the `flex-1` context line (base 0, so it never shrinks)
+            and collapses it, and everything below it, to width 0. */}
         {needsAcknowledgement ? (
-          <div className="flex w-full min-w-0 items-start gap-2">
+          <div className="flex w-full min-w-0 items-start gap-2 @2xl/merge-command:w-auto">
             <Checkbox
               id="merge-ack"
               checked={acknowledged}
