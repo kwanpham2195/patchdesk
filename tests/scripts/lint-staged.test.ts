@@ -20,16 +20,10 @@ describe("lintStaged", () => {
     });
 
     await expect(lintStaged(harness.options)).resolves.toBe(0);
-    // Discovery, then `stagedBase`, then the count ratchet's baseline read
-    // and its repo-wide Oxlint run. The ratchet runs even with nothing
-    // source-like staged, because a lone `.oxlintrc.json` change is exactly
-    // what it exists to gate.
-    expect(harness.calls.map(({ command }) => command)).toEqual([
-      "git",
-      "git",
-      "git",
-      pinned("oxlint"),
-    ]);
+    // Discovery, then `stagedBase`. The repo-wide Oxlint count ratchet does
+    // not run here; it runs once, in `checkChangedSource`
+    // (`scripts/check-changed-source.mjs`).
+    expect(harness.calls.map(({ command }) => command)).toEqual(["git", "git"]);
     expect(harness.stdout.join("")).toContain("no staged source files");
   });
 
@@ -45,8 +39,6 @@ describe("lintStaged", () => {
       "git",
       "git",
       pinned("oxfmt"),
-      pinned("oxlint"),
-      "git",
       pinned("oxlint"),
     ]);
     expect(harness.calls[0]).toMatchObject({
@@ -98,18 +90,6 @@ describe("lintStaged", () => {
         "--no-error-on-unmatched-pattern",
         "src/example.ts",
       ],
-      cwd,
-    });
-    // Then the count ratchet: read the baseline the commit would carry, and
-    // run Oxlint over the whole repository.
-    expect(harness.calls[8]).toMatchObject({
-      command: "git",
-      args: ["show", ":lint-baseline.json"],
-      cwd,
-    });
-    expect(harness.calls[9]).toMatchObject({
-      command: pinned("oxlint"),
-      args: ["--deny-warnings", "--format=json"],
       cwd,
     });
   });

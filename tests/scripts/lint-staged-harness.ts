@@ -1,12 +1,9 @@
 /**
- * The fixture every `lintStaged` test drives the gate through.
- *
- * It lives here rather than in one of the test files because two of them
- * need it: `lint-staged.test.ts` for the discovery, ordering, partial-staging
- * and size-ratchet cases, and `lint-count-ratchet.test.ts` for the Oxlint
- * finding-count ratchet. Copying it would let the two copies drift, and a
- * gate test whose fixture no longer matches the gate is the failure this
- * whole file is built to avoid.
+ * The fixture `lint-staged.test.ts` drives the `lintStaged` gate through:
+ * discovery, ordering, partial-staging, and size-ratchet cases. The
+ * repo-wide Oxlint count-ratchet fields below are unused by `lintStaged`,
+ * which no longer runs that ratchet -- `checkChangedSource`
+ * (`tests/scripts/check-changed-source.test.ts`) does, with its own fixture.
  */
 
 type CommandCall = {

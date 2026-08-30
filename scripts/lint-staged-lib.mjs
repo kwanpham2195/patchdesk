@@ -8,7 +8,6 @@ import {
   pinnedTool,
   replay,
 } from "./gate-command-lib.mjs";
-import { checkLintRatchet } from "./quality-ratchet-lib.mjs";
 
 const SOURCE_EXTENSIONS = new Set([
   ".js",
@@ -57,14 +56,11 @@ const SOURCE_EXTENSIONS = new Set([
 
 /**
  * Check staged JavaScript and TypeScript files without changing the index or
- * working tree, then run the repo-wide Oxlint count ratchet over the same
- * staged change.
+ * working tree.
  *
- * This is the whole commit gate: `pnpm precommit` and `pnpm check` both reach
- * the ratchet through here, so an ordinary `git commit` runs it. The ratchet
- * deliberately runs even when nothing source-like is staged, because staging
- * `.oxlintrc.json` or `lint-baseline.json` alone is exactly the change it
- * exists to gate.
+ * The repo-wide Oxlint count ratchet does not run here: `scripts/
+ * check-changed-source.mjs` (`pnpm lint:changed`) already runs it once per
+ * `pnpm check`, and that is the shape CI enforces.
  *
  * @param {LintStagedOptions} options
  * @returns {Promise<number>} A process-style exit code.
@@ -141,14 +137,7 @@ export async function lintStaged({
     if (sourceResult !== 0) return sourceResult;
   }
 
-  return checkLintRatchet({
-    cwd,
-    run,
-    fileExists,
-    output,
-    revision: "",
-    changedPaths,
-  });
+  return 0;
 }
 
 /**

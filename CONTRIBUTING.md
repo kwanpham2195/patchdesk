@@ -89,14 +89,13 @@ One logical unit per commit. Do not add AI or co-authored trailers.
 Commits run `pnpm precommit`:
 
 1. `pnpm lint:staged` checks every staged JavaScript and TypeScript file with
-   Oxfmt, then Oxlint with denied warnings, applies the file-size ratchet to
-   them, and then runs the repo-wide Oxlint count ratchet over the staged
-   change.
+   Oxfmt, then Oxlint with denied warnings, and applies the file-size ratchet
+   to them.
 2. React Doctor scans staged files and remains blocking.
 
-The count ratchet runs on every commit, not only in a pull request, and it
-runs even when nothing source-like is staged: a lone `.oxlintrc.json` change
-is exactly what it exists to gate. It adds about 1 second to a commit.
+The repo-wide Oxlint count ratchet does not run here. It runs once, inside
+`pnpm lint:changed` (see "The count ratchet" and "Verifying before
+pushing"), which is the shape CI enforces.
 
 The staged gate is check-only. It rejects partially staged source files and
 never changes the index or working tree. If it blocks, run
@@ -149,17 +148,15 @@ which rules those are. Turn a rule off, or add a per-file override, and the
 count stays at zero and lint stays green. The config gate is the only check
 that makes such a change announce itself, by refusing any `.oxlintrc.json` or
 `tools/oxlint/` edit that does not change `lint-baseline.json` alongside it.
-It also runs on every commit, where CI runs only on a pull request. `pnpm
-lint` guards the findings; the ratchet guards the rules.
+`pnpm lint` guards the findings; the ratchet guards the rules.
 
-This claim was tested rather than assumed, both directions, with a real
-pre-commit hook in a throwaway worktree: three anti-slop rules switched off
-and `.oxlintrc.json` staged alone is **rejected**, and the same edit staged
-together with an updated `lint-baseline.json` is **accepted**. An earlier form
-of the gate asked `git ls-files --stage` / `git ls-tree` whether the baseline
-was present, which reports a tracked file unconditionally — so it answered
-"yes" for every change and the gate never fired. `tests/scripts/` now covers
-both directions.
+This claim was tested rather than assumed, both directions: three anti-slop
+rules switched off and `.oxlintrc.json` staged alone is **rejected** by
+`pnpm lint:changed`, and the same edit staged together with an updated
+`lint-baseline.json` is **accepted**. An earlier form of the gate asked
+`git ls-files --stage` / `git ls-tree` whether the baseline was present, which
+reports a tracked file unconditionally — so it answered "yes" for every change
+and the gate never fired. `tests/scripts/` now covers both directions.
 
 Oxlint reads the whole working tree, uncommitted edits included. If unstaged
 work moved the number, commit or set that work aside rather than moving the
@@ -254,8 +251,8 @@ will commit),
 `pnpm lint:changed -- origin/main` (checks the whole branch the way the pull
 request gates will), then `pnpm knip:ratchet`, in that order, and stops at the
 first failure. `pnpm lint:staged` reports "no staged source files" when
-nothing is staged and still runs the count ratchet, so the repo-wide finding
-count is checked either way.
+nothing is staged. The repo-wide count ratchet runs once, inside
+`pnpm lint:changed`, which is the shape CI enforces.
 
 `pnpm check` runs both shapes of the changed-source gate on purpose. The
 staged shape measures one commit's worth of change against `HEAD`; the branch
@@ -309,18 +306,17 @@ pnpm test:package-smoke
 `pnpm package:mac` runs `pnpm stage:flue-runtime` as part of the build,
 which builds and stages the exact isolated Flue runtime into the package.
 Package smoke runs fixed faux Analysis and Walkthrough fixtures before UI
-checks.
+checks, and reads the expected version out of `package.json`.
 
-`pnpm package:mac` produces both `release/mac-arm64/Patchdesk.app` (the
-unpacked app `pnpm test:package-smoke` reads) and
-`release/Patchdesk-0.1.0-arm64-mac.zip` (~196 MiB) — note the zip sits
-directly in `release/`, not in `release/mac-arm64/`. That zip is what you
-hand to another developer; a `.blockmap` sidecar is written next to it and
-is not part of the handoff.
+`pnpm package:mac` produces `release/mac-arm64/Patchdesk.app` (the unpacked
+app `pnpm test:package-smoke` reads), `release/Patchdesk-0.1.0-arm64.dmg`
+(~185 MiB), and `release/Patchdesk-0.1.0-arm64-mac.zip` (~197 MiB) — note
+that both downloads sit directly in `release/`, not in `release/mac-arm64/`.
+The `.dmg` is the one to hand to another person; a `.blockmap` sidecar is
+written next to the zip and is not part of the handoff.
 
-The packaged build is ad-hoc signed, not Apple-signed or notarized, so the
-recipient must clear the quarantine attribute before first launch (see
-`README.md`, "Install") — pass that instruction along with the zip.
+A local build is never signed: it takes the same path the release build takes
+with no secrets set.
 
 ## Pull requests
 

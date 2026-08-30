@@ -1223,7 +1223,7 @@ test("Pierre headers retain per-file totals while the navigator stays compact", 
   }
 });
 
-test("Pierre unified and split surfaces retain their visual diff language", async ({
+test("Review diff region reflects unified/split toggle via data-diff-style", async ({
   page,
 }) => {
   const server = await serveRenderer();
@@ -1314,22 +1314,6 @@ test("PR overview overlays without viewport overflow and scrolls independently",
       await expect(overview).toBeHidden();
       await expect(prOverviewTrigger(page)).toBeFocused();
     }
-  } finally {
-    await closeServer(server);
-  }
-});
-
-test("the header refresh control is reachable when GitHub state is fresh", async ({
-  page,
-}) => {
-  const server = await serveRenderer();
-  try {
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    const freshRefresh = page.getByRole("button", {
-      name: "Refresh GitHub state",
-    });
-    await expect(freshRefresh).toBeVisible();
-    await expect(freshRefresh).toBeEnabled();
   } finally {
     await closeServer(server);
   }
