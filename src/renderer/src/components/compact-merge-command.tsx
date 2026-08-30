@@ -239,77 +239,80 @@ export function CompactMergeCommand(props: {
   return (
     <section
       aria-label="Merge command"
-      className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
+      className="@container/merge-command rounded-lg border bg-muted/40 p-3"
     >
-      <p className="min-w-0 text-xs text-muted-foreground">
-        {props.context.repo}#{props.context.prNumber} · {props.context.base} ←{" "}
-        {props.context.head} · <code>{props.context.headSha.slice(0, 8)}</code>
-      </p>
-      {outcome.state === "retryable_error" ? (
-        <Alert variant="destructive">
-          <AlertTitle>Merge not submitted</AlertTitle>
-          <AlertDescription>{outcome.message}</AlertDescription>
-        </Alert>
-      ) : null}
-      {needsAcknowledgement ? (
-        <div className="flex items-start gap-2">
-          <Checkbox
-            id="merge-ack"
-            checked={acknowledged}
-            disabled={pending || recovering}
-            onCheckedChange={(checked) => setAcknowledged(checked === true)}
-          />
-          <Label htmlFor="merge-ack" className="leading-5">
-            I acknowledge:{" "}
-            {props.readiness.warnings
-              .map((warning) => warning.replaceAll("_", " "))
-              .join(", ")}
-            .
-          </Label>
+      <div className="flex min-w-0 flex-col gap-3 @2xl/merge-command:flex-row @2xl/merge-command:items-center @2xl/merge-command:justify-between">
+        <p className="w-full min-w-0 break-words text-xs text-muted-foreground @2xl/merge-command:flex-1">
+          {props.context.repo}#{props.context.prNumber} · {props.context.base} ←{" "}
+          {props.context.head} ·{" "}
+          <code>{props.context.headSha.slice(0, 8)}</code>
+        </p>
+        {outcome.state === "retryable_error" ? (
+          <Alert variant="destructive" className="w-full min-w-0">
+            <AlertTitle>Merge not submitted</AlertTitle>
+            <AlertDescription>{outcome.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        {needsAcknowledgement ? (
+          <div className="flex w-full min-w-0 items-start gap-2">
+            <Checkbox
+              id="merge-ack"
+              checked={acknowledged}
+              disabled={pending || recovering}
+              onCheckedChange={(checked) => setAcknowledged(checked === true)}
+            />
+            <Label htmlFor="merge-ack" className="leading-5">
+              I acknowledge:{" "}
+              {props.readiness.warnings
+                .map((warning) => warning.replaceAll("_", " "))
+                .join(", ")}
+              .
+            </Label>
+          </div>
+        ) : null}
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @2xl/merge-command:w-auto @2xl/merge-command:shrink-0">
+          <label className="text-sm font-medium" htmlFor="merge-method">
+            Merge method
+          </label>
+          <ButtonGroup aria-label="Merge action">
+            <Select
+              value={method}
+              disabled={pending || recovering}
+              items={props.methods.map((candidate) => ({
+                label: candidate,
+                value: candidate,
+              }))}
+              onValueChange={(value) => {
+                // SAFETY: The catalog is built only from MergeMethod values.
+                setMethod(value as MergeMethod);
+              }}
+            >
+              <SelectTrigger id="merge-method">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {props.methods.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={() => void merge()}
+              disabled={pending || (needsAcknowledgement && !acknowledged)}
+            >
+              {pending ? (
+                <Spinner aria-hidden="true" data-icon="inline-start" />
+              ) : (
+                <GitMerge data-icon="inline-start" />
+              )}
+              {pending ? "Merging…" : "Merge"}
+            </Button>
+          </ButtonGroup>
         </div>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-sm font-medium" htmlFor="merge-method">
-          Merge method
-        </label>
-        <ButtonGroup aria-label="Merge action">
-          <Select
-            value={method}
-            disabled={pending || recovering}
-            items={props.methods.map((candidate) => ({
-              label: candidate,
-              value: candidate,
-            }))}
-            onValueChange={(value) => {
-              // SAFETY: The catalog is built only from MergeMethod values.
-              setMethod(value as MergeMethod);
-            }}
-          >
-            <SelectTrigger id="merge-method">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {props.methods.map((candidate) => (
-                  <SelectItem key={candidate} value={candidate}>
-                    {candidate}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <Button
-            onClick={() => void merge()}
-            disabled={pending || (needsAcknowledgement && !acknowledged)}
-          >
-            {pending ? (
-              <Spinner aria-hidden="true" data-icon="inline-start" />
-            ) : (
-              <GitMerge data-icon="inline-start" />
-            )}
-            {pending ? "Merging…" : "Merge"}
-          </Button>
-        </ButtonGroup>
       </div>
     </section>
   );

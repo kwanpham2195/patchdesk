@@ -320,6 +320,10 @@ function renderMergeReadinessFixture(
 ): React.ReactNode {
   const blocked = hash === "#blocked-merge-fixture";
   const detail = hash === "#overview-detail-fixture";
+  const data =
+    hash === "#acknowledgement-merge-fixture"
+      ? longWorkbenchFixtureData
+      : workbenchFixtureData;
   const readiness: MergeReadiness = blocked
     ? { _tag: "Blocked", blockers: [], warnings: [] }
     : {
@@ -359,7 +363,7 @@ function renderMergeReadinessFixture(
     throw new Error("Fixture pull request is invalid");
   return (
     <CanonicalFixtureWorkbench
-      data={workbenchFixtureData}
+      data={data}
       onNavigationStateChange={onNavigationStateChange}
       modelOverrides={
         detail
@@ -391,12 +395,12 @@ function renderMergeReadinessFixture(
               mergeReasons,
               pullRequest: parsedPullRequest.value,
               context: {
-                repo: `${workbenchFixtureData.pullRequest.ref.owner}/${workbenchFixtureData.pullRequest.ref.repo}`,
-                prNumber: workbenchFixtureData.pullRequest.ref.number,
-                title: workbenchFixtureData.pullRequest.title,
-                base: workbenchFixtureData.pullRequest.baseBranch,
-                head: workbenchFixtureData.pullRequest.headBranch,
-                headSha: workbenchFixtureData.pullRequest.headSha,
+                repo: `${data.pullRequest.ref.owner}/${data.pullRequest.ref.repo}`,
+                prNumber: data.pullRequest.ref.number,
+                title: data.pullRequest.title,
+                base: data.pullRequest.baseBranch,
+                head: data.pullRequest.headBranch,
+                headSha: data.pullRequest.headSha,
               },
               methods: ["squash", "merge", "rebase"] as const,
               onRecoverMerge: async () => undefined,

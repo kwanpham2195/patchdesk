@@ -5,6 +5,7 @@
 - Made GitHub mutations single-flight and recoverable: uncertain writes now stay locked behind **Check GitHub again**, confirmed writes remain confirmed when refresh fails, and action-local spinners and errors preserve drafts and selections.
 - Fixed **Add to review** duplicating a Finding into general review feedback before Finish.
 - Fixed long file paths overflowing their cards in the Threads navigator.
+- Fixed merge context, warning acknowledgement, and controls overflowing the narrow PR overview drawer.
 
 - Fixed the Analysis merge policy having no effect on the merge itself; an open P0 or P1 Finding now blocks or asks for acknowledgement, as the profile's policy says, instead of being ignored at the merge.
 - Fixed a dismissed Finding still counting against merge; the merge badge and the merge itself now count only open Findings, so what the badge offers is what the merge allows.

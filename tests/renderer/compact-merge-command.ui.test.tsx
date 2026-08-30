@@ -131,6 +131,52 @@ describe("compact merge command", () => {
     expect(screen.getByText("Merged abcdef.")).toBeTruthy();
   });
 
+  it("uses its named container to stack long merge context and controls", () => {
+    render(
+      <CompactMergeCommand
+        readiness={{
+          _tag: "NeedsAcknowledgement",
+          blockers: [],
+          warnings: ["request_changes"],
+        }}
+        context={{
+          repo: "centraldigital-platform-engineering-maintainers/patchdesk-desktop-review-workbench",
+          prNumber: 42,
+          title: "Protect review writes",
+          base: "release/2026-07-operational-readiness",
+          head: "feat/preserve-authoritative-review-coordination",
+          headSha: "abcdef1234567890",
+        }}
+        methods={["squash", "merge"]}
+        onMerge={async () => ({ state: "confirmed" })}
+      />,
+    );
+
+    const section = screen.getByRole("region", { name: "Merge command" });
+    expect(section.className).toContain("@container/merge-command");
+    expect(section.className).not.toContain("sm:");
+
+    const layout = section.firstElementChild;
+    expect(layout?.className).toContain("@2xl/merge-command:flex-row");
+    expect(layout?.className).toContain("min-w-0");
+
+    const context = screen.getByText(/centraldigital-platform-engineering/);
+    expect(context.className).toContain("break-words");
+    expect(context.className).toContain("@2xl/merge-command:flex-1");
+
+    const acknowledgement = screen.getByRole("checkbox", {
+      name: /I acknowledge:/,
+    }).parentElement;
+    expect(acknowledgement?.className).toContain("w-full");
+    expect(acknowledgement?.className).toContain("min-w-0");
+
+    const controls = screen.getByRole("group", {
+      name: "Merge action",
+    }).parentElement;
+    expect(controls?.className).toContain("flex-wrap");
+    expect(controls?.className).toContain("@2xl/merge-command:w-auto");
+  });
+
   it("groups the catalogued merge methods without changing the choices", async () => {
     const user = userEvent.setup();
     render(
@@ -215,11 +261,12 @@ describe("compact merge command", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Merge" }));
-    expect(
-      await screen.findByText(
-        "Another action is still finishing. The merge was not submitted. Wait a moment, then try again.",
-      ),
-    ).toBeTruthy();
+    const error = await screen.findByText(
+      "Another action is still finishing. The merge was not submitted. Wait a moment, then try again.",
+    );
+    const alert = error.closest('[data-slot="alert"]');
+    expect(alert?.className).toContain("w-full");
+    expect(alert?.className).toContain("min-w-0");
   });
 
   it("reports a non-cancellable merge until GitHub returns a final result", async () => {
