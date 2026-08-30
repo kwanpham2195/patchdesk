@@ -173,11 +173,11 @@ Status is one of `not started`, `drafted`, or `verified`.
 | glossary.md | drafted |
 | bug-triage.md | not started |
 | verification/ (4 checklists) | not started |
-| foundations/task-lifecycle-and-interruption.md | not started |
-| foundations/navigation-and-overlays.md | not started |
-| foundations/workspace-profile-and-identity.md | not started |
-| foundations/review-session-and-revision.md | not started |
-| foundations/persistence-and-recovery.md | not started |
+| foundations/task-lifecycle-and-interruption.md | drafted |
+| foundations/navigation-and-overlays.md | drafted |
+| foundations/workspace-profile-and-identity.md | drafted |
+| foundations/review-session-and-revision.md | drafted |
+| foundations/persistence-and-recovery.md | drafted |
 | first-run/setup-checklist.md | not started |
 | first-run/repository-discovery.md | not started |
 | pull-requests/selected-repository.md | not started |

@@ -48,6 +48,25 @@ Do not describe code. Describe what the maintainer sees and does. Technical deta
 - The supported direct input is keyboard and mouse. Screen-reader, touch, and pen behavior are outside the supported product surface.
 - Closing Settings with a dirty workspace-profile draft requires Save, Discard, or Cancel. Switching Settings sections alone keeps the draft.
 - A profile save trims scalar and list values, rejects blank list entries, and keeps edits typed after the save request began as a newer dirty draft.
+- Task state belongs to the feature that owns the action. Patchdesk has no global cancel command or single global operation queue.
+- The titlebar busy bar is reference-counted for tracked loading actions. It stays visible until every overlapping tracked action settles, while feature-local controls show the action-specific state.
+- Navigation state is clear, dirty draft, or GitHub write pending. A dirty draft offers an explicit choice; a pending GitHub write blocks navigation until its final result arrives.
+- The two destinations are Pull requests and one keyed Review workbench. Settings is an overlay, not a third destination.
+- The last destination and each Review's workbench position survive relaunch in local storage. An open Settings section survives renderer reload only in session storage and clears on normal close.
+- Destination changes move keyboard focus to the new screen's first `h1`. Settings normally returns focus to its opener.
+- Closing the window or quitting uses the same clear, dirty-draft, and write-pending state as renderer navigation. Dirty state can be discarded after confirmation; write-pending state cannot close until settlement.
+- The first-run Default profile is derived from the active `gh` account and home directory when those checks succeed. Patchdesk never fabricates an account and does not persist an invalid empty-account profile.
+- A workspace profile owns GitHub host and account, workspace roots, owner filters, rule paths, watched repositories, and the active-profile choice. It contains no credential.
+- Repository discovery is read-only. A repository enters the watchlist only through an explicit checkbox action, and editing other profile fields preserves the watchlist.
+- A Review identity is profile, GitHub host, owner, repository, and pull-request number. A Review session adds one exact head and base revision and never changes revisions in place.
+- Revision changed requires complete current head, base, and canonical patch-hash evidence. Incomplete or ambiguous evidence is Remote state unavailable, never a guessed change.
+- Explicit refresh reads a stable GitHub revision, saves a remote snapshot, reuses the current session for the same revision, or prepares a new immutable session for a new revision. A head change during refresh aborts adoption.
+- A non-open pull request becomes terminal only from authoritative merged or closed evidence. Terminal Reviews remain readable and reject further Review or merge writes.
+- Patchdesk uses `~/.config/patchdesk` for profiles and global settings, `~/.local/share/patchdesk` for durable Review data and logs, and `~/.cache/patchdesk` for re-creatable inbox, avatar, and represented-worktree state.
+- Durable JSON and artifact writes use sibling temporary files, file sync, atomic rename, and best-effort directory sync. Credential-shaped values are rejected on read and write.
+- Corrupt or invalid durable entries are quarantined rather than loaded. Preparation journals clean or recover partial sessions; startup marks orphaned active Insight runs as retryable failures.
+- Clear cache keeps durable Review history. Clear local review data removes non-running sessions, keeps active work protected, and leaves diagnostics. Terminal or orphaned sessions are retained for 14 days; quarantine entries for 30 days before background sweep.
+- A confirmed failure and an uncertain write outcome are different settled states. Confirmed failures can be retried when the feature permits; uncertain writes require reconciliation and are never retried automatically.
 - Documentation work may change only `docs/product-description/`. Other working-tree changes belong to other sessions and must remain untouched.
 
 ## State ownership in the Review workbench
