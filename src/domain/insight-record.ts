@@ -24,7 +24,7 @@ import {
   type InsightReasoning,
 } from "./insight-provider";
 
-export type InsightType = "analysis" | "walkthrough";
+export type InsightType = "analysis" | "walkthrough" | "brief";
 export type InsightRevision = {
   readonly sessionId: ReviewSessionId;
   readonly headSha: GitSha;

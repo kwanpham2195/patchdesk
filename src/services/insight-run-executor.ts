@@ -41,10 +41,7 @@ export class InsightRunExecutor {
     private readonly reviews: Pick<ReviewStore, "load">,
     private readonly sessions: Pick<ReviewSessionStore, "load">,
     private readonly insights: InsightStore,
-    private readonly invokers: Readonly<{
-      readonly analysis: InsightInvoker;
-      readonly walkthrough: InsightInvoker;
-    }>,
+    private readonly invokers: Readonly<Record<InsightType, InsightInvoker>>,
     private readonly operations: ReviewOperationCoordinator,
     private readonly active: Map<string, Active>,
     private readonly now: () => IsoTimestamp,

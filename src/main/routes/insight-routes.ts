@@ -26,7 +26,7 @@ import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
 
-/** Insight provider activation and the analysis and walkthrough run lifecycle. */
+/** Insight provider activation and the analysis, walkthrough, and brief run lifecycle. */
 export function registerInsightRoutes(
   app: Hono,
   container: LocalApiContainer,
@@ -61,6 +61,14 @@ export function registerInsightRoutes(
       await jsonBody(context),
     ),
   );
+  app.post("/v1/reviews/insights/brief/run", async (context) =>
+    insightRunResponse(
+      context,
+      configuration.insights,
+      "brief",
+      await jsonBody(context),
+    ),
+  );
   app.post("/v1/reviews/insights/analysis/cancel", async (context) =>
     insightCancelResponse(
       context,
@@ -74,6 +82,14 @@ export function registerInsightRoutes(
       context,
       configuration.insights,
       "walkthrough",
+      await jsonBody(context),
+    ),
+  );
+  app.post("/v1/reviews/insights/brief/cancel", async (context) =>
+    insightCancelResponse(
+      context,
+      configuration.insights,
+      "brief",
       await jsonBody(context),
     ),
   );
@@ -124,7 +140,7 @@ export function registerInsightRoutes(
 const insightRunSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
-  type: picklist(["analysis", "walkthrough"]),
+  type: picklist(["analysis", "walkthrough", "brief"]),
   provider: picklist(["pi", "codex-cli-account"]),
   model: pipe(string(), minLength(1), maxLength(200)),
   reasoning: picklist(["minimal", "low", "medium", "high", "xhigh"]),
@@ -132,7 +148,7 @@ const insightRunSchema = strictObject({
 const insightCancelSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
-  type: picklist(["analysis", "walkthrough"]),
+  type: picklist(["analysis", "walkthrough", "brief"]),
   runId: pipe(string(), minLength(1)),
 });
 const insightFindingSchema = strictObject({
@@ -330,5 +346,7 @@ async function insightFindingResponse(
 }
 
 function parseInsightType(value: string | undefined): InsightType | undefined {
-  return value === "analysis" || value === "walkthrough" ? value : undefined;
+  return value === "analysis" || value === "walkthrough" || value === "brief"
+    ? value
+    : undefined;
 }

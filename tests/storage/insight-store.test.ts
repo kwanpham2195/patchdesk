@@ -53,6 +53,33 @@ describe("InsightStore schema", () => {
     });
   });
 
+  it("round-trips a Brief record", () => {
+    const briefRecord = {
+      schemaVersion: 2 as const,
+      reviewId:
+        "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      type: "brief" as const,
+      nextToken: 2,
+      retained: {
+        runId:
+          "insight-brief-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+        revision: currentRecord.retained.revision,
+        generatedAt: "2026-08-01T00:00:00.000Z",
+        provenance: {
+          provider: "pi" as const,
+          model: "model",
+          reasoning: "medium" as const,
+        },
+        value: { goal: [{ text: "Guards recovery.", citations: ["h1"] }] },
+      },
+      updatedAt: "2026-08-01T00:01:00.000Z",
+    };
+    expect(parseInsightRecord(briefRecord)).toEqual({
+      _tag: "ok",
+      value: briefRecord,
+    });
+  });
+
   it("rejects duplicate Walkthrough progress IDs instead of normalizing them", () => {
     expect(
       parseInsightRecord({

@@ -2,6 +2,12 @@ import { readFile } from "node:fs/promises";
 
 import * as v from "valibot";
 
+import {
+  briefManifest,
+  normalizeBrief,
+  type BriefError,
+} from "../domain/brief";
+import { definedProps } from "../domain/defined-props";
 import type { InsightRevision, InsightType } from "../domain/insight-record";
 import type { RawJsonValue } from "../domain/json";
 import {
@@ -19,7 +25,8 @@ import type { InsightInvocationInput } from "./insight-run-coordinator";
 /** Bounded validateResult rejection reason, surfaced only in the diagnostic detail. */
 export type ValidateResultReason =
   | "invalid_result"
-  | NarrativeWalkthroughError["reason"];
+  | NarrativeWalkthroughError["reason"]
+  | BriefError["reason"];
 
 export async function validateInsightResult(
   type: InsightType,
@@ -76,6 +83,25 @@ export async function validateInsightResult(
       }),
     });
     return mapped._tag === "ok" ? mapped : err("invalid_result");
+  }
+  if (type === "brief") {
+    const normalizedBrief = normalizeBrief(
+      value,
+      briefManifest({
+        patch,
+        ...definedProps({ description: input.briefEvidence?.description }),
+        commits: input.briefEvidence?.commits ?? [],
+      }),
+      {
+        profileId: input.profileId,
+        sessionId: revision.sessionId,
+        headSha: revision.headSha,
+        patchHash: revision.patchHash,
+      },
+    );
+    return normalizedBrief._tag === "ok"
+      ? normalizedBrief
+      : err(normalizedBrief.error.reason);
   }
   // This result came from the current alias-manifest workflow. Persist its
   // marker even when a provider omits the requested constant JSON field.

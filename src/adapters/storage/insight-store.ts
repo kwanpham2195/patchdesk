@@ -47,7 +47,7 @@ const reasoningSchema = v.picklist([
 const providerSchema = v.picklist(["pi", "codex-cli-account"]);
 const activeRunFields = {
   id: v.pipe(v.string(), v.minLength(1)),
-  type: v.picklist(["analysis", "walkthrough"]),
+  type: v.picklist(["analysis", "walkthrough", "brief"]),
   revision: revisionSchema,
   token: v.pipe(v.number(), v.integer(), v.minValue(1)),
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
@@ -92,7 +92,7 @@ const walkthroughProgressSchema = v.strictObject({
 });
 const recordFields = {
   reviewId: v.pipe(v.string(), v.minLength(1)),
-  type: v.picklist(["analysis", "walkthrough"]),
+  type: v.picklist(["analysis", "walkthrough", "brief"]),
   nextToken: v.pipe(v.number(), v.integer(), v.minValue(1)),
   retained: v.optional(v.unknown()),
   dismissals: v.optional(v.array(dismissalSchema)),

@@ -17,6 +17,16 @@ import {
 export const ANALYSIS_RUN_TIMEOUT_MS = 10 * 60_000;
 
 /**
+ * How long a one-shot Insight child may run a Brief, for every provider.
+ *
+ * A Brief is two to four cited sentences over the same bounded artifacts an
+ * Analysis reads, so it is bounded well below the Analysis timeout on purpose:
+ * a Brief that has not answered in four minutes is not going to be the short
+ * orientation the maintainer asked for.
+ */
+export const BRIEF_RUN_TIMEOUT_MS = 4 * 60_000;
+
+/**
  * How long a one-shot Insight child may run a walkthrough: the patch-scaled
  * bound `walkthroughTimeoutMs` calculates, with the artifact read that feeds
  * it made non-fatal.

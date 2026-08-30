@@ -6,13 +6,18 @@ import type {
   CommandFailure,
   CommandRunner,
 } from "../adapters/github/command-runner";
+import { parseBriefOutput, type BriefOutput } from "../domain/brief";
 import { definedProps } from "../domain/defined-props";
 import {
   parseModelReviewResult,
   type ModelReviewResult,
 } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
-import { ANALYSIS_RUN_TIMEOUT_MS } from "./child-invocation";
+import type { BriefInput } from "./brief-operation";
+import {
+  ANALYSIS_RUN_TIMEOUT_MS,
+  BRIEF_RUN_TIMEOUT_MS,
+} from "./child-invocation";
 import { readObjectField } from "./read-object-field";
 import {
   parseWalkthroughOutput,
@@ -70,6 +75,27 @@ export class FlueInsightChildInvoker {
     );
     if (result._tag === "err") return result;
     const parsed = parseModelReviewResult(result.value);
+    return parsed._tag === "ok"
+      ? ok(parsed.value)
+      : err({ reason: "invalid_result" });
+  }
+
+  /**
+   * Runs one Brief child. The Flue runtime learns the `brief` request type in a
+   * later slice; until then this arm reaches a runtime that rejects it, which
+   * surfaces as an ordinary invalid-result failure rather than a crash.
+   */
+  async invokeBrief(
+    input: BriefInput,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<Result<BriefOutput, FlueInsightChildFailure>> {
+    const result = await this.invoke(
+      { type: "brief", input },
+      BRIEF_RUN_TIMEOUT_MS,
+      options?.signal,
+    );
+    if (result._tag === "err") return result;
+    const parsed = parseBriefOutput(result.value);
     return parsed._tag === "ok"
       ? ok(parsed.value)
       : err({ reason: "invalid_result" });

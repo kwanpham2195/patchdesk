@@ -34,6 +34,7 @@ import {
 import { CommandRunner } from "../adapters/github/command-runner";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
+import { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
@@ -312,17 +313,42 @@ function createInsightCoordinator(
       );
     },
   };
+  const brief = {
+    async invoke(
+      input: InsightInvocationInput,
+      options: { readonly signal: AbortSignal },
+    ) {
+      if (input.provider === "codex-cli-account")
+        return codexInvoke(input, options);
+      if (input.reasoning === "minimal" || input.reasoning === "xhigh")
+        return err({ reason: "execution_failed" as const });
+      if (insightInvoker === undefined)
+        return err({ reason: "runtime_unavailable" as const });
+      return insightInvoker.invokeBrief(
+        {
+          profileId: input.profileId,
+          sessionId: input.sessionId,
+          patchPath: input.patchPath,
+          model: input.model,
+          reasoning: input.reasoning,
+          evidence: input.briefEvidence ?? { commits: [] },
+        },
+        options,
+      );
+    },
+  };
   return new InsightRunCoordinator(
     new ReviewStore(paths),
     new ReviewSessionStore(paths),
     new InsightStore(paths),
     paths,
     modelCatalog,
-    { analysis, walkthrough },
+    { analysis, walkthrough, brief },
     operations,
     undefined,
     diagnostics,
     providerCatalog,
+    new ReviewRemoteStore(paths),
   );
 }
 

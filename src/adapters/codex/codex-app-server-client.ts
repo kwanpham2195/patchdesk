@@ -30,7 +30,7 @@ export const MAX_ANALYSIS_CODEX_PROMPT_BYTES = 6 * 1024 * 1024;
 const RUN_TIMEOUT_MS = 5 * 60_000;
 
 /** Shared unsafe-prompt guard: rejects path disclosure, credential leakage, and repository-rule leakage. */
-const UNSAFE_PROMPT_PATTERN =
+export const UNSAFE_PROMPT_PATTERN =
   /(?:^|\s)\/[^\s]+|[A-Za-z]:[\\/]|CODEX_HOME|projectReviewCriteria|rulePaths|repository rules|(?:api[_-]?key|access[_-]?token|password|secret|credential|authorization|token)\s*(?:[:=]|\bbearer\b)|-----BEGIN [A-Z ]*PRIVATE KEY-----/iu;
 
 const COMMAND_APPROVAL_METHOD = "item/commandExecution/requestApproval";

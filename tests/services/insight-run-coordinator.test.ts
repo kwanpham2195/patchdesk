@@ -18,6 +18,7 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
+import type { InsightType } from "../../src/domain/insight-record";
 import { createReview } from "../../src/domain/review";
 import { createReviewSession } from "../../src/domain/review-session";
 import { ok, type Result } from "../../src/domain/result";
@@ -73,6 +74,15 @@ async function fixture(
       baseSha,
     },
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
+    // The Brief's `d*` aliases are description paragraphs, so a session
+    // without a body has nothing outside the patch for a Brief to cite.
+    prContext: {
+      title: "Guard recovery",
+      description: "Adds a guard to recovery.",
+      author: "fixture",
+      headBranch: "feature",
+      baseBranch: "main",
+    },
     patchPath: must(
       // SAFETY: "placeholder" only needs to satisfy paths.patchFile's ReviewSessionId-branded
       // parameter type; this value is never read back — session.patchPath below is recomputed
@@ -131,7 +141,7 @@ async function fixture(
         return ok({ models: [{ id: "model", label: "Model" }] });
       },
     },
-    { analysis: invoker, walkthrough: invoker },
+    { analysis: invoker, walkthrough: invoker, brief: invoker },
     operations,
     () => now,
   );
@@ -151,6 +161,7 @@ async function settled(
   coordinator: InsightRunCoordinator,
   reviewId: string,
   runId: string,
+  type: InsightType = "analysis",
 ): Promise<InsightRunResponse> {
   for (let retry = 0; retry < 100; retry += 1) {
     const state = await coordinator.observe({
@@ -159,7 +170,7 @@ async function settled(
       // coordinator.start() call in this same test already produced as a valid branded id; these
       // casts just re-label an already-valid string for this test-only polling helper.
       reviewId: reviewId as never,
-      type: "analysis",
+      type,
       // SAFETY: same as above — runId was already produced as a valid branded id earlier in this
       // same test.
       runId: runId as never,
@@ -177,63 +188,78 @@ async function settled(
 }
 
 describe("InsightRunCoordinator current lifecycle", () => {
-  it("recovers persisted active runs during bounded startup recovery", async () => {
-    let release!: () => void;
-    const waiting = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const value = await fixture({
-      async invoke() {
-        await waiting;
-        return ok(analysisResult);
-      },
-    });
-    const started = await value.coordinator.start({
-      profileId,
-      reviewId: value.review.id,
-      type: "analysis",
-      model: "model",
-      reasoning: "medium",
-    });
-    if (started._tag === "err") throw new Error("expected active run");
+  // Every Insight type is swept at startup, so the table is over the types
+  // rather than one test for the one that happened to be written first.
+  it.each(["analysis", "walkthrough", "brief"] as const)(
+    "recovers a persisted active %s run during bounded startup recovery",
+    async (type) => {
+      let release!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const value = await fixture({
+        async invoke() {
+          await waiting;
+          return ok(analysisResult);
+        },
+      });
+      const started = await value.coordinator.start({
+        profileId,
+        reviewId: value.review.id,
+        type,
+        model: "model",
+        reasoning: "medium",
+      });
+      if (started._tag === "err") throw new Error("expected active run");
 
-    const recovered = new InsightRunCoordinator(
-      value.reviews,
-      value.sessions,
-      value.insights,
-      value.paths,
-      {
-        async get() {
-          return ok({ models: [{ id: "model", label: "Model" }] });
-        },
-      },
-      {
-        analysis: {
-          async invoke() {
-            return ok(analysisResult);
+      const recovered = new InsightRunCoordinator(
+        value.reviews,
+        value.sessions,
+        value.insights,
+        value.paths,
+        {
+          async get() {
+            return ok({ models: [{ id: "model", label: "Model" }] });
           },
         },
-        walkthrough: {
-          async invoke() {
-            return ok(analysisResult);
+        {
+          analysis: {
+            async invoke() {
+              return ok(analysisResult);
+            },
+          },
+          walkthrough: {
+            async invoke() {
+              return ok(analysisResult);
+            },
+          },
+          brief: {
+            async invoke() {
+              return ok(analysisResult);
+            },
           },
         },
-      },
-      value.operations,
-      () => now,
-    );
-    await recovered.recoverAll();
-    expect(
-      await value.insights.load(profileId, value.review.id, "analysis"),
-    ).toMatchObject({
-      _tag: "ok",
-      value: {
-        replacementFailure: { reason: "failed" },
-      },
-    });
-    release();
-    await settled(value.coordinator, value.review.id, started.value.runId);
-  });
+        value.operations,
+        () => now,
+      );
+      await recovered.recoverAll();
+      expect(
+        await value.insights.load(profileId, value.review.id, type),
+      ).toMatchObject({
+        _tag: "ok",
+        value: {
+          replacementFailure: { reason: "failed" },
+        },
+      });
+      release();
+      await settled(
+        value.coordinator,
+        value.review.id,
+        started.value.runId,
+        type,
+      );
+    },
+  );
 
   it("waits for an existing Review mutation before starting an Insight", async () => {
     const operations = new ReviewOperationCoordinator();
@@ -322,6 +348,63 @@ describe("InsightRunCoordinator current lifecycle", () => {
     ).toMatchObject({
       _tag: "ok",
       value: { retained: { value: { summary: "Check the guard." } } },
+    });
+  });
+
+  it("runs a Brief and retains it with its citations resolved", async () => {
+    const value = await fixture({
+      async invoke() {
+        return ok({
+          goal: [
+            {
+              text: "Recovery gains a guard.",
+              // `d1` is the session's own pull request description paragraph.
+              citations: ["d1"],
+            },
+          ],
+          assumptions: [],
+        });
+      },
+    });
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "brief",
+      model: "model",
+      reasoning: "medium",
+    });
+    if (started._tag === "err") throw new Error("expected run");
+    expect(
+      await settled(
+        value.coordinator,
+        value.review.id,
+        started.value.runId,
+        "brief",
+      ),
+    ).toMatchObject({ status: "completed" });
+    expect(
+      await value.insights.load(profileId, value.review.id, "brief"),
+    ).toMatchObject({
+      _tag: "ok",
+      value: {
+        retained: {
+          value: {
+            citationStatus: "verified",
+            goal: [
+              {
+                text: "Recovery gains a guard.",
+                citations: [
+                  {
+                    alias: "d1",
+                    kind: "description",
+                    label: "Adds a guard to recovery.",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
     });
   });
 

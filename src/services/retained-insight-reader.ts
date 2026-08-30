@@ -5,6 +5,7 @@ import * as v from "valibot";
 
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import { parseStoredBrief, type NormalizedBrief } from "../domain/brief";
 import { definedProps } from "../domain/defined-props";
 import { createReviewId, type WorkspaceProfileId } from "../domain/ids";
 import type {
@@ -26,9 +27,11 @@ import type { WorkbenchProjectionFailure } from "./review-workbench-projection";
 type StoredInsightRecords = {
   readonly analysis?: InsightRecord<RetainedInsight<ReviewResult>>;
   readonly walkthrough?: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
+  readonly brief?: InsightRecord<RetainedInsight<NormalizedBrief>>;
   readonly analysisScope?: InsightScopeProjection;
   readonly analysisArtifactStatus?: InsightArtifactStatus;
   readonly walkthroughArtifactStatus?: InsightArtifactStatus;
+  readonly briefArtifactStatus?: InsightArtifactStatus;
 };
 
 /**
@@ -47,7 +50,7 @@ export class RetainedInsightReader {
     // A retained Walkthrough belongs to the Session that produced it. Never
     // validate it against the currently represented Session's patch: Refresh
     // intentionally changes that artifact while old reading evidence remains.
-    const [analysis, walkthrough] = await Promise.all([
+    const [analysis, walkthrough, brief] = await Promise.all([
       this.insights.loadTyped(
         session.key.profileId,
         createReviewId(session.key),
@@ -60,6 +63,14 @@ export class RetainedInsightReader {
         (input) => parseReviewResult(input),
       ),
       this.loadWalkthroughRecord(session),
+      // A retained Brief already carries its resolved citation labels, so it
+      // needs no patch bytes to read back -- only its own stored shape.
+      this.insights.loadTyped(
+        session.key.profileId,
+        createReviewId(session.key),
+        "brief",
+        (input) => parseStoredBrief(input),
+      ),
     ]);
     // A corrupt or schema-drifted Insight record is ignored: the Review still
     // opens and the Insight reads as not generated, so a re-run heals it.
@@ -75,6 +86,12 @@ export class RetainedInsightReader {
       walkthrough.error.reason !== "invalid_stored_value"
     )
       return err({ _tag: "SessionStorageUnavailable" });
+    if (
+      brief._tag === "err" &&
+      brief.error.reason !== "not_found" &&
+      brief.error.reason !== "invalid_stored_value"
+    )
+      return err({ _tag: "SessionStorageUnavailable" });
     const analysisArtifact =
       analysis._tag === "ok" && analysis.value.retained !== undefined
         ? await this.readInsightScope(
@@ -82,10 +99,19 @@ export class RetainedInsightReader {
             analysis.value.retained,
           )
         : undefined;
+    const briefArtifactStatus =
+      brief._tag === "ok" && brief.value.retained !== undefined
+        ? await this.readArtifactStatus(
+            session.key.profileId,
+            brief.value.retained,
+          )
+        : undefined;
     const records: StoredInsightRecords = definedProps({
       analysis: analysis._tag === "ok" ? analysis.value : undefined,
       walkthrough:
         walkthrough._tag === "ok" ? walkthrough.value.record : undefined,
+      brief: brief._tag === "ok" ? brief.value : undefined,
+      briefArtifactStatus,
       analysisScope: analysisArtifact?.scope,
       analysisArtifactStatus: analysisArtifact?.artifactStatus,
       walkthroughArtifactStatus:
@@ -108,13 +134,8 @@ export class RetainedInsightReader {
       retained.revision.sessionId,
     );
     if (retainedSession._tag === "err") return { artifactStatus: "mismatch" };
-    const patch = await readFile(retainedSession.value.patchPath, "utf8").catch(
-      () => undefined,
-    );
+    const patch = await this.readVerifiedPatch(profileId, retained);
     if (patch === undefined) return { artifactStatus: "mismatch" };
-    const actualHash = createHash("sha256").update(patch).digest("hex");
-    if (actualHash !== retained.revision.patchHash)
-      return { artifactStatus: "mismatch" };
     const files = parseUnifiedPatch(patch);
     return {
       artifactStatus: "verified",
@@ -132,6 +153,40 @@ export class RetainedInsightReader {
         })),
       },
     };
+  }
+
+  /**
+   * The patch a retained Insight was generated from, but only when it is still
+   * readable and still hashes to the revision the Insight recorded. Anything
+   * else is a mismatch: the bytes the citations were resolved against are gone.
+   */
+  private async readVerifiedPatch(
+    profileId: WorkspaceProfileId,
+    retained: RetainedInsight<unknown>,
+  ): Promise<string | undefined> {
+    const retainedSession = await this.sessions.load(
+      profileId,
+      retained.revision.sessionId,
+    );
+    if (retainedSession._tag === "err") return undefined;
+    const patch = await readFile(retainedSession.value.patchPath, "utf8").catch(
+      () => undefined,
+    );
+    if (patch === undefined) return undefined;
+    return createHash("sha256").update(patch).digest("hex") ===
+      retained.revision.patchHash
+      ? patch
+      : undefined;
+  }
+
+  /** `readVerifiedPatch` reduced to the status the projection reports. */
+  private async readArtifactStatus(
+    profileId: WorkspaceProfileId,
+    retained: RetainedInsight<unknown>,
+  ): Promise<InsightArtifactStatus> {
+    return (await this.readVerifiedPatch(profileId, retained)) === undefined
+      ? "mismatch"
+      : "verified";
   }
 
   private async loadWalkthroughRecord(session: ReviewSession): Promise<

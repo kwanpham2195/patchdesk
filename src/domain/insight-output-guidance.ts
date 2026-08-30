@@ -1,4 +1,4 @@
-export type GuidedInsightType = "analysis" | "walkthrough";
+export type GuidedInsightType = "analysis" | "walkthrough" | "brief";
 
 const SIMPLIFIED_TECHNICAL_ENGLISH = [
   "Write all human-readable text in ASD-STE100 / Simplified Technical English.",
@@ -31,12 +31,23 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
     ].join(" ");
   }
 
+  if (type === "walkthrough") {
+    return [
+      SIMPLIFIED_TECHNICAL_ENGLISH,
+      REVIEWER_FRAMING,
+      "Explain the change as a short semantic walkthrough, not as a file inventory.",
+      "Choose the smallest Markdown form that makes each point clear. Use a short paragraph for one connected idea and a bullet outline for several facts or steps. Do not put several independent ideas in one large paragraph.",
+      "Return the intended Markdown structure directly. The renderer preserves it.",
+      "Group related hunks by behavior. State the behavior before consequences and validation.",
+    ].join(" ");
+  }
+
   return [
     SIMPLIFIED_TECHNICAL_ENGLISH,
-    REVIEWER_FRAMING,
-    "Explain the change as a short semantic walkthrough, not as a file inventory.",
-    "Choose the smallest Markdown form that makes each point clear. Use a short paragraph for one connected idea and a bullet outline for several facts or steps. Do not put several independent ideas in one large paragraph.",
-    "Return the intended Markdown structure directly. The renderer preserves it.",
-    "Group related hunks by behavior. State the behavior before consequences and validation.",
+    "Write a Brief: what this change is for, in 2 to 4 sentences, ordered from coarse to granular. State the goal first.",
+    "Cite every sentence. Each sentence carries one or more aliases from the supplied citation manifest, and a sentence you cannot cite is written as an assumption instead.",
+    "Never invent motivation, intent, trade-offs, or product impact. If the evidence does not state why the change was made, say so as an assumption.",
+    "Do not narrate the patch file by file and do not restate code that the diff already shows.",
+    "Write no numbers and no counts. Patchdesk produces every count from a tool.",
   ].join(" ");
 }

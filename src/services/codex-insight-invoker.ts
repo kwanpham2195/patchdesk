@@ -8,16 +8,22 @@ import {
   MAX_WALKTHROUGH_PROMPT_BYTES,
   type CodexAppServerClient,
 } from "../adapters/codex/codex-app-server-client";
+import {
+  buildCodexBriefPrompt,
+  MAX_BRIEF_PROMPT_BYTES,
+} from "../adapters/codex/codex-brief-prompt";
 import type { RepresentedReviewWorktree } from "../domain/represented-review-worktree";
 import type {
   InsightInvocationInput,
   InsightInvoker,
 } from "./insight-run-coordinator";
 import { err } from "../domain/result";
+import { prepareBriefPrompt } from "./brief-operation";
 import { composeReviewPrompt } from "./review-rubric";
 import { prepareWalkthroughPrompt } from "./walkthrough-operation";
 import {
   ANALYSIS_RUN_TIMEOUT_MS,
+  BRIEF_RUN_TIMEOUT_MS,
   resolveWalkthroughTimeoutMs,
 } from "./child-invocation";
 
@@ -123,6 +129,40 @@ export class CodexInsightInvoker implements InsightInvoker {
           prompt: prompt.value,
           maxPromptBytes: MAX_WALKTHROUGH_PROMPT_BYTES,
           runTimeoutMs,
+        },
+        options,
+      );
+      return result._tag === "ok"
+        ? result
+        : err({ reason: result.error.reason, phase: result.error.phase });
+    }
+    if (input.type === "brief") {
+      const briefPatchPath = resolvedArtifacts[2];
+      if (briefPatchPath === undefined)
+        return err({ reason: "runtime_unavailable" as const });
+      let briefPrompt: string;
+      try {
+        briefPrompt = await prepareBriefPrompt({
+          profileId: input.profileId,
+          sessionId: input.sessionId,
+          patchPath: briefPatchPath,
+          evidence: input.briefEvidence ?? { commits: [] },
+        });
+      } catch {
+        return err({ reason: "execution_failed" as const });
+      }
+      const prompt = buildCodexBriefPrompt({ briefPrompt, policy });
+      if (prompt._tag === "err")
+        return err({ reason: "execution_failed" as const });
+      const result = await this.clientFactory(this.executablePath).run(
+        {
+          worktreePath,
+          expectedHeadSha: head,
+          model: input.model,
+          reasoning: input.reasoning,
+          prompt: prompt.value,
+          maxPromptBytes: MAX_BRIEF_PROMPT_BYTES,
+          runTimeoutMs: BRIEF_RUN_TIMEOUT_MS,
         },
         options,
       );
