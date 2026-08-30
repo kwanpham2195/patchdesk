@@ -224,6 +224,24 @@ describe("Flue 2 one-shot insight runtime", () => {
     ).resolves.toEqual({ ok: false, reason: "invalid_result" });
   });
 
+  it("names a provider refusal in the failure result without carrying an opaque token through", async () => {
+    const provider = fake([
+      async () => {
+        throw new Error(
+          'dispatch(sub_01M192PE7E0N6ZMN6ARZXSB5SB) failed: 402: {"message":"Insufficient Balance"}',
+        );
+      },
+    ]);
+    const result = await runPatchdeskChild(walkthroughInvocation(), {
+      providers: [provider.provider],
+    });
+    if (result.ok) throw new Error("expected the provider refusal to fail");
+    expect(result.reason).toBe("execution_failed");
+    expect(result.detail).toContain("Insufficient Balance");
+    expect(result.detail).not.toContain("sub_01M192PE7E0N6ZMN6ARZXSB5SB");
+    expect((result.detail ?? "").length).toBeLessThanOrEqual(200);
+  });
+
   it("resolves the trusted skill from the direct development bundle", () => {
     expect(resolvePatchdeskReviewSkillPath()).toBe(
       new URL(

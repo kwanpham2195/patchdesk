@@ -210,6 +210,73 @@ describe("FlueInsightChildInvoker", () => {
   });
 });
 
+describe("FlueInsightChildInvoker failure classification", () => {
+  it("reports a provider refusal as a run failure carrying the child's account of it", async () => {
+    const detail =
+      'dispatch([redacted]) failed: 402: {"message":"Insufficient Balance"}';
+    const invoker = new FlueInsightChildInvoker(
+      new CommandRunner(
+        new RecordingExecutor({
+          _tag: "Exited",
+          exitCode: 0,
+          stdout: JSON.stringify({
+            ok: false,
+            reason: "execution_failed",
+            detail,
+          }),
+          stderr: "",
+        }),
+      ),
+      "/workspace",
+    );
+
+    await expect(
+      invoker.invokeWalkthrough(
+        {
+          profileId: "profile",
+          sessionId,
+          contextPath: "/app/context",
+          patchPath: "/app/patch",
+          model: "deepseek/deepseek-v4-flash",
+          reasoning: "low",
+        },
+        60_000,
+      ),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "execution_failed", stderr: detail },
+    });
+  });
+
+  it("does not blame the model for a request the child rejected", async () => {
+    const invoker = new FlueInsightChildInvoker(
+      new CommandRunner(
+        new RecordingExecutor({
+          _tag: "Exited",
+          exitCode: 0,
+          stdout: JSON.stringify({ ok: false, reason: "invalid_input" }),
+          stderr: "",
+        }),
+      ),
+      "/workspace",
+    );
+
+    await expect(
+      invoker.invokeWalkthrough(
+        {
+          profileId: "profile",
+          sessionId,
+          contextPath: "/app/context",
+          patchPath: "/app/patch",
+          model: "deepseek/deepseek-v4-flash",
+          reasoning: "low",
+        },
+        60_000,
+      ),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
+  });
+});
+
 describe("FlueInsightChildInvoker strict response boundary", () => {
   it("rejects ambiguous child objects", async () => {
     const invoker = new FlueInsightChildInvoker(

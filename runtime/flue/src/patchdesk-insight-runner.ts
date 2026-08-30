@@ -87,6 +87,13 @@ export type PatchdeskChildResult =
         | "runtime_unavailable"
         | "cancelled"
         | "execution_failed";
+      /**
+       * One bounded, redacted line naming why the provider refused or failed.
+       * Without it a provider refusal (an expired account, no credit, a
+       * rejected model) is indistinguishable from a malformed model result in
+       * both the diagnostic and the failed-state copy.
+       */
+      readonly detail?: string;
     };
 
 /** Parses one bounded stdin protocol object. */
@@ -159,8 +166,11 @@ export async function runPatchdeskChild(
     } catch (cause: unknown) {
       if (abortRequested || options.signal?.aborted)
         return { ok: false, reason: "cancelled" };
-      void cause;
-      return { ok: false, reason: "execution_failed" };
+      return {
+        ok: false,
+        reason: "execution_failed",
+        detail: redactedFailureDetail(cause),
+      };
     } finally {
       options.signal?.removeEventListener("abort", abort);
       await boundedStop(flue.stop());
@@ -442,6 +452,50 @@ function inspectorOperations(inspector: ReviewInspector): InspectorOperations {
         : { denied: true };
     },
   };
+}
+
+const MAX_FAILURE_DETAIL_CHARS = 200;
+
+/**
+ * Renders one bounded line from a provider failure. The runtime wraps the
+ * provider's own message ("402: Insufficient Balance") inside a generic
+ * "Agent run failed" error, so the deepest message in the cause chain is the
+ * one worth keeping. Credentials never appear in these messages, but a
+ * provider is free to echo request material, so any long opaque token-shaped
+ * run is replaced before the line leaves the child.
+ */
+export function redactedFailureDetail(cause: unknown): string | undefined {
+  const message = deepestFailureMessage(cause);
+  if (message === undefined) return undefined;
+  const redacted = message
+    .replaceAll(/[\w-]{24,}/g, "[redacted]")
+    .replaceAll(/\s+/g, " ")
+    .trim();
+  if (redacted.length === 0) return undefined;
+  return redacted.length > MAX_FAILURE_DETAIL_CHARS
+    ? `${redacted.slice(0, MAX_FAILURE_DETAIL_CHARS - 1)}…`
+    : redacted;
+}
+
+const MAX_FAILURE_CAUSE_DEPTH = 5;
+const failureTextSchema = v.pipe(v.string(), v.minLength(1));
+const failureCauseSchema = v.looseObject({
+  message: v.optional(failureTextSchema),
+  cause: v.optional(v.unknown()),
+});
+
+function deepestFailureMessage(cause: unknown): string | undefined {
+  let current: unknown = cause;
+  let deepest: string | undefined;
+  for (let depth = 0; depth < MAX_FAILURE_CAUSE_DEPTH; depth += 1) {
+    const text = v.safeParse(failureTextSchema, current);
+    if (text.success) return text.output;
+    const node = v.safeParse(failureCauseSchema, current);
+    if (!node.success) return deepest;
+    deepest = node.output.message ?? deepest;
+    current = node.output.cause;
+  }
+  return deepest;
 }
 
 function writeProtocolOutput(

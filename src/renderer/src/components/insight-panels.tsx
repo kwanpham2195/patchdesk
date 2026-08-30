@@ -220,9 +220,9 @@ function failureMessage(category: InsightFailureCategory | undefined): string {
     case "timed_out":
       return "The Insight run timed out. Try again or choose a smaller scope.";
     case "execution_failed":
-      return "The Insight could not complete. Check the run options and try again.";
+      return "The provider refused or failed this run. Check the provider account and the run options, then try again.";
     case "invalid_result":
-      return "The Insight returned an invalid result. Try again.";
+      return "The provider answered with a result this app could not read. Try again.";
     case "unexpected_failure":
       return "The Insight failed unexpectedly. Try again.";
     default:

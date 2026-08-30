@@ -26,6 +26,8 @@ import {
 } from "./walkthrough-operation";
 
 const MAX_CHILD_STDIN_BYTES = 2 * 1024 * 1024;
+/** The child bounds its own detail; this is the app-side backstop. */
+const MAX_CHILD_DETAIL_CHARS = 200;
 
 export type FlueInsightChildFailure = {
   readonly reason:
@@ -36,6 +38,12 @@ export type FlueInsightChildFailure = {
     | "timed_out"
     | "execution_failed"
     | "invalid_result";
+  /**
+   * The child's bounded, redacted account of why the run failed, forwarded to
+   * `InsightRunExecutor` so a provider refusal is recorded as a cause instead
+   * of a bare category. Absent whenever the child had nothing to say.
+   */
+  readonly stderr?: string;
 };
 
 export type FlueInsightChildAnalysisInput = {
@@ -81,9 +89,9 @@ export class FlueInsightChildInvoker {
   }
 
   /**
-   * Runs one Brief child. The Flue runtime learns the `brief` request type in a
-   * later slice; until then this arm reaches a runtime that rejects it, which
-   * surfaces as an ordinary invalid-result failure rather than a crash.
+   * Runs one Brief child. A runtime built before the `brief` request type
+   * existed rejects the request as `invalid_input`, which is reported as a run
+   * failure: the request was wrong, not the model's answer.
    */
   async invokeBrief(
     input: BriefInput,
@@ -145,17 +153,34 @@ export class FlueInsightChildInvoker {
     const response = parseChildResponse(output.value);
     if (response === undefined) return err({ reason: "invalid_result" });
     if (response.ok) return ok(response.value);
-    return err({
-      reason:
-        response.reason === "cancelled"
-          ? "cancelled"
-          : response.reason === "runtime_unavailable"
-            ? "runtime_unavailable"
-            : response.reason === "invalid_result" ||
-                response.reason === "invalid_input"
-              ? "invalid_result"
-              : "execution_failed",
-    });
+    const reason = childResponseReason(response.reason);
+    return err(
+      response.detail === undefined
+        ? { reason }
+        : { reason, stderr: response.detail },
+    );
+  }
+}
+
+/**
+ * Only the child's own `invalid_result` means the model answered with
+ * something this app cannot read. Every other refusal -- a rejected request, a
+ * provider that failed the run -- is a run failure, and reporting
+ * `invalid_input` as an invalid result blamed the model for a request the app
+ * or a stale staged runtime got wrong.
+ */
+function childResponseReason(
+  reason: string,
+): FlueInsightChildFailure["reason"] {
+  switch (reason) {
+    case "cancelled":
+      return "cancelled";
+    case "runtime_unavailable":
+      return "runtime_unavailable";
+    case "invalid_result":
+      return "invalid_result";
+    default:
+      return "execution_failed";
   }
 }
 
@@ -192,11 +217,13 @@ function productionChildEnvironment(
   return environment;
 }
 
-function parseChildResponse(
-  input: unknown,
-):
+function parseChildResponse(input: unknown):
   | { readonly ok: true; readonly value: unknown }
-  | { readonly ok: false; readonly reason: string }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      readonly detail?: string;
+    }
   | undefined {
   if (typeof input !== "object" || input === null || Array.isArray(input))
     return undefined;
@@ -205,8 +232,14 @@ function parseChildResponse(
   if (ok === true && keys.length === 2 && Object.hasOwn(input, "value"))
     return { ok: true, value: readObjectField(input, "value") };
   const reason = readObjectField(input, "reason");
-  if (ok === false && keys.length === 2 && typeof reason === "string")
-    return { ok: false, reason };
+  if (ok === false && typeof reason === "string" && keys.length <= 3) {
+    const detail = readObjectField(input, "detail");
+    return keys.length === 2
+      ? { ok: false, reason }
+      : typeof detail === "string"
+        ? { ok: false, reason, detail: detail.slice(0, MAX_CHILD_DETAIL_CHARS) }
+        : undefined;
+  }
   return undefined;
 }
 
