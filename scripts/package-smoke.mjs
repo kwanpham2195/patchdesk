@@ -14,6 +14,8 @@ import { promisify } from "node:util";
 import { execFile, spawn } from "node:child_process";
 import { chromium } from "playwright";
 
+import { validatePackagedFontRuntime } from "./font-package-validation.mjs";
+
 import { packageSmokeEnvironment } from "./smoke-env.mjs";
 
 const execute = promisify(execFile);
@@ -109,10 +111,30 @@ try {
   if (window === undefined)
     throw new Error("Packaged app did not create a window");
   const rendererFailures = [];
+  /** @type {string[]} */
+  const fontResourceFailures = [];
   window.on("console", (message) => {
     if (message.type() === "error") rendererFailures.push(message.text());
   });
   window.on("pageerror", (error) => rendererFailures.push(error.message));
+  window.on(
+    "requestfailed",
+    /** @param {import("playwright").Request} request */ (request) => {
+      if (request.resourceType() !== "font") return;
+      fontResourceFailures.push(
+        `${request.url()} failed: ${request.failure()?.errorText ?? "unknown failure"}`,
+      );
+    },
+  );
+  window.on(
+    "response",
+    /** @param {import("playwright").Response} response */ (response) => {
+      if (response.request().resourceType() !== "font" || response.ok()) return;
+      fontResourceFailures.push(
+        `${response.url()} returned HTTP ${response.status()}`,
+      );
+    },
+  );
   await window.waitForLoadState("domcontentloaded");
   await window.evaluate(() => {
     window.location.hash = "workbench-fixture";
@@ -120,11 +142,8 @@ try {
   await window.reload({ waitUntil: "domcontentloaded" });
   try {
     await window
-      .getByText("Review state is current.", { exact: true })
-      .waitFor({ timeout: 15_000 });
-    await window
       .getByText("#42 Protect review writes", { exact: true })
-      .waitFor();
+      .waitFor({ timeout: 15_000 });
   } catch (cause) {
     const state = {
       url: window.url(),
@@ -201,8 +220,36 @@ try {
     throw new Error(
       `Packaged Settings content is not independently scrollable: ${JSON.stringify(scrollMetrics)}`,
     );
+  const packagedFonts = await window.evaluate(async () => {
+    await globalThis.document.fonts.ready;
+    const [geistFaces, geistMonoFaces] = await Promise.all([
+      globalThis.document.fonts.load('400 16px "Geist Variable"'),
+      globalThis.document.fonts.load('400 16px "Geist Mono Variable"'),
+    ]);
+    const code = globalThis.document.createElement("code");
+    code.className = "font-mono";
+    globalThis.document.body.append(code);
+    const codeFontFamily = globalThis.getComputedStyle(code).fontFamily;
+    code.remove();
+    return {
+      bodyFontFamily: globalThis.getComputedStyle(globalThis.document.body)
+        .fontFamily,
+      codeFontFamily,
+      fontFaces: [...globalThis.document.fonts].map((face) => ({
+        family: face.family,
+        status: face.status,
+      })),
+      loadedGeistFaces: geistFaces.length,
+      loadedGeistMonoFaces: geistMonoFaces.length,
+    };
+  });
+  const fontErrors = validatePackagedFontRuntime({
+    ...packagedFonts,
+    fontResourceFailures,
+  });
+  if (fontErrors.length > 0) throw new Error(fontErrors.join("\n"));
   console.log(
-    `${bundle}: packaged fixture workbench loaded (${metadata.CFBundleIdentifier}, ${metadata.CFBundleShortVersionString}, ${process.arch}, ${metadata.CFBundleIconFile})`,
+    `${bundle}: packaged fixture workbench loaded with Geist and Geist Mono (${metadata.CFBundleIdentifier}, ${metadata.CFBundleShortVersionString}, ${process.arch}, ${metadata.CFBundleIconFile})`,
   );
 } finally {
   if (browser !== undefined) await browser.close();

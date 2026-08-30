@@ -1,11 +1,26 @@
 import { gzipSync } from "node:zlib";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+
+import { validateRendererFontBundle } from "./font-package-validation.mjs";
 
 const rendererRoot = join(process.cwd(), "out/renderer");
 const graph = JSON.parse(
   await readFile(join(rendererRoot, "renderer-graph.json"), "utf8"),
 );
+const assetNames = await readdir(join(rendererRoot, "assets"));
+const cssSources = await Promise.all(
+  assetNames
+    .filter((fileName) => fileName.endsWith(".css"))
+    .map((fileName) =>
+      readFile(join(rendererRoot, "assets", fileName), "utf8"),
+    ),
+);
+const fontErrors = validateRendererFontBundle(
+  assetNames.map((fileName) => `assets/${fileName}`),
+  cssSources.join("\n"),
+);
+if (fontErrors.length > 0) throw new Error(fontErrors.join("\n"));
 const chunks = new Map(graph.chunks.map((chunk) => [chunk.fileName, chunk]));
 const entries = graph.chunks.filter((chunk) => chunk.isEntry);
 if (entries.length !== 1)
@@ -79,6 +94,7 @@ console.log(
       reviewGzipBytes: gzipSync(reviewBytes).byteLength,
       staticChunks: staticClosure.size,
       separation: "passed",
+      fonts: "passed",
     },
     null,
     2,

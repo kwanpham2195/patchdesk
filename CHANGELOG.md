@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Standardized renderer errors with shared field, action-local, dialog, and recovery treatments.
+- Replaced the bundled code font with Geist Mono and added packaged font-loading checks.
 - Made GitHub mutations single-flight and recoverable: uncertain writes now stay locked behind **Check GitHub again**, confirmed writes remain confirmed when refresh fails, and action-local spinners and errors preserve drafts and selections.
 - Fixed **Add to review** duplicating a Finding into general review feedback before Finish.
 - Fixed long file paths overflowing their cards in the Threads navigator.
