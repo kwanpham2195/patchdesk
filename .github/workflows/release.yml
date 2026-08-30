@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package and draft the release
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # No `version:` here on purpose. `package.json`'s `packageManager`
+      # field already pins pnpm, and action-setup refuses to start when both
+      # are set: "Multiple versions of pnpm specified". Same setup as the
+      # pull request gates.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            runtime/flue/pnpm-lock.yaml
+
+      # The tag names the version people download, and package smoke checks
+      # the packaged app's version against `package.json`. Disagreement here
+      # means `pnpm release:prepare` never ran, so stop before the long build.
+      - name: Check the tag matches package.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: >-
+          node -e 'const version = require("./package.json").version;
+          if (process.env.TAG === "v" + version) process.exit(0);
+          console.error("Tag " + process.env.TAG + " does not match package.json version " + version + ". Run pnpm release:prepare first.");
+          process.exit(1);'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium
+
+      # Every signing secret is optional. Unset secrets arrive as empty
+      # strings, which scripts/package-mac-lib.mjs reads as "no certificate",
+      # so this builds the same unsigned app a local build produces.
+      - name: Package the macOS app
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm package:mac
+
+      - name: Smoke-test the packaged app
+        run: pnpm test:package-smoke
+
+      # Draft, never published: the maintainer reads the notes and the
+      # attached downloads, then publishes from the GitHub release page.
+      - name: Draft the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: >-
+          gh release create "$TAG" --draft --generate-notes --title "$TAG"
+          release/*.dmg release/*.zip

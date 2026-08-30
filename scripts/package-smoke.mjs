@@ -21,8 +21,14 @@ import { packageSmokeEnvironment } from "./smoke-env.mjs";
 const execute = promisify(execFile);
 
 const root = resolve(import.meta.dirname, "..");
+const releaseRoot = join(root, "release");
+// The packaged version is whatever `package.json` says, so a release build
+// smoke-tests the version it just produced instead of a number written here.
+const { version } = JSON.parse(
+  await readFile(join(root, "package.json"), "utf8"),
+);
 const archFolder = process.arch === "arm64" ? "mac-arm64" : "mac";
-const bundle = join(root, "release", archFolder, "Patchdesk.app");
+const bundle = join(releaseRoot, archFolder, "Patchdesk.app");
 const executable = join(bundle, "Contents/MacOS/Patchdesk");
 const runtimeRoot = join(bundle, "Contents/Resources/flue-runtime");
 await validatePackagedRuntime(executable, runtimeRoot);
@@ -45,7 +51,7 @@ const expectedMetadata = {
   CFBundleName: "Patchdesk",
   CFBundleExecutable: "Patchdesk",
   CFBundleIdentifier: "com.centraldigital.patchdesk",
-  CFBundleShortVersionString: "0.1.0",
+  CFBundleShortVersionString: version,
 };
 for (const [name, expected] of Object.entries(expectedMetadata)) {
   if (metadata[name] !== expected)
@@ -65,6 +71,20 @@ if (!executableKind.includes(process.arch))
   throw new Error(
     `Packaged executable architecture mismatch: ${executableKind.trim()}`,
   );
+
+// Both handoff downloads sit directly in `release/`, beside the unpacked app
+// this smoke reads: the disk image people install from and the zip.
+const releaseFiles = await readdir(releaseRoot);
+for (const extension of [".dmg", ".zip"]) {
+  if (
+    !releaseFiles.some(
+      (name) => name.endsWith(extension) && name.includes(version),
+    )
+  )
+    throw new Error(
+      `release/ holds no ${extension} for version ${version}: ${releaseFiles.join(", ")}`,
+    );
+}
 
 const home = await mkdtemp(join(tmpdir(), "patchdesk-package-smoke-"));
 let smoke;

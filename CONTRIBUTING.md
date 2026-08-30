@@ -294,9 +294,74 @@ repo-wide `pnpm lint`: one covers the shape of the changed files, the other
 covers every finding in the tree. CI does not run package smoke or release
 operations.
 
-## Release package
+## Release
 
-Build a macOS directory package, then smoke-test it:
+A release is one tag. You prepare the version locally, push the tag, and CI
+builds the download and leaves a draft release for you to read before anyone
+can install it. Nothing is published without a person publishing it.
+
+1. Start on `main` with a clean working tree, up to date with `origin`.
+
+2. Prepare the version:
+
+   ```bash
+   pnpm release:prepare 0.2.0
+   ```
+
+   It refuses to run when the working tree is dirty or when the tag already
+   exists. Otherwise it sets `version` in `package.json`, renames the
+   changelog's `## Unreleased` heading to `## 0.2.0 - <today's date>`, opens a
+   fresh empty `## Unreleased` above it, and prints the commands in the next
+   step. It never commits, tags, or pushes: the diff is meant to be read
+   first.
+
+3. Read the diff, then commit, tag, and push:
+
+   ```bash
+   git add package.json CHANGELOG.md
+   git commit -m "chore: release 0.2.0"
+   git tag v0.2.0
+   git push origin main v0.2.0
+   ```
+
+4. Pushing the tag runs the `Release` workflow
+   (`.github/workflows/release.yml`) on `macos-14`. It checks the tag against
+   `package.json`, runs `pnpm package:mac`, runs `pnpm test:package-smoke`
+   against the app it just built, and opens a **draft** GitHub release with
+   the `.dmg` and the `.zip` attached.
+
+5. Open the draft release, read its generated notes against the changelog
+   entry, edit them if they need it, and publish.
+
+### Signing and notarization
+
+The release build signs with an Apple Developer ID and notarizes when these
+repository secrets are set, and builds unsigned when they are not:
+
+- `CSC_LINK` — the Developer ID Application certificate as a base64 `.p12`;
+- `CSC_KEY_PASSWORD` — that certificate's password;
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — the Apple
+  account notarization submits under.
+
+`CSC_LINK` alone decides whether the app is signed. With it and the three
+`APPLE_` secrets, the download opens on any Mac with a double-click. With
+`CSC_LINK` but no `APPLE_` secrets, the app is signed but not notarized. With
+none of them the build still succeeds and produces the unsigned app this
+project has always shipped, which needs `xattr -cr` before first launch (see
+`README.md`, "Install") — say so when you hand it to someone.
+
+A secret that was never configured reaches the build as an empty string, not
+as an absent variable, and electron-builder reads an empty `CSC_LINK` as "sign
+with this". `scripts/package-mac-lib.mjs` drops empty values first, which is
+why an unconfigured secret means unsigned rather than a failed build. It is
+also where the unsigned build turns signing off, with
+`CSC_IDENTITY_AUTO_DISCOVERY=false` rather than the `"identity": null` that
+used to sit in `package.json` — that setting disabled signing for every build,
+including one that had a certificate.
+
+### Building a package by hand
+
+Build a macOS package, then smoke-test it:
 
 ```bash
 pnpm package:mac

@@ -27,7 +27,9 @@
     "stage:flue-runtime": "node scripts/stage-flue-runtime.mjs",
     "build:icon": "node scripts/build-app-icon.mjs",
     "verify:icon": "node scripts/verify-app-icon.mjs",
-    "package:mac": "pnpm build && pnpm stage:flue-runtime && pnpm verify:icon && electron-builder --mac",
+    "package:mac": "pnpm build && pnpm stage:flue-runtime && pnpm verify:icon && node scripts/package-mac.mjs",
+    "electron-builder:mac": "electron-builder --mac",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
     "test:package-smoke": "node scripts/package-smoke.mjs",
     "test:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && pnpm build && node scripts/check-renderer-bundles.mjs",
@@ -122,9 +124,31 @@
       "icon": "resources/icons/patchdesk.icns",
       "target": [
         "dir",
-        "zip"
+        "zip",
+        "dmg"
       ],
-      "identity": null
+      "hardenedRuntime": true,
+      "notarize": true
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 390,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     }
   },
   "engines": {

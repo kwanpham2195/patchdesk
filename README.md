@@ -22,15 +22,19 @@ no token of its own.
 
 ## Install
 
-Patchdesk is distributed as a `.zip`. Unzip it, then clear the quarantine
-attribute before first launch — the build is ad-hoc signed, not
-Apple-signed or notarized:
+Patchdesk is distributed as a `.dmg`, with a `.zip` of the same app beside it
+on the release page. Open the `.dmg` and drag `Patchdesk` onto the
+`Applications` folder in the window.
+
+An unsigned build — one that is not Apple-signed or notarized — will not open
+until you clear the quarantine attribute macOS puts on downloads:
 
 ```bash
-xattr -cr /path/to/Patchdesk.app
+xattr -cr /Applications/Patchdesk.app
 ```
 
-or right-click `Patchdesk.app` → Open → "Open Anyway".
+or right-click `Patchdesk.app` → Open → "Open Anyway". A signed and notarized
+build needs none of this and opens with a double-click.
 
 ## First run
 
