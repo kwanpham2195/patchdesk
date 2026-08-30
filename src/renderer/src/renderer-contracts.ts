@@ -23,10 +23,15 @@ import { GITHUB_REVIEW_EVENTS } from "../../domain/pending-review";
 /** The one renderer-side spelling of the domain's closed forbidden-reason set. */
 const forbiddenReasonSchema = v.optional(v.picklist(FORBIDDEN_REASONS));
 
-const pullRequestRefSchema = v.strictObject({
+/** The one renderer-side spelling of the repository identity triple. */
+const repositoryIdentityFields = {
   host: v.pipe(v.string(), v.minLength(1)),
   owner: v.pipe(v.string(), v.minLength(1)),
   repo: v.pipe(v.string(), v.minLength(1)),
+} as const;
+
+const pullRequestRefSchema = v.strictObject({
+  ...repositoryIdentityFields,
   number: v.pipe(v.number(), v.integer(), v.minValue(1)),
 });
 
@@ -101,6 +106,8 @@ const inboxRowSchema = v.strictObject({
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
   /** Present only for a row whose retained Review session still matches the current head; see `MaintainerInboxRow.scope`. */
   scope: v.optional(changeScopeSchema),
+  /** Present only when a Brief is retained for this row's current head; see `MaintainerInboxRow.briefReady`. */
+  briefReady: v.optional(v.literal(true)),
   latestReview: v.optional(
     v.strictObject({
       reviewId: v.pipe(v.string(), v.minLength(1)),
@@ -117,11 +124,7 @@ const inboxRowSchema = v.strictObject({
 });
 
 const repoOutcomeSchema = v.object({
-  repo: v.object({
-    host: v.pipe(v.string(), v.minLength(1)),
-    owner: v.pipe(v.string(), v.minLength(1)),
-    repo: v.pipe(v.string(), v.minLength(1)),
-  }),
+  repo: v.object(repositoryIdentityFields),
   state: v.picklist(INBOX_REPOSITORY_OUTCOMES),
   resumeAt: v.optional(v.pipe(v.string(), v.isoTimestamp())),
   forbiddenReason: forbiddenReasonSchema,
@@ -142,9 +145,7 @@ const inboxResponseSchema = v.strictObject({
     repos: v.optional(
       v.array(
         v.object({
-          host: v.pipe(v.string(), v.minLength(1)),
-          owner: v.pipe(v.string(), v.minLength(1)),
-          repo: v.pipe(v.string(), v.minLength(1)),
+          ...repositoryIdentityFields,
           // Absent on a watched repository with no local checkout configured
           // (the main process omits the key rather than sending `null`; see
           // `parseWatchedRepo` in `src/domain/workspace-profile.ts`). Without
@@ -230,9 +231,7 @@ export function parseEnvironmentCheckResponse(
 // that lets a caller attribute a suggestion back to the workspace root that
 // produced it (by path prefix), so it stays required.
 const discoveredRepoSchema = v.strictObject({
-  host: v.pipe(v.string(), v.minLength(1)),
-  owner: v.pipe(v.string(), v.minLength(1)),
-  repo: v.pipe(v.string(), v.minLength(1)),
+  ...repositoryIdentityFields,
   localPath: v.pipe(v.string(), v.minLength(1)),
 });
 
@@ -449,9 +448,7 @@ const workbenchSessionSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
   key: v.strictObject({
     profileId: v.pipe(v.string(), v.minLength(1)),
-    host: v.pipe(v.string(), v.minLength(1)),
-    owner: v.pipe(v.string(), v.minLength(1)),
-    repo: v.pipe(v.string(), v.minLength(1)),
+    ...repositoryIdentityFields,
     prNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
     headSha: v.pipe(v.string(), v.minLength(7)),
   }),

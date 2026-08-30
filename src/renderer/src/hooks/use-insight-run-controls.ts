@@ -32,7 +32,10 @@ type InsightRunControlsHook = {
   readonly analysisRun: InsightRunController;
   readonly walkthroughRun: InsightRunController;
   readonly briefRun: InsightRunController;
-  readonly openRunDialog: (action: "run" | "retry" | "regenerate") => void;
+  readonly openRunDialog: (
+    action: "run" | "retry" | "regenerate",
+    type?: InsightRunType,
+  ) => void;
   readonly closeRunDialog: () => void;
   readonly confirmRun: () => void;
   readonly dismissFinding: (
@@ -146,13 +149,20 @@ export function useInsightRunControls({
     walkthrough: walkthroughRun,
     brief: briefRun,
   } satisfies Record<InsightRunType, InsightRunController>;
-  const runSelected = (onAccepted?: () => void): void => {
-    if (model === null || selectedInsight === "overview") return;
-    runs[selectedInsight].run(provider, model, reasoning, onAccepted);
-  };
-  const openRunDialog = (action: "run" | "retry" | "regenerate"): void => {
-    if (selectedInsight === "overview" || catalogError) return;
-    const preference = preferencesRef.current[selectedInsight];
+  /**
+   * `type` defaults to the rail's own selection, which is what every header
+   * and empty-state button wants. The Brief's "Generate walkthrough" link is
+   * the one caller that names another type, so the dialog and the run it
+   * confirms are keyed by `runDialogType` rather than by the selection.
+   */
+  const openRunDialog = (
+    action: "run" | "retry" | "regenerate",
+    type?: InsightRunType,
+  ): void => {
+    const dialogType =
+      type ?? (selectedInsight === "overview" ? undefined : selectedInsight);
+    if (dialogType === undefined || catalogError) return;
+    const preference = preferencesRef.current[dialogType];
     const nextModels =
       catalog?.models.filter(
         (candidate) => candidate.provider === (preference?.provider ?? "pi"),
@@ -166,23 +176,24 @@ export function useInsightRunControls({
         nextModels.some((candidate) => candidate.id === preference.model)
           ? preference.model
           : (nextModels[0]?.id ?? null),
-      runDialogType: selectedInsight,
+      runDialogType: dialogType,
       runDialogAction: action,
     });
   };
   const closeRunDialog = (): void => setConfiguration({ runDialogType: null });
   const confirmRun = (): void => {
-    if (model === null || selectedInsight === "overview") return;
-    runSelected(() => {
+    const dialogType = configuration.runDialogType;
+    if (model === null || dialogType === null) return;
+    runs[dialogType].run(provider, model, reasoning, () => {
       closeRunDialog();
-      saveInsightRunPreference(profileId, selectedInsight, {
+      saveInsightRunPreference(profileId, dialogType, {
         provider,
         model,
         reasoning,
       });
       preferencesRef.current = {
         ...preferencesRef.current,
-        [selectedInsight]: { provider, model, reasoning },
+        [dialogType]: { provider, model, reasoning },
       };
     });
   };

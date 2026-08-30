@@ -113,6 +113,57 @@ describe("maintainer inbox cache store", () => {
     });
   });
 
+  it("round-trips the Brief tag, so a tagged row does not invalidate the cache", async () => {
+    const { store, profileId } = await fixtureStore();
+    const cache = {
+      schemaVersion: 1 as const,
+      refreshedAt: updatedAt,
+      rows: [
+        {
+          remoteState: "open" as const,
+          identity: {
+            host: must(parseGitHubHost("github.com")),
+            owner: must(parseGitHubOwner("centraldigital")),
+            repo: must(parseGitHubRepoName("patchdesk")),
+            number: must(parsePullRequestNumber(42)),
+          },
+          title: "Guard duplicate input",
+          author: "author",
+          baseBranch: "sit",
+          headBranch: "feature/duplicate-guard",
+          currentHeadSha: sha,
+          isDraft: false,
+          updatedAt,
+          changeStats: {},
+          checks: { overall: "passing" as const, checks: [] },
+          reviewState: "none" as const,
+          mergeability: "unknown" as const,
+          briefReady: true as const,
+          labels: [],
+          categories: [],
+          recommendedAction: {
+            kind: "run_review" as const,
+            label: "Run review" as const,
+          },
+          dataFreshness: "fresh" as const,
+        },
+      ],
+      repository: {
+        identity: repository,
+        state: "ready" as const,
+        complete: true,
+      },
+    };
+    expect(await store.save(profileId, repository, cache)).toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    expect(await store.read(profileId, repository)).toEqual({
+      _tag: "ok",
+      value: cache,
+    });
+  });
+
   it("round-trips a github_forbidden repository state (plan 009 picklist lockstep regression)", async () => {
     const { store, profileId } = await fixtureStore();
     const forbiddenRepository = {

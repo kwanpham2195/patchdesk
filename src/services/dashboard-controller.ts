@@ -3,6 +3,7 @@ import * as v from "valibot";
 import type { GitHubReader } from "../adapters/github/github-adapter";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { systemNow } from "../adapters/process/system-clock";
+import { InsightStore } from "../adapters/storage/insight-store";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import { MaintainerInboxCacheStore } from "../adapters/storage/maintainer-inbox-cache-store";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
@@ -116,6 +117,7 @@ export class DashboardController {
       {
         now: systemNow,
       },
+      new InsightStore(paths),
     );
     this.inboxRefresh = new InboxRefreshCoordinator(this.inbox);
   }

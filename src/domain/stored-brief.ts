@@ -9,6 +9,7 @@ import {
 } from "./brief";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
+import type { BriefStartHere } from "./brief-start-here";
 import { definedProps } from "./defined-props";
 import {
   parseContentHash,
@@ -48,6 +49,18 @@ const storedOwnershipSchema = v.strictObject({
       raw: v.pipe(v.string(), v.minLength(1)),
       caption: v.pipe(v.string(), v.minLength(1)),
     }),
+  ),
+});
+const storedStartHereSchema = v.strictObject({
+  lead: v.pipe(v.string(), v.minLength(1)),
+  order: v.pipe(
+    v.array(
+      v.strictObject({
+        path: v.pipe(v.string(), v.minLength(1)),
+        why: v.optional(v.pipe(v.string(), v.minLength(1))),
+      }),
+    ),
+    v.minLength(1),
   ),
 });
 const storedReachSchema = v.strictObject({
@@ -120,6 +133,8 @@ const storedBriefSchema = v.strictObject({
   ),
   /** Absent on every Brief retained before the Ownership block existed. */
   ownership: v.optional(storedOwnershipSchema),
+  /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
+  startHere: v.optional(storedStartHereSchema),
   /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
   reach: v.optional(storedReachSchema),
   reachUnavailable: v.optional(
@@ -189,6 +204,7 @@ export function parseStoredBrief(
       descriptionDrift:
         drift === undefined ? undefined : { claimed, undescribed },
       ownership: storedOwnership(parsed.output.ownership),
+      startHere: storedStartHere(parsed.output.startHere),
       reach: storedReach(parsed.output.reach),
       reachUnavailable: parsed.output.reachUnavailable,
     }),
@@ -209,6 +225,23 @@ function storedReach(
     surfaces: stored.surfaces.map((entry) => ({
       surface: entry.surface,
       ...definedProps({ path: entry.path }),
+    })),
+  };
+}
+
+/**
+ * Rebuilds the Start here block. Only `why` needs rewriting, for the same
+ * `exactOptionalPropertyTypes` reason `storedReach` rewrites `surface.path`.
+ */
+function storedStartHere(
+  stored: v.InferOutput<typeof storedStartHereSchema> | undefined,
+): BriefStartHere | undefined {
+  if (stored === undefined) return undefined;
+  return {
+    lead: stored.lead,
+    order: stored.order.map((entry) => ({
+      path: entry.path,
+      ...definedProps({ why: entry.why }),
     })),
   };
 }

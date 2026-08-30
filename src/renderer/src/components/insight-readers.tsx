@@ -23,6 +23,8 @@ type InsightReaderBuilderInput = {
   readonly setWalkthroughFocused: React.Dispatch<React.SetStateAction<boolean>>;
   /** Opens the run dialog from the Brief's own Provenance card. */
   readonly onRegenerateBrief: () => void;
+  /** Drives the Brief "Start here" card's Walkthrough link: open the one that exists, or run one. */
+  readonly onOpenWalkthrough: () => void;
   readonly runEnabled: boolean;
 };
 export function buildInsightReaders({
@@ -36,6 +38,7 @@ export function buildInsightReaders({
   walkthroughFocused,
   setWalkthroughFocused,
   onRegenerateBrief,
+  onOpenWalkthrough,
   runEnabled,
 }: InsightReaderBuilderInput): React.ReactNode {
   const analysisSummaryScope = {
@@ -160,6 +163,8 @@ export function buildInsightReaders({
         {...(workbench.scope === undefined ? {} : { scope: workbench.scope })}
         onRegenerate={onRegenerateBrief}
         regenerateDisabled={!runEnabled}
+        walkthroughStatus={workbench.insights.walkthrough.status}
+        onOpenWalkthrough={onOpenWalkthrough}
       />
     ) : null;
   return retainedAnalysis ?? retainedWalkthrough ?? retainedBrief;

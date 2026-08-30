@@ -9,8 +9,11 @@ import type {
   MaintainerInboxCache,
   MaintainerInboxCacheStore,
 } from "../adapters/storage/maintainer-inbox-cache-store";
+import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
+import { definedProps } from "../domain/defined-props";
+import { parseStoredBrief } from "../domain/stored-brief";
 import type { PullRequestSummary } from "../domain/github-context";
 import {
   createReviewId,
@@ -118,6 +121,8 @@ export type InboxPageRequestFailure = "invalid_page";
 
 type SessionReader = Pick<ReviewSessionStore, "listSessions">;
 type CacheReader = Pick<MaintainerInboxCacheStore, "read" | "save">;
+/** The one Insight read the inbox makes: is there a Brief retained for this row? */
+type BriefInsightReader = Pick<InsightStore, "loadTyped">;
 type RepositoryRead = {
   readonly entries: ReadonlyArray<{
     readonly cursor: string;
@@ -138,6 +143,12 @@ export class MaintainerInboxService {
     private readonly sessions: SessionReader,
     private readonly cache: CacheReader,
     private readonly clock: InboxClock,
+    /**
+     * Optional, like the coordinator's `remotes`: without it a row simply
+     * carries no `briefReady`, and every existing caller keeps its four
+     * collaborators.
+     */
+    private readonly insights?: BriefInsightReader,
   ) {}
 
   /**
@@ -316,6 +327,11 @@ export class MaintainerInboxService {
             pullRequest.summary,
             sessions,
           );
+          const briefReady = await readCurrentHeadBrief(
+            pullRequest.summary,
+            sessions,
+            this.insights,
+          );
           const scopeField = scope === undefined ? {} : { scope };
           const input = {
             summary: pullRequest.summary,
@@ -323,6 +339,7 @@ export class MaintainerInboxService {
             activeAccount: profile.ghAccount,
             dataFreshness: "fresh" as const,
             ...scopeField,
+            ...definedProps({ briefReady }),
           };
           const row =
             latestReview === undefined
@@ -566,6 +583,57 @@ function encodeInboxPageToken(token: InboxPageToken): string {
   return Buffer.from(JSON.stringify(token)).toString("base64url");
 }
 /**
+ * Whether Patchdesk holds a Brief to read for this row's current head.
+ *
+ * The session lookup is `readCurrentHeadScope`'s: a session at this exact head
+ * is what names the review whose Insight records to read. The retained Brief is
+ * then checked against the row's head as well, because a Brief bound to an
+ * earlier revision is readable in the workbench but is not a Brief of what the
+ * row now shows.
+ */
+async function readCurrentHeadBrief(
+  summary: PullRequestSummary,
+  sessions: ReadonlyArray<ReviewSession>,
+  insights: BriefInsightReader | undefined,
+): Promise<true | undefined> {
+  if (insights === undefined) return undefined;
+  const session = sessionAtCurrentHead(summary, sessions);
+  if (session === undefined) return undefined;
+  const record = await insights.loadTyped(
+    session.key.profileId,
+    createReviewId({
+      profileId: session.key.profileId,
+      host: session.key.host,
+      owner: session.key.owner,
+      repo: session.key.repo,
+      prNumber: session.key.prNumber,
+    }),
+    "brief",
+    parseStoredBrief,
+  );
+  if (record._tag === "err") return undefined;
+  const retained = record.value.retained;
+  return retained !== undefined && retained.revision.headSha === summary.headSha
+    ? true
+    : undefined;
+}
+
+/** The Review session Patchdesk holds for exactly this row's current head. */
+function sessionAtCurrentHead(
+  summary: PullRequestSummary,
+  sessions: ReadonlyArray<ReviewSession>,
+): ReviewSession | undefined {
+  return sessions.find(
+    (candidate) =>
+      candidate.key.host === summary.ref.host &&
+      candidate.key.owner === summary.ref.owner &&
+      candidate.key.repo === summary.ref.repo &&
+      candidate.key.prNumber === summary.ref.number &&
+      candidate.key.headSha === summary.headSha,
+  );
+}
+
+/**
  * The Scope gauge for a row Patchdesk has already reviewed at this exact head.
  * GitHub's inbox query returns totals but no per-file lines, so the only
  * per-file evidence available here is a retained session patch — and only
@@ -576,14 +644,7 @@ async function readCurrentHeadScope(
   summary: PullRequestSummary,
   sessions: ReadonlyArray<ReviewSession>,
 ): Promise<ChangeScope | undefined> {
-  const session = sessions.find(
-    (candidate) =>
-      candidate.key.host === summary.ref.host &&
-      candidate.key.owner === summary.ref.owner &&
-      candidate.key.repo === summary.ref.repo &&
-      candidate.key.prNumber === summary.ref.number &&
-      candidate.key.headSha === summary.headSha,
-  );
+  const session = sessionAtCurrentHead(summary, sessions);
   if (session === undefined) return undefined;
   const patch = await readFile(session.patchPath, "utf8").catch(
     () => undefined,

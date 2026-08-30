@@ -51,6 +51,21 @@ const briefOwnershipSchema = v.strictObject({
 });
 
 /**
+ * The Start here block. The main process already cut this order down to files
+ * the patch changes, so the reader draws it as given; the numbering is honest
+ * here because the order is the information.
+ */
+const briefStartHereSchema = v.strictObject({
+  lead: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  order: v.array(
+    v.strictObject({
+      path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
+      why: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
+    }),
+  ),
+});
+
+/**
  * The Reach block. Every number here was produced by a `git grep` in the main
  * process, never by the model, and `method`/`hop` travel with the counts so the
  * reader's footer can state how they were made.
@@ -125,6 +140,8 @@ const briefSchema = v.strictObject({
   ),
   /** Absent on a Brief retained before the Ownership block existed. */
   ownership: v.optional(briefOwnershipSchema),
+  /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
+  startHere: v.optional(briefStartHereSchema),
   /** Absent on a Brief retained before the Reach block existed, and whenever the search could not answer. */
   reach: v.optional(briefReachSchema),
   reachUnavailable: v.optional(
@@ -151,6 +168,7 @@ export type BriefCitation = v.InferOutput<typeof briefCitationSchema>;
 export type BriefOwnership = v.InferOutput<typeof briefOwnershipSchema>;
 export type BriefOwnershipContract = NonNullable<BriefOwnership["contract"]>;
 export type BriefReach = v.InferOutput<typeof briefReachSchema>;
+export type BriefStartHere = v.InferOutput<typeof briefStartHereSchema>;
 
 /** What the Reach footer says the counts are, so no reader mistakes them for a call graph. */
 export function briefReachMethodLine(

@@ -377,3 +377,96 @@ describe("insightOutputGuidance", () => {
     );
   });
 });
+
+describe("normalizeBrief start here", () => {
+  const GOAL = [
+    { text: "Recovery restarts after a crash.", citations: ["h1"] },
+  ];
+
+  /** One hunk per file, so `briefOwnershipFiles` keeps each of them. */
+  function patchOf(paths: ReadonlyArray<string>): string {
+    return paths
+      .flatMap((path) => [
+        `diff --git a/${path} b/${path}`,
+        `--- a/${path}`,
+        `+++ b/${path}`,
+        "@@ -1 +1,2 @@",
+        " const before = true;",
+        "+const after = true;",
+      ])
+      .concat("")
+      .join("\n");
+  }
+
+  function startHere(
+    raw: BriefOutput["startHere"],
+    patch = PATCH,
+  ): NormalizedBrief {
+    const normalized = normalizeBrief(
+      { goal: GOAL, assumptions: [], startHere: raw },
+      briefManifest({ patch, commits: [] }),
+      patch,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    return normalized.value;
+  }
+
+  it("keeps only the proposed paths the patch changes, in the proposed order", () => {
+    const normalized = startHere({
+      lead: "  Read the guard first.  ",
+      order: [
+        { path: "src/nowhere.ts", why: "not in this patch" },
+        { path: "src/recovery.ts", why: "  owns the guard  " },
+        { path: "src/recovery.ts", why: "the same file again" },
+      ],
+    });
+    expect(normalized.startHere).toEqual({
+      lead: "Read the guard first.",
+      order: [{ path: "src/recovery.ts", why: "owns the guard" }],
+    });
+    expect(parseStoredBrief(JSON.parse(JSON.stringify(normalized)))).toEqual({
+      _tag: "ok",
+      value: normalized,
+    });
+  });
+
+  it("keeps a file the model gave no reason for", () => {
+    expect(
+      startHere({
+        lead: "Start at the guard.",
+        order: [{ path: "src/recovery.ts" }],
+      }).startHere?.order,
+    ).toEqual([{ path: "src/recovery.ts" }]);
+  });
+
+  it("drops the block and counts it when no proposed path is a changed file", () => {
+    const normalized = startHere({
+      lead: "Read the router first.",
+      order: [{ path: "src/router.ts", why: "it is not in this patch" }],
+    });
+    expect(normalized.startHere).toBeUndefined();
+    expect(normalized.citationStatus).toBe("partially_verified");
+  });
+
+  it("caps the reading order at five files", () => {
+    const paths = Array.from({ length: 7 }, (_, index) => `src/f${index}.ts`);
+    const normalized = startHere(
+      {
+        lead: "Read them in this order.",
+        order: paths.map((path) => ({ path })),
+      },
+      patchOf(paths),
+    );
+    expect(normalized.startHere?.order.map((entry) => entry.path)).toEqual(
+      paths.slice(0, 5),
+    );
+    expect(normalized.citationStatus).toBe("verified");
+  });
+
+  it("leaves the block absent, and the Brief verified, when the model omits it", () => {
+    const normalized = startHere(undefined);
+    expect(normalized.startHere).toBeUndefined();
+    expect(normalized.citationStatus).toBe("verified");
+  });
+});

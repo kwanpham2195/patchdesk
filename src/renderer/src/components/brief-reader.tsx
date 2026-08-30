@@ -16,6 +16,7 @@ import {
   type BriefOwnership,
   type BriefOwnershipContract,
   type BriefOwnershipRow,
+  type BriefStartHere,
 } from "../brief-contracts";
 import type { ChangeScope } from "../../../domain/change-scope";
 import { ReachBlock } from "./brief-reach-block";
@@ -71,12 +72,17 @@ export function BriefReader({
   scope,
   onRegenerate,
   regenerateDisabled = false,
+  walkthroughStatus,
+  onOpenWalkthrough,
 }: {
   readonly retained: RetainedBrief;
   /** Absent when the represented patch bytes were unreadable; see `ReviewWorkbenchProjection.scope`. */
   readonly scope?: ChangeScope;
   readonly onRegenerate: () => void;
   readonly regenerateDisabled?: boolean;
+  /** The workbench's Walkthrough status; decides whether the card offers to open one or to generate one. */
+  readonly walkthroughStatus: BriefInsight["status"];
+  readonly onOpenWalkthrough: () => void;
 }): React.JSX.Element {
   const brief = retained.value;
   return (
@@ -180,6 +186,13 @@ export function BriefReader({
         </p>
       </div>
       <div className="flex flex-col gap-3">
+        {brief.startHere === undefined ? null : (
+          <StartHereCard
+            startHere={brief.startHere}
+            walkthroughStatus={walkthroughStatus}
+            onOpenWalkthrough={onOpenWalkthrough}
+          />
+        )}
         {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
         <section
           aria-label="Provenance"
@@ -215,6 +228,51 @@ export function BriefReader({
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * Where to start reading. The list is an `<ol>` because the order is the whole
+ * point of the card, and the walkthrough sits under it: the Brief says where to
+ * begin, the Walkthrough is the long way through.
+ */
+function StartHereCard({
+  startHere,
+  walkthroughStatus,
+  onOpenWalkthrough,
+}: {
+  readonly startHere: BriefStartHere;
+  readonly walkthroughStatus: BriefInsight["status"];
+  readonly onOpenWalkthrough: () => void;
+}): React.JSX.Element {
+  return (
+    <section
+      aria-label="Start here"
+      className="flex flex-col gap-3 rounded-md border border-primary/40 p-3"
+    >
+      <h3 className="text-sm font-medium">Start here</h3>
+      <p className="text-xs">{startHere.lead}</p>
+      <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-xs text-muted-foreground">
+        {startHere.order.map((entry) => (
+          <li key={entry.path} className="min-w-0">
+            <span className="break-all font-mono text-foreground">
+              {entry.path}
+            </span>
+            {entry.why === undefined ? null : <> — {entry.why}</>}
+          </li>
+        ))}
+      </ol>
+      <Button
+        size="sm"
+        variant="outline"
+        className="self-start"
+        onClick={onOpenWalkthrough}
+      >
+        {walkthroughStatus === "current"
+          ? "Open walkthrough"
+          : "Generate walkthrough"}
+      </Button>
+    </section>
   );
 }
 

@@ -125,6 +125,25 @@ const retainedWithoutReach = () => {
   };
 };
 
+const START_HERE = {
+  lead: "Read the writer first; the services only consume its return type.",
+  order: [
+    { path: "src/a.ts", why: "owns the read-back" },
+    { path: "src/b.ts" },
+  ],
+};
+
+const retainedWithStartHere = () => {
+  const base = retained();
+  return { ...base, value: { ...briefValue, startHere: START_HERE } };
+};
+
+/** The Walkthrough link's props: required, and only one test is about them. */
+const walkthroughLink = {
+  walkthroughStatus: "not_generated" as const,
+  onOpenWalkthrough: () => undefined,
+};
+
 afterEach(() => cleanup());
 
 describe("BriefReader", () => {
@@ -133,6 +152,7 @@ describe("BriefReader", () => {
     const user = userEvent.setup();
     render(
       <BriefReader
+        {...walkthroughLink}
         retained={retained()}
         scope={changeScopeFromPatch(
           "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
@@ -157,6 +177,7 @@ describe("BriefReader", () => {
   it("renders both drift regions when the Brief compared the description", () => {
     render(
       <BriefReader
+        {...walkthroughLink}
         retained={retainedWithDrift()}
         onRegenerate={() => undefined}
       />,
@@ -176,6 +197,7 @@ describe("BriefReader", () => {
   it("renders the Shape tree and its contract hunk", () => {
     render(
       <BriefReader
+        {...walkthroughLink}
         retained={retainedWithOwnership(true)}
         onRegenerate={() => undefined}
       />,
@@ -190,6 +212,7 @@ describe("BriefReader", () => {
   it("renders the Shape tree without a contract hunk", () => {
     render(
       <BriefReader
+        {...walkthroughLink}
         retained={retainedWithOwnership(false)}
         onRegenerate={() => undefined}
       />,
@@ -204,6 +227,7 @@ describe("BriefReader", () => {
   it("renders the four Reach rows and states how the counts were made", () => {
     render(
       <BriefReader
+        {...walkthroughLink}
         retained={retainedWithReach()}
         onRegenerate={() => undefined}
       />,
@@ -227,6 +251,7 @@ describe("BriefReader", () => {
   it("omits the Reach block and says why when the search could not answer", () => {
     render(
       <BriefReader
+        {...walkthroughLink}
         retained={retainedWithoutReach()}
         onRegenerate={() => undefined}
       />,
@@ -238,16 +263,83 @@ describe("BriefReader", () => {
 
   it("omits the Reach block silently on a Brief retained before it existed", () => {
     render(
-      <BriefReader retained={retained()} onRegenerate={() => undefined} />,
+      <BriefReader
+        {...walkthroughLink}
+        retained={retained()}
+        onRegenerate={() => undefined}
+        {...walkthroughLink}
+      />,
     );
 
     expect(screen.queryByRole("region", { name: "Reach" })).toBeNull();
     expect(screen.queryByText(/Reach was not counted/)).toBeNull();
   });
 
+  it("renders the Start here card with its reading order", () => {
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithStartHere()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const card = screen.getByRole("region", { name: "Start here" });
+    expect(
+      [...card.querySelectorAll("li")].map((item) => item.textContent),
+    ).toEqual(["src/a.ts — owns the read-back", "src/b.ts"]);
+  });
+
+  it("omits the Start here card on a Brief retained before it existed", () => {
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retained()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByRole("region", { name: "Start here" })).toBeNull();
+  });
+
+  it("opens the walkthrough that already stands for this revision", async () => {
+    const onOpenWalkthrough = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <BriefReader
+        retained={retainedWithStartHere()}
+        onRegenerate={() => undefined}
+        walkthroughStatus="current"
+        onOpenWalkthrough={onOpenWalkthrough}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open walkthrough" }));
+    expect(onOpenWalkthrough).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers to generate a walkthrough when none stands for this revision", async () => {
+    const onOpenWalkthrough = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <BriefReader
+        retained={retainedWithStartHere()}
+        onRegenerate={() => undefined}
+        walkthroughStatus="outdated"
+        onOpenWalkthrough={onOpenWalkthrough}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Generate walkthrough" }),
+    );
+    expect(onOpenWalkthrough).toHaveBeenCalledTimes(1);
+  });
+
   it("disables regeneration when no run may start", () => {
     render(
       <BriefReader
+        {...walkthroughLink}
         retained={retained()}
         onRegenerate={() => undefined}
         regenerateDisabled

@@ -1,4 +1,5 @@
 import type { ChangeScope } from "./change-scope";
+import { definedProps } from "./defined-props";
 import type {
   CheckSummary,
   GitHubLabel,
@@ -143,6 +144,13 @@ export type MaintainerInboxRow = {
    * nothing to bucket and shows no gauge rather than a guessed one.
    */
   readonly scope?: ChangeScope;
+  /**
+   * Present only when Patchdesk holds a Brief retained for this row's current
+   * head. Absent, rather than `false`, for every other row: the tag says a
+   * Brief is there to read, and a row that has never been reviewed has no
+   * claim to make either way.
+   */
+  readonly briefReady?: true;
   readonly latestReview?: InboxReviewSummary;
   readonly labels: ReadonlyArray<GitHubLabel>;
   readonly labelCount?: number;
@@ -158,6 +166,7 @@ export function projectMaintainerInboxRow(input: {
   readonly activeAccount: string;
   readonly latestReview?: InboxReviewSummary;
   readonly scope?: ChangeScope;
+  readonly briefReady?: true;
   readonly dataFreshness: InboxDataFreshness;
 }): MaintainerInboxRow {
   if (!input.summary.isOpen) return projectMergedMaintainerInboxRow(input);
@@ -217,6 +226,7 @@ export function projectMaintainerInboxRow(input: {
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
     ...scopeField,
+    ...definedProps({ briefReady: input.briefReady }),
     ...latestReviewField,
     labels: input.summary.labels,
     ...labelCountField,
@@ -230,6 +240,7 @@ function projectMergedMaintainerInboxRow(input: {
   readonly summary: PullRequestSummary;
   readonly checks: CheckSummary;
   readonly scope?: ChangeScope;
+  readonly briefReady?: true;
   readonly dataFreshness: InboxDataFreshness;
 }): MaintainerInboxRow {
   const additionsField =
@@ -264,6 +275,7 @@ function projectMergedMaintainerInboxRow(input: {
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
     ...scopeField,
+    ...definedProps({ briefReady: input.briefReady }),
     labels: input.summary.labels,
     ...labelCountField,
     categories: [],

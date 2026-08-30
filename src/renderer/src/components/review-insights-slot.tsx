@@ -132,6 +132,16 @@ export function InsightsSlot({
     walkthroughFocused,
     setWalkthroughFocused,
     onRegenerateBrief: () => openRunDialog("regenerate"),
+    // The Brief points at the Walkthrough rather than duplicating it: read the
+    // one that already stands for this revision, or start one from the same
+    // run dialog every other Insight run uses.
+    onOpenWalkthrough: () => {
+      if (workbench.insights.walkthrough.status === "current") {
+        setSelectedInsight("walkthrough");
+        return;
+      }
+      openRunDialog("run", "walkthrough");
+    },
     runEnabled,
   });
   const walkthroughFocusActive =

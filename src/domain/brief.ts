@@ -6,6 +6,11 @@ import {
   type BriefOwnership,
 } from "./brief-ownership";
 import type { BriefReach, BriefReachUnavailableReason } from "./brief-reach";
+import {
+  briefStartHereOutputSchema,
+  normalizeBriefStartHere,
+  type BriefStartHere,
+} from "./brief-start-here";
 import { definedProps } from "./defined-props";
 import type { RepoRelativePath } from "./ids";
 import {
@@ -99,6 +104,12 @@ export type NormalizedBrief = {
    */
   readonly ownership?: BriefOwnership;
   /**
+   * Where to start reading. Absent on a Brief retained before the block
+   * existed, and whenever no path the model proposed is a file this patch
+   * changed.
+   */
+  readonly startHere?: BriefStartHere;
+  /**
    * The counted Reach block. `normalizeBrief` never produces one: counting
    * needs a `git grep` over the represented worktree, so the completion path
    * attaches it afterwards (`computeBriefReach`).
@@ -187,6 +198,7 @@ export const briefOutputSchema = v.strictObject({
     }),
   ),
   ownership: briefOwnershipOutputSchema,
+  startHere: briefStartHereOutputSchema,
   assumptions: v.pipe(
     v.array(
       v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_ASSUMPTION_LENGTH)),
@@ -209,7 +221,7 @@ export const briefOutputSchema = v.strictObject({
 
 /** The JSON contract every Brief child is given, stated once for both providers. */
 export const BRIEF_RESULT_CONTRACT =
-  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"assumptions":[string],"reachSymbols":[string]}';
+  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"assumptions":[string],"reachSymbols":[string]}';
 
 export type BriefOutput = v.InferOutput<typeof briefOutputSchema>;
 export type InvalidBriefOutput = { readonly _tag: "InvalidBriefOutput" };
@@ -328,6 +340,15 @@ export function normalizeBrief(
   const ownership = normalizeBriefOwnership(parsed.output.ownership, patch);
   rejectedCitationCount += ownership.rejected;
 
+  // The Ownership skeleton is already the patch's changed, non-generated file
+  // list, so the reading order is checked against it rather than re-walking
+  // the patch.
+  const startHere = normalizeBriefStartHere(
+    parsed.output.startHere,
+    ownership.value.files,
+  );
+  rejectedCitationCount += startHere.rejected;
+
   return ok({
     snapshot,
     citationStatus:
@@ -342,7 +363,10 @@ export function normalizeBrief(
       })),
       ...demoted.map((text) => ({ text, demoted: true })),
     ],
-    ...definedProps({ descriptionDrift: drift.value }),
+    ...definedProps({
+      descriptionDrift: drift.value,
+      startHere: startHere.value,
+    }),
     ownership: ownership.value,
   });
 }

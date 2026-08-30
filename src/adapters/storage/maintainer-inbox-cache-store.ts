@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import * as v from "valibot";
 
 import { changeScopeSchema } from "../../domain/change-scope";
+import { definedProps } from "../../domain/defined-props";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -104,6 +105,8 @@ const rowSchema = v.strictObject({
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
   /** Written whenever the fresh row carried one; the cache is strict, so a row field it does not name invalidates the whole file. */
   scope: v.optional(changeScopeSchema),
+  /** Named here for the same reason `scope` is: the cache is strict, so an unnamed row field invalidates the whole file. */
+  briefReady: v.optional(v.literal(true)),
   latestReview: v.optional(
     v.strictObject({
       reviewId: v.string(),
@@ -265,6 +268,7 @@ function parseRow(
     reviewState: summaryState,
     mergeability: input.mergeability,
     ...scopeField,
+    ...definedProps({ briefReady: input.briefReady }),
     ...latestReviewField,
     labels,
     ...labelCountField,
