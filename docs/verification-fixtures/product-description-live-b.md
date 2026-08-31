@@ -12,6 +12,8 @@ Nothing in the application reads this document at runtime.
 
 The examples are deliberately harmless.
 
+Revision update one adds a separate hunk for navigation checks.
+
 ## Independent review section
 
 This paragraph supplies another stable line range for review placement.
@@ -19,6 +21,8 @@ This paragraph supplies another stable line range for review placement.
 The verification flow may save and revisit its local review state.
 
 The pull request is not a product change.
+
+Revision update two provides a later hunk in the same file.
 
 It must not be merged into the main branch.
 
