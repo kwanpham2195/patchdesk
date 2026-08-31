@@ -1,10 +1,10 @@
 # Bug triage
 
-A consolidated list of suspected defects raised by the product documents and verification checklists. Every entry below has static evidence at application-source commit `3100615`. `B-01` and `B-02` were reproduced in the running desktop app on 2026-08-31; the other four remain live-unverified. The list is for product decisions: fix an established mismatch, or document an intentional trade-off before marking the related checklist item verified.
+A consolidated list of suspected defects raised by the product documents and verification checklists. Every entry below has static evidence at application-source commit `3100615`. `B-01`, `B-02`, `B-07`, and `B-08` were reproduced in the running desktop app on 2026-08-31; the other four remain live-unverified. `B-07` has a source-supported rendering path, but its exact missed reconciliation step still needs a focused state trace. The list is for product decisions: fix an established mismatch, or document an intentional trade-off before marking the related checklist item verified.
 
 ## Summary
 
-Six distinct candidates remain after deduplication: one high-severity work-loss risk and five medium-severity correctness or feedback risks. The largest cluster is workspace setup and discovery (four entries), followed by Pull requests presentation and first-run recovery. The live pass confirmed the two Settings / Workspace candidates; the other four still have static evidence only.
+Eight distinct candidates remain after deduplication: one high-severity work-loss risk and seven medium-severity correctness, focus, or feedback risks. The largest cluster is workspace setup, switching, and discovery (five entries), followed by Pull requests presentation, first-run recovery, and keyboard focus. The live passes confirmed four candidates; four still have static evidence only.
 
 | ID | Title | Severity | Area | Decision needed | Issue |
 | --- | --- | --- | --- | --- | --- |
@@ -14,6 +14,8 @@ Six distinct candidates remain after deduplication: one high-severity work-loss 
 | B-04 | Stale Review-opening error remains on the first-run screen | medium | First run / Pull requests | fix | — |
 | B-05 | Repository grouping treats a path prefix as containment | medium | Settings / Workspace discovery | fix | — |
 | B-06 | A failed root scan is omitted from an otherwise successful discovery result | medium | Workspace discovery | fix | — |
+| B-07 | Profile switch can leave the Repository picker unset after rows reload | medium | Pull requests / Workspace | fix | — |
+| B-08 | Navigate shortcut opens from a focused Review reply editor | medium | Review workbench / Keyboard | fix | — |
 
 ## High
 
@@ -91,8 +93,32 @@ Six distinct candidates remain after deduplication: one high-severity work-loss 
 - **Status:** `suspected - static evidence, live unverified`.
 - **Issue:** —
 
+### B-07: Profile switch can leave the Repository picker unset after rows reload
+
+- **Where the user meets it:** Switching between two saved workspace profiles from the titlebar or Settings while returning to Pull requests.
+- **What happens / what was expected:** The active profile label and its Pull request rows reload, but the Repository picker can stay at `Select a repository` until the maintainer selects the already-watched repository manually. A profile switch should reconcile the picker to that profile's saved repository, or to its first watched repository, before presenting the settled rows.
+- **Reproduce:** Create two disposable profiles, give the first a watched repository, switch to the second, then switch back to the first and wait for Pull requests to settle; compare the picker with the rows already shown.
+- **Why (from the code):** `src/renderer/src/components/maintainer-inbox.tsx:337-379` renders the placeholder when selected-repository state is absent. `src/renderer/src/app.tsx:179-206` resets the inbox request and workspace state during profile switch, while `src/renderer/src/hooks/use-workspace-inbox.ts:141-156` and `src/renderer/src/inbox-request.ts:194-208` defer repository correction until the new profile is confirmed. The live trace proves the settled state can remain unset, but a focused state trace is still needed to identify which reconciliation callback is skipped.
+- **Severity:** `medium`. Rows are readable and the maintainer can recover with one manual selection, but the scope control disagrees with the loaded data and can misstate which repository is active.
+- **Decision needed:** `fix`. Ensure profile-switch settlement writes the new profile's saved-or-first watched repository into the request and picker before or with the inbox rows.
+- **Affected documents/checklists:** [`Workspace profile and identity`](foundations/workspace-profile-and-identity.md#settle), [`PROFILE-02`](verification/foundations-and-settings.md#foundationsworkspace-profile-and-identitymd), [`Selected repository`](pull-requests/selected-repository.md#arrive).
+- **Status:** `live-confirmed - PROFILE-02 failed on 2026-08-31`; Baseline dirty switch loaded PR #33 and #34 while the picker stayed at `Select a repository` until manual selection. Evidence: `/private/tmp/patchdesk-repository-picker-blank-after-switch.png`, `/private/tmp/patchdesk-repository-picker-manually-selected.png`.
+- **Issue:** —
+
+### B-08: Navigate shortcut opens from a focused Review reply editor
+
+- **Where the user meets it:** A Review diff with focus in an inline thread's Reply textarea.
+- **What happens / what was expected:** Pressing Meta+K opens Navigate even though the Reply editor owns focus. Global navigation shortcuts should not take over text entry.
+- **Reproduce:** Open a disposable Review with an inline thread; focus its Reply textarea; press Meta+K; inspect whether Navigate opens and whether focus remains in the editor.
+- **Why (from the code):** `src/renderer/src/components/app-shell.tsx:99-107` installs a window-level Meta/Ctrl+K handler that calls `preventDefault()` and opens Navigate without checking the event target or focused editable element. `src/renderer/src/components/review-diff-authoring.tsx:354-360` handles Meta/Ctrl+Enter locally but does not shield the editor from the global K handler.
+- **Severity:** `medium`. The draft remains present, but an ordinary editor keystroke opens an unrelated overlay and interrupts Review writing.
+- **Decision needed:** `fix`. Ignore the Navigate shortcut when focus is in an input, textarea, content-editable control, or another editor-owned surface.
+- **Affected documents/checklists:** [`Keyboard, focus, and desktop behavior`](cross-cutting/keyboard-focus-and-desktop.md#begin-an-action), [`FOCUS-01`](verification/insights-and-cross-cutting.md#cross-cuttingkeyboard-focus-and-desktopmd).
+- **Status:** `live-confirmed - FOCUS-01 failed on 2026-08-31`; Meta+K opened Navigate while the Reply textarea stayed focused. Evidence: `/private/tmp/patchdesk-focus-01-editor-shortcut.png`.
+- **Issue:** —
+
 ## Not filed
 
-No candidates were rejected or merged: all six requested candidates map to distinct user-visible symptoms and distinct source paths. No GitHub issue or external tracker entry has been created.
+No candidates were rejected or merged: all eight candidates map to distinct user-visible symptoms or state mismatches. The thread-resolution HTTP 403 and inconclusive reverse diff-navigation attempts remain verification blockers rather than separate triage entries because their product causes were not established. No GitHub issue or external tracker entry has been created.
 
 Verified against Patchdesk application source commit `3100615`.
