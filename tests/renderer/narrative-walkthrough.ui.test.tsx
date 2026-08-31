@@ -121,6 +121,29 @@ function buildWalkthrough(): NarrativeWalkthroughModel {
   };
 }
 
+function buildSingleSectionWalkthrough(): NarrativeWalkthroughModel {
+  const walkthrough = buildWalkthrough();
+  const chapter = walkthrough.chapters[0];
+  const section = chapter?.sections[0];
+  if (chapter === undefined || section === undefined)
+    throw new Error("Walkthrough fixture requires a section");
+  return {
+    ...walkthrough,
+    chapters: [{ ...chapter, sections: [section] }],
+  };
+}
+
+function buildEmptyWalkthrough(): NarrativeWalkthroughModel {
+  const walkthrough = buildWalkthrough();
+  return {
+    ...walkthrough,
+    chapters: walkthrough.chapters.map((chapter) => ({
+      ...chapter,
+      sections: [],
+    })),
+  };
+}
+
 function buildLongWalkthrough(): NarrativeWalkthroughModel {
   const base = buildWalkthrough();
   return {
@@ -393,6 +416,61 @@ describe("narrative walkthrough takeover", () => {
     expect(screen.queryByText("Reading")).toBeNull();
   });
 
+  it("shows empty walkthrough content without section actions or navigation", () => {
+    const onMarkSectionReviewed = vi.fn();
+    render(
+      <NarrativeWalkthrough
+        walkthrough={buildEmptyWalkthrough()}
+        reviewedSectionIds={[]}
+        supportReviewed={false}
+        actions={buildActions({ onMarkSectionReviewed })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
+    ).toContain("0/0");
+    expect(
+      screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
+    ).toContain("0 of 0");
+    expect(
+      screen.getByRole("status", { name: "Section position" }).textContent,
+    ).toContain("0 of 0");
+    expect(
+      screen.queryByRole("button", { name: "Previous section" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next section" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /section reviewed/i }),
+    ).toBeNull();
+    expect(onMarkSectionReviewed).not.toHaveBeenCalled();
+  });
+
+  it("shows the only navigable section position without navigation controls", () => {
+    render(
+      <NarrativeWalkthrough
+        walkthrough={buildSingleSectionWalkthrough()}
+        reviewedSectionIds={[]}
+        supportReviewed={false}
+        actions={buildActions()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
+    ).toContain("1/1");
+    expect(
+      screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
+    ).toContain("0 of 1");
+    expect(
+      screen.getByRole("status", { name: "Section position" }).textContent,
+    ).toContain("1 of 1");
+    expect(
+      screen.queryByRole("button", { name: "Previous section" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next section" })).toBeNull();
+  });
+
   it("moves between sections with Next and Previous controls", () => {
     const onSelectSection = vi.fn();
     const actions = buildActions({ onSelectSection });
@@ -404,9 +482,37 @@ describe("narrative walkthrough takeover", () => {
         actions={actions}
       />,
     );
+    expect(
+      screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
+    ).toContain("1/2");
+    expect(
+      screen.getByRole("status", { name: "Section position" }).textContent,
+    ).toContain("1 of 2");
     const next = screen.getByRole("button", { name: "Next section" });
     fireEvent.click(next);
     expect(onSelectSection).toHaveBeenCalledWith("section-2");
+    expect(
+      screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
+    ).toContain("2/2");
+    expect(
+      screen.getByRole("status", { name: "Section position" }).textContent,
+    ).toContain("2 of 2");
+    fireEvent.click(screen.getByRole("button", { name: "Previous section" }));
+    expect(
+      screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
+    ).toContain("1/2");
+    expect(
+      screen.getByRole("status", { name: "Section position" }).textContent,
+    ).toContain("1 of 2");
+    fireEvent.click(
+      screen.getByRole("button", { name: "How reads stay read-only" }),
+    );
+    expect(
+      screen.getByRole("status", { name: "Walkthrough progress" }).textContent,
+    ).toContain("2/2");
+    expect(
+      screen.getByRole("status", { name: "Section position" }).textContent,
+    ).toContain("2 of 2");
     expect(document.activeElement).toBe(
       screen.getByRole("heading", { name: "How reads stay read-only" }),
     );

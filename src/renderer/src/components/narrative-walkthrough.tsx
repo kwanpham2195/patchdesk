@@ -163,6 +163,7 @@ export function NarrativeWalkthrough({
     () => new Set(reviewedSectionIds),
     [reviewedSectionIds],
   );
+  const sectionPosition = sections.length === 0 ? 0 : sectionIndex + 1;
   const canGoPrev = sectionIndex > 0;
   const canGoNext = sectionIndex >= 0 && sectionIndex < sections.length - 1;
 
@@ -310,7 +311,7 @@ export function NarrativeWalkthrough({
                 data-walkthrough-progress
                 className="text-[11px] tabular-nums text-muted-foreground"
               >
-                {sectionIndex + 1}/{sections.length} · {reviewedCount} of{" "}
+                {sectionPosition}/{sections.length} · {reviewedCount} of{" "}
                 {sections.length} section
                 {sections.length === 1 ? "" : "s"} reviewed
               </span>
@@ -552,48 +553,57 @@ export function NarrativeWalkthrough({
                 />
               ))
             )}
+            {sections.length === 0 ? null : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={
+                    reviewedSet.has(activeSection.id) ? "secondary" : "outline"
+                  }
+                  onClick={() =>
+                    actions.onMarkSectionReviewed(activeSection.id)
+                  }
+                  disabled={reviewedSet.has(activeSection.id)}
+                  aria-pressed={reviewedSet.has(activeSection.id)}
+                >
+                  <CheckCircle2 />
+                  {reviewedSet.has(activeSection.id)
+                    ? "Section reviewed"
+                    : "Mark section reviewed"}
+                </Button>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant={
-                  reviewedSet.has(activeSection.id) ? "secondary" : "outline"
-                }
-                onClick={() => actions.onMarkSectionReviewed(activeSection.id)}
-                disabled={reviewedSet.has(activeSection.id)}
-                aria-pressed={reviewedSet.has(activeSection.id)}
-              >
-                <CheckCircle2 />
-                {reviewedSet.has(activeSection.id)
-                  ? "Section reviewed"
-                  : "Mark section reviewed"}
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => goToOffset(-1)}
-                disabled={!canGoPrev}
-                aria-label="Previous section"
-              >
-                <ArrowLeft />
-                Previous section
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => goToOffset(1)}
-                disabled={!canGoNext}
-                aria-label="Next section"
-              >
-                Next section
-                <ArrowLeft className="rotate-180" />
-              </Button>
+              {sections.length <= 1 ? null : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => goToOffset(-1)}
+                    disabled={!canGoPrev}
+                    aria-label="Previous section"
+                  >
+                    <ArrowLeft />
+                    Previous section
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => goToOffset(1)}
+                    disabled={!canGoNext}
+                    aria-label="Next section"
+                  >
+                    Next section
+                    <ArrowLeft className="rotate-180" />
+                  </Button>
+                </>
+              )}
               <span
+                role="status"
                 className="text-xs text-muted-foreground"
-                aria-label="Section progress"
+                aria-label="Section position"
               >
-                {sectionIndex + 1} of {sections.length}
+                {sectionPosition} of {sections.length}
               </span>
             </div>
             <Separator />
