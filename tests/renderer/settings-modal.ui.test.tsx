@@ -685,7 +685,8 @@ function installDesktopApi(
     // log queue through the same bridge; both are answered here so neither
     // is mistaken for a settings request.
     "/v1/logs": () => success({ entries: [] }),
-    "/v1/watchlist/suggestions": () => success({}),
+    "/v1/watchlist/suggestions": () =>
+      success([{ root: "/workspace/cfw", state: "ready", repositories: [] }]),
     "/v1/insight-providers": () => success(options.models ?? {}),
     "/v1/diagnostics": () =>
       options.activityFails === true

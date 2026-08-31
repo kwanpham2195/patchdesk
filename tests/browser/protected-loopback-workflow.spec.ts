@@ -41,11 +41,17 @@ test("renderer uses the protected loopback API for profile and watchlist control
       listOpenPullRequests: [],
     }),
     origins: {
-      async findOrigins() {
+      async find() {
         return [
           {
-            origin: "https://github.example.test/acme/discovered.git",
-            localPath: "/workspace/discovered",
+            root: "/workspace/enterprise",
+            state: "ready" as const,
+            origins: [
+              {
+                origin: "https://github.example.test/acme/discovered.git",
+                localPath: "/workspace/enterprise/discovered",
+              },
+            ],
           },
         ];
       },
@@ -114,7 +120,7 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await expect(page.getByText("acme/discovered")).toBeVisible();
   await expect(
     page.getByRole("checkbox", {
-      name: "acme/discovered /workspace/discovered",
+      name: "acme/discovered /workspace/enterprise/discovered",
     }),
   ).not.toBeChecked();
 

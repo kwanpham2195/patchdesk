@@ -22,7 +22,10 @@ import {
 } from "../../src/domain/ids";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { err, ok, type Result } from "../../src/domain/result";
-import { DashboardService } from "../../src/services/dashboard-service";
+import {
+  DashboardService,
+  type OriginFinder,
+} from "../../src/services/dashboard-service";
 import { DashboardController } from "../../src/services/dashboard-controller";
 import {
   addWatchedRepo,
@@ -452,31 +455,168 @@ class BlockingFirstConfigSaveStore extends ProfileStore {
 }
 
 describe("dashboard service", () => {
-  it("discovers git-origin suggestions with their local checkout paths", async () => {
-    const service = new DashboardService({
-      async findOrigins() {
-        return [
-          {
-            origin: "https://github.com/centraldigital/discovered.git",
-            localPath: "/workspace/discovered",
-          },
-          {
-            origin: "git@github.com:centraldigital/patchdesk.git",
-            localPath: "/workspace/patchdesk",
-          },
-        ];
-      },
-    });
+  it("keeps a failed root beside ready repositories", async () => {
+    const service = new DashboardService(
+      originFinder([
+        { root: "/failed", state: "failed", reason: "scan_failed" },
+        {
+          root: "/ready",
+          state: "ready",
+          origins: [
+            {
+              origin: "https://github.com/centraldigital/discovered.git",
+              localPath: "/ready/discovered",
+            },
+          ],
+        },
+      ]),
+    );
+
     expect(await service.discoverWorkspaceRepos(profile)).toEqual({
       _tag: "ok",
       value: [
+        { root: "/failed", state: "failed", reason: "scan_failed" },
         {
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "discovered",
-          localPath: "/workspace/discovered",
+          root: "/ready",
+          state: "ready",
+          repositories: [
+            {
+              host: "github.com",
+              owner: "centraldigital",
+              repo: "discovered",
+              localPath: "/ready/discovered",
+            },
+          ],
         },
       ],
     });
   });
+
+  it("returns an HTTP-success result when every root scan fails", async () => {
+    const service = new DashboardService(
+      originFinder([
+        { root: "/first", state: "failed", reason: "scan_failed" },
+        { root: "/second", state: "failed", reason: "scan_failed" },
+      ]),
+    );
+
+    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
+      _tag: "ok",
+      value: [
+        { root: "/first", state: "failed", reason: "scan_failed" },
+        { root: "/second", state: "failed", reason: "scan_failed" },
+      ],
+    });
+  });
+
+  it("excludes watched repository identities from ready roots", async () => {
+    const service = new DashboardService(
+      originFinder([
+        {
+          root: "/workspace",
+          state: "ready",
+          origins: [
+            {
+              origin: "git@github.com:centraldigital/patchdesk.git",
+              localPath: "/workspace/patchdesk",
+            },
+          ],
+        },
+      ]),
+    );
+
+    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
+      _tag: "ok",
+      value: [{ root: "/workspace", state: "ready", repositories: [] }],
+    });
+  });
+
+  it("skips invalid remote origins within a ready root", async () => {
+    const service = new DashboardService(
+      originFinder([
+        {
+          root: "/workspace",
+          state: "ready",
+          origins: [
+            {
+              origin: "ssh://example.invalid/not-github",
+              localPath: "/workspace/bad",
+            },
+          ],
+        },
+      ]),
+    );
+
+    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
+      _tag: "ok",
+      value: [{ root: "/workspace", state: "ready", repositories: [] }],
+    });
+  });
+
+  it("keeps the first root's repository when roots contain the same identity", async () => {
+    const service = new DashboardService(
+      originFinder([
+        {
+          root: "/outer",
+          state: "ready",
+          origins: [
+            {
+              origin: "https://github.com/centraldigital/discovered.git",
+              localPath: "/outer/discovered",
+            },
+          ],
+        },
+        {
+          root: "/outer/nested",
+          state: "ready",
+          origins: [
+            {
+              origin: "git@github.com:centraldigital/discovered.git",
+              localPath: "/outer/nested/discovered",
+            },
+          ],
+        },
+      ]),
+    );
+
+    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
+      _tag: "ok",
+      value: [
+        {
+          root: "/outer",
+          state: "ready",
+          repositories: [
+            {
+              host: "github.com",
+              owner: "centraldigital",
+              repo: "discovered",
+              localPath: "/outer/discovered",
+            },
+          ],
+        },
+        { root: "/outer/nested", state: "ready", repositories: [] },
+      ],
+    });
+  });
+
+  it("retains an empty ready root", async () => {
+    const service = new DashboardService(
+      originFinder([{ root: "/empty", state: "ready", origins: [] }]),
+    );
+
+    await expect(service.discoverWorkspaceRepos(profile)).resolves.toEqual({
+      _tag: "ok",
+      value: [{ root: "/empty", state: "ready", repositories: [] }],
+    });
+  });
 });
+
+function originFinder(
+  results: Awaited<ReturnType<OriginFinder["find"]>>,
+): OriginFinder {
+  return {
+    async find() {
+      return results;
+    },
+  };
+}

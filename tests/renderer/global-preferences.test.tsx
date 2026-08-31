@@ -446,7 +446,7 @@ function installDesktopApi(
       // `dashboard` body the file's previous catch-all returned, so the
       // screen boots exactly as it did before.
       "/v1/github/access": () => success(dashboard),
-      "/v1/watchlist/suggestions": () => success(dashboard),
+      "/v1/watchlist/suggestions": () => success([]),
     },
     { operations: { setNavigationState: () => success({}) } },
   );

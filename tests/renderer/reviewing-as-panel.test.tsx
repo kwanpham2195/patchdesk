@@ -360,8 +360,10 @@ function installDesktopApi(
   desktop = installDesktopDouble({
     "/v1/environment": () => success(environment()),
     // The panel loads suggestions alongside the environment check; every test
-    // here is about the environment, so this answers an empty repository list.
-    "/v1/watchlist/suggestions": () => success([]),
+    // here is about the environment, so this supplies the saved root's empty,
+    // successful outcome rather than an unrelated missing-root scan failure.
+    "/v1/watchlist/suggestions": () =>
+      success([{ root: "/workspace/cfw", state: "ready", repositories: [] }]),
     "/v1/logs": () => success(null),
   });
 }

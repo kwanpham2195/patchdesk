@@ -209,27 +209,6 @@ export function parseEnvironmentCheckResponse(
   const parsed = v.safeParse(environmentCheckResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
-// `GET /v1/watchlist/suggestions` returns a flat array of not-yet-watched
-// repositories discovered under the active profile's workspace roots
-// (`DashboardService.discoverWorkspaceRepos`). `localPath` is the only field
-// that lets a caller attribute a suggestion back to the workspace root that
-// produced it (by path prefix), so it stays required.
-const discoveredRepoSchema = v.strictObject({
-  ...repositoryIdentityFields,
-  localPath: v.pipe(v.string(), v.minLength(1)),
-});
-
-export type DiscoveredRepo = v.InferOutput<typeof discoveredRepoSchema>;
-
-/** Parses `GET /v1/watchlist/suggestions`'s discovered-repository list. */
-export function parseDiscoveredRepos(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
-  input: unknown,
-): ReadonlyArray<DiscoveredRepo> | undefined {
-  const parsed = v.safeParse(v.array(discoveredRepoSchema), input);
-  return parsed.success ? parsed.output : undefined;
-}
-
 const githubAccessCheckResponseSchema = v.strictObject({
   state: v.picklist(["available", "github_auth"]),
 });

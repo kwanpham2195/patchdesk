@@ -1,7 +1,7 @@
 import {
-  parseDiscoveredRepos,
-  type DiscoveredRepo,
-} from "../renderer-contracts";
+  parseWorkspaceRootDiscoveries,
+  type WorkspaceRootDiscovery,
+} from "../workspace-root-discovery-contract";
 import { useApiProbe, type ApiProbeState } from "../hooks/use-api-probe";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import type { Profile } from "../renderer-models";
@@ -35,7 +35,7 @@ export const EMPTY_ENTRIES: ReadonlyArray<WatchlistEntry> = [];
 // oxlint-disable-next-line react/only-export-components -- The workspace-root discovery probe, its status resolver, and the empty-collection constants share this module with the status component that consumes them.
 export function useWorkspaceRootDiscovery(
   savedProfile: Profile | undefined,
-): ApiProbeState<ReadonlyArray<DiscoveredRepo>> {
+): ApiProbeState<ReadonlyArray<WorkspaceRootDiscovery>> {
   // A JSON key rather than the profile object itself: the dashboard is
   // refetched (and reallocated) on every reload even when nothing this scan
   // cares about changed, and `profileDirty`'s dependency check above uses
@@ -48,7 +48,7 @@ export function useWorkspaceRootDiscovery(
 
   return useApiProbe(
     { path: "/v1/watchlist/suggestions", restartKey: savedKey },
-    parseDiscoveredRepos,
+    parseWorkspaceRootDiscoveries,
   );
 }
 
@@ -66,7 +66,7 @@ export function useWorkspaceRootDiscovery(
 export function workspaceRootDiscoveryStatus(
   root: string,
   savedProfile: Profile | undefined,
-  discovery: ApiProbeState<ReadonlyArray<DiscoveredRepo>>,
+  discovery: ApiProbeState<ReadonlyArray<WorkspaceRootDiscovery>>,
   byRoot: ReadonlyMap<string, ReadonlyArray<WatchlistEntry>>,
   isWatched: (entry: WatchlistEntry) => boolean,
 ): RootDiscoveryStatus {
@@ -75,6 +75,11 @@ export function workspaceRootDiscoveryStatus(
   if (!savedRoots.includes(trimmedRoot)) return { kind: "unsaved" };
   if (discovery.kind === "checking") return { kind: "loading" };
   if (discovery.kind === "error") return { kind: "error" };
+  const outcome = discovery.value.find(
+    (candidate) => candidate.root === trimmedRoot,
+  );
+  if (outcome === undefined || outcome.state === "failed")
+    return { kind: "error" };
   const rootEntries = byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES;
   const watchedCount = rootEntries.filter(isWatched).length;
   return { kind: "found", total: rootEntries.length, watched: watchedCount };

@@ -1,6 +1,9 @@
 import { Plus, FolderOpen, X } from "lucide-react";
 import type { SetStateAction } from "react";
-import type { DiscoveredRepo } from "../renderer-contracts";
+import {
+  flattenDiscoveredRepositories,
+  type WorkspaceRootDiscovery,
+} from "../workspace-root-discovery-contract";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import {
@@ -146,8 +149,9 @@ export function WorkspaceProfileSection({
   const rootDiscovery = useWorkspaceRootDiscovery(dashboard?.profile);
   const savedRepos = dashboard?.profile.repos ?? EMPTY_REPOS;
   const savedRoots = dashboard?.profile.workspaceRoots ?? EMPTY_ROOTS;
-  const discoveredRepos =
+  const discoveries =
     rootDiscovery.kind === "loaded" ? rootDiscovery.value : EMPTY_DISCOVERED;
+  const discoveredRepos = flattenDiscoveredRepositories(discoveries);
   // The single merge and the single grouping of discovered + watched
   // repositories for this render — replaces what used to be two independent
   // fetch/group pipelines (this hook's own and `WatchlistPanel`'s).
@@ -307,12 +311,20 @@ export function WorkspaceProfileSection({
               renderStatus={(value) => {
                 const status = rootDiscoveryStatus(value);
                 const trimmedRoot = value.trim();
+                const rootEntries = byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES;
+                const visibleEntries =
+                  status.kind === "error"
+                    ? rootEntries.filter(isWatched)
+                    : rootEntries;
+                const showsChecklist =
+                  status.kind === "found" ||
+                  (status.kind === "error" && visibleEntries.length > 0);
                 return (
                   <div className="flex flex-col gap-2">
                     <WorkspaceRootDiscoveryStatus status={status} />
-                    {status.kind === "found" ? (
+                    {showsChecklist ? (
                       <RepositoryChecklist
-                        entries={byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES}
+                        entries={visibleEntries}
                         isWatched={isWatched}
                         pendingKeys={watchlistToggle.pendingKeys}
                         errorsByKey={watchlistToggle.errorsByKey}
@@ -423,7 +435,7 @@ function ProfileIdentityFields({
 }
 
 const EMPTY_REPOS: ReadonlyArray<Repo> = [];
-const EMPTY_DISCOVERED: ReadonlyArray<DiscoveredRepo> = [];
+const EMPTY_DISCOVERED: ReadonlyArray<WorkspaceRootDiscovery> = [];
 
 function ProfileListEditor({
   label,

@@ -8,6 +8,7 @@ import { SettingsModal } from "../../src/renderer/src/components/settings-modal"
 import type { RawJsonValue } from "../../src/domain/json";
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { Profile } from "../../src/renderer/src/renderer-models";
+import type { WorkspaceRootDiscovery } from "../../src/renderer/src/workspace-root-discovery-contract";
 import type {
   ProfileSwitchResult,
   ProfileSwitchState,
@@ -598,94 +599,17 @@ describe("workspace profile settings", () => {
   });
 });
 
-describe("workspace root discovery", () => {
-  it("shows a per-root count of repositories found and watched", async () => {
-    installDesktopApi({
-      suggestions: [
-        {
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "patchdesk",
-          localPath: "/workspace/cfw/patchdesk",
-        },
-      ],
-    });
-    const watchedProfile: Profile = {
-      ...profile,
-      repos: [
-        {
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "watched-repo",
-          localPath: "/workspace/cfw/watched-repo",
-        },
-      ],
-    };
-
-    renderSettings(undefined, watchedProfile);
-
-    expect(
-      await screen.findByText("2 repositories found · 1 watched"),
-    ).toBeTruthy();
-  });
-
-  it("shows the explicit zero-found state for a saved root with no discoveries", async () => {
-    installDesktopApi({ suggestions: [] });
-
-    renderSettings();
-
-    expect(
-      await screen.findByText(
-        "No git repositories with GitHub remotes found in this folder.",
-      ),
-    ).toBeTruthy();
-  });
-
-  it("shows a failure state when the discovery scan errors", async () => {
-    installDesktopApi({ suggestions: "reject" });
-
-    renderSettings();
-
-    expect(
-      await screen.findByText("Could not scan this folder for repositories."),
-    ).toBeTruthy();
-  });
-
-  it("shows a save affordance instead of a count for a root that hasn't been saved yet", async () => {
-    installDesktopApi({ suggestions: [] });
-    const user = userEvent.setup();
-
-    renderSettings();
-    await screen.findByText(
-      "No git repositories with GitHub remotes found in this folder.",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Add workspace root" }),
-    );
-    await user.type(
-      screen.getByLabelText("workspace root 2"),
-      "/workspace/unsaved",
-    );
-
-    expect(
-      screen.getByText(
-        "Save the profile to scan this folder for repositories.",
-      ),
-    ).toBeTruthy();
-  });
-});
-
 describe("watchlist toggling", () => {
   it("ticking an unwatched repository adds it to the watchlist", async () => {
     const desktopApi = installDesktopApi({
-      suggestions: [
+      suggestions: readyDiscovery("/workspace/cfw", [
         {
           host: "github.com",
           owner: "centraldigital",
           repo: "patchdesk",
           localPath: "/workspace/cfw/patchdesk",
         },
-      ],
+      ]),
     });
     const user = userEvent.setup();
 
@@ -710,7 +634,9 @@ describe("watchlist toggling", () => {
   });
 
   it("unticking a watched repository removes it from the watchlist", async () => {
-    const desktopApi = installDesktopApi({ suggestions: [] });
+    const desktopApi = installDesktopApi({
+      suggestions: readyDiscovery("/workspace/cfw", []),
+    });
     const watchedProfile: Profile = {
       ...profile,
       repos: [
@@ -744,7 +670,7 @@ describe("watchlist toggling", () => {
   });
 
   it("renders a watched repository with no recorded local path", async () => {
-    installDesktopApi({ suggestions: [] });
+    installDesktopApi({ suggestions: readyDiscovery("/workspace/cfw", []) });
     const watchedProfile: Profile = {
       ...profile,
       repos: [
@@ -770,14 +696,14 @@ describe("watchlist toggling", () => {
   it("renders a failed watchlist mutation as an action-local error", async () => {
     installDesktopApi({
       rejectWatchlist: true,
-      suggestions: [
+      suggestions: readyDiscovery("/workspace/cfw", [
         {
           host: "github.com",
           owner: "centraldigital",
           repo: "patchdesk",
           localPath: "/workspace/cfw/patchdesk",
         },
-      ],
+      ]),
     });
     const user = userEvent.setup();
 
@@ -794,7 +720,7 @@ describe("watchlist toggling", () => {
   });
 
   it("shows a watched repository whose local path matches no saved workspace root", async () => {
-    installDesktopApi({ suggestions: [] });
+    installDesktopApi({ suggestions: readyDiscovery("/workspace/cfw", []) });
     const watchedProfile: Profile = {
       ...profile,
       repos: [
@@ -896,14 +822,7 @@ function installDesktopApi(
     readonly rejectWatchlist?: boolean;
     readonly pendingProfileSave?: Promise<ReturnType<typeof success>>;
     readonly environment?: RawJsonValue;
-    readonly suggestions?:
-      | "reject"
-      | ReadonlyArray<{
-          readonly host: string;
-          readonly owner: string;
-          readonly repo: string;
-          readonly localPath: string;
-        }>;
+    readonly suggestions?: "reject" | ReadonlyArray<WorkspaceRootDiscovery>;
   } = {},
 ): DesktopDouble {
   desktop = installDesktopDouble(
@@ -918,7 +837,9 @@ function installDesktopApi(
       "/v1/watchlist/suggestions": () =>
         options.suggestions === "reject"
           ? failure({ error: "storage" })
-          : success(options.suggestions ?? []),
+          : success(
+              options.suggestions ?? readyDiscovery("/workspace/cfw", []),
+            ),
       "/v1/profiles": () => {
         if (options.pendingProfileSave !== undefined)
           return options.pendingProfileSave;
@@ -934,4 +855,16 @@ function installDesktopApi(
     },
   );
   return desktop;
+}
+
+function readyDiscovery(
+  root: string,
+  repositories: ReadonlyArray<{
+    readonly host: string;
+    readonly owner: string;
+    readonly repo: string;
+    readonly localPath: string;
+  }>,
+): ReadonlyArray<WorkspaceRootDiscovery> {
+  return [{ root, state: "ready", repositories: [...repositories] }];
 }

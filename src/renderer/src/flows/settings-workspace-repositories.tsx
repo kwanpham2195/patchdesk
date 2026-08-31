@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 
 import { requestJson } from "../api-client";
-import type { DiscoveredRepo } from "../renderer-contracts";
+import type { DiscoveredRepo } from "../workspace-root-discovery-contract";
 import { repositoryKey, type Repo } from "../renderer-models";
 import { Checkbox } from "../components/ui/checkbox";
 import { Label } from "../components/ui/label";

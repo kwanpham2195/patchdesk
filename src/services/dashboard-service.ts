@@ -17,10 +17,34 @@ export type DiscoveredWorkspaceOrigin = {
   readonly origin: string;
   readonly localPath: string;
 };
+/** One root's bounded checkout scan outcome from the main-process adapter. */
+export type WorkspaceOriginRootResult =
+  | {
+      readonly root: string;
+      readonly state: "ready";
+      readonly origins: ReadonlyArray<DiscoveredWorkspaceOrigin>;
+    }
+  | {
+      readonly root: string;
+      readonly state: "failed";
+      readonly reason: "scan_failed";
+    };
+/** One root's repository suggestions after origin parsing and watchlist filtering. */
+export type DiscoveredWorkspaceRootResult =
+  | {
+      readonly root: string;
+      readonly state: "ready";
+      readonly repositories: ReadonlyArray<DiscoveredRepo>;
+    }
+  | {
+      readonly root: string;
+      readonly state: "failed";
+      readonly reason: "scan_failed";
+    };
 export type OriginFinder = {
-  findOrigins(
+  find(
     roots: ReadonlyArray<string>,
-  ): Promise<ReadonlyArray<DiscoveredWorkspaceOrigin>>;
+  ): Promise<ReadonlyArray<WorkspaceOriginRootResult>>;
 };
 
 /** Suggests watchlist candidates from the git origins found under the profile's workspace roots, skipping repositories it already watches. */
@@ -29,21 +53,35 @@ export class DashboardService {
 
   async discoverWorkspaceRepos(
     profile: WorkspaceProfileConfig,
-  ): Promise<Result<ReadonlyArray<DiscoveredRepo>, never>> {
+  ): Promise<Result<ReadonlyArray<DiscoveredWorkspaceRootResult>, never>> {
     if (this.origins === undefined) return ok([]);
-    const values = await this.origins.findOrigins(profile.workspaceRoots);
+    const values = await this.origins.find(profile.workspaceRoots);
     const discovered: DiscoveredRepo[] = [];
+    const results: DiscoveredWorkspaceRootResult[] = [];
     for (const value of values) {
-      const parsed = parseGitOrigin(value.origin, value.localPath);
-      if (
-        parsed === undefined ||
-        profile.repos.some((repo) => sameRepositoryIdentity(repo, parsed)) ||
-        discovered.some((repo) => sameRepositoryIdentity(repo, parsed))
-      )
+      if (value.state === "failed") {
+        results.push({
+          root: value.root,
+          state: "failed",
+          reason: "scan_failed",
+        });
         continue;
-      discovered.push(parsed);
+      }
+      const repositories: DiscoveredRepo[] = [];
+      for (const origin of value.origins) {
+        const parsed = parseGitOrigin(origin.origin, origin.localPath);
+        if (
+          parsed === undefined ||
+          profile.repos.some((repo) => sameRepositoryIdentity(repo, parsed)) ||
+          discovered.some((repo) => sameRepositoryIdentity(repo, parsed))
+        )
+          continue;
+        discovered.push(parsed);
+        repositories.push(parsed);
+      }
+      results.push({ root: value.root, state: "ready", repositories });
     }
-    return ok(discovered);
+    return ok(results);
   }
 }
 
