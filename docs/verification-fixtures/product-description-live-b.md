@@ -31,3 +31,5 @@ It will be closed after verification.
 ## Closing section
 
 This final line helps verify navigation near the end of a markdown file.
+
+This final update exists only to make the represented Review stale.
