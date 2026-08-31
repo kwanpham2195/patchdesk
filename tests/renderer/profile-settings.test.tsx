@@ -4,6 +4,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { SettingsModal } from "../../src/renderer/src/components/settings-modal";
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { Profile } from "../../src/renderer/src/renderer-models";
 import type {
@@ -37,6 +38,235 @@ afterEach(() => {
 });
 
 describe("workspace profile settings", () => {
+  it("guards a dirty profile draft before starting a new profile", async () => {
+    installDesktopApi();
+    const user = userEvent.setup();
+
+    renderSettingsModal();
+    const label = screen.getByLabelText("Label");
+    await user.clear(label);
+    await user.type(label, "Draft CFW");
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+
+    expect(
+      screen.getByRole("alertdialog", { name: "Discard profile changes?" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+      "Draft CFW",
+    );
+    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+      true,
+    );
+
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    await user.click(screen.getByRole("button", { name: "Discard changes" }));
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(""),
+    );
+    expect(screen.getByLabelText<HTMLInputElement>("Profile ID").value).toBe(
+      "",
+    );
+    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
+  it("saves a dirty existing profile before opening a new draft", async () => {
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<ReturnType<typeof success>>((resolve) => {
+      releaseSave = () => resolve(success({}));
+    });
+    const desktopApi = installDesktopApi({ pendingProfileSave: pendingSave });
+    const user = userEvent.setup();
+
+    renderSettingsModal();
+    await user.clear(screen.getByLabelText("Label"));
+    await user.type(screen.getByLabelText("Label"), "Saved CFW");
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await vi.waitFor(() =>
+      expect(desktopApi.request).toHaveBeenCalledWith({
+        path: "/v1/profiles",
+        method: "PUT",
+        body: {
+          id: profile.id,
+          label: "Saved CFW",
+          githubHost: profile.githubHost,
+          ghAccount: profile.ghAccount,
+          workspaceRoots: profile.workspaceRoots,
+          ownerFilters: profile.ownerFilters,
+          rulePaths: profile.rulePaths,
+        },
+      }),
+    );
+    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+      "Saved CFW",
+    );
+    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+      true,
+    );
+
+    releaseSave();
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(""),
+    );
+    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
+  it("guards a dirty new-profile draft before replacing or selecting it", async () => {
+    installDesktopApi();
+    const user = userEvent.setup();
+    const otherProfile: Profile = { ...profile, id: "other", label: "Other" };
+
+    renderSettingsModal([profile, otherProfile]);
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    expect(
+      screen.getByRole("alertdialog", { name: "Discard profile changes?" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText<HTMLInputElement>("Profile ID").value).toBe(
+      "",
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Active profile" }));
+    await user.click(await screen.findByRole("option", { name: "Other" }));
+    expect(
+      screen.getByRole("alertdialog", { name: "Discard profile changes?" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText<HTMLInputElement>("Profile ID").value).toBe(
+      "",
+    );
+    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
+  it("shares a pending save with the New profile guard continuation", async () => {
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<ReturnType<typeof success>>((resolve) => {
+      releaseSave = () => resolve(success({}));
+    });
+    const desktopApi = installDesktopApi({ pendingProfileSave: pendingSave });
+    const user = userEvent.setup();
+
+    renderSettingsModal();
+    await user.clear(screen.getByLabelText("Label"));
+    await user.type(screen.getByLabelText("Label"), "Saved CFW");
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(profileSaveRequests(desktopApi)).toHaveLength(1);
+    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+      "Saved CFW",
+    );
+
+    releaseSave();
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(""),
+    );
+    expect(profileSaveRequests(desktopApi)).toHaveLength(1);
+  });
+
+  it("treats a whitespace-equivalent newer new-profile ID as an existing draft", async () => {
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<ReturnType<typeof success>>((resolve) => {
+      releaseSave = () => resolve(success({}));
+    });
+    const desktopApi = installDesktopApi({ pendingProfileSave: pendingSave });
+    const user = userEvent.setup();
+
+    renderSettings();
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    await user.type(screen.getByLabelText("Profile ID"), "first");
+    await user.type(screen.getByLabelText("Label"), "First");
+    await user.type(screen.getByLabelText("GitHub account"), "first-user");
+    await user.type(
+      screen.getByLabelText("workspace root 1"),
+      "/workspace/first",
+    );
+    await user.type(screen.getByLabelText("owner filter 1"), "first-owner");
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.clear(screen.getByLabelText("Profile ID"));
+    await user.type(screen.getByLabelText("Profile ID"), "first ");
+
+    releaseSave();
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+        true,
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await vi.waitFor(() =>
+      expect(profileSaveRequests(desktopApi)).toContainEqual({
+        path: "/v1/profiles",
+        method: "PUT",
+        body: expect.objectContaining({ id: "first" }),
+      }),
+    );
+  });
+
+  it("keeps a newer new-profile ID editable after its earlier POST settles", async () => {
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<ReturnType<typeof success>>((resolve) => {
+      releaseSave = () => resolve(success({}));
+    });
+    const desktopApi = installDesktopApi({ pendingProfileSave: pendingSave });
+    const user = userEvent.setup();
+
+    renderSettings();
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    await user.type(screen.getByLabelText("Profile ID"), "first");
+    await user.type(screen.getByLabelText("Label"), "First");
+    await user.type(screen.getByLabelText("GitHub account"), "first-user");
+    await user.type(
+      screen.getByLabelText("workspace root 1"),
+      "/workspace/first",
+    );
+    await user.type(screen.getByLabelText("owner filter 1"), "first-owner");
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await vi.waitFor(() =>
+      expect(desktopApi.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: "/v1/profiles",
+          method: "POST",
+          body: expect.objectContaining({ id: "first" }),
+        }),
+      ),
+    );
+    await user.clear(screen.getByLabelText("Profile ID"));
+    await user.type(screen.getByLabelText("Profile ID"), "second");
+
+    releaseSave();
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>("Profile ID").value).toBe(
+        "second",
+      ),
+    );
+    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
+      false,
+    );
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save profile" })).toBeTruthy(),
+    );
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await vi.waitFor(() =>
+      expect(desktopApi.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: "/v1/profiles",
+          method: "POST",
+          body: expect.objectContaining({ id: "second" }),
+        }),
+      ),
+    );
+  });
+
   it("creates a selected profile with every editable profile list", async () => {
     const desktopApi = installDesktopApi();
     const user = userEvent.setup();
@@ -460,6 +690,12 @@ async function repositoryCheckbox(
   return within(row).getByRole("checkbox");
 }
 
+function profileSaveRequests(desktopApi: DesktopDouble) {
+  return desktopApi.request.mock.calls
+    .map(([input]) => input)
+    .filter((input) => "path" in input && input.path === "/v1/profiles");
+}
+
 function renderSettings(
   onWorkspaceReload: () => Promise<void> = async () => undefined,
   activeProfile: Profile = profile,
@@ -486,6 +722,26 @@ function renderSettings(
         ? {}
         : { onProfileSwitch: options.onProfileSwitch })}
       section="workspace"
+    />,
+  );
+}
+
+function renderSettingsModal(
+  profiles: ReadonlyArray<Profile> = [profile],
+): void {
+  render(
+    <SettingsModal
+      open
+      onOpenChange={() => undefined}
+      dashboard={{ profile, dashboard: { repos: [] } }}
+      appearance="system"
+      onAppearanceChange={() => undefined}
+      diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
+      onDiffThemeChange={() => undefined}
+      profiles={profiles}
+      onWorkspaceReload={async () => undefined}
+      onProfileSwitch={async () => "applied"}
+      initialSection="workspace"
     />,
   );
 }

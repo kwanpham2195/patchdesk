@@ -7,6 +7,7 @@ import {
 } from "react";
 import { requestJson, selectDirectory } from "../api-client";
 import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
+import { useLatestCommitted } from "../hooks/use-latest-committed";
 import type { Dashboard, Profile } from "../renderer-models";
 
 export type ProfileDraft = {
@@ -84,11 +85,13 @@ export function useWorkspaceProfileDraft({
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string>();
   const [savingProfile, setSavingProfile] = useState(false);
+  const profileDraftRef = useLatestCommitted(profileDraft);
   const profileBaseline = useRef(profileDraft);
   const pendingSavedProfile = useRef<
     { readonly id: string; readonly label: string } | undefined
   >(undefined);
   const profileDraftGeneration = useRef(0);
+  const pendingProfileSave = useRef<Promise<boolean> | undefined>(undefined);
   // A `useCallback` (rather than a plain per-render function) so the
   // reviewing-as adoption effect can list it as a dependency without that
   // dependency being "fresh" on every render.
@@ -101,6 +104,7 @@ export function useWorkspaceProfileDraft({
     [onProfileDirtyChange],
   );
   const profileDirty =
+    creatingProfile ||
     JSON.stringify(profileDraft) !== JSON.stringify(profileBaseline.current);
 
   useEffect(() => {
@@ -125,58 +129,81 @@ export function useWorkspaceProfileDraft({
     setProfileDraft(next);
   }, [creatingProfile, dashboard, profileDirty, profileDraft.id]);
 
-  const saveProfile = async (): Promise<boolean> => {
-    setProfileError(undefined);
-    const normalized = normalizeProfileDraft(profileDraft);
-    if (!normalized.ok) {
-      setProfileError(normalized.error);
-      return false;
-    }
-    if (
-      creatingProfile &&
-      profiles.some((profile) => profile.id === normalized.value.id)
-    ) {
-      setProfileError("A profile with this ID already exists.");
-      return false;
-    }
-    setSavingProfile(true);
-    const draftGeneration = profileDraftGeneration.current;
-    try {
-      await requestJson("/v1/profiles", {
-        method: creatingProfile ? "POST" : "PUT",
-        body: normalized.value,
-      });
-      if (creatingProfile) {
-        await requestJson("/v1/profiles/select", {
-          method: "POST",
-          body: { id: normalized.value.id },
+  const saveProfile = (): Promise<boolean> => {
+    const pending = pendingProfileSave.current;
+    if (pending !== undefined) return pending;
+
+    const save = async (): Promise<boolean> => {
+      setProfileError(undefined);
+      const normalized = normalizeProfileDraft(profileDraft);
+      if (!normalized.ok) {
+        setProfileError(normalized.error);
+        return false;
+      }
+      if (
+        creatingProfile &&
+        profiles.some((profile) => profile.id === normalized.value.id)
+      ) {
+        setProfileError("A profile with this ID already exists.");
+        return false;
+      }
+      setSavingProfile(true);
+      const draftGeneration = profileDraftGeneration.current;
+      const savingNewProfile = creatingProfile;
+      try {
+        await requestJson("/v1/profiles", {
+          method: creatingProfile ? "POST" : "PUT",
+          body: normalized.value,
         });
+        if (creatingProfile) {
+          await requestJson("/v1/profiles/select", {
+            method: "POST",
+            body: { id: normalized.value.id },
+          });
+        }
+        const next = profileDraftFromNormalized(normalized.value);
+        pendingSavedProfile.current = {
+          id: normalized.value.id,
+          label: normalized.value.label,
+        };
+        if (profileDraftGeneration.current === draftGeneration) {
+          profileBaseline.current = next;
+          setProfileDraft(next);
+          setCreatingProfile(false);
+          onProfileDirtyChange?.(false);
+        } else if (
+          savingNewProfile &&
+          profileDraftRef.current.id.trim() !== normalized.value.id
+        ) {
+          profileBaseline.current = profileDraftFor(undefined);
+          setCreatingProfile(true);
+          onProfileDirtyChange?.(true);
+        } else {
+          profileBaseline.current = next;
+          setCreatingProfile(false);
+          onProfileDirtyChange?.(true);
+        }
+        await onWorkspaceReload();
+        return true;
+      } catch (cause: unknown) {
+        setProfileError(
+          cause instanceof Error
+            ? cause.message
+            : "Patchdesk could not save the local review state.",
+        );
+        return false;
+      } finally {
+        setSavingProfile(false);
       }
-      const next = profileDraftFromNormalized(normalized.value);
-      pendingSavedProfile.current = {
-        id: normalized.value.id,
-        label: normalized.value.label,
-      };
-      profileBaseline.current = next;
-      if (profileDraftGeneration.current === draftGeneration) {
-        setProfileDraft(next);
-        onProfileDirtyChange?.(false);
-      } else {
-        onProfileDirtyChange?.(true);
-      }
-      setCreatingProfile(false);
-      await onWorkspaceReload();
-      return true;
-    } catch (cause: unknown) {
-      setProfileError(
-        cause instanceof Error
-          ? cause.message
-          : "Patchdesk could not save the local review state.",
-      );
-      return false;
-    } finally {
-      setSavingProfile(false);
-    }
+    };
+
+    const savePromise = save();
+    pendingProfileSave.current = savePromise;
+    void savePromise.finally(() => {
+      if (pendingProfileSave.current === savePromise)
+        pendingProfileSave.current = undefined;
+    });
+    return savePromise;
   };
 
   useEffect(() => {
@@ -258,12 +285,20 @@ export function useWorkspaceProfileDraft({
     updateProfileList("workspaceRoots", entryId, selected);
   };
 
-  const startNewProfile = (): void => {
+  const beginNewProfile = (): void => {
     setCreatingProfile(true);
     setProfileError(undefined);
     const next = profileDraftFor(undefined);
     profileBaseline.current = next;
     updateProfileDraft(next);
+  };
+
+  const startNewProfile = (): void => {
+    if (profileDirty) {
+      onProfileSwitchRequest?.(profileDraft.id, beginNewProfile);
+      return;
+    }
+    beginNewProfile();
   };
 
   return {
