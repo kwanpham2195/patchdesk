@@ -94,6 +94,7 @@ export function AnalysisReader({
   const openFindings = result.findings.filter(
     (finding) => (finding.disposition ?? "open") === "open",
   );
+  const hasNoGeneratedFindings = result.findings.length === 0;
   const supportingDetailGroups = supportingDetailsFor(result);
   const supportingDetailCount = supportingDetailGroups.reduce(
     (count, group) => count + group.details.length,
@@ -188,15 +189,27 @@ export function AnalysisReader({
       <Card size="sm">
         <CardHeader>
           <CardTitle>
-            {openFindings.length === 0 ? "No findings" : "Needs attention"}
+            {hasNoGeneratedFindings
+              ? "No findings"
+              : openFindings.length === 0
+                ? "No findings need attention"
+                : "Needs attention"}
           </CardTitle>
           <CardDescription>
-            {openFindings.length === 0
-              ? "Analysis did not identify an item that needs review action."
-              : "Resolve or add each item before you finish the review."}
+            {hasNoGeneratedFindings
+              ? "Analysis generated no findings for this Review."
+              : openFindings.length === 0
+                ? "All findings are already handled."
+                : "Resolve or add each item before you finish the review."}
           </CardDescription>
         </CardHeader>
-        {result.findings.length === 0 ? null : (
+        {hasNoGeneratedFindings ? (
+          <CardContent>
+            <p role="status" aria-label="No findings">
+              There is nothing to add to review or dismiss.
+            </p>
+          </CardContent>
+        ) : (
           <CardContent>
             <ul className="flex flex-col gap-2">
               {result.findings.map((finding) => (

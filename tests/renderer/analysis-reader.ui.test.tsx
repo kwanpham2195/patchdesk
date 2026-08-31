@@ -128,6 +128,37 @@ describe("AnalysisReader", () => {
     ).toBeTruthy();
   });
 
+  it("explains when Analysis generated no findings without review actions", () => {
+    render(
+      <AnalysisReader
+        result={{ ...result, findings: [] }}
+        findingStatuses={{ "finding-1": "actionable" }}
+        onAddFinding={vi.fn(async () => undefined)}
+        onDismissFinding={vi.fn(async () => undefined)}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "No findings" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+  });
+
+  it("does not describe handled findings as if Analysis generated none", () => {
+    render(
+      <AnalysisReader
+        result={{
+          ...result,
+          findings: [{ ...findingFixture, disposition: "dismissed" }],
+        }}
+      />,
+    );
+
+    expect(
+      within(screen.getByRole("listitem")).getByText(findingFixture.title),
+    ).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "No findings" })).toBeNull();
+  });
+
   it("sends the original suggested comment only after the explicit Add to review action", async () => {
     const user = userEvent.setup();
     const onAddFinding = vi.fn(async () => undefined);
