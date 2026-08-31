@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Moved the review navigator toggle into the diff header, keeping the file path aligned when the navigator opens or closes.
 - Improved motion across dialogs, popovers, drawers, disclosures, busy progress, Insight completions, and Walkthrough focus transitions, while keeping the command palette, tooltips, and trigger-aligned selects instant.
 
 ## 0.1.0 - 2026-08-30

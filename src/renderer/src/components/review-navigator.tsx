@@ -1,6 +1,4 @@
 import { useMemo } from "react";
-import { PanelLeftClose } from "lucide-react";
-
 import { parseUnifiedPatch } from "../../../domain/patch";
 import {
   projectConversationThreadRows,
@@ -12,9 +10,7 @@ import { parseReviewDiff } from "../review-diff-data";
 import { cn } from "@/lib/utils";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { PierreFileTree, type PierreFileTreeItem } from "./pierre-file-tree";
 import type { WorkbenchSection } from "../lib/screen-restore";
 
@@ -37,7 +33,6 @@ type ReviewNavigatorProps = {
   readonly onFileSelect: (path: string) => void;
   readonly onCommitSelect: (sha: string) => void;
   readonly onThreadSelect: (row: ConversationThreadRow) => void;
-  readonly onCollapse?: () => void;
 };
 
 /** The review navigator owns browsing and commit selection. */
@@ -54,7 +49,6 @@ export function ReviewNavigator({
   onFileSelect,
   onCommitSelect,
   onThreadSelect,
-  onCollapse,
 }: ReviewNavigatorProps): React.JSX.Element {
   const parsed = useMemo(() => {
     const files = parseUnifiedPatch(patch);
@@ -95,7 +89,7 @@ export function ReviewNavigator({
         }
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="flex items-center justify-between gap-2 px-3 pt-3">
+        <div className="flex items-center px-3 pt-3">
           <TabsList
             variant="line"
             aria-label="Review navigator"
@@ -113,23 +107,6 @@ export function ReviewNavigator({
               </Badge>
             </TabsTrigger>
           </TabsList>
-          {onCollapse === undefined ? null : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    onClick={onCollapse}
-                    aria-label="Hide review navigator"
-                  />
-                }
-              >
-                <PanelLeftClose />
-              </TooltipTrigger>
-              <TooltipContent>Hide review navigator</TooltipContent>
-            </Tooltip>
-          )}
         </div>
         <TabsContent
           value="files"

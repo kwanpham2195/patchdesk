@@ -10,7 +10,7 @@ import {
 const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
 });
-import { PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
@@ -634,7 +634,7 @@ export function ReviewWorkbench({
                     "grid h-full min-h-0 flex-1",
                     navigatorVisible
                       ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]"
-                      : "grid-cols-[2.75rem_minmax(0,1fr)]",
+                      : "grid-cols-1",
                   )}
                 >
                   {navigatorVisible ? (
@@ -677,27 +677,8 @@ export function ReviewWorkbench({
                         });
                         setActivePath(row.path);
                       }}
-                      onCollapse={() => setNavigatorVisible(false)}
                     />
-                  ) : (
-                    <div className="flex items-start justify-center pt-2">
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              size="icon-sm"
-                              variant="outline"
-                              onClick={() => setNavigatorVisible(true)}
-                              aria-label="Show review navigator"
-                            />
-                          }
-                        >
-                          <PanelLeftOpen />
-                        </TooltipTrigger>
-                        <TooltipContent>Show review navigator</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  )}
+                  ) : null}
                   {navigatorVisible ? (
                     <ReviewNavigatorResizeHandle
                       widthRem={navigatorWidthRem}
@@ -781,7 +762,38 @@ export function ReviewWorkbench({
                             ? {}
                             : { conversationActions: diffConversationActions })}
                           hideFileNavigation
-                          surfaceAction={undefined}
+                          leadingAction={
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    size="icon-sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                      setNavigatorVisible((visible) => !visible)
+                                    }
+                                    aria-label={
+                                      navigatorVisible
+                                        ? "Hide review navigator"
+                                        : "Show review navigator"
+                                    }
+                                    aria-expanded={navigatorVisible}
+                                  />
+                                }
+                              >
+                                {navigatorVisible ? (
+                                  <PanelLeftClose />
+                                ) : (
+                                  <PanelLeftOpen />
+                                )}
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {navigatorVisible
+                                  ? "Hide review navigator"
+                                  : "Show review navigator"}
+                              </TooltipContent>
+                            </Tooltip>
+                          }
                           {...(commitHeader === undefined
                             ? {}
                             : {

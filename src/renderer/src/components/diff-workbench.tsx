@@ -51,7 +51,7 @@ export function DiffWorkbench({
   onPreferencesChange,
   annotations,
   selectedRange,
-  surfaceAction,
+  leadingAction,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -77,7 +77,7 @@ export function DiffWorkbench({
   ) => void;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
   readonly selectedRange?: SelectedDiffRange;
-  readonly surfaceAction?: React.ReactNode;
+  readonly leadingAction?: React.ReactNode;
 }): React.JSX.Element {
   const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
   const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
@@ -179,20 +179,22 @@ export function DiffWorkbench({
         )}
         <div className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
           <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur">
-            <div className="min-w-0">
-              <p
-                className="truncate text-sm font-medium"
-                data-diff-workbench-header-path={headerPath}
-              >
-                {headerPath ?? "No file selected"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {diffSubtitle ??
-                  "Review snapshot · GitHub writes require confirmation"}
-              </p>
+            <div className="flex min-w-0 items-center gap-3">
+              {leadingAction}
+              <div className="min-w-0">
+                <p
+                  className="truncate text-sm font-medium"
+                  data-diff-workbench-header-path={headerPath}
+                >
+                  {headerPath ?? "No file selected"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {diffSubtitle ??
+                    "Review snapshot · GitHub writes require confirmation"}
+                </p>
+              </div>
             </div>
             <div className="flex shrink-0 gap-2">
-              {surfaceAction}
               {copyValue === undefined ? null : (
                 <Button
                   variant="outline"

@@ -135,19 +135,18 @@ test("review navigator presents the Pierre file tree", async ({ page }) => {
   }
 });
 
-test("Pierre controls persist and the review navigator can collapse", async ({
-  page,
-}) => {
+test("Pierre controls persist and navigator collapses", async ({ page }) => {
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
+    const hideNavigatorButton = '[aria-label="Hide review navigator"]';
 
     await page.getByRole("button", { name: "Split", exact: true }).click();
     await page.getByRole("button", { name: "Wrap", exact: true }).click();
     await page.getByRole("button", { name: "Selected", exact: true }).click();
-    await page.getByRole("button", { name: "Hide review navigator" }).click();
+    await page.locator(`header ${hideNavigatorButton}`).click();
 
     await expect(diff).toHaveAttribute("data-diff-style", "split");
     await expect(diff).toHaveAttribute("data-file-mode", "selected");
