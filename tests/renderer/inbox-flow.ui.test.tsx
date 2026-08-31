@@ -209,7 +209,7 @@ function asJsonBody(value: WorkbenchResponse): RawJsonValue {
 /** The destructive alert InboxFlow raises when opening a review fails. */
 function openErrorAlert(): HTMLElement | undefined {
   return screen
-    .getAllByRole("alert")
+    .queryAllByRole("alert")
     .find(
       (alert) => within(alert).queryByText("Could not open review") !== null,
     );
@@ -534,7 +534,7 @@ describe("InboxFlow setup checklist", () => {
 });
 
 describe("InboxFlow bootstrap outcome open-error alert", () => {
-  it("keeps showing a stale 'Could not open review' error after the active profile clears and its reload fails", async () => {
+  it("clears a stale 'Could not open review' error after the active profile changes or clears", async () => {
     const runReviewRow = {
       ...savedRow,
       recommendedAction: {
@@ -572,19 +572,46 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
 
     fireEvent.click(screen.getByRole("option"));
 
-    // Confirms the error landed in `InboxFlow`'s local `openError` state
-    // while `InboxScreen` (dashboard/inbox still defined) is what renders it.
-    // The alert and its title are the observable; the sentence inside it is
-    // wording, which this test deliberately does not pin.
-    const raisedAlert = await screen.findByText("Could not open review");
-    expect(raisedAlert.closest('[data-slot="inline-error"]')).not.toBeNull();
+    // The original profile still renders its row-opening error. The alert,
+    // rather than the repeated title text, is the observable contract.
+    const raisedAlert = await waitFor(() => {
+      const alert = openErrorAlert();
+      if (alert === undefined) throw new Error("Expected an opening error");
+      return alert;
+    });
+    expect(within(raisedAlert).getByText("Could not open review")).toBeTruthy();
 
-    // Simulates the profile switch that follows in the real app: a `cleared`
-    // dispatch clears `dashboard`/`inbox` and forces `screen: "loading"`,
-    // then a `failed` dispatch (the new profile's `loadWorkspace()` throwing)
-    // moves `screen` off `loading` without ever touching `openError` — it is
-    // `InboxFlow`-local state that survives because `InboxFlow` renders
-    // unkeyed at a stable position across this rerender.
+    const changedDashboard = {
+      ...dashboard,
+      profile: { ...dashboard.profile, id: "changed-profile" },
+    };
+    const changedInbox = {
+      ...inbox,
+      profile: { ...inbox.profile, id: "changed-profile" },
+    };
+    rerender(
+      <BusyProvider>
+        <InboxFlow
+          destination="dashboard"
+          dashboard={changedDashboard}
+          // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
+          inbox={changedInbox as never}
+          state="success"
+          refreshStatus="Current"
+          onRefresh={vi.fn()}
+          onSettings={vi.fn()}
+          onOpenWorkbench={vi.fn()}
+        />
+      </BusyProvider>,
+    );
+
+    // A new profile owns a new Pull requests scope, so it cannot inherit the
+    // former profile's opening failure.
+    await waitFor(() => expect(openErrorAlert()).toBeUndefined());
+
+    // A `cleared` dispatch then clears `dashboard`/`inbox` and forces
+    // `screen: "loading"`; a failed reload moves the screen off loading while
+    // the local opening state still exists. First run must not inherit it.
     rerender(
       <BusyProvider>
         <InboxFlow
@@ -599,7 +626,189 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
     );
 
     expect(await screen.findByText("First run")).toBeTruthy();
+    expect(openErrorAlert()).toBeUndefined();
+  });
+});
+describe("InboxFlow stored-review error ownership", () => {
+  it("restores profile A's saved-review error after a profile B opening attempt", async () => {
+    const profileBOpen = deferred<ReturnType<typeof success>>();
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/load": () => ({
+        ok: false,
+        status: 500,
+        correlationId: "saved-review-fail",
+        body: { error: "unavailable" },
+      }),
+      "/v1/reviews/open": () => profileBOpen.promise,
+    });
+    const runReviewRow = {
+      ...savedRow,
+      latestReview: undefined,
+      recommendedAction: { kind: "run_review" as const, label: "Run review" },
+    };
+    const profileB = {
+      ...dashboard,
+      profile: { ...dashboard.profile, id: "profile-b" },
+    };
+    const profileBInbox = {
+      ...inbox,
+      profile: { ...inbox.profile, id: "profile-b" },
+      inbox: { ...inbox.inbox, rows: [runReviewRow] },
+    };
+    const { rerender } = renderInboxFlow(
+      <InboxFlow
+        destination="workbench"
+        reviewId="saved-review"
+        dashboard={dashboard}
+        // SAFETY: InboxFlow reads only the fixture fields supplied here.
+        inbox={inbox as never}
+        state="success"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(openErrorAlert()).toBeDefined());
+
+    rerender(
+      <BusyProvider>
+        <InboxFlow
+          destination="dashboard"
+          dashboard={profileB}
+          // SAFETY: InboxFlow reads only the fixture fields supplied here.
+          inbox={profileBInbox as never}
+          state="success"
+          refreshStatus="Current"
+          onRefresh={vi.fn()}
+          onSettings={vi.fn()}
+          onOpenWorkbench={vi.fn()}
+        />
+      </BusyProvider>,
+    );
+    fireEvent.click(screen.getByRole("option"));
+    expect(reviewRequestPaths(desktop)).toEqual([
+      "/v1/reviews/load",
+      "/v1/reviews/open",
+    ]);
+
+    rerender(
+      <BusyProvider>
+        <InboxFlow
+          destination="dashboard"
+          dashboard={dashboard}
+          // SAFETY: InboxFlow reads only the fixture fields supplied here.
+          inbox={inbox as never}
+          state="success"
+          refreshStatus="Current"
+          onRefresh={vi.fn()}
+          onSettings={vi.fn()}
+          onOpenWorkbench={vi.fn()}
+        />
+      </BusyProvider>,
+    );
+
     expect(openErrorAlert()).toBeDefined();
+    expect(screen.getByRole("option").hasAttribute("disabled")).toBe(false);
+  });
+});
+
+describe("InboxFlow profile-scoped Review opening", () => {
+  it("admits the same pull request separately for a new profile and ignores the old profile's late result", async () => {
+    const first = deferred<ReturnType<typeof success>>();
+    const second = deferred<ReturnType<typeof success>>();
+    let requestCount = 0;
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/open": () => {
+        requestCount += 1;
+        return requestCount === 1 ? first.promise : second.promise;
+      },
+    });
+    const runReviewRow = {
+      ...savedRow,
+      latestReview: undefined,
+      recommendedAction: { kind: "run_review" as const, label: "Run review" },
+    };
+    // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
+    const runReviewInbox = {
+      ...inbox,
+      inbox: { ...inbox.inbox, rows: [runReviewRow] },
+    } as never;
+    const opened: WorkbenchResponse[] = [];
+    const { rerender } = renderInboxFlow(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={dashboard}
+        inbox={runReviewInbox}
+        state="success"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={(value) => opened.push(value)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("option"));
+    expect(reviewRequestPaths(desktop)).toEqual(["/v1/reviews/open"]);
+
+    const changedDashboard = {
+      ...dashboard,
+      profile: { ...dashboard.profile, id: "changed-profile" },
+    };
+    const changedInbox = {
+      ...inbox,
+      profile: { ...inbox.profile, id: "changed-profile" },
+      inbox: { ...inbox.inbox, rows: [runReviewRow] },
+    };
+    rerender(
+      <BusyProvider>
+        <InboxFlow
+          destination="dashboard"
+          dashboard={changedDashboard}
+          // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
+          inbox={changedInbox as never}
+          state="success"
+          refreshStatus="Current"
+          onRefresh={vi.fn()}
+          onSettings={vi.fn()}
+          onOpenWorkbench={(value) => opened.push(value)}
+        />
+      </BusyProvider>,
+    );
+
+    const changedProfileRow = screen.getByRole("option");
+    expect(changedProfileRow.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(changedProfileRow);
+    expect(reviewRequestPaths(desktop)).toEqual([
+      "/v1/reviews/open",
+      "/v1/reviews/open",
+    ]);
+    expect(
+      sentRequests(desktop)
+        .filter((request) => request.path === "/v1/reviews/open")
+        .map((request) => request.body),
+    ).toEqual([
+      expect.objectContaining({ profileId: dashboard.profile.id }),
+      expect.objectContaining({ profileId: "changed-profile" }),
+    ]);
+
+    first.resolve(success(asJsonBody(projection)));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(opened).toEqual([]);
+
+    second.resolve(
+      success(
+        asJsonBody({
+          ...projection,
+          review: { ...projection.review, id: "changed-review" },
+        }),
+      ),
+    );
+    await waitFor(() => expect(opened).toHaveLength(1));
+    expect(opened[0]?.review.id).toBe("changed-review");
   });
 });
 

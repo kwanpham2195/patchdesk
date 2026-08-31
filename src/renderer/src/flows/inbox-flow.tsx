@@ -45,7 +45,6 @@ import type {
   RepositoryLabelListResponse,
 } from "../renderer-contracts";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
-import { definedProps } from "../../../domain/defined-props";
 import { useInboxReviewOpening } from "./use-inbox-review-opening";
 
 export function InboxFlow({
@@ -157,6 +156,7 @@ export function InboxFlow({
   const rowOpenError = [...openingOperations.values()].find(
     ({ status }) => status === "error",
   )?.error;
+  const activeOpenError = openError ?? rowOpenError;
 
   if (inbox === undefined || dashboard === undefined)
     return state === "loading" ? (
@@ -166,7 +166,6 @@ export function InboxFlow({
         state={state}
         onRefresh={onRefresh}
         onSettings={onSettings}
-        {...definedProps({ openError: openError ?? rowOpenError })}
       />
     );
 
@@ -177,7 +176,7 @@ export function InboxFlow({
       dashboard={dashboard}
       refreshStatus={refreshStatus}
       {...(openedPr === undefined ? {} : { openedPr })}
-      {...(openError === undefined ? {} : { openError })}
+      {...(activeOpenError === undefined ? {} : { openError: activeOpenError })}
       onRefresh={onRefresh}
       inboxState={inboxState}
       listPending={listPending}
@@ -355,17 +354,10 @@ function BootstrapOutcome({
   state,
   onRefresh,
   onSettings,
-  openError,
 }: {
   readonly state: DashboardScreenState;
   readonly onRefresh: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
-  /** Still reachable here: `InboxFlow` renders unkeyed at a stable position,
-   * so this locally-owned state survives a `cleared` dispatch that clears
-   * `dashboard`/`inbox`. A later `failed` dispatch only changes `screen`, so
-   * a stale error from before a profile switch can still be showing when
-   * this branch renders. */
-  readonly openError?: string;
 }): React.JSX.Element {
   return (
     <div className="mx-auto max-w-[112rem]">
@@ -388,12 +380,6 @@ function BootstrapOutcome({
           Refresh
         </Button>
       </header>
-      {openError === undefined ? null : (
-        <Alert variant="destructive" className="mt-4">
-          <AlertTitle>Could not open review</AlertTitle>
-          <AlertDescription>{openError}</AlertDescription>
-        </Alert>
-      )}
       <Outcome
         state={state}
         repos={[]}
