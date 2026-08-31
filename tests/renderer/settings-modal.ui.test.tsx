@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -231,6 +237,55 @@ describe("SettingsModal", () => {
     expect(
       screen.getByRole("button", { name: "Clear local data" }),
     ).toBeTruthy();
+  });
+
+  it("shows successful empty Review activity only after loading the active profile", async () => {
+    const desktopApi = installDesktopApi({ activity: { events: [] } });
+    const user = userEvent.setup();
+
+    renderModal();
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+
+    const activityCard = screen.getByTestId("review-activity-card");
+    expect(within(activityCard).queryByRole("status")).toBeNull();
+
+    await user.click(
+      within(activityCard).getByRole("button", { name: "Load activity" }),
+    );
+
+    await waitFor(() =>
+      expect(desktopApi.request).toHaveBeenCalledWith({
+        path: "/v1/diagnostics?profileId=cfw",
+      }),
+    );
+    expect(within(activityCard).getAllByRole("status")).toHaveLength(1);
+    expect(
+      within(activityCard).queryByRole("list", {
+        name: "Review activity log",
+      }),
+    ).toBeNull();
+    expect(within(activityCard).queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("keeps a failed Review activity load distinct from a successful empty result", async () => {
+    installDesktopApi({ activityFails: true });
+    const user = userEvent.setup();
+
+    renderModal();
+    await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
+
+    const activityCard = screen.getByTestId("review-activity-card");
+    await user.click(
+      within(activityCard).getByRole("button", { name: "Load activity" }),
+    );
+
+    expect(await within(activityCard).findByRole("alert")).toBeTruthy();
+    expect(within(activityCard).queryByRole("status")).toBeNull();
+    expect(
+      within(activityCard).queryByRole("list", {
+        name: "Review activity log",
+      }),
+    ).toBeNull();
   });
 
   it("does not offer cleanup that has no active profile to target", async () => {
@@ -616,6 +671,8 @@ function renderModal(
 
 function installDesktopApi(
   options: {
+    readonly activity?: RawJsonValue;
+    readonly activityFails?: boolean;
     readonly clearLocalDataFails?: boolean;
     readonly models?: RawJsonValue;
     readonly profileSaveFailures?: number;
@@ -630,6 +687,10 @@ function installDesktopApi(
     "/v1/logs": () => success({ entries: [] }),
     "/v1/watchlist/suggestions": () => success({}),
     "/v1/insight-providers": () => success(options.models ?? {}),
+    "/v1/diagnostics": () =>
+      options.activityFails === true
+        ? failure({ error: "diagnostics_unavailable" })
+        : success(options.activity ?? { events: [] }),
     "/v1/profiles": (input) => {
       if (input.method === "PUT" && profileSaveFailures > 0) {
         profileSaveFailures -= 1;
