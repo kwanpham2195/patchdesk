@@ -582,7 +582,7 @@ function Outcome({
   readonly repos: ReadonlyArray<RepoOutcome>;
   readonly onRetry: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   if (state === "loading")
     return (
       <div className="mt-6 space-y-2" aria-label="Loading dashboard">
@@ -629,6 +629,7 @@ function Outcome({
         </AlertDescription>
       </Alert>
     );
+  if (repos.every(({ state: outcome }) => outcome === "ready")) return null;
   return (
     <section className="mt-6 space-y-2">
       {repos.flatMap(({ repo, state: outcome, resumeAt, forbiddenReason }) =>
