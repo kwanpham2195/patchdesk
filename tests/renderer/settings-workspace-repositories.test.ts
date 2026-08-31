@@ -55,4 +55,118 @@ describe("mergeWatchlistEntries + groupWatchlistEntries", () => {
       },
     ]);
   });
+  it("keeps a sibling-prefix repository outside the workspace root", () => {
+    const entries = mergeWatchlistEntries(
+      [],
+      [
+        {
+          host: "github.com",
+          owner: "owner",
+          repo: "app-two",
+          localPath: "/workspace/app-two/repo",
+        },
+      ],
+    );
+
+    const { byRoot, other } = groupWatchlistEntries(entries, [
+      "/workspace/app",
+    ]);
+
+    expect(byRoot.get("/workspace/app")).toEqual([]);
+    expect(other).toEqual(entries);
+  });
+
+  it.each([
+    ["an exact root", "/workspace/app", "/workspace/app"],
+    ["a descendant", "/workspace/app", "/workspace/app/repo"],
+    [
+      "a root with trailing separators",
+      "/workspace/app//",
+      "/workspace/app/repo",
+    ],
+    ["the filesystem root", "/", "/workspace/app/repo"],
+  ])("groups %s", (_name, root, localPath) => {
+    const entries = mergeWatchlistEntries(
+      [],
+      [{ host: "github.com", owner: "owner", repo: "repo", localPath }],
+    );
+
+    const { byRoot, other } = groupWatchlistEntries(entries, [root]);
+
+    expect(byRoot.get(root)).toEqual(entries);
+    expect(other).toEqual([]);
+  });
+
+  it("preserves group order and entries with no local path", () => {
+    const entries = mergeWatchlistEntries(
+      [],
+      [
+        {
+          host: "github.com",
+          owner: "owner",
+          repo: "first",
+          localPath: "/workspace/app/first",
+        },
+        { host: "github.com", owner: "owner", repo: "unknown" },
+        {
+          host: "github.com",
+          owner: "owner",
+          repo: "second",
+          localPath: "/workspace/app/second",
+        },
+      ],
+    );
+
+    const { byRoot, other } = groupWatchlistEntries(entries, [
+      "/workspace/app",
+    ]);
+
+    expect(byRoot.get("/workspace/app")).toEqual([entries[0], entries[2]]);
+    expect(other).toEqual([entries[1]]);
+  });
+
+  it("keeps entries under the first duplicate root", () => {
+    const entries = mergeWatchlistEntries(
+      [],
+      [
+        {
+          host: "github.com",
+          owner: "owner",
+          repo: "repo",
+          localPath: "/workspace/app/repo",
+        },
+      ],
+    );
+
+    const { byRoot, other } = groupWatchlistEntries(entries, [
+      "/workspace/app",
+      "/workspace/app",
+    ]);
+
+    expect(byRoot.get("/workspace/app")).toEqual(entries);
+    expect(other).toEqual([]);
+  });
+
+  it("assigns nested-root entries to the first root only", () => {
+    const entries = mergeWatchlistEntries(
+      [],
+      [
+        {
+          host: "github.com",
+          owner: "owner",
+          repo: "repo",
+          localPath: "/workspace/app/nested/repo",
+        },
+      ],
+    );
+
+    const { byRoot, other } = groupWatchlistEntries(entries, [
+      "/workspace/app",
+      "/workspace/app/nested",
+    ]);
+
+    expect(byRoot.get("/workspace/app")).toEqual(entries);
+    expect(byRoot.get("/workspace/app/nested")).toEqual([]);
+    expect(other).toEqual([]);
+  });
 });

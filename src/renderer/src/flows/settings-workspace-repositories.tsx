@@ -50,10 +50,22 @@ export type GroupedWatchlistEntries = {
   readonly other: ReadonlyArray<WatchlistEntry>;
 };
 
+function isLocalPathWithinWorkspaceRoot(
+  localPath: string,
+  root: string,
+): boolean {
+  let normalizedRoot = root;
+  while (normalizedRoot.endsWith("/") && normalizedRoot !== "/")
+    normalizedRoot = normalizedRoot.slice(0, -1);
+  if (localPath === normalizedRoot) return true;
+  const descendantPrefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  return localPath.startsWith(descendantPrefix);
+}
+
 /**
  * Groups merged watchlist entries by the saved workspace root that contains
- * them, by path prefix — first-root-wins, so a repo under multiple roots
- * (nested roots) counts once. Anything that matches no root — including
+ * them, by directory containment — first-root-wins, so a repo under multiple
+ * roots (nested roots) counts once. Anything that matches no root — including
  * watched repos with an empty `localPath` — is returned in `other` rather
  * than silently dropped.
  */
@@ -65,11 +77,12 @@ export function groupWatchlistEntries(
   const assigned = new Set<string>();
   const byRoot = new Map<string, WatchlistEntry[]>();
   for (const root of roots) {
+    if (byRoot.has(root)) continue;
     const repos: WatchlistEntry[] = [];
     for (const entry of entries) {
       const key = repositoryKey(entry);
       if (assigned.has(key)) continue;
-      if (entry.localPath.startsWith(root)) {
+      if (isLocalPathWithinWorkspaceRoot(entry.localPath, root)) {
         repos.push(entry);
         assigned.add(key);
       }
