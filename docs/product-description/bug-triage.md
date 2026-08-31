@@ -1,10 +1,10 @@
 # Bug triage
 
-A consolidated list of suspected defects raised by the product documents and verification checklists. Every entry below has static evidence at application-source commit `3100615`; none has been reproduced in the running desktop app. The list is for product decisions: fix an established mismatch, or document an intentional trade-off before marking the related checklist item verified.
+A consolidated list of suspected defects raised by the product documents and verification checklists. Every entry below has static evidence at application-source commit `3100615`. `B-01` and `B-02` were reproduced in the running desktop app on 2026-08-31; the other four remain live-unverified. The list is for product decisions: fix an established mismatch, or document an intentional trade-off before marking the related checklist item verified.
 
 ## Summary
 
-Six distinct candidates remain after deduplication: one high-severity work-loss risk and five medium-severity correctness or feedback risks. The largest cluster is workspace setup and discovery (four entries), followed by Pull requests presentation and first-run recovery. The source tests provide static boundary evidence for several candidates, but no entry is live-confirmed.
+Six distinct candidates remain after deduplication: one high-severity work-loss risk and five medium-severity correctness or feedback risks. The largest cluster is workspace setup and discovery (four entries), followed by Pull requests presentation and first-run recovery. The live pass confirmed the two Settings / Workspace candidates; the other four still have static evidence only.
 
 | ID | Title | Severity | Area | Decision needed | Issue |
 | --- | --- | --- | --- | --- | --- |
@@ -26,7 +26,7 @@ Six distinct candidates remain after deduplication: one high-severity work-loss 
 - **Severity:** `high`. The action can discard maintainer work with no recovery choice.
 - **Decision needed:** `fix`. Route New profile through the same Dirty-draft guard used by close and profile switching, or make the replacement behavior an explicit product decision with a recoverable confirmation.
 - **Affected documents/checklists:** [`Workspace profile editor`](settings/workspace-profile-editor.md#cancel-and-interrupt), [`SETUP-04`](verification/foundations-and-settings.md#settingsworkspace-profile-editormd).
-- **Status:** `suspected - static evidence, live unverified`.
+- **Status:** `live-confirmed - SETUP-04 failed on 2026-08-31`; New profile replaced the Dirty draft without a guard. Evidence: `/private/tmp/patchdesk-product-verification-new-profile.png`.
 - **Issue:** —
 
 ## Medium
@@ -40,7 +40,7 @@ Six distinct candidates remain after deduplication: one high-severity work-loss 
 - **Severity:** `medium`. The user can recover by correcting the field, but the error does not identify the invalid input and may require trial and error.
 - **Decision needed:** `fix`. Validate scalar fields in the editor or map typed invalid-input failures to the affected field before sending the request.
 - **Affected documents/checklists:** [`Workspace profile editor`](settings/workspace-profile-editor.md#open-questions-and-verification), [`SETUP-03`](verification/foundations-and-settings.md#settingsworkspace-profile-editormd).
-- **Status:** `suspected - static evidence, live unverified`.
+- **Status:** `live-confirmed - SETUP-03 failed on 2026-08-31`; malformed GitHub host returned HTTP 400 with only the generic `Profile update failed` alert and no field guidance. Evidence: `/private/tmp/patchdesk-product-verification-malformed-host.png`.
 - **Issue:** —
 
 ### B-03: Open Review recommendation preempts ready-to-merge action

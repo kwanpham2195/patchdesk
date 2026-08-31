@@ -53,4 +53,8 @@ The app's local API and raw log are useful for setup and evidence only when a ch
 
 ## Results so far
 
-Nothing yet. No live app, GitHub write, merge, cleanup, or Insight run was performed while drafting this package. Every Result in the four checklist files is `—`, and no document is marked verified.
+The first live renderer pass ran on 2026-08-31 against a detached worktree at source commit `3100615`. It used CDP 9233, an isolated Patchdesk state root under `/private/tmp`, a local fixture repository, and a launch-only path override so the running app did not read or write the maintainer's normal Patchdesk data. The current checkout had later source and unrelated working-tree changes, so it was not used as runtime evidence.
+
+Results: 5 pass, 2 fail, and 58 blocked. `SETUP-03` confirmed the generic scalar-validation error and `SETUP-04` confirmed Dirty-draft loss when starting a new profile. Appearance switching, the Dirty-close guard, cleanup confirmation boundaries, and the app-log pause/filter behavior passed. Partial observations are recorded as blocked rather than promoted to pass.
+
+No GitHub mutation, merge, provider run, or destructive cleanup was performed. Checks needing those actions, multiple profiles, retained Review or Insight artifacts, controlled failure fixtures, or native macOS close/quit behavior remain blocked. No product document is marked verified because its remaining P1/P2 rows have not all passed or been filed.
