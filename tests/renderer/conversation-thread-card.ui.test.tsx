@@ -13,6 +13,7 @@ import {
   type ConversationThreadTarget,
 } from "../../src/renderer/src/components/conversation-thread-card";
 import { parseGitHubThreadId } from "../../src/domain/ids";
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 
 afterEach(() => {
   cleanup();
@@ -313,6 +314,57 @@ describe("ConversationThreadCard", () => {
       await screen.findByRole("button", { name: idle });
     },
   );
+
+  it("explains a forbidden Resolve failure without changing the thread", async () => {
+    const user = userEvent.setup();
+    const onSetState = vi.fn(async () => {
+      throw new PatchdeskApiError(
+        "forbidden",
+        403,
+        false,
+        "permission-denied",
+        "raw provider denial",
+      );
+    });
+    render(<ConversationThreadCard thread={thread({ onSetState })} />);
+
+    await user.click(screen.getByRole("button", { name: "Resolve" }));
+
+    expect(
+      await screen.findByRole("alert", {
+        name: "GitHub write permission required",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("article", { name: "open conversation thread" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Resolve" }).hasAttribute("disabled"),
+    ).toBe(false);
+  });
+
+  it("keeps generic Resolve guidance for a non-forbidden API rejection", async () => {
+    const user = userEvent.setup();
+    const onSetState = vi.fn(async () => {
+      throw new PatchdeskApiError(
+        "auth",
+        401,
+        false,
+        "authentication-required",
+        "raw provider denial",
+      );
+    });
+    render(<ConversationThreadCard thread={thread({ onSetState })} />);
+
+    await user.click(screen.getByRole("button", { name: "Resolve" }));
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(
+      screen.queryByRole("alert", {
+        name: "GitHub write permission required",
+      }),
+    ).toBeNull();
+  });
 
   it("admits one reply synchronously and preserves its draft after failure", async () => {
     const user = userEvent.setup();

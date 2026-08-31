@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
 import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import {
   useDirectConversationActions,
   type DirectConversationActions,
@@ -46,6 +47,7 @@ const cases: ReadonlyArray<ActionCase> = [
     operation: "CreateComment",
     invoke: (actions) =>
       actions.saveInlineComment({
+        // SAFETY: this fixture path is consumed only by the direct-command request shape.
         path: "src/a.ts" as never,
         startLine: 1,
         line: 1,
@@ -93,6 +95,7 @@ const cases: ReadonlyArray<ActionCase> = [
     wrongReceipt: { _tag: "CommentEdited", commentId: "wrong" },
     evidence: {
       _tag: "ThreadState",
+      // SAFETY: this fixture thread id is consumed only as journal evidence.
       threadId: "thread-1" as never,
       state: "resolved",
     },
@@ -169,6 +172,25 @@ function renderActions(
 }
 
 describe("useDirectConversationActions", () => {
+  it("propagates a forbidden API error unchanged for a safe thread-state retry", async () => {
+    const rendered = renderActions(() => failure({ error: "forbidden" }, 403));
+    let failureCause: unknown;
+
+    try {
+      await rendered.result.current.setThreadState("thread-1", "resolved");
+    } catch (cause) {
+      failureCause = cause;
+    }
+
+    if (!(failureCause instanceof PatchdeskApiError))
+      throw new Error("Expected a PatchdeskApiError");
+    expect(failureCause.kind).toBe("forbidden");
+    expect(failureCause.status).toBe(403);
+    expect(failureCause.correlationId).toBe("test");
+    expect(rendered.requireRecovery).not.toHaveBeenCalled();
+    expect(rendered.appendRecentWrites).not.toHaveBeenCalled();
+  });
+
   it.each(cases)(
     "$name rejects a wrong 2xx receipt and requires recovery without optimistic evidence",
     async ({ operation, invoke, wrongReceipt }) => {

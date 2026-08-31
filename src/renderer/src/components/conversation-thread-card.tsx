@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { GitHubThreadId } from "../../../domain/ids";
+import { PatchdeskApiError } from "../api-client";
 import { PullRequestDescriptionPreview } from "./pull-request-description";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,20 @@ export type ConversationThreadCardData = {
 };
 
 type ConversationComment = ConversationThreadCardData["comments"][number];
+type ThreadStateFailure = {
+  readonly message: string;
+  readonly ariaLabel?: string;
+};
+
+function threadStateFailure(cause: unknown): ThreadStateFailure {
+  if (cause instanceof PatchdeskApiError && cause.kind === "forbidden")
+    return {
+      message:
+        "GitHub denied this thread update. Use an authorized account with repository write access.",
+      ariaLabel: "GitHub write permission required",
+    };
+  return { message: "Patchdesk could not update this thread." };
+}
 
 /**
  * One comment row shared by opening comments, represented replies, and
@@ -236,7 +251,7 @@ export function ConversationThreadCard({
   const [replyBody, setReplyBody] = useState("");
   const [replying, setReplying] = useState(false);
   const replyingRef = useRef(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<ThreadStateFailure>();
   const [replyError, setReplyError] = useState<string>();
   const replyEditorId = `thread-reply-${useId()}`;
   const replyErrorId = `${replyEditorId}-error`;
@@ -404,8 +419,8 @@ export function ConversationThreadCard({
                 threadId,
                 thread.state === "resolved" ? "open" : "resolved",
               );
-            } catch {
-              setError("Patchdesk could not update this thread.");
+            } catch (cause) {
+              setError(threadStateFailure(cause));
             } finally {
               pendingRef.current = false;
               setPending(false);
@@ -425,7 +440,9 @@ export function ConversationThreadCard({
         </Button>
       )}
       {error === undefined ? null : (
-        <InlineError className="mt-2">{error}</InlineError>
+        <InlineError className="mt-2" aria-label={error.ariaLabel}>
+          {error.message}
+        </InlineError>
       )}
       {thread.onReply === undefined ? null : (
         <div className="mt-4 border-t pt-3">
