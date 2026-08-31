@@ -18,6 +18,7 @@ import {
   INBOX_DATA_FRESHNESS,
   INBOX_REPOSITORY_OUTCOMES,
   type InboxRepositoryOutcome,
+  type InboxMergeReadinessAction,
   type InboxCategory,
   type InboxRecommendedAction,
   type InboxReviewSummary,
@@ -121,6 +122,13 @@ const rowSchema = v.strictObject({
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
   recommendedAction: actionSchema,
+  secondaryAction: v.optional(
+    v.strictObject({
+      kind: v.literal("open_merge_readiness"),
+      label: v.literal("Open merge readiness"),
+      reviewId: v.string(),
+    }),
+  ),
   dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
 
@@ -224,12 +232,17 @@ function parseRow(
       ? undefined
       : parseLatestReview(input.latestReview);
   const action = parseAction(input.recommendedAction);
+  const secondaryAction =
+    input.secondaryAction === undefined
+      ? undefined
+      : parseSecondaryAction(input.secondaryAction);
   if (
     identity._tag === "err" ||
     currentHeadSha._tag === "err" ||
     updatedAt._tag === "err" ||
     latestReview?._tag === "err" ||
-    action._tag === "err"
+    action._tag === "err" ||
+    secondaryAction?._tag === "err"
   )
     return invalidCache();
   const checks = projectChecks(input.checks);
@@ -253,6 +266,10 @@ function parseRow(
   const labels = input.labels ?? [];
   const labelCountField =
     input.labelCount === undefined ? {} : { labelCount: input.labelCount };
+  const secondaryActionField =
+    secondaryAction === undefined
+      ? {}
+      : { secondaryAction: secondaryAction.value };
   return ok({
     remoteState: input.remoteState ?? "open",
     identity: identity.value,
@@ -274,6 +291,7 @@ function parseRow(
     ...labelCountField,
     categories,
     recommendedAction: action.value,
+    ...secondaryActionField,
     dataFreshness: input.dataFreshness,
   });
 }
@@ -329,6 +347,15 @@ function parseLatestReview(
         updatedAt: updatedAt.value,
         matchesCurrentHead: input.matchesCurrentHead,
       })
+    : invalidCache();
+}
+
+function parseSecondaryAction(
+  input: NonNullable<v.InferOutput<typeof rowSchema>["secondaryAction"]>,
+): Result<InboxMergeReadinessAction, StorageFailure> {
+  const reviewId = parseReviewId(input.reviewId);
+  return reviewId._tag === "ok"
+    ? ok({ ...input, reviewId: reviewId.value })
     : invalidCache();
 }
 

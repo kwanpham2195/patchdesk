@@ -94,6 +94,13 @@ export type InboxPageRequest = {
 
 export type InboxCategory = "updated_since_review" | "ready_to_merge";
 
+/** A fresh-snapshot, read-only view of merge readiness; it never performs a merge mutation. */
+export type InboxMergeReadinessAction = {
+  readonly kind: "open_merge_readiness";
+  readonly label: "Open merge readiness";
+  readonly reviewId: ReviewId;
+};
+
 export type InboxRecommendedAction =
   | { readonly kind: "run_review"; readonly label: "Run review" }
   | {
@@ -105,11 +112,7 @@ export type InboxRecommendedAction =
       readonly label: "Open Review";
       readonly reviewId: ReviewId;
     }
-  | {
-      readonly kind: "open_merge_readiness";
-      readonly label: "Open merge readiness";
-      readonly reviewId: ReviewId;
-    };
+  | InboxMergeReadinessAction;
 
 export type InboxReviewSummary = {
   readonly reviewId: ReviewId;
@@ -156,6 +159,8 @@ export type MaintainerInboxRow = {
   readonly labelCount?: number;
   readonly categories: ReadonlyArray<InboxCategory>;
   readonly recommendedAction: InboxRecommendedAction;
+  /** An additional read-only view for matching saved Reviews that are ready to merge. */
+  readonly secondaryAction?: InboxMergeReadinessAction;
   readonly dataFreshness: InboxDataFreshness;
 };
 
@@ -188,6 +193,11 @@ export function projectMaintainerInboxRow(input: {
     ...reviewField,
     dataFreshness: input.dataFreshness,
   });
+  const secondaryAction = secondaryActionFor({
+    categories,
+    recommendedAction,
+    ...reviewField,
+  });
   const additionsField =
     input.summary.additions === undefined
       ? {}
@@ -207,6 +217,8 @@ export function projectMaintainerInboxRow(input: {
     input.summary.labelCount === undefined
       ? {}
       : { labelCount: input.summary.labelCount };
+  const secondaryActionField =
+    secondaryAction === undefined ? {} : { secondaryAction };
   return {
     remoteState: "open",
     identity: input.summary.ref,
@@ -232,6 +244,7 @@ export function projectMaintainerInboxRow(input: {
     ...labelCountField,
     categories,
     recommendedAction,
+    ...secondaryActionField,
     dataFreshness: input.dataFreshness,
   };
 }
@@ -318,4 +331,22 @@ function recommendedActionFor(input: {
       reviewId: input.review.reviewId,
     };
   return { kind: "run_review", label: "Run review" };
+}
+
+function secondaryActionFor(input: {
+  readonly categories: ReadonlyArray<InboxCategory>;
+  readonly recommendedAction: InboxRecommendedAction;
+  readonly review?: InboxReviewSummary;
+}): InboxMergeReadinessAction | undefined {
+  if (
+    input.recommendedAction.kind !== "open_saved_review" ||
+    !input.categories.includes("ready_to_merge") ||
+    input.review === undefined
+  )
+    return undefined;
+  return {
+    kind: "open_merge_readiness",
+    label: "Open merge readiness",
+    reviewId: input.review.reviewId,
+  };
 }

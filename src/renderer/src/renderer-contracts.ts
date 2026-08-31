@@ -8,6 +8,10 @@ import {
 } from "./review-write-receipts";
 import { briefInsightSchema } from "./brief-contracts";
 import { insightFields, retainedInsightFields } from "./insight-contracts";
+import {
+  inboxMergeReadinessActionSchema,
+  inboxRecommendedActionSchema,
+} from "./inbox-action-contract";
 import { changeScopeSchema } from "../../domain/change-scope";
 import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
@@ -65,27 +69,6 @@ const reviewStateSchema = v.picklist([
   "unknown",
 ]);
 
-const actionSchema = v.variant("kind", [
-  v.strictObject({
-    kind: v.literal("run_review"),
-    label: v.literal("Run review"),
-  }),
-  v.strictObject({
-    kind: v.literal("open_merged_review"),
-    label: v.literal("View merged pull request"),
-  }),
-  v.strictObject({
-    kind: v.literal("open_saved_review"),
-    label: v.literal("Open Review"),
-    reviewId: v.pipe(v.string(), v.minLength(1)),
-  }),
-  v.strictObject({
-    kind: v.literal("open_merge_readiness"),
-    label: v.literal("Open merge readiness"),
-    reviewId: v.pipe(v.string(), v.minLength(1)),
-  }),
-]);
-
 const inboxRowSchema = v.strictObject({
   remoteState: v.picklist(INBOX_STATE_FILTER_VALUES),
   identity: pullRequestRefSchema,
@@ -119,7 +102,8 @@ const inboxRowSchema = v.strictObject({
   labels: v.array(v.strictObject({ name: v.string(), color: v.string() })),
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
-  recommendedAction: actionSchema,
+  recommendedAction: inboxRecommendedActionSchema,
+  secondaryAction: v.optional(inboxMergeReadinessActionSchema),
   dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
 

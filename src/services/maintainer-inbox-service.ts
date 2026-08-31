@@ -679,8 +679,9 @@ function latestReviewFor(
       };
 }
 function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
+  const { secondaryAction: _secondaryAction, ...cachedRow } = row;
   return {
-    ...row,
+    ...cachedRow,
     dataFreshness: "cached",
     recommendedAction:
       row.recommendedAction.kind === "open_merge_readiness"

@@ -4,6 +4,10 @@ import { projectMaintainerInboxRow } from "../../src/domain/maintainer-inbox";
 
 const sha = parseGitSha("a".repeat(40));
 if (sha._tag === "err") throw new Error("fixture SHA invalid");
+const previousSha = parseGitSha("b".repeat(40));
+if (previousSha._tag === "err") throw new Error("fixture SHA invalid");
+// SAFETY: this fixed ISO timestamp is valid fixture data.
+const reviewTimestamp = "2026-08-12T00:00:00.000Z" as never;
 // SAFETY: this opaque fixture id is passed through only to the row projection.
 const reviewId = "review-123" as never;
 const input = {
@@ -42,9 +46,10 @@ describe("maintainer inbox", () => {
       latestReview: {
         reviewId,
         // SAFETY: this fixture SHA is exactly 40 lowercase hexadecimal characters.
-        reviewedHeadSha: "b".repeat(40) as never,
+        reviewedHeadSha: previousSha.value,
+
         // SAFETY: this fixed ISO timestamp is valid fixture data.
-        updatedAt: "2026-08-12T00:00:00.000Z" as never,
+        updatedAt: reviewTimestamp,
         matchesCurrentHead: false,
       },
     });
@@ -54,6 +59,57 @@ describe("maintainer inbox", () => {
       reviewId,
     });
     expect(row.categories).toContain("updated_since_review");
+  });
+
+  it("keeps Open Review primary while also exposing fresh merge readiness for a matching Review", () => {
+    const row = projectMaintainerInboxRow({
+      ...input,
+      summary: { ...input.summary, mergeability: "mergeable" },
+      checks: { overall: "passing", checks: [] },
+      latestReview: {
+        reviewId,
+        reviewedHeadSha: sha.value,
+        updatedAt: reviewTimestamp,
+        matchesCurrentHead: true,
+      },
+    });
+
+    expect(row.recommendedAction).toEqual({
+      kind: "open_saved_review",
+      label: "Open Review",
+      reviewId,
+    });
+    expect(row.secondaryAction).toEqual({
+      kind: "open_merge_readiness",
+      label: "Open merge readiness",
+      reviewId,
+    });
+  });
+
+  it("does not expose merge readiness beside a changed or non-ready Review", () => {
+    const changed = projectMaintainerInboxRow({
+      ...input,
+      summary: { ...input.summary, mergeability: "mergeable" },
+      checks: { overall: "passing", checks: [] },
+      latestReview: {
+        reviewId,
+        reviewedHeadSha: previousSha.value,
+        updatedAt: reviewTimestamp,
+        matchesCurrentHead: false,
+      },
+    });
+    const nonReady = projectMaintainerInboxRow({
+      ...input,
+      latestReview: {
+        reviewId,
+        reviewedHeadSha: sha.value,
+        updatedAt: reviewTimestamp,
+        matchesCurrentHead: true,
+      },
+    });
+
+    expect(changed.secondaryAction).toBeUndefined();
+    expect(nonReady.secondaryAction).toBeUndefined();
   });
 
   it("projects a merged pull request outside active-work queues", () => {
@@ -78,7 +134,7 @@ describe("maintainer inbox", () => {
       reviewId,
       reviewedHeadSha: sha.value,
       // SAFETY: this fixed ISO timestamp is valid fixture data.
-      updatedAt: "2026-08-12T00:00:00.000Z" as never,
+      updatedAt: reviewTimestamp,
       matchesCurrentHead: true,
     };
     const readyInput = {
@@ -100,6 +156,7 @@ describe("maintainer inbox", () => {
         dataFreshness: "cached",
       });
       expect(row.categories).not.toContain("ready_to_merge");
+      expect(row.secondaryAction).toBeUndefined();
     });
 
     it("is absent when the saved session no longer matches the current head", () => {

@@ -1,10 +1,8 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
-  Clock3,
   UserRoundCheck,
 } from "lucide-react";
 
@@ -13,7 +11,6 @@ import {
   type InboxRow,
   type RepositoryLabelListResponse,
 } from "@/renderer-contracts";
-import { recoveryActionLabel } from "@/review-copy";
 import {
   forbiddenCopy,
   projectRepositoryLabelReadState,
@@ -59,10 +56,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  ReviewOpeningButtonContent,
-  type ReviewOpeningState,
-} from "./review-opening-status";
+import { type ReviewOpeningState } from "./review-opening-status";
+import { InspectorActionButtons } from "./inspector-action-buttons";
 import {
   Select,
   SelectContent,
@@ -289,6 +284,10 @@ export function MaintainerInbox({
         onAction={() =>
           selected === undefined ? undefined : triggerAction(selected)
         }
+        onSecondaryAction={() => {
+          if (selected?.secondaryAction !== undefined)
+            onOpenReviewId(selected.secondaryAction.reviewId);
+        }}
         openingOperations={openingOperations}
       />
     </div>
@@ -909,6 +908,7 @@ function ReviewDetailsPanel({
   freshness,
   onToggleInspector,
   onAction,
+  onSecondaryAction,
   openingOperations,
 }: {
   readonly inspectorOpen: boolean;
@@ -917,6 +917,7 @@ function ReviewDetailsPanel({
   readonly freshness: InboxDataFreshness;
   readonly onToggleInspector: () => void;
   readonly onAction: () => void;
+  readonly onSecondaryAction: () => void;
   readonly openingOperations: ReadonlyMap<
     string,
     Exclude<ReviewOpeningState, undefined>
@@ -940,6 +941,7 @@ function ReviewDetailsPanel({
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
             onAction={onAction}
+            onSecondaryAction={onSecondaryAction}
             {...(openingState === undefined ? {} : { openingState })}
           />
         </ScrollArea>
@@ -958,6 +960,7 @@ function ReviewDetailsPanel({
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
             onAction={onAction}
+            onSecondaryAction={onSecondaryAction}
             {...(openingState === undefined ? {} : { openingState })}
           />
         </SheetContent>
@@ -1029,11 +1032,13 @@ function Inspector({
   row,
   freshness,
   onAction,
+  onSecondaryAction,
   openingState,
 }: {
   readonly row?: InboxRow;
   readonly freshness: InboxDataFreshness;
   readonly onAction: () => void | undefined;
+  readonly onSecondaryAction: () => void;
   readonly openingState?: Exclude<ReviewOpeningState, undefined>;
 }): React.JSX.Element {
   if (row === undefined)
@@ -1120,21 +1125,13 @@ function Inspector({
           </CardContent>
         </Card>
       ) : null}
-      <Button
-        size="sm"
-        className="h-8 w-full text-xs"
-        onClick={onAction}
-        disabled={
-          openingState?.status === "opening" ||
-          (freshness === "cached" &&
-            row.recommendedAction.kind === "open_merge_readiness")
-        }
-      >
-        <ReviewOpeningButtonContent state={openingState}>
-          {actionIcon(row.recommendedAction.kind)}
-          {inboxActionLabel(row.recommendedAction.kind)}
-        </ReviewOpeningButtonContent>
-      </Button>
+      <InspectorActionButtons
+        row={row}
+        freshness={freshness}
+        onAction={onAction}
+        onSecondaryAction={onSecondaryAction}
+        {...(openingState === undefined ? {} : { openingState })}
+      />
       {openingState?.status === "error" ? (
         <InlineError className="text-xs">{openingState.error}</InlineError>
       ) : null}
@@ -1161,25 +1158,6 @@ function Detail({
       </span>
     </div>
   );
-}
-/** Check status as a single glyph, with the state kept for assistive technology. */
-function inboxActionLabel(kind: InboxRow["recommendedAction"]["kind"]): string {
-  switch (kind) {
-    case "run_review":
-      return recoveryActionLabel("run_review");
-    case "open_merged_review":
-      return "View merged pull request";
-    case "open_saved_review":
-      return "Open Review";
-    case "open_merge_readiness":
-      return "Open merge readiness";
-  }
-}
-
-function actionIcon(
-  kind: InboxRow["recommendedAction"]["kind"],
-): React.JSX.Element {
-  return kind === "run_review" ? <CheckCircle2 /> : <Clock3 />;
 }
 function shortSha(value: string): string {
   return value.slice(0, 12);
