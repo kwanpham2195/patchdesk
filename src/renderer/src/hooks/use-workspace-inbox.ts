@@ -136,6 +136,7 @@ export function useWorkspaceInbox({
       nextProfiles = Array.isArray(profilePayload)
         ? profilePayload.filter(isProfile)
         : [];
+      if (generation !== workspaceGeneration.current) return;
       // The bootstrap request (`firstInboxRequest`) never knows the saved
       // page size or state filter up front. Guessing them from the just-fetched
       // profile list here — instead of always requesting the default and
@@ -145,8 +146,9 @@ export function useWorkspaceInbox({
       // mid-flight aside) is reconciled against the fresh watchlist instead
       // — see `reconcileInboxRepository` — so a repository removed from
       // Settings while this screen held it is never resent.
-      const initialRequest =
-        inboxRequestRef.current === firstInboxRequest
+      const initialRequest = resetInboxStateOnProfileLoad.current
+        ? firstInboxRequest
+        : inboxRequestRef.current === firstInboxRequest
           ? firstInboxRequestFor(nextProfiles)
           : reconcileInboxRepository(
               inboxRequestRef.current,
@@ -156,6 +158,7 @@ export function useWorkspaceInbox({
       if (initialRequest !== inboxRequestRef.current)
         updateInboxRequest(initialRequest);
       inboxPayload = await api(inboxRequestPath(initialRequest));
+      if (generation !== workspaceGeneration.current) return;
       // The rows about to be shown are this request's answer. Without this
       // the row list would sit in its loading state forever after a cold
       // start, because nothing else records what produced them.
@@ -227,10 +230,6 @@ export function useWorkspaceInbox({
     )
       return;
     restoredInboxStateProfileId.current = profileId;
-    if (resetInboxStateOnProfileLoad.current) {
-      resetInboxStateOnProfileLoad.current = false;
-      return;
-    }
     const preferences = loadInboxViewPreferences(profileId);
     // The bootstrap request (`firstInboxRequest`) never carries a
     // repository — the renderer does not learn the active profile's
@@ -248,6 +247,23 @@ export function useWorkspaceInbox({
       repository,
       inboxRequestRef.current.repository,
     );
+    if (resetInboxStateOnProfileLoad.current) {
+      resetInboxStateOnProfileLoad.current = false;
+      if (!repositoryChanged) return;
+      const selectedRepositoryField =
+        repository === undefined ? {} : { selectedRepository: repository };
+      saveInboxViewPreferences(profileId, {
+        ...selectedRepositoryField,
+        selectedLabels: [],
+      });
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        repository,
+        selectedLabels: [],
+      });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+      return;
+    }
     if (
       !repositoryChanged &&
       preferences.state === inboxRequestRef.current.state &&
