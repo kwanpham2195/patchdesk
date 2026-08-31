@@ -60,6 +60,18 @@ type ProfileEntry = {
   readonly label: string;
 };
 
+function isNavigateShortcutTextEntryTarget(
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.isContentEditable ||
+    target.closest('[contenteditable]:not([contenteditable="false"])') !== null
+  );
+}
+
 export function AppShell({
   destination,
   navigationBlocked = false,
@@ -101,6 +113,7 @@ export function AppShell({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        if (isNavigateShortcutTextEntryTarget(event.target)) return;
         event.preventDefault();
         if (navigationBlocked) return;
         setCommandOpen((open) => !open);
