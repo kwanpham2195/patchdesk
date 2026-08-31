@@ -37,4 +37,30 @@ describe("AppShell settings overlay entry points", () => {
       screen.queryByRole("button", { name: /application sidebar/i }),
     ).toBeNull();
   });
+
+  it("keeps Command Palette motion-free", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          onOpenSettings={() => undefined}
+        >
+          <div>Inbox content</div>
+        </AppShell>
+      </BusyProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+
+    expect(
+      screen.getByRole("dialog", { name: "Navigate Patchdesk" }).dataset.motion,
+    ).toBe("none");
+    expect(
+      document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')
+        ?.dataset.motion,
+    ).toBe("none");
+  });
 });

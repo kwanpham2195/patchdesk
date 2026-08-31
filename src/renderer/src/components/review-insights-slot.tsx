@@ -19,6 +19,8 @@ import {
 } from "./insight-panels";
 import { NOT_GENERATED_BRIEF } from "../brief-contracts";
 import { buildInsightReaders } from "./insight-readers";
+import { useInsightResultEntrance } from "../hooks/use-insight-result-entrance";
+import { useWalkthroughFocusTransition } from "../hooks/use-walkthrough-focus-transition";
 import type { InsightRunConfiguration } from "../hooks/use-insight-configuration";
 import { useInsightRunControls } from "../hooks/use-insight-run-controls";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -48,6 +50,81 @@ function insightRequestFailureMessage(
     return `${insightName} status could not be refreshed. The current run is still active; Patchdesk will check again.`;
   return undefined;
 }
+function InsightDocumentIdentity({
+  retained,
+  selectedInsight,
+  selectedIsOutdated,
+  currentRevision,
+  walkthroughTitle,
+}: {
+  readonly retained:
+    | Readonly<{
+        headSha: string;
+        generatedAt: string;
+      }>
+    | undefined;
+  readonly selectedInsight: InsightSelection;
+  readonly selectedIsOutdated: boolean;
+  readonly currentRevision: string;
+  readonly walkthroughTitle: string | undefined;
+}): React.JSX.Element {
+  return (
+    <div className="min-w-0">
+      {selectedInsight === "analysis" ? null : (
+        <>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {selectedInsight}
+          </p>
+          <h2 className="truncate text-lg font-semibold">
+            {selectedInsight === "brief"
+              ? "Brief"
+              : (walkthroughTitle ?? "Walkthrough document")}
+          </h2>
+        </>
+      )}
+      <p className="truncate text-sm text-muted-foreground">
+        {retained === undefined
+          ? "No retained result for this revision."
+          : selectedIsOutdated
+            ? `Retained revision ${retained.headSha.slice(0, 8)} · current revision ${currentRevision.slice(0, 8)} · ${formatInsightTimestamp(retained.generatedAt)}`
+            : `Retained from ${retained.headSha.slice(0, 8)} · ${formatInsightTimestamp(retained.generatedAt)}`}
+      </p>
+    </div>
+  );
+}
+function InsightAvailabilityErrors({
+  catalogError,
+  hasAvailableProvider,
+  provider,
+  modelCount,
+  requestFailureMessage,
+}: {
+  readonly catalogError: boolean;
+  readonly hasAvailableProvider: boolean;
+  readonly provider: InsightProvider;
+  readonly modelCount: number;
+  readonly requestFailureMessage: string | undefined;
+}): React.JSX.Element | null {
+  const unavailable =
+    catalogError ||
+    !hasAvailableProvider ||
+    (provider === "pi" && modelCount === 0);
+  if (!unavailable && requestFailureMessage === undefined) return null;
+  return (
+    <>
+      {unavailable ? (
+        <InlineError className="py-2">
+          {catalogError || !hasAvailableProvider
+            ? "No eligible model configured. Set an API key or ambient provider credentials in the Electron process, then reload."
+            : "No Pi model is configured. Open a run and select Codex CLI account to load its models."}
+        </InlineError>
+      ) : null}
+      {requestFailureMessage === undefined ? null : (
+        <InlineError className="py-2">{requestFailureMessage}</InlineError>
+      )}
+    </>
+  );
+}
 
 export function InsightsSlot({
   workbench,
@@ -67,7 +144,12 @@ export function InsightsSlot({
   const [selectedInsight, setSelectedInsight] = useState<InsightSelection>(
     initialDetail ?? "analysis",
   );
-  const [walkthroughFocused, setWalkthroughFocused] = useState(false);
+  const {
+    walkthroughFocused,
+    walkthroughFocusTransition,
+    requestWalkthroughFocusChange,
+    handleWalkthroughFocusTransitionEnd,
+  } = useWalkthroughFocusTransition();
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
   const {
@@ -109,6 +191,15 @@ export function InsightsSlot({
     !catalogError && hasAvailableProvider && workbench.review.status === "open";
   const selectedProjection =
     selectedInsight === "overview" ? undefined : projections[selectedInsight];
+  const insightResultRef = useInsightResultEntrance({
+    retainedRunIds: {
+      analysis: workbench.insights.analysis.retained?.runId,
+      brief: brief.retained?.runId,
+      walkthrough: workbench.insights.walkthrough.retained?.runId,
+    },
+    selectedInsight,
+    selectedProjectionStatus: selectedProjection?.status,
+  });
   const selectedRunning =
     selectedInsight === "overview" ? undefined : runs[selectedInsight];
   const retainedDescription =
@@ -130,7 +221,7 @@ export function InsightsSlot({
     }),
     dismissFinding,
     walkthroughFocused,
-    setWalkthroughFocused,
+    setWalkthroughFocused: requestWalkthroughFocusChange,
     onRegenerateBrief: () => openRunDialog("regenerate"),
     // The Brief points at the Walkthrough rather than duplicating it: read the
     // one that already stands for this revision, or start one from the same
@@ -166,6 +257,8 @@ export function InsightsSlot({
   return (
     <section
       aria-label="Review insights"
+      data-walkthrough-focus-transition={walkthroughFocusTransition}
+      onTransitionEnd={handleWalkthroughFocusTransitionEnd}
       className="flex h-full min-h-0 w-full flex-col gap-2"
     >
       <div className="flex h-full min-h-0 flex-1 flex-col gap-2">
@@ -197,28 +290,15 @@ export function InsightsSlot({
             <>
               {walkthroughFocusActive ? null : (
                 <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b pb-2">
-                  <div className="min-w-0">
-                    {selectedInsight === "analysis" ? null : (
-                      <>
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {selectedInsight}
-                        </p>
-                        <h2 className="truncate text-lg font-semibold">
-                          {selectedInsight === "brief"
-                            ? "Brief"
-                            : (workbench.insights.walkthrough.retained?.value
-                                .title ?? "Walkthrough document")}
-                        </h2>
-                      </>
-                    )}
-                    <p className="truncate text-sm text-muted-foreground">
-                      {selectedRetained === undefined
-                        ? "No retained result for this revision."
-                        : selectedIsOutdated
-                          ? `Retained revision ${selectedRetained.headSha.slice(0, 8)} · current revision ${currentRevision.slice(0, 8)} · ${formatInsightTimestamp(selectedRetained.generatedAt)}`
-                          : `Retained from ${selectedRetained.headSha.slice(0, 8)} · ${formatInsightTimestamp(selectedRetained.generatedAt)}`}
-                    </p>
-                  </div>
+                  <InsightDocumentIdentity
+                    retained={selectedRetained}
+                    selectedInsight={selectedInsight}
+                    selectedIsOutdated={selectedIsOutdated}
+                    currentRevision={currentRevision}
+                    walkthroughTitle={
+                      workbench.insights.walkthrough.retained?.value.title
+                    }
+                  />
                   <div className="flex flex-wrap items-center gap-2">
                     {selectedRunning?.busy ||
                     selectedProjection?.status === "running" ? (
@@ -258,20 +338,13 @@ export function InsightsSlot({
                   </div>
                 </header>
               )}
-              {catalogError ||
-              !hasAvailableProvider ||
-              (provider === "pi" && models.length === 0) ? (
-                <InlineError className="py-2">
-                  {catalogError || !hasAvailableProvider
-                    ? "No eligible model configured. Set an API key or ambient provider credentials in the Electron process, then reload."
-                    : "No Pi model is configured. Open a run and select Codex CLI account to load its models."}
-                </InlineError>
-              ) : null}
-              {selectedRequestFailureMessage === undefined ? null : (
-                <InlineError className="py-2">
-                  {selectedRequestFailureMessage}
-                </InlineError>
-              )}
+              <InsightAvailabilityErrors
+                catalogError={catalogError}
+                hasAvailableProvider={hasAvailableProvider}
+                provider={provider}
+                modelCount={models.length}
+                requestFailureMessage={selectedRequestFailureMessage}
+              />
               {selectedProjection?.artifactStatus === "mismatch" ? (
                 <InsightArtifactMismatch type={selectedInsight} />
               ) : null}
@@ -311,6 +384,8 @@ export function InsightsSlot({
                 ) : null}
                 {retainedReader === null ? null : (
                   <div
+                    ref={insightResultRef}
+                    data-insight-result
                     className={
                       selectedInsight === "walkthrough"
                         ? "min-h-0 flex-1 overflow-hidden"

@@ -20,7 +20,7 @@ type InsightReaderBuilderInput = {
     reason: string,
   ) => Promise<void>;
   readonly walkthroughFocused: boolean;
-  readonly setWalkthroughFocused: React.Dispatch<React.SetStateAction<boolean>>;
+  readonly setWalkthroughFocused: (focused: boolean) => void;
   /** Opens the run dialog from the Brief's own Provenance card. */
   readonly onRegenerateBrief: () => void;
   /** Drives the Brief "Start here" card's Walkthrough link: open the one that exists, or run one. */

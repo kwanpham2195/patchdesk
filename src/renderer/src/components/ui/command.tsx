@@ -50,6 +50,7 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn("overflow-hidden rounded-xl! p-0!", className)}
+        motion="none"
         showCloseButton={showCloseButton}
       >
         {children}

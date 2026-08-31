@@ -82,6 +82,10 @@ describe("AssigneePicker", () => {
     expect(document.querySelectorAll('img[data-slot="avatar"]')).toHaveLength(
       1,
     );
+    const popup = screen
+      .getByRole("heading", { name: "Assignees" })
+      .closest<HTMLElement>('[data-slot="popover-content"]');
+    expect(popup?.dataset.side).toBe("bottom");
   });
 
   it("sends each toggled row to the assignee command for its own direction, in this surface's own shape, and the search box to its own fetch", async () => {

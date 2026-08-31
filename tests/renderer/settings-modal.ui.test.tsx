@@ -60,6 +60,14 @@ describe("SettingsModal", () => {
     expect(
       screen.getByRole("combobox", { name: "Dark diff theme" }),
     ).toBeTruthy();
+
+    expect(
+      screen.getByRole("dialog", { name: "Settings" }).dataset.motion,
+    ).toBe("standard");
+    expect(
+      document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')
+        ?.dataset.motion,
+    ).toBe("standard");
   });
 
   it("opens on General and exposes only the two local-data controls", async () => {

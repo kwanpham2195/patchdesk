@@ -48,6 +48,7 @@
   --sidebar-ring: #5e6ad2;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* Scope gauge buckets. Categorical, never the status hues: a large
      generated or docs share is a fact about the change, not a warning. */
   --scope-core: var(--primary);
@@ -215,6 +216,146 @@ body {
   transform: translateY(0);
 }
 
+.ui-state-transition {
+  transition-property:
+    color, background-color, border-color, outline-color, box-shadow, translate;
+  transition-duration: 150ms;
+  transition-timing-function: ease, ease, ease, ease, ease, var(--ease-out);
+}
+
+[data-slot="dialog-overlay"]:not([data-motion="none"]),
+[data-slot="alert-dialog-overlay"] {
+  opacity: 1;
+  transition: opacity 200ms var(--ease-out);
+}
+
+[data-slot="dialog-overlay"]:not([data-motion="none"])[data-starting-style],
+[data-slot="dialog-overlay"]:not([data-motion="none"])[data-ending-style],
+[data-slot="alert-dialog-overlay"][data-starting-style],
+[data-slot="alert-dialog-overlay"][data-ending-style] {
+  opacity: 0;
+}
+
+[data-slot="dialog-content"]:not([data-motion="none"]),
+[data-slot="alert-dialog-content"] {
+  opacity: 1;
+  scale: 1;
+  transform-origin: center;
+  transition:
+    opacity 200ms var(--ease-out),
+    scale 200ms var(--ease-out);
+}
+
+[data-slot="dialog-content"]:not([data-motion="none"])[data-starting-style],
+[data-slot="dialog-content"]:not([data-motion="none"])[data-ending-style],
+[data-slot="alert-dialog-content"][data-starting-style],
+[data-slot="alert-dialog-content"][data-ending-style] {
+  opacity: 0;
+  scale: 0.95;
+}
+
+:is(
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="popover-content"],
+  [data-slot="select-content"]:not([data-align-trigger="true"])
+) {
+  opacity: 1;
+  scale: 1;
+  translate: 0 0;
+  transition:
+    opacity 150ms var(--ease-out),
+    scale 150ms var(--ease-out),
+    translate 150ms var(--ease-out);
+}
+
+:is(
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="popover-content"],
+  [data-slot="select-content"]:not([data-align-trigger="true"])
+):is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  scale: 0.95;
+}
+
+:is(
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="popover-content"],
+    [data-slot="select-content"]:not([data-align-trigger="true"])
+  )[data-side="bottom"]:is([data-starting-style], [data-ending-style]) {
+  translate: 0 -0.5rem;
+}
+
+:is(
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="popover-content"],
+    [data-slot="select-content"]:not([data-align-trigger="true"])
+  )[data-side="top"]:is([data-starting-style], [data-ending-style]) {
+  translate: 0 0.5rem;
+}
+
+:is(
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="popover-content"],
+    [data-slot="select-content"]:not([data-align-trigger="true"])
+  ):is([data-side="left"], [data-side="inline-start"]):is(
+    [data-starting-style],
+    [data-ending-style]
+  ) {
+  translate: 0.5rem 0;
+}
+
+:is(
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="popover-content"],
+    [data-slot="select-content"]:not([data-align-trigger="true"])
+  ):is([data-side="right"], [data-side="inline-end"]):is(
+    [data-starting-style],
+    [data-ending-style]
+  ) {
+  translate: -0.5rem 0;
+}
+
+[data-insight-result] {
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    opacity 160ms var(--ease-out),
+    filter 160ms var(--ease-out);
+}
+
+[data-insight-result][data-insight-result-entering] {
+  opacity: 0;
+  filter: blur(2px);
+}
+
+[data-walkthrough-focus-transition] {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 160ms var(--ease-out),
+    transform 160ms var(--ease-out);
+}
+
+[data-walkthrough-focus-transition="leaving"] {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(0.25rem);
+  transition-duration: 100ms;
+}
+
+[data-walkthrough-focus-transition="entering"] {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-0.25rem);
+  transition: none;
+}
+
 /* Height pairs with `workbenchTitlebarHeight` in src/main/window-chrome.ts,
    which centres the macOS traffic lights against it; change both together.
    The window hides the native titlebar, so the lights sit inside this header
@@ -310,7 +451,7 @@ body {
   overflow: clip;
   transition-property: clip-path, opacity;
   transition-duration: 200ms;
-  transition-timing-function: var(--ease-in-out);
+  transition-timing-function: var(--ease-out);
 }
 
 [data-disclosure-motion="panel"][data-starting-style],
