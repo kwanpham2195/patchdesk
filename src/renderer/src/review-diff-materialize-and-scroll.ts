@@ -42,7 +42,10 @@ export function materializeAndScrollTo<T>({
     // closure was still pending.
     if (isStale()) return;
     if (items.findIndex((item) => item.id === itemId) === -1) return;
-    viewer.current?.scrollTo(buildTarget());
+    const codeView = viewer.current;
+    if (codeView === null) return;
+    codeView.scrollTo(buildTarget());
+    if (isStale() || viewer.current === null) return;
     onScrolled?.();
   };
 

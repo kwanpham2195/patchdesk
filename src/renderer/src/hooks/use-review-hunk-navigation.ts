@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 import type { Hunk, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
@@ -6,10 +6,12 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 import { materializeAndScrollTo } from "../review-diff-materialize-and-scroll";
 import {
   adjacentHunkAnchor,
+  hunkNavigationStatus,
   shouldIgnoreReviewNavKey,
   type HunkAnchor,
   type ReviewNavDirection,
 } from "../review-diff-keyboard-nav";
+import type { ReviewDiffNavigationOperation } from "./use-review-diff-navigation-feedback";
 import { useKeyboardJump } from "./use-keyboard-jump";
 import { useLatestCommitted } from "./use-latest-committed";
 
@@ -19,6 +21,7 @@ type PierreCodeView<T> = NonNullable<
 
 type HunkNavigationItem = {
   readonly id: string;
+  readonly version?: number;
   readonly fileDiff: Pick<FileDiffMetadata, "hunks">;
 };
 
@@ -26,7 +29,6 @@ type CurrentPathRef = {
   current: string | undefined;
 };
 
-/** The first addition line, or the first deletion line for a pure deletion. */
 function hunkAnchor(filePath: string, hunk: Hunk): HunkAnchor {
   return hunk.additionCount > 0
     ? { filePath, lineNumber: hunk.additionStart, side: "additions" }
@@ -39,44 +41,59 @@ export function useReviewHunkNavigation<T>({
   items,
   fileMode,
   onActiveFileChange,
+  createNavigationOperation,
   resolveActiveFilePathAt,
   virtualized,
+  browserSupportsPierre,
 }: {
   readonly viewer: RefObject<CodeViewHandle<T> | null>;
   readonly activePathRef: CurrentPathRef;
   readonly items: ReadonlyArray<HunkNavigationItem>;
   readonly fileMode: "all" | "selected";
   readonly onActiveFileChange: ((path: string) => void) | undefined;
+  readonly createNavigationOperation: () => ReviewDiffNavigationOperation;
   readonly resolveActiveFilePathAt: (
     scrollTop: number,
     codeView: PierreCodeView<T>,
   ) => string | undefined;
   readonly virtualized: boolean;
-}): string | undefined {
-  const latest = useLatestCommitted({ items, onActiveFileChange });
-  // This target is written only by keyboard jumps. It must not be replaced by
-  // the scroll-derived active path after a line target lands under a header.
+  readonly browserSupportsPierre: boolean;
+}): void {
+  const latest = useLatestCommitted({
+    items,
+    onActiveFileChange,
+    createNavigationOperation,
+  });
   const currentAnchor = useRef<HunkAnchor | undefined>(undefined);
-  const [boundary, setBoundary] = useState<string | undefined>(undefined);
+  const enabled = virtualized && fileMode === "all" && browserSupportsPierre;
+  const hunkOrderIdentity = items
+    .flatMap((item) =>
+      item.fileDiff.hunks.map((hunk) => {
+        const anchor = hunkAnchor(item.id, hunk);
+        return `${item.version}\u0000${anchor.filePath}\u0000${anchor.lineNumber}\u0000${anchor.side}`;
+      }),
+    )
+    .join("\u0001");
 
-  useKeyboardJump(virtualized && fileMode === "all", (event, jump) => {
+  useEffect(() => {
+    currentAnchor.current = undefined;
+  }, [enabled, hunkOrderIdentity]);
+
+  useKeyboardJump(enabled, (event, jump) => {
     if (event.key !== "[" && event.key !== "]") return;
     if (shouldIgnoreReviewNavKey(event)) return;
     event.preventDefault();
     const {
       items: currentItems,
       onActiveFileChange: currentOnActiveFileChange,
+      createNavigationOperation: currentCreateNavigationOperation,
     } = latest.current;
     const direction: ReviewNavDirection =
       event.key === "]" ? "next" : "previous";
-    // Rebuild the order on every press so the listener never uses a stale
-    // hunk array after hydration or a controlled item update.
+    const operation = currentCreateNavigationOperation();
     const hunkOrder: HunkAnchor[] = currentItems.flatMap((item) =>
       item.fileDiff.hunks.map((hunk) => hunkAnchor(item.id, hunk)),
     );
-    // CodeView exposes file geometry, not per-line geometry. Seed from the
-    // first hunk in the file nearest the current viewport, then keep the
-    // explicit keyboard target for subsequent presses.
     if (currentAnchor.current === undefined) {
       const codeView = viewer.current?.getInstance();
       const activePath =
@@ -94,22 +111,18 @@ export function useReviewHunkNavigation<T>({
       direction,
     );
     if (target === undefined) {
-      setBoundary(
-        direction === "next"
-          ? "Already at the last hunk."
-          : "Already at the first hunk.",
-      );
+      jump.start(() => () => undefined);
+      operation.report(hunkNavigationStatus(hunkOrder, target, direction));
       return;
     }
-    setBoundary(undefined);
     currentAnchor.current = target;
-    jump.start((isStale) =>
-      materializeAndScrollTo({
+    jump.start((isStale) => {
+      const stale = () => isStale() || operation.isStale();
+      return materializeAndScrollTo({
         viewer,
-        // The target's file must exist before a line inside it can scroll.
         items: currentItems,
         itemId: target.filePath,
-        isStale,
+        isStale: stale,
         buildTarget: () => ({
           type: "line",
           id: target.filePath,
@@ -118,12 +131,12 @@ export function useReviewHunkNavigation<T>({
           align: "start",
         }),
         onScrolled: () => {
+          if (stale()) return;
           activePathRef.current = target.filePath;
           currentOnActiveFileChange?.(target.filePath);
+          operation.report(hunkNavigationStatus(hunkOrder, target, direction));
         },
-      }),
-    );
+      });
+    });
   });
-
-  return boundary;
 }

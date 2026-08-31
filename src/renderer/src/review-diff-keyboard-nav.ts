@@ -58,6 +58,141 @@ export function shouldIgnoreReviewNavKey(event: KeyboardEvent): boolean {
 export type ReviewNavDirection = "previous" | "next";
 
 /**
+ * One completed or boundary-limited review-diff keyboard-navigation outcome.
+ * The renderer consumes its fields directly for both visible copy and stable
+ * data attributes; it never infers meaning by parsing a message string.
+ */
+export type ReviewDiffNavigationStatus =
+  | {
+      readonly kind: "file" | "hunk";
+      readonly state: "first" | "last";
+      readonly total: number;
+      readonly message: string;
+    }
+  | {
+      readonly kind: "comment";
+      readonly state: "first" | "last" | "empty";
+      readonly total: number;
+      readonly message: string;
+    }
+  | {
+      readonly kind: "file";
+      readonly state: "target";
+      readonly position: number;
+      readonly total: number;
+      readonly path: string;
+      readonly message: string;
+    }
+  | {
+      readonly kind: "hunk" | "comment";
+      readonly state: "target";
+      readonly position: number;
+      readonly total: number;
+      readonly path: string;
+      readonly line: number;
+      readonly message: string;
+    };
+
+/** Builds the structured outcome for one file-navigation keypress. */
+export function fileNavigationStatus(
+  order: ReadonlyArray<string>,
+  target: string | undefined,
+  direction: ReviewNavDirection,
+): ReviewDiffNavigationStatus {
+  if (target === undefined)
+    return {
+      kind: "file",
+      state: direction === "next" ? "last" : "first",
+      total: order.length,
+      message:
+        direction === "next"
+          ? "Already at the last file."
+          : "Already at the first file.",
+    };
+  const position = order.indexOf(target) + 1;
+  return {
+    kind: "file",
+    state: "target",
+    position,
+    total: order.length,
+    path: target,
+    message: `File ${position} of ${order.length}: ${target}.`,
+  };
+}
+
+/** Builds the structured outcome for one hunk-navigation keypress. */
+export function hunkNavigationStatus(
+  order: ReadonlyArray<HunkAnchor>,
+  target: HunkAnchor | undefined,
+  direction: ReviewNavDirection,
+): ReviewDiffNavigationStatus {
+  if (target === undefined)
+    return {
+      kind: "hunk",
+      state: direction === "next" ? "last" : "first",
+      total: order.length,
+      message:
+        direction === "next"
+          ? "Already at the last hunk."
+          : "Already at the first hunk.",
+    };
+  const position =
+    order.findIndex(
+      (anchor) =>
+        anchor.filePath === target.filePath &&
+        anchor.lineNumber === target.lineNumber &&
+        anchor.side === target.side,
+    ) + 1;
+  return {
+    kind: "hunk",
+    state: "target",
+    position,
+    total: order.length,
+    path: target.filePath,
+    line: target.lineNumber,
+    message: `Hunk ${position} of ${order.length}: ${target.filePath} line ${target.lineNumber}.`,
+  };
+}
+
+/** Builds the structured outcome for one unresolved-comment keypress. */
+export function commentNavigationStatus(
+  order: ReadonlyArray<CommentAnchor>,
+  target: CommentAnchor | undefined,
+  direction: ReviewNavDirection,
+): ReviewDiffNavigationStatus {
+  if (order.length === 0)
+    return {
+      kind: "comment",
+      state: "empty",
+      total: 0,
+      message: "No unresolved comments.",
+    };
+  if (target === undefined) {
+    const state = direction === "next" ? "last" : "first";
+    const count =
+      order.length === 1
+        ? "1 unresolved comment"
+        : `${order.length} unresolved comments`;
+    return {
+      kind: "comment",
+      state,
+      total: order.length,
+      message: `Already at the ${state} unresolved comment. ${count} total.`,
+    };
+  }
+  const position = order.findIndex((anchor) => anchor.id === target.id) + 1;
+  return {
+    kind: "comment",
+    state: "target",
+    position,
+    total: order.length,
+    path: target.filePath,
+    line: target.lineNumber,
+    message: `Comment ${position} of ${order.length} unresolved.`,
+  };
+}
+
+/**
  * The file adjacent to `current` in `order`, one step in `direction`, or
  * `undefined` at either end -- navigation stops rather than wrapping. A
  * `current` missing from `order` (nothing has resolved an active file yet)
@@ -184,17 +319,7 @@ export function commentNavAnnouncement(
   target: CommentAnchor | undefined,
   direction: ReviewNavDirection,
 ): string {
-  if (order.length === 0) return "No unresolved comments.";
-  if (target === undefined) {
-    const boundary = direction === "next" ? "last" : "first";
-    const count =
-      order.length === 1
-        ? "1 unresolved comment"
-        : `${order.length} unresolved comments`;
-    return `Already at the ${boundary} unresolved comment. ${count} total.`;
-  }
-  const index = order.findIndex((anchor) => anchor.id === target.id);
-  return `Comment ${index + 1} of ${order.length} unresolved.`;
+  return commentNavigationStatus(order, target, direction).message;
 }
 
 /**

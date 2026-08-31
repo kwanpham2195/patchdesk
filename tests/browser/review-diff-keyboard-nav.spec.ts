@@ -23,7 +23,9 @@ test("`.` and `,` jump between files, stopping (not wrapping) at either end", as
     await diffViewport.focus();
     await expect(diffViewport).toBeFocused();
 
-    const boundary = page.locator("[data-review-diff-file-nav-boundary]");
+    const boundary = page.locator(
+      '[data-review-diff-navigation-status][data-navigation-kind="file"]',
+    );
     const overlapsViewport = (path: string) =>
       headerOverlapsViewport(page, diffViewport, path);
 
@@ -35,20 +37,20 @@ test("`.` and `,` jump between files, stopping (not wrapping) at either end", as
 
     await page.keyboard.press(".");
     await expect.poll(() => overlapsViewport("src/b.ts")).toBe(true);
-    await expect(boundary).toHaveCount(0);
+    await expect(boundary).toHaveAttribute("data-navigation-state", "target");
 
     // Already at the last file: stop, don't wrap to the first file.
     await page.keyboard.press(".");
-    await expect(boundary).toHaveText("Already at the last file.");
+    await expect(boundary).toHaveAttribute("data-navigation-state", "last");
     await expect.poll(() => overlapsViewport("src/b.ts")).toBe(true);
 
     await page.keyboard.press(",");
     await expect.poll(() => overlapsViewport("src/a.ts")).toBe(true);
-    await expect(boundary).toHaveCount(0);
+    await expect(boundary).toHaveAttribute("data-navigation-state", "target");
 
     // Already at the first file: stop, don't wrap to the last file.
     await page.keyboard.press(",");
-    await expect(boundary).toHaveText("Already at the first file.");
+    await expect(boundary).toHaveAttribute("data-navigation-state", "first");
     await expect.poll(() => overlapsViewport("src/a.ts")).toBe(true);
   } finally {
     await closeServer(server);
@@ -169,7 +171,9 @@ test("typing `.` in the comment composer inserts the character instead of naviga
     // "next file" jump was available and would have moved the viewport).
     expect(await scrollTop()).toBe(before);
     await expect(
-      page.locator("[data-review-diff-file-nav-boundary]"),
+      page.locator(
+        '[data-review-diff-navigation-status][data-navigation-kind="file"]',
+      ),
     ).toHaveCount(0);
   } finally {
     await closeServer(server);
@@ -188,7 +192,9 @@ test("`]` and `[` jump between hunks, stopping (not wrapping) at either end, inc
     await diffViewport.focus();
     await expect(diffViewport).toBeFocused();
 
-    const boundary = page.locator("[data-review-diff-hunk-nav-boundary]");
+    const boundary = page.locator(
+      '[data-review-diff-navigation-status][data-navigation-kind="hunk"]',
+    );
     const overlapsViewport = (path: string) =>
       headerOverlapsViewport(page, diffViewport, path);
 
@@ -206,21 +212,21 @@ test("`]` and `[` jump between hunks, stopping (not wrapping) at either end, inc
 
     await page.keyboard.press("]");
     await expect.poll(() => overlapsViewport("src/b.ts")).toBe(true);
-    await expect(boundary).toHaveCount(0);
+    await expect(boundary).toHaveAttribute("data-navigation-state", "target");
 
     // Already at the last hunk: stop, don't wrap and don't silently re-jump
     // to the same (or any other) hunk.
     await page.keyboard.press("]");
-    await expect(boundary).toHaveText("Already at the last hunk.");
+    await expect(boundary).toHaveAttribute("data-navigation-state", "last");
     await expect.poll(() => overlapsViewport("src/b.ts")).toBe(true);
 
     await page.keyboard.press("[");
     await expect.poll(() => overlapsViewport("src/a.ts")).toBe(true);
-    await expect(boundary).toHaveCount(0);
+    await expect(boundary).toHaveAttribute("data-navigation-state", "target");
 
     // Already at the first hunk: stop, don't wrap.
     await page.keyboard.press("[");
-    await expect(boundary).toHaveText("Already at the first hunk.");
+    await expect(boundary).toHaveAttribute("data-navigation-state", "first");
     await expect.poll(() => overlapsViewport("src/a.ts")).toBe(true);
 
     // Repeated presses in the same direction must keep advancing, not
@@ -230,7 +236,7 @@ test("`]` and `[` jump between hunks, stopping (not wrapping) at either end, inc
     await page.keyboard.press("]");
     await expect.poll(() => overlapsViewport("src/b.ts")).toBe(true);
     await page.keyboard.press("]");
-    await expect(boundary).toHaveText("Already at the last hunk.");
+    await expect(boundary).toHaveAttribute("data-navigation-state", "last");
   } finally {
     await closeServer(server);
   }
@@ -276,7 +282,9 @@ test("typing `[` in the comment composer inserts the character instead of naviga
     // must reject the keystroke before any of that runs).
     expect(await scrollTop()).toBe(before);
     await expect(
-      page.locator("[data-review-diff-hunk-nav-boundary]"),
+      page.locator(
+        '[data-review-diff-navigation-status][data-navigation-kind="hunk"]',
+      ),
     ).toHaveCount(0);
   } finally {
     await closeServer(server);
@@ -313,16 +321,18 @@ test("`}` announces there are no unresolved comments, without moving the viewpor
     const scrollTop = () =>
       diffViewport.evaluate((viewport) => viewport.scrollTop);
     const before = await scrollTop();
-    const status = page.locator("[data-review-diff-comment-nav-status]");
+    const status = page.locator(
+      '[data-review-diff-navigation-status][data-navigation-kind="comment"]',
+    );
 
     await page.keyboard.press("}");
-    await expect(status).toHaveText("No unresolved comments.");
+    await expect(status).toHaveAttribute("data-navigation-state", "empty");
     expect(await scrollTop()).toBe(before);
 
     // `{` reports the same thing, not a mirrored "first"/"last" boundary --
     // there is nothing to be at either end of.
     await page.keyboard.press("{");
-    await expect(status).toHaveText("No unresolved comments.");
+    await expect(status).toHaveAttribute("data-navigation-state", "empty");
     expect(await scrollTop()).toBe(before);
   } finally {
     await closeServer(server);
@@ -365,7 +375,9 @@ test("typing `{` in the comment composer inserts the character instead of naviga
     // No navigation attempted at all -- not even a status announcement.
     expect(await scrollTop()).toBe(before);
     await expect(
-      page.locator("[data-review-diff-comment-nav-status]"),
+      page.locator(
+        '[data-review-diff-navigation-status][data-navigation-kind="comment"]',
+      ),
     ).toHaveCount(0);
   } finally {
     await closeServer(server);

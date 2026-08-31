@@ -55,6 +55,7 @@ import {
 } from "./review-diff-authoring";
 import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
+import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
 import {
   diffThemeFor,
   loadDiffThemePreferences,
@@ -65,6 +66,11 @@ import type { FileChangeStats } from "@/review-diff-data";
 import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigation";
+import {
+  reviewDiffNavigationResetIdentity,
+  useReviewDiffNavigationFeedback,
+  type ReviewDiffNavigationFeedbackState,
+} from "@/hooks/use-review-diff-navigation-feedback";
 import { useReviewFileNavigation } from "@/hooks/use-review-file-navigation";
 import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
 import { useReviewDiffSelectionScroll } from "@/hooks/use-review-diff-scroll-state";
@@ -481,33 +487,46 @@ function ReviewDiffSurface({
     activePathRef.current = undefined;
   }, [activePathRef, items, preferences.fileMode]);
 
-  const fileNavBoundary = useReviewFileNavigation({
+  const navigationResetIdentity = reviewDiffNavigationResetIdentity(
+    preferences.fileMode,
+    items,
+  );
+  const { navigationStatus, createNavigationOperation } =
+    useReviewDiffNavigationFeedback(navigationResetIdentity);
+
+  useReviewFileNavigation({
     viewer,
     activePathRef,
     items,
     fileMode: preferences.fileMode,
     onActiveFileChange,
+    createNavigationOperation,
     resolveActiveFilePathAt,
     virtualized,
+    browserSupportsPierre,
   });
 
-  const hunkNavBoundary = useReviewHunkNavigation({
+  useReviewHunkNavigation({
     viewer,
     activePathRef,
     items,
     fileMode: preferences.fileMode,
     onActiveFileChange,
+    createNavigationOperation,
     resolveActiveFilePathAt,
     virtualized,
+    browserSupportsPierre,
   });
 
-  const commentNavStatus = useReviewCommentNavigation({
+  useReviewCommentNavigation({
     viewer,
     activePathRef,
     items,
     fileMode: preferences.fileMode,
     onActiveFileChange,
+    createNavigationOperation,
     virtualized,
+    browserSupportsPierre,
   });
 
   return (
@@ -531,13 +550,11 @@ function ReviewDiffSurface({
       decorateConversationThread={decorateConversationThread}
       virtualized={virtualized}
       browserSupportsPierre={browserSupportsPierre}
+      navigationStatus={navigationStatus}
       syntaxHighlightingStatus={syntaxHighlightingStatus}
       localCommentAuthoring={localCommentAuthoring}
       localComposerAnnotation={localComposerAnnotation}
       contextStatus={contextStatus}
-      fileNavBoundary={fileNavBoundary}
-      hunkNavBoundary={hunkNavBoundary}
-      commentNavStatus={commentNavStatus}
       beginAccessibleAuthoring={beginAccessibleAuthoring}
       selectedFile={selectedFile}
       selectedAnnotations={selectedAnnotations}
@@ -576,12 +593,10 @@ type ReviewDiffRenderSiteProps = {
   readonly virtualized: boolean;
   readonly browserSupportsPierre: boolean;
   readonly syntaxHighlightingStatus: "loading" | "ready" | "unavailable";
+  readonly navigationStatus: ReviewDiffNavigationFeedbackState["navigationStatus"];
   readonly localCommentAuthoring: LocalCommentAuthoring | undefined;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
   readonly contextStatus: ReviewContextStatus;
-  readonly fileNavBoundary: string | undefined;
-  readonly hunkNavBoundary: string | undefined;
-  readonly commentNavStatus: string | undefined;
   readonly beginAccessibleAuthoring: (
     path: string,
     line: number,
@@ -619,13 +634,11 @@ function ReviewDiffRenderSite({
   decorateConversationThread,
   virtualized,
   browserSupportsPierre,
+  navigationStatus,
   syntaxHighlightingStatus,
   localCommentAuthoring,
   localComposerAnnotation,
   contextStatus,
-  fileNavBoundary,
-  hunkNavBoundary,
-  commentNavStatus,
   beginAccessibleAuthoring,
   selectedFile,
   selectedAnnotations,
@@ -748,21 +761,7 @@ function ReviewDiffRenderSite({
       localComposerAnnotation?.localComposer !== undefined ? (
         <InlineCommentComposer {...localComposerAnnotation.localComposer} />
       ) : null}
-      {fileNavBoundary === undefined ? null : (
-        <p hidden data-review-diff-file-nav-boundary>
-          {fileNavBoundary}
-        </p>
-      )}
-      {hunkNavBoundary === undefined ? null : (
-        <p hidden data-review-diff-hunk-nav-boundary>
-          {hunkNavBoundary}
-        </p>
-      )}
-      {commentNavStatus === undefined ? null : (
-        <p hidden data-review-diff-comment-nav-status>
-          {commentNavStatus}
-        </p>
-      )}
+      <ReviewDiffNavigationFeedback status={navigationStatus} />
       {!browserSupportsPierre ? (
         <AccessiblePatch
           patch={preferences.fileMode === "all" ? patch : selectedPatch}

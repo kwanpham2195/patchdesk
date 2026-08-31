@@ -1,13 +1,15 @@
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
 import { materializeAndScrollTo } from "../review-diff-materialize-and-scroll";
 import {
   adjacentFilePath,
+  fileNavigationStatus,
   shouldIgnoreReviewNavKey,
   type ReviewNavDirection,
 } from "../review-diff-keyboard-nav";
+import type { ReviewDiffNavigationOperation } from "./use-review-diff-navigation-feedback";
 import { useKeyboardJump } from "./use-keyboard-jump";
 import { useLatestCommitted } from "./use-latest-committed";
 
@@ -17,6 +19,7 @@ type PierreCodeView<T> = NonNullable<
 
 type FileNavigationItem = {
   readonly id: string;
+  readonly version?: number;
 };
 
 type CurrentPathRef = {
@@ -29,46 +32,51 @@ export function useReviewFileNavigation<T>({
   items,
   fileMode,
   onActiveFileChange,
+  createNavigationOperation,
   resolveActiveFilePathAt,
   virtualized,
+  browserSupportsPierre,
 }: {
   readonly viewer: RefObject<CodeViewHandle<T> | null>;
   readonly activePathRef: CurrentPathRef;
   readonly items: ReadonlyArray<FileNavigationItem>;
   readonly fileMode: "all" | "selected";
   readonly onActiveFileChange: ((path: string) => void) | undefined;
+  readonly createNavigationOperation: () => ReviewDiffNavigationOperation;
   readonly resolveActiveFilePathAt: (
     scrollTop: number,
     codeView: PierreCodeView<T>,
   ) => string | undefined;
   readonly virtualized: boolean;
-}): string | undefined {
-  // `items` and `onActiveFileChange` are read from this latest-committed
-  // snapshot instead of the effect's own dependency array so an unrelated
-  // re-render (a file hydrating, an annotation changing) never tears down the
-  // listener or cancels a jump already in flight.
-  const latest = useLatestCommitted({ items, onActiveFileChange });
-  // Keep the keyboard target separate from activePathRef. An item jump lands
-  // below its sticky header, so scroll-derived active-file updates can briefly
-  // report the previous file after the jump completes.
+  readonly browserSupportsPierre: boolean;
+}): void {
+  const latest = useLatestCommitted({
+    items,
+    onActiveFileChange,
+    createNavigationOperation,
+  });
   const currentPath = useRef<string | undefined>(undefined);
-  const [boundary, setBoundary] = useState<string | undefined>(undefined);
+  const enabled = virtualized && fileMode === "all" && browserSupportsPierre;
+  const itemOrder = items
+    .map((item) => `${item.id}\u0000${item.version}`)
+    .join("\u0001");
 
-  // Only the primary, continuously-scrolling diff surface supports file
-  // jumps. Walkthrough and finding-evidence cards render with
-  // virtualized={false}; selected-file mode has no adjacent item to target.
-  useKeyboardJump(virtualized && fileMode === "all", (event, jump) => {
+  useEffect(() => {
+    currentPath.current = undefined;
+  }, [enabled, itemOrder]);
+
+  useKeyboardJump(enabled, (event, jump) => {
     if (event.key !== "." && event.key !== ",") return;
     if (shouldIgnoreReviewNavKey(event)) return;
     event.preventDefault();
     const {
       items: currentItems,
       onActiveFileChange: currentOnActiveFileChange,
+      createNavigationOperation: currentCreateNavigationOperation,
     } = latest.current;
     const direction: ReviewNavDirection =
       event.key === "." ? "next" : "previous";
-    // The first press starts from the file nearest the current scroll
-    // position instead of always starting from the first file.
+    const operation = currentCreateNavigationOperation();
     if (currentPath.current === undefined) {
       const codeView = viewer.current?.getInstance();
       currentPath.current =
@@ -76,37 +84,29 @@ export function useReviewFileNavigation<T>({
           ? undefined
           : resolveActiveFilePathAt(codeView.getScrollTop(), codeView);
     }
-    const target = adjacentFilePath(
-      currentItems.map((item) => item.id),
-      currentPath.current,
-      direction,
-    );
+    const order = currentItems.map((item) => item.id);
+    const target = adjacentFilePath(order, currentPath.current, direction);
     if (target === undefined) {
-      setBoundary(
-        direction === "next"
-          ? "Already at the last file."
-          : "Already at the first file.",
-      );
+      jump.start(() => () => undefined);
+      operation.report(fileNavigationStatus(order, target, direction));
       return;
     }
-    setBoundary(undefined);
-    // Set eagerly so a rapid second press advances from this target even
-    // before the first scroll resolves.
     currentPath.current = target;
-    jump.start((isStale) =>
-      materializeAndScrollTo({
+    jump.start((isStale) => {
+      const stale = () => isStale() || operation.isStale();
+      return materializeAndScrollTo({
         viewer,
         items: currentItems,
         itemId: target,
-        isStale,
+        isStale: stale,
         buildTarget: () => ({ type: "item", id: target, align: "start" }),
         onScrolled: () => {
+          if (stale()) return;
           activePathRef.current = target;
           currentOnActiveFileChange?.(target);
+          operation.report(fileNavigationStatus(order, target, direction));
         },
-      }),
-    );
+      });
+    });
   });
-
-  return boundary;
 }
