@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsModal } from "../../src/renderer/src/components/settings-modal";
+import type { RawJsonValue } from "../../src/domain/json";
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { Profile } from "../../src/renderer/src/renderer-models";
 import type {
@@ -380,6 +381,149 @@ describe("workspace profile settings", () => {
     ).toBe(false);
   });
 
+  it("associates every invalid profile scalar with its field before saving", async () => {
+    const desktopApi = installDesktopApi();
+    const user = userEvent.setup();
+
+    renderSettings();
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    await user.type(screen.getByLabelText("Profile ID"), "invalid/id");
+    await user.type(screen.getByLabelText("Label"), "   ");
+    await user.clear(screen.getByLabelText("GitHub host"));
+    await user.type(
+      screen.getByLabelText("GitHub host"),
+      "https://github.example.test/path",
+    );
+    await user.clear(screen.getByLabelText("GitHub account"));
+    await user.type(screen.getByLabelText("GitHub account"), "x".repeat(40));
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+
+    for (const [label, errorId] of [
+      ["Profile ID", "profile-id-error"],
+      ["Label", "profile-label-error"],
+      ["GitHub host", "profile-github-host-error"],
+      ["GitHub account", "profile-gh-account-error"],
+    ] as const) {
+      const field = screen.getByLabelText(label);
+      expect(field.getAttribute("aria-invalid")).toBe("true");
+      expect(field.getAttribute("aria-describedby")).toBe(errorId);
+      expect(document.getElementById(errorId)?.textContent).not.toBe("");
+    }
+    expect(profileSaveRequests(desktopApi)).toHaveLength(0);
+
+    await user.clear(screen.getByLabelText("Profile ID"));
+    await user.type(screen.getByLabelText("Profile ID"), "valid-id");
+
+    expect(
+      screen.getByLabelText("Profile ID").getAttribute("aria-invalid"),
+    ).toBeNull();
+    for (const field of [
+      screen.getByLabelText("Label"),
+      screen.getByLabelText("GitHub host"),
+      screen.getByLabelText("GitHub account"),
+    ])
+      expect(field.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("exposes invalid manual account fields after a disclosure closes", async () => {
+    installDesktopApi({
+      environment: {
+        git: "ready",
+        gh: "ready",
+        githubAuth: "ready",
+        githubAccounts: [
+          { host: "github.com", login: "patchdesk", active: true },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+
+    renderSettings();
+    await user.click(
+      await screen.findByRole("button", { name: "Use a different account" }),
+    );
+    await user.clear(screen.getByLabelText("GitHub host"));
+    await user.type(screen.getByLabelText("GitHub host"), "https://bad.test");
+    await user.clear(screen.getByLabelText("GitHub account"));
+    await user.type(screen.getByLabelText("GitHub account"), "x".repeat(40));
+    await user.click(
+      screen.getByRole("button", { name: "Use a different account" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+
+    const host = screen.getByLabelText("GitHub host");
+    const account = screen.getByLabelText("GitHub account");
+    expect(host.getAttribute("aria-describedby")).toBe(
+      "profile-github-host-error",
+    );
+    expect(account.getAttribute("aria-describedby")).toBe(
+      "profile-gh-account-error",
+    );
+    expect(
+      document.getElementById("profile-github-host-error")?.textContent,
+    ).not.toBe("");
+    expect(
+      document.getElementById("profile-gh-account-error")?.textContent,
+    ).not.toBe("");
+
+    await user.clear(host);
+    await user.type(host, "github.com");
+    expect(host.getAttribute("aria-invalid")).toBeNull();
+    expect(account.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("renders manual account fields when GitHub authentication fails", async () => {
+    installDesktopApi({
+      environment: {
+        git: "ready",
+        gh: "ready",
+        githubAuth: "authentication_required",
+        githubAccounts: [],
+      },
+    });
+
+    renderSettings();
+
+    expect(await screen.findByLabelText("GitHub host")).toBeTruthy();
+    expect(screen.getByLabelText("GitHub account")).toBeTruthy();
+  });
+
+  it("trims valid profile scalars before requesting a save", async () => {
+    const desktopApi = installDesktopApi();
+    const user = userEvent.setup();
+
+    renderSettings();
+    await user.click(screen.getByRole("button", { name: "New profile" }));
+    await user.type(screen.getByLabelText("Profile ID"), "  spaced-id  ");
+    await user.type(screen.getByLabelText("Label"), "  Spaced label  ");
+    await user.clear(screen.getByLabelText("GitHub host"));
+    await user.type(
+      screen.getByLabelText("GitHub host"),
+      " github.example.test ",
+    );
+    await user.clear(screen.getByLabelText("GitHub account"));
+    await user.type(screen.getByLabelText("GitHub account"), " spaced-user ");
+    await user.type(
+      screen.getByLabelText("workspace root 1"),
+      "/workspace/spaced",
+    );
+    await user.type(screen.getByLabelText("owner filter 1"), "spaced-owner");
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+
+    await vi.waitFor(() =>
+      expect(profileSaveRequests(desktopApi)).toContainEqual({
+        path: "/v1/profiles",
+        method: "POST",
+        body: expect.objectContaining({
+          id: "spaced-id",
+          label: "Spaced label",
+          githubHost: "github.example.test",
+          ghAccount: "spaced-user",
+        }),
+      }),
+    );
+  });
+
   it("shows a save error inline when the profile API rejects the request", async () => {
     const desktopApi = installDesktopApi({ rejectProfileSave: true });
     const user = userEvent.setup();
@@ -751,6 +895,7 @@ function installDesktopApi(
     readonly rejectProfileSave?: boolean;
     readonly rejectWatchlist?: boolean;
     readonly pendingProfileSave?: Promise<ReturnType<typeof success>>;
+    readonly environment?: RawJsonValue;
     readonly suggestions?:
       | "reject"
       | ReadonlyArray<{
@@ -763,7 +908,7 @@ function installDesktopApi(
 ): DesktopDouble {
   desktop = installDesktopDouble(
     {
-      "/v1/environment": () => success({}),
+      "/v1/environment": () => success(options.environment ?? {}),
       "/v1/logs": () => success(null),
       "/v1/profiles/select": () => success({}),
       "/v1/watchlist": () =>

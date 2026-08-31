@@ -15,7 +15,12 @@ import {
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
 import { Button } from "../components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import {
   Select,
@@ -25,7 +30,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import type { ProfileDraft } from "./settings-workspace-profile-draft";
+import type {
+  ProfileDraft,
+  ProfileScalarErrors,
+} from "./settings-workspace-profile-draft";
 
 type ReviewingAsProbeHook = {
   readonly reviewingAs: ApiProbeState<EnvironmentCheckResponse>;
@@ -150,11 +158,13 @@ export function ReviewingAsPanel({
   state,
   profileDraft,
   updateProfileDraft,
+  fieldErrors,
   onRecheck,
 }: {
   readonly state: ApiProbeState<EnvironmentCheckResponse>;
   readonly profileDraft: ProfileDraft;
   readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
+  readonly fieldErrors: ProfileScalarErrors;
   readonly onRecheck: () => void;
 }): React.JSX.Element {
   const view = reviewingAsView(state);
@@ -203,6 +213,7 @@ export function ReviewingAsPanel({
           <AccountDisclosure
             profileDraft={profileDraft}
             updateProfileDraft={updateProfileDraft}
+            fieldErrors={fieldErrors}
           />
         </div>
       ) : (
@@ -215,6 +226,7 @@ export function ReviewingAsPanel({
           <AccountDisclosure
             profileDraft={profileDraft}
             updateProfileDraft={updateProfileDraft}
+            fieldErrors={fieldErrors}
           />
         </div>
       )}
@@ -231,10 +243,13 @@ export function ReviewingAsPanel({
           </AlertDescription>
         </Alert>
       ) : null}
-      {view.kind === "checking" || view.kind === "error" ? (
+      {view.kind === "checking" ||
+      view.kind === "error" ||
+      view.kind === "failed" ? (
         <ManualAccountFields
           profileDraft={profileDraft}
           updateProfileDraft={updateProfileDraft}
+          fieldErrors={fieldErrors}
         />
       ) : null}
       <Button
@@ -308,10 +323,23 @@ function AccountSelect({
 function AccountDisclosure({
   profileDraft,
   updateProfileDraft,
+  fieldErrors,
 }: {
   readonly profileDraft: ProfileDraft;
   readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
+  readonly fieldErrors: ProfileScalarErrors;
 }): React.JSX.Element {
+  if (
+    fieldErrors.ghAccount !== undefined ||
+    fieldErrors.githubHost !== undefined
+  )
+    return (
+      <ManualAccountFields
+        profileDraft={profileDraft}
+        updateProfileDraft={updateProfileDraft}
+        fieldErrors={fieldErrors}
+      />
+    );
   return (
     <Collapsible>
       <CollapsibleTrigger render={<Button variant="outline" size="sm" />}>
@@ -322,6 +350,7 @@ function AccountDisclosure({
         <ManualAccountFields
           profileDraft={profileDraft}
           updateProfileDraft={updateProfileDraft}
+          fieldErrors={fieldErrors}
         />
       </CollapsibleContent>
     </Collapsible>
@@ -331,18 +360,28 @@ function AccountDisclosure({
 function ManualAccountFields({
   profileDraft,
   updateProfileDraft,
+  fieldErrors,
 }: {
   readonly profileDraft: ProfileDraft;
   readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
+  readonly fieldErrors: ProfileScalarErrors;
 }): React.JSX.Element {
   return (
     <FieldGroup className="grid gap-4 sm:grid-cols-2">
-      <Field>
+      <Field
+        data-invalid={fieldErrors.ghAccount === undefined ? undefined : true}
+      >
         <FieldLabel htmlFor="profile-gh-account">GitHub account</FieldLabel>
         <Input
           id="profile-gh-account"
           aria-label="GitHub account"
           value={profileDraft.ghAccount}
+          aria-invalid={fieldErrors.ghAccount === undefined ? undefined : true}
+          aria-describedby={
+            fieldErrors.ghAccount === undefined
+              ? undefined
+              : "profile-gh-account-error"
+          }
           onChange={(event) =>
             updateProfileDraft((current) => ({
               ...current,
@@ -350,13 +389,24 @@ function ManualAccountFields({
             }))
           }
         />
+        <FieldError id="profile-gh-account-error">
+          {fieldErrors.ghAccount}
+        </FieldError>
       </Field>
-      <Field>
+      <Field
+        data-invalid={fieldErrors.githubHost === undefined ? undefined : true}
+      >
         <FieldLabel htmlFor="profile-github-host">GitHub host</FieldLabel>
         <Input
           id="profile-github-host"
           aria-label="GitHub host"
           value={profileDraft.githubHost}
+          aria-invalid={fieldErrors.githubHost === undefined ? undefined : true}
+          aria-describedby={
+            fieldErrors.githubHost === undefined
+              ? undefined
+              : "profile-github-host-error"
+          }
           onChange={(event) =>
             updateProfileDraft((current) => ({
               ...current,
@@ -364,6 +414,9 @@ function ManualAccountFields({
             }))
           }
         />
+        <FieldError id="profile-github-host-error">
+          {fieldErrors.githubHost}
+        </FieldError>
       </Field>
     </FieldGroup>
   );

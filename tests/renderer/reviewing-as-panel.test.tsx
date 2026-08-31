@@ -246,7 +246,7 @@ describe("Reviewing as panel", () => {
     ).toContain("Select an account");
   });
 
-  it("shows gh-not-installed remediation, with no manual entry offered, when gh is missing", async () => {
+  it("keeps manual account recovery visible when gh is missing", async () => {
     installDesktopApi(() => ({
       git: "ready",
       gh: "missing",
@@ -255,18 +255,16 @@ describe("Reviewing as panel", () => {
     }));
     renderSettings();
 
+    expect(await screen.findAllByRole("alert")).toHaveLength(1);
     expect(
-      await screen.findByText(
-        "GitHub CLI (gh) is not installed. Install the GitHub CLI, then re-check.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByLabelText("GitHub account")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Use a different account" }),
-    ).toBeNull();
+      screen.getByLabelText("GitHub account").hasAttribute("disabled"),
+    ).toBe(false);
+    expect(screen.getByLabelText("GitHub host").hasAttribute("disabled")).toBe(
+      false,
+    );
   });
 
-  it("shows not-authenticated remediation when gh is installed but has no authenticated accounts", async () => {
+  it("keeps manual account recovery visible when gh has no authenticated account", async () => {
     installDesktopApi(() => ({
       git: "ready",
       gh: "ready",
@@ -275,14 +273,13 @@ describe("Reviewing as panel", () => {
     }));
     renderSettings();
 
+    expect(await screen.findAllByRole("alert")).toHaveLength(1);
     expect(
-      await screen.findByText(
-        (_, element) =>
-          element?.textContent ===
-          "Not authenticated. Run gh auth login, then re-check.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByLabelText("GitHub account")).toBeNull();
+      screen.getByLabelText("GitHub account").hasAttribute("disabled"),
+    ).toBe(false);
+    expect(screen.getByLabelText("GitHub host").hasAttribute("disabled")).toBe(
+      false,
+    );
   });
 
   it("falls back to manual account/host fields directly when the environment check does not parse", () => {
@@ -363,9 +360,8 @@ function installDesktopApi(
   desktop = installDesktopDouble({
     "/v1/environment": () => success(environment()),
     // The panel loads suggestions alongside the environment check; every test
-    // here is about the environment, so this answers the same empty object
-    // the file's previous catch-all did.
-    "/v1/watchlist/suggestions": () => success({}),
+    // here is about the environment, so this answers an empty repository list.
+    "/v1/watchlist/suggestions": () => success([]),
     "/v1/logs": () => success(null),
   });
 }

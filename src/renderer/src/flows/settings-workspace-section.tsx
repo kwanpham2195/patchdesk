@@ -1,4 +1,5 @@
 import { Plus, FolderOpen, X } from "lucide-react";
+import type { SetStateAction } from "react";
 import type { DiscoveredRepo } from "../renderer-contracts";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
@@ -53,8 +54,10 @@ import {
 } from "./settings-workspace-repositories";
 import {
   useWorkspaceProfileDraft,
+  type ProfileDraft,
   type ProfileListEntry,
   type ProfileListField,
+  type ProfileScalarErrors,
 } from "./settings-workspace-profile-draft";
 import {
   ReviewingAsPanel,
@@ -114,6 +117,7 @@ export function WorkspaceProfileSection({
     updateProfileDraft,
     creatingProfile,
     profileError,
+    profileScalarErrors,
     savingProfile,
     profileDirty,
     saveProfile,
@@ -185,6 +189,7 @@ export function WorkspaceProfileSection({
             state={reviewingAs}
             profileDraft={profileDraft}
             updateProfileDraft={updateProfileDraft}
+            fieldErrors={profileScalarErrors}
             onRecheck={recheck}
           />
         </CardContent>
@@ -260,40 +265,12 @@ export function WorkspaceProfileSection({
                 </Button>
               ) : null}
             </div>
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
-              <Field
-                className="sm:col-span-2"
-                data-disabled={!creatingProfile || undefined}
-              >
-                <FieldLabel htmlFor="profile-id">Profile ID</FieldLabel>
-                <Input
-                  id="profile-id"
-                  aria-label="Profile ID"
-                  value={profileDraft.id}
-                  disabled={!creatingProfile}
-                  onChange={(event) =>
-                    updateProfileDraft((current) => ({
-                      ...current,
-                      id: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="profile-label">Label</FieldLabel>
-                <Input
-                  id="profile-label"
-                  aria-label="Label"
-                  value={profileDraft.label}
-                  onChange={(event) =>
-                    updateProfileDraft((current) => ({
-                      ...current,
-                      label: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-            </FieldGroup>
+            <ProfileIdentityFields
+              creatingProfile={creatingProfile}
+              draft={profileDraft}
+              updateProfileDraft={updateProfileDraft}
+              fieldErrors={profileScalarErrors}
+            />
           </FieldGroup>
           {profileError === undefined ? null : (
             <Alert variant="destructive">
@@ -380,6 +357,68 @@ export function WorkspaceProfileSection({
         </Card>
       </section>
     </div>
+  );
+}
+
+type ProfileIdentityFieldsProps = {
+  readonly creatingProfile: boolean;
+  readonly draft: ProfileDraft;
+  readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
+  readonly fieldErrors: ProfileScalarErrors;
+};
+
+function ProfileIdentityFields({
+  creatingProfile,
+  draft,
+  updateProfileDraft,
+  fieldErrors,
+}: ProfileIdentityFieldsProps): React.JSX.Element {
+  return (
+    <FieldGroup className="grid gap-4 sm:grid-cols-2">
+      <Field
+        className="sm:col-span-2"
+        data-disabled={!creatingProfile || undefined}
+        data-invalid={fieldErrors.id === undefined ? undefined : true}
+      >
+        <FieldLabel htmlFor="profile-id">Profile ID</FieldLabel>
+        <Input
+          id="profile-id"
+          aria-label="Profile ID"
+          value={draft.id}
+          disabled={!creatingProfile}
+          aria-invalid={fieldErrors.id === undefined ? undefined : true}
+          aria-describedby={
+            fieldErrors.id === undefined ? undefined : "profile-id-error"
+          }
+          onChange={(event) =>
+            updateProfileDraft((current) => ({
+              ...current,
+              id: event.target.value,
+            }))
+          }
+        />
+        <FieldError id="profile-id-error">{fieldErrors.id}</FieldError>
+      </Field>
+      <Field data-invalid={fieldErrors.label === undefined ? undefined : true}>
+        <FieldLabel htmlFor="profile-label">Label</FieldLabel>
+        <Input
+          id="profile-label"
+          aria-label="Label"
+          value={draft.label}
+          aria-invalid={fieldErrors.label === undefined ? undefined : true}
+          aria-describedby={
+            fieldErrors.label === undefined ? undefined : "profile-label-error"
+          }
+          onChange={(event) =>
+            updateProfileDraft((current) => ({
+              ...current,
+              label: event.target.value,
+            }))
+          }
+        />
+        <FieldError id="profile-label-error">{fieldErrors.label}</FieldError>
+      </Field>
+    </FieldGroup>
   );
 }
 

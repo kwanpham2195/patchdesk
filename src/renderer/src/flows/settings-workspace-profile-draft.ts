@@ -6,6 +6,11 @@ import {
   type SetStateAction,
 } from "react";
 import { requestJson, selectDirectory } from "../api-client";
+import {
+  parseGitHubHost,
+  parseGitHubLogin,
+  parseWorkspaceProfileId,
+} from "../../../domain/ids";
 import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
 import type { Dashboard, Profile } from "../renderer-models";
@@ -20,6 +25,14 @@ export type ProfileDraft = {
   readonly rulePaths: ReadonlyArray<ProfileListEntry>;
 };
 
+export type ProfileScalarErrors = Readonly<
+  Partial<Record<"id" | "label" | "githubHost" | "ghAccount", string>>
+>;
+
+type MutableProfileScalarErrors = {
+  -readonly [Field in keyof ProfileScalarErrors]?: string;
+};
+
 export type ProfileListEntry = {
   readonly id: string;
   readonly value: string;
@@ -30,6 +43,7 @@ type WorkspaceProfileDraftHook = {
   readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
   readonly creatingProfile: boolean;
   readonly profileError: string | undefined;
+  readonly profileScalarErrors: ProfileScalarErrors;
   readonly savingProfile: boolean;
   readonly profileDirty: boolean;
   readonly saveProfile: () => Promise<boolean>;
@@ -85,6 +99,10 @@ export function useWorkspaceProfileDraft({
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string>();
   const [savingProfile, setSavingProfile] = useState(false);
+  const [
+    profileScalarValidationAttempted,
+    setProfileScalarValidationAttempted,
+  ] = useState(false);
   const profileDraftRef = useLatestCommitted(profileDraft);
   const profileBaseline = useRef(profileDraft);
   const pendingSavedProfile = useRef<
@@ -103,6 +121,9 @@ export function useWorkspaceProfileDraft({
     },
     [onProfileDirtyChange],
   );
+  const profileScalarErrors = profileScalarValidationAttempted
+    ? validateProfileScalars(profileDraft)
+    : EMPTY_PROFILE_SCALAR_ERRORS;
   const profileDirty =
     creatingProfile ||
     JSON.stringify(profileDraft) !== JSON.stringify(profileBaseline.current);
@@ -135,6 +156,11 @@ export function useWorkspaceProfileDraft({
 
     const save = async (): Promise<boolean> => {
       setProfileError(undefined);
+      const scalarErrors = validateProfileScalars(profileDraft);
+      if (Object.keys(scalarErrors).length > 0) {
+        setProfileScalarValidationAttempted(true);
+        return false;
+      }
       const normalized = normalizeProfileDraft(profileDraft);
       if (!normalized.ok) {
         setProfileError(normalized.error);
@@ -170,6 +196,7 @@ export function useWorkspaceProfileDraft({
           profileBaseline.current = next;
           setProfileDraft(next);
           setCreatingProfile(false);
+          setProfileScalarValidationAttempted(false);
           onProfileDirtyChange?.(false);
         } else if (
           savingNewProfile &&
@@ -215,6 +242,7 @@ export function useWorkspaceProfileDraft({
     setProfileDraft(baseline);
     setCreatingProfile(false);
     setProfileError(undefined);
+    setProfileScalarValidationAttempted(false);
     onProfileDirtyChange?.(false);
   };
 
@@ -227,6 +255,7 @@ export function useWorkspaceProfileDraft({
     if (selected === undefined || onProfileSwitch === undefined) return;
     const draftGeneration = profileDraftGeneration.current;
     const next = profileDraftFor(selected);
+    setProfileScalarValidationAttempted(false);
     const result = await onProfileSwitch(id);
     if (result !== "applied") return;
     setCreatingProfile(false);
@@ -288,6 +317,7 @@ export function useWorkspaceProfileDraft({
   const beginNewProfile = (): void => {
     setCreatingProfile(true);
     setProfileError(undefined);
+    setProfileScalarValidationAttempted(false);
     const next = profileDraftFor(undefined);
     profileBaseline.current = next;
     updateProfileDraft(next);
@@ -306,6 +336,7 @@ export function useWorkspaceProfileDraft({
     updateProfileDraft,
     creatingProfile,
     profileError,
+    profileScalarErrors,
     savingProfile,
     profileDirty,
     saveProfile,
@@ -346,6 +377,8 @@ function profileDraftFor(profile: Profile | undefined): ProfileDraft {
   };
 }
 
+const EMPTY_PROFILE_SCALAR_ERRORS: ProfileScalarErrors = {};
+
 type NormalizedProfile = {
   readonly id: string;
   readonly label: string;
@@ -372,6 +405,25 @@ function profileDraftFromNormalized(profile: NormalizedProfile): ProfileDraft {
     ownerFilters: profileListEntries(profile.ownerFilters),
     rulePaths: profileListEntries(profile.rulePaths),
   };
+}
+
+function validateProfileScalars(draft: ProfileDraft) {
+  const id = draft.id.trim();
+  const label = draft.label.trim();
+  const githubHost = draft.githubHost.trim();
+  const ghAccount = draft.ghAccount.trim();
+  const errors: MutableProfileScalarErrors = {};
+  if (parseWorkspaceProfileId(id)._tag !== "ok")
+    errors.id =
+      "Profile ID must start with a letter or number and then use only letters, numbers, dots, underscores, or hyphens.";
+  if (label === "") errors.label = "Label cannot be blank.";
+  if (parseGitHubHost(githubHost)._tag !== "ok")
+    errors.githubHost =
+      "GitHub host must be a hostname without a scheme or path.";
+  if (parseGitHubLogin(ghAccount)._tag !== "ok")
+    errors.ghAccount =
+      "GitHub account must be a valid login of at most 39 characters.";
+  return errors;
 }
 
 function normalizeProfileDraft(draft: ProfileDraft): NormalizeProfileResult {
