@@ -15,6 +15,7 @@ import { execFile, spawn } from "node:child_process";
 import { chromium } from "playwright";
 
 import { validatePackagedFontRuntime } from "./font-package-validation.mjs";
+import { validatePackageSizes } from "./package-size-validation.mjs";
 
 import { packageSmokeEnvironment } from "./smoke-env.mjs";
 
@@ -76,16 +77,37 @@ await validateCodeSignature(bundle);
 // Both handoff downloads sit directly in `release/`, beside the unpacked app
 // this smoke reads: the disk image people install from and the zip.
 const releaseFiles = await readdir(releaseRoot);
-for (const extension of [".dmg", ".zip"]) {
-  if (
-    !releaseFiles.some(
-      (name) => name.endsWith(extension) && name.includes(version),
+const dmgNames = releaseFiles.filter(
+  (name) => name.endsWith(".dmg") && name.includes(version),
+);
+const zipNames = releaseFiles.filter(
+  (name) => name.endsWith(".zip") && name.includes(version),
+);
+if (dmgNames.length !== 1)
+  throw new Error(
+    `release/ must hold exactly one .dmg for version ${version}, found ${dmgNames.length}: ${releaseFiles.join(", ")}`,
+  );
+if (zipNames.length !== 1)
+  throw new Error(
+    `release/ must hold exactly one .zip for version ${version}, found ${zipNames.length}: ${releaseFiles.join(", ")}`,
+  );
+const dmgName = dmgNames[0];
+const zipName = zipNames[0];
+if (dmgName === undefined || zipName === undefined)
+  throw new Error("Package artifact discovery failed closed.");
+const packageSizes = await validatePackageSizes({
+  bundle,
+  dmg: join(releaseRoot, dmgName),
+  zip: join(releaseRoot, zipName),
+});
+console.log(
+  `Package sizes: ${packageSizes
+    .map(
+      ({ name, measuredMiB, limitMiB }) =>
+        `${name} ${measuredMiB.toFixed(2)}/${limitMiB.toFixed(2)} MiB`,
     )
-  )
-    throw new Error(
-      `release/ holds no ${extension} for version ${version}: ${releaseFiles.join(", ")}`,
-    );
-}
+    .join(", ")}`,
+);
 
 const home = await mkdtemp(join(tmpdir(), "patchdesk-package-smoke-"));
 let smoke;
