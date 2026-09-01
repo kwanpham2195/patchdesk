@@ -7,12 +7,7 @@ import {
   type BriefError,
   type NormalizedBrief,
 } from "./brief";
-import type {
-  BriefFlow,
-  BriefFlowChange,
-  BriefFlowNode,
-  BriefFlowTree,
-} from "./brief-flow";
+import type { BriefFlow, BriefFlowNode, BriefFlowTree } from "./brief-flow";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
 import type { BriefStartHere } from "./brief-start-here";
@@ -69,27 +64,33 @@ const storedStartHereSchema = v.strictObject({
     v.minLength(1),
   ),
 });
-/** One stored Flow node, recursive at `children` the way `StoredFlowNode` is below. */
-type StoredFlowNode = {
-  readonly label: string;
-  readonly change: BriefFlowChange;
-  readonly citations: ReadonlyArray<StoredBriefCitation>;
-  readonly children: ReadonlyArray<StoredFlowNode>;
-};
-
 /**
- * One stored Flow node's schema. Recursive via `v.lazy` at `children`, the
- * same way `briefFlowNodeOutputSchema` in `brief-flow.ts` refers to itself.
+ * Builds one level of the stored Flow node schema, the same way
+ * `flowNodeSchema` in `brief-flow.ts` does: `childSchema` validates one level
+ * deeper, and passing `v.never()` at the deepest level forces `children` to
+ * be empty there, bounding the schema to three levels without a `v.lazy`
+ * self-reference.
  */
-const storedFlowNodeSchema: v.GenericSchema<StoredFlowNode> = v.strictObject({
-  label: v.pipe(v.string(), v.minLength(1)),
-  change: v.picklist(["added", "removed", "unchanged"]),
-  citations: v.array(storedCitationSchema),
-  children: v.array(v.lazy(() => storedFlowNodeSchema)),
-});
+function storedFlowNodeSchema<ChildSchema extends v.GenericSchema>(
+  childSchema: ChildSchema,
+) {
+  return v.strictObject({
+    label: v.pipe(v.string(), v.minLength(1)),
+    change: v.picklist(["added", "removed", "unchanged"]),
+    citations: v.array(storedCitationSchema),
+    children: v.array(childSchema),
+  });
+}
+
+/** Depth 3, the deepest level: its `children` can only be empty. */
+const storedFlowLeafSchema = storedFlowNodeSchema(v.never());
+/** Depth 2: its `children` are depth-3 leaves. */
+const storedFlowMidSchema = storedFlowNodeSchema(storedFlowLeafSchema);
+/** Depth 1, a tree's own root nodes: their `children` are depth-2 nodes. */
+const storedFlowRootSchema = storedFlowNodeSchema(storedFlowMidSchema);
 const storedFlowTreeSchema = v.strictObject({
   title: v.pipe(v.string(), v.minLength(1)),
-  nodes: v.array(storedFlowNodeSchema),
+  nodes: v.array(storedFlowRootSchema),
 });
 const storedFlowSchema = v.strictObject({
   trees: v.pipe(v.array(storedFlowTreeSchema), v.minLength(1)),
@@ -329,7 +330,7 @@ function storedFlowTree(
 
 /** Rebuilds one Flow node from storage; `undefined` means a citation path no longer parses. */
 function storedFlowNode(
-  stored: v.InferOutput<typeof storedFlowNodeSchema>,
+  stored: v.InferOutput<typeof storedFlowRootSchema>,
 ): BriefFlowNode | undefined {
   const citations = parseStoredCitations(stored.citations);
   if (citations === undefined) return undefined;

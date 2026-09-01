@@ -5,6 +5,7 @@ import {
   normalizeBrief,
   renderBriefManifest,
   MAX_CITED_HUNKS_TOTAL_LENGTH,
+  type BriefError,
   type BriefOutput,
   type BriefSnapshot,
   type NormalizedBrief,
@@ -571,6 +572,74 @@ describe("normalizeBrief flow", () => {
     expect(
       parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
     ).toEqual({ _tag: "ok", value: normalized.value });
+  });
+
+  it("rejects nothing and stays verified for three fully cited trees, even past the two-tree cap", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: GOAL,
+        assumptions: [],
+        flow: [
+          {
+            title: "Tree A",
+            nodes: [{ label: "change A", change: "added", citations: ["h1"] }],
+          },
+          {
+            title: "Tree B",
+            nodes: [{ label: "change B", change: "added", citations: ["h2"] }],
+          },
+          {
+            title: "Tree C",
+            nodes: [
+              { label: "change C", change: "removed", citations: ["h1"] },
+            ],
+          },
+        ],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    // Only the first two survive `MAX_FLOW_TREES`, but that cap is silent --
+    // rejected still counts citation failures only, and there are none here.
+    expect(normalized.value.flow?.trees.map((tree) => tree.title)).toEqual([
+      "Tree A",
+      "Tree B",
+    ]);
+    expect(normalized.value.citationStatus).toBe("verified");
+  });
+
+  it("does not throw when flow proposes 2000 levels of nesting, and rejects the whole Brief as malformed", () => {
+    type DeepRawNode = {
+      label: string;
+      change: "unchanged";
+      children?: [DeepRawNode];
+    };
+    let node: DeepRawNode = { label: "bottom", change: "unchanged" };
+    for (let index = 0; index < 2000; index += 1)
+      node = {
+        label: `n${String(index)}`,
+        change: "unchanged",
+        children: [node],
+      };
+    let normalized: Result<NormalizedBrief, BriefError> | undefined;
+    expect(() => {
+      normalized = normalizeBrief(
+        {
+          goal: GOAL,
+          assumptions: [],
+          flow: [{ title: "Deep chain", nodes: [node] }],
+        },
+        MANIFEST,
+        PATCH,
+        SNAPSHOT,
+      );
+    }).not.toThrow();
+    expect(normalized).toEqual({
+      _tag: "err",
+      error: { _tag: "InvalidBrief", reason: "malformed" },
+    });
   });
 });
 

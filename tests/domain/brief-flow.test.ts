@@ -1,7 +1,9 @@
+import * as v from "valibot";
 import { describe, expect, it } from "vitest";
 
 import type { BriefCitation } from "../../src/domain/brief";
 import {
+  briefFlowOutputSchema,
   normalizeBriefFlow,
   type BriefFlowOutput,
 } from "../../src/domain/brief-flow";
@@ -192,7 +194,7 @@ describe("normalizeBriefFlow", () => {
     ];
     const result = normalize(raw);
     expect(result.value).toBeUndefined();
-    expect(result.rejected).toBe(1);
+    expect(result.rejected).toBe(0);
   });
 
   it("keeps only the first two of three surviving trees, in input order", () => {
@@ -215,11 +217,11 @@ describe("normalizeBriefFlow", () => {
       "Tree A",
       "Tree B",
     ]);
-    expect(result.rejected).toBe(1);
+    expect(result.rejected).toBe(0);
   });
 
-  it("drops a node past the 3-level depth cap", () => {
-    const raw: BriefFlowOutput = [
+  it("rejects a proposal nested 4 deep at the schema level, whole and unparsed", () => {
+    const tooDeep = [
       {
         title: "Depth test",
         nodes: [
@@ -246,14 +248,31 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
-    expect(result.rejected).toBe(1);
-    const l3 = result.value?.trees[0]?.nodes[0]?.children[0]?.children[0];
-    expect(l3?.label).toBe("L3");
-    expect(l3?.children).toEqual([]);
+    expect(v.safeParse(briefFlowOutputSchema, tooDeep).success).toBe(false);
   });
 
-  it("drops nodes past the 15-node-per-tree cap", () => {
+  it("does not throw when a proposal chains 2000 levels deep", () => {
+    type DeepRawNode = {
+      label: string;
+      change: "unchanged";
+      children?: [DeepRawNode];
+    };
+    let node: DeepRawNode = { label: "bottom", change: "unchanged" };
+    for (let index = 0; index < 2000; index += 1)
+      node = {
+        label: `n${String(index)}`,
+        change: "unchanged",
+        children: [node],
+      };
+    const tooDeep = [{ title: "Deep chain", nodes: [node] }];
+    let result: v.SafeParseResult<typeof briefFlowOutputSchema> | undefined;
+    expect(() => {
+      result = v.safeParse(briefFlowOutputSchema, tooDeep);
+    }).not.toThrow();
+    expect(result?.success).toBe(false);
+  });
+
+  it("drops nodes past the 15-node-per-tree cap, and does not count them rejected", () => {
     const nodes = Array.from({ length: 20 }, (_, index) => {
       const label = `Step ${String(index + 1)}`;
       if (index === 0)
@@ -263,10 +282,10 @@ describe("normalizeBriefFlow", () => {
     const raw: BriefFlowOutput = [{ title: "Too many steps", nodes }];
     const result = normalize(raw);
     expect(result.value?.trees[0]?.nodes).toHaveLength(15);
-    expect(result.rejected).toBe(5);
+    expect(result.rejected).toBe(0);
   });
 
-  it("drops a label longer than 80 characters", () => {
+  it("truncates a label longer than 80 characters instead of dropping it", () => {
     const raw: BriefFlowOutput = [
       {
         title: "Long label",
@@ -277,9 +296,27 @@ describe("normalizeBriefFlow", () => {
       },
     ];
     const result = normalize(raw);
-    expect(result.rejected).toBe(1);
+    expect(result.rejected).toBe(0);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "keep this step",
+      "x".repeat(80),
+    ]);
+  });
+
+  it("drops a node whose label is only whitespace, and does not count it rejected", () => {
+    const raw: BriefFlowOutput = [
+      {
+        title: "Blank label",
+        nodes: [
+          { label: "valid change", change: "added", citations: ["h1"] },
+          { label: "   ", change: "unchanged" },
+        ],
+      },
+    ];
+    const result = normalize(raw);
+    expect(result.rejected).toBe(0);
+    expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
+      "valid change",
     ]);
   });
 

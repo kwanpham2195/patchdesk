@@ -118,21 +118,50 @@ type BriefFlowNodeEntry = {
   readonly children: ReadonlyArray<BriefFlowNodeEntry>;
 };
 
-const briefFlowNodeSchema: v.GenericSchema<BriefFlowNodeEntry> = v.strictObject(
-  {
+/**
+ * Builds one level of the Flow node schema, the same way the main process
+ * bounds it (`flowNodeSchema` in `src/domain/brief-flow.ts`): `childSchema`
+ * validates the nodes one level deeper, and `v.never()` at the deepest level
+ * forces `children` to be empty there. `safeParse` against the concrete
+ * `briefFlowNodeSchema` built below is bounded to three levels at runtime,
+ * with no `v.lazy` self-reference and no cycle a JSON-schema conversion
+ * would need `$ref`/`$defs` for.
+ */
+function flowNodeSchema<ChildSchema extends v.GenericSchema>(
+  childSchema: ChildSchema,
+) {
+  return v.strictObject({
     label: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
     change: v.picklist(["added", "removed", "unchanged"]),
     citations: v.array(briefCitationSchema),
-    children: v.array(v.lazy(() => briefFlowNodeSchema)),
-  },
-);
+    children: v.array(childSchema),
+  });
+}
+
+/** Depth 3, the deepest level: its `children` can only be empty. */
+const briefFlowLeafSchema = flowNodeSchema(v.never());
+/** Depth 2: its `children` are depth-3 leaves. */
+const briefFlowMidSchema = flowNodeSchema(briefFlowLeafSchema);
+/**
+ * Depth 1, a tree's own root nodes: their `children` are depth-2 nodes.
+ * Annotated with the hand-written recursive `BriefFlowNodeEntry`, the same
+ * way the previous `v.lazy` schema needed to be, so `BriefFlowNode` still
+ * types as an ordinary recursive tree for every consumer -- the renderer,
+ * `brief-flow-text.ts`, and their tests -- even though this schema's own
+ * runtime validation is bounded to three concrete levels.
+ */
+const briefFlowNodeSchema: v.GenericSchema<BriefFlowNodeEntry> =
+  flowNodeSchema(briefFlowMidSchema);
 
 const briefFlowSchema = v.strictObject({
-  trees: v.array(
-    v.strictObject({
-      title: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
-      nodes: v.array(briefFlowNodeSchema),
-    }),
+  trees: v.pipe(
+    v.array(
+      v.strictObject({
+        title: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
+        nodes: v.array(briefFlowNodeSchema),
+      }),
+    ),
+    v.minLength(1),
   ),
 });
 

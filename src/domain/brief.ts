@@ -1,6 +1,12 @@
 import * as v from "valibot";
 
 import {
+  BRIEF_ALIAS_SYNTAX,
+  type BriefCitation,
+  type BriefManifest,
+} from "./brief-citation";
+import { resolveBriefCitations } from "./brief-citation-resolution";
+import {
   briefFlowOutputSchema,
   flowCitations,
   normalizeBriefFlow,
@@ -18,7 +24,6 @@ import {
   type BriefStartHere,
 } from "./brief-start-here";
 import { definedProps } from "./defined-props";
-import type { RepoRelativePath } from "./ids";
 import {
   filterNarrativePatchToHunks,
   narrativeHunkManifest,
@@ -49,24 +54,21 @@ export type BriefEvidence = {
   readonly commits: ReadonlyArray<BriefCommit>;
 };
 
-/** Which kind of evidence one Brief alias resolves to. */
-type BriefCitationKind = "hunk" | "description" | "commit";
+/**
+ * `BriefCitation`, `BriefManifest`, and `BRIEF_ALIAS_SYNTAX` live in
+ * `brief-citation.ts` -- a leaf module `brief-flow.ts` can import from
+ * directly, which is what keeps this file and `brief-flow.ts` from forming
+ * an import cycle. Re-exported here so an existing importer of them from
+ * `./brief` needs no change.
+ */
+export { BRIEF_ALIAS_SYNTAX, type BriefCitation, type BriefManifest };
 
 /**
- * One resolvable alias offered to the Brief model and, once resolved, one
- * citation carried on a Brief sentence. The alias namespace is prefixed --
- * `h*` hunks, `d*` description paragraphs, `c*` commits -- so a citation names
- * its evidence kind before anything looks it up.
+ * `resolveBriefCitations` lives in `brief-citation-resolution.ts` for the
+ * same cycle-breaking reason. Re-exported here so an existing importer of it
+ * from `./brief` needs no change.
  */
-export type BriefCitation = {
-  readonly alias: string;
-  readonly kind: BriefCitationKind;
-  readonly label: string;
-  readonly path?: RepoRelativePath;
-};
-
-/** The immutable alias-to-source manifest supplied to the Brief model. */
-export type BriefManifest = ReadonlyArray<BriefCitation>;
+export { resolveBriefCitations };
 
 /**
  * Where the pull request description and the diff disagree.
@@ -159,8 +161,6 @@ const MAX_REACH_SYMBOL_LENGTH = 200;
 const MAX_DESCRIPTION_PARAGRAPHS = 40;
 const MAX_COMMIT_CITATIONS = 100;
 const MAX_LABEL_LENGTH = 200;
-/** `h*` hunks, `d*` description paragraphs, `c*` commits; anything else is not an alias. */
-export const BRIEF_ALIAS_SYNTAX = /^[hdc][1-9]\d*$/;
 /** A hunk larger than this is not something a popover can show; the chip then has no preview. */
 export const MAX_CITED_HUNK_RAW_LENGTH = 16_000;
 /**
@@ -433,44 +433,11 @@ export function normalizeBrief(
   });
 }
 
-/** The aliases one item resolved to, and how many of them named nothing. */
-type ResolvedBriefCitations = {
-  readonly citations: ReadonlyArray<BriefCitation>;
-  readonly rejected: number;
-};
-
 /** The drift block that survived normalization, and what it cost in citations. */
 type NormalizedDescriptionDrift = {
   readonly value: BriefDescriptionDrift | undefined;
   readonly rejected: number;
 };
-
-/**
- * Resolves a list of citation aliases against one manifest, dropping an
- * alias that names nothing and a repeat of one already used. Exported so
- * `normalizeBriefFlow` (`brief-flow.ts`) can apply the same alias-resolution
- * rule before narrowing further to hunk-only citations.
- */
-export function resolveBriefCitations(
-  aliases: ReadonlyArray<string>,
-  byAlias: ReadonlyMap<string, BriefCitation>,
-): ResolvedBriefCitations {
-  const citations: Array<BriefCitation> = [];
-  const seen = new Set<string>();
-  let rejected = 0;
-  for (const alias of aliases) {
-    const entry = BRIEF_ALIAS_SYNTAX.test(alias)
-      ? byAlias.get(alias)
-      : undefined;
-    if (entry === undefined || seen.has(alias)) {
-      rejected += 1;
-      continue;
-    }
-    seen.add(alias);
-    citations.push(entry);
-  }
-  return { citations, rejected };
-}
 
 /**
  * Keeps only the drift items whose citations resolve to the evidence kind the
