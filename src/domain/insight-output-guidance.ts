@@ -44,11 +44,7 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
 
   return [
     SIMPLIFIED_TECHNICAL_ENGLISH,
-    "Write a Brief: what this change is for, in 2 to 4 sentences, ordered from coarse to granular. State the goal first.",
-    "Cite every sentence. Each sentence carries one or more aliases from the supplied citation manifest, and a sentence you cannot cite is written as an assumption instead.",
-    "Check each claim in the description against the patch. In descriptionDrift.claimed, list a claim about behavior -- what the code does, or no longer does -- that the patch does not support: quote the sentence, cite the description paragraph it comes from, and say in the note what you looked for in the patch.",
-    'Do not put a claim about a build, a test run, a benchmark, lint, CI, a screenshot, or a manual check in descriptionDrift.claimed. A patch cannot carry a verification result, so a line such as "the test suite passes" is never drift.',
-    "In descriptionDrift.undescribed, list behavior that the patch changes and the description does not mention, and cite the hunks that show it. Do not add an entry you cannot cite.",
+    "Write a Brief: the structure of this change -- its flow, ownership, and where to start reading.",
     "In ownership.notes, give at most one short note for each changed file, keyed by its exact path from the patch. Say what the file is responsible for after the change; do not say what the code does.",
     "In ownership.contract, name the one hunk whose signature or type explains the rest of the patch: put its h alias in citation and write a one-line caption. Omit ownership.contract if no single hunk does that.",
     "In startHere.lead, write one sentence of reading advice: which file to read first, and why the rest follow from it.",
@@ -60,7 +56,7 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
     "Build each tree as nested steps, and mark each step added, removed, or unchanged.",
     "Give an added or removed step the h alias of the hunk that shows it when the patch shows it, and leave citations empty when it does not -- never omit a step for lack of a citation, and never cite a description or commit alias in flow. An unchanged step needs no citation.",
     "Keep each label within 120 characters. Keep each tree at most three levels deep and fifteen steps.",
-    "Never invent motivation, intent, trade-offs, or product impact. If the evidence does not state why the change was made, say so as an assumption.",
+    "Never invent motivation, intent, trade-offs, or product impact.",
     "Do not narrate the patch file by file and do not restate code that the diff already shows.",
     "Write no numbers and no counts in prose; a flow label copies the identifier from the patch as written, digits included. Patchdesk produces every count from a tool.",
   ].join(" ");

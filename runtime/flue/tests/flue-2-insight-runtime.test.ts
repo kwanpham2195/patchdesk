@@ -94,13 +94,19 @@ function walkthroughInvocation() {
 }
 
 const brief = {
-  goal: [
+  flow: [
     {
-      text: "The patch teaches the one-shot child a third insight type.",
-      citations: ["h1", "d1"],
+      kind: "call_tree",
+      title: "Runner",
+      nodes: [
+        {
+          label: "runPatchdeskChild(invocation, options)",
+          change: "added",
+          citations: ["h1"],
+        },
+      ],
     },
   ],
-  assumptions: ["The packaged runner is rebuilt with the child."],
   reachSymbols: ["runPatchdeskChild"],
 };
 const briefPatch = [
@@ -124,7 +130,6 @@ function briefInvocation() {
       patchPath: "/immutable/patch",
       model: "faux/test",
       reasoning: "low" as const,
-      evidence: { description: "Adds the Brief child.", commits: [] },
       prompt: "Write one Brief.",
     },
   };
@@ -172,10 +177,6 @@ function briefProductionInput(patchPath: string) {
     patchPath,
     model: "faux/test",
     reasoning: "low" as const,
-    evidence: {
-      description: "Adds the Brief child.\n\nKeeps the prompt server-built.",
-      commits: [{ sha: "0123456789abcdef", subject: "feat: add brief" }],
-    },
   };
 }
 
@@ -622,10 +623,12 @@ describe("Flue 2 one-shot insight runtime", () => {
       expect(briefTools).toEqual(["task", "submit_patchdesk_result"]);
       expect(systemPrompt).toContain("BRIEF CITATION MANIFEST");
       expect(systemPrompt).toContain("h1 | hunk | @@ -1,2 +1,3 @@");
-      expect(systemPrompt).toContain(
-        "d1 | description | Adds the Brief child.",
-      );
-      expect(systemPrompt).toContain("c1 | commit | 0123456 feat: add brief");
+      // ADR 0040: the manifest is hunks only now -- nothing cites a
+      // description or commit alias, so the prompt carries neither section.
+      expect(systemPrompt).not.toContain("PULL REQUEST DESCRIPTION");
+      expect(systemPrompt).not.toContain("COMMITS:");
+      expect(systemPrompt).not.toContain("d1 | description");
+      expect(systemPrompt).not.toContain("c1 | commit");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

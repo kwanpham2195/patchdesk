@@ -38,7 +38,6 @@ import {
 import { CommandRunner } from "../adapters/github/command-runner";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
-import { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
@@ -352,7 +351,6 @@ function createInsightCoordinator(
           patchPath: input.patchPath,
           model: input.model,
           reasoning: input.reasoning,
-          evidence: input.briefEvidence ?? { commits: [] },
         },
         options,
       );
@@ -369,7 +367,6 @@ function createInsightCoordinator(
     undefined,
     diagnostics,
     providerCatalog,
-    new ReviewRemoteStore(paths),
     briefReachComputer(
       paths,
       new CommandRunner(undefined, logUnclassifiedCommandFailure),

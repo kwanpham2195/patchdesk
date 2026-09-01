@@ -2,14 +2,10 @@ import type { GitSha } from "../domain/ids";
 
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
-import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
-import type { BriefEvidence } from "../domain/brief";
-import { definedProps } from "../domain/defined-props";
 import {
   parseContentHash,
   parseInsightRunId,
   parseIsoTimestamp,
-  type ContentHash,
   type FindingId,
   type InsightRunId,
   type IsoTimestamp,
@@ -58,12 +54,6 @@ export type InsightInvocationInput = {
   readonly reviewInputPath?: string;
   readonly patchPath: string;
   readonly worktreePath: string;
-  /**
-   * The pull request body and commits a Brief may cite. Present only for the
-   * `brief` type: no other Insight resolves a citation against them, and
-   * reading the represented remote snapshot costs a file read per run.
-   */
-  readonly briefEvidence?: BriefEvidence;
   readonly provider: InsightProvider;
   readonly model: string;
   readonly reasoning: InsightReasoning;
@@ -141,8 +131,6 @@ export class InsightRunCoordinator {
     private readonly now: () => IsoTimestamp = currentIsoTimestamp,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
     private readonly providerCatalog?: InsightProviderCatalog,
-    /** Only a Brief run reads it, for the commits its `c*` aliases name. */
-    private readonly remotes?: Pick<ReviewRemoteStore, "load">,
     /**
      * Counts a completed Brief's Reach block against the represented worktree.
      * Absent leaves the block off: every other Insight type ignores it.
@@ -287,17 +275,6 @@ export class InsightRunCoordinator {
       ),
       patchPath: session.value.patchPath,
       worktreePath: session.value.worktree.path,
-      ...definedProps({
-        briefEvidence:
-          input.type === "brief"
-            ? await this.briefEvidence(
-                input.profileId,
-                input.reviewId,
-                review.value.representedRemote?.snapshotHash,
-                session.value.prContext?.description,
-              )
-            : undefined,
-      }),
       provider,
       model,
       reasoning: input.reasoning,
@@ -310,40 +287,6 @@ export class InsightRunCoordinator {
       controller,
     );
     return ok({ runId: runId.value, type: input.type, status: "queued" });
-  }
-
-  /**
-   * Collects what a Brief may cite outside the patch. Missing evidence is not a
-   * failure: a Review with no stored remote snapshot still gets a Brief, built
-   * from the patch hunks alone, and `normalizeBrief` decides whether the
-   * citations that survived are enough.
-   */
-  private async briefEvidence(
-    profileId: WorkspaceProfileId,
-    reviewId: ReviewId,
-    snapshotHash: ContentHash | undefined,
-    description: string | undefined,
-  ): Promise<BriefEvidence> {
-    const remote =
-      this.remotes === undefined || snapshotHash === undefined
-        ? undefined
-        : await this.remotes.load({ profileId, reviewId, snapshotHash });
-    return {
-      ...definedProps({
-        description:
-          description ??
-          (remote?._tag === "ok"
-            ? remote.value.pullRequest.description
-            : undefined),
-      }),
-      commits:
-        remote?._tag === "ok"
-          ? remote.value.commits.map((commit) => ({
-              sha: commit.sha,
-              subject: commit.message.split("\n")[0] ?? "",
-            }))
-          : [],
-    };
   }
 
   async cancel(input: {

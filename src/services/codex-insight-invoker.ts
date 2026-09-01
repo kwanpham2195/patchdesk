@@ -146,7 +146,6 @@ export class CodexInsightInvoker implements InsightInvoker {
           profileId: input.profileId,
           sessionId: input.sessionId,
           patchPath: briefPatchPath,
-          evidence: input.briefEvidence ?? { commits: [] },
         });
       } catch {
         return err({ reason: "execution_failed" as const });

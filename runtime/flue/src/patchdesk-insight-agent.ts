@@ -67,31 +67,12 @@ export const walkthroughInvocationSchema = v.strictObject({
 
 export const briefResultSchema = briefOutputSchema;
 
-/**
- * The non-patch citation sources a Brief prompt is built from. They travel with
- * the invocation because they come from the represented GitHub snapshot, not
- * from an app-owned artifact the child can read for itself.
- */
-const briefEvidenceSchema = v.strictObject({
-  description: v.optional(v.pipe(v.string(), v.maxLength(256 * 1024))),
-  commits: v.pipe(
-    v.array(
-      v.strictObject({
-        sha: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
-        subject: v.pipe(v.string(), v.maxLength(1_000)),
-      }),
-    ),
-    v.maxLength(500),
-  ),
-});
-
 export const briefInvocationSchema = v.strictObject({
   profileId,
   sessionId,
   patchPath: boundedPath,
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
-  evidence: briefEvidenceSchema,
   prompt: v.pipe(v.string(), v.minLength(1), v.maxLength(4 * 1024 * 1024)),
 });
 
@@ -119,7 +100,7 @@ export const productionWalkthroughInvocationSchema = v.strictObject({
 
 /**
  * Production child Brief input likewise never accepts model prompt text: the
- * child builds the Brief prompt itself from the patch path and this evidence.
+ * child builds the Brief prompt itself from the patch path alone.
  */
 export const productionBriefInvocationSchema = v.strictObject({
   profileId,
@@ -127,7 +108,6 @@ export const productionBriefInvocationSchema = v.strictObject({
   patchPath: boundedPath,
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
-  evidence: briefEvidenceSchema,
 });
 
 export type AnalysisInvocation = v.InferOutput<typeof analysisInvocationSchema>;
@@ -377,7 +357,7 @@ export function createWalkthroughAgent(
 
 /**
  * Creates an invocation-scoped Brief agent with only result submission. A Brief
- * cites the evidence its prompt already carries, so it mounts no inspector: the
+ * cites the patch its prompt already carries, so it mounts no inspector: the
  * inspector can only see the changed-file snapshots the prompt is built from.
  */
 export function createBriefAgent(input: BriefInvocation): CreatedInsightAgent {

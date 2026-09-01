@@ -310,13 +310,7 @@ export async function runProductionChild(
     );
   }
   if (canonical.type === "brief") {
-    const prompt = await prepareBriefPrompt({
-      ...canonical.input,
-      evidence: {
-        ...definedProps({ description: canonical.input.evidence.description }),
-        commits: canonical.input.evidence.commits,
-      },
-    });
+    const prompt = await prepareBriefPrompt(canonical.input);
     return await runPatchdeskChild(
       { type: "brief", input: { ...canonical.input, prompt } },
       childOptions,
@@ -403,8 +397,8 @@ export function canonicalizeProductionInvocation(
     invocation.input.patchPath !== paths.patchFile(profile.value, session.value)
   )
     return undefined;
-  // A Brief is built from the patch and the invocation's own evidence, so it
-  // has no prepared context artifact to bind.
+  // A Brief is built from the patch alone, so it has no prepared context
+  // artifact to bind.
   if (invocation.type === "brief") return invocation;
   if (
     invocation.input.contextPath !==

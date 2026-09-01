@@ -79,8 +79,6 @@ async function fixture(
       baseSha,
     },
     pr: { headSha, baseSha, isDraft: false, isOpen: true },
-    // The Brief's `d*` aliases are description paragraphs, so a session
-    // without a body has nothing outside the patch for a Brief to cite.
     prContext: {
       title: "Guard recovery",
       description: "Adds a guard to recovery.",
@@ -151,7 +149,6 @@ async function fixture(
     { analysis: invoker, walkthrough: invoker, brief: invoker },
     operations,
     () => now,
-    undefined,
     undefined,
     undefined,
     reach,
@@ -366,14 +363,20 @@ describe("InsightRunCoordinator current lifecycle", () => {
     const value = await fixture({
       async invoke() {
         return ok({
-          goal: [
+          flow: [
             {
-              text: "Recovery gains a guard.",
-              // `d1` is the session's own pull request description paragraph.
-              citations: ["d1"],
+              kind: "call_tree",
+              title: "Recovery",
+              nodes: [
+                {
+                  label: "guard the restart",
+                  change: "added",
+                  // `h1` is the patch's own single hunk.
+                  citations: ["h1"],
+                },
+              ],
             },
           ],
-          assumptions: [],
         });
       },
     });
@@ -401,18 +404,20 @@ describe("InsightRunCoordinator current lifecycle", () => {
         retained: {
           value: {
             citationStatus: "verified",
-            goal: [
-              {
-                text: "Recovery gains a guard.",
-                citations: [
-                  {
-                    alias: "d1",
-                    kind: "description",
-                    label: "Adds a guard to recovery.",
-                  },
-                ],
-              },
-            ],
+            flow: {
+              trees: [
+                {
+                  kind: "call_tree",
+                  nodes: [
+                    {
+                      label: "guard the restart",
+                      change: "added",
+                      citations: [{ alias: "h1", kind: "hunk" }],
+                    },
+                  ],
+                },
+              ],
+            },
           },
         },
       },
@@ -425,8 +430,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
       {
         async invoke() {
           return ok({
-            goal: [{ text: "Recovery gains a guard.", citations: ["d1"] }],
-            assumptions: [],
             reachSymbols: ["guard"],
           });
         },

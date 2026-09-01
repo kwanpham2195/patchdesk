@@ -10,7 +10,6 @@ import {
   type NormalizedBrief,
 } from "../domain/brief";
 import { candidateReachSymbols } from "../domain/brief-reach";
-import { definedProps } from "../domain/defined-props";
 import type { InsightRevision, InsightType } from "../domain/insight-record";
 import type { RawJsonValue } from "../domain/json";
 import {
@@ -97,11 +96,7 @@ export async function validateInsightResult(
   if (type === "brief") {
     const normalizedBrief = normalizeBrief(
       value,
-      briefManifest({
-        patch,
-        ...definedProps({ description: input.briefEvidence?.description }),
-        commits: input.briefEvidence?.commits ?? [],
-      }),
+      briefManifest({ patch }),
       patch,
       {
         profileId: input.profileId,
