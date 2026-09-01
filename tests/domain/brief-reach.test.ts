@@ -148,6 +148,43 @@ describe("surfacesCrossed", () => {
       { surface: "Network write path" },
     ]);
   });
+
+  it("lights Public API for a versioned Go package path", () => {
+    expect(surfacesCrossed(["pkg/model/crm/v1/route-planning.go"])[0]).toEqual({
+      surface: "Public API",
+      path: "pkg/model/crm/v1/route-planning.go",
+    });
+  });
+
+  it("lights Network write path for a Go adapter handler path", () => {
+    expect(
+      surfacesCrossed([
+        "internal/adapter/http-server/route-planning-hdl/generate-suggestion.go",
+      ])[4],
+    ).toEqual({
+      surface: "Network write path",
+      path: "internal/adapter/http-server/route-planning-hdl/generate-suggestion.go",
+    });
+  });
+
+  it("lights Stored data for a Go repository path", () => {
+    expect(
+      surfacesCrossed(["internal/core/route-planning-repo/update-plan.go"])[2],
+    ).toEqual({
+      surface: "Stored data",
+      path: "internal/core/route-planning-repo/update-plan.go",
+    });
+  });
+
+  it("stays unlit on every surface for a plain docs path", () => {
+    expect(surfacesCrossed(["docs/x.md"])).toEqual([
+      { surface: "Public API" },
+      { surface: "CLI" },
+      { surface: "Stored data" },
+      { surface: "Security boundary" },
+      { surface: "Network write path" },
+    ]);
+  });
 });
 
 describe("untestedReach", () => {
@@ -191,6 +228,59 @@ describe("untestedReach", () => {
       ]),
     ).toEqual([
       { path: "internal/repository/repository.go", reason: "no_test_in_pr" },
+    ]);
+  });
+
+  it("matches a Go production file to its test across a hyphen/underscore separator", () => {
+    expect(
+      untestedReach([
+        {
+          path: "internal/core/route-planning-repo/update-plan.go",
+          changedText:
+            "func insertMutationStops(stops []Stop) error { return nil }",
+        },
+        {
+          path: "internal/core/route-planning-repo/update_plan_test.go",
+          changedText:
+            "func TestInsertMutationStops(t *testing.T) { execCount := 1 }",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("clears a production file by a same-directory test named after something else", () => {
+    expect(
+      untestedReach([
+        {
+          path: "internal/adapter/http-server/route-planning-hdl/generate-suggestion.go",
+          changedText: "func GenerateSuggestion() {}",
+        },
+        {
+          path: "internal/adapter/http-server/route-planning-hdl/list_customers_test.go",
+          changedText:
+            "func TestListCustomersHandlerMapsStoreNotAllowedToForbidden(t *testing.T) {}",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("reports a production file with no test in its directory and no name match", () => {
+    expect(
+      untestedReach([
+        {
+          path: "internal/core/route-planning-repo/read-plans.go",
+          changedText: "func setCurrentFirstCustomer() {}",
+        },
+        {
+          path: "internal/adapter/http-server/route-planning-hdl/list_customers_test.go",
+          changedText: "func TestListCustomers(t *testing.T) {}",
+        },
+      ]),
+    ).toEqual([
+      {
+        path: "internal/core/route-planning-repo/read-plans.go",
+        reason: "no_test_in_pr",
+      },
     ]);
   });
 });

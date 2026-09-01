@@ -93,51 +93,169 @@ export type BriefReachUnavailableReason =
   | "search_failed"
   | "timed_out";
 
-/** The default surface rules, in the order the reader draws their chips. */
+/**
+ * One path convention a changed path may satisfy to light a surface. Every
+ * present field must hold for the condition to match (so `segments: ["pkg"]`
+ * plus `segmentPattern: /^v\d+$/` needs both a `pkg` segment and a version
+ * segment on the same path); a rule lights when any one of its conditions
+ * matches. `segments` and `segmentPattern` read a path's `/`-separated parts,
+ * `basenamePrefixes`/`basenameContains` read the file name alone, and
+ * `pathPattern`/`pathContains`/`extensions` read the whole path.
+ */
+type ReachSurfaceCondition = {
+  readonly pathPattern?: RegExp;
+  readonly extensions?: ReadonlyArray<string>;
+  readonly segments?: ReadonlyArray<string>;
+  readonly segmentPattern?: RegExp;
+  readonly basenamePrefixes?: ReadonlyArray<string>;
+  readonly basenameContains?: ReadonlyArray<string>;
+  readonly pathContains?: ReadonlyArray<string>;
+};
+
+/**
+ * The default surface rules, in the order the reader draws their chips. Each
+ * rule is a list of path conventions rather than inline boolean logic, so
+ * adding a language's convention is appending a value, not writing new code.
+ * The conventions below are best-effort path shapes seen across both a
+ * JavaScript/TypeScript repo (`adapters`, `migrations`, `.d.ts`) and a Go one
+ * (`internal/adapter`, a `-hdl` handler directory, `pkg/…/v1`); an unusual
+ * layout in either language can still miss. Every rule stays path-based --
+ * none of them read a hunk's added or removed text.
+ */
 const REACH_SURFACE_RULES: ReadonlyArray<{
   readonly surface: string;
-  readonly matches: (path: string) => boolean;
+  readonly conditions: ReadonlyArray<ReachSurfaceCondition>;
 }> = [
   {
     surface: "Public API",
-    matches: (path) =>
-      /^src\/index\.[^/]+$/.test(path) ||
-      path.endsWith(".d.ts") ||
-      hasSegment(path, "api") ||
-      basename(path).startsWith("openapi"),
+    conditions: [
+      { pathPattern: /^src\/index\.[^/]+$/ },
+      { extensions: [".d.ts"] },
+      { segments: ["api", "proto"] },
+      { basenamePrefixes: ["openapi"] },
+      // pkg/.../v1/... -- a versioned Go package, e.g. pkg/model/crm/v1/route-planning.go.
+      { segments: ["pkg"], segmentPattern: /^v\d+$/ },
+    ],
   },
   {
     surface: "CLI",
-    matches: (path) =>
-      hasSegment(path, "bin") ||
-      hasSegment(path, "cli") ||
-      hasSegment(path, "cmd"),
+    conditions: [{ segments: ["bin", "cli", "cmd"] }],
   },
   {
     surface: "Stored data",
-    matches: (path) =>
-      hasSegment(path, "migrations") ||
-      hasSegment(path, "prisma") ||
-      path.endsWith(".sql") ||
-      basename(path).startsWith("schema") ||
-      basename(path).includes("store"),
+    conditions: [
+      { segments: ["migrations", "migration", "prisma"] },
+      // .../<name>-repo/... or .../repository/... -- a Go or Java repository directory.
+      { pathContains: ["repo/", "repository"] },
+      { pathContains: ["store/"] },
+      { basenameContains: ["store"] },
+      { extensions: [".sql"] },
+      { basenamePrefixes: ["schema"] },
+    ],
   },
   {
     surface: "Security boundary",
-    matches: (path) =>
-      path.startsWith(".github/workflows/") ||
-      ["auth", "permission", "sandbox", "credential", "capability"].some(
-        (word) => path.includes(word),
-      ),
+    conditions: [
+      { pathPattern: /^\.github\/workflows\// },
+      {
+        pathContains: [
+          "auth",
+          "permission",
+          "sandbox",
+          "credential",
+          "capability",
+        ],
+      },
+    ],
   },
   {
     surface: "Network write path",
-    matches: (path) =>
-      hasSegment(path, "adapters") ||
-      basename(path).includes("client") ||
-      basename(path).includes("writer"),
+    conditions: [
+      { segments: ["adapters", "adapter", "grpc", "handler"] },
+      { pathContains: ["http-server"] },
+      // .../<name>-hdl/... -- this repo's handler directory convention.
+      { pathContains: ["-hdl"] },
+      { basenameContains: ["client", "writer", "handler"] },
+    ],
   },
 ];
+
+/** A regular-expression metacharacter escaped so a literal substring can be spliced into a pattern. */
+function escapeRegExpLiteral(text: string): string {
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** One pattern that matches when any of `needles` appears; `undefined` when there is nothing to match. */
+function containsAnyPattern(
+  needles: ReadonlyArray<string> | undefined,
+): RegExp | undefined {
+  return needles === undefined
+    ? undefined
+    : new RegExp(needles.map(escapeRegExpLiteral).join("|"));
+}
+
+/**
+ * `REACH_SURFACE_RULES`, with each condition's `basenameContains` and
+ * `pathContains` word lists compiled to one alternation pattern apiece, so
+ * matching a condition is a fixed number of single-pattern tests rather than
+ * a loop of substring lookups over a path already run through other loops.
+ */
+const COMPILED_REACH_SURFACE_RULES = REACH_SURFACE_RULES.map((rule) => ({
+  surface: rule.surface,
+  conditions: rule.conditions.map((condition) => ({
+    ...condition,
+    basenameContainsPattern: containsAnyPattern(condition.basenameContains),
+    pathContainsPattern: containsAnyPattern(condition.pathContains),
+  })),
+}));
+
+/** True when every field `condition` sets holds for `path`. */
+function matchesSurfaceCondition(
+  path: string,
+  segments: ReadonlyArray<string>,
+  segmentSet: ReadonlySet<string>,
+  name: string,
+  condition: (typeof COMPILED_REACH_SURFACE_RULES)[number]["conditions"][number],
+): boolean {
+  const {
+    pathPattern,
+    extensions,
+    segments: requiredSegments,
+    segmentPattern,
+    basenamePrefixes,
+    basenameContainsPattern,
+    pathContainsPattern,
+  } = condition;
+  if (pathPattern !== undefined && !pathPattern.test(path)) return false;
+  if (
+    extensions !== undefined &&
+    !extensions.some((extension) => path.endsWith(extension))
+  )
+    return false;
+  if (
+    requiredSegments !== undefined &&
+    !requiredSegments.some((segment) => segmentSet.has(segment))
+  )
+    return false;
+  if (
+    segmentPattern !== undefined &&
+    !segments.some((segment) => segmentPattern.test(segment))
+  )
+    return false;
+  if (
+    basenamePrefixes !== undefined &&
+    !basenamePrefixes.some((prefix) => name.startsWith(prefix))
+  )
+    return false;
+  if (
+    basenameContainsPattern !== undefined &&
+    !basenameContainsPattern.test(name)
+  )
+    return false;
+  if (pathContainsPattern !== undefined && !pathContainsPattern.test(path))
+    return false;
+  return true;
+}
 
 /**
  * The symbol names Patchdesk will count callers for.
@@ -188,8 +306,21 @@ export function surfacesCrossed(
   changedPaths: ReadonlyArray<string>,
 ): ReadonlyArray<BriefReachSurface> {
   const paths = changedPaths.map((path) => normalizeReachPath(path));
-  return REACH_SURFACE_RULES.map((rule) => {
-    const path = paths.find((candidate) => rule.matches(candidate));
+  return COMPILED_REACH_SURFACE_RULES.map((rule) => {
+    const path = paths.find((candidate) => {
+      const segments = candidate.split("/");
+      const segmentSet = new Set(segments);
+      const name = basename(candidate);
+      return rule.conditions.some((condition) =>
+        matchesSurfaceCondition(
+          candidate,
+          segments,
+          segmentSet,
+          name,
+          condition,
+        ),
+      );
+    });
     return path === undefined
       ? { surface: rule.surface }
       : { surface: rule.surface, path };
@@ -197,16 +328,33 @@ export function surfacesCrossed(
 }
 
 /**
- * Changed files no changed test mentions. "Mentions" is a substring test over
- * every changed test file's path and its own changed lines, so a test that
- * imports `label-service` or names it in a describe block counts as covering
- * it. Generated files and the tests themselves are never reported.
+ * Changed files no changed test covers, by three rules, each tried before the
+ * next: (a) name -- a changed test file's stem, with case, `-`, `_`, and `.`
+ * folded out, equals the production file's folded stem or that stem plus
+ * `test`/`spec`, so `update-plan.go` reads as tested by a changed
+ * `update_plan_test.go` even though the two spell the same name with a
+ * different separator; (b) directory -- a changed test file sits in the
+ * production file's own directory (Go's same-package `_test.go` siblings) or
+ * in a `__tests__` folder directly under it, which is what marks
+ * `generate-suggestion.go` tested by an unrelated `list_customers_test.go`
+ * sitting beside it; (c) mention -- the same folded text falls somewhere in a
+ * changed test file's path or its own changed lines, so a test that imports
+ * `label-service` or names it in a describe block still counts. What counts
+ * as a "test file" is `classifyChangedPath`'s `tests` bucket (js/ts `.test.`,
+ * Go/Rust/C `_test.*`, Python, JVM, Ruby, Elixir conventions, and test
+ * directories). Generated files and the tests themselves are never reported.
  */
 export function untestedReach(
   files: ReadonlyArray<BriefReachFile>,
 ): ReadonlyArray<BriefReachUntested> {
-  const testText: Array<string> = [];
-  const candidates: Array<string> = [];
+  type ReachTestFile = { readonly stem: string; readonly dir: string };
+  const testFiles: Array<ReachTestFile> = [];
+  const candidates: Array<{
+    readonly path: string;
+    readonly stem: string;
+    readonly dir: string;
+  }> = [];
+  const haystackParts: Array<string> = [];
   for (const file of files) {
     const bucket = classifyChangedPath({
       path: file.path,
@@ -214,19 +362,73 @@ export function untestedReach(
       deletions: 0,
     });
     if (bucket === "tests") {
-      testText.push(file.path, file.changedText);
+      testFiles.push({
+        stem: normalizeReachIdentifier(pathStem(file.path)),
+        dir: testDirForMatch(file.path),
+      });
+      haystackParts.push(
+        normalizeReachIdentifier(file.path),
+        normalizeReachIdentifier(file.changedText),
+      );
       continue;
     }
-    if (bucket !== "generated") candidates.push(file.path);
+    if (bucket !== "generated")
+      candidates.push({
+        path: file.path,
+        stem: normalizeReachIdentifier(pathStem(file.path)),
+        dir: dirname(normalizeReachPath(file.path)),
+      });
   }
-  const haystack = testText.join("\n");
+  const testDirs = new Set(testFiles.map((test) => test.dir));
+  const haystack = haystackParts.join("\n");
   const untested: Array<BriefReachUntested> = [];
-  for (const path of candidates) {
-    const stem = pathStem(path);
-    if (stem !== "" && haystack.includes(stem)) continue;
-    untested.push({ path, reason: "no_test_in_pr" });
+  for (const candidate of candidates) {
+    if (
+      candidate.stem !== "" &&
+      testFiles.some((test) => isNameMatch(candidate.stem, test.stem))
+    )
+      continue;
+    if (testDirs.has(candidate.dir)) continue;
+    if (candidate.stem !== "" && haystack.includes(candidate.stem)) continue;
+    untested.push({ path: candidate.path, reason: "no_test_in_pr" });
   }
   return untested;
+}
+
+/** True when a test file's folded stem names the production file's folded stem, with or without a trailing `test`/`spec`. */
+function isNameMatch(productionStem: string, testStem: string): boolean {
+  return (
+    testStem === productionStem ||
+    testStem === `${productionStem}test` ||
+    testStem === `${productionStem}spec`
+  );
+}
+
+/** Lower-cased with `-`, `_`, and `.` removed, so `update-plan` and `update_plan` compare equal. */
+function normalizeReachIdentifier(text: string): string {
+  return text.toLowerCase().replaceAll(/[-_.]/g, "");
+}
+
+/**
+ * The directory a test file's "same directory" match compares against,
+ * collapsing a `__tests__` sibling folder onto its parent so
+ * `src/foo/__tests__/bar.test.ts` reads as the same directory as `src/foo`.
+ */
+function testDirForMatch(path: string): string {
+  const dir = dirname(normalizeReachPath(path));
+  const cut = dir.lastIndexOf("/");
+  const lastSegment = cut === -1 ? dir : dir.slice(cut + 1);
+  return lastSegment === "__tests__"
+    ? cut === -1
+      ? ""
+      : dir.slice(0, cut)
+    : dir;
+}
+
+/** A normalized path's directory, or `""` when the path carries no directory. */
+function dirname(path: string): string {
+  const cut = path.lastIndexOf("/");
+  return cut === -1 ? "" : path.slice(0, cut);
 }
 
 /** One changed file per `diff --git` section, with the lines the patch changed in it. */
@@ -332,11 +534,6 @@ function normalizeReachPath(path: string): string {
 
 function basename(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
-}
-
-/** True when one of the path's directory segments, or its file name, is `segment`. */
-function hasSegment(path: string, segment: string): boolean {
-  return path.split("/").includes(segment);
 }
 
 /** The file name without its extension: what a test file would mention it by. */
