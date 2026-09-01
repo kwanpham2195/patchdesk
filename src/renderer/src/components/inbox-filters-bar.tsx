@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
 
+/** Pull-request state, ownership, label, review, and check filter controls. */
 export function InboxFiltersBar({
   state,
   onStateChange,
@@ -36,7 +37,7 @@ export function InboxFiltersBar({
   onReviewStateChange,
   checkStatus,
   onCheckStatusChange,
-  onClearAllFilters,
+  onClearInboxReviewAndCheckFilters,
   rowCount,
   matchCount,
   listPending,
@@ -56,7 +57,7 @@ export function InboxFiltersBar({
   readonly onCheckStatusChange: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly onClearAllFilters: () => void;
+  readonly onClearInboxReviewAndCheckFilters: () => void;
   readonly rowCount: number;
   readonly matchCount?: number;
   readonly listPending: boolean;
@@ -118,7 +119,7 @@ export function InboxFiltersBar({
         onReviewStateChange={onReviewStateChange}
         {...(checkStatus === undefined ? {} : { checkStatus })}
         onCheckStatusChange={onCheckStatusChange}
-        onClearAllFilters={onClearAllFilters}
+        onClearInboxReviewAndCheckFilters={onClearInboxReviewAndCheckFilters}
       />
       <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
         {listPending
@@ -166,7 +167,7 @@ function MoreFiltersPopover({
   onReviewStateChange,
   checkStatus,
   onCheckStatusChange,
-  onClearAllFilters,
+  onClearInboxReviewAndCheckFilters,
 }: {
   readonly reviewState?: InboxReviewStateFilter;
   readonly onReviewStateChange: (
@@ -176,7 +177,7 @@ function MoreFiltersPopover({
   readonly onCheckStatusChange: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly onClearAllFilters: () => void;
+  readonly onClearInboxReviewAndCheckFilters: () => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const activeCount =
@@ -279,7 +280,7 @@ function MoreFiltersPopover({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={onClearAllFilters}
+              onClick={onClearInboxReviewAndCheckFilters}
             >
               Clear all filters
             </Button>

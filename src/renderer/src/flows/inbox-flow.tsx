@@ -72,7 +72,7 @@ export function InboxFlow({
   onInboxReviewStateChange = () => undefined,
   checkStatus,
   onInboxCheckStatusChange = () => undefined,
-  onClearInboxReviewFilters = () => undefined,
+  onClearInboxReviewAndCheckFilters = () => undefined,
   selectedRepository,
   onRepositoryChange = () => undefined,
   onPreviousInboxPage = () => undefined,
@@ -119,7 +119,7 @@ export function InboxFlow({
   readonly onInboxCheckStatusChange?: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly onClearInboxReviewFilters?: () => void;
+  readonly onClearInboxReviewAndCheckFilters?: () => void;
   /** The screen's root state (ADR 0031); only App owns its request
    * transition. Absent only before the active profile's watchlist is known. */
   readonly selectedRepository?: RepositoryIdentity;
@@ -209,7 +209,7 @@ export function InboxFlow({
       onInboxReviewStateChange={onInboxReviewStateChange}
       {...(checkStatus === undefined ? {} : { checkStatus })}
       onInboxCheckStatusChange={onInboxCheckStatusChange}
-      onClearInboxReviewFilters={onClearInboxReviewFilters}
+      onClearInboxReviewAndCheckFilters={onClearInboxReviewAndCheckFilters}
       {...(labelActions === undefined ? {} : { labelActions })}
       {...(selectedRepository === undefined ? {} : { selectedRepository })}
       onRepositoryChange={onRepositoryChange}
@@ -251,7 +251,7 @@ function InboxScreen({
   onInboxReviewStateChange,
   checkStatus,
   onInboxCheckStatusChange,
-  onClearInboxReviewFilters,
+  onClearInboxReviewAndCheckFilters,
   labelActions,
   selectedRepository,
   onRepositoryChange,
@@ -290,7 +290,7 @@ function InboxScreen({
   readonly onInboxCheckStatusChange: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly onClearInboxReviewFilters: () => void;
+  readonly onClearInboxReviewAndCheckFilters: () => void;
   readonly labelActions?: InboxLabelActions;
   readonly selectedRepository?: RepositoryIdentity;
   readonly onRepositoryChange: (repository: RepositoryIdentity) => void;
@@ -360,7 +360,7 @@ function InboxScreen({
           onReviewStateChange={onInboxReviewStateChange}
           {...(checkStatus === undefined ? {} : { checkStatus })}
           onCheckStatusChange={onInboxCheckStatusChange}
-          onClearAllFilters={onClearInboxReviewFilters}
+          onClearInboxReviewAndCheckFilters={onClearInboxReviewAndCheckFilters}
           {...(labelActions === undefined ? {} : { labelActions })}
           {...(inbox.inbox.matchCount === undefined
             ? {}

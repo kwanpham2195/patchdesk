@@ -419,7 +419,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
         pageToken: "stale-page",
         previousPageTokens: ["older-page"],
       });
-      result.current.clearInboxReviewFilters();
+      result.current.clearInboxReviewAndCheckFilters();
     });
 
     expect(result.current.inboxRequest).toMatchObject({

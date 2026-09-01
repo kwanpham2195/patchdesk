@@ -170,7 +170,7 @@ export function App({
     changeInboxAwaitingMyReview,
     changeInboxReviewState,
     changeInboxCheckStatus,
-    clearInboxReviewFilters,
+    clearInboxReviewAndCheckFilters,
     changeInboxRepository,
     previousInboxPage,
     nextInboxPage,
@@ -422,7 +422,7 @@ export function App({
           ? {}
           : { checkStatus: inboxRequest.checkStatus })}
         onInboxCheckStatusChange={changeInboxCheckStatus}
-        onClearInboxReviewFilters={clearInboxReviewFilters}
+        onClearInboxReviewAndCheckFilters={clearInboxReviewAndCheckFilters}
         {...(inboxRequest.repository === undefined
           ? {}
           : { selectedRepository: inboxRequest.repository })}

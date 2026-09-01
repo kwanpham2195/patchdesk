@@ -462,7 +462,7 @@ describe("MaintainerInbox", () => {
     const user = userEvent.setup();
     const onReviewStateChange = vi.fn();
     const onCheckStatusChange = vi.fn();
-    const onClearAllFilters = vi.fn();
+    const onClearInboxReviewAndCheckFilters = vi.fn();
     const { rerender } = render(
       <MaintainerInbox
         profileId="more-filters"
@@ -472,7 +472,7 @@ describe("MaintainerInbox", () => {
         refreshStatus="Current"
         onReviewStateChange={onReviewStateChange}
         onCheckStatusChange={onCheckStatusChange}
-        onClearAllFilters={onClearAllFilters}
+        onClearInboxReviewAndCheckFilters={onClearInboxReviewAndCheckFilters}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -520,7 +520,7 @@ describe("MaintainerInbox", () => {
         checkStatus="failure"
         onReviewStateChange={onReviewStateChange}
         onCheckStatusChange={onCheckStatusChange}
-        onClearAllFilters={onClearAllFilters}
+        onClearInboxReviewAndCheckFilters={onClearInboxReviewAndCheckFilters}
         onOpenReview={vi.fn()}
         onOpenReviewId={vi.fn()}
       />,
@@ -533,7 +533,7 @@ describe("MaintainerInbox", () => {
       screen.getByRole("button", { name: "Clear check filter" }),
     ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Clear all filters" }));
-    expect(onClearAllFilters).toHaveBeenCalledTimes(1);
+    expect(onClearInboxReviewAndCheckFilters).toHaveBeenCalledTimes(1);
   });
 
   it("renders large change counts in compact form", () => {
