@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Brief occupies the Insights slot for the represented Review. A retained result can contain generated Markdown, description-drift regions, a grouped Shape tree, an optional contract hunk, four Reach rows, Start here reading order, citations, and assumptions.
+Brief occupies the Insights slot for the represented Review. A retained result can contain generated Markdown, description-drift regions, a grouped Shape tree, up to two Flow trees, an optional contract hunk, four Reach rows, Start here reading order, citations, and assumptions.
 
 Older retained Briefs can lack Reach or Start here because those fields did not exist when the artifact was stored. Patchdesk omits an absent legacy block without inventing data. When Reach was attempted but could not answer, the reader says why.
 
@@ -49,6 +49,8 @@ Provider unavailability, invocation failure, timeout, invalid output, or cancell
 On success, Patchdesk retains the new Brief for this session and renders its structured sections. Shape groups files by directory and collapses a directory after twelve files into a counted remainder. Evidence uses its shortest meaningful identifier while preserving full paths in titles.
 
 Description drift can show both additions in code not reflected in the pull request description and claims in the description not supported by the patch. Reach states how counts were produced. Resolved citations reduce the assumption count.
+
+Flow draws up to two diff-styled trees of a runtime sequence, marking each step added, removed, or unchanged so the maintainer can see whether the change added a step, dropped one, or reordered around it. An added or removed step needs a surviving hunk citation, while an unchanged step needs none. A tree left with no surviving changed step is dropped, and Flow itself is absent when no tree survives. Copy as diff copies a kept tree back out as fenced diff text for pasting elsewhere.
 
 ## Variants
 
@@ -97,6 +99,8 @@ Description drift can show both additions in code not reflected in the pull requ
 - An older Brief can omit Reach and Start here without showing an error.
 - A failed Reach calculation explains the omission; a legacy absence is silent.
 - A Brief retained before hunk previews existed keeps plain citation chips with no preview.
+- A Brief retained before Flow existed has no Flow block.
+- A Flow tree is dropped whole when its only changed step cannot be cited, even if the rest of the tree is correct.
 - Directories with more than twelve files collapse the remainder into a count.
 - Evidence chips use short identifiers but keep the full path available in the title. A hunk chip opens a popover showing the cited hunk as a rendered diff; the chip stays plain text when the hunk is too large to preview. Description and commit chips never open a preview.
 - Both directions of description drift can appear together.
