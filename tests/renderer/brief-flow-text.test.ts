@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { briefFlowAsDiffText } from "../../src/renderer/src/brief-flow-text";
+import {
+  briefFlowAsDiffText,
+  briefFlowKindLabel,
+} from "../../src/renderer/src/brief-flow-text";
 import type { BriefFlowNode } from "../../src/renderer/src/brief-contracts";
 
 /** A Flow node fixture with no citations, since the diff text never carries them. */
@@ -11,17 +14,18 @@ const node = (
 ): BriefFlowNode => ({ label, change, citations: [], children });
 
 describe("briefFlowAsDiffText", () => {
-  it("renders a nested tree with box-drawing connectors and a leading marker column", () => {
+  it("renders a nested tree as indentation-form diff text headed by its kind and title", () => {
     const text = briefFlowAsDiffText({
       trees: [
         {
-          title: "Insight run",
+          kind: "call_tree",
+          title: "Save and update a route plan",
           nodes: [
-            node("Start insight run", "unchanged", [
-              node("prepare shared context", "removed"),
-              node("read patch", "added"),
+            node("validateManualDays(command, suggestion)", "unchanged", [
+              node("rejectEmptyDay(day)", "added"),
+              node("requireFirstStop(day)", "added"),
             ]),
-            node("Render result", "unchanged"),
+            node("persistMutationStops(tx, stops)", "unchanged"),
           ],
         },
       ],
@@ -30,64 +34,72 @@ describe("briefFlowAsDiffText", () => {
     expect(text).toBe(
       [
         "```diff",
-        "  Insight run",
-        "  ├── Start insight run",
-        "- │   ├── prepare shared context",
-        "+ │   └── read patch",
-        "  └── Render result",
+        "  call tree · Save and update a route plan",
+        "  validateManualDays(command, suggestion)",
+        "+   rejectEmptyDay(day)",
+        "+   requireFirstStop(day)",
+        "  persistMutationStops(tx, stops)",
         "```",
       ].join("\n"),
     );
   });
 
-  it("renders one fenced diff block per tree", () => {
+  it("renders one fenced diff block per tree, each blank-line separated", () => {
     const text = briefFlowAsDiffText({
       trees: [
-        { title: "Tree one", nodes: [node("Only step", "added")] },
-        { title: "Tree two", nodes: [node("Other step", "removed")] },
+        {
+          kind: "call_tree",
+          title: "Tree one",
+          nodes: [node("Only step", "added")],
+        },
+        {
+          kind: "control_flow",
+          title: "Tree two",
+          nodes: [node("Other step", "removed")],
+        },
       ],
     });
 
     const blocks = text.split("\n\n");
     expect(blocks).toHaveLength(2);
     expect(blocks[0]).toBe(
-      ["```diff", "  Tree one", "+ └── Only step", "```"].join("\n"),
+      ["```diff", "  call tree · Tree one", "+ Only step", "```"].join("\n"),
     );
     expect(blocks[1]).toBe(
-      ["```diff", "  Tree two", "- └── Other step", "```"].join("\n"),
+      ["```diff", "  control flow · Tree two", "- Other step", "```"].join(
+        "\n",
+      ),
     );
   });
 
-  it("gives the last child of a branch the closing connector", () => {
+  it("puts the marker in column 0 and adds two spaces of indentation per depth level", () => {
     const text = briefFlowAsDiffText({
       trees: [
         {
-          title: "Tree",
+          kind: "component",
+          title: "Toolbar",
           nodes: [
-            node("First", "unchanged"),
-            node("Second", "unchanged"),
-            node("Last", "unchanged"),
+            node("<Toolbar>", "unchanged", [
+              node("<SaveButton>", "added", [
+                node("useSessionEvents()", "added"),
+              ]),
+            ]),
           ],
         },
       ],
     });
+    const lines = text.split("\n");
 
-    expect(text).toBe(
-      [
-        "```diff",
-        "  Tree",
-        "  ├── First",
-        "  ├── Second",
-        "  └── Last",
-        "```",
-      ].join("\n"),
-    );
+    expect(lines).toContain("  <Toolbar>");
+    expect(lines).toContain("+   <SaveButton>");
+    expect(lines).toContain("+     useSessionEvents()");
   });
 
-  it("puts the marker in column 0 and gives an unchanged line two spaces instead", () => {
+  it("gives an unchanged row a blank marker instead of a plus or minus", () => {
     const text = briefFlowAsDiffText({
       trees: [
         {
+          kind: "control_flow",
           title: "Tree",
           nodes: [
             node("Added step", "added"),
@@ -99,12 +111,18 @@ describe("briefFlowAsDiffText", () => {
     });
     const lines = text.split("\n");
 
-    expect(lines).toContain("+ ├── Added step");
-    expect(lines).toContain("- ├── Removed step");
-    expect(lines).toContain("  └── Kept step");
-    expect(lines.some((line) => line.startsWith("+ "))).toBe(true);
-    expect(lines.some((line) => line.startsWith("  └── Kept"))).toBe(true);
+    expect(lines).toContain("+ Added step");
+    expect(lines).toContain("- Removed step");
+    expect(lines).toContain("  Kept step");
     expect(text).not.toContain("+ Kept step");
     expect(text).not.toContain("- Kept step");
+  });
+});
+
+describe("briefFlowKindLabel", () => {
+  it("maps each kind to the human label its badge and header line show", () => {
+    expect(briefFlowKindLabel("call_tree")).toBe("call tree");
+    expect(briefFlowKindLabel("control_flow")).toBe("control flow");
+    expect(briefFlowKindLabel("component")).toBe("component");
   });
 });

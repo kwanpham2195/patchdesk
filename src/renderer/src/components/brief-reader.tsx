@@ -6,7 +6,11 @@ import {
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
-import { briefFlowAsDiffText } from "../brief-flow-text";
+import {
+  briefFlowAsDiffText,
+  briefFlowKindLabel,
+  flowRows,
+} from "../brief-flow-text";
 import {
   BRIEF_REACH_UNAVAILABLE_LABELS,
   briefCitationChipLabel,
@@ -48,19 +52,45 @@ const OWNERSHIP_STATUS_MARKS = {
 >;
 
 /**
- * The glyph and hue each Flow node's change carries. Reuses the exact hues
- * `OWNERSHIP_STATUS_MARKS` above spends on added and removed files, per ADR
- * 0039: Flow draws with "the same diff colors used elsewhere in Patchdesk."
- * `unchanged` carries no glyph -- it is the dimmed spine, not a claim.
+ * The glyph, text hue, and row tint each Flow row's change carries. The text
+ * hues are the exact ones `OWNERSHIP_STATUS_MARKS` above spends on added and
+ * removed files, per ADR 0039: Flow draws with "the same diff colors used
+ * elsewhere in Patchdesk." The row tint would ideally reuse the diff view's
+ * own added/removed background, but that lives inside `@pierre/diffs`'s
+ * shadow DOM as `--diffs-bg-addition-override`/`--diffs-bg-deletion-override`
+ * custom properties the web component consumes internally -- nothing outside
+ * it can read or reapply them -- so this falls back to a plain Tailwind tint
+ * at the same hue. `unchanged` carries no glyph and no tint -- it is the
+ * dimmed spine, not a claim.
  */
 const FLOW_CHANGE_MARKS = {
-  added: { glyph: "+", className: "text-emerald-700 dark:text-emerald-400" },
-  removed: { glyph: "−", className: "text-rose-700 dark:text-rose-400" },
-  unchanged: { glyph: "", className: "text-muted-foreground" },
+  added: {
+    glyph: "+",
+    className: "text-emerald-700 dark:text-emerald-400",
+    rowClassName: "bg-emerald-500/10",
+  },
+  removed: {
+    glyph: "−",
+    className: "text-rose-700 dark:text-rose-400",
+    rowClassName: "bg-rose-500/10",
+  },
+  unchanged: {
+    glyph: "",
+    className: "text-muted-foreground",
+    rowClassName: "",
+  },
 } as const satisfies Record<
   BriefFlowNode["change"],
-  { readonly glyph: string; readonly className: string }
+  {
+    readonly glyph: string;
+    readonly className: string;
+    readonly rowClassName: string;
+  }
 >;
+
+/** A small mono badge like the citation chip's, but with no evidence-kind hue -- it only names a Flow view's kind. */
+const FLOW_KIND_BADGE_CLASS_NAME =
+  "inline-flex shrink-0 items-center rounded border bg-accent px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground";
 
 const contractPreferences: ReviewViewPreferences = {
   ...DEFAULT_REVIEW_VIEW_PREFERENCES,
@@ -383,8 +413,8 @@ function OwnershipRow({
 }
 
 /**
- * The Flow block: a before/after tree of a runtime sequence, per tree, with a
- * "Copy as diff" action that writes the same trees back out as fenced
+ * The Flow block: one bordered view per tree, each with its own kind badge,
+ * title, and "Copy as diff" action that writes that tree back out as fenced
  * `+`/`-` text (ADR 0039). Absent whenever the Brief carries no `flow`,
  * including every Brief retained before this block existed.
  */
@@ -395,7 +425,131 @@ function FlowBlock({
   readonly flow: BriefFlow;
   readonly citedHunks?: Readonly<Record<string, string>> | undefined;
 }): React.JSX.Element {
-  const diffText = useMemo(() => briefFlowAsDiffText(flow), [flow]);
+  return (
+    <section aria-label="Flow" className="flex min-w-0 flex-col gap-2">
+      <h3 className="flex items-baseline gap-2 text-sm font-medium">
+        Flow
+        <span className="text-xs font-normal text-muted-foreground">
+          how the sequence changed
+        </span>
+      </h3>
+      <div className="flex min-w-0 flex-col gap-3">
+        {flow.trees.map((tree, index) => (
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `flow.trees` is a fixed array carried on one immutable `Brief` value; it is never reordered, filtered, or mutated after render. A tree's own `title` is not guaranteed unique (ADR 0039 allows up to two trees with no uniqueness rule between them), so the index disambiguates two same-titled trees rather than tracking position across a reorder that never happens.
+          <FlowView
+            key={`${String(index)}-${tree.title}`}
+            tree={tree}
+            citedHunks={citedHunks}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * One Flow view: a Shape-card-like bordered container with a header row (kind
+ * badge, title, per-view copy button) and a body of monospace rows, one per
+ * node, flattened by `flowRows` -- the same flattening `briefFlowAsDiffText`
+ * walks, so the drawn rows and the copied text can never disagree about
+ * order. No ARIA tree roles: the tree is static (no expand/collapse, no
+ * roving focus), so it stays plain `div`s rather than claiming the ARIA tree
+ * widget.
+ */
+function FlowView({
+  tree,
+  citedHunks,
+}: {
+  readonly tree: BriefFlow["trees"][number];
+  readonly citedHunks?: Readonly<Record<string, string>> | undefined;
+}): React.JSX.Element {
+  const rows = useMemo(() => flowRows(tree.nodes), [tree.nodes]);
+  const diffText = useMemo(
+    () => briefFlowAsDiffText({ trees: [tree] }),
+    [tree],
+  );
+  return (
+    <div className="flex min-w-0 flex-col gap-2 rounded-md border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className={FLOW_KIND_BADGE_CLASS_NAME}>
+            {briefFlowKindLabel(tree.kind)}
+          </span>
+          <p className="min-w-0 truncate text-xs font-medium text-foreground">
+            {tree.title}
+          </p>
+        </div>
+        <CopyFlowButton diffText={diffText} />
+      </div>
+      <div className="flex min-w-0 flex-col">
+        {rows.map((row, index) => (
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `rows` is a fixed flattening of one immutable Brief value's tree; `BriefFlowNode` carries no id (ADR 0039's "deterministic bookkeeping, no numbers" rule), and sibling labels are not guaranteed unique, so `${depth}:${index}:${label}` disambiguates rather than tracking a reorder that never happens.
+          <FlowRowView
+            key={`${String(row.depth)}:${String(index)}:${row.label}`}
+            row={row}
+            citedHunks={citedHunks}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One flattened Flow row: a fixed-width marker column carrying the change
+ * (blank for `unchanged`, the same +/− the Ownership tree uses), the label
+ * indented by its depth, and its citation chips -- a hunk citation opens the
+ * same popover any other chip in Brief does. Added and removed rows get the
+ * diff-hue tint from `FLOW_CHANGE_MARKS`; unchanged rows are dimmed and
+ * untinted, so the changed steps stand out.
+ */
+function FlowRowView({
+  row,
+  citedHunks,
+}: {
+  readonly row: ReturnType<typeof flowRows>[number];
+  readonly citedHunks?: Readonly<Record<string, string>> | undefined;
+}): React.JSX.Element {
+  const mark = FLOW_CHANGE_MARKS[row.change];
+  return (
+    <div
+      className={`flex items-baseline gap-2 rounded px-1 py-0.5 font-mono text-xs ${mark.rowClassName}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`w-3 shrink-0 text-center ${mark.className}`}
+      >
+        {mark.glyph}
+      </span>
+      <span
+        className={`min-w-0 ${row.change === "unchanged" ? "text-muted-foreground" : "text-foreground"}`}
+        style={{ paddingLeft: `${String(row.depth)}rem` }}
+      >
+        {row.label}{" "}
+        {row.citations.map((citation) => (
+          <CitationChip
+            key={citation.alias}
+            citation={citation}
+            raw={citedHunks?.[citation.alias]}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * One Flow view's "Copy as diff" button: its own "Copied" state and cleanup
+ * timer, so copying one view never flips the label on another. Same honest
+ * `.then`/`.catch` behaviour as every other copy action in Brief -- the label
+ * only flips once the write actually resolves, and a rejection leaves it as
+ * "Copy as diff" rather than claiming success.
+ */
+function CopyFlowButton({
+  diffText,
+}: {
+  readonly diffText: string;
+}): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -407,108 +561,22 @@ function FlowBlock({
     [],
   );
   return (
-    <section aria-label="Flow" className="flex min-w-0 flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="flex items-baseline gap-2 text-sm font-medium">
-          Flow
-          <span className="text-xs font-normal text-muted-foreground">
-            how the sequence changed
-          </span>
-        </h3>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            navigator.clipboard
-              .writeText(diffText)
-              .then(() => {
-                setCopied(true);
-                clearTimeout(copiedTimer.current);
-                copiedTimer.current = setTimeout(() => setCopied(false), 1500);
-              })
-              .catch(() => undefined);
-          }}
-        >
-          {copied ? "Copied" : "Copy as diff"}
-        </Button>
-      </div>
-      <div className="flex min-w-0 flex-col gap-3">
-        {flow.trees.map((tree, index) => (
-          // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `flow.trees` is a fixed array carried on one immutable `Brief` value; it is never reordered, filtered, or mutated after render. A tree's own `title` is not guaranteed unique (ADR 0039 allows up to two trees with no uniqueness rule between them), so the index disambiguates two same-titled trees rather than tracking position across a reorder that never happens.
-          <div
-            key={`${String(index)}-${tree.title}`}
-            className="flex min-w-0 flex-col gap-1 rounded-md border p-3"
-          >
-            <p className="text-xs font-medium text-foreground">{tree.title}</p>
-            <ul aria-label={tree.title} className="flex flex-col">
-              {tree.nodes.map((node, index) => (
-                // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `tree.nodes` is a fixed array from the same immutable Brief value; `BriefFlowNode` carries no id (ADR 0039's "deterministic bookkeeping, no numbers" rule), and sibling labels are not guaranteed unique, so the index disambiguates rather than tracking a reorder that never happens.
-                <FlowTreeItem
-                  key={`${node.label}-${String(index)}`}
-                  node={node}
-                  citedHunks={citedHunks}
-                />
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/**
- * One Flow node, drawn recursively: a marker column carrying the change
- * (blank for `unchanged`, the same +/− the Ownership tree uses), the label,
- * and its citation chips -- a hunk citation opens the same popover any other
- * chip in Brief does. The Flow tree is static (no expand/collapse, no roving
- * focus), so it stays a plain nested list rather than claiming the ARIA tree
- * widget; children nest one plain `<ul>` deeper, indented under a rule so the
- * branch stays legible without preformatted box-drawing text.
- */
-function FlowTreeItem({
-  node,
-  citedHunks,
-}: {
-  readonly node: BriefFlowNode;
-  readonly citedHunks?: Readonly<Record<string, string>> | undefined;
-}): React.JSX.Element {
-  const mark = FLOW_CHANGE_MARKS[node.change];
-  return (
-    <li className="flex flex-col">
-      <span className="flex items-baseline gap-2 text-xs">
-        <span
-          aria-hidden="true"
-          className={`w-3 shrink-0 text-center font-mono ${mark.className}`}
-        >
-          {mark.glyph}
-        </span>
-        <span
-          className={`min-w-0 ${node.change === "unchanged" ? "text-muted-foreground" : "text-foreground"}`}
-        >
-          {node.label}{" "}
-          {node.citations.map((citation) => (
-            <CitationChip
-              key={citation.alias}
-              citation={citation}
-              raw={citedHunks?.[citation.alias]}
-            />
-          ))}
-        </span>
-      </span>
-      {node.children.length === 0 ? null : (
-        <ul className="ml-1.5 flex flex-col border-l pl-3">
-          {node.children.map((child, index) => (
-            // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `node.children` is a fixed array from the same immutable Brief value; `BriefFlowNode` carries no id, and sibling labels are not guaranteed unique, so the index disambiguates rather than tracking a reorder that never happens.
-            <FlowTreeItem
-              key={`${child.label}-${String(index)}`}
-              node={child}
-              citedHunks={citedHunks}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => {
+        navigator.clipboard
+          .writeText(diffText)
+          .then(() => {
+            setCopied(true);
+            clearTimeout(copiedTimer.current);
+            copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+          })
+          .catch(() => undefined);
+      }}
+    >
+      {copied ? "Copied" : "Copy as diff"}
+    </Button>
   );
 }
 

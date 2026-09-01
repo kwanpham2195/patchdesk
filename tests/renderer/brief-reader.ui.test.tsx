@@ -75,6 +75,7 @@ const retainedWithCitedHunk = () => {
 const FLOW = {
   trees: [
     {
+      kind: "call_tree" as const,
       title: "Insight run",
       nodes: [
         {
@@ -436,7 +437,7 @@ describe("BriefReader", () => {
     expect(screen.queryByText("src/a.ts")).toBeNull();
   });
 
-  it("renders the Flow tree with markers and citation chips", () => {
+  it("renders one Flow view per tree with a kind badge and title", () => {
     render(
       <BriefReader
         {...walkthroughLink}
@@ -446,27 +447,67 @@ describe("BriefReader", () => {
     );
 
     const region = screen.getByRole("region", { name: "Flow" });
+    expect(region.textContent).toContain("call tree");
     expect(region.textContent).toContain("Insight run");
-    expect(region.textContent).toContain("Start insight run");
-    expect(region.textContent).toContain("+");
-    expect(region.textContent).toContain("read patch");
-    expect(region.textContent).toContain("−");
-    expect(region.textContent).toContain("prepare shared context");
     expect(
       within(region).getByRole("button", { name: "Show hunk a.ts · h1" }),
     ).toBeTruthy();
 
     // The tree is static (no expand/collapse, no roving focus), so it renders
-    // as a plain nested list rather than the ARIA tree widget.
+    // as plain rows rather than the ARIA tree widget.
     expect(within(region).queryByRole("tree")).toBeNull();
     expect(within(region).queryByRole("treeitem")).toBeNull();
     expect(within(region).queryByRole("group")).toBeNull();
-    const items = within(region).getAllByRole("listitem");
-    expect(items.map((item) => item.textContent)).toEqual([
-      expect.stringContaining("Start insight run"),
-      expect.stringContaining("read patch"),
-      expect.stringContaining("prepare shared context"),
-    ]);
+  });
+
+  it("marks an added row with + and its chip, a removed row with −, and leaves an unchanged row bare", () => {
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithFlow()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: "Flow" });
+    const addedRow = within(region).getByText("read patch").closest("div");
+    const removedRow = within(region)
+      .getByText("prepare shared context")
+      .closest("div");
+    const unchangedRow = within(region)
+      .getByText("Start insight run", { exact: false })
+      .closest("div");
+
+    if (addedRow === null) throw new Error("Expected the added row's div");
+    expect(addedRow.textContent).toContain("+");
+    expect(
+      within(addedRow).getByRole("button", { name: "Show hunk a.ts · h1" }),
+    ).toBeTruthy();
+    expect(removedRow?.textContent).toContain("−");
+    expect(unchangedRow?.textContent).not.toContain("+");
+    expect(unchangedRow?.textContent).not.toContain("−");
+  });
+
+  it("indents a child row further than its parent", () => {
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithFlow()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: "Flow" });
+    const parentLabel = within(region).getByText("Start insight run", {
+      exact: false,
+    });
+    const childLabel = within(region).getByText("read patch");
+
+    expect(childLabel.style.paddingLeft).not.toBe(
+      parentLabel.style.paddingLeft,
+    );
+    expect(childLabel.style.paddingLeft).toBe("1rem");
+    expect(parentLabel.style.paddingLeft).toBe("0rem");
   });
 
   it("omits the Flow section when the Brief has no flow", () => {
@@ -481,7 +522,7 @@ describe("BriefReader", () => {
     expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
   });
 
-  it("copies the Flow as diff text", async () => {
+  it("copies one view's rows as diff text headed by its kind and title", async () => {
     const user = userEvent.setup();
     const writeText = vi
       .spyOn(navigator.clipboard, "writeText")
@@ -497,7 +538,7 @@ describe("BriefReader", () => {
     await user.click(screen.getByRole("button", { name: "Copy as diff" }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff/);
+    expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff\n {2}call tree · /);
     expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
