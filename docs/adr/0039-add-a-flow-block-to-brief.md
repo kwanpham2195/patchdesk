@@ -1,8 +1,8 @@
 # Add a Flow block to Brief
 
-> **Status: Accepted.** A sixth Brief block, alongside the five from ADR 0036.
-> It keeps ADR 0036's citation rule in spirit and adds nothing to the model's
-> capability boundary from ADR 0018.
+> **Status: Accepted.** This decision introduced Flow as a sixth Brief block.
+> ADR 0040 later removed the prose blocks and made Flow the only
+> citation-bearing Brief block.
 
 Brief's five blocks answer what a change is for, what it touches, and where to
 start reading. None of them shows how the change reorders a runtime sequence.
@@ -57,12 +57,9 @@ the rest of Brief's 80, because signatures run longer than sentences.
 
 ### Flow citations are best effort
 
-Brief's citation manifest carries three alias kinds: `h*` hunks, `d*`
-description paragraphs, `c*` commits (ADR 0036). Flow accepts only `h*`. An
-added or removed step is a claim that the diff changed the running order, and
-only the diff can support that claim — a description or commit citation is a
-claim about the change, not evidence from it. A citation that resolves to a
-`d*` or `c*` alias is discarded exactly like one that resolves to nothing.
+When this decision was adopted, the citation manifest carried `h*` hunks,
+`d*` description paragraphs, and `c*` commits. Flow accepted only `h*`.
+ADR 0040 later removed `d*` and `c*` from new Briefs.
 
 - An `added` or `removed` node keeps its place whether or not a hunk citation
   survives for it. An uncited changed step is drawn without a citation chip,
@@ -136,6 +133,3 @@ inventing one.
 - An invented step can reach the reader; the missing chip and the
   partially-verified status are the signal, and the model is told to leave
   citations empty rather than drop a step.
-- Brief is moving toward structure-first views. A follow-up ADR (0040)
-  removes the Goal, Assumptions, and Description-vs-diff blocks and
-  re-anchors the citation rule on Flow.

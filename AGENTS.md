@@ -37,6 +37,8 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - No `any` unless absolutely necessary.
 - Inline single-line helpers that have only one call site.
 - Comments preserve non-obvious intent, invariants, trade-offs, or external constraints. Prefer one sentence explaining why; let code describe what and how. Use longer comments only when a complex invariant cannot be expressed clearly in code.
+- Documentation ownership: ADRs record durable decisions and consequences; code comments explain local constraints; commit messages record change history. Link to the owning source instead of repeating it.
+- When a later ADR changes current guidance, add a supersession note to the earlier ADR. Keep its historical decision intact.
 - Check node_modules for external API types; don't guess.
 - Always ask before removing functionality or code that appears intentional.
 - Do not preserve backward compatibility unless the user asks for it.
