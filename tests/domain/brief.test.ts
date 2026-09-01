@@ -388,6 +388,17 @@ describe("insightOutputGuidance", () => {
       "Do not put a claim about a build, a test run, a benchmark, lint, CI, a screenshot, or a manual check in descriptionDrift.claimed.",
     );
   });
+
+  it("gives the Brief its own Flow rules and still forbids numbers", () => {
+    const guidance = insightOutputGuidance("brief");
+    expect(guidance).toContain(
+      "Give every added or removed step an h alias citing the hunk that adds or removes it; a description or commit alias does not count for flow",
+    );
+    expect(guidance).toContain(
+      "Omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",
+    );
+    expect(guidance).toContain("Write no numbers and no counts.");
+  });
 });
 
 describe("normalizeBrief start here", () => {
