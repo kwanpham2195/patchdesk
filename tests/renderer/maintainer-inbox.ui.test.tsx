@@ -458,6 +458,84 @@ describe("MaintainerInbox", () => {
     ).toContain("Merged");
   });
 
+  it("offers controlled review and check filters with active chips and clear actions", async () => {
+    const user = userEvent.setup();
+    const onReviewStateChange = vi.fn();
+    const onCheckStatusChange = vi.fn();
+    const onClearAllFilters = vi.fn();
+    const { rerender } = render(
+      <MaintainerInbox
+        profileId="more-filters"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onReviewStateChange={onReviewStateChange}
+        onCheckStatusChange={onCheckStatusChange}
+        onClearAllFilters={onClearAllFilters}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "More filters" }));
+    expect(screen.getByRole("heading", { name: "More filters" })).toBeTruthy();
+    const reviewSelect = screen.getByRole("combobox", {
+      name: "Review state",
+    });
+    const checkSelect = screen.getByRole("combobox", {
+      name: "Check status",
+    });
+    await user.click(reviewSelect);
+    expect(
+      await screen.findByRole("option", { name: "Not reviewed" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "Review required" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Approved" })).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "Changes requested" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("option", { name: "Approved" }));
+    expect(onReviewStateChange).toHaveBeenCalledWith("approved");
+
+    await user.click(reviewSelect);
+    await user.click(await screen.findByRole("option", { name: "Any" }));
+    expect(onReviewStateChange).toHaveBeenLastCalledWith(undefined);
+
+    await user.click(checkSelect);
+    expect(await screen.findByRole("option", { name: "Pending" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Passing" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Failing" })).toBeTruthy();
+
+    rerender(
+      <MaintainerInbox
+        profileId="more-filters"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        reviewState="approved"
+        checkStatus="failure"
+        onReviewStateChange={onReviewStateChange}
+        onCheckStatusChange={onCheckStatusChange}
+        onClearAllFilters={onClearAllFilters}
+        onOpenReview={vi.fn()}
+        onOpenReviewId={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("2 active filters")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Clear review filter" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Clear check filter" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(onClearAllFilters).toHaveBeenCalledTimes(1);
+  });
+
   it("renders large change counts in compact form", () => {
     const sized: InboxRow = {
       ...row,

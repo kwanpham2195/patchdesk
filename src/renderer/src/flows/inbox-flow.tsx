@@ -28,7 +28,9 @@ import {
 import type { InboxFreshnessLabel } from "../inbox-freshness";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
+  type InboxCheckStatusFilter,
   type InboxPageSize,
+  type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
 import type { SettingsSection } from "./settings-flow";
@@ -66,6 +68,11 @@ export function InboxFlow({
   onInboxLabelsChange = () => undefined,
   awaitingMyReview = false,
   onInboxAwaitingMyReviewChange = () => undefined,
+  reviewState,
+  onInboxReviewStateChange = () => undefined,
+  checkStatus,
+  onInboxCheckStatusChange = () => undefined,
+  onClearInboxReviewFilters = () => undefined,
   selectedRepository,
   onRepositoryChange = () => undefined,
   onPreviousInboxPage = () => undefined,
@@ -104,6 +111,15 @@ export function InboxFlow({
    * `user-review-requested:@me`. Only App owns its request transition. */
   readonly awaitingMyReview?: boolean;
   readonly onInboxAwaitingMyReviewChange?: (value: boolean) => void;
+  readonly reviewState?: InboxReviewStateFilter;
+  readonly onInboxReviewStateChange?: (
+    value: InboxReviewStateFilter | undefined,
+  ) => void;
+  readonly checkStatus?: InboxCheckStatusFilter;
+  readonly onInboxCheckStatusChange?: (
+    value: InboxCheckStatusFilter | undefined,
+  ) => void;
+  readonly onClearInboxReviewFilters?: () => void;
   /** The screen's root state (ADR 0031); only App owns its request
    * transition. Absent only before the active profile's watchlist is known. */
   readonly selectedRepository?: RepositoryIdentity;
@@ -189,6 +205,11 @@ export function InboxFlow({
       onInboxLabelsChange={onInboxLabelsChange}
       awaitingMyReview={awaitingMyReview}
       onInboxAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
+      {...(reviewState === undefined ? {} : { reviewState })}
+      onInboxReviewStateChange={onInboxReviewStateChange}
+      {...(checkStatus === undefined ? {} : { checkStatus })}
+      onInboxCheckStatusChange={onInboxCheckStatusChange}
+      onClearInboxReviewFilters={onClearInboxReviewFilters}
       {...(labelActions === undefined ? {} : { labelActions })}
       {...(selectedRepository === undefined ? {} : { selectedRepository })}
       onRepositoryChange={onRepositoryChange}
@@ -226,6 +247,11 @@ function InboxScreen({
   onInboxLabelsChange,
   awaitingMyReview,
   onInboxAwaitingMyReviewChange,
+  reviewState,
+  onInboxReviewStateChange,
+  checkStatus,
+  onInboxCheckStatusChange,
+  onClearInboxReviewFilters,
   labelActions,
   selectedRepository,
   onRepositoryChange,
@@ -256,6 +282,15 @@ function InboxScreen({
   readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
   readonly awaitingMyReview: boolean;
   readonly onInboxAwaitingMyReviewChange: (value: boolean) => void;
+  readonly reviewState?: InboxReviewStateFilter;
+  readonly onInboxReviewStateChange: (
+    value: InboxReviewStateFilter | undefined,
+  ) => void;
+  readonly checkStatus?: InboxCheckStatusFilter;
+  readonly onInboxCheckStatusChange: (
+    value: InboxCheckStatusFilter | undefined,
+  ) => void;
+  readonly onClearInboxReviewFilters: () => void;
   readonly labelActions?: InboxLabelActions;
   readonly selectedRepository?: RepositoryIdentity;
   readonly onRepositoryChange: (repository: RepositoryIdentity) => void;
@@ -321,6 +356,11 @@ function InboxScreen({
           onLabelsChange={onInboxLabelsChange}
           awaitingMyReview={awaitingMyReview}
           onAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
+          {...(reviewState === undefined ? {} : { reviewState })}
+          onReviewStateChange={onInboxReviewStateChange}
+          {...(checkStatus === undefined ? {} : { checkStatus })}
+          onCheckStatusChange={onInboxCheckStatusChange}
+          onClearAllFilters={onClearInboxReviewFilters}
           {...(labelActions === undefined ? {} : { labelActions })}
           {...(inbox.inbox.matchCount === undefined
             ? {}

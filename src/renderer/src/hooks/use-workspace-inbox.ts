@@ -84,6 +84,7 @@ export type WorkspaceInbox = {
   readonly changeInboxCheckStatus: (
     checkStatus: InboxCheckStatusFilter | undefined,
   ) => void;
+  readonly clearInboxReviewFilters: () => void;
   readonly changeInboxRepository: (repository: Repo) => void;
   readonly previousInboxPage: () => void;
   readonly nextInboxPage: () => void;
@@ -404,6 +405,21 @@ export function useWorkspaceInbox({
     },
     [refreshInbox, updateInboxRequest],
   );
+  /** Clears both More filters as one profile update and one inbox request. */
+  const clearInboxReviewFilters = useCallback((): void => {
+    const request = nextInboxRequest(inboxRequestRef.current, {
+      reviewState: undefined,
+      checkStatus: undefined,
+    });
+    const profileId = activeInboxProfileId.current;
+    if (profileId !== undefined)
+      saveInboxViewPreferences(profileId, {
+        reviewState: undefined,
+        checkStatus: undefined,
+      });
+    updateInboxRequest(request);
+    void refreshInbox(request);
+  }, [refreshInbox, updateInboxRequest]);
   /**
    * Selects a repository from the picker. The Selected repository
    * is the screen's root state, so changing it resets the page cursor — a
@@ -484,6 +500,7 @@ export function useWorkspaceInbox({
     changeInboxAwaitingMyReview,
     changeInboxReviewState,
     changeInboxCheckStatus,
+    clearInboxReviewFilters,
     changeInboxRepository,
     previousInboxPage,
     nextInboxPage,

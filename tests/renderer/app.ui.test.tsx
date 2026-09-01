@@ -332,6 +332,31 @@ describe("App inbox state switch", () => {
   });
 });
 
+describe("App inbox More filters", () => {
+  it("passes review and check selections through the visible filter bar", async () => {
+    const user = userEvent.setup();
+    const desktop = installRepoDesktop();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Pull requests" });
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
+    );
+
+    await user.click(screen.getByRole("button", { name: "More filters" }));
+    await user.click(screen.getByRole("combobox", { name: "Review state" }));
+    await user.click(await screen.findByRole("option", { name: "Approved" }));
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain("reviewState=approved"),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Check status" }));
+    await user.click(await screen.findByRole("option", { name: "Failing" }));
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain("checkStatus=failure"),
+    );
+  });
+});
+
 describe("App repository picker", () => {
   it("selects the first watched repository by default, then the selection persists across a reload", async () => {
     const user = userEvent.setup();
