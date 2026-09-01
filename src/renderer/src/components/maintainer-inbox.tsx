@@ -1,10 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  CircleAlert,
-  UserRoundCheck,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleAlert } from "lucide-react";
 
 import {
   inboxIdentityKey,
@@ -18,6 +13,7 @@ import {
   type RepositoryLabelReadState,
 } from "@/github-read-failure-copy";
 import { LabelChip } from "./label-chip";
+import { InboxFiltersBar } from "./inbox-filters-bar";
 import { InboxRowItem } from "./inbox-row-item";
 import { useInboxView } from "../hooks/use-inbox-view";
 import { formatInboxAge, type InboxFreshnessLabel } from "@/inbox-freshness";
@@ -25,9 +21,10 @@ import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_PAGE_SIZES,
-  INBOX_STATE_FILTERS,
+  type InboxCheckStatusFilter,
   type InboxPageSize,
   type InboxDataFreshness,
+  type InboxReviewStateFilter,
   type InboxSnapshotState,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
@@ -68,7 +65,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Toggle } from "@/components/ui/toggle";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
@@ -122,6 +118,15 @@ type MaintainerInboxProps = {
    * state and label filters, never a separate queue. */
   readonly awaitingMyReview?: boolean;
   readonly onAwaitingMyReviewChange?: (value: boolean) => void;
+  readonly reviewState?: InboxReviewStateFilter;
+  readonly onReviewStateChange?: (
+    value: InboxReviewStateFilter | undefined,
+  ) => void;
+  readonly checkStatus?: InboxCheckStatusFilter;
+  readonly onCheckStatusChange?: (
+    value: InboxCheckStatusFilter | undefined,
+  ) => void;
+  readonly onClearAllFilters?: () => void;
   /** Absent only before the screen has a Selected repository to read labels
    * from (absent only during bootstrap). See {@link InboxLabelActions}. */
   readonly labelActions?: InboxLabelActions;
@@ -170,6 +175,11 @@ export function MaintainerInbox({
   onLabelsChange = () => undefined,
   awaitingMyReview = false,
   onAwaitingMyReviewChange = () => undefined,
+  reviewState,
+  onReviewStateChange = () => undefined,
+  checkStatus,
+  onCheckStatusChange = () => undefined,
+  onClearAllFilters = () => undefined,
   labelActions,
   onPageSizeChange = () => undefined,
   onPreviousPage = () => undefined,
@@ -225,11 +235,22 @@ export function MaintainerInbox({
       <InboxFiltersBar
         state={state}
         onStateChange={onStateChange}
-        {...(labelActions === undefined ? {} : { labelActions })}
-        selectedLabels={selectedLabels}
-        onLabelChange={onLabelsChange}
+        labelFilter={
+          labelActions === undefined ? null : (
+            <LabelFilterPopover
+              fetchLabels={labelActions.fetchLabels}
+              selectedLabels={selectedLabels}
+              onLabelChange={onLabelsChange}
+            />
+          )
+        }
         awaitingMyReview={awaitingMyReview}
         onAwaitingMyReviewChange={onAwaitingMyReviewChange}
+        {...(reviewState === undefined ? {} : { reviewState })}
+        onReviewStateChange={onReviewStateChange}
+        {...(checkStatus === undefined ? {} : { checkStatus })}
+        onCheckStatusChange={onCheckStatusChange}
+        onClearAllFilters={onClearAllFilters}
         rowCount={effectiveRows.length}
         {...(matchCount === undefined ? {} : { matchCount })}
         listPending={listPending}
@@ -402,125 +423,6 @@ function InboxHeader({
   );
 }
 
-function InboxFiltersBar({
-  state,
-  onStateChange,
-  labelActions,
-  selectedLabels,
-  onLabelChange,
-  awaitingMyReview,
-  onAwaitingMyReviewChange,
-  rowCount,
-  matchCount,
-  listPending,
-  inspectorOpen,
-  onToggleInspector,
-}: {
-  readonly state: InboxStateFilter;
-  readonly onStateChange: (state: InboxStateFilter) => void;
-  /** Absent only before the screen has a Selected repository to read labels
-   * from (absent only during bootstrap); the label filter trigger withholds itself in
-   * that case, the same way `LabelPicker` does for `actions === undefined`. */
-  readonly labelActions?: InboxLabelActions;
-  readonly selectedLabels: ReadonlyArray<string>;
-  readonly onLabelChange: (value: ReadonlyArray<string>) => void;
-  readonly awaitingMyReview: boolean;
-  readonly onAwaitingMyReviewChange: (value: boolean) => void;
-  readonly rowCount: number;
-  readonly matchCount?: number;
-  readonly listPending: boolean;
-  readonly inspectorOpen: boolean;
-  readonly onToggleInspector: () => void;
-}): React.JSX.Element {
-  return (
-    <section
-      className="sticky top-0 z-10 flex min-h-10 flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-1.5 backdrop-blur"
-      aria-label="Pull requests filters"
-    >
-      <Select
-        value={state}
-        items={INBOX_STATE_FILTERS.map((option) => ({
-          label: stateFilterShortLabel(option.state),
-          value: option.state,
-        }))}
-        onValueChange={(value) => {
-          const next = INBOX_STATE_FILTERS.find(
-            (option) => option.state === value,
-          );
-          if (next !== undefined) onStateChange(next.state);
-        }}
-      >
-        <SelectTrigger
-          size="sm"
-          className="w-28 text-xs"
-          aria-label="Pull request state"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            {INBOX_STATE_FILTERS.map((option) => (
-              <SelectItem
-                key={option.state}
-                value={option.state}
-                className="text-xs"
-              >
-                {stateFilterShortLabel(option.state)}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-      {/* A filter preset, not a queue (ADR 0031): it composes with the state
-          and label filters above rather than replacing the listing. */}
-      <Toggle
-        pressed={awaitingMyReview}
-        onPressedChange={onAwaitingMyReviewChange}
-        size="sm"
-        variant="outline"
-        className="h-7 gap-1.5 px-2 text-xs"
-      >
-        <UserRoundCheck className="size-3.5" aria-hidden="true" />
-        Awaiting review from you
-      </Toggle>
-      {labelActions === undefined ? null : (
-        <LabelFilterPopover
-          fetchLabels={labelActions.fetchLabels}
-          selectedLabels={selectedLabels}
-          onLabelChange={onLabelChange}
-        />
-      )}
-      <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
-        {listPending
-          ? "Loading…"
-          : matchCount === undefined
-            ? `${rowCount} on this page`
-            : `${matchCount} ${state === "open" ? "open" : "merged"}`}
-      </span>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        onClick={onToggleInspector}
-        aria-label={
-          inspectorOpen ? "Hide review details" : "Show review details"
-        }
-        aria-expanded={inspectorOpen}
-      >
-        {inspectorOpen ? <ChevronRight /> : <ChevronLeft />}
-      </Button>
-    </section>
-  );
-}
-
-/** Compact form of an `INBOX_STATE_FILTERS` option for the filter bar's
- * narrow `Select` — the command palette uses the full `option.label`
- * ("Open pull requests") where space isn't constrained; this trigger is
- * `w-28`. */
-function stateFilterShortLabel(state: InboxStateFilter): string {
-  return state === "open" ? "Open" : "Merged";
-}
-
-/** Trigger copy for the label filter: names the single selection, or a count once more than one is picked. */
 function labelFilterTriggerText(selected: ReadonlyArray<string>): string {
   if (selected.length === 0) return "All labels";
   if (selected.length === 1) return selected[0] ?? "All labels";

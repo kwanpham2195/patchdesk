@@ -387,4 +387,58 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       );
     },
   );
+
+  it("clears both More filters in one request while preserving other filters", async () => {
+    const paths: string[] = [];
+    saveInboxViewPreferences("a", {
+      reviewState: "approved",
+      checkStatus: "failure",
+    });
+    desktop = installDesktopDouble({
+      "/v1/profiles": () => success([profileA]),
+      "/v1/logs": () => success({}),
+      "/v1/inbox": (input) => {
+        paths.push(input.path);
+        return success(inbox(profileA));
+      },
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceInbox({ fixtureMode: true, initialState: undefined }),
+    );
+    await act(async () => {
+      await result.current.loadWorkspace();
+    });
+    await waitFor(() => expect(result.current.dashboard?.profile.id).toBe("a"));
+    act(() => {
+      result.current.updateInboxRequest({
+        ...result.current.inboxRequest,
+        selectedLabels: ["bug"],
+        awaitingMyReview: true,
+        reviewState: "approved",
+        checkStatus: "failure",
+        pageToken: "stale-page",
+        previousPageTokens: ["older-page"],
+      });
+      result.current.clearInboxReviewFilters();
+    });
+
+    expect(result.current.inboxRequest).toMatchObject({
+      repository: repositoryA,
+      selectedLabels: ["bug"],
+      awaitingMyReview: true,
+      previousPageTokens: [],
+    });
+    expect(result.current.inboxRequest).not.toHaveProperty("reviewState");
+    expect(result.current.inboxRequest).not.toHaveProperty("checkStatus");
+    expect(loadInboxViewPreferences("a")).not.toHaveProperty("reviewState");
+    expect(loadInboxViewPreferences("a")).not.toHaveProperty("checkStatus");
+    await waitFor(() =>
+      expect(paths.at(-1)).toBe(
+        "/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&awaitingMyReview=1",
+      ),
+    );
+    expect(paths.filter((path) => path.includes("owner=owner-a"))).toHaveLength(
+      2,
+    );
+  });
 });

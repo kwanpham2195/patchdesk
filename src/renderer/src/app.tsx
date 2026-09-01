@@ -168,6 +168,9 @@ export function App({
     changeInboxPageSize,
     changeInboxLabels,
     changeInboxAwaitingMyReview,
+    changeInboxReviewState,
+    changeInboxCheckStatus,
+    clearInboxReviewFilters,
     changeInboxRepository,
     previousInboxPage,
     nextInboxPage,
@@ -411,6 +414,15 @@ export function App({
         onInboxLabelsChange={changeInboxLabels}
         awaitingMyReview={inboxRequest.awaitingMyReview}
         onInboxAwaitingMyReviewChange={changeInboxAwaitingMyReview}
+        {...(inboxRequest.reviewState === undefined
+          ? {}
+          : { reviewState: inboxRequest.reviewState })}
+        onInboxReviewStateChange={changeInboxReviewState}
+        {...(inboxRequest.checkStatus === undefined
+          ? {}
+          : { checkStatus: inboxRequest.checkStatus })}
+        onInboxCheckStatusChange={changeInboxCheckStatus}
+        onClearInboxReviewFilters={clearInboxReviewFilters}
         {...(inboxRequest.repository === undefined
           ? {}
           : { selectedRepository: inboxRequest.repository })}
