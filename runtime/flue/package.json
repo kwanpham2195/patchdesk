@@ -18,8 +18,7 @@
   "dependencies": {
     "@earendil-works/pi-ai": "0.84.1",
     "@flue/runtime": "2.0.3",
-    "valibot": "1.4.2",
-    "zod": "4.4.3"
+    "valibot": "1.4.2"
   },
   "devDependencies": {
     "@types/node": "24.3.0",
