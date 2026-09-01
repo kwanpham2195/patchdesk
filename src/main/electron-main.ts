@@ -611,6 +611,7 @@ async function createWorkbenchWindow(
       await shell.openExternal(url);
     },
     app.isPackaged,
+    rendererOrigin,
   );
   window.once("ready-to-show", () => {
     if (!window.isDestroyed()) {

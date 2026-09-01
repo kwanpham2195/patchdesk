@@ -168,6 +168,76 @@ describe("desktop hardening", () => {
     await vi.waitFor(() => expect(openExternal).toHaveBeenCalledTimes(2));
   });
 
+  it("allows only the app's own origin to write the clipboard, and denies every other permission", () => {
+    const setPermissionCheckHandler = vi.fn();
+    const setPermissionRequestHandler = vi.fn();
+    const webContents = {
+      setWindowOpenHandler: vi.fn(),
+      on: vi.fn(),
+      session: {
+        setPermissionCheckHandler,
+        setPermissionRequestHandler,
+        on: vi.fn(),
+        webRequest: { onHeadersReceived: vi.fn() },
+      },
+    };
+    const ownOrigin = "http://localhost:5173";
+
+    installWebContentsSecurity(
+      webContents,
+      normalizeExternalHosts(["github.com"]),
+      async () => undefined,
+      false,
+      ownOrigin,
+    );
+
+    // SAFETY: same invariant as the mock recovery above -- installWebContentsSecurity
+    // registers exactly one `(webContents, permission, requestingOrigin) => boolean`
+    // check handler.
+    const checkHandler = setPermissionCheckHandler.mock.calls[0]?.[0] as (
+      webContents: null,
+      permission: string,
+      requestingOrigin: string,
+    ) => boolean;
+    expect(checkHandler(null, "clipboard-sanitized-write", ownOrigin)).toBe(
+      true,
+    );
+    expect(
+      checkHandler(null, "clipboard-sanitized-write", "http://evil.example"),
+    ).toBe(false);
+    expect(checkHandler(null, "clipboard-read", ownOrigin)).toBe(false);
+    expect(checkHandler(null, "notifications", ownOrigin)).toBe(false);
+    expect(checkHandler(null, "media", ownOrigin)).toBe(false);
+
+    // SAFETY: same invariant -- installWebContentsSecurity registers exactly
+    // one `(webContents, permission, callback, details) => void` request
+    // handler.
+    const requestHandler = setPermissionRequestHandler.mock.calls[0]?.[0] as (
+      webContents: null,
+      permission: string,
+      callback: (granted: boolean) => void,
+      details: { requestingUrl?: string },
+    ) => void;
+    const grants: boolean[] = [];
+    const callback = (granted: boolean) => grants.push(granted);
+    requestHandler(null, "clipboard-sanitized-write", callback, {
+      requestingUrl: `${ownOrigin}/reader`,
+    });
+    requestHandler(null, "clipboard-sanitized-write", callback, {
+      requestingUrl: "http://evil.example/reader",
+    });
+    requestHandler(null, "clipboard-read", callback, {
+      requestingUrl: `${ownOrigin}/reader`,
+    });
+    requestHandler(null, "notifications", callback, {
+      requestingUrl: `${ownOrigin}/reader`,
+    });
+    requestHandler(null, "media", callback, {
+      requestingUrl: `${ownOrigin}/reader`,
+    });
+    expect(grants).toEqual([true, false, false, false, false]);
+  });
+
   it("uses a File menu on non-macOS platforms", () => {
     expect(
       createDesktopMenuTemplate("linux", "Patchdesk", false, {

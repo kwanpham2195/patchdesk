@@ -19,12 +19,19 @@ type HardenedSession = {
       ) => void,
     ): void;
   };
-  setPermissionCheckHandler(handler: () => boolean): void;
+  setPermissionCheckHandler(
+    handler: (
+      webContents: WebContents | null,
+      permission: string,
+      requestingOrigin: string,
+    ) => boolean,
+  ): void;
   setPermissionRequestHandler(
     handler: (
       requestingWebContents: WebContents | null,
       permission: string,
       callback: (granted: boolean) => void,
+      details: { readonly requestingUrl?: string },
     ) => void,
   ): void;
   on(event: "will-download", listener: (event: PreventableEvent) => void): void;
@@ -97,12 +104,42 @@ export async function openAllowedExternalUrl(
   return true;
 }
 
+/** Origin of a URL, or `undefined` when the URL is missing or unparseable. */
+function originOf(url: string | undefined): string | undefined {
+  if (url === undefined || !URL.canParse(url)) return undefined;
+  return new URL(url).origin;
+}
+
+/**
+ * The only permission this app's session ever grants: `clipboard-sanitized-write`,
+ * the permission Chromium requires for `navigator.clipboard.writeText()`.
+ * It is safe to allow because it is write-only (there is no matching read
+ * back through it), it only ever carries plain text the renderer already
+ * held, and Chromium only reaches it from a user-initiated action such as a
+ * click on a "Copy as diff" button — never from a script running
+ * unattended. Restricting it to the app's own renderer origin keeps it from
+ * ever reaching content this session would otherwise deny by default.
+ * `clipboard-read` and every other permission stay denied.
+ */
+function isAllowedClipboardWrite(
+  permission: string,
+  requestingOrigin: string | undefined,
+  ownOrigin: string,
+): boolean {
+  return (
+    permission === "clipboard-sanitized-write" &&
+    requestingOrigin !== undefined &&
+    requestingOrigin === ownOrigin
+  );
+}
+
 /** Keeps all remote content outside the privileged Patchdesk renderer. */
 export function installWebContentsSecurity(
   webContents: GuardedWebContents,
   allowedHosts: ReadonlySet<string>,
   openExternal: ExternalUrlOpener,
   packaged = true,
+  ownOrigin = "null",
 ): void {
   webContents.setWindowOpenHandler(({ url }) => {
     void openAllowedExternalUrl(url, allowedHosts, openExternal).catch(
@@ -124,9 +161,20 @@ export function installWebContentsSecurity(
   const electronSession = webContents.session;
   if (hardenedSessions.has(electronSession)) return;
   hardenedSessions.add(electronSession);
-  electronSession.setPermissionCheckHandler(() => false);
+  electronSession.setPermissionCheckHandler(
+    (_webContents, permission, requestingOrigin) =>
+      isAllowedClipboardWrite(permission, requestingOrigin, ownOrigin),
+  );
   electronSession.setPermissionRequestHandler(
-    (_requestingWebContents, _permission, callback) => callback(false),
+    (_requestingWebContents, permission, callback, details) => {
+      callback(
+        isAllowedClipboardWrite(
+          permission,
+          originOf(details.requestingUrl),
+          ownOrigin,
+        ),
+      );
+    },
   );
   electronSession.on("will-download", (event) => {
     event.preventDefault();
