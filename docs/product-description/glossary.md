@@ -40,7 +40,13 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Repository listing.** The Pull requests screen's list of GitHub pull requests in the Selected repository. GitHub decides membership, order, count, and pagination; Patchdesk adds local Review indicators but does not re-sort or re-count the returned rows.
 
-**Pull request filter.** The maintainer's constraints on the Repository listing, expressed in GitHub search terms. The built surface includes state, labels, and the Awaiting review from you preset.
+**Pull request filter.** The maintainer's constraints on the Repository listing, expressed in GitHub search terms. The built surface includes state, labels, the Awaiting review from you preset, Review state, and Check status.
+
+**Review state filter.** The More filters choice that limits pull requests by GitHub review state. Its choices are Any, No reviews, Review required, Approved, and Changes requested; Any removes this qualifier.
+
+**Check status filter.** The More filters choice that limits pull requests by GitHub check status. Its choices are Any, Pending, Passing, and Failing; Any removes this qualifier.
+
+**More filters popover.** The Pull requests control that contains the Review state and Check status filters. It shows how many of those fields are active and exposes their active values as individually clearable chips.
 
 **Review indicator.** A signal on a Repository listing row that Patchdesk derives from local Review sessions. The current indicators are Updated since review and Ready to merge.
 
