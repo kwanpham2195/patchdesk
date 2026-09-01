@@ -22,10 +22,14 @@ import {
 } from "../domain/ids";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
+  INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
+  INBOX_REVIEW_STATE_FILTER_VALUES,
   type InboxPageRequest,
   type InboxPageSize,
   INBOX_STATE_FILTER_VALUES,
+  type InboxCheckStatusFilter,
+  type InboxReviewStateFilter,
   type InboxStateFilter,
   projectMaintainerInboxRow,
   type InboxReviewSummary,
@@ -75,6 +79,10 @@ const inboxPageTokenSchema = v.strictObject({
    * like a label change, flipping it is a different search query, so the
    * cursor no longer belongs to it. */
   awaitingMyReview: v.boolean(),
+  /** The review-state qualifier the token's cursor was cut under. */
+  reviewState: v.optional(v.picklist(INBOX_REVIEW_STATE_FILTER_VALUES)),
+  /** The check-status qualifier the token's cursor was cut under. */
+  checkStatus: v.optional(v.picklist(INBOX_CHECK_STATUS_FILTER_VALUES)),
   cursor: v.optional(
     v.pipe(
       v.string(),
@@ -159,8 +167,8 @@ export class MaintainerInboxService {
    * (`normalizeInboxLabels`), then threads both through `readRepository`,
    * `cachedOrUnavailable`, `unavailablePage`, and `buildInboxSearchQuery`.
    *
-   * Only the wholly unfiltered listing — no labels, no "Awaiting review from
-   * you" preset — is ever written to the cache. The cache is
+   * Only the wholly unfiltered listing — no labels, no review/check qualifier,
+   * and no "Awaiting review from you" preset — is ever written to the cache. The cache is
    * keyed by profile and repository alone, and `cachedOrUnavailable` reads it
    * back with no label argument at all — so a label-filtered result saved
    * there would come back later as the repository's whole inbox, three
@@ -182,12 +190,16 @@ export class MaintainerInboxService {
     const state = request.filter.state;
     const labels = normalizeInboxLabels(request.filter.labels);
     const awaitingMyReview = request.filter.awaitingMyReview ?? false;
+    const reviewState = request.filter.reviewState;
+    const checkStatus = request.filter.checkStatus;
     const pageToken = decodeInboxPageToken(
       request,
       repository,
       state,
       labels,
       awaitingMyReview,
+      reviewState,
+      checkStatus,
     );
     if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
 
@@ -214,6 +226,8 @@ export class MaintainerInboxService {
       state,
       labels,
       awaitingMyReview,
+      reviewState,
+      checkStatus,
       request.pageSize,
       pageToken.cursor,
       repositorySessions,
@@ -241,6 +255,8 @@ export class MaintainerInboxService {
       },
       labels,
       awaitingMyReview,
+      reviewState,
+      checkStatus,
     };
     const nextPageToken = hasNextPage
       ? encodeInboxPageToken(
@@ -266,6 +282,8 @@ export class MaintainerInboxService {
       state === "open" &&
       labels.length === 0 &&
       !awaitingMyReview &&
+      reviewState === undefined &&
+      checkStatus === undefined &&
       request.pageToken === undefined &&
       complete &&
       dataFreshness === "fresh"
@@ -297,6 +315,8 @@ export class MaintainerInboxService {
     state: InboxStateFilter,
     labels: ReadonlyArray<string>,
     awaitingMyReview: boolean,
+    reviewState: InboxReviewStateFilter | undefined,
+    checkStatus: InboxCheckStatusFilter | undefined,
     pageSize: InboxPageSize,
     cursor: string | undefined,
     sessions: ReadonlyArray<ReviewSession>,
@@ -311,6 +331,8 @@ export class MaintainerInboxService {
       state,
       labels,
       awaitingMyReview,
+      reviewState,
+      checkStatus,
     );
     const searched = await this.github.searchMaintainerPullRequests(
       cursor === undefined
@@ -440,8 +462,8 @@ export class MaintainerInboxService {
 
 /**
  * Builds the GitHub search qualifier string for one repository, state, label
- * filter, and preset: `repo:OWNER/NAME is:pr is:open
- * user-review-requested:@me label:"NAME"`. The sole place
+ * filter, review/check qualifiers, and preset: `repo:OWNER/NAME is:pr is:open
+ * user-review-requested:@me review:approved status:failure label:"NAME"`. The sole place
  * that builds this string, so every renderer-chosen filter extends it here
  * rather than through ad hoc concatenation elsewhere — and so GitHub's
  * 256-character search cap has one place to be enforced. `labels` is trusted
@@ -454,6 +476,8 @@ function buildInboxSearchQuery(
   state: InboxStateFilter,
   labels: ReadonlyArray<string>,
   awaitingMyReview: boolean,
+  reviewState: InboxReviewStateFilter | undefined,
+  checkStatus: InboxCheckStatusFilter | undefined,
 ): string {
   const stateQualifier = state === "merged" ? "is:merged" : "is:open";
   // `@me` is GitHub's own token for the authenticated viewer and is resolved
@@ -461,6 +485,8 @@ function buildInboxSearchQuery(
   // `author:@me` and `author:<login>` return the identical `issueCount`.
   const qualifiers = [
     ...(awaitingMyReview ? ["user-review-requested:@me"] : []),
+    ...(reviewState === undefined ? [] : [`review:${reviewState}`]),
+    ...(checkStatus === undefined ? [] : [`status:${checkStatus}`]),
     ...labels.map((label) => `label:"${label}"`),
   ].join(" ");
   const base = `repo:${repo.owner}/${repo.repo} is:pr ${stateQualifier}`;
@@ -543,9 +569,11 @@ function decodeInboxPageToken(
   state: InboxStateFilter,
   labels: string[],
   awaitingMyReview: boolean,
+  reviewState: InboxReviewStateFilter | undefined,
+  checkStatus: InboxCheckStatusFilter | undefined,
 ): InboxPageToken | undefined {
-  if (request.pageToken === undefined)
-    return {
+  if (request.pageToken === undefined) {
+    const token: InboxPageToken = {
       state,
       page: 1,
       size: request.pageSize,
@@ -557,6 +585,10 @@ function decodeInboxPageToken(
       labels,
       awaitingMyReview,
     };
+    if (reviewState !== undefined) token.reviewState = reviewState;
+    if (checkStatus !== undefined) token.checkStatus = checkStatus;
+    return token;
+  }
   if (request.pageToken.length > MAX_PAGE_TOKEN_LENGTH) return undefined;
   try {
     const decoded: unknown = JSON.parse(
@@ -570,7 +602,9 @@ function decodeInboxPageToken(
       value.size !== request.pageSize ||
       !sameRepositoryIdentity(value.repository, repository) ||
       !sameLabels(value.labels, labels) ||
-      value.awaitingMyReview !== awaitingMyReview
+      value.awaitingMyReview !== awaitingMyReview ||
+      value.reviewState !== reviewState ||
+      value.checkStatus !== checkStatus
     )
       return undefined;
     return value;

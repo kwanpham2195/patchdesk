@@ -5,11 +5,15 @@ import { runWithRequestAbortSignal } from "../../adapters/github/command-runner"
 import { listAuthenticatedGitHubAccounts } from "../../adapters/github/github-auth-accounts";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
+  INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
+  INBOX_REVIEW_STATE_FILTER_VALUES,
   MAX_INBOX_FILTER_LABELS,
   MAX_INBOX_FILTER_LABEL_LENGTH,
+  type InboxCheckStatusFilter,
   type InboxFilter,
   type InboxPageSize,
+  type InboxReviewStateFilter,
 } from "../../domain/maintainer-inbox";
 import {
   parseGitHubHost,
@@ -101,14 +105,28 @@ export function registerDashboardRoutes(
       );
       if (awaitingMyReview === "invalid")
         return response(context, err({ reason: "invalid_input" }));
+      const reviewState = parseInboxReviewStateQuery(
+        context.req.query("reviewState"),
+      );
+      if (reviewState === "invalid")
+        return response(context, err({ reason: "invalid_input" }));
+      const checkStatus = parseInboxCheckStatusQuery(
+        context.req.query("checkStatus"),
+      );
+      if (checkStatus === "invalid")
+        return response(context, err({ reason: "invalid_input" }));
       const labelsField = labels.length === 0 ? {} : { labels };
       const awaitingMyReviewField = awaitingMyReview
         ? { awaitingMyReview }
         : {};
+      const reviewStateField = reviewState === undefined ? {} : { reviewState };
+      const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
       const filter: InboxFilter = {
         state,
         ...labelsField,
         ...awaitingMyReviewField,
+        ...reviewStateField,
+        ...checkStatusField,
       };
       const page = context.req.query("page");
       const result = await dashboard.inboxForActiveProfile(
@@ -269,6 +287,28 @@ function parseInboxBooleanQuery(
   if (value === "1" || value === "true") return true;
   if (value === "0" || value === "false") return false;
   return "invalid";
+}
+
+/** Parses the optional GitHub `review:<value>` qualifier without widening an invalid value. */
+function parseInboxReviewStateQuery(
+  value: string | undefined,
+): InboxReviewStateFilter | undefined | "invalid" {
+  if (value === undefined) return undefined;
+  return (
+    INBOX_REVIEW_STATE_FILTER_VALUES.find((candidate) => candidate === value) ??
+    "invalid"
+  );
+}
+
+/** Parses the optional GitHub `status:<value>` qualifier without widening an invalid value. */
+function parseInboxCheckStatusQuery(
+  value: string | undefined,
+): InboxCheckStatusFilter | undefined | "invalid" {
+  if (value === undefined) return undefined;
+  return (
+    INBOX_CHECK_STATUS_FILTER_VALUES.find((candidate) => candidate === value) ??
+    "invalid"
+  );
 }
 
 function parseInboxLabelsQuery(
