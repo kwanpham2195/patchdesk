@@ -10,10 +10,10 @@ import { ok, type Result } from "../domain/result";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { WatchedRepoRef } from "./profile-service";
 
-export type DiscoveredRepo = WatchedRepoRef & {
+type DiscoveredRepo = WatchedRepoRef & {
   readonly localPath: AbsolutePath;
 };
-export type DiscoveredWorkspaceOrigin = {
+type DiscoveredWorkspaceOrigin = {
   readonly origin: string;
   readonly localPath: string;
 };
