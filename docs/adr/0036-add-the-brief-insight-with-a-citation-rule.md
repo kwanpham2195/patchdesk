@@ -1,10 +1,13 @@
 # Add the Brief Insight with a citation rule
 
-> **Status: Accepted.** Adds a third Insight type beside Analysis and
-> Walkthrough. It inherits ADR 0012 (each Insight type runs on its own, and an
-> outdated result stays readable), ADR 0013 (a model run is bounded and never
-> authoritative), and ADR 0018 (one throwaway Flue child per run, no new
-> model-visible capability). Terms in bold are defined in `CONTEXT.md`.
+> **Status: Accepted.** Superseded in part by ADR 0040 (Goal, Assumptions,
+> Description vs diff, and the uncited-rejection rule); the citation
+> manifest and the hunk-alias rule remain. Adds a third Insight type beside
+> Analysis and Walkthrough. It inherits ADR 0012 (each Insight type runs on
+> its own, and an outdated result stays readable), ADR 0013 (a model run is
+> bounded and never authoritative), and ADR 0018 (one throwaway Flue child
+> per run, no new model-visible capability). Terms in bold are defined in
+> `CONTEXT.md`.
 
 A maintainer opening a pull request has two Insights. **Analysis** returns
 Findings: concerns, each anchored to a diff location. **Walkthrough** returns a
