@@ -99,6 +99,14 @@ export type InboxViewPreferences = {
   readonly selectedRepository?: RepositoryIdentity;
 };
 
+type InboxViewPreferencesUpdate = Omit<
+  Partial<InboxViewPreferences>,
+  "reviewState" | "checkStatus"
+> & {
+  readonly reviewState?: InboxReviewStateFilter | undefined;
+  readonly checkStatus?: InboxCheckStatusFilter | undefined;
+};
+
 const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   state: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
@@ -169,9 +177,33 @@ export function loadInboxViewPreferences(
 /** Persists local presentation state and bounded GitHub filter choices; cursors never enter this key. */
 export function saveInboxViewPreferences(
   profileId: string,
-  update: Partial<InboxViewPreferences>,
+  update: InboxViewPreferencesUpdate,
 ): InboxViewPreferences {
-  const next = { ...loadInboxViewPreferences(profileId), ...update };
+  const stored = loadInboxViewPreferences(profileId);
+  const {
+    reviewState: updatedReviewState,
+    checkStatus: updatedCheckStatus,
+    ...otherUpdates
+  } = update;
+  const {
+    reviewState: storedReviewState,
+    checkStatus: storedCheckStatus,
+    ...storedWithoutFilters
+  } = stored;
+  const reviewState = Object.hasOwn(update, "reviewState")
+    ? updatedReviewState
+    : storedReviewState;
+  const checkStatus = Object.hasOwn(update, "checkStatus")
+    ? updatedCheckStatus
+    : storedCheckStatus;
+  const withReviewState =
+    reviewState === undefined
+      ? { ...storedWithoutFilters, ...otherUpdates }
+      : { ...storedWithoutFilters, ...otherUpdates, reviewState };
+  const next: InboxViewPreferences =
+    checkStatus === undefined
+      ? withReviewState
+      : { ...withReviewState, checkStatus };
   inboxViewPreference.save(profileId, next);
   return next;
 }

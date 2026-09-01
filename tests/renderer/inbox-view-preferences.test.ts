@@ -150,6 +150,23 @@ describe("inbox view preferences", () => {
     );
   });
 
+  it("does not restore a filter after it is explicitly cleared", () => {
+    saveInboxViewPreferences("profile-1", {
+      reviewState: "approved",
+      checkStatus: "failure",
+    });
+    saveInboxViewPreferences("profile-1", {
+      reviewState: undefined,
+      checkStatus: undefined,
+    });
+    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty(
+      "reviewState",
+    );
+    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty(
+      "checkStatus",
+    );
+  });
+
   it("caps selectedLabels at MAX_INBOX_FILTER_LABELS entries", () => {
     const labels = Array.from({ length: 10 }, (_, index) => `label-${index}`);
     store({ selectedLabels: labels });

@@ -278,9 +278,12 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
 
   it.each([
     {
-      name: "review state",
+      name: "selecting review state",
       apply: (workspace: WorkspaceInbox) =>
         workspace.changeInboxReviewState("approved"),
+      initialFilter: {
+        checkStatus: "pending" as const,
+      },
       requestFilter: {
         reviewState: "approved" as const,
         checkStatus: "pending" as const,
@@ -289,9 +292,24 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       query: "reviewState=approved&checkStatus=pending",
     },
     {
-      name: "check status",
+      name: "clearing review state",
+      apply: (workspace: WorkspaceInbox) =>
+        workspace.changeInboxReviewState(undefined),
+      initialFilter: {
+        reviewState: "approved" as const,
+        checkStatus: "pending" as const,
+      },
+      requestFilter: { checkStatus: "pending" as const },
+      preference: { reviewState: undefined },
+      query: "checkStatus=pending",
+    },
+    {
+      name: "selecting check status",
       apply: (workspace: WorkspaceInbox) =>
         workspace.changeInboxCheckStatus("failure"),
+      initialFilter: {
+        reviewState: "approved" as const,
+      },
       requestFilter: {
         reviewState: "approved" as const,
         checkStatus: "failure" as const,
@@ -299,9 +317,21 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       preference: { checkStatus: "failure" as const },
       query: "reviewState=approved&checkStatus=failure",
     },
+    {
+      name: "clearing check status",
+      apply: (workspace: WorkspaceInbox) =>
+        workspace.changeInboxCheckStatus(undefined),
+      initialFilter: {
+        reviewState: "approved" as const,
+        checkStatus: "failure" as const,
+      },
+      requestFilter: { reviewState: "approved" as const },
+      preference: { checkStatus: undefined },
+      query: "reviewState=approved",
+    },
   ])(
     "changes the $name, resets pagination, persists it, and preserves the other filters",
-    async ({ apply, requestFilter, preference, query }) => {
+    async ({ apply, initialFilter, requestFilter, preference, query }) => {
       const paths: string[] = [];
       desktop = installDesktopDouble({
         "/v1/profiles": () => success([profileA]),
@@ -328,7 +358,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
           awaitingMyReview: true,
           pageToken: "stale-page",
           previousPageTokens: ["older-page"],
-          ...requestFilter,
+          ...initialFilter,
         });
         apply(result.current);
       });
@@ -341,7 +371,15 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
         ...requestFilter,
       });
       expect(result.current.inboxRequest).not.toHaveProperty("pageToken");
-      expect(loadInboxViewPreferences("a")).toMatchObject(preference);
+      const savedPreferences = loadInboxViewPreferences("a");
+      if (preference.reviewState !== undefined)
+        expect(savedPreferences.reviewState).toBe(preference.reviewState);
+      if (preference.reviewState === undefined)
+        expect(savedPreferences).not.toHaveProperty("reviewState");
+      if (preference.checkStatus !== undefined)
+        expect(savedPreferences.checkStatus).toBe(preference.checkStatus);
+      if (preference.checkStatus === undefined)
+        expect(savedPreferences).not.toHaveProperty("checkStatus");
       await waitFor(() =>
         expect(paths.at(-1)).toBe(
           `/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&awaitingMyReview=1&${query}`,

@@ -118,6 +118,23 @@ describe("nextInboxRequest", () => {
     });
   });
 
+  it("clears review and check filters only when their override keys are present", () => {
+    const current = request({
+      reviewState: "approved",
+      checkStatus: "failure",
+    });
+    expect(nextInboxRequest(current)).toMatchObject({
+      reviewState: "approved",
+      checkStatus: "failure",
+    });
+    const cleared = nextInboxRequest(current, {
+      reviewState: undefined,
+      checkStatus: undefined,
+    });
+    expect(cleared).not.toHaveProperty("reviewState");
+    expect(cleared).not.toHaveProperty("checkStatus");
+  });
+
   it("drops the page cursor for every change that is not itself a page move", () => {
     const onPageTwo = request({
       repository: repoA,
