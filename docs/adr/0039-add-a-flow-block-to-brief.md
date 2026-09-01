@@ -14,28 +14,43 @@ means nothing without training on what the symbols stand for.
 
 ## The decision
 
-Patchdesk adds **Flow**, a sixth Brief block: a diff-styled tree of a runtime
-sequence, showing which steps a pull request added, removed, or kept. The
-maintainer sees, for example:
+Patchdesk adds **Flow**, a sixth Brief block: up to three diff-styled trees,
+one per **kind**, each showing which steps a pull request added, removed, or
+kept. A kind is a view on the change, modelled on how engineers already
+sketch one:
 
-```
-Start insight run
-├── - prepare shared context
-├── + read patch
-├── + load PR description and commits
-└── + build citation manifest
-Ask model for structured JSON
-+ Validate citations and normalize output
-+ Compute Reach locally
-Persist snapshot-bound Brief
-Render result
+- `call_tree` — a runtime call tree or call stack change. Labels are real
+  function or method names with their parameter names as written in the
+  patch, e.g. `validateManualDays(command, suggestion)`, never a sentence.
+  Children are the calls made inside — the point is that a reviewer follows
+  the flow without reading the code.
+- `control_flow` — a state or control-flow change as short pseudocode lines,
+  e.g. `on(save)`, `if content is unchanged`, `return cached result`.
+- `component` — a UI component tree change, labels like `<SessionToolbar>`
+  with hooks as plain names (`useSessionEvents()`).
+
+At most one tree per kind, so up to three trees total. The model omits a
+kind that does not apply to the change, and omits Flow entirely when no step
+changes in any kind — a rename, a docs change, a pure refactor. The maintainer
+sees, for a `call_tree` view on a change to Brief's own pipeline:
+
+```diff
+ startInsightRun(request)
+-  prepareSharedContext(command)
++  readPatch(diffText)
++  loadPullRequestContext(prNumber)
++  buildCitationManifest(hunks, description, commits)
+ askModelForBrief(prompt)
++  validateCitations(brief, manifest)
++  computeReachLocally(brief, ownershipGraph)
+ persistSnapshotBoundBrief(brief, snapshotId)
+ renderResult(brief)
 ```
 
-The model proposes up to two trees, each a label plus a change of `added`,
-`removed`, or `unchanged`, nested up to three levels deep, at most fifteen
-nodes per tree, labels capped at 80 characters. It is told to omit Flow
-entirely when the patch adds, removes, or reorders no step — a rename, a
-docs change, a pure refactor.
+Within a tree, the model proposes a label plus a change of `added`,
+`removed`, or `unchanged` for each node, nested up to three levels deep, at
+most fifteen nodes per tree, labels capped at 120 characters — longer than
+the rest of Brief's 80, because signatures run longer than sentences.
 
 ### Flow cites hunks only
 
@@ -90,14 +105,17 @@ already links to Walkthrough; that link is unchanged.
 
 ### Rendering
 
-Flow draws as real tree markup, not preformatted text pretending to be one,
-with the same diff colors used elsewhere in Patchdesk: added and removed
-markers in their status hues, the unchanged spine dimmed so the changed
-steps stand out. Each added or removed node carries a citation chip identical
-to Goal's — a hunk citation chip opens a preview of the cited hunk, the same
-popover the rest of Brief uses. A "Copy as diff" action renders the kept
-tree back out as the ` ```diff ` text form shown above, for pasting into a
-PR comment or commit message.
+Flow draws like a diff block, not a tree widget: monospace rows, a marker
+column (`+`, `−`, blank) on the left, indentation by depth, added and removed
+rows tinted with the app's diff hues, unchanged rows dimmed so the changed
+steps stand out, and a citation chip at the end of a changed row — identical
+to Goal's, opening the same hunk-preview popover the rest of Brief uses. Each
+view's header carries a kind badge (`call_tree`, `control_flow`, `component`)
+so a maintainer scanning more than one tree knows which kind of sketch
+they're reading. A "Copy as diff" action emits the same rows as a fenced
+` ```diff ` block, one block per view: the marker sits in column 0, and each
+level of depth adds two spaces of indentation — the form used in the
+maintainer's `show-me` sketches.
 
 ### Storage
 
@@ -120,3 +138,6 @@ inventing one.
 - A correct spine can vanish alongside its one changed step if that step's
   citation does not resolve. This is accepted, not overlooked: see the
   rejected alternative above.
+- Brief is moving toward structure-first views. A follow-up ADR (0040)
+  removes the Goal, Assumptions, and Description-vs-diff blocks and
+  re-anchors the citation rule on Flow.
