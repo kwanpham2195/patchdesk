@@ -97,9 +97,13 @@ export function nextInboxRequest(
   const repositoryField = repository === undefined ? {} : { repository };
   const pageTokenField =
     overrides.pageToken === undefined ? {} : { pageToken: overrides.pageToken };
-  const reviewState = overrides.reviewState ?? current.reviewState;
+  const reviewState = Object.hasOwn(overrides, "reviewState")
+    ? overrides.reviewState
+    : current.reviewState;
   const reviewStateField = reviewState === undefined ? {} : { reviewState };
-  const checkStatus = overrides.checkStatus ?? current.checkStatus;
+  const checkStatus = Object.hasOwn(overrides, "checkStatus")
+    ? overrides.checkStatus
+    : current.checkStatus;
   const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
   return {
     ...repositoryField,

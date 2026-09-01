@@ -79,10 +79,10 @@ export type WorkspaceInbox = {
   readonly changeInboxLabels: (selectedLabels: ReadonlyArray<string>) => void;
   readonly changeInboxAwaitingMyReview: (awaitingMyReview: boolean) => void;
   readonly changeInboxReviewState: (
-    reviewState: InboxReviewStateFilter,
+    reviewState: InboxReviewStateFilter | undefined,
   ) => void;
   readonly changeInboxCheckStatus: (
-    checkStatus: InboxCheckStatusFilter,
+    checkStatus: InboxCheckStatusFilter | undefined,
   ) => void;
   readonly changeInboxRepository: (repository: Repo) => void;
   readonly previousInboxPage: () => void;
@@ -378,7 +378,7 @@ export function useWorkspaceInbox({
   );
   /** Changes GitHub's review-state qualifier and starts a fresh first page. */
   const changeInboxReviewState = useCallback(
-    (reviewState: InboxReviewStateFilter): void => {
+    (reviewState: InboxReviewStateFilter | undefined): void => {
       const request = nextInboxRequest(inboxRequestRef.current, {
         reviewState,
       });
@@ -392,7 +392,7 @@ export function useWorkspaceInbox({
   );
   /** Changes GitHub's check-status qualifier and starts a fresh first page. */
   const changeInboxCheckStatus = useCallback(
-    (checkStatus: InboxCheckStatusFilter): void => {
+    (checkStatus: InboxCheckStatusFilter | undefined): void => {
       const request = nextInboxRequest(inboxRequestRef.current, {
         checkStatus,
       });
