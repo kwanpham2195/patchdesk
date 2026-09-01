@@ -227,8 +227,9 @@ describe("insightOutputGuidance", () => {
       "Give an added or removed step the h alias of the hunk that shows it when the patch shows it, and leave citations empty when it does not -- never omit a step for lack of a citation, and never cite a description or commit alias in flow.",
     );
     expect(guidance).toContain(
-      "An unchanged step carries no citation: if a hunk shows the step, the step is added or removed, not unchanged.",
+      "Mark a step added only when it did not exist before the patch",
     );
+    expect(guidance).toContain("Never list a test function as a step");
     expect(guidance).toContain(
       "Before you write a tree, list every entry point whose behavior this patch changes -- each command, request path, and error path -- and give each one a root.",
     );
