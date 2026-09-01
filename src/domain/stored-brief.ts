@@ -3,7 +3,6 @@ import * as v from "valibot";
 import {
   BRIEF_ALIAS_SYNTAX,
   type BriefCitation,
-  type BriefDescriptionDrift,
   type BriefError,
   type NormalizedBrief,
 } from "./brief";
@@ -134,36 +133,12 @@ const storedBriefSchema = v.strictObject({
     patchHash: v.string(),
   }),
   citationStatus: v.picklist(["verified", "partially_verified"]),
-  goal: v.pipe(
-    v.array(
-      v.strictObject({
-        text: v.pipe(v.string(), v.minLength(1)),
-        citations: v.pipe(v.array(storedCitationSchema), v.minLength(1)),
-      }),
-    ),
-    v.minLength(1),
-  ),
-  assumptions: v.array(
-    v.strictObject({ text: v.string(), demoted: v.boolean() }),
-  ),
-  /** Absent on every Brief retained before the description-vs-diff block existed. */
-  descriptionDrift: v.optional(
-    v.strictObject({
-      claimed: v.array(
-        v.strictObject({
-          quote: v.pipe(v.string(), v.minLength(1)),
-          note: v.string(),
-          citations: v.pipe(v.array(storedCitationSchema), v.minLength(1)),
-        }),
-      ),
-      undescribed: v.array(
-        v.strictObject({
-          text: v.pipe(v.string(), v.minLength(1)),
-          citations: v.pipe(v.array(storedCitationSchema), v.minLength(1)),
-        }),
-      ),
-    }),
-  ),
+  /** Written by Briefs retained up to 0.1.3; read and ignored. Delete after the next release (ADR 0040). */
+  goal: v.optional(v.unknown()),
+  /** Written by Briefs retained up to 0.1.3; read and ignored. Delete after the next release (ADR 0040). */
+  assumptions: v.optional(v.unknown()),
+  /** Written by Briefs retained up to 0.1.3; read and ignored. Delete after the next release (ADR 0040). */
+  descriptionDrift: v.optional(v.unknown()),
   /** Absent on every Brief retained before the Ownership block existed. */
   ownership: v.optional(storedOwnershipSchema),
   /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
@@ -195,6 +170,10 @@ type StoredBriefCitation = v.InferOutput<typeof storedCitationSchema>;
  * Parses one Brief that storage already holds. A retained Brief carries its own
  * resolved citation labels, so reading it back needs no patch bytes -- unlike a
  * Walkthrough, which must be renormalized against its session's patch.
+ *
+ * A stored `goal`, `assumptions`, or `descriptionDrift` key -- written by a
+ * Brief retained up to 0.1.3 -- is read by the schema above only to let the
+ * record parse; nothing here draws a value from it (ADR 0040).
  */
 export function parseStoredBrief(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the stored Brief's read boundary; the very next statement runs `safeParse(storedBriefSchema, input)` against it before anything else touches it.
@@ -213,25 +192,6 @@ export function parseStoredBrief(
     patchHash._tag === "err"
   )
     return malformedBrief();
-  const goal: Array<NormalizedBrief["goal"][number]> = [];
-  for (const item of parsed.output.goal) {
-    const citations = parseStoredCitations(item.citations);
-    if (citations === undefined) return malformedBrief();
-    goal.push({ text: item.text, citations });
-  }
-  const drift = parsed.output.descriptionDrift;
-  const claimed: Array<BriefDescriptionDrift["claimed"][number]> = [];
-  const undescribed: Array<BriefDescriptionDrift["undescribed"][number]> = [];
-  for (const item of drift?.claimed ?? []) {
-    const citations = parseStoredCitations(item.citations);
-    if (citations === undefined) return malformedBrief();
-    claimed.push({ quote: item.quote, note: item.note, citations });
-  }
-  for (const item of drift?.undescribed ?? []) {
-    const citations = parseStoredCitations(item.citations);
-    if (citations === undefined) return malformedBrief();
-    undescribed.push({ text: item.text, citations });
-  }
   let flow: BriefFlow | undefined;
   if (parsed.output.flow !== undefined) {
     const trees: Array<BriefFlowTree> = [];
@@ -250,11 +210,7 @@ export function parseStoredBrief(
       patchHash: patchHash.value,
     },
     citationStatus: parsed.output.citationStatus,
-    goal,
-    assumptions: parsed.output.assumptions,
     ...definedProps({
-      descriptionDrift:
-        drift === undefined ? undefined : { claimed, undescribed },
       ownership: storedOwnership(parsed.output.ownership),
       startHere: storedStartHere(parsed.output.startHere),
       reach: storedReach(parsed.output.reach),
@@ -314,8 +270,7 @@ function storedOwnership(
 
 /**
  * Rebuilds one Flow tree from storage, re-parsing every node's citations;
- * `undefined` means one of them no longer parses, the same failure
- * `parseStoredCitations` reports for a goal or drift item.
+ * `undefined` means one of them no longer parses.
  */
 function storedFlowTree(
   stored: v.InferOutput<typeof storedFlowTreeSchema>,

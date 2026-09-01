@@ -176,33 +176,6 @@ const briefSchema = v.strictObject({
     patchHash: v.pipe(v.string(), v.minLength(1)),
   }),
   citationStatus: v.picklist(["verified", "partially_verified"]),
-  goal: v.array(
-    v.strictObject({
-      text: v.pipe(v.string(), v.minLength(1)),
-      citations: v.array(briefCitationSchema),
-    }),
-  ),
-  assumptions: v.array(
-    v.strictObject({ text: v.string(), demoted: v.boolean() }),
-  ),
-  /** Absent when the pull request carried no description to compare the diff against. */
-  descriptionDrift: v.optional(
-    v.strictObject({
-      claimed: v.array(
-        v.strictObject({
-          quote: v.pipe(v.string(), v.minLength(1)),
-          note: v.string(),
-          citations: v.array(briefCitationSchema),
-        }),
-      ),
-      undescribed: v.array(
-        v.strictObject({
-          text: v.pipe(v.string(), v.minLength(1)),
-          citations: v.array(briefCitationSchema),
-        }),
-      ),
-    }),
-  ),
   /** Absent on a Brief retained before the Ownership block existed. */
   ownership: v.optional(briefOwnershipSchema),
   /** Absent on a Brief retained before the Start here block existed, and whenever no proposed path was a changed file. */
@@ -418,12 +391,13 @@ export function briefOwnershipTree(
   }));
 }
 
-/** "6 verified · 1 assumption": what the Brief could cite, and what it could not. */
+/**
+ * States the Brief's citation status alone (ADR 0040): there is no Goal or
+ * Assumption count left to add to it, since Flow drops an uncited step
+ * rather than demoting it to a lower-confidence line.
+ */
 export function briefCitationStatusLine(brief: Brief): string {
-  const verified = brief.goal.reduce(
-    (total, item) => total + item.citations.length,
-    0,
-  );
-  const assumptions = brief.assumptions.length;
-  return `${verified} verified · ${assumptions} ${assumptions === 1 ? "assumption" : "assumptions"}`;
+  return brief.citationStatus === "verified"
+    ? "all citations verified"
+    : "some citations could not be verified";
 }
