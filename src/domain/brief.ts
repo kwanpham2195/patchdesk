@@ -135,9 +135,9 @@ export type NormalizedBrief = {
    */
   readonly citedHunks?: Readonly<Record<string, string>>;
   /**
-   * The Flow block: up to two before/after trees of a runtime sequence.
-   * Absent on a Brief retained before the block existed, and whenever no
-   * tree survived normalization.
+   * The Flow block: up to `MAX_FLOW_TREES` before/after trees of a runtime
+   * sequence, at most one per kind. Absent on a Brief retained before the
+   * block existed, and whenever no tree survived normalization.
    */
   readonly flow?: BriefFlow;
 };
@@ -262,13 +262,16 @@ export const briefOutputSchema = v.strictObject({
  * that rule to the model in the same prompt as this shape.
  *
  * `flow` is optional, like `ownership` and `startHere`: a Brief with no flow
- * proposed is still a complete Brief. Every `added`/`removed` node must keep
- * at least one citation that resolves to a hunk -- a description or commit
- * alias is never evidence that a runtime step changed, no matter how it is
- * paired with a real one.
+ * proposed is still a complete Brief. Every tree carries a `kind`: `call_tree`
+ * is real function or method names with parameter names as written in the
+ * patch, `control_flow` is short pseudocode lines, and `component` is a
+ * `<ComponentName>` tree. Every `added`/`removed` node must keep at least one
+ * citation that resolves to a hunk -- a description or commit alias is never
+ * evidence that a runtime step changed, no matter how it is paired with a
+ * real one.
  */
 export const BRIEF_RESULT_CONTRACT =
-  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"assumptions":[string],"reachSymbols":[string]}';
+  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"kind":"call_tree"|"control_flow"|"component","title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"assumptions":[string],"reachSymbols":[string]}';
 
 export type BriefOutput = v.InferOutput<typeof briefOutputSchema>;
 export type InvalidBriefOutput = { readonly _tag: "InvalidBriefOutput" };

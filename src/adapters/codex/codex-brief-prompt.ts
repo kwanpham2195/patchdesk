@@ -28,7 +28,7 @@ export function buildCodexBriefPrompt(input: {
     "The represented review worktree is immutable and read-only. Do not modify files, access credentials, use network, or request permission escalation.",
     "Return exactly one JSON object. Do not wrap it in a Markdown code fence, and do not add any prose before or after it.",
     BRIEF_RESULT_CONTRACT,
-    "Use no other keys. Use at most 8 goal items and at most 12 assumptions, each within 400 characters, and at most 8 citations per goal item. Use at most 2 flow trees, at most 15 steps per tree, at most 3 levels deep, and labels within 80 characters.",
+    "Use no other keys. Use at most 8 goal items and at most 12 assumptions, each within 400 characters, and at most 8 citations per goal item. Use at most 3 flow trees, one per kind, at most 15 steps per tree, at most 3 levels deep, and labels within 120 characters.",
     input.briefPrompt,
     `Patchdesk policy:\n${input.policy}`,
   ].join("\n\n");

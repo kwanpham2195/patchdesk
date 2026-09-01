@@ -52,6 +52,7 @@ describe("normalizeBriefFlow", () => {
   it("keeps a fully cited mock-up tree intact, rejecting nothing", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Brief",
         nodes: [
           {
@@ -85,6 +86,7 @@ describe("normalizeBriefFlow", () => {
     expect(result.rejected).toBe(0);
     expect(result.value?.trees).toHaveLength(1);
     const [tree] = result.value?.trees ?? [];
+    expect(tree?.kind).toBe("call_tree");
     expect(tree?.title).toBe("Brief");
     expect(tree?.nodes).toHaveLength(4);
     expect(tree?.nodes[0]?.children.map((node) => node.change)).toEqual([
@@ -102,6 +104,7 @@ describe("normalizeBriefFlow", () => {
   it("drops a changed node with no citation, and its child, counting 2 rejected", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Warm the cache",
         nodes: [
           { label: "valid change", change: "added", citations: ["h1"] },
@@ -124,6 +127,7 @@ describe("normalizeBriefFlow", () => {
   it("drops a removed node that cites only the description", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Right step, wrong evidence",
         nodes: [
           { label: "valid change", change: "added", citations: ["h1"] },
@@ -146,6 +150,7 @@ describe("normalizeBriefFlow", () => {
   it("keeps an unchanged node with a bogus citation, discarding the citation", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Note the intent",
         nodes: [
           { label: "valid change", change: "added", citations: ["h1"] },
@@ -164,6 +169,7 @@ describe("normalizeBriefFlow", () => {
   it("keeps a changed node citing a hunk and a commit, discarding only the commit", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Log the branch taken",
         nodes: [
           {
@@ -184,6 +190,7 @@ describe("normalizeBriefFlow", () => {
   it("drops a tree where every step is unchanged", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Rename usernameField to displayName",
         nodes: [
           { label: "Read the form state", change: "unchanged" },
@@ -197,17 +204,20 @@ describe("normalizeBriefFlow", () => {
     expect(result.rejected).toBe(0);
   });
 
-  it("keeps only the first two of three surviving trees, in input order", () => {
+  it("keeps three trees of three different kinds, in input order", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Tree A",
         nodes: [{ label: "change A", change: "added", citations: ["h1"] }],
       },
       {
+        kind: "control_flow",
         title: "Tree B",
         nodes: [{ label: "change B", change: "added", citations: ["h2"] }],
       },
       {
+        kind: "component",
         title: "Tree C",
         nodes: [{ label: "change C", change: "added", citations: ["h3"] }],
       },
@@ -216,13 +226,50 @@ describe("normalizeBriefFlow", () => {
     expect(result.value?.trees.map((tree) => tree.title)).toEqual([
       "Tree A",
       "Tree B",
+      "Tree C",
+    ]);
+    expect(result.value?.trees.map((tree) => tree.kind)).toEqual([
+      "call_tree",
+      "control_flow",
+      "component",
     ]);
     expect(result.rejected).toBe(0);
+  });
+
+  it("keeps only the first of two same-kind trees, dropping the second silently", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "call_tree",
+        title: "First call tree",
+        nodes: [{ label: "keep(a, b)", change: "added", citations: ["h1"] }],
+      },
+      {
+        kind: "call_tree",
+        title: "Second call tree",
+        nodes: [{ label: "keep(c, d)", change: "added", citations: ["h2"] }],
+      },
+    ];
+    const result = normalize(raw);
+    expect(result.value?.trees.map((tree) => tree.title)).toEqual([
+      "First call tree",
+    ]);
+    expect(result.rejected).toBe(0);
+  });
+
+  it("rejects a tree with no kind at the schema level, whole and unparsed", () => {
+    const noKind = [
+      {
+        title: "Missing kind",
+        nodes: [{ label: "step", change: "added", citations: ["h1"] }],
+      },
+    ];
+    expect(v.safeParse(briefFlowOutputSchema, noKind).success).toBe(false);
   });
 
   it("rejects a proposal nested 4 deep at the schema level, whole and unparsed", () => {
     const tooDeep = [
       {
+        kind: "call_tree",
         title: "Depth test",
         nodes: [
           {
@@ -264,7 +311,7 @@ describe("normalizeBriefFlow", () => {
         change: "unchanged",
         children: [node],
       };
-    const tooDeep = [{ title: "Deep chain", nodes: [node] }];
+    const tooDeep = [{ kind: "call_tree", title: "Deep chain", nodes: [node] }];
     let result: v.SafeParseResult<typeof briefFlowOutputSchema> | undefined;
     expect(() => {
       result = v.safeParse(briefFlowOutputSchema, tooDeep);
@@ -279,19 +326,22 @@ describe("normalizeBriefFlow", () => {
         return { label, change: "added" as const, citations: ["h1"] };
       return { label, change: "unchanged" as const };
     });
-    const raw: BriefFlowOutput = [{ title: "Too many steps", nodes }];
+    const raw: BriefFlowOutput = [
+      { kind: "call_tree", title: "Too many steps", nodes },
+    ];
     const result = normalize(raw);
     expect(result.value?.trees[0]?.nodes).toHaveLength(15);
     expect(result.rejected).toBe(0);
   });
 
-  it("truncates a label longer than 80 characters instead of dropping it", () => {
+  it("keeps a 100-character label whole", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Long label",
         nodes: [
           { label: "keep this step", change: "added", citations: ["h1"] },
-          { label: "x".repeat(90), change: "unchanged" },
+          { label: "x".repeat(100), change: "unchanged" },
         ],
       },
     ];
@@ -299,13 +349,33 @@ describe("normalizeBriefFlow", () => {
     expect(result.rejected).toBe(0);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "keep this step",
-      "x".repeat(80),
+      "x".repeat(100),
+    ]);
+  });
+
+  it("truncates a label longer than 120 characters instead of dropping it", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "call_tree",
+        title: "Long label",
+        nodes: [
+          { label: "keep this step", change: "added", citations: ["h1"] },
+          { label: "x".repeat(121), change: "unchanged" },
+        ],
+      },
+    ];
+    const result = normalize(raw);
+    expect(result.rejected).toBe(0);
+    expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
+      "keep this step",
+      "x".repeat(120),
     ]);
   });
 
   it("drops a node whose label is only whitespace, and does not count it rejected", () => {
     const raw: BriefFlowOutput = [
       {
+        kind: "call_tree",
         title: "Blank label",
         nodes: [
           { label: "valid change", change: "added", citations: ["h1"] },

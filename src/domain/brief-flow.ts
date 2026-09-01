@@ -5,7 +5,9 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
 
 /*
  * The Brief reader draws this block as "Flow": a before/after tree of a
- * runtime sequence, one tree per pipeline the patch touches.
+ * runtime sequence. Every tree carries a `kind` -- call_tree, control_flow,
+ * or component -- and the Brief keeps at most one tree per kind, so up to
+ * `MAX_FLOW_TREES` trees survive, one for each kind the patch changes.
  *
  * Flow cites hunks only -- only the diff can show that a step was added or
  * removed, so a description or commit alias never counts as evidence of a
@@ -19,20 +21,29 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
  * dropped, and its whole proposed subtree goes with it -- a changed step
  * Patchdesk cannot back up is not shown, and nothing invented underneath an
  * invented step survives either. A tree left with no surviving changed step
- * at any depth says nothing changed, so the whole tree is dropped; only the
- * first `MAX_FLOW_TREES` survivors after that are kept, in the order the
- * model proposed them.
+ * at any depth says nothing changed, so the whole tree is dropped; of the
+ * survivors, a second tree of a kind already kept is dropped too (input
+ * order wins), and only the first `MAX_FLOW_TREES` survivors after that are
+ * kept, in the order the model proposed them.
  *
  * `rejected` counts citation failures only -- a discarded alias, and an
  * `added`/`removed` node dropped for keeping no surviving hunk citation.
  * Every other cap below (the per-tree node cap, the depth cap, a
- * whitespace-only label, an all-unchanged tree, a surviving tree past
- * `MAX_FLOW_TREES`) is silent, the same way `normalizeBriefStartHere`'s
- * five-file cap and an unmatched Start here path are silent.
+ * whitespace-only label, an all-unchanged tree, a repeat-kind tree, a
+ * surviving tree past `MAX_FLOW_TREES`) is silent, the same way
+ * `normalizeBriefStartHere`'s five-file cap and an unmatched Start here path
+ * are silent.
  */
 
 /** Whether one Flow step is new, gone, or the spine connecting the changed ones. */
 export type BriefFlowChange = "added" | "removed" | "unchanged";
+
+/**
+ * What a Flow tree draws: a call tree of real function/method names, a
+ * pseudocode control-flow sketch, or a component tree. The Brief keeps at
+ * most one tree per kind (see `MAX_FLOW_TREES`).
+ */
+export type BriefFlowKind = "call_tree" | "control_flow" | "component";
 
 /** One step of a Flow tree, already checked against the citation manifest. */
 export type BriefFlowNode = {
@@ -42,25 +53,26 @@ export type BriefFlowNode = {
   readonly children: ReadonlyArray<BriefFlowNode>;
 };
 
-/** One before/after tree: a named pipeline, and the steps that make it up. */
+/** One before/after tree: its kind, a title, and the steps that make it up. */
 export type BriefFlowTree = {
+  readonly kind: BriefFlowKind;
   readonly title: string;
   readonly nodes: ReadonlyArray<BriefFlowNode>;
 };
 
-/** The Flow block: up to `MAX_FLOW_TREES` before/after trees. */
+/** The Flow block: up to `MAX_FLOW_TREES` before/after trees, at most one per kind. */
 export type BriefFlow = {
   readonly trees: ReadonlyArray<BriefFlowTree>;
 };
 
-/** Kept trees per Brief -- past this, Flow starts reading as the whole diff again. */
-const MAX_FLOW_TREES = 2;
+/** Kept trees per Brief, at most one per kind -- past this, Flow starts reading as the whole diff again. */
+const MAX_FLOW_TREES = 3;
 /** Kept node depth; a root node is depth 1. Enforced by the schema itself (see `flowNodeSchema`), so the matching check in `walkFlowNodes` is belt-and-braces. */
 const MAX_FLOW_DEPTH = 3;
 /** Pre-order nodes visited per tree before the rest of that tree is dropped. */
 const MAX_FLOW_NODES_PER_TREE = 15;
-/** Kept label length, after collapsing the raw label to one line. */
-const MAX_FLOW_LABEL_LENGTH = 80;
+/** Kept label length, after collapsing the raw label to one line -- call-tree labels are signatures like `validateManualDays(command, suggestion)`, longer than prose. */
+const MAX_FLOW_LABEL_LENGTH = 120;
 /** Raw label length the schema accepts, before normalization truncates the long ones. */
 const MAX_FLOW_LABEL_INPUT_LENGTH = 200;
 /** Raw tree title length the schema accepts. */
@@ -150,6 +162,7 @@ export const briefFlowOutputSchema = v.optional(
   v.pipe(
     v.array(
       v.strictObject({
+        kind: v.picklist(["call_tree", "control_flow", "component"]),
         title: v.pipe(
           v.string(),
           v.minLength(1),
@@ -311,8 +324,9 @@ function normalizeFlowTitle(rawTitle: string): string {
  * the same way `normalizeBriefStartHere`'s five-file cap and an unmatched
  * Start here path are silent: the per-tree node cap, the `MAX_FLOW_DEPTH`
  * cap (also enforced by the schema itself, see `flowNodeSchema`), a
- * whitespace-only label, a tree with no surviving changed node, and a
- * surviving tree past `MAX_FLOW_TREES`.
+ * whitespace-only label, a tree with no surviving changed node, a second
+ * surviving tree of a kind already kept, and a surviving tree past
+ * `MAX_FLOW_TREES`.
  */
 export function normalizeBriefFlow(
   raw: BriefFlowOutput,
@@ -329,12 +343,21 @@ export function normalizeBriefFlow(
     rejected += ctx.rejected;
 
     if (!anyFlowNodeChanged(nodes)) continue;
-    survivors.push({ title: normalizeFlowTitle(rawTree.title), nodes });
+    survivors.push({
+      kind: rawTree.kind,
+      title: normalizeFlowTitle(rawTree.title),
+      nodes,
+    });
   }
 
+  // At most one surviving tree per kind, input order wins; then at most
+  // `MAX_FLOW_TREES` overall. Both drops here are silent.
   const trees: Array<BriefFlowTree> = [];
+  const keptKinds = new Set<BriefFlowKind>();
   for (const tree of survivors) {
     if (trees.length >= MAX_FLOW_TREES) continue;
+    if (keptKinds.has(tree.kind)) continue;
+    keptKinds.add(tree.kind);
     trees.push(tree);
   }
 

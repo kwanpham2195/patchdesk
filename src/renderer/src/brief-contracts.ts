@@ -107,9 +107,11 @@ const briefReachSchema = v.strictObject({
 });
 
 /**
- * The Flow block: a before/after tree of a runtime sequence. Citations are
- * hunk-only (the main process already restricted them), but a chip draws a
- * Flow citation the same way it draws any other one.
+ * The Flow block: a before/after tree of a runtime sequence. Every tree
+ * carries a `kind` -- call_tree, control_flow, or component -- mirroring
+ * `BriefFlowKind` in `src/domain/brief-flow.ts`. Citations are hunk-only (the
+ * main process already restricted them), but a chip draws a Flow citation the
+ * same way it draws any other one.
  */
 type BriefFlowNodeEntry = {
   readonly label: string;
@@ -131,7 +133,7 @@ function flowNodeSchema<ChildSchema extends v.GenericSchema>(
   childSchema: ChildSchema,
 ) {
   return v.strictObject({
-    label: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
+    label: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
     change: v.picklist(["added", "removed", "unchanged"]),
     citations: v.array(briefCitationSchema),
     children: v.array(childSchema),
@@ -157,6 +159,7 @@ const briefFlowSchema = v.strictObject({
   trees: v.pipe(
     v.array(
       v.strictObject({
+        kind: v.picklist(["call_tree", "control_flow", "component"]),
         title: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
         nodes: v.array(briefFlowNodeSchema),
       }),

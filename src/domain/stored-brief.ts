@@ -89,6 +89,7 @@ const storedFlowMidSchema = storedFlowNodeSchema(storedFlowLeafSchema);
 /** Depth 1, a tree's own root nodes: their `children` are depth-2 nodes. */
 const storedFlowRootSchema = storedFlowNodeSchema(storedFlowMidSchema);
 const storedFlowTreeSchema = v.strictObject({
+  kind: v.picklist(["call_tree", "control_flow", "component"]),
   title: v.pipe(v.string(), v.minLength(1)),
   nodes: v.array(storedFlowRootSchema),
 });
@@ -325,7 +326,7 @@ function storedFlowTree(
     if (parsed === undefined) return undefined;
     nodes.push(parsed);
   }
-  return { title: stored.title, nodes };
+  return { kind: stored.kind, title: stored.title, nodes };
 }
 
 /** Rebuilds one Flow node from storage; `undefined` means a citation path no longer parses. */

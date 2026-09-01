@@ -28,9 +28,11 @@ describe("buildCodexBriefPrompt", () => {
     if (result._tag !== "ok") return;
     expect(result.value).toContain(briefPrompt);
     expect(result.value).toContain("HUNK ALIAS MANIFEST");
-    expect(result.value).toContain('"flow":[{"title":string');
     expect(result.value).toContain(
-      "Use at most 2 flow trees, at most 15 steps per tree, at most 3 levels deep, and labels within 80 characters.",
+      '"flow":[{"kind":"call_tree"|"control_flow"|"component","title":string',
+    );
+    expect(result.value).toContain(
+      "Use at most 3 flow trees, one per kind, at most 15 steps per tree, at most 3 levels deep, and labels within 120 characters.",
     );
   });
 

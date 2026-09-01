@@ -393,10 +393,16 @@ describe("insightOutputGuidance", () => {
   it("gives the Brief its own Flow rules and still forbids numbers", () => {
     const guidance = insightOutputGuidance("brief");
     expect(guidance).toContain(
+      "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, and component.",
+    );
+    expect(guidance).toContain(
+      "A call_tree step is the real function or method name with its parameter names as written in the patch, such as validateManualDays(command, suggestion)",
+    );
+    expect(guidance).toContain(
       "Give every added or removed step an h alias citing the hunk that adds or removes it; a description or commit alias does not count for flow",
     );
     expect(guidance).toContain(
-      "Omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",
+      "omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",
     );
     expect(guidance).toContain("Write no numbers and no counts.");
   });
@@ -507,6 +513,7 @@ describe("normalizeBrief flow", () => {
         assumptions: [],
         flow: [
           {
+            kind: "call_tree",
             title: "Recovery",
             nodes: [
               {
@@ -523,6 +530,7 @@ describe("normalizeBrief flow", () => {
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow?.trees[0]?.kind).toBe("call_tree");
     expect(normalized.value.flow?.trees[0]?.nodes[0]?.label).toBe(
       "guard the restart",
     );
@@ -538,6 +546,7 @@ describe("normalizeBrief flow", () => {
         assumptions: [],
         flow: [
           {
+            kind: "call_tree",
             title: "Recovery",
             nodes: [
               {
@@ -574,21 +583,24 @@ describe("normalizeBrief flow", () => {
     ).toEqual({ _tag: "ok", value: normalized.value });
   });
 
-  it("rejects nothing and stays verified for three fully cited trees, even past the two-tree cap", () => {
+  it("rejects nothing and stays verified for three fully cited trees of three kinds", () => {
     const normalized = normalizeBrief(
       {
         goal: GOAL,
         assumptions: [],
         flow: [
           {
+            kind: "call_tree",
             title: "Tree A",
             nodes: [{ label: "change A", change: "added", citations: ["h1"] }],
           },
           {
+            kind: "control_flow",
             title: "Tree B",
             nodes: [{ label: "change B", change: "added", citations: ["h2"] }],
           },
           {
+            kind: "component",
             title: "Tree C",
             nodes: [
               { label: "change C", change: "removed", citations: ["h1"] },
@@ -601,11 +613,40 @@ describe("normalizeBrief flow", () => {
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
-    // Only the first two survive `MAX_FLOW_TREES`, but that cap is silent --
-    // rejected still counts citation failures only, and there are none here.
+    // All three survive `MAX_FLOW_TREES` because each is a different kind.
     expect(normalized.value.flow?.trees.map((tree) => tree.title)).toEqual([
       "Tree A",
       "Tree B",
+      "Tree C",
+    ]);
+    expect(normalized.value.citationStatus).toBe("verified");
+  });
+
+  it("keeps only the first of two same-kind trees, past the one-per-kind cap", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: GOAL,
+        assumptions: [],
+        flow: [
+          {
+            kind: "call_tree",
+            title: "Tree A",
+            nodes: [{ label: "change A", change: "added", citations: ["h1"] }],
+          },
+          {
+            kind: "call_tree",
+            title: "Tree B",
+            nodes: [{ label: "change B", change: "added", citations: ["h2"] }],
+          },
+        ],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow?.trees.map((tree) => tree.title)).toEqual([
+      "Tree A",
     ]);
     expect(normalized.value.citationStatus).toBe("verified");
   });
@@ -629,7 +670,7 @@ describe("normalizeBrief flow", () => {
         {
           goal: GOAL,
           assumptions: [],
-          flow: [{ title: "Deep chain", nodes: [node] }],
+          flow: [{ kind: "call_tree", title: "Deep chain", nodes: [node] }],
         },
         MANIFEST,
         PATCH,
