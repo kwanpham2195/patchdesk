@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2 - 2026-09-01
+
 - Reduced the macOS download and installed app size, and added release checks to prevent package-size regressions.
 
 ## 0.1.1 - 2026-09-01
