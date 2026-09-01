@@ -40,7 +40,7 @@ explains. Asking the model to additionally pick one hunk to feature under
 Shape bought nothing Flow plus the hunk preview did not already cover, so
 Shape keeps only its file tree and per-file `ownership.notes`.
 
-### The citation rule, re-anchored on Flow
+### Citation status
 
 ADR 0036's rule lived on Goal: a sentence with no citation that resolved was
 demoted to an Assumption, and a Brief whose every sentence demoted was
@@ -48,32 +48,17 @@ rejected outright (`InvalidBrief`, reason `uncited`). That mechanism assumed
 prose that needed grading — a claim could be plausible but unsupported, worth
 keeping at a lower confidence.
 
-Flow's rule, from ADR 0039, replaces it with something looser: an `added` or
-`removed` step is judged best effort rather than pass or fail. A step whose
-citation survives draws a citation chip; a step whose citation does not
-survive, or that names none at all, is kept anyway, drawn with a muted marker
-and no chip. There is no lower confidence to demote to in the Goal sense,
-because a Flow step was never a sentence to grade — it is a shape that is
-either backed by the diff or shown plainly for what it is.
+ADR 0039 defines Flow's best-effort citation rule. This ADR makes it the only
+citation rule left in Brief. A changed Flow step without a surviving hunk
+citation stays visible with a muted marker and no chip.
 
-One consequence follows directly: **a Brief is never rejected as
-"uncited."** A pull request that only renames things, reorders unrelated
-code, or touches docs has no Flow tree to keep — the model omits Flow
-entirely, by its own instruction, exactly as ADR 0039 already allowed — and
-still has Shape, Start here, and Reach. That is a complete, valid Brief.
-`InvalidBrief` keeps its `malformed` reason for output that fails to parse;
-`uncited` has nothing left to reject and is removed. A tree left with no
-changed step at all — every node unchanged — is still dropped whole, because
-an unchanged spine with nothing to explain is noise, not a graceful case of
-best effort.
+**A Brief is never rejected as "uncited."** A pull request with no applicable
+Flow still has Shape, Start here, and Reach. `InvalidBrief` keeps its
+`malformed` reason for output that fails to parse.
 
-`citationStatus` keeps its two values, re-anchored on the blocks that remain:
-`"verified"` when normalization discarded no citation anywhere in the Brief
-and every changed Flow step carries one that survived, `"partially_verified"`
-when any citation was discarded or any changed step is uncited. The reader's
-line describing it drops "· M assumptions" along with the concept, and drops
-the per-Brief verified count too: what is left to say is the citation status
-alone — "all citations verified" or "some citations could not be verified."
+`citationStatus` is `"verified"` only when every changed Flow step has a
+surviving citation and none were discarded. Otherwise it is
+`"partially_verified"`. The reader shows the status alone.
 
 ### Description vs diff is retired, not replaced
 
@@ -133,32 +118,9 @@ Flow, Shape, Start here, and Reach guidance is unchanged.
 
 - Brief goes from six blocks to four, plus the always-on Scope gauge:
   Flow, Shape, Start here, Reach.
-- Flow's header reads "how the sequence changed."
-- The reader's summary line loses its assumption count and its verified-count
-  tally; it names the citation status alone — "all citations verified" or
-  "some citations could not be verified."
-- `InvalidBrief` loses its `uncited` reason. A Brief with no Flow at all —
-  a rename, a docs change, a pure refactor — is still a valid, retainable
-  Brief; only a malformed result is rejected now.
-- A Flow step without a surviving hunk citation is no longer dropped; it
-  stays in its tree with a muted marker and no chip, and `citationStatus`
-  reads `partially_verified` whenever any changed step lacks one or any
-  citation elsewhere in the Brief was discarded.
 - The description-drift check is given up, not replaced. No block compares
   the pull request description to the patch until a future ADR decides to
   bring that back, deliberately, as its own Insight or Analysis finding.
-- The prompt drops the PULL REQUEST DESCRIPTION and COMMITS sections, and the
-  manifest itself narrows to `h*` hunks only, since no surviving block cites
-  a `d*` or `c*` alias; a future block that cites description or commit text
-  brings its manifest aliases and prompt section back with it. A Brief
-  retained under 0.1.3 can still carry `d*`/`c*` citations; the stored-Brief
-  parser keeps accepting all three alias kinds even though no current block
-  produces them.
-- ADR 0036 remains the record of why Brief cites its evidence at all; its
-  Goal/Assumption demotion mechanics are superseded here, not its
-  citation-manifest mechanism, its Shape and Reach mechanics, or its "the
-  model never writes a number" rule — though the manifest itself now narrows
-  to hunks only, since nothing left cites anything else.
 - Stored Briefs from 0.1.3 keep `goal`, `assumptions`, and `descriptionDrift`
   as tolerated-and-ignored keys for one release, then those keys are dropped
   from the stored schema.
