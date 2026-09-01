@@ -3,6 +3,7 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { z } from "zod";
 
 import {
   runPatchdeskChild,
@@ -34,6 +35,7 @@ const analysis = {
   validationPlan: [],
   assumptions: [],
 };
+const smokeProviderId = z.literal("patchdesk-smoke").parse("patchdesk-smoke");
 
 /** The four child outcomes one package smoke run reports on stdout. */
 type PackageSmokeReport = {
@@ -47,7 +49,7 @@ type PackageSmokeReport = {
 export async function runPackageSmoke(): Promise<PackageSmokeReport> {
   assertNoProviderCredentials();
   const walkthroughProvider = fauxProvider({
-    provider: "patchdesk-smoke",
+    provider: smokeProviderId,
     models: [{ id: "fixture" }],
   });
   walkthroughProvider.setResponses([
@@ -63,7 +65,7 @@ export async function runPackageSmoke(): Promise<PackageSmokeReport> {
         sessionId: "smoke-session",
         contextPath: "/immutable/context.json",
         patchPath: "/immutable/patch.diff",
-        model: "patchdesk-smoke/fixture",
+        model: `${smokeProviderId}/fixture`,
         reasoning: "low",
         prompt: "Submit the fixed smoke result.",
       },
@@ -72,7 +74,7 @@ export async function runPackageSmoke(): Promise<PackageSmokeReport> {
   );
 
   const analysisProvider = fauxProvider({
-    provider: "patchdesk-smoke",
+    provider: smokeProviderId,
     models: [{ id: "fixture" }],
   });
   analysisProvider.setResponses([
@@ -95,7 +97,7 @@ export async function runPackageSmoke(): Promise<PackageSmokeReport> {
         reviewInputPath: "/immutable/review-input.md",
         patchPath: "/immutable/patch.diff",
         worktreePath: "/immutable/worktree",
-        model: "patchdesk-smoke/fixture",
+        model: `${smokeProviderId}/fixture`,
         reasoning: "low",
         prompt: "Inspect and submit the fixed smoke result.",
       },
@@ -135,7 +137,7 @@ export async function runPackageSmoke(): Promise<PackageSmokeReport> {
         sessionId: "smoke-session",
         contextPath: "/immutable/context.json",
         patchPath: "/immutable/patch.diff",
-        model: "patchdesk-smoke/fixture",
+        model: `${smokeProviderId}/fixture`,
         reasoning: "low",
         prompt: "Cancelled smoke fixture.",
       },
