@@ -14,11 +14,12 @@ const node = (
 ): BriefFlowNode => ({ label, change, citations: [], children });
 
 describe("briefFlowAsDiffText", () => {
-  it("draws a nested tree as diff text headed by its title, with tree guides showing each row's parent", () => {
-    // Mirrors the maintainer's mock-up (the surviving rows of it, since its
-    // "-" line was illustrating an older tree state rather than a sibling of
-    // this one): a two-character marker in columns 0-1, then box-drawing
-    // guides, then the label. No kind label -- that lives in the UI badge.
+  it("draws a nested tree as diff text with roots flush-left and guides nested within each root's subtree", () => {
+    // A view's roots are independent entry points, not children of the
+    // title, so they draw flush-left with no connector; guides start inside
+    // each root's own subtree. A two-character marker sits in columns 0-1,
+    // then box-drawing guides, then the label. No title line and no kind
+    // label -- the title lives in the view header, the kind in the UI badge.
     const text = briefFlowAsDiffText({
       trees: [
         {
@@ -43,22 +44,21 @@ describe("briefFlowAsDiffText", () => {
     expect(text).toBe(
       [
         "```diff",
-        "  Brief",
-        "  ├── Start insight run",
-        "+ │   ├── read patch",
-        "+ │   ├── load PR description and commits",
-        "+ │   └── build citation manifest",
-        "  ├── Ask model for structured JSON",
-        "+ ├── Validate citations and normalize output",
-        "+ ├── Compute Reach locally",
-        "  ├── Persist snapshot-bound Brief",
-        "  └── Render result",
+        "  Start insight run",
+        "+ ├── read patch",
+        "+ ├── load PR description and commits",
+        "+ └── build citation manifest",
+        "  Ask model for structured JSON",
+        "+ Validate citations and normalize output",
+        "+ Compute Reach locally",
+        "  Persist snapshot-bound Brief",
+        "  Render result",
         "```",
       ].join("\n"),
     );
   });
 
-  it("renders one fenced diff block per tree, each blank-line separated, headed by its title alone", () => {
+  it("renders one fenced diff block per tree, each blank-line separated, with no title line", () => {
     const text = briefFlowAsDiffText({
       trees: [
         {
@@ -76,15 +76,11 @@ describe("briefFlowAsDiffText", () => {
 
     const blocks = text.split("\n\n");
     expect(blocks).toHaveLength(2);
-    expect(blocks[0]).toBe(
-      ["```diff", "  Tree one", "+ └── Only step", "```"].join("\n"),
-    );
-    expect(blocks[1]).toBe(
-      ["```diff", "  Tree two", "- └── Other step", "```"].join("\n"),
-    );
+    expect(blocks[0]).toBe(["```diff", "+ Only step", "```"].join("\n"));
+    expect(blocks[1]).toBe(["```diff", "- Other step", "```"].join("\n"));
   });
 
-  it("puts the marker in columns 0-1 and threads a │ continuation guide down each level of depth", () => {
+  it("draws a lone root flush-left with an empty guide, even though it has no later sibling", () => {
     const text = briefFlowAsDiffText({
       trees: [
         {
@@ -102,14 +98,16 @@ describe("briefFlowAsDiffText", () => {
     });
     const lines = text.split("\n");
 
-    // <Toolbar> is the only root, so it draws as the last branch.
-    expect(lines).toContain("  └── <Toolbar>");
-    // <SaveButton> is <Toolbar>'s only (and so last) child: its parent's
-    // guide segment is blank because <Toolbar> has no later sibling.
-    expect(lines).toContain(`+ ${"    "}└── <SaveButton>`);
-    // useSessionEvents() nests one level deeper again, still under two blank
-    // continuation segments since neither ancestor has a later sibling.
-    expect(lines).toContain(`+ ${"    "}${"    "}└── useSessionEvents()`);
+    // <Toolbar> is the tree's only root: flush-left, no connector, even
+    // though a root with no later sibling used to draw as "└── ".
+    expect(lines).toContain("  <Toolbar>");
+    // <SaveButton> is <Toolbar>'s only (and so last) child: depth 1, so its
+    // guide is just its own connector -- nothing carries over from the root.
+    expect(lines).toContain("+ └── <SaveButton>");
+    // useSessionEvents() nests one level deeper again: one blank
+    // continuation segment for <SaveButton> (no later sibling), then its
+    // own connector.
+    expect(lines).toContain(`+ ${"    "}└── useSessionEvents()`);
   });
 
   it("gives an unchanged row a blank marker and draws └── only for the last sibling", () => {
@@ -128,11 +126,49 @@ describe("briefFlowAsDiffText", () => {
     });
     const lines = text.split("\n");
 
-    expect(lines).toContain("+ ├── Added step");
-    expect(lines).toContain("- ├── Removed step");
-    expect(lines).toContain("  └── Kept step");
-    expect(text).not.toContain("+ └── Kept step");
-    expect(text).not.toContain("- └── Kept step");
+    // All three are roots (depth 0): flush-left, no connector at all, even
+    // for the marked-up added/removed rows.
+    expect(lines).toContain("+ Added step");
+    expect(lines).toContain("- Removed step");
+    expect(lines).toContain("  Kept step");
+  });
+
+  it("does not let a root's later sibling root draw a │ column under its subtree", () => {
+    // Two roots, each with two levels of nested children. Root "a" has a
+    // later sibling root "b" -- that must not add a "│   " column to any of
+    // "a"'s descendants, since guides only track nesting within one root's
+    // own subtree, never siblings at the root level.
+    const text = briefFlowAsDiffText({
+      trees: [
+        {
+          kind: "call_tree",
+          title: "Tree",
+          nodes: [
+            node("a", "unchanged", [
+              node("a1", "unchanged", [
+                node("a1x", "added"),
+                node("a1y", "added"),
+              ]),
+              node("a2", "unchanged"),
+            ]),
+            node("b", "unchanged"),
+          ],
+        },
+      ],
+    });
+
+    expect(text).toBe(
+      [
+        "```diff",
+        "  a",
+        "  ├── a1",
+        "+ │   ├── a1x",
+        "+ │   └── a1y",
+        "  └── a2",
+        "  b",
+        "```",
+      ].join("\n"),
+    );
   });
 });
 

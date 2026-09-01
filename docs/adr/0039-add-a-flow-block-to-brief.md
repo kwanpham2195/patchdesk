@@ -110,7 +110,10 @@ so a maintainer scanning more than one tree knows which kind of sketch
 they're reading. A "Copy as diff" action emits the same rows as a fenced
 ` ```diff ` block, one block per view: the marker sits in column 0 and the
 tree guides follow, so the pasted block reads as the drawn tree — the form
-used in the maintainer's `show-me` sketches.
+used in the maintainer's `show-me` sketches. A tree's roots are independent
+entry points, not children of the view's title, so roots sit flush-left with
+no connector; guides show nesting within each root's subtree, so a view with
+several entry points reads as several trees.
 
 ### Storage
 

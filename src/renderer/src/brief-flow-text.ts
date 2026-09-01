@@ -4,8 +4,8 @@ import type { BriefFlow, BriefFlowNode } from "./brief-contracts";
 type BriefFlowKind = BriefFlow["trees"][number]["kind"];
 
 /**
- * The human label ADR 0039's kind badge shows, and the word the fenced diff
- * text's first line names each view by. Mirrors `BriefFlowKind` one for one.
+ * The human label ADR 0039's kind badge shows. Mirrors `BriefFlowKind` one
+ * for one.
  */
 const FLOW_KIND_LABELS = {
   call_tree: "call tree",
@@ -20,12 +20,15 @@ export function briefFlowKindLabel(kind: BriefFlowKind): string {
 
 /**
  * One Flow node flattened out of its tree, with the depth it sits at and the
- * box-drawing `guide` that draws its branch: one `"│   "` or `"    "` segment
- * per ancestor level (present if that ancestor has a later sibling, blank
- * spaces otherwise), followed by `"├── "` for a node with a later sibling of
- * its own or `"└── "` for the last child. Roots are the title line's
- * children, so the first root's guide starts with `"├── "` and the last
- * root's with `"└── "`.
+ * box-drawing `guide` that draws its branch. A root (depth 0) is an
+ * independent entry point, not a child of the view's title, so its `guide`
+ * is empty -- it draws flush-left with no connector. From depth 1 down, the
+ * guide is one `"│   "` or `"    "` segment per ancestor *below the root*
+ * (present if that ancestor has a later sibling, blank spaces otherwise),
+ * followed by `"├── "` for a node with a later sibling of its own or
+ * `"└── "` for the last child. A root's later sibling root never
+ * contributes a `"│   "` column to that root's descendants -- guides show
+ * nesting within one root's subtree, not across roots.
  */
 export type BriefFlowRow = {
   readonly label: string;
@@ -40,29 +43,37 @@ export type BriefFlowRow = {
  * both `briefFlowAsDiffText` and the reader's drawn rows follow -- the reason
  * the copied text and the rendered tree can never disagree about order.
  * `ancestorGuides` carries one continuation segment per ancestor level
- * (`"│   "` if that ancestor has a later sibling, else `"    "`), threaded
- * down through the recursion so each row can draw its own branch.
+ * *below the root* (`"│   "` if that ancestor has a later sibling, else
+ * `"    "`), threaded down through the recursion so each row can draw its
+ * own branch; `depth` tracks how deep the current `nodes` sit, so a root
+ * call (`depth` 0) can skip both its own connector and its contribution to
+ * its children's `ancestorGuides` -- a root's sibling never draws a `"│   "`
+ * column under it.
  */
 export function flowRows(
   nodes: ReadonlyArray<BriefFlowNode>,
   ancestorGuides: ReadonlyArray<string> = [],
+  depth = 0,
 ): ReadonlyArray<BriefFlowRow> {
   return nodes.flatMap((node, index) => {
     const isLastSibling = index === nodes.length - 1;
-    const guide = `${ancestorGuides.join("")}${isLastSibling ? "└── " : "├── "}`;
-    const childAncestorGuides = [
-      ...ancestorGuides,
-      isLastSibling ? "    " : "│   ",
-    ];
+    const guide =
+      depth === 0
+        ? ""
+        : `${ancestorGuides.join("")}${isLastSibling ? "└── " : "├── "}`;
+    const childAncestorGuides =
+      depth === 0
+        ? ancestorGuides
+        : [...ancestorGuides, isLastSibling ? "    " : "│   "];
     return [
       {
         label: node.label,
         change: node.change,
         citations: node.citations,
-        depth: ancestorGuides.length,
+        depth,
         guide,
       },
-      ...flowRows(node.children, childAncestorGuides),
+      ...flowRows(node.children, childAncestorGuides, depth + 1),
     ];
   });
 }
@@ -81,19 +92,20 @@ function flowRowLine(row: BriefFlowRow): string {
 
 /**
  * Renders every Flow tree as the fenced `+`/`-` diff text ADR 0039 shows: one
- * ` ```diff ` block per tree, headed by a marker-column title line (`  ` plus
- * the tree's title, in that same two-character unchanged marker), then its
- * rows in the same order `flowRows` walks, each drawn with its box-drawing
- * guide. The kind label lives in the UI's badge, not in this text; no
- * citations and no counts travel into it either -- it exists to be pasted
- * into a PR comment or commit message, not to stand in for the rendered tree.
+ * ` ```diff ` block per tree, its rows in the same order `flowRows` walks,
+ * each drawn with its box-drawing guide. The title does not repeat inside
+ * the block -- the view header above it already carries that -- so a root
+ * row (an independent entry point, flush-left with an empty guide) is the
+ * block's first line. The kind label lives in the UI's badge, not in this
+ * text; no citations and no counts travel into it either -- it exists to be
+ * pasted into a PR comment or commit message, not to stand in for the
+ * rendered tree.
  */
 export function briefFlowAsDiffText(flow: BriefFlow): string {
   return flow.trees
     .map((tree) => {
-      const header = `  ${tree.title}`;
       const rows = flowRows(tree.nodes).map(flowRowLine);
-      return ["```diff", header, ...rows, "```"].join("\n");
+      return ["```diff", ...rows, "```"].join("\n");
     })
     .join("\n\n");
 }

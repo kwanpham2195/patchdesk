@@ -494,7 +494,7 @@ describe("BriefReader", () => {
     ).toBeTruthy();
   });
 
-  it("draws a child row's guide with a │ continuation under its parent", () => {
+  it("draws a root flush-left and its children's guides nested within its subtree", () => {
     render(
       <BriefReader
         {...walkthroughLink}
@@ -504,21 +504,22 @@ describe("BriefReader", () => {
     );
 
     const region = screen.getByRole("region", { name: "Flow" });
+    // "Start insight run" is Flow's only root -- an independent entry point,
+    // not a child of the view title, so it draws flush-left with no
+    // connector.
     const parentLabel = within(region).getByText("Start insight run", {
       exact: false,
     });
-    // "read patch" is the first of three children under "Start insight run",
-    // which is Flow's only (and so last) root -- so it has no later sibling
-    // and its child's guide continuation is blank, not "│   ".
+    // "read patch" is the first of three children under "Start insight run".
+    // Guides start inside the root's subtree, so its guide is just its own
+    // connector -- nothing carries over from the root level.
     const childLabel = within(region).getByText("read patch");
     // "queue background retry" is the last of those three children.
     const lastChildLabel = within(region).getByText("queue background retry");
 
-    expect(parentLabel.textContent).toContain("└── Start insight run");
-    expect(childLabel.textContent).toContain("    ├── read patch");
-    expect(lastChildLabel.textContent).toContain(
-      "    └── queue background retry",
-    );
+    expect(parentLabel.textContent).not.toContain("──");
+    expect(childLabel.textContent).toContain("├── read patch");
+    expect(lastChildLabel.textContent).toContain("└── queue background retry");
   });
 
   it("omits the Flow section when the Brief has no flow", () => {
@@ -533,7 +534,7 @@ describe("BriefReader", () => {
     expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
   });
 
-  it("copies one view's rows as diff text headed by its title", async () => {
+  it("copies one view's rows as diff text, with no title line", async () => {
     const user = userEvent.setup();
     const writeText = vi
       .spyOn(navigator.clipboard, "writeText")
@@ -549,7 +550,11 @@ describe("BriefReader", () => {
     await user.click(screen.getByRole("button", { name: "Copy as diff" }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff\n {2}Insight run\n/);
+    // The view header above the block already carries the title, so the
+    // block's first row is the tree's (flush-left) root, not a title line.
+    expect(writeText.mock.calls[0]?.[0]).toMatch(
+      /^```diff\n {2}Start insight run\n/,
+    );
     expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
@@ -597,7 +602,9 @@ describe("BriefReader", () => {
     await user.click(firstCopyButton);
 
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0]?.[0]).toContain("First view");
+    // The title lives in the view header, not the copied block, so check
+    // the first view's own row copied rather than its title.
+    expect(writeText.mock.calls[0]?.[0]).toContain("firstStep()");
     expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
     expect(
       screen.getAllByRole("button", { name: "Copy as diff" }),
