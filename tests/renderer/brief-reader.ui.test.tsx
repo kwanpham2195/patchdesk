@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -69,6 +69,61 @@ const retainedWithCitedHunk = () => {
   return {
     ...base,
     value: { ...briefValue, citedHunks: { h1: CONTRACT_PATCH } },
+  };
+};
+
+const FLOW = {
+  trees: [
+    {
+      title: "Insight run",
+      nodes: [
+        {
+          label: "Start insight run",
+          change: "unchanged" as const,
+          citations: [],
+          children: [
+            {
+              label: "read patch",
+              change: "added" as const,
+              citations: [
+                {
+                  alias: "h1",
+                  kind: "hunk" as const,
+                  label: "@@ -1 +1 @@",
+                  path: "src/a.ts",
+                },
+              ],
+              children: [],
+            },
+            {
+              label: "prepare shared context",
+              change: "removed" as const,
+              citations: [
+                {
+                  alias: "h2",
+                  kind: "hunk" as const,
+                  label: "@@ -1 +1 @@",
+                  path: "src/a.ts",
+                },
+              ],
+              children: [],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const retainedWithFlow = () => {
+  const base = retained();
+  return {
+    ...base,
+    value: {
+      ...briefValue,
+      flow: FLOW,
+      citedHunks: { h1: CONTRACT_PATCH },
+    },
   };
 };
 
@@ -276,7 +331,6 @@ describe("BriefReader", () => {
         {...walkthroughLink}
         retained={retained()}
         onRegenerate={() => undefined}
-        {...walkthroughLink}
       />,
     );
 
@@ -380,6 +434,58 @@ describe("BriefReader", () => {
       screen.queryByRole("button", { name: "Show hunk a.ts · h1" }),
     ).toBeNull();
     expect(screen.queryByText("src/a.ts")).toBeNull();
+  });
+
+  it("renders the Flow tree with markers and citation chips", () => {
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithFlow()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: "Flow" });
+    expect(region.textContent).toContain("Insight run");
+    expect(region.textContent).toContain("Start insight run");
+    expect(region.textContent).toContain("+");
+    expect(region.textContent).toContain("read patch");
+    expect(region.textContent).toContain("−");
+    expect(region.textContent).toContain("prepare shared context");
+    expect(
+      within(region).getByRole("button", { name: "Show hunk a.ts · h1" }),
+    ).toBeTruthy();
+  });
+
+  it("omits the Flow section when the Brief has no flow", () => {
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retained()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
+  });
+
+  it("copies the Flow as diff text", async () => {
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithFlow()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Copy as diff" }));
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff/);
   });
 
   it("disables regeneration when no run may start", () => {

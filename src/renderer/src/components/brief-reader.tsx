@@ -1,11 +1,12 @@
 import { FileDiffIcon, GitCommitHorizontalIcon, QuoteIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DEFAULT_REVIEW_VIEW_PREFERENCES,
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
 import { parseReviewDiff } from "@/review-diff-data";
+import { briefFlowAsDiffText } from "../brief-flow-text";
 import {
   BRIEF_REACH_UNAVAILABLE_LABELS,
   briefCitationChipLabel,
@@ -13,6 +14,8 @@ import {
   briefCitationStatusLine,
   briefOwnershipTree,
   type BriefCitation,
+  type BriefFlow,
+  type BriefFlowNode,
   type BriefInsight,
   type BriefOwnership,
   type BriefOwnershipContract,
@@ -41,6 +44,21 @@ const OWNERSHIP_STATUS_MARKS = {
   renamed: { glyph: "~", className: "text-muted-foreground" },
 } as const satisfies Record<
   BriefOwnershipRow["status"],
+  { readonly glyph: string; readonly className: string }
+>;
+
+/**
+ * The glyph and hue each Flow node's change carries. Reuses the exact hues
+ * `OWNERSHIP_STATUS_MARKS` above spends on added and removed files, per ADR
+ * 0039: Flow draws with "the same diff colors used elsewhere in Patchdesk."
+ * `unchanged` carries no glyph -- it is the dimmed spine, not a claim.
+ */
+const FLOW_CHANGE_MARKS = {
+  added: { glyph: "+", className: "text-emerald-700 dark:text-emerald-400" },
+  removed: { glyph: "−", className: "text-rose-700 dark:text-rose-400" },
+  unchanged: { glyph: "", className: "text-muted-foreground" },
+} as const satisfies Record<
+  BriefFlowNode["change"],
   { readonly glyph: string; readonly className: string }
 >;
 
@@ -180,6 +198,9 @@ export function BriefReader({
               </DriftColumn>
             </div>
           </section>
+        )}
+        {brief.flow === undefined ? null : (
+          <FlowBlock flow={brief.flow} citedHunks={brief.citedHunks} />
         )}
         {brief.ownership === undefined ? null : (
           <OwnershipBlock ownership={brief.ownership} />
@@ -358,6 +379,130 @@ function OwnershipRow({
         </span>
       )}
     </span>
+  );
+}
+
+/**
+ * The Flow block: a before/after tree of a runtime sequence, per tree, with a
+ * "Copy as diff" action that writes the same trees back out as fenced
+ * `+`/`-` text (ADR 0039). Absent whenever the Brief carries no `flow`,
+ * including every Brief retained before this block existed.
+ */
+function FlowBlock({
+  flow,
+  citedHunks,
+}: {
+  readonly flow: BriefFlow;
+  readonly citedHunks?: Readonly<Record<string, string>> | undefined;
+}): React.JSX.Element {
+  const diffText = useMemo(() => briefFlowAsDiffText(flow), [flow]);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  useEffect(
+    () => () => {
+      clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+  return (
+    <section aria-label="Flow" className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="flex items-baseline gap-2 text-sm font-medium">
+          Flow
+          <span className="text-xs font-normal text-muted-foreground">
+            how the sequence changed
+          </span>
+        </h3>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void navigator.clipboard.writeText(diffText);
+            setCopied(true);
+            clearTimeout(copiedTimer.current);
+            copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? "Copied" : "Copy as diff"}
+        </Button>
+      </div>
+      <div className="flex min-w-0 flex-col gap-3">
+        {flow.trees.map((tree, index) => (
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `flow.trees` is a fixed array carried on one immutable `Brief` value; it is never reordered, filtered, or mutated after render. A tree's own `title` is not guaranteed unique (ADR 0039 allows up to two trees with no uniqueness rule between them), so the index disambiguates two same-titled trees rather than tracking position across a reorder that never happens.
+          <div
+            key={`${String(index)}-${tree.title}`}
+            className="flex min-w-0 flex-col gap-1 rounded-md border p-3"
+          >
+            <p className="text-xs font-medium text-foreground">{tree.title}</p>
+            <ul role="tree" aria-label={tree.title} className="flex flex-col">
+              {tree.nodes.map((node, index) => (
+                // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `tree.nodes` is a fixed array from the same immutable Brief value; `BriefFlowNode` carries no id (ADR 0039's "deterministic bookkeeping, no numbers" rule), and sibling labels are not guaranteed unique, so the index disambiguates rather than tracking a reorder that never happens.
+                <FlowTreeItem
+                  key={`${node.label}-${String(index)}`}
+                  node={node}
+                  citedHunks={citedHunks}
+                />
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * One Flow node, drawn recursively: a marker column carrying the change
+ * (blank for `unchanged`, the same +/− the Ownership tree uses), the label,
+ * and its citation chips -- a hunk citation opens the same popover any other
+ * chip in Brief does. Children nest one `role="group"` deeper, indented under
+ * a rule so the branch stays legible without preformatted box-drawing text.
+ */
+function FlowTreeItem({
+  node,
+  citedHunks,
+}: {
+  readonly node: BriefFlowNode;
+  readonly citedHunks?: Readonly<Record<string, string>> | undefined;
+}): React.JSX.Element {
+  const mark = FLOW_CHANGE_MARKS[node.change];
+  return (
+    <li role="treeitem" aria-label={node.label} className="flex flex-col">
+      <span className="flex items-baseline gap-2 text-xs">
+        <span
+          aria-hidden="true"
+          className={`w-3 shrink-0 text-center font-mono ${mark.className}`}
+        >
+          {mark.glyph}
+        </span>
+        <span
+          className={`min-w-0 ${node.change === "unchanged" ? "text-muted-foreground" : "text-foreground"}`}
+        >
+          {node.label}{" "}
+          {node.citations.map((citation) => (
+            <CitationChip
+              key={citation.alias}
+              citation={citation}
+              raw={citedHunks?.[citation.alias]}
+            />
+          ))}
+        </span>
+      </span>
+      {node.children.length === 0 ? null : (
+        <ul role="group" className="ml-1.5 flex flex-col border-l pl-3">
+          {node.children.map((child, index) => (
+            // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `node.children` is a fixed array from the same immutable Brief value; `BriefFlowNode` carries no id, and sibling labels are not guaranteed unique, so the index disambiguates rather than tracking a reorder that never happens.
+            <FlowTreeItem
+              key={`${child.label}-${String(index)}`}
+              node={child}
+              citedHunks={citedHunks}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
