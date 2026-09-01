@@ -386,14 +386,18 @@ pnpm test:package-smoke
 `pnpm package:mac` runs `pnpm stage:flue-runtime` as part of the build,
 which builds and stages the exact isolated Flue runtime into the package.
 Package smoke runs fixed faux Analysis and Walkthrough fixtures before UI
-checks, and reads the expected version out of `package.json`.
+checks, validates size ceilings for the packaged app and downloads, and reads
+the expected version out of `package.json`.
 
 `pnpm package:mac` produces `release/mac-arm64/Patchdesk.app` (the unpacked
-app `pnpm test:package-smoke` reads), `release/Patchdesk-0.1.0-arm64.dmg`
-(~185 MiB), and `release/Patchdesk-0.1.0-arm64-mac.zip` (~197 MiB) — note
-that both downloads sit directly in `release/`, not in `release/mac-arm64/`.
-The `.dmg` is the one to hand to another person; a `.blockmap` sidecar is
-written next to the zip and is not part of the handoff.
+app `pnpm test:package-smoke` reads, 323.12 MiB allocated). Its
+`Contents/Resources/app.asar` is 25.45 MiB and its
+`Contents/Resources/flue-runtime` is 65.76 MiB allocated. The downloads are
+`release/Patchdesk-0.1.1-arm64.dmg` (114.28 MiB) and
+`release/Patchdesk-0.1.1-arm64-mac.zip` (120.31 MiB) — both sit directly in
+`release/`, not in `release/mac-arm64/`. The `.dmg` is the one to hand to
+another person; a `.blockmap` sidecar is written next to the zip and is not
+part of the handoff.
 
 A local build is never signed: it takes the same path the release build takes
 with no secrets set.

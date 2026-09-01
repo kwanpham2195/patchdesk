@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reduced the macOS download and installed app size, and added release checks to prevent package-size regressions.
+
 ## 0.1.1 - 2026-09-01
 
 - Moved the review navigator toggle into the diff header, keeping the file path aligned when the navigator opens or closes.
