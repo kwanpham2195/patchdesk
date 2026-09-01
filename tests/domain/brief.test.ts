@@ -483,6 +483,86 @@ describe("normalizeBrief start here", () => {
   });
 });
 
+describe("normalizeBrief flow", () => {
+  const GOAL = [
+    { text: "Recovery restarts after a crash.", citations: ["h1"] },
+  ];
+
+  it("normalizes a proposed flow, surfacing its hunk citations in citedHunks", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: GOAL,
+        assumptions: [],
+        flow: [
+          {
+            title: "Recovery",
+            nodes: [
+              {
+                label: "guard the restart",
+                change: "added",
+                citations: ["h2"],
+              },
+            ],
+          },
+        ],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow?.trees[0]?.nodes[0]?.label).toBe(
+      "guard the restart",
+    );
+    expect(normalized.value.citedHunks?.h2).toBe(
+      filterNarrativePatchToHunks(PATCH, ["h2"]),
+    );
+  });
+
+  it("round-trips a flow through the stored-Brief parser", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: GOAL,
+        assumptions: [],
+        flow: [
+          {
+            title: "Recovery",
+            nodes: [
+              {
+                label: "guard the restart",
+                change: "added",
+                citations: ["h1"],
+              },
+            ],
+          },
+        ],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow).toBeDefined();
+    expect(
+      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
+    ).toEqual({ _tag: "ok", value: normalized.value });
+  });
+
+  it("still reads a stored Brief with no flow", () => {
+    const normalized = normalizeBrief(
+      { goal: GOAL, assumptions: [] },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow).toBeUndefined();
+    expect(
+      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
+    ).toEqual({ _tag: "ok", value: normalized.value });
+  });
+});
+
 describe("normalizeBrief cited hunks", () => {
   /** A patch with one small hunk (h1) and one hunk (h2) past `MAX_CITED_HUNK_RAW_LENGTH`. */
   function patchWithHugeHunk(): string {

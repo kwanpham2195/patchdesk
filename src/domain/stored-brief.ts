@@ -7,6 +7,12 @@ import {
   type BriefError,
   type NormalizedBrief,
 } from "./brief";
+import type {
+  BriefFlow,
+  BriefFlowChange,
+  BriefFlowNode,
+  BriefFlowTree,
+} from "./brief-flow";
 import type { BriefOwnership } from "./brief-ownership";
 import type { BriefReach } from "./brief-reach";
 import type { BriefStartHere } from "./brief-start-here";
@@ -62,6 +68,31 @@ const storedStartHereSchema = v.strictObject({
     ),
     v.minLength(1),
   ),
+});
+/** One stored Flow node, recursive at `children` the way `StoredFlowNode` is below. */
+type StoredFlowNode = {
+  readonly label: string;
+  readonly change: BriefFlowChange;
+  readonly citations: ReadonlyArray<StoredBriefCitation>;
+  readonly children: ReadonlyArray<StoredFlowNode>;
+};
+
+/**
+ * One stored Flow node's schema. Recursive via `v.lazy` at `children`, the
+ * same way `briefFlowNodeOutputSchema` in `brief-flow.ts` refers to itself.
+ */
+const storedFlowNodeSchema: v.GenericSchema<StoredFlowNode> = v.strictObject({
+  label: v.pipe(v.string(), v.minLength(1)),
+  change: v.picklist(["added", "removed", "unchanged"]),
+  citations: v.array(storedCitationSchema),
+  children: v.array(v.lazy(() => storedFlowNodeSchema)),
+});
+const storedFlowTreeSchema = v.strictObject({
+  title: v.pipe(v.string(), v.minLength(1)),
+  nodes: v.array(storedFlowNodeSchema),
+});
+const storedFlowSchema = v.strictObject({
+  trees: v.pipe(v.array(storedFlowTreeSchema), v.minLength(1)),
 });
 const storedReachSchema = v.strictObject({
   symbols: v.array(
@@ -152,6 +183,8 @@ const storedBriefSchema = v.strictObject({
       v.pipe(v.string(), v.minLength(1)),
     ),
   ),
+  /** Absent on a Brief retained before the Flow block existed, and whenever no tree survived. */
+  flow: v.optional(storedFlowSchema),
 });
 
 type StoredBriefCitation = v.InferOutput<typeof storedCitationSchema>;
@@ -197,6 +230,16 @@ export function parseStoredBrief(
     if (citations === undefined) return malformedBrief();
     undescribed.push({ text: item.text, citations });
   }
+  let flow: BriefFlow | undefined;
+  if (parsed.output.flow !== undefined) {
+    const trees: Array<BriefFlowTree> = [];
+    for (const tree of parsed.output.flow.trees) {
+      const parsedTree = storedFlowTree(tree);
+      if (parsedTree === undefined) return malformedBrief();
+      trees.push(parsedTree);
+    }
+    flow = { trees };
+  }
   return ok({
     snapshot: {
       profileId: profileId.value,
@@ -215,6 +258,7 @@ export function parseStoredBrief(
       reach: storedReach(parsed.output.reach),
       reachUnavailable: parsed.output.reachUnavailable,
       citedHunks: parsed.output.citedHunks,
+      flow,
     }),
   });
 }
@@ -264,6 +308,38 @@ function storedOwnership(
     notes: stored.notes,
     ...definedProps({ contract: stored.contract }),
   };
+}
+
+/**
+ * Rebuilds one Flow tree from storage, re-parsing every node's citations;
+ * `undefined` means one of them no longer parses, the same failure
+ * `parseStoredCitations` reports for a goal or drift item.
+ */
+function storedFlowTree(
+  stored: v.InferOutput<typeof storedFlowTreeSchema>,
+): BriefFlowTree | undefined {
+  const nodes: Array<BriefFlowNode> = [];
+  for (const node of stored.nodes) {
+    const parsed = storedFlowNode(node);
+    if (parsed === undefined) return undefined;
+    nodes.push(parsed);
+  }
+  return { title: stored.title, nodes };
+}
+
+/** Rebuilds one Flow node from storage; `undefined` means a citation path no longer parses. */
+function storedFlowNode(
+  stored: v.InferOutput<typeof storedFlowNodeSchema>,
+): BriefFlowNode | undefined {
+  const citations = parseStoredCitations(stored.citations);
+  if (citations === undefined) return undefined;
+  const children: Array<BriefFlowNode> = [];
+  for (const child of stored.children) {
+    const parsedChild = storedFlowNode(child);
+    if (parsedChild === undefined) return undefined;
+    children.push(parsedChild);
+  }
+  return { label: stored.label, change: stored.change, citations, children };
 }
 
 /** Re-parses one stored citation list; `undefined` means a path no longer parses. */

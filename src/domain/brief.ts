@@ -1,6 +1,12 @@
 import * as v from "valibot";
 
 import {
+  briefFlowOutputSchema,
+  flowCitations,
+  normalizeBriefFlow,
+  type BriefFlow,
+} from "./brief-flow";
+import {
   briefOwnershipOutputSchema,
   normalizeBriefOwnership,
   type BriefOwnership,
@@ -126,6 +132,12 @@ export type NormalizedBrief = {
    * could be cut.
    */
   readonly citedHunks?: Readonly<Record<string, string>>;
+  /**
+   * The Flow block: up to two before/after trees of a runtime sequence.
+   * Absent on a Brief retained before the block existed, and whenever no
+   * tree survived normalization.
+   */
+  readonly flow?: BriefFlow;
 };
 
 /** Reasons a Brief result is rejected before it can be retained. */
@@ -219,6 +231,7 @@ export const briefOutputSchema = v.strictObject({
   ),
   ownership: briefOwnershipOutputSchema,
   startHere: briefStartHereOutputSchema,
+  flow: briefFlowOutputSchema,
   assumptions: v.pipe(
     v.array(
       v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_ASSUMPTION_LENGTH)),
@@ -247,9 +260,15 @@ export const briefOutputSchema = v.strictObject({
  * lint, CI, a screenshot, or a manual check is not drift, because a patch can
  * never carry a verification result; `insightOutputGuidance("brief")` states
  * that rule to the model in the same prompt as this shape.
+ *
+ * `flow` is optional, like `ownership` and `startHere`: a Brief with no flow
+ * proposed is still a complete Brief. Every `added`/`removed` node must keep
+ * at least one citation that resolves to a hunk -- a description or commit
+ * alias is never evidence that a runtime step changed, no matter how it is
+ * paired with a real one.
  */
 export const BRIEF_RESULT_CONTRACT =
-  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"assumptions":[string],"reachSymbols":[string]}';
+  '{"goal":[{"text":string,"citations":[string]}],"descriptionDrift":{"claimed":[{"quote":string,"citations":[string],"note":string}],"undescribed":[{"text":string,"citations":[string]}]},"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"assumptions":[string],"reachSymbols":[string]}';
 
 export type BriefOutput = v.InferOutput<typeof briefOutputSchema>;
 export type InvalidBriefOutput = { readonly _tag: "InvalidBriefOutput" };
@@ -377,11 +396,15 @@ export function normalizeBrief(
   );
   rejectedCitationCount += startHere.rejected;
 
+  const flow = normalizeBriefFlow(parsed.output.flow, byAlias);
+  rejectedCitationCount += flow.rejected;
+
   const citedHunks = cutCitedHunks(
     [
       ...goal.flatMap((item) => item.citations),
       ...(drift.value?.claimed.flatMap((item) => item.citations) ?? []),
       ...(drift.value?.undescribed.flatMap((item) => item.citations) ?? []),
+      ...flowCitations(flow.value),
     ],
     patch,
   );
@@ -403,6 +426,7 @@ export function normalizeBrief(
     ...definedProps({
       descriptionDrift: drift.value,
       startHere: startHere.value,
+      flow: flow.value,
       citedHunks: Object.keys(citedHunks).length > 0 ? citedHunks : undefined,
     }),
     ownership: ownership.value,
@@ -421,7 +445,13 @@ type NormalizedDescriptionDrift = {
   readonly rejected: number;
 };
 
-function resolveBriefCitations(
+/**
+ * Resolves a list of citation aliases against one manifest, dropping an
+ * alias that names nothing and a repeat of one already used. Exported so
+ * `normalizeBriefFlow` (`brief-flow.ts`) can apply the same alias-resolution
+ * rule before narrowing further to hunk-only citations.
+ */
+export function resolveBriefCitations(
   aliases: ReadonlyArray<string>,
   byAlias: ReadonlyMap<string, BriefCitation>,
 ): ResolvedBriefCitations {

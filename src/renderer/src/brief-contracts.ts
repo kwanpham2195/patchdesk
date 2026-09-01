@@ -106,6 +106,36 @@ const briefReachSchema = v.strictObject({
   hop: v.literal(1),
 });
 
+/**
+ * The Flow block: a before/after tree of a runtime sequence. Citations are
+ * hunk-only (the main process already restricted them), but a chip draws a
+ * Flow citation the same way it draws any other one.
+ */
+type BriefFlowNodeEntry = {
+  readonly label: string;
+  readonly change: "added" | "removed" | "unchanged";
+  readonly citations: ReadonlyArray<v.InferOutput<typeof briefCitationSchema>>;
+  readonly children: ReadonlyArray<BriefFlowNodeEntry>;
+};
+
+const briefFlowNodeSchema: v.GenericSchema<BriefFlowNodeEntry> = v.strictObject(
+  {
+    label: v.pipe(v.string(), v.minLength(1), v.maxLength(80)),
+    change: v.picklist(["added", "removed", "unchanged"]),
+    citations: v.array(briefCitationSchema),
+    children: v.array(v.lazy(() => briefFlowNodeSchema)),
+  },
+);
+
+const briefFlowSchema = v.strictObject({
+  trees: v.array(
+    v.strictObject({
+      title: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
+      nodes: v.array(briefFlowNodeSchema),
+    }),
+  ),
+});
+
 const briefSchema = v.strictObject({
   snapshot: v.strictObject({
     profileId: v.pipe(v.string(), v.minLength(1)),
@@ -162,6 +192,8 @@ const briefSchema = v.strictObject({
       v.pipe(v.string(), v.minLength(1)),
     ),
   ),
+  /** Absent on a Brief retained before the Flow block existed, and whenever no tree survived. */
+  flow: v.optional(briefFlowSchema),
 });
 
 /** The Brief's own Insight projection: the shared run envelope around one Brief. */
@@ -179,6 +211,8 @@ export type BriefOwnership = v.InferOutput<typeof briefOwnershipSchema>;
 export type BriefOwnershipContract = NonNullable<BriefOwnership["contract"]>;
 export type BriefReach = v.InferOutput<typeof briefReachSchema>;
 export type BriefStartHere = v.InferOutput<typeof briefStartHereSchema>;
+export type BriefFlow = v.InferOutput<typeof briefFlowSchema>;
+export type BriefFlowNode = v.InferOutput<typeof briefFlowNodeSchema>;
 
 /** What the Reach footer says the counts are, so no reader mistakes them for a call graph. */
 export function briefReachMethodLine(
