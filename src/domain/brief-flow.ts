@@ -9,6 +9,12 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
  * or component -- and the Brief keeps at most one tree per kind, so up to
  * `MAX_FLOW_TREES` trees survive, one for each kind the patch changes.
  *
+ * A component view is a claim about a user-interface tree; a patch with no
+ * UI file cannot support one, so it is dropped regardless of what the model
+ * proposed. Patchdesk decides this deterministically, from the patch's
+ * changed paths, rather than trusting the model's own judgment about whether
+ * its patch touched UI code (see `patchTouchesUiComponents`).
+ *
  * Citations are best effort: an added or removed step keeps its place with
  * or without a hunk citation; a discarded alias or an uncited changed step
  * counts toward `rejected` so the Brief reads as partially verified, but the
@@ -68,6 +74,29 @@ export type BriefFlowTree = {
 export type BriefFlow = {
   readonly trees: ReadonlyArray<BriefFlowTree>;
 };
+
+/** File extensions that mark a changed path as a user-interface component file. */
+export const UI_COMPONENT_FILE_EXTENSIONS = [
+  ".tsx",
+  ".jsx",
+  ".vue",
+  ".svelte",
+  ".html",
+  ".css",
+  ".scss",
+];
+
+/** True when at least one changed path ends in a `UI_COMPONENT_FILE_EXTENSIONS` extension (case-insensitive). */
+export function patchTouchesUiComponents(
+  changedPaths: ReadonlyArray<string>,
+): boolean {
+  return changedPaths.some((path) => {
+    const lower = path.toLowerCase();
+    return UI_COMPONENT_FILE_EXTENSIONS.some((extension) =>
+      lower.endsWith(extension),
+    );
+  });
+}
 
 /** Kept trees per Brief, at most one per kind -- past this, Flow starts reading as the whole diff again. */
 const MAX_FLOW_TREES = 3;
@@ -315,12 +344,14 @@ function normalizeFlowTitle(rawTitle: string): string {
  * five-file cap and an unmatched Start here path are silent: the per-tree
  * node cap, the `MAX_FLOW_DEPTH` cap (also enforced by the schema itself,
  * see `flowNodeSchema`), a whitespace-only label, a tree with no surviving
- * changed node, a second surviving tree of a kind already kept, and a
- * surviving tree past `MAX_FLOW_TREES`.
+ * changed node, a second surviving tree of a kind already kept, a surviving
+ * tree past `MAX_FLOW_TREES`, and a `component` tree dropped for touching no
+ * UI file in `changedPaths` (see `patchTouchesUiComponents`).
  */
 export function normalizeBriefFlow(
   raw: BriefFlowOutput,
   byAlias: ReadonlyMap<string, BriefCitation>,
+  changedPaths: ReadonlyArray<string>,
 ): NormalizedBriefFlow {
   if (raw === undefined) return { value: undefined, rejected: 0 };
 
@@ -351,9 +382,17 @@ export function normalizeBriefFlow(
     trees.push(tree);
   }
 
-  return trees.length === 0
+  // A component view is a claim about a user-interface tree; a patch with no
+  // UI file cannot support one, so it is dropped regardless of what the
+  // model proposed. Silent, like the two drops above -- it is noise, not a
+  // citation failure.
+  const keptTrees = patchTouchesUiComponents(changedPaths)
+    ? trees
+    : trees.filter((tree) => tree.kind !== "component");
+
+  return keptTrees.length === 0
     ? { value: undefined, rejected }
-    : { value: { trees }, rejected };
+    : { value: { trees: keptTrees }, rejected };
 }
 
 /**

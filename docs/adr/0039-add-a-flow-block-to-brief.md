@@ -29,6 +29,9 @@ sketch one:
 - `component` — a UI component tree change, labels like `<SessionToolbar>`
   with hooks as plain names (`useSessionEvents()`).
 
+A `component` view is dropped when the patch changes no user-interface file;
+the guidance also tells the model to omit it for code with no UI.
+
 At most one tree per kind, so up to three trees total. The model omits a
 kind that does not apply to the change, and omits Flow entirely when no step
 changes in any kind — a rename, a docs change, a pure refactor. The maintainer

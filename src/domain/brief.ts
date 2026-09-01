@@ -274,7 +274,11 @@ export function normalizeBrief(
   );
   rejectedCitationCount += startHere.rejected;
 
-  const flow = normalizeBriefFlow(parsed.output.flow, byAlias);
+  const flow = normalizeBriefFlow(
+    parsed.output.flow,
+    byAlias,
+    ownership.value.files.map((file) => file.path),
+  );
   rejectedCitationCount += flow.rejected;
 
   const citedHunks = cutCitedHunks(flowCitations(flow.value), patch);

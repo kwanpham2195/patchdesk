@@ -101,6 +101,7 @@ Shape groups files by directory and collapses a directory after twelve files int
 - A Brief retained before hunk previews existed keeps plain citation chips with no preview.
 - A Brief retained before Flow existed has no Flow block.
 - A second tree of the same kind is not shown; Flow keeps at most one view per kind.
+- A component view is shown only when the patch changes user-interface files.
 - A changed Flow step without a hunk citation stays visible with a muted marker and no chip.
 - Directories with more than twelve files collapse the remainder into a count.
 - Evidence chips use short identifiers but keep the full path available in the title. A hunk chip opens a popover showing the cited hunk as a rendered diff; the chip stays plain text when the hunk is too large to preview.

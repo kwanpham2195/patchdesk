@@ -5,6 +5,7 @@ import type { BriefCitation } from "../../src/domain/brief";
 import {
   briefFlowOutputSchema,
   normalizeBriefFlow,
+  patchTouchesUiComponents,
   type BriefFlowOutput,
 } from "../../src/domain/brief-flow";
 import { parseRepoRelativePath } from "../../src/domain/ids";
@@ -44,8 +45,13 @@ const MANIFEST: ReadonlyArray<BriefCitation> = [
 ];
 const BY_ALIAS = new Map(MANIFEST.map((entry) => [entry.alias, entry]));
 
-function normalize(raw: BriefFlowOutput) {
-  return normalizeBriefFlow(raw, BY_ALIAS);
+/** A non-UI path: exercises every kind but `component`, which needs a UI path to survive. */
+const NON_UI_PATHS: ReadonlyArray<string> = ["src/domain/recovery.go"];
+/** A UI path: what `component` trees need in `changedPaths` to survive. */
+const UI_PATHS: ReadonlyArray<string> = ["src/app/Toolbar.tsx"];
+
+function normalize(raw: BriefFlowOutput, changedPaths: ReadonlyArray<string>) {
+  return normalizeBriefFlow(raw, BY_ALIAS, changedPaths);
 }
 
 describe("normalizeBriefFlow", () => {
@@ -82,7 +88,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(0);
     expect(result.value?.trees).toHaveLength(1);
     const [tree] = result.value?.trees ?? [];
@@ -117,7 +123,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(1);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "valid change",
@@ -147,7 +153,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     // 1 for the discarded d1 alias, 1 for the node left with no hunk citation.
     expect(result.rejected).toBe(2);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
@@ -171,7 +177,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(1);
     const kept = result.value?.trees[0]?.nodes.find(
       (node) => node.label === "note the intent",
@@ -193,7 +199,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(1);
     expect(
       result.value?.trees[0]?.nodes[0]?.citations.map((c) => c.alias),
@@ -212,7 +218,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.value).toBeUndefined();
     expect(result.rejected).toBe(0);
   });
@@ -229,7 +235,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(1);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "Read the form state",
@@ -256,7 +262,7 @@ describe("normalizeBriefFlow", () => {
         nodes: [{ label: "change C", change: "added", citations: ["h3"] }],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, UI_PATHS);
     expect(result.value?.trees.map((tree) => tree.title)).toEqual([
       "Tree A",
       "Tree B",
@@ -283,7 +289,7 @@ describe("normalizeBriefFlow", () => {
         nodes: [{ label: "keep(c, d)", change: "added", citations: ["h2"] }],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.value?.trees.map((tree) => tree.title)).toEqual([
       "First call tree",
     ]);
@@ -306,7 +312,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(0);
     const nodes = result.value?.trees[0]?.nodes ?? [];
     expect(nodes).toHaveLength(1);
@@ -393,7 +399,7 @@ describe("normalizeBriefFlow", () => {
     const raw: BriefFlowOutput = [
       { kind: "call_tree", title: "Too many steps", nodes },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.value?.trees[0]?.nodes).toHaveLength(15);
     expect(result.rejected).toBe(0);
   });
@@ -409,7 +415,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(0);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "keep this step",
@@ -428,7 +434,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(0);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "keep this step",
@@ -447,7 +453,7 @@ describe("normalizeBriefFlow", () => {
         ],
       },
     ];
-    const result = normalize(raw);
+    const result = normalize(raw, NON_UI_PATHS);
     expect(result.rejected).toBe(0);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "valid change",
@@ -455,8 +461,80 @@ describe("normalizeBriefFlow", () => {
   });
 
   it("returns no value and rejects nothing when the model offers no flow", () => {
-    const result = normalize(undefined);
+    const result = normalize(undefined, NON_UI_PATHS);
     expect(result.value).toBeUndefined();
     expect(result.rejected).toBe(0);
+  });
+
+  it("keeps a component tree when changedPaths includes a UI file", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "component",
+        title: "Toolbar",
+        nodes: [{ label: "Toolbar", change: "added", citations: ["h1"] }],
+      },
+    ];
+    const result = normalize(raw, ["src/app/Toolbar.tsx"]);
+    expect(result.value?.trees.map((tree) => tree.kind)).toEqual(["component"]);
+    expect(result.rejected).toBe(0);
+  });
+
+  it("drops a component tree, silently, when changedPaths has no UI file", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "component",
+        title: "Toolbar",
+        nodes: [{ label: "Toolbar", change: "added", citations: ["h1"] }],
+      },
+    ];
+    const result = normalize(raw, ["src/server/main.go", "src/server/api.go"]);
+    expect(result.value).toBeUndefined();
+    expect(result.rejected).toBe(0);
+  });
+
+  it("leaves call_tree and control_flow trees kept regardless of changedPaths", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "call_tree",
+        title: "Tree A",
+        nodes: [{ label: "change A", change: "added", citations: ["h1"] }],
+      },
+      {
+        kind: "control_flow",
+        title: "Tree B",
+        nodes: [{ label: "change B", change: "added", citations: ["h2"] }],
+      },
+    ];
+    const result = normalize(raw, ["src/server/main.go"]);
+    expect(result.value?.trees.map((tree) => tree.kind)).toEqual([
+      "call_tree",
+      "control_flow",
+    ]);
+  });
+});
+
+describe("patchTouchesUiComponents", () => {
+  it("is true for a .tsx path", () => {
+    expect(patchTouchesUiComponents(["src/app/Toolbar.tsx"])).toBe(true);
+  });
+
+  it("is true case-insensitively", () => {
+    expect(patchTouchesUiComponents(["src/app/Toolbar.TSX"])).toBe(true);
+  });
+
+  it("is false for a .d.ts path", () => {
+    expect(patchTouchesUiComponents(["src/domain/brief-flow.d.ts"])).toBe(
+      false,
+    );
+  });
+
+  it("is false when no path is a UI file", () => {
+    expect(
+      patchTouchesUiComponents(["src/server/main.go", "src/domain/brief.ts"]),
+    ).toBe(false);
+  });
+
+  it("is false for an empty list", () => {
+    expect(patchTouchesUiComponents([])).toBe(false);
   });
 });

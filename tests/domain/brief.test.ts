@@ -55,6 +55,27 @@ const SNAPSHOT: BriefSnapshot = {
 
 const MANIFEST = briefManifest({ patch: PATCH });
 
+/**
+ * Same two-hunk shape as `PATCH`, but against a UI component file, so a
+ * proposed `component` tree survives `normalizeBriefFlow`'s UI-file gate.
+ */
+const PATCH_WITH_UI_FILE = [
+  "diff --git a/src/app/Toolbar.tsx b/src/app/Toolbar.tsx",
+  "index 1111111..2222222 100644",
+  "--- a/src/app/Toolbar.tsx",
+  "+++ b/src/app/Toolbar.tsx",
+  "@@ -1,2 +1,3 @@",
+  " const before = true;",
+  "+const first = true;",
+  " ",
+  "@@ -20,2 +21,3 @@",
+  " const middle = true;",
+  "+const second = true;",
+  " ",
+  "",
+].join("\n");
+const MANIFEST_WITH_UI_FILE = briefManifest({ patch: PATCH_WITH_UI_FILE });
+
 describe("briefManifest", () => {
   it("builds h* aliases from the patch only -- ADR 0040 retired the two prose blocks that could cite d* or c*", () => {
     expect(MANIFEST.map((entry) => entry.alias)).toEqual(["h1", "h2"]);
@@ -408,12 +429,13 @@ describe("normalizeBrief flow", () => {
           },
         ],
       },
-      MANIFEST,
-      PATCH,
+      MANIFEST_WITH_UI_FILE,
+      PATCH_WITH_UI_FILE,
       SNAPSHOT,
     );
     if (normalized._tag === "err") throw new Error("expected a Brief");
-    // All three survive `MAX_FLOW_TREES` because each is a different kind.
+    // All three survive `MAX_FLOW_TREES` because each is a different kind,
+    // and the patch touches a UI file so `component` survives its own gate.
     expect(normalized.value.flow?.trees.map((tree) => tree.title)).toEqual([
       "Tree A",
       "Tree B",
@@ -446,6 +468,38 @@ describe("normalizeBrief flow", () => {
     expect(normalized.value.flow?.trees.map((tree) => tree.title)).toEqual([
       "Tree A",
     ]);
+    expect(normalized.value.citationStatus).toBe("verified");
+  });
+
+  it("drops a proposed component tree, silently, for a Go-only patch", () => {
+    const goPatch = [
+      "diff --git a/internal/recovery/recovery.go b/internal/recovery/recovery.go",
+      "index 1111111..2222222 100644",
+      "--- a/internal/recovery/recovery.go",
+      "+++ b/internal/recovery/recovery.go",
+      "@@ -1,2 +1,3 @@",
+      " const before = true",
+      "+const first = true",
+      " ",
+      "",
+    ].join("\n");
+    const goManifest = briefManifest({ patch: goPatch });
+    const normalized = normalizeBrief(
+      {
+        flow: [
+          {
+            kind: "component",
+            title: "Tree C",
+            nodes: [{ label: "change C", change: "added", citations: ["h1"] }],
+          },
+        ],
+      },
+      goManifest,
+      goPatch,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow).toBeUndefined();
     expect(normalized.value.citationStatus).toBe("verified");
   });
 
