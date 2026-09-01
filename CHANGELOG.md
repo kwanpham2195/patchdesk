@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-09-01
+
 - Moved the review navigator toggle into the diff header, keeping the file path aligned when the navigator opens or closes.
 - Improved motion across dialogs, popovers, drawers, disclosures, busy progress, Insight completions, and Walkthrough focus transitions, while keeping the command palette, tooltips, and trigger-aligned selects instant.
 - Protected Settings profile edits when creating a new profile, showed field-specific validation before saving, and kept the Repository picker in sync after a profile switch.
