@@ -400,7 +400,8 @@ function HunkDiff({
   const parsed = useMemo(() => parseReviewDiff(raw), [raw]);
   if (parsed.files.length === 0) return null;
   return (
-    <div className="max-h-96 overflow-auto">
+    // 396px = 36px header + 18 rows * 20px, so the last visible row is whole.
+    <div className="max-h-[396px] overflow-auto">
       <ReviewDiffView
         patch={raw}
         parsedFiles={parsed.files}
@@ -552,7 +553,7 @@ function CitationChip({
         <Icon aria-hidden="true" className="size-3" />
         {chipLabel}
       </PopoverTrigger>
-      <PopoverContent className="w-[min(48rem,90vw)] gap-0 p-0">
+      <PopoverContent className="w-[min(48rem,90vw)] gap-0 p-0 overflow-hidden">
         <p className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {citation.path === undefined ? null : (
             <>
