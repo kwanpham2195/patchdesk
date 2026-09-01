@@ -120,7 +120,12 @@ describe("stageFlueRuntime", () => {
       await readFile(join(projectRoot, "package.json"), "utf8"),
     ) as {
       build: { extraResources: Array<{ filter: string[] }> };
+      scripts: { prepare: string };
     };
+
+    expect(rootPackage.scripts.prepare).toContain(
+      "--config.auto-install-peers=false",
+    );
 
     expect(runtimePackage.scripts["deploy:verify"]).toContain(
       "--config.auto-install-peers=false",

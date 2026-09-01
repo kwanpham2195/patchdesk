@@ -37,7 +37,7 @@
     "precommit": "pnpm lint:staged && react-doctor --staged --blocking warning --yes",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepare": "husky && pnpm --dir runtime/flue install --frozen-lockfile && pnpm --dir runtime/flue build"
+    "prepare": "husky && pnpm --dir runtime/flue install --frozen-lockfile --config.auto-install-peers=false && pnpm --dir runtime/flue build"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
