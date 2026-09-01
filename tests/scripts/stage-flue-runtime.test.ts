@@ -126,8 +126,9 @@ describe("stageFlueRuntime", () => {
       "--config.auto-install-peers=false",
     );
     expect(runtimePackage.devDependencies.typescript).toBe("5.9.3");
-    expect(runtimePackage.dependencies.zod).toBe("4.4.3");
+    expect(runtimePackage.dependencies).not.toHaveProperty("zod");
     expect(runtimeLock).toContain("autoInstallPeers: false");
+    expect(runtimeLock).toContain("/zod@4.4.3:");
     for (const providerSdk of [
       "@anthropic-ai/sdk",
       "@aws-sdk/client-bedrock-runtime",
