@@ -67,6 +67,7 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
       "--prod",
       "--offline",
       "--ignore-scripts",
+      "--config.auto-install-peers=false",
     ]);
   } catch (error) {
     throw new Error(

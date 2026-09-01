@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { stageFlueRuntime } from "../../scripts/stage-flue-runtime-lib.mjs";
@@ -49,6 +49,7 @@ describe("stageFlueRuntime", () => {
         "--prod",
         "--offline",
         "--ignore-scripts",
+        "--config.auto-install-peers=false",
       ],
     });
     await expect(
@@ -95,6 +96,49 @@ describe("stageFlueRuntime", () => {
       }),
     ).rejects.toThrow("exact locked Flue runtime");
     await expect(access(join(fixture.runtimeRoot, "old"))).rejects.toThrow();
+  });
+
+  it("locks a peer-safe production runtime and filters package-only metadata", async () => {
+    const projectRoot = resolve(import.meta.dirname, "../..");
+    const runtimePackage = JSON.parse(
+      await readFile(join(projectRoot, "runtime/flue/package.json"), "utf8"),
+    ) as {
+      scripts: { "deploy:verify": string };
+      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    const runtimeLock = await readFile(
+      join(projectRoot, "runtime/flue/pnpm-lock.yaml"),
+      "utf8",
+    );
+    const rootPackage = JSON.parse(
+      await readFile(join(projectRoot, "package.json"), "utf8"),
+    ) as {
+      build: { extraResources: Array<{ filter: string[] }> };
+    };
+
+    expect(runtimePackage.scripts["deploy:verify"]).toContain(
+      "--config.auto-install-peers=false",
+    );
+    expect(runtimePackage.devDependencies).not.toHaveProperty("typescript");
+    expect(runtimePackage.dependencies.zod).toBe("4.4.3");
+    expect(runtimeLock).toContain("autoInstallPeers: false");
+    expect(runtimeLock).not.toMatch(/\/typescript@|valibot@[^\n]*typescript/);
+    for (const providerSdk of [
+      "@anthropic-ai/sdk",
+      "@aws-sdk/client-bedrock-runtime",
+      "@google/genai",
+      "@mistralai/mistralai",
+      "openai",
+    ])
+      expect(runtimeLock).toContain(`/${providerSdk}@`);
+
+    for (const { filter } of rootPackage.build.extraResources) {
+      expect(filter).toContain("!**/*.{d.ts,d.mts,d.cts,map}");
+      expect(filter).toContain(
+        "!**/{README,README.*,readme,readme.*,CHANGELOG,CHANGELOG.*,changelog,changelog.*,HISTORY,HISTORY.*,history,history.*}",
+      );
+    }
   });
 });
 

@@ -102,14 +102,18 @@
         "from": "out/workflow-runtime",
         "to": "flue-runtime",
         "filter": [
-          "!node_modules/**"
+          "!node_modules/**",
+          "!**/*.{d.ts,d.mts,d.cts,map}",
+          "!**/{README,README.*,readme,readme.*,CHANGELOG,CHANGELOG.*,changelog,changelog.*,HISTORY,HISTORY.*,history,history.*}"
         ]
       },
       {
         "from": "out/workflow-runtime/node_modules",
         "to": "flue-runtime/node_modules",
         "filter": [
-          "**/*"
+          "**/*",
+          "!**/*.{d.ts,d.mts,d.cts,map}",
+          "!**/{README,README.*,readme,readme.*,CHANGELOG,CHANGELOG.*,changelog,changelog.*,HISTORY,HISTORY.*,history,history.*}"
         ]
       }
     ],

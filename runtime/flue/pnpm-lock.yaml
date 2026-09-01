@@ -1,7 +1,7 @@
 lockfileVersion: '6.0'
 
 settings:
-  autoInstallPeers: true
+  autoInstallPeers: false
   excludeLinksFromLockfile: false
 
 overrides:
@@ -15,18 +15,18 @@ dependencies:
     version: 0.84.1(zod@4.4.3)
   '@flue/runtime':
     specifier: 2.0.3
-    version: 2.0.3(typescript@5.9.3)(zod@4.4.3)
+    version: 2.0.3(zod@4.4.3)
   valibot:
     specifier: 1.4.2
-    version: 1.4.2(typescript@5.9.3)
+    version: 1.4.2
+  zod:
+    specifier: 4.4.3
+    version: 4.4.3
 
 devDependencies:
   '@types/node':
     specifier: 24.3.0
     version: 24.3.0
-  typescript:
-    specifier: 5.9.3
-    version: 5.9.3
   vite:
     specifier: 7.1.3
     version: 7.1.3(@types/node@24.3.0)
@@ -624,7 +624,7 @@ packages:
     dev: true
     optional: true
 
-  /@flue/runtime@2.0.3(typescript@5.9.3)(zod@4.4.3):
+  /@flue/runtime@2.0.3(zod@4.4.3):
     resolution: {integrity: sha512-RfWyZG9x2hlDb1264XTESX42tzzG3AA8er3XjaTIxIMh28pTD91zKd9Jh6PFXKeTkZegLsGiJKDxmiCddlyeug==}
     engines: {node: '>=22.19.0'}
     dependencies:
@@ -636,7 +636,7 @@ packages:
       hono: 4.13.2
       js-yaml: 5.2.3
       ulidx: 2.4.1
-      valibot: 1.4.2(typescript@5.9.3)
+      valibot: 1.4.2
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - bufferutil
@@ -1087,7 +1087,7 @@ packages:
     peerDependencies:
       valibot: 1.4.2
     dependencies:
-      valibot: 1.4.2(typescript@5.9.3)
+      valibot: 1.4.2
     dev: false
 
   /@vitest/expect@3.2.4:
@@ -1717,11 +1717,6 @@ packages:
     resolution: {integrity: sha512-meKuifc33Pccx0O6PdIzYMq3Og8zvP4TIi/a+Bw3AEMZMxOD0+RHGQvpglEe6Zdy3wZ8nqn/j95h8LUZLk/6Hg==}
     dev: false
 
-  /typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
-    engines: {node: '>=14.17'}
-    hasBin: true
-
   /ulidx@2.4.1:
     resolution: {integrity: sha512-xY7c8LPyzvhvew0Fn+Ek3wBC9STZAuDI/Y5andCKi9AX6/jvfaX45PhsDX8oxgPL0YFp0Jhr8qWMbS/p9375Xg==}
     engines: {node: '>=16'}
@@ -1732,15 +1727,13 @@ packages:
   /undici-types@7.10.0:
     resolution: {integrity: sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag==}
 
-  /valibot@1.4.2(typescript@5.9.3):
+  /valibot@1.4.2:
     resolution: {integrity: sha512-gjdCvJ6d3RyHAneqxMYMW9QMCwYMb3jpOO0IyHZV1bnRHFBHrX3VkIILt5XYR0WhwHiH7Mty8ovuPZ/O3gamrg==}
     peerDependencies:
       typescript: '>=5'
     peerDependenciesMeta:
       typescript:
         optional: true
-    dependencies:
-      typescript: 5.9.3
     dev: false
 
   /vite-node@3.2.4(@types/node@24.3.0):
