@@ -6,18 +6,25 @@
 > Companion to ADR 0032, which removes this screen's polling and makes
 > refresh explicit. Terms in bold are defined in `CONTEXT.md`.
 >
-> **Two of the nine filter fields are not built.** This ADR specifies author,
-> label, assignee, milestone, project, review state, check status, branch, and
-> date. What shipped is state, label, and the `user-review-requested:@me`
-> preset. The remaining seven are scheduled as their own plan
-> (`.agents/PLANS/2026-08-26-remaining-pull-request-filter-fields.md`), not
-> dropped: this ADR still describes the target. The consequence to record is
-> that the validation proof requiring "the author and review-state filters
-> survive" a repository change cannot be written until they exist; the
-> equivalent proof for the preset was written instead. Current shape recorded in
-> `.agents/research/2026-08-25-maintainer-inbox.md`; GitHub's capabilities
-> in `.agents/research/2026-08-25-github-pr-search-capabilities.md` — both
-> are local working notes under a gitignored path, not in the repository.
+> **Historical implementation note (superseded by the progress update below):**
+> At acceptance, this ADR recorded state, label, and the
+> `user-review-requested:@me` preset as the shipped filter surface. The remaining
+> fields stayed scheduled in
+> `.agents/PLANS/2026-08-26-remaining-pull-request-filter-fields.md`, not
+> dropped: this ADR still describes the target. The validation proof requiring
+> the author and review-state filters to survive a repository change could not
+> then be written, so the equivalent proof for the preset was written instead.
+> Current shape recorded in `.agents/research/2026-08-25-maintainer-inbox.md`;
+> GitHub's capabilities in
+> `.agents/research/2026-08-25-github-pr-search-capabilities.md` — both are local
+> working notes under a gitignored path, not in the repository.
+
+> **Progress update (2026-09-02):** Review state and check status are now
+> implemented in `359770f` on `main`, including the `More filters` controls and
+> GitHub `review:` and `status:` qualifiers. Six filter fields remain: author,
+> assignee, milestone, project, branch, and date. The plan above remains open
+> for those fields. The review-state half of the earlier validation proof now
+> exists; the author half remains pending.
 
 > **Local review listing removed.** The **Local review listing** described
 > below was built (commit `151162c`) and then removed at the maintainer's
