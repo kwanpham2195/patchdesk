@@ -42,7 +42,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Pull request filter.** The maintainer's constraints on the Repository listing, expressed in GitHub search terms. The built surface includes state, labels, the Awaiting review from you preset, Review state, and Check status.
 
-**Review state filter.** The More filters choice that limits pull requests by GitHub review state. Its choices are Any, No reviews, Review required, Approved, and Changes requested; Any removes this qualifier.
+**Review state filter.** The More filters choice that limits pull requests by GitHub review state. Its choices are Any, Not reviewed, Review required, Approved, and Changes requested; Any removes this qualifier.
 
 **Check status filter.** The More filters choice that limits pull requests by GitHub check status. Its choices are Any, Pending, Passing, and Failing; Any removes this qualifier.
 

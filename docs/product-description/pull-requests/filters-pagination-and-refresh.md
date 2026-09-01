@@ -25,7 +25,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The filter bar shows the saved state (`Open` or `Merged`), the Awaiting review from you toggle, a lazy label-filter button, and More filters once a Selected repository is known. More filters contains Review state (`Any`, `No reviews`, `Review required`, `Approved`, or `Changes requested`) and Check status (`Any`, `Pending`, `Passing`, or `Failing`). Its badge shows the number of active fields. Rows per page offers 10, 25, and 50, with 25 as the default. The count is GitHub's repository-wide match count when a fresh search provides it; otherwise it honestly says how many rows are on this page.
+The filter bar shows the saved state (`Open` or `Merged`), the Awaiting review from you toggle, a lazy label-filter button, and More filters once a Selected repository is known. More filters contains Review state (`Any`, `Not reviewed`, `Review required`, `Approved`, or `Changes requested`) and Check status (`Any`, `Pending`, `Passing`, or `Failing`). Its badge shows the number of active fields. Rows per page offers 10, 25, and 50, with 25 as the default. The count is GitHub's repository-wide match count when a fresh search provides it; otherwise it honestly says how many rows are on this page.
 
 The freshness badge says GitHub: Current, Aged, Partial, Cached after refresh failure, Stale, or Unavailable. It is also the explicit refresh control. The badge never refreshes itself.
 
@@ -104,7 +104,7 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 ## Edge cases
 
 - State is only Open or Merged; page size is only 10, 25, or 50.
-- Review state is Any, No reviews, Review required, Approved, or Changes requested. Check status is Any, Pending, Passing, or Failing.
+- Review state is Any, Not reviewed, Review required, Approved, or Changes requested. Check status is Any, Pending, Passing, or Failing.
 - More filters counts active Review state and Check status fields and exposes chips that clear one field at a time. Clear all clears both fields in one action while preserving the repository, state, page size, labels, and Awaiting review from you.
 - Labels are fetched lazily from the whole repository, not inferred from the loaded page.
 - Up to five labels are accepted, each no longer than 50 characters; labels containing quotes or control characters are rejected.
