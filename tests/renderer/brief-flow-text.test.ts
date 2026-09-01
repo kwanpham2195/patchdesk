@@ -14,18 +14,27 @@ const node = (
 ): BriefFlowNode => ({ label, change, citations: [], children });
 
 describe("briefFlowAsDiffText", () => {
-  it("renders a nested tree as indentation-form diff text headed by its kind and title", () => {
+  it("draws a nested tree as diff text headed by its title, with tree guides showing each row's parent", () => {
+    // Mirrors the maintainer's mock-up (the surviving rows of it, since its
+    // "-" line was illustrating an older tree state rather than a sibling of
+    // this one): a two-character marker in columns 0-1, then box-drawing
+    // guides, then the label. No kind label -- that lives in the UI badge.
     const text = briefFlowAsDiffText({
       trees: [
         {
           kind: "call_tree",
-          title: "Save and update a route plan",
+          title: "Brief",
           nodes: [
-            node("validateManualDays(command, suggestion)", "unchanged", [
-              node("rejectEmptyDay(day)", "added"),
-              node("requireFirstStop(day)", "added"),
+            node("Start insight run", "unchanged", [
+              node("read patch", "added"),
+              node("load PR description and commits", "added"),
+              node("build citation manifest", "added"),
             ]),
-            node("persistMutationStops(tx, stops)", "unchanged"),
+            node("Ask model for structured JSON", "unchanged"),
+            node("Validate citations and normalize output", "added"),
+            node("Compute Reach locally", "added"),
+            node("Persist snapshot-bound Brief", "unchanged"),
+            node("Render result", "unchanged"),
           ],
         },
       ],
@@ -34,17 +43,22 @@ describe("briefFlowAsDiffText", () => {
     expect(text).toBe(
       [
         "```diff",
-        " call tree · Save and update a route plan",
-        " validateManualDays(command, suggestion)",
-        "+  rejectEmptyDay(day)",
-        "+  requireFirstStop(day)",
-        " persistMutationStops(tx, stops)",
+        "  Brief",
+        "  ├── Start insight run",
+        "+ │   ├── read patch",
+        "+ │   ├── load PR description and commits",
+        "+ │   └── build citation manifest",
+        "  ├── Ask model for structured JSON",
+        "+ ├── Validate citations and normalize output",
+        "+ ├── Compute Reach locally",
+        "  ├── Persist snapshot-bound Brief",
+        "  └── Render result",
         "```",
       ].join("\n"),
     );
   });
 
-  it("renders one fenced diff block per tree, each blank-line separated", () => {
+  it("renders one fenced diff block per tree, each blank-line separated, headed by its title alone", () => {
     const text = briefFlowAsDiffText({
       trees: [
         {
@@ -63,14 +77,14 @@ describe("briefFlowAsDiffText", () => {
     const blocks = text.split("\n\n");
     expect(blocks).toHaveLength(2);
     expect(blocks[0]).toBe(
-      ["```diff", " call tree · Tree one", "+Only step", "```"].join("\n"),
+      ["```diff", "  Tree one", "+ └── Only step", "```"].join("\n"),
     );
     expect(blocks[1]).toBe(
-      ["```diff", " control flow · Tree two", "-Other step", "```"].join("\n"),
+      ["```diff", "  Tree two", "- └── Other step", "```"].join("\n"),
     );
   });
 
-  it("puts the marker in column 0 and adds two spaces of indentation per depth level", () => {
+  it("puts the marker in columns 0-1 and threads a │ continuation guide down each level of depth", () => {
     const text = briefFlowAsDiffText({
       trees: [
         {
@@ -88,12 +102,17 @@ describe("briefFlowAsDiffText", () => {
     });
     const lines = text.split("\n");
 
-    expect(lines).toContain(" <Toolbar>");
-    expect(lines).toContain("+  <SaveButton>");
-    expect(lines).toContain("+    useSessionEvents()");
+    // <Toolbar> is the only root, so it draws as the last branch.
+    expect(lines).toContain("  └── <Toolbar>");
+    // <SaveButton> is <Toolbar>'s only (and so last) child: its parent's
+    // guide segment is blank because <Toolbar> has no later sibling.
+    expect(lines).toContain(`+ ${"    "}└── <SaveButton>`);
+    // useSessionEvents() nests one level deeper again, still under two blank
+    // continuation segments since neither ancestor has a later sibling.
+    expect(lines).toContain(`+ ${"    "}${"    "}└── useSessionEvents()`);
   });
 
-  it("gives an unchanged row a blank marker instead of a plus or minus", () => {
+  it("gives an unchanged row a blank marker and draws └── only for the last sibling", () => {
     const text = briefFlowAsDiffText({
       trees: [
         {
@@ -109,16 +128,16 @@ describe("briefFlowAsDiffText", () => {
     });
     const lines = text.split("\n");
 
-    expect(lines).toContain("+Added step");
-    expect(lines).toContain("-Removed step");
-    expect(lines).toContain(" Kept step");
-    expect(text).not.toContain("+Kept step");
-    expect(text).not.toContain("-Kept step");
+    expect(lines).toContain("+ ├── Added step");
+    expect(lines).toContain("- ├── Removed step");
+    expect(lines).toContain("  └── Kept step");
+    expect(text).not.toContain("+ └── Kept step");
+    expect(text).not.toContain("- └── Kept step");
   });
 });
 
 describe("briefFlowKindLabel", () => {
-  it("maps each kind to the human label its badge and header line show", () => {
+  it("maps each kind to the human label its badge shows", () => {
     expect(briefFlowKindLabel("call_tree")).toBe("call tree");
     expect(briefFlowKindLabel("control_flow")).toBe("control flow");
     expect(briefFlowKindLabel("component")).toBe("component");

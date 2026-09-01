@@ -411,9 +411,10 @@ function FlowView({
 
 /**
  * One flattened Flow row: a fixed-width marker column carrying the change
- * (blank for `unchanged`, the same +/− the Ownership tree uses), the label
- * indented by its depth, and its citation chips -- a hunk citation opens the
- * same popover any other chip in Brief does. Added and removed rows get the
+ * (blank for `unchanged`, the same +/− the Ownership tree uses), the row's
+ * box-drawing `guide` showing its parent and whether more siblings follow,
+ * the label, and its citation chips -- a hunk citation opens the same
+ * popover any other chip in Brief does. Added and removed rows get the
  * diff-hue tint from `FLOW_CHANGE_MARKS`; unchanged rows are dimmed and
  * untinted, so the changed steps stand out.
  *
@@ -445,8 +446,13 @@ function FlowRowView({
       </span>
       <span
         className={`min-w-0 [overflow-wrap:anywhere] ${row.change === "unchanged" ? "text-muted-foreground" : "text-foreground"}`}
-        style={{ paddingLeft: `${String(row.depth)}rem` }}
       >
+        <span
+          aria-hidden="true"
+          className="whitespace-pre text-muted-foreground/60 select-none"
+        >
+          {row.guide}
+        </span>
         {row.label}{" "}
         {row.citations.map((citation) => (
           <CitationChip

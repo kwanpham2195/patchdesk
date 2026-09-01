@@ -100,16 +100,17 @@ already links to Walkthrough; that link is unchanged.
 ### Rendering
 
 Flow draws like a diff block, not a tree widget: monospace rows, a marker
-column (`+`, `−`, blank) on the left, indentation by depth, added and removed
+column (`+`, `−`, blank) on the left, tree guides (`├──`, `└──`, `│`) that
+show each step's parent and whether more siblings follow, added and removed
 rows tinted with the app's diff hues, unchanged rows dimmed so the changed
 steps stand out, and a citation chip at the end of a changed row — identical
 to Goal's, opening the same hunk-preview popover the rest of Brief uses. Each
 view's header carries a kind badge (`call_tree`, `control_flow`, `component`)
 so a maintainer scanning more than one tree knows which kind of sketch
 they're reading. A "Copy as diff" action emits the same rows as a fenced
-` ```diff ` block, one block per view: the marker sits in column 0, and each
-level of depth adds two spaces of indentation — the form used in the
-maintainer's `show-me` sketches.
+` ```diff ` block, one block per view: the marker sits in column 0 and the
+tree guides follow, so the pasted block reads as the drawn tree — the form
+used in the maintainer's `show-me` sketches.
 
 ### Storage
 

@@ -494,7 +494,7 @@ describe("BriefReader", () => {
     ).toBeTruthy();
   });
 
-  it("indents a child row further than its parent", () => {
+  it("draws a child row's guide with a │ continuation under its parent", () => {
     render(
       <BriefReader
         {...walkthroughLink}
@@ -507,13 +507,18 @@ describe("BriefReader", () => {
     const parentLabel = within(region).getByText("Start insight run", {
       exact: false,
     });
+    // "read patch" is the first of three children under "Start insight run",
+    // which is Flow's only (and so last) root -- so it has no later sibling
+    // and its child's guide continuation is blank, not "│   ".
     const childLabel = within(region).getByText("read patch");
+    // "queue background retry" is the last of those three children.
+    const lastChildLabel = within(region).getByText("queue background retry");
 
-    expect(childLabel.style.paddingLeft).not.toBe(
-      parentLabel.style.paddingLeft,
+    expect(parentLabel.textContent).toContain("└── Start insight run");
+    expect(childLabel.textContent).toContain("    ├── read patch");
+    expect(lastChildLabel.textContent).toContain(
+      "    └── queue background retry",
     );
-    expect(childLabel.style.paddingLeft).toBe("1rem");
-    expect(parentLabel.style.paddingLeft).toBe("0rem");
   });
 
   it("omits the Flow section when the Brief has no flow", () => {
@@ -528,7 +533,7 @@ describe("BriefReader", () => {
     expect(screen.queryByRole("region", { name: "Flow" })).toBeNull();
   });
 
-  it("copies one view's rows as diff text headed by its kind and title", async () => {
+  it("copies one view's rows as diff text headed by its title", async () => {
     const user = userEvent.setup();
     const writeText = vi
       .spyOn(navigator.clipboard, "writeText")
@@ -544,7 +549,7 @@ describe("BriefReader", () => {
     await user.click(screen.getByRole("button", { name: "Copy as diff" }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff\n {1}call tree · /);
+    expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff\n {2}Insight run\n/);
     expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
