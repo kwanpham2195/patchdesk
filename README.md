@@ -70,6 +70,11 @@ From a pull request you can read the diff, leave comments, resolve
 conversations, submit a Review, and merge. This is the core flow, and it
 needs no model.
 
+Use More filters to filter by Review state or Check status. Active selections
+appear as chips and persist with the active profile across reloads. Clear a
+chip to remove one selection, or choose Clear all filters in More filters to
+clear those selections.
+
 ## Insights
 
 An Insight is optional. It helps you understand or evaluate a change, but it
