@@ -36,6 +36,15 @@ const MAX_SEARCH_MS = 5_000;
 /** `git rev-parse HEAD`, to prove the worktree still stands at the run's revision. */
 const HEAD_CHECK_TIMEOUT_MS = 5_000;
 
+/** A mention in prose is not a caller: keep the Reach search out of docs and other non-code text. */
+const REACH_EXCLUDED_PATHSPECS: ReadonlyArray<string> = [
+  ":(exclude)*.md",
+  ":(exclude)*.mdx",
+  ":(exclude)*.txt",
+  ":(exclude)*.rst",
+  ":(exclude)docs/",
+];
+
 export type BriefReachRequest = {
   readonly profileId: WorkspaceProfileId;
   readonly sessionId: ReviewSessionId;
@@ -160,6 +169,8 @@ async function searchSymbol(
       "-e",
       name,
       input.headSha,
+      "--",
+      ...REACH_EXCLUDED_PATHSPECS,
     ],
     Math.min(MAX_SEARCH_MS, remaining),
   );

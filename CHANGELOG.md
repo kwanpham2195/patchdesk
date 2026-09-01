@@ -5,7 +5,7 @@
 - Made hunk citation chips in Brief open a preview of the cited hunk as a rendered diff; a hunk too large to preview keeps a plain chip, and so does a Brief retained before this change.
 - Added a **Flow** block to Brief: up to three diff-styled views, one per kind — call_tree, control_flow, component — with each step marked added, removed, or unchanged and drawn with tree guides, hunk citations on changed steps where the patch shows them, and a per-view Copy as diff action; a Brief retained before this change has no Flow.
 - Removed the Goal, Assumptions, and Description vs diff blocks from Brief, and the Shape block's contract hunk; Brief now shows Flow, Shape, Start here, and Reach, and Briefs retained by earlier releases still open without those blocks.
-- Fixed Reach reporting a changed file as untested when its test file uses a different separator or sits beside it, and made the surface flags recognise Go-style paths (pkg/…/v1, internal/adapter, repo, cmd).
+- Fixed Reach reporting a changed file as untested when its test file uses a different separator or sits beside it, made the surface flags recognise Go-style paths (pkg/…/v1, internal/adapter, repo, cmd), and stopped counting a mention in a Markdown, text, or docs/ file as a caller.
 
 ## 0.1.3 - 2026-09-01
 
