@@ -1,45 +1,98 @@
 import { describe, expect, it } from "vitest";
 
-import type { MaintainerInboxCache } from "../../src/adapters/storage/maintainer-inbox-cache-store";
-import { ok } from "../../src/domain/result";
-import { MaintainerInboxService } from "../../src/services/maintainer-inbox-service";
+import { FakeGitHubAdapter } from "../../src/adapters/github/fake-github-adapter";
+import type {
+  MaintainerInboxCache,
+  MaintainerInboxCacheStore,
+} from "../../src/adapters/storage/maintainer-inbox-cache-store";
+import type { StorageFailure } from "../../src/adapters/storage/json-file";
+import type { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { parseGitSha, parseIsoTimestamp } from "../../src/domain/ids";
+import { parsePullRequestInput } from "../../src/domain/pull-request";
+import { err, ok, type Result } from "../../src/domain/result";
+import type { MaintainerPullRequestSearchPage } from "../../src/domain/github-context";
+import type {
+  InboxCheckStatusFilter,
+  InboxReviewStateFilter,
+} from "../../src/domain/maintainer-inbox";
+import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import {
+  MaintainerInboxService,
+  type InboxClock,
+  type InboxRepositoryRef,
+} from "../../src/services/maintainer-inbox-service";
+import type { GitHubReader } from "../../src/adapters/github/github-adapter";
 
-const repository = {
-  host: "github.com",
-  owner: "centraldigital",
-  repo: "patchdesk",
-} as never;
-const profile = { id: "cfw", ghAccount: "fixture" } as never;
+function requireFixture<T, E>(result: Result<T, E>): T {
+  if (result._tag === "err") throw new Error("invalid test fixture");
+  return result.value;
+}
 
-type SearchPage = {
-  readonly entries: ReadonlyArray<{
-    readonly cursor: string;
-    readonly pullRequest: {
-      readonly summary: object;
-      readonly checks: object;
-    };
-  }>;
-  readonly hasNextPage: boolean;
-  readonly endCursor?: string;
-  readonly issueCount: number;
-};
-type SearchResult = ReturnType<typeof ok<SearchPage>>;
+const parsedRepository = requireFixture(
+  parsePullRequestInput("centraldigital/patchdesk#1"),
+);
+const repository: InboxRepositoryRef = parsedRepository;
+const profile = requireFixture(
+  parseWorkspaceProfileConfig({
+    id: "cfw",
+    label: "Fixture",
+    githubHost: parsedRepository.host,
+    ghAccount: "fixture",
+    ownerFilters: [],
+    workspaceRoots: ["/tmp"],
+    rulePaths: [],
+    repos: [
+      {
+        host: parsedRepository.host,
+        owner: parsedRepository.owner,
+        repo: parsedRepository.repo,
+      },
+    ],
+  }),
+);
+const timestamp = requireFixture(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
+const headSha = requireFixture(parseGitSha("a".repeat(40)));
+const baseSha = requireFixture(parseGitSha("b".repeat(40)));
+
+type SearchInput = Parameters<GitHubReader["searchMaintainerPullRequests"]>[0];
+type SearchResult = Awaited<
+  ReturnType<GitHubReader["searchMaintainerPullRequests"]>
+>;
+
+class RecordingGitHubAdapter extends FakeGitHubAdapter {
+  constructor(
+    private readonly search: (input: SearchInput) => Promise<SearchResult>,
+  ) {
+    super({ authenticatedAccount: { host: "github.com", account: "fixture" } });
+  }
+
+  override searchMaintainerPullRequests(
+    input: SearchInput,
+  ): Promise<SearchResult> {
+    return this.search(input);
+  }
+}
 
 function serviceWithSearch(
-  search: (input: { readonly searchQuery: string }) => Promise<SearchResult>,
+  search: (input: SearchInput) => Promise<SearchResult>,
+  cache: Pick<MaintainerInboxCacheStore, "read" | "save"> = {
+    read: async () =>
+      err<StorageFailure>({
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "not_found",
+      }),
+    save: async () => ok(undefined),
+  },
 ): MaintainerInboxService {
   return new MaintainerInboxService(
-    {
-      resolveAuthenticatedAccount: async () =>
-        ok({ host: "github.com", account: "fixture" }),
-      searchMaintainerPullRequests: search,
-    } as never,
-    { listSessions: async () => ok([]) } as never,
-    {
-      read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
-      save: async () => ok(undefined),
-    } as never,
-    { now: () => "2026-08-01T00:00:00.000Z" as never },
+    new RecordingGitHubAdapter(search),
+    { listSessions: async () => ok([]) } satisfies Pick<
+      ReviewSessionStore,
+      "listSessions"
+    >,
+    cache,
+    { now: () => timestamp } satisfies InboxClock,
   );
 }
 
@@ -120,27 +173,27 @@ describe("MaintainerInboxService review and check filters", () => {
 function pullRequestEntry(
   number: number,
   cursor: string,
-): SearchPage["entries"][number] {
+): MaintainerPullRequestSearchPage["entries"][number] {
+  const ref = requireFixture(
+    parsePullRequestInput(`centraldigital/patchdesk#${number}`),
+  );
   return {
     cursor,
     pullRequest: {
       summary: {
-        ref: {
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "patchdesk",
-          number,
-        },
+        ref,
         title: `Fixture ${number}`,
         author: "other",
-        headSha: "a".repeat(40),
-        baseSha: "b".repeat(40),
+        headBranch: "feature/filter",
+        baseBranch: "main",
+        headSha,
+        baseSha,
         isOpen: true,
         isDraft: false,
         reviewState: "none",
         mergeability: "mergeable",
         labels: [],
-        updatedAt: "2026-08-01T00:00:00.000Z",
+        updatedAt: timestamp,
       },
       checks: { overall: "passing", checks: [] },
     },
@@ -148,38 +201,46 @@ function pullRequestEntry(
 }
 
 describe("MaintainerInboxService filtered cache writes", () => {
-  it.each([
-    { reviewState: "approved" as const },
-    { checkStatus: "failure" as const },
-  ])("does not cache a read with a %s filter", async (filter) => {
-    const saved: Array<MaintainerInboxCache> = [];
-    const service = new MaintainerInboxService(
-      {
-        resolveAuthenticatedAccount: async () =>
-          ok({ host: "github.com", account: "fixture" }),
-        searchMaintainerPullRequests: async () =>
+  const filteredCases = [
+    { reviewState: "approved" },
+    { checkStatus: "failure" },
+  ] satisfies ReadonlyArray<{
+    readonly reviewState?: InboxReviewStateFilter;
+    readonly checkStatus?: InboxCheckStatusFilter;
+  }>;
+
+  it.each(filteredCases)(
+    "does not cache a read with a %s filter",
+    async (filter) => {
+      const saved: Array<MaintainerInboxCache> = [];
+      const cache: Pick<MaintainerInboxCacheStore, "read" | "save"> = {
+        read: async (): Promise<ReturnType<typeof err<StorageFailure>>> =>
+          err({
+            _tag: "StorageFailure",
+            operation: "read",
+            reason: "not_found",
+          }),
+        save: async (_profileId, _repository, cached) => {
+          saved.push(cached);
+          return ok(undefined);
+        },
+      };
+      const service = serviceWithSearch(
+        async () =>
           ok({
             entries: [pullRequestEntry(7, "fixture-7")],
             hasNextPage: false,
             issueCount: 1,
           }),
-      } as never,
-      { listSessions: async () => ok([]) } as never,
-      {
-        read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
-        save: async (cached: MaintainerInboxCache) => {
-          saved.push(cached);
-          return ok(undefined);
-        },
-      } as never,
-      { now: () => "2026-08-01T00:00:00.000Z" as never },
-    );
+        cache,
+      );
 
-    await service.list(profile, repository, {
-      filter: { state: "open", ...filter },
-      pageSize: 25,
-    });
+      await service.list(profile, repository, {
+        filter: { state: "open", ...filter },
+        pageSize: 25,
+      });
 
-    expect(saved).toEqual([]);
-  });
+      expect(saved).toEqual([]);
+    },
+  );
 });
