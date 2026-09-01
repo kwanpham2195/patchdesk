@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.3 - 2026-09-01
+
+- Fixed release installs when the machine's pnpm peer setting differs from the locked Flue runtime.
+
 ## 0.1.2 - 2026-09-01
 
 - Reduced the macOS download and installed app size, and added release checks to prevent package-size regressions.
