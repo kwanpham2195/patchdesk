@@ -62,6 +62,6 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
     "Keep each label within 120 characters. Keep each tree at most three levels deep and fifteen steps.",
     "Never invent motivation, intent, trade-offs, or product impact. If the evidence does not state why the change was made, say so as an assumption.",
     "Do not narrate the patch file by file and do not restate code that the diff already shows.",
-    "Write no numbers and no counts. Patchdesk produces every count from a tool.",
+    "Write no numbers and no counts in prose; a flow label copies the identifier from the patch as written, digits included. Patchdesk produces every count from a tool.",
   ].join(" ");
 }

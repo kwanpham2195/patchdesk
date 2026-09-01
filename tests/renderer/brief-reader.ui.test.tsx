@@ -138,6 +138,41 @@ const retainedWithFlow = () => {
   };
 };
 
+/** Two views of different kinds, so each keeps its own "Copy as diff" button. */
+const TWO_FLOW_VIEWS = {
+  trees: [
+    {
+      kind: "call_tree" as const,
+      title: "First view",
+      nodes: [
+        {
+          label: "firstStep()",
+          change: "added" as const,
+          citations: [],
+          children: [],
+        },
+      ],
+    },
+    {
+      kind: "control_flow" as const,
+      title: "Second view",
+      nodes: [
+        {
+          label: "on(save)",
+          change: "added" as const,
+          citations: [],
+          children: [],
+        },
+      ],
+    },
+  ],
+};
+
+const retainedWithTwoFlowViews = () => {
+  const base = retained();
+  return { ...base, value: { ...briefValue, flow: TWO_FLOW_VIEWS } };
+};
+
 const retainedWithOwnership = (withContract: boolean) => {
   const base = retained();
   return {
@@ -580,7 +615,7 @@ describe("BriefReader", () => {
     await user.click(screen.getByRole("button", { name: "Copy as diff" }));
 
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff\n {2}call tree · /);
+    expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff\n {1}call tree · /);
     expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
@@ -602,6 +637,37 @@ describe("BriefReader", () => {
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
     expect(screen.getByRole("button", { name: "Copy as diff" })).toBeTruthy();
+  });
+
+  it("flips only the clicked view's Copy button to Copied", async () => {
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithTwoFlowViews()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const copyButtons = screen.getAllByRole("button", {
+      name: "Copy as diff",
+    });
+    expect(copyButtons).toHaveLength(2);
+    const [firstCopyButton] = copyButtons;
+    if (firstCopyButton === undefined)
+      throw new Error("Expected the first view's Copy button");
+
+    await user.click(firstCopyButton);
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0]?.[0]).toContain("First view");
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: "Copy as diff" }),
+    ).toHaveLength(1);
   });
 
   it("disables regeneration when no run may start", () => {

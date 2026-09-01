@@ -390,7 +390,7 @@ describe("insightOutputGuidance", () => {
     );
   });
 
-  it("gives the Brief its own Flow rules and still forbids numbers", () => {
+  it("gives the Brief its own Flow rules and still forbids prose numbers", () => {
     const guidance = insightOutputGuidance("brief");
     expect(guidance).toContain(
       "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, and component.",
@@ -404,7 +404,9 @@ describe("insightOutputGuidance", () => {
     expect(guidance).toContain(
       "omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",
     );
-    expect(guidance).toContain("Write no numbers and no counts.");
+    expect(guidance).toContain(
+      "Write no numbers and no counts in prose; a flow label copies the identifier from the patch as written, digits included.",
+    );
   });
 });
 

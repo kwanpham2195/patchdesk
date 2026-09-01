@@ -448,13 +448,11 @@ function FlowBlock({
         </span>
       </h3>
       <div className="flex min-w-0 flex-col gap-3">
-        {flow.trees.map((tree, index) => (
-          // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `flow.trees` is a fixed array carried on one immutable `Brief` value; it is never reordered, filtered, or mutated after render. A tree's own `title` is not guaranteed unique (ADR 0039 allows up to two trees with no uniqueness rule between them), so the index disambiguates two same-titled trees rather than tracking position across a reorder that never happens.
-          <FlowView
-            key={`${String(index)}-${tree.title}`}
-            tree={tree}
-            citedHunks={citedHunks}
-          />
+        {flow.trees.map((tree) => (
+          // `normalizeBriefFlow` guarantees at most one tree per kind, so
+          // `tree.kind` is a stable, unique key without needing the array
+          // index.
+          <FlowView key={tree.kind} tree={tree} citedHunks={citedHunks} />
         ))}
       </div>
     </section>
@@ -544,7 +542,7 @@ function FlowRowView({
         {mark.glyph}
       </span>
       <span
-        className={`min-w-0 ${row.change === "unchanged" ? "text-muted-foreground" : "text-foreground"}`}
+        className={`min-w-0 [overflow-wrap:anywhere] ${row.change === "unchanged" ? "text-muted-foreground" : "text-foreground"}`}
         style={{ paddingLeft: `${String(row.depth)}rem` }}
       >
         {row.label}{" "}

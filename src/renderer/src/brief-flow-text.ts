@@ -47,28 +47,29 @@ export function flowRows(
 }
 
 /**
- * One row's line in the fenced diff text: the marker sits in column 0 (`+ `,
- * `- `, or two blank spaces for `unchanged`), and each level of depth adds two
- * more spaces after it -- the indentation form the maintainer's `show-me`
- * sketches use, not box-drawing connectors.
+ * One row's line in the fenced diff text: a one-character marker sits in
+ * column 0 (`+`, `-`, or a space for `unchanged`), and each level of depth
+ * adds two more spaces after it -- the indentation form the maintainer's
+ * `show-me` sketches use, not box-drawing connectors.
  */
 function flowRowLine(row: BriefFlowRow): string {
   const marker =
-    row.change === "added" ? "+ " : row.change === "removed" ? "- " : "  ";
+    row.change === "added" ? "+" : row.change === "removed" ? "-" : " ";
   return `${marker}${"  ".repeat(row.depth)}${row.label}`;
 }
 
 /**
  * Renders every Flow tree as the fenced `+`/`-` diff text ADR 0039 shows: one
- * ` ```diff ` block per tree, headed by its kind label and title, then its
- * rows in the same order `flowRows` walks. No citations and no counts travel
- * into this text -- it exists to be pasted into a PR comment or commit
- * message, not to stand in for the rendered tree.
+ * ` ```diff ` block per tree, headed by its kind label and title behind the
+ * same one-character space marker every unchanged row carries, then its rows
+ * in the same order `flowRows` walks. No citations and no counts travel into
+ * this text -- it exists to be pasted into a PR comment or commit message,
+ * not to stand in for the rendered tree.
  */
 export function briefFlowAsDiffText(flow: BriefFlow): string {
   return flow.trees
     .map((tree) => {
-      const header = `  ${briefFlowKindLabel(tree.kind)} · ${tree.title}`;
+      const header = ` ${briefFlowKindLabel(tree.kind)} · ${tree.title}`;
       const rows = flowRows(tree.nodes).map(flowRowLine);
       return ["```diff", header, ...rows, "```"].join("\n");
     })

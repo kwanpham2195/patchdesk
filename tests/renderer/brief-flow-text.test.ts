@@ -34,11 +34,11 @@ describe("briefFlowAsDiffText", () => {
     expect(text).toBe(
       [
         "```diff",
-        "  call tree · Save and update a route plan",
-        "  validateManualDays(command, suggestion)",
-        "+   rejectEmptyDay(day)",
-        "+   requireFirstStop(day)",
-        "  persistMutationStops(tx, stops)",
+        " call tree · Save and update a route plan",
+        " validateManualDays(command, suggestion)",
+        "+  rejectEmptyDay(day)",
+        "+  requireFirstStop(day)",
+        " persistMutationStops(tx, stops)",
         "```",
       ].join("\n"),
     );
@@ -63,12 +63,10 @@ describe("briefFlowAsDiffText", () => {
     const blocks = text.split("\n\n");
     expect(blocks).toHaveLength(2);
     expect(blocks[0]).toBe(
-      ["```diff", "  call tree · Tree one", "+ Only step", "```"].join("\n"),
+      ["```diff", " call tree · Tree one", "+Only step", "```"].join("\n"),
     );
     expect(blocks[1]).toBe(
-      ["```diff", "  control flow · Tree two", "- Other step", "```"].join(
-        "\n",
-      ),
+      ["```diff", " control flow · Tree two", "-Other step", "```"].join("\n"),
     );
   });
 
@@ -90,9 +88,9 @@ describe("briefFlowAsDiffText", () => {
     });
     const lines = text.split("\n");
 
-    expect(lines).toContain("  <Toolbar>");
-    expect(lines).toContain("+   <SaveButton>");
-    expect(lines).toContain("+     useSessionEvents()");
+    expect(lines).toContain(" <Toolbar>");
+    expect(lines).toContain("+  <SaveButton>");
+    expect(lines).toContain("+    useSessionEvents()");
   });
 
   it("gives an unchanged row a blank marker instead of a plus or minus", () => {
@@ -111,11 +109,11 @@ describe("briefFlowAsDiffText", () => {
     });
     const lines = text.split("\n");
 
-    expect(lines).toContain("+ Added step");
-    expect(lines).toContain("- Removed step");
-    expect(lines).toContain("  Kept step");
-    expect(text).not.toContain("+ Kept step");
-    expect(text).not.toContain("- Kept step");
+    expect(lines).toContain("+Added step");
+    expect(lines).toContain("-Removed step");
+    expect(lines).toContain(" Kept step");
+    expect(text).not.toContain("+Kept step");
+    expect(text).not.toContain("-Kept step");
   });
 });
 
