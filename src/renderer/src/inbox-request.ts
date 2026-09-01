@@ -5,7 +5,9 @@ import {
 } from "./inbox-view-preferences";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
+  type InboxCheckStatusFilter,
   type InboxPageSize,
+  type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
 import {
@@ -34,6 +36,10 @@ export type InboxRequestState = {
    * `awaitingMyReview=1`. Unlike `selectedLabels` it is not
    * repository-scoped, so `changeInboxRepository` carries it over. */
   readonly awaitingMyReview: boolean;
+  /** The optional GitHub `review:<value>` qualifier. Portable across repositories. */
+  readonly reviewState?: InboxReviewStateFilter;
+  /** The optional GitHub `status:<value>` qualifier. Portable across repositories. */
+  readonly checkStatus?: InboxCheckStatusFilter;
   readonly pageToken?: string;
   readonly previousPageTokens: ReadonlyArray<string | undefined>;
 };
@@ -61,9 +67,10 @@ export function resolveInboxRepository(
  * Builds the next inbox request from the current one. Each caller states only
  * what it changes; every field it does not name carries over, and the page
  * cursor resets — a cursor minted under a different repository, state, page
- * size, or label filter belongs to a different GitHub search and is rejected
- * as `invalid_page`, so carrying one forward could only produce a failed
- * read. The two paging callers are the exception and name `pageToken` and
+ * size, label, review, or check filter belongs to a different GitHub search
+ * and is rejected as `invalid_page`, so carrying one forward could only
+ * produce a failed read. The two paging callers are the exception and name
+ * `pageToken` and
  * `previousPageTokens` themselves.
  *
  * `repository` is honoured by key presence rather than by value: passing
@@ -78,6 +85,8 @@ export function nextInboxRequest(
     readonly pageSize?: InboxPageSize;
     readonly selectedLabels?: ReadonlyArray<string>;
     readonly awaitingMyReview?: boolean;
+    readonly reviewState?: InboxReviewStateFilter | undefined;
+    readonly checkStatus?: InboxCheckStatusFilter | undefined;
     readonly pageToken?: string | undefined;
     readonly previousPageTokens?: ReadonlyArray<string | undefined>;
   } = {},
@@ -88,6 +97,10 @@ export function nextInboxRequest(
   const repositoryField = repository === undefined ? {} : { repository };
   const pageTokenField =
     overrides.pageToken === undefined ? {} : { pageToken: overrides.pageToken };
+  const reviewState = overrides.reviewState ?? current.reviewState;
+  const reviewStateField = reviewState === undefined ? {} : { reviewState };
+  const checkStatus = overrides.checkStatus ?? current.checkStatus;
+  const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
   return {
     ...repositoryField,
     ...pageTokenField,
@@ -95,6 +108,8 @@ export function nextInboxRequest(
     pageSize: overrides.pageSize ?? current.pageSize,
     selectedLabels: overrides.selectedLabels ?? current.selectedLabels,
     awaitingMyReview: overrides.awaitingMyReview ?? current.awaitingMyReview,
+    ...reviewStateField,
+    ...checkStatusField,
     previousPageTokens: overrides.previousPageTokens ?? [],
   };
 }
@@ -106,8 +121,8 @@ export function nextInboxRequest(
  * leaves the displayed rows describing the previous request until the new
  * one lands. Comparing the response instead cannot work: it echoes only the
  * state filter and the page size, and says nothing about the label filter or
- * the "Awaiting review from you" preset, so a label change looked identical
- * to no change at all.
+ * the "Awaiting review from you" preset, review state, or check status, so a
+ * label change looked identical to no change at all.
  */
 export function sameInboxRows(
   left: InboxRequestState,
@@ -118,6 +133,8 @@ export function sameInboxRows(
     left.state === right.state &&
     left.pageSize === right.pageSize &&
     left.awaitingMyReview === right.awaitingMyReview &&
+    left.reviewState === right.reviewState &&
+    left.checkStatus === right.checkStatus &&
     left.pageToken === right.pageToken &&
     left.selectedLabels.length === right.selectedLabels.length &&
     left.selectedLabels.every(
@@ -153,13 +170,23 @@ export function firstInboxRequestFor(
 ): InboxRequestState {
   const profileId = profiles[0]?.id;
   if (profileId === undefined) return firstInboxRequest;
-  const { state, pageSize, selectedLabels, awaitingMyReview } =
-    loadInboxViewPreferences(profileId);
+  const {
+    state,
+    pageSize,
+    selectedLabels,
+    awaitingMyReview,
+    reviewState,
+    checkStatus,
+  } = loadInboxViewPreferences(profileId);
+  const reviewStateField = reviewState === undefined ? {} : { reviewState };
+  const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
   return {
     state,
     pageSize,
     selectedLabels,
     awaitingMyReview,
+    ...reviewStateField,
+    ...checkStatusField,
     previousPageTokens: [],
   };
 }
@@ -177,6 +204,10 @@ export function inboxRequestPath(request: InboxRequestState): string {
   }
   for (const label of request.selectedLabels) query.append("label", label);
   if (request.awaitingMyReview) query.set("awaitingMyReview", "1");
+  if (request.reviewState !== undefined)
+    query.set("reviewState", request.reviewState);
+  if (request.checkStatus !== undefined)
+    query.set("checkStatus", request.checkStatus);
   if (request.pageToken !== undefined) query.set("page", request.pageToken);
   return `/v1/inbox?${query.toString()}`;
 }

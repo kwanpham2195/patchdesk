@@ -36,7 +36,11 @@ import {
   workspaceReducer,
   type WorkspaceAction,
 } from "../workspace-state";
-import type { InboxPageSize } from "../../../domain/maintainer-inbox";
+import type {
+  InboxCheckStatusFilter,
+  InboxPageSize,
+  InboxReviewStateFilter,
+} from "../../../domain/maintainer-inbox";
 import { sameRepositoryIdentity } from "../../../domain/repository-identity";
 
 /**
@@ -74,6 +78,12 @@ export type WorkspaceInbox = {
   readonly changeInboxPageSize: (pageSize: InboxPageSize) => void;
   readonly changeInboxLabels: (selectedLabels: ReadonlyArray<string>) => void;
   readonly changeInboxAwaitingMyReview: (awaitingMyReview: boolean) => void;
+  readonly changeInboxReviewState: (
+    reviewState: InboxReviewStateFilter,
+  ) => void;
+  readonly changeInboxCheckStatus: (
+    checkStatus: InboxCheckStatusFilter,
+  ) => void;
   readonly changeInboxRepository: (repository: Repo) => void;
   readonly previousInboxPage: () => void;
   readonly nextInboxPage: () => void;
@@ -284,6 +294,8 @@ export function useWorkspaceInbox({
       pageSize: preferences.pageSize,
       selectedLabels: repositoryChanged ? [] : preferences.selectedLabels,
       awaitingMyReview: preferences.awaitingMyReview,
+      reviewState: preferences.reviewState,
+      checkStatus: preferences.checkStatus,
     });
     updateInboxRequest(request);
     void refreshInbox(request);
@@ -359,6 +371,34 @@ export function useWorkspaceInbox({
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { awaitingMyReview });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /** Changes GitHub's review-state qualifier and starts a fresh first page. */
+  const changeInboxReviewState = useCallback(
+    (reviewState: InboxReviewStateFilter): void => {
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        reviewState,
+      });
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { reviewState });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /** Changes GitHub's check-status qualifier and starts a fresh first page. */
+  const changeInboxCheckStatus = useCallback(
+    (checkStatus: InboxCheckStatusFilter): void => {
+      const request = nextInboxRequest(inboxRequestRef.current, {
+        checkStatus,
+      });
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { checkStatus });
       updateInboxRequest(request);
       void refreshInbox(request);
     },
@@ -442,6 +482,8 @@ export function useWorkspaceInbox({
     changeInboxPageSize,
     changeInboxLabels,
     changeInboxAwaitingMyReview,
+    changeInboxReviewState,
+    changeInboxCheckStatus,
     changeInboxRepository,
     previousInboxPage,
     nextInboxPage,

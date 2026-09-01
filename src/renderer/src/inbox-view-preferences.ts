@@ -1,11 +1,15 @@
 import * as v from "valibot";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
+  INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
   MAX_INBOX_FILTER_LABELS,
   MAX_INBOX_FILTER_LABEL_LENGTH,
+  INBOX_REVIEW_STATE_FILTER_VALUES,
   INBOX_STATE_FILTER_VALUES,
+  type InboxCheckStatusFilter,
   type InboxPageSize,
+  type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
 import type { RepositoryIdentity } from "../../domain/repository-identity";
@@ -57,6 +61,14 @@ const preferencesSchema = v.object({
   // it is not repository-scoped — `user-review-requested:@me` means the same
   // thing in every repository — so a repository change carries it over.
   awaitingMyReview: v.fallback(v.boolean(), false),
+  reviewState: v.fallback(
+    v.optional(v.picklist(INBOX_REVIEW_STATE_FILTER_VALUES)),
+    undefined,
+  ),
+  checkStatus: v.fallback(
+    v.optional(v.picklist(INBOX_CHECK_STATUS_FILTER_VALUES)),
+    undefined,
+  ),
   inspectorOpen: v.fallback(v.boolean(), true),
   selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
   // The Selected repository (see ADR 0031).
@@ -75,6 +87,10 @@ export type InboxViewPreferences = {
   /** The "Awaiting review from you" preset, sent to GitHub as
    * `user-review-requested:@me`. Not repository-scoped — see the schema. */
   readonly awaitingMyReview: boolean;
+  /** The optional GitHub `review:<value>` qualifier. */
+  readonly reviewState?: InboxReviewStateFilter;
+  /** The optional GitHub `status:<value>` qualifier. */
+  readonly checkStatus?: InboxCheckStatusFilter;
   readonly inspectorOpen: boolean;
   readonly selectedIdentity?: string;
   /** The last repository selected from the watchlist, per profile. Falls
@@ -150,7 +166,7 @@ export function loadInboxViewPreferences(
   );
 }
 
-/** Persists only local presentation state; review and GitHub state never enter this key. */
+/** Persists local presentation state and bounded GitHub filter choices; cursors never enter this key. */
 export function saveInboxViewPreferences(
   profileId: string,
   update: Partial<InboxViewPreferences>,
@@ -170,10 +186,18 @@ function preferencesFrom(
     awaitingMyReview: parsed.awaitingMyReview,
     inspectorOpen: parsed.inspectorOpen,
   };
+  const withReviewState =
+    parsed.reviewState === undefined
+      ? base
+      : { ...base, reviewState: parsed.reviewState };
+  const withCheckStatus =
+    parsed.checkStatus === undefined
+      ? withReviewState
+      : { ...withReviewState, checkStatus: parsed.checkStatus };
   const withIdentity =
     parsed.selectedIdentity === undefined
-      ? base
-      : { ...base, selectedIdentity: parsed.selectedIdentity };
+      ? withCheckStatus
+      : { ...withCheckStatus, selectedIdentity: parsed.selectedIdentity };
   if (parsed.selectedRepository === undefined) return withIdentity;
   return { ...withIdentity, selectedRepository: parsed.selectedRepository };
 }

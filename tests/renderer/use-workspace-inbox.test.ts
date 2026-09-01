@@ -7,7 +7,10 @@ import {
   loadInboxViewPreferences,
   saveInboxViewPreferences,
 } from "../../src/renderer/src/inbox-view-preferences";
-import { useWorkspaceInbox } from "../../src/renderer/src/hooks/use-workspace-inbox";
+import {
+  useWorkspaceInbox,
+  type WorkspaceInbox,
+} from "../../src/renderer/src/hooks/use-workspace-inbox";
 import {
   installDesktopDouble,
   success,
@@ -272,4 +275,78 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     });
     expect(result.current.inboxListPending).toBe(false);
   });
+
+  it.each([
+    {
+      name: "review state",
+      apply: (workspace: WorkspaceInbox) =>
+        workspace.changeInboxReviewState("approved"),
+      requestFilter: {
+        reviewState: "approved" as const,
+        checkStatus: "pending" as const,
+      },
+      preference: { reviewState: "approved" as const },
+      query: "reviewState=approved&checkStatus=pending",
+    },
+    {
+      name: "check status",
+      apply: (workspace: WorkspaceInbox) =>
+        workspace.changeInboxCheckStatus("failure"),
+      requestFilter: {
+        reviewState: "approved" as const,
+        checkStatus: "failure" as const,
+      },
+      preference: { checkStatus: "failure" as const },
+      query: "reviewState=approved&checkStatus=failure",
+    },
+  ])(
+    "changes the $name, resets pagination, persists it, and preserves the other filters",
+    async ({ apply, requestFilter, preference, query }) => {
+      const paths: string[] = [];
+      desktop = installDesktopDouble({
+        "/v1/profiles": () => success([profileA]),
+        "/v1/logs": () => success({}),
+        "/v1/inbox": (input) => {
+          paths.push(input.path);
+          return success(inbox(profileA));
+        },
+      });
+      const { result } = renderHook(() =>
+        useWorkspaceInbox({ fixtureMode: true, initialState: undefined }),
+      );
+
+      await act(async () => {
+        await result.current.loadWorkspace();
+      });
+      await waitFor(() =>
+        expect(result.current.dashboard?.profile.id).toBe("a"),
+      );
+      act(() => {
+        result.current.updateInboxRequest({
+          ...result.current.inboxRequest,
+          selectedLabels: ["bug"],
+          awaitingMyReview: true,
+          pageToken: "stale-page",
+          previousPageTokens: ["older-page"],
+          ...requestFilter,
+        });
+        apply(result.current);
+      });
+
+      expect(result.current.inboxRequest).toMatchObject({
+        repository: repositoryA,
+        selectedLabels: ["bug"],
+        awaitingMyReview: true,
+        previousPageTokens: [],
+        ...requestFilter,
+      });
+      expect(result.current.inboxRequest).not.toHaveProperty("pageToken");
+      expect(loadInboxViewPreferences("a")).toMatchObject(preference);
+      await waitFor(() =>
+        expect(paths.at(-1)).toBe(
+          `/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&awaitingMyReview=1&${query}`,
+        ),
+      );
+    },
+  );
 });

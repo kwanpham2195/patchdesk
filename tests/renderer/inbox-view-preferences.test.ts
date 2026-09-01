@@ -122,6 +122,34 @@ describe("inbox view preferences", () => {
     ]);
   });
 
+  it("round-trips selected review state and check status", () => {
+    saveInboxViewPreferences("profile-1", {
+      reviewState: "approved",
+      checkStatus: "failure",
+    });
+    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
+      reviewState: "approved",
+      checkStatus: "failure",
+    });
+  });
+
+  it("resets invalid review state and check status independently", () => {
+    store({
+      state: "merged",
+      reviewState: "review_pending",
+      checkStatus: "skipped",
+    });
+    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
+      state: "merged",
+    });
+    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty(
+      "reviewState",
+    );
+    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty(
+      "checkStatus",
+    );
+  });
+
   it("caps selectedLabels at MAX_INBOX_FILTER_LABELS entries", () => {
     const labels = Array.from({ length: 10 }, (_, index) => `label-${index}`);
     store({ selectedLabels: labels });
