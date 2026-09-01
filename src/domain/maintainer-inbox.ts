@@ -23,6 +23,25 @@ export const DEFAULT_INBOX_PAGE_SIZE: InboxPageSize = 25;
 export const INBOX_STATE_FILTER_VALUES = ["open", "merged"] as const;
 export type InboxStateFilter = (typeof INBOX_STATE_FILTER_VALUES)[number];
 
+/** The GitHub review states that a pull-request listing can filter to. */
+export const INBOX_REVIEW_STATE_FILTER_VALUES = [
+  "none",
+  "required",
+  "approved",
+  "changes_requested",
+] as const;
+export type InboxReviewStateFilter =
+  (typeof INBOX_REVIEW_STATE_FILTER_VALUES)[number];
+
+/** The GitHub check statuses that a pull-request listing can filter to. */
+export const INBOX_CHECK_STATUS_FILTER_VALUES = [
+  "pending",
+  "success",
+  "failure",
+] as const;
+export type InboxCheckStatusFilter =
+  (typeof INBOX_CHECK_STATUS_FILTER_VALUES)[number];
+
 /** Whether an inbox payload came from a live GitHub read or the on-disk cache. */
 export const INBOX_DATA_FRESHNESS = ["fresh", "cached"] as const;
 export type InboxDataFreshness = (typeof INBOX_DATA_FRESHNESS)[number];
@@ -74,6 +93,10 @@ export type InboxFilter = {
    * than replacing the listing. Unlike `labels` it is not
    * repository-scoped, so a repository change carries it over. */
   readonly awaitingMyReview?: boolean;
+  /** GitHub's `review:<value>` qualifier; absent means any review state. */
+  readonly reviewState?: InboxReviewStateFilter;
+  /** GitHub's `status:<value>` qualifier; absent means any check status. */
+  readonly checkStatus?: InboxCheckStatusFilter;
 };
 
 /** Presented together in the filter bar and the command palette; one list so the two surfaces cannot drift. */

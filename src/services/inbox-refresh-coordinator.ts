@@ -16,9 +16,9 @@ type ReadOnlyInbox = Pick<MaintainerInboxService, "list">;
 
 /** Coalesces only matching profile, repository, filter, size, and opaque-token
  * inbox reads. The filter half of that means every field of `InboxFilter` —
- * the state, the label list, and the "Awaiting review from you" preset — so
- * two reads that differ only by one of them never share one in-flight
- * promise. */
+ * the state, label list, review/check qualifiers, and the "Awaiting review
+ * from you" preset — so two reads that differ only by one of them never share
+ * one in-flight promise. */
 export class InboxRefreshCoordinator {
   private readonly inFlight = new Map<
     string,
@@ -41,7 +41,9 @@ export class InboxRefreshCoordinator {
     // key rather than issuing two reads.
     const labels = normalizeInboxLabels(page.filter.labels).join(",");
     const awaitingMyReview = page.filter.awaitingMyReview === true ? "1" : "0";
-    const key = `${profile.id}:${repository.host}/${repository.owner}/${repository.repo}:${page.filter.state}:${labels}:${awaitingMyReview}:${page.pageSize}:${page.pageToken ?? "first"}`;
+    const reviewState = page.filter.reviewState ?? "any";
+    const checkStatus = page.filter.checkStatus ?? "any";
+    const key = `${profile.id}:${repository.host}/${repository.owner}/${repository.repo}:${page.filter.state}:${labels}:${awaitingMyReview}:${reviewState}:${checkStatus}:${page.pageSize}:${page.pageToken ?? "first"}`;
     const existing = this.inFlight.get(key);
     if (existing !== undefined) return existing;
     const request = this.inbox.list(profile, repository, page).finally(() => {

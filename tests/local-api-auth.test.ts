@@ -613,6 +613,45 @@ describe("GET /v1/inbox page size boundary", () => {
     expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
   });
 
+  it("forwards review and check filter values as GitHub qualifiers", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL("v1/inbox?reviewState=approved&checkStatus=failure", api.url),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery:
+          "repo:centraldigital/patchdesk is:pr is:open review:approved status:failure",
+      }),
+    );
+  });
+
+  it("rejects invalid review and check filter values without reading GitHub", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    for (const query of [
+      "v1/inbox?reviewState=review_pending",
+      "v1/inbox?reviewState=unknown",
+      "v1/inbox?checkStatus=skipped",
+      "v1/inbox?checkStatus=unknown",
+    ]) {
+      const response = await fetch(new URL(query, api.url), {
+        headers: headers(),
+      });
+      expect(response.status, query).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_input",
+      });
+    }
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
   it("rejects a repository the active profile does not watch, with no GitHub read", async () => {
     const { api, searchMaintainerPullRequests } =
       await startWithWatchedProfile();

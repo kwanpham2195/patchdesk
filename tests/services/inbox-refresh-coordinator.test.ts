@@ -266,6 +266,35 @@ it("does not coalesce different label filters for the same profile and repositor
   ]);
 });
 
+it("does not coalesce different review or check filters for the same repository", async () => {
+  let resolveScan:
+    | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
+    | undefined;
+  const scan = new Promise<ReturnType<typeof ok<MaintainerInbox>>>(
+    (resolve) => {
+      resolveScan = resolve;
+    },
+  );
+  const list = vi.fn(() => scan);
+  const coordinator = new InboxRefreshCoordinator({ list });
+
+  const approved = coordinator.refresh(profile, repository, {
+    filter: { state: "open", reviewState: "approved" },
+    pageSize: 25,
+  });
+  const failingChecks = coordinator.refresh(profile, repository, {
+    filter: { state: "open", checkStatus: "failure" },
+    pageSize: 25,
+  });
+
+  expect(list).toHaveBeenCalledTimes(2);
+  resolveScan?.(ok(inbox));
+  await expect(Promise.all([approved, failingChecks])).resolves.toEqual([
+    ok(inbox),
+    ok(inbox),
+  ]);
+});
+
 it("coalesces label filters that differ only by order or repetition", async () => {
   let resolveScan:
     | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)

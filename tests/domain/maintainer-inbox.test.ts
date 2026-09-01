@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseGitSha } from "../../src/domain/ids";
-import { projectMaintainerInboxRow } from "../../src/domain/maintainer-inbox";
+import {
+  INBOX_CHECK_STATUS_FILTER_VALUES,
+  INBOX_REVIEW_STATE_FILTER_VALUES,
+  projectMaintainerInboxRow,
+} from "../../src/domain/maintainer-inbox";
 
 const sha = parseGitSha("a".repeat(40));
 if (sha._tag === "err") throw new Error("fixture SHA invalid");
@@ -40,6 +44,20 @@ const input = {
   dataFreshness: "fresh" as const,
 };
 describe("maintainer inbox", () => {
+  it("exposes the bounded GitHub review and check filter values", () => {
+    expect(INBOX_REVIEW_STATE_FILTER_VALUES).toEqual([
+      "none",
+      "required",
+      "approved",
+      "changes_requested",
+    ]);
+    expect(INBOX_CHECK_STATUS_FILTER_VALUES).toEqual([
+      "pending",
+      "success",
+      "failure",
+    ]);
+  });
+
   it("opens an existing changed Review without adopting its new revision", () => {
     const row = projectMaintainerInboxRow({
       ...input,
