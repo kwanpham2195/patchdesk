@@ -256,134 +256,7 @@ describe("normalizeBriefFlow", () => {
     expect(result.rejected).toBe(0);
   });
 
-  it("merges a step nested under itself, joining citations and lifting the grandchild", () => {
-    const raw: BriefFlowOutput = [
-      {
-        kind: "call_tree",
-        title: "Recursive citation",
-        nodes: [
-          {
-            label: "setCurrentFirstCustomer(plan)",
-            change: "added",
-            citations: ["h1"],
-            children: [
-              {
-                label: "setCurrentFirstCustomer(plan)",
-                change: "added",
-                citations: ["h2"],
-                children: [
-                  { label: "persistCustomer(plan)", change: "unchanged" },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ];
-    const result = normalize(raw);
-    expect(result.rejected).toBe(0);
-    const nodes = result.value?.trees[0]?.nodes ?? [];
-    expect(nodes).toHaveLength(1);
-    expect(nodes[0]?.label).toBe("setCurrentFirstCustomer(plan)");
-    expect(nodes[0]?.change).toBe("added");
-    expect(nodes[0]?.citations.map((citation) => citation.alias)).toEqual([
-      "h1",
-      "h2",
-    ]);
-    expect(nodes[0]?.children.map((node) => node.label)).toEqual([
-      "persistCustomer(plan)",
-    ]);
-  });
-
-  it("collapses a chain of the same label three deep into one node", () => {
-    const raw: BriefFlowOutput = [
-      {
-        kind: "call_tree",
-        title: "Chain",
-        nodes: [
-          {
-            label: "retry()",
-            change: "unchanged",
-            children: [
-              {
-                label: "retry()",
-                change: "added",
-                citations: ["h1"],
-                children: [
-                  { label: "retry()", change: "added", citations: ["h2"] },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    ];
-    const result = normalize(raw);
-    expect(result.rejected).toBe(0);
-    const nodes = result.value?.trees[0]?.nodes ?? [];
-    expect(nodes).toHaveLength(1);
-    expect(nodes[0]?.label).toBe("retry()");
-    expect(nodes[0]?.change).toBe("added");
-    expect(nodes[0]?.citations.map((citation) => citation.alias)).toEqual([
-      "h1",
-      "h2",
-    ]);
-    expect(nodes[0]?.children).toEqual([]);
-  });
-
-  it("merges adjacent siblings sharing a label, unioning citations and concatenating children", () => {
-    const raw: BriefFlowOutput = [
-      {
-        kind: "call_tree",
-        title: "Adjacent",
-        nodes: [
-          { label: "guard()", change: "added", citations: ["h1"] },
-          {
-            label: "guard()",
-            change: "unchanged",
-            children: [
-              { label: "innerCheck()", change: "added", citations: ["h2"] },
-            ],
-          },
-        ],
-      },
-    ];
-    const result = normalize(raw);
-    expect(result.rejected).toBe(0);
-    const nodes = result.value?.trees[0]?.nodes ?? [];
-    expect(nodes).toHaveLength(1);
-    expect(nodes[0]?.label).toBe("guard()");
-    expect(nodes[0]?.change).toBe("added");
-    expect(nodes[0]?.citations.map((citation) => citation.alias)).toEqual([
-      "h1",
-    ]);
-    expect(nodes[0]?.children.map((node) => node.label)).toEqual([
-      "innerCheck()",
-    ]);
-  });
-
-  it("keeps non-adjacent siblings with the same label apart", () => {
-    const raw: BriefFlowOutput = [
-      {
-        kind: "call_tree",
-        title: "Two call sites",
-        nodes: [
-          { label: "validate()", change: "added", citations: ["h1"] },
-          { label: "log()", change: "unchanged" },
-          { label: "validate()", change: "added", citations: ["h2"] },
-        ],
-      },
-    ];
-    const result = normalize(raw);
-    expect(result.rejected).toBe(0);
-    expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
-      "validate()",
-      "log()",
-      "validate()",
-    ]);
-  });
-
-  it("merges an unchanged parent with an added self-child into one added node, keeping the tree", () => {
+  it("keeps a child with the same label as its parent, so a real recursion stays visible", () => {
     const raw: BriefFlowOutput = [
       {
         kind: "call_tree",
@@ -401,13 +274,16 @@ describe("normalizeBriefFlow", () => {
     ];
     const result = normalize(raw);
     expect(result.rejected).toBe(0);
-    expect(result.value).toBeDefined();
     const nodes = result.value?.trees[0]?.nodes ?? [];
     expect(nodes).toHaveLength(1);
-    expect(nodes[0]?.change).toBe("added");
-    expect(nodes[0]?.citations.map((citation) => citation.alias)).toEqual([
-      "h1",
-    ]);
+    expect(nodes[0]?.label).toBe("refreshToken()");
+    expect(nodes[0]?.change).toBe("unchanged");
+    expect(nodes[0]?.children).toHaveLength(1);
+    expect(nodes[0]?.children[0]?.label).toBe("refreshToken()");
+    expect(nodes[0]?.children[0]?.change).toBe("added");
+    expect(
+      nodes[0]?.children[0]?.citations.map((citation) => citation.alias),
+    ).toEqual(["h1"]);
   });
 
   it("rejects a tree with no kind at the schema level, whole and unparsed", () => {

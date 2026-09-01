@@ -34,15 +34,10 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
  * `normalizeBriefStartHere`'s five-file cap and an unmatched Start here path
  * are silent.
  *
- * After the walk keeps its nodes, `mergeDuplicateFlowNodes` runs a shape
- * correction: a child whose label equals its parent's, or a sibling whose
- * label equals its immediately preceding sibling's, is merged into it rather
- * than kept as its own row. The model tends to cite a function's definition
- * hunk and a call-site hunk as two nested or adjacent rows of the same call
- * instead of two citations on one row, so this pass folds them back into one
- * node carrying both citations, before the all-unchanged and tree-cap checks
- * run. It costs nothing toward `rejected` -- it is a shape correction, not a
- * citation failure.
+ * Patchdesk does not reshape a tree the model proposes -- a step nested
+ * under itself, or repeated, is drawn as proposed; the guidance, not the
+ * code, asks for a sensible graph -- because a real recursion or a call from
+ * two places must stay visible.
  */
 
 /** Whether one Flow step is new, gone, or the spine connecting the changed ones. */
@@ -312,149 +307,6 @@ function anyFlowNodeChanged(nodes: ReadonlyArray<BriefFlowNode>): boolean {
 }
 
 /**
- * Unions two nodes' citations, keeping `first`'s order and appending only
- * the aliases from `second` it does not already carry -- the same
- * dedupe-by-alias rule `resolveBriefCitations` applies within one node's own
- * proposed list, now applied across the two nodes a merge combines.
- */
-function unionFlowCitations(
-  first: ReadonlyArray<BriefCitation>,
-  second: ReadonlyArray<BriefCitation>,
-): ReadonlyArray<BriefCitation> {
-  const seen = new Set(first.map((citation) => citation.alias));
-  const merged = [...first];
-  for (const citation of second) {
-    if (seen.has(citation.alias)) continue;
-    seen.add(citation.alias);
-    merged.push(citation);
-  }
-  return merged;
-}
-
-/**
- * The `change` a merge keeps: the first of the two that is not `unchanged`,
- * checking `first` before `second` -- so merging a node into its parent
- * keeps the parent's `change` when the parent is itself `added`/`removed`,
- * and falls back to the child's otherwise. `unchanged` only when both are.
- */
-function mergeFlowChange(
-  first: BriefFlowChange,
-  second: BriefFlowChange,
-): BriefFlowChange {
-  if (first !== "unchanged") return first;
-  if (second !== "unchanged") return second;
-  return "unchanged";
-}
-
-/**
- * Merges `next` into `base` -- `base`'s citations first, `next`'s appended
- * and deduped by alias, `next`'s children left as-is for the caller to
- * splice or concatenate, and `change` resolved by `mergeFlowChange`. Used
- * both for a child merged into its parent and for one sibling merged into
- * the previous one; only `children` differs between the two call sites, so
- * it is left to the caller rather than folded in here.
- */
-function mergeFlowNodeFields(
-  base: BriefFlowNode,
-  next: BriefFlowNode,
-): Pick<BriefFlowNode, "change" | "citations"> {
-  return {
-    change: mergeFlowChange(base.change, next.change),
-    citations: unionFlowCitations(base.citations, next.citations),
-  };
-}
-
-/**
- * Merges adjacent siblings sharing a label into one node: citations union
- * (base first), children concatenated in order. Non-adjacent siblings with
- * the same label -- a function legitimately called from two places -- are
- * left apart; only a run of immediate neighbors collapses.
- */
-function mergeAdjacentFlowSiblings(
-  nodes: ReadonlyArray<BriefFlowNode>,
-): ReadonlyArray<BriefFlowNode> {
-  const merged: Array<BriefFlowNode> = [];
-  for (const node of nodes) {
-    const previous = merged[merged.length - 1];
-    if (previous !== undefined && previous.label === node.label) {
-      merged[merged.length - 1] = {
-        label: previous.label,
-        ...mergeFlowNodeFields(previous, node),
-        children: [...previous.children, ...node.children],
-      };
-      continue;
-    }
-    merged.push(node);
-  }
-  return merged;
-}
-
-/**
- * Folds a child that shares its parent's exact label into the parent: the
- * child's citations join the parent's, and the child's own children take
- * its place among the parent's children, at the position the child held.
- * Repeats against the updated children until none shares the parent's
- * label, so a chain of the same label nested several deep (`A > A > A`)
- * collapses to one node -- the citation the model attached at each nesting
- * level survives on that single row.
- */
-function mergeFlowChildIntoParent(node: BriefFlowNode): BriefFlowNode {
-  let change = node.change;
-  let citations = node.citations;
-  let children = node.children;
-
-  for (;;) {
-    const index = children.findIndex((child) => child.label === node.label);
-    if (index === -1) break;
-    const child = children[index];
-    if (child === undefined) break;
-    ({ change, citations } = mergeFlowNodeFields(
-      { label: node.label, change, citations, children: [] },
-      child,
-    ));
-    children = [
-      ...children.slice(0, index),
-      ...child.children,
-      ...children.slice(index + 1),
-    ];
-  }
-
-  // Splicing a merged child's children into the parent's list can put two
-  // same-label nodes next to each other that were not adjacent before the
-  // splice; fold those in too rather than leaving a fresh duplicate behind.
-  return {
-    label: node.label,
-    change,
-    citations,
-    children: mergeAdjacentFlowSiblings(children),
-  };
-}
-
-/**
- * Normalizes a walked tree's nodes into their final shape: a child nested
- * under a parent of the same label, or an adjacent sibling of the same
- * label, is merged rather than kept as its own row (see the module comment
- * for why the model produces these). Recurses depth-first, so a node's
- * children are fully merged -- both against each other and against any of
- * their own same-label children -- before that node is checked against its
- * parent or its preceding sibling.
- *
- * This is a pure shape correction, not a citation check: it costs nothing
- * toward `rejected`, and it runs before the all-unchanged and tree-cap
- * checks so a merged tree is judged on the shape it ends in, not the shape
- * the model proposed.
- */
-export function mergeDuplicateFlowNodes(
-  nodes: ReadonlyArray<BriefFlowNode>,
-): ReadonlyArray<BriefFlowNode> {
-  const withMergedSubtrees = nodes.map((node) => {
-    const children = mergeDuplicateFlowNodes(node.children);
-    return mergeFlowChildIntoParent({ ...node, children });
-  });
-  return mergeAdjacentFlowSiblings(withMergedSubtrees);
-}
-
-/**
  * A blank tree title falls back to a placeholder rather than dropping the
  * tree -- the title is a label for the reader, not evidence, so there is
  * nothing to verify about it.
@@ -480,11 +332,6 @@ function normalizeFlowTitle(rawTitle: string): string {
  * whitespace-only label, a tree with no surviving changed node, a second
  * surviving tree of a kind already kept, and a surviving tree past
  * `MAX_FLOW_TREES`.
- *
- * `mergeDuplicateFlowNodes` runs on each tree's walked nodes before the
- * all-unchanged and tree-cap checks, so a tree that only survives because a
- * merge folded a duplicate row into a changed one is still kept: a merge
- * costs nothing toward `rejected`.
  */
 export function normalizeBriefFlow(
   raw: BriefFlowOutput,
@@ -497,9 +344,8 @@ export function normalizeBriefFlow(
 
   for (const rawTree of raw) {
     const ctx: FlowWalkContext = { rejected: 0, visited: 0 };
-    const walked = walkFlowNodes(rawTree.nodes, 1, byAlias, ctx);
+    const nodes = walkFlowNodes(rawTree.nodes, 1, byAlias, ctx);
     rejected += ctx.rejected;
-    const nodes = mergeDuplicateFlowNodes(walked);
 
     if (!anyFlowNodeChanged(nodes)) continue;
     survivors.push({

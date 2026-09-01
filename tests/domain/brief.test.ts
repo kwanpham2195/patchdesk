@@ -396,7 +396,7 @@ describe("insightOutputGuidance", () => {
       "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, and component.",
     );
     expect(guidance).toContain(
-      "A call_tree step is the real function or method name with its parameter names as written in the patch, such as validateManualDays(command, suggestion)",
+      "each step is the real function or method name with its parameter names as written in the patch, such as validateManualDays(command, suggestion)",
     );
     expect(guidance).toContain(
       "Give every added or removed step an h alias citing the hunk that adds or removes it; a description or commit alias does not count for flow",
