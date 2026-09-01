@@ -419,10 +419,14 @@ function FlowBlock({
           size="sm"
           variant="outline"
           onClick={() => {
-            void navigator.clipboard.writeText(diffText);
-            setCopied(true);
-            clearTimeout(copiedTimer.current);
-            copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+            navigator.clipboard
+              .writeText(diffText)
+              .then(() => {
+                setCopied(true);
+                clearTimeout(copiedTimer.current);
+                copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+              })
+              .catch(() => undefined);
           }}
         >
           {copied ? "Copied" : "Copy as diff"}
@@ -436,7 +440,7 @@ function FlowBlock({
             className="flex min-w-0 flex-col gap-1 rounded-md border p-3"
           >
             <p className="text-xs font-medium text-foreground">{tree.title}</p>
-            <ul role="tree" aria-label={tree.title} className="flex flex-col">
+            <ul aria-label={tree.title} className="flex flex-col">
               {tree.nodes.map((node, index) => (
                 // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `tree.nodes` is a fixed array from the same immutable Brief value; `BriefFlowNode` carries no id (ADR 0039's "deterministic bookkeeping, no numbers" rule), and sibling labels are not guaranteed unique, so the index disambiguates rather than tracking a reorder that never happens.
                 <FlowTreeItem
@@ -457,8 +461,10 @@ function FlowBlock({
  * One Flow node, drawn recursively: a marker column carrying the change
  * (blank for `unchanged`, the same +/− the Ownership tree uses), the label,
  * and its citation chips -- a hunk citation opens the same popover any other
- * chip in Brief does. Children nest one `role="group"` deeper, indented under
- * a rule so the branch stays legible without preformatted box-drawing text.
+ * chip in Brief does. The Flow tree is static (no expand/collapse, no roving
+ * focus), so it stays a plain nested list rather than claiming the ARIA tree
+ * widget; children nest one plain `<ul>` deeper, indented under a rule so the
+ * branch stays legible without preformatted box-drawing text.
  */
 function FlowTreeItem({
   node,
@@ -469,7 +475,7 @@ function FlowTreeItem({
 }): React.JSX.Element {
   const mark = FLOW_CHANGE_MARKS[node.change];
   return (
-    <li role="treeitem" aria-label={node.label} className="flex flex-col">
+    <li className="flex flex-col">
       <span className="flex items-baseline gap-2 text-xs">
         <span
           aria-hidden="true"
@@ -491,7 +497,7 @@ function FlowTreeItem({
         </span>
       </span>
       {node.children.length === 0 ? null : (
-        <ul role="group" className="ml-1.5 flex flex-col border-l pl-3">
+        <ul className="ml-1.5 flex flex-col border-l pl-3">
           {node.children.map((child, index) => (
             // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- `node.children` is a fixed array from the same immutable Brief value; `BriefFlowNode` carries no id, and sibling labels are not guaranteed unique, so the index disambiguates rather than tracking a reorder that never happens.
             <FlowTreeItem

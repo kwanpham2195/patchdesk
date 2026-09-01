@@ -455,6 +455,18 @@ describe("BriefReader", () => {
     expect(
       within(region).getByRole("button", { name: "Show hunk a.ts · h1" }),
     ).toBeTruthy();
+
+    // The tree is static (no expand/collapse, no roving focus), so it renders
+    // as a plain nested list rather than the ARIA tree widget.
+    expect(within(region).queryByRole("tree")).toBeNull();
+    expect(within(region).queryByRole("treeitem")).toBeNull();
+    expect(within(region).queryByRole("group")).toBeNull();
+    const items = within(region).getAllByRole("listitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      expect.stringContaining("Start insight run"),
+      expect.stringContaining("read patch"),
+      expect.stringContaining("prepare shared context"),
+    ]);
   });
 
   it("omits the Flow section when the Brief has no flow", () => {
@@ -486,6 +498,27 @@ describe("BriefReader", () => {
 
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText.mock.calls[0]?.[0]).toMatch(/^```diff/);
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("leaves the Flow copy label unchanged when the clipboard write fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockRejectedValue(new Error("denied"));
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithFlow()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Copy as diff" }));
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy as diff" })).toBeTruthy();
   });
 
   it("disables regeneration when no run may start", () => {
