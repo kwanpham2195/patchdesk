@@ -133,7 +133,61 @@ describe("computeBriefReach", () => {
       "-e",
       "updateThreadComment",
       headSha,
+      "--",
+      ":(exclude)*.md",
+      ":(exclude)*.mdx",
+      ":(exclude)*.txt",
+      ":(exclude)*.rst",
+      ":(exclude)docs/",
     ]);
+  });
+
+  it("excludes prose from the caller count: a Markdown mention is not a caller", async () => {
+    const { paths, worktree } = await fixture();
+    const fake = runner((argv) => {
+      if (argv.includes("rev-parse")) return ok(`${headSha}\n`);
+      // A test double that honors the pathspec: the `.md` hit is filtered out
+      // before it ever reaches `matchedPaths`, same as real `git grep` would.
+      const excludeMd = argv.includes(":(exclude)*.md");
+      const lines =
+        grepLine("src/main/local-api.ts", 2) +
+        (excludeMd ? "" : grepLine("docs/findings/reach.md", 1));
+      return ok(lines);
+    });
+
+    const outcome = await computeBriefReach({
+      profileId,
+      sessionId,
+      worktree,
+      headSha,
+      patch: PATCH,
+      symbols: ["updateThreadComment"],
+      paths,
+      runner: fake,
+    });
+
+    expect(fake.calls[1]).toEqual(
+      expect.arrayContaining([
+        "--",
+        ":(exclude)*.md",
+        ":(exclude)*.mdx",
+        ":(exclude)*.txt",
+        ":(exclude)*.rst",
+        ":(exclude)docs/",
+      ]),
+    );
+    expect(outcome).toMatchObject({
+      _tag: "ok",
+      value: {
+        symbols: [
+          {
+            name: "updateThreadComment",
+            outsideCallerFiles: 1,
+            outsidePaths: ["src/main/local-api.ts"],
+          },
+        ],
+      },
+    });
   });
 
   it("reads a silent nonzero exit as no match rather than a failure", async () => {
