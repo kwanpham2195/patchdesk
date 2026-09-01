@@ -165,7 +165,11 @@ export const analysisResult = {
   assumptions: [],
 };
 
-/** One retained Brief: cited Goal prose, one assumption, resolved labels. */
+/**
+ * One retained Brief: structure only (ADR 0040) -- one small Flow tree with
+ * an added node citing `h1`, so any test drawing this fixture as-is has
+ * something to draw.
+ */
 export const briefValue = {
   snapshot: {
     profileId: "profile",
@@ -174,35 +178,29 @@ export const briefValue = {
     patchHash,
   },
   citationStatus: "verified" as const,
-  goal: [
-    {
-      text: "Every live comment write now confirms its outcome with one read-back.",
-      citations: [
-        {
-          alias: "d1",
-          kind: "description" as const,
-          label: "The first paragraph of the pull request description.",
-        },
-        {
-          alias: "h1",
-          kind: "hunk" as const,
-          label: "@@ -1 +1 @@",
-          path: "src/a.ts",
-        },
-        {
-          alias: "c1",
-          kind: "commit" as const,
-          label: "c6d5d41 confirm the write before reporting it",
-        },
-      ],
-    },
-  ],
-  assumptions: [
-    {
-      text: "No issue is linked, so the Brief names no reporter.",
-      demoted: false,
-    },
-  ],
+  flow: {
+    trees: [
+      {
+        kind: "call_tree" as const,
+        title: "Insight run",
+        nodes: [
+          {
+            label: "read patch",
+            change: "added" as const,
+            citations: [
+              {
+                alias: "h1",
+                kind: "hunk" as const,
+                label: "@@ -1 +1 @@",
+                path: "src/a.ts",
+              },
+            ],
+            children: [],
+          },
+        ],
+      },
+    ],
+  },
 };
 
 /** The Brief Insight projection every Brief test starts from. */

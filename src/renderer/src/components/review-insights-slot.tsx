@@ -207,7 +207,8 @@ export function InsightsSlot({
       ? workbench.insights.analysis.retained?.value.summary
       : selectedInsight === "walkthrough"
         ? workbench.insights.walkthrough.retained?.value.focus
-        : brief.retained?.value.goal[0]?.text;
+        : (brief.retained?.value.flow?.trees[0]?.title ??
+          brief.retained?.value.startHere?.lead);
   const currentRevision =
     workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
   const retainedReader = buildInsightReaders({

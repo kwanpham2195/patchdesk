@@ -22,31 +22,6 @@ const retained = () => {
   return projection.retained;
 };
 
-const retainedWithDrift = () => {
-  const base = retained();
-  return {
-    ...base,
-    value: {
-      ...briefValue,
-      descriptionDrift: {
-        claimed: [
-          {
-            quote: "Replies also reconcile after the write.",
-            note: "No reply path changes in the diff.",
-            citations: briefValue.goal[0]?.citations.slice(0, 1) ?? [],
-          },
-        ],
-        undescribed: [
-          {
-            text: "Three services now pass the session into the write gate.",
-            citations: briefValue.goal[0]?.citations.slice(1, 2) ?? [],
-          },
-        ],
-      },
-    },
-  };
-};
-
 const CONTRACT_PATCH = [
   "diff --git a/src/a.ts b/src/a.ts",
   "--- a/src/a.ts",
@@ -124,6 +99,12 @@ const FLOW = {
       ],
     },
   ],
+};
+
+const retainedWithoutFlow = () => {
+  const base = retained();
+  const { flow: _flow, ...rest } = base.value;
+  return { ...base, value: rest };
 };
 
 const retainedWithFlow = () => {
@@ -271,37 +252,12 @@ describe("BriefReader", () => {
       />,
     );
 
-    expect(screen.getByRole("region", { name: "Goal" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Assumptions" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Provenance" })).toBeTruthy();
     expect(screen.getByRole("img", { name: /^Scope:/ })).toBeTruthy();
-    expect(
-      screen.queryByRole("region", { name: "Description vs diff" }),
-    ).toBeNull();
     expect(screen.queryByRole("region", { name: "Shape" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Regenerate" }));
     expect(onRegenerate).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders both drift regions when the Brief compared the description", () => {
-    render(
-      <BriefReader
-        {...walkthroughLink}
-        retained={retainedWithDrift()}
-        onRegenerate={() => undefined}
-      />,
-    );
-
-    expect(
-      screen.getByRole("region", { name: "Description vs diff" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("region", { name: "Claimed, not in the diff" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("region", { name: "In the diff, not described" }),
-    ).toBeTruthy();
   });
 
   it("renders the Shape tree and its contract hunk", () => {
@@ -591,7 +547,7 @@ describe("BriefReader", () => {
     render(
       <BriefReader
         {...walkthroughLink}
-        retained={retained()}
+        retained={retainedWithoutFlow()}
         onRegenerate={() => undefined}
       />,
     );
@@ -715,24 +671,43 @@ describe("briefOwnershipTree", () => {
   });
 });
 
+const DESCRIPTION_CITATION = {
+  alias: "d1",
+  kind: "description" as const,
+  label: "The first paragraph of the pull request description.",
+};
+const HUNK_CITATION = {
+  alias: "h1",
+  kind: "hunk" as const,
+  label: "@@ -1 +1 @@",
+  path: "src/a.ts",
+};
+const COMMIT_CITATION = {
+  alias: "c1",
+  kind: "commit" as const,
+  label: "c6d5d41 confirm the write before reporting it",
+};
+
 describe("brief citation labels", () => {
   it("names each evidence kind by its shortest identifier", () => {
-    const [description, hunk, commit] = briefValue.goal[0]?.citations ?? [];
-    expect(description && briefCitationChipLabel(description)).toBe("desc ¶1");
-    expect(hunk && briefCitationChipLabel(hunk)).toBe("a.ts · h1");
-    expect(commit && briefCitationChipLabel(commit)).toBe("c6d5d41");
+    expect(briefCitationChipLabel(DESCRIPTION_CITATION)).toBe("desc ¶1");
+    expect(briefCitationChipLabel(HUNK_CITATION)).toBe("a.ts · h1");
+    expect(briefCitationChipLabel(COMMIT_CITATION)).toBe("c6d5d41");
   });
 
   it("keeps the whole path a hunk chip shortened away in its title", () => {
-    const [, hunk] = briefValue.goal[0]?.citations ?? [];
-    expect(hunk && briefCitationChipTitle(hunk)).toBe(
+    expect(briefCitationChipTitle(HUNK_CITATION)).toBe(
       "hunk: src/a.ts @@ -1 +1 @@",
     );
   });
 
-  it("counts resolved citations against assumptions", () => {
-    expect(briefCitationStatusLine(briefValue)).toBe(
-      "3 verified · 1 assumption",
-    );
+  it("states the citation status alone (ADR 0040)", () => {
+    expect(briefCitationStatusLine(briefValue)).toBe("all citations verified");
+    expect(
+      briefCitationStatusLine({
+        ...briefValue,
+        citationStatus: "partially_verified",
+      }),
+    ).toBe("some citations could not be verified");
   });
 });

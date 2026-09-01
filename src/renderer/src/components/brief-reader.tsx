@@ -128,8 +128,8 @@ const PROVIDER_LABELS = {
 } as const;
 
 /**
- * The read side of one retained Brief: what the pull request is for, in cited
- * prose, with everything it could not cite written as an assumption. It states
+ * The read side of one retained Brief: the change's structure -- Flow, Shape,
+ * Start here, and Reach -- rather than prose about it (ADR 0040). It states
  * no verdict and no finding; those stay in Analysis.
  */
 export function BriefReader({
@@ -153,96 +153,6 @@ export function BriefReader({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="flex min-w-0 flex-col gap-5">
-        <section aria-label="Goal" className="flex flex-col gap-2">
-          <h3 className="flex items-baseline gap-2 text-sm font-medium">
-            Goal
-            <span className="text-xs font-normal text-muted-foreground">
-              every claim carries its evidence
-            </span>
-          </h3>
-          <div className="flex max-w-[66ch] flex-col gap-2 text-sm">
-            {brief.goal.map((item) => (
-              <p key={item.text}>
-                <GeneratedMarkdownInline markdown={item.text} />{" "}
-                {item.citations.map((citation) => (
-                  <CitationChip
-                    key={citation.alias}
-                    citation={citation}
-                    raw={brief.citedHunks?.[citation.alias]}
-                  />
-                ))}
-              </p>
-            ))}
-          </div>
-        </section>
-        {brief.assumptions.length === 0 ? null : (
-          <section aria-label="Assumptions" className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium">Assumptions</h3>
-            <ul className="flex max-w-[66ch] flex-col gap-2">
-              {brief.assumptions.map((assumption) => (
-                <li
-                  key={assumption.text}
-                  className="flex flex-col gap-0.5 border-l-2 border-[var(--status-warning)] py-0.5 pl-3 text-sm"
-                >
-                  <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--status-warning)]">
-                    {assumption.demoted
-                      ? "Assumption · uncited claim"
-                      : "Assumption"}
-                  </span>
-                  <span>
-                    <GeneratedMarkdownInline markdown={assumption.text} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-        {brief.descriptionDrift === undefined ? null : (
-          <section
-            aria-label="Description vs diff"
-            className="flex flex-col gap-2"
-          >
-            <h3 className="text-sm font-medium">Description vs diff</h3>
-            <div className="grid gap-3 md:grid-cols-2">
-              <DriftColumn
-                label="Claimed, not in the diff"
-                count={brief.descriptionDrift.claimed.length}
-                hint="Model judgment: nothing can prove absence."
-              >
-                {brief.descriptionDrift.claimed.map((item) => (
-                  <DriftItem
-                    key={item.quote}
-                    mark="!"
-                    markClassName="bg-status-warning/15 text-status-warning"
-                    citations={item.citations}
-                    citedHunks={brief.citedHunks}
-                  >
-                    <q className="text-muted-foreground">
-                      <GeneratedMarkdownInline markdown={item.quote} />
-                    </q>{" "}
-                    <GeneratedMarkdownInline markdown={item.note} />
-                  </DriftItem>
-                ))}
-              </DriftColumn>
-              <DriftColumn
-                label="In the diff, not described"
-                count={brief.descriptionDrift.undescribed.length}
-              >
-                {brief.descriptionDrift.undescribed.map((item) => (
-                  <DriftItem
-                    key={item.text}
-                    mark="+"
-                    markClassName="bg-status-info/15 text-status-info"
-                    citations={item.citations}
-                    citedHunks={brief.citedHunks}
-                  >
-                    <GeneratedMarkdownInline markdown={item.text} />
-                  </DriftItem>
-                ))}
-              </DriftColumn>
-            </div>
-          </section>
-        )}
         {brief.flow === undefined ? null : (
           <FlowBlock flow={brief.flow} citedHunks={brief.citedHunks} />
         )}
@@ -653,80 +563,6 @@ function HunkDiff({
         virtualized={false}
       />
     </div>
-  );
-}
-
-/** One side of the drift block: its own labelled region, with its own count. */
-function DriftColumn({
-  label,
-  count,
-  hint,
-  children,
-}: {
-  readonly label: string;
-  readonly count: number;
-  readonly hint?: string;
-  readonly children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <section
-      aria-label={label}
-      className="flex min-w-0 flex-col gap-2 rounded-md border p-3"
-    >
-      <h4 className="flex items-baseline justify-between gap-2 text-xs font-medium">
-        {label}
-        <span className="font-mono text-[11px] font-normal tabular-nums text-muted-foreground">
-          {count}
-        </span>
-      </h4>
-      {hint === undefined ? null : (
-        <p className="text-[11px] text-muted-foreground">{hint}</p>
-      )}
-      {count === 0 ? (
-        <p className="text-xs text-muted-foreground">Nothing found.</p>
-      ) : (
-        <ul className="flex flex-col gap-2 text-sm">{children}</ul>
-      )}
-    </section>
-  );
-}
-
-/**
- * One drift item. The mark is decorative: the column's own label already says
- * which direction the drift runs, so the hue repeats it rather than carrying it.
- */
-function DriftItem({
-  mark,
-  markClassName,
-  citations,
-  citedHunks,
-  children,
-}: {
-  readonly mark: string;
-  readonly markClassName: string;
-  readonly citations: ReadonlyArray<BriefCitation>;
-  readonly citedHunks?: Readonly<Record<string, string>> | undefined;
-  readonly children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <li className="flex items-start gap-2">
-      <span
-        aria-hidden="true"
-        className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded font-mono text-[11px] ${markClassName}`}
-      >
-        {mark}
-      </span>
-      <span className="min-w-0">
-        {children}{" "}
-        {citations.map((citation) => (
-          <CitationChip
-            key={citation.alias}
-            citation={citation}
-            raw={citedHunks?.[citation.alias]}
-          />
-        ))}
-      </span>
-    </li>
   );
 }
 
