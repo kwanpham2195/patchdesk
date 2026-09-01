@@ -233,6 +233,7 @@ describe("insightOutputGuidance", () => {
       "never mark a step added because a test for it is new",
     );
     expect(guidance).toContain("Never list a test function as a step");
+    expect(guidance).toContain("a condition or a return is never a root");
     expect(guidance).toContain(
       "Before you write a tree, list every entry point whose behavior this patch changes -- each command, request path, and error path -- and give each one a root.",
     );
