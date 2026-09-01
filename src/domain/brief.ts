@@ -66,8 +66,8 @@ export type NormalizedBrief = {
   /**
    * `"verified"` when normalization discarded no citation anywhere in the
    * Brief; `"partially_verified"` otherwise. Re-anchored on Flow (ADR 0040):
-   * an `added`/`removed` step with no surviving hunk citation is dropped
-   * rather than demoted, so there is nothing left to grade a value below
+   * an `added`/`removed` step with no surviving hunk citation is kept and
+   * marked, not dropped, so there is nothing left to grade a value below
    * these two.
    */
   readonly citationStatus: "verified" | "partially_verified";
@@ -109,9 +109,10 @@ export type NormalizedBrief = {
 
 /**
  * Reasons a Brief result is rejected before it can be retained. `uncited` is
- * gone (ADR 0040): Flow drops an uncited step rather than demoting it, so a
- * Brief with no Flow at all -- a rename, a docs change, a pure refactor --
- * is still a complete, valid Brief. Only malformed output is rejected now.
+ * gone (ADR 0040): Flow keeps an uncited step, muted, rather than rejecting
+ * the whole Brief for it, so a Brief with no Flow at all -- a rename, a docs
+ * change, a pure refactor -- is still a complete, valid Brief. Only
+ * malformed output is rejected now.
  */
 export type BriefError = {
   readonly _tag: "InvalidBrief";
@@ -172,11 +173,12 @@ export const briefOutputSchema = v.strictObject({
  * is still a complete Brief. Every tree carries a `kind`: `call_tree` is real
  * function or method names with parameter names as written in the patch,
  * `control_flow` is short pseudocode lines, and `component` is a
- * `<ComponentName>` tree. Every `added`/`removed` node must keep at least one
- * citation that resolves to a hunk -- a description or commit alias is never
+ * `<ComponentName>` tree. Every `added`/`removed` node should cite a hunk
+ * when the patch shows it -- a description or commit alias is never
  * evidence that a runtime step changed, no matter how it is paired with a
- * real one. `reachSymbols` names the candidates for the counted Reach block;
- * the model never writes the count itself.
+ * real one; an uncited step is kept and marked, not dropped. `reachSymbols`
+ * names the candidates for the counted Reach block; the model never writes
+ * the count itself.
  */
 export const BRIEF_RESULT_CONTRACT =
   '{"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"kind":"call_tree"|"control_flow"|"component","title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"reachSymbols":[string]}';
@@ -237,12 +239,12 @@ export function renderBriefManifest(manifest: BriefManifest): string {
  * There is no prose block left to grade a citation against (ADR 0040): Flow
  * already applies its own rule while it walks each proposed tree (see
  * `normalizeBriefFlow` in `brief-flow.ts`) -- an `added`/`removed` step with
- * no surviving hunk citation is dropped, subtree and all, never demoted to a
- * lower-confidence block. Ownership and Start here take no citations at all.
- * An uncited claim is dropped, never shown; this function never rejects a
- * Brief for lacking one, so a Brief with no Flow at all -- a rename, a docs
- * change, a pure refactor -- is still a complete, valid Brief with Ownership,
- * Start here, and Reach.
+ * no surviving hunk citation is kept and marked, never dropped or demoted to
+ * a lower-confidence block. Ownership and Start here take no citations at
+ * all. An uncited claim is kept, muted, and counted toward `rejected`; this
+ * function never rejects a Brief for lacking one, so a Brief with no Flow at
+ * all -- a rename, a docs change, a pure refactor -- is still a complete,
+ * valid Brief with Ownership, Start here, and Reach.
  *
  * The patch is passed beside the manifest because the Ownership block's skeleton
  * and its one contract hunk are cut from the patch itself, never asked of the

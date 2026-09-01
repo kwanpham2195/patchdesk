@@ -90,7 +90,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Insight run.** One queued, running, completed, failed, cancelled, or superseded attempt to produce an Insight for a represented revision.
 
-**Brief.** The latest successful short answer to what the change is for and where to start reading. Its blocks are Flow, Shape, Start here, and Reach.
+**Brief.** The latest successful answer to the structure of a change — its flow, ownership, and where to start reading. Its blocks are Flow, Shape, Start here, and Reach.
 
 **Analysis.** The latest successful review body and evidence-backed Findings produced for a represented revision. The maintainer can dismiss Findings or use current mapped Findings to create GitHub pending-review comments.
 

@@ -124,8 +124,7 @@ Flow, Shape, Start here, and Reach guidance is unchanged.
 
 - Brief goes from six blocks to four, plus the always-on Scope gauge:
   Flow, Shape, Start here, Reach.
-- Brief's header tagline, "every claim carries its evidence," now refers to
-  Flow's hunk-cited steps rather than Goal's cited sentences.
+- Flow's header reads "how the sequence changed."
 - The reader's summary line loses its assumption count and its verified-count
   tally; it names the citation status alone — "all citations verified" or
   "some citations could not be verified."

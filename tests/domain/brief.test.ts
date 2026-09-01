@@ -311,6 +311,43 @@ describe("normalizeBrief flow", () => {
     );
   });
 
+  it("keeps an uncited added step alongside a cited one and marks the Brief partially_verified", () => {
+    const normalized = normalizeBrief(
+      {
+        flow: [
+          {
+            kind: "call_tree",
+            title: "Recovery",
+            nodes: [
+              {
+                label: "guard the restart",
+                change: "added",
+                citations: ["h1"],
+              },
+              {
+                label: "log the retry",
+                change: "added",
+                citations: [],
+              },
+            ],
+          },
+        ],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.flow?.trees[0]?.nodes).toHaveLength(2);
+    expect(normalized.value.flow?.trees[0]?.nodes[0]?.label).toBe(
+      "guard the restart",
+    );
+    expect(normalized.value.flow?.trees[0]?.nodes[1]?.label).toBe(
+      "log the retry",
+    );
+    expect(normalized.value.citationStatus).toBe("partially_verified");
+  });
+
   it("round-trips a flow through the stored-Brief parser", () => {
     const normalized = normalizeBrief(
       {

@@ -169,9 +169,6 @@ export function BriefReader({
         ) : (
           <ReachBlock reach={brief.reach} headSha={retained.headSha} />
         )}
-        <p className="text-xs text-muted-foreground">
-          Citations: {briefCitationStatusLine(brief)}
-        </p>
       </div>
       <div className="flex flex-col gap-3">
         {brief.startHere === undefined ? null : (

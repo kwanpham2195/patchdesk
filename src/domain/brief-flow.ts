@@ -359,7 +359,7 @@ export function normalizeBriefFlow(
 /**
  * Every hunk citation a kept Flow cites, walked node by node in tree order,
  * so `cutCitedHunks` can cut a preview for a Flow chip the same way it does
- * for a Goal or description-drift citation.
+ * for any other cited hunk.
  */
 export function flowCitations(
   flow: BriefFlow | undefined,

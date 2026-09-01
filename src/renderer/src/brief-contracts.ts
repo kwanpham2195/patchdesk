@@ -317,8 +317,8 @@ export const NOT_GENERATED_BRIEF: BriefInsight = { status: "not_generated" };
  * the shortest thing that names it and the full label stays in the chip title.
  *
  * A hunk chip is the file name and the hunk alias (`repository.go · h3`), not
- * the repository-relative path: several of these sit inline inside one Goal
- * sentence, and a path-shaped chip wraps the sentence onto its own line.
+ * the repository-relative path: the chip sits inline in a Flow row, and a
+ * path-shaped chip wraps the row onto its own line.
  */
 export function briefCitationChipLabel(citation: BriefCitation): string {
   if (citation.kind === "description")
@@ -393,8 +393,8 @@ export function briefOwnershipTree(
 
 /**
  * States the Brief's citation status alone (ADR 0040): there is no Goal or
- * Assumption count left to add to it, since Flow drops an uncited step
- * rather than demoting it to a lower-confidence line.
+ * Assumption count left to add to it, since Flow keeps an uncited step,
+ * muted, rather than demoting it to a lower-confidence line.
  */
 export function briefCitationStatusLine(brief: Brief): string {
   return brief.citationStatus === "verified"
