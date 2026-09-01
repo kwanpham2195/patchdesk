@@ -25,7 +25,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Analysis opens in the Insights tab for the represented Review session. Generated Markdown keeps its original structure while the reader applies safe rendering. Each Finding can show title, severity, explanation, suggested comment, mapped file and line range, disposition, and supporting details grouped by reviewer purpose.
+Analysis opens in the Insights tab for the represented Review session. Generated Markdown keeps its original structure while the reader applies safe rendering. When generation returns zero Findings, Analysis shows an explicit No findings status and explains that there is nothing to add to review or dismiss. Each Finding can show title, severity, explanation, suggested comment, mapped file and line range, disposition, and supporting details grouped by reviewer purpose.
 
 Evidence detail stays collapsed until requested. Expanding it reveals the complete containing hunk and highlights the mapped Finding range. Duplicate supporting details are removed before grouping.
 
@@ -55,25 +55,25 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | Profile rules and provider configuration shape generation; the configured GitHub identity owns later review writes. | A profile switch leaves the session. A result or receipt from the former session cannot confirm the new Review. |
-| Pull request and Review state | Retained Analysis can be read for terminal or outdated Reviews. Add to review needs an open, Fresh, patch-backed Review and available pending-review state. | Revision or terminal change discovered before the write prevents it. Generated evidence stays bound to the old represented revision. |
-| GitHub permissions and merge readiness | Analysis generation needs no GitHub write permission. Add to review needs comment authority; merge readiness is separate. | A permission rejection leaves the Finding actionable and does not change merge readiness. |
-| Network, local tool, and Insight provider availability | Reading a retained Analysis needs no provider. Generation needs an available provider; Add to review needs GitHub. | Provider failure leaves the retained Analysis. GitHub uncertainty pauses writes without relabeling the Finding as published. |
-| Input path: mouse, keyboard, or desktop menu | Reader, evidence controls, dialogs, and buttons support mouse and keyboard. | Both paths use row-local admission guards. Desktop menus do not add or dismiss Findings. |
+| Variant                                                | Before the action runs                                                                                                                                      | While the action runs                                                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Workspace profile and GitHub account                   | Profile rules and provider configuration shape generation; the configured GitHub identity owns later review writes.                                         | A profile switch leaves the session. A result or receipt from the former session cannot confirm the new Review.                      |
+| Pull request and Review state                          | Retained Analysis can be read for terminal or outdated Reviews. Add to review needs an open, Fresh, patch-backed Review and available pending-review state. | Revision or terminal change discovered before the write prevents it. Generated evidence stays bound to the old represented revision. |
+| GitHub permissions and merge readiness                 | Analysis generation needs no GitHub write permission. Add to review needs comment authority; merge readiness is separate.                                   | A permission rejection leaves the Finding actionable and does not change merge readiness.                                            |
+| Network, local tool, and Insight provider availability | Reading a retained Analysis needs no provider. Generation needs an available provider; Add to review needs GitHub.                                          | Provider failure leaves the retained Analysis. GitHub uncertainty pauses writes without relabeling the Finding as published.         |
+| Input path: mouse, keyboard, or desktop menu           | Reader, evidence controls, dialogs, and buttons support mouse and keyboard.                                                                                 | Both paths use row-local admission guards. Desktop menus do not add or dismiss Findings.                                             |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Closing run or dismissal controls before confirmation records nothing. | Stop affects only the Insight run. A GitHub pending-review write has no Stop after submission. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Reading can leave without a guard. A dismissal draft is renderer-local. | A GitHub write reports write-pending and blocks navigation until settlement. A provider run remains bound to its session. |
-| Start another action or request a refresh | Independent Findings can be inspected; only eligible actions appear. | Same-Finding duplicates are ignored. Reverse completion of different Findings preserves cumulative confirmed state. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | Retained output stays readable when generation is unavailable. | Deterministic errors stay row-local and retryable. Unknown GitHub outcome locks pending-review mutation. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Settings changes defaults for the next run. Retained Analysis and confirmed dispositions are durable. | Run identity and unknown-write recovery survive renderer reload; dismissal text does not have documented restart persistence. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A mismatched revision or missing pending review removes Add eligibility. | Exact cumulative projections prevent a lower, stale receipt from erasing a newer confirmed Finding. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus can move among Findings and evidence without acting. | Focus loss does not cancel a run or write. Focus return after a row error needs live verification. |
+| Event                                                                                                 | Before the action runs                                                                                | While the action runs                                                                                                         |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Closing run or dismissal controls before confirmation records nothing.                                | Stop affects only the Insight run. A GitHub pending-review write has no Stop after submission.                                |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Reading can leave without a guard. A dismissal draft is renderer-local.                               | A GitHub write reports write-pending and blocks navigation until settlement. A provider run remains bound to its session.     |
+| Start another action or request a refresh                                                             | Independent Findings can be inspected; only eligible actions appear.                                  | Same-Finding duplicates are ignored. Reverse completion of different Findings preserves cumulative confirmed state.           |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | Retained output stays readable when generation is unavailable.                                        | Deterministic errors stay row-local and retryable. Unknown GitHub outcome locks pending-review mutation.                      |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Settings changes defaults for the next run. Retained Analysis and confirmed dispositions are durable. | Run identity and unknown-write recovery survive renderer reload; dismissal text does not have documented restart persistence. |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A mismatched revision or missing pending review removes Add eligibility.                              | Exact cumulative projections prevent a lower, stale receipt from erasing a newer confirmed Finding.                           |
+| macOS focus, a file or folder picker, or another input path takes control                             | Focus can move among Findings and evidence without acting.                                            | Focus loss does not cancel a run or write. Focus return after a row error needs live verification.                            |
 
 ## Interactions with other systems
 
@@ -105,6 +105,7 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 - Dismissal detail stays hidden until requested, and a failed dismissal preserves its reason.
 - Supporting details are deduplicated and grouped without rewriting generated prose.
 - A retained Analysis remains readable while GitHub writes are paused.
+- Zero generated Findings show No findings; this is distinct from a result where every Finding has already been handled.
 
 ## Open questions and verification
 
@@ -113,4 +114,4 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 - Confirm progress and Stop presentation for provider timeout versus explicit cancellation.
 - Confirm the visible wording for an Analysis that is retained but no longer current for the remote pull request.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`.

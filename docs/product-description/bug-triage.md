@@ -1,21 +1,21 @@
 # Bug triage
 
-A consolidated list of suspected defects raised by the product documents and verification checklists. Every entry below has static evidence at application-source commit `3100615`. `B-01`, `B-02`, `B-07`, and `B-08` were reproduced in the running desktop app on 2026-08-31; the other four remain live-unverified. `B-07` has a source-supported rendering path, but its exact missed reconciliation step still needs a focused state trace. The list is for product decisions: fix an established mismatch, or document an intentional trade-off before marking the related checklist item verified.
+A consolidated record of defects raised by the product documents and verification checklists. The original reproduce and code-cause notes below describe the `3100615` source snapshot. All eight defects were fixed in later commits. Post-fix evidence is distinguished from the original live observations so the historical report remains auditable.
 
 ## Summary
 
-Eight distinct candidates remain after deduplication: one high-severity work-loss risk and seven medium-severity correctness, focus, or feedback risks. The largest cluster is workspace setup, switching, and discovery (five entries), followed by Pull requests presentation, first-run recovery, and keyboard focus. The live passes confirmed four candidates; four still have static evidence only.
+Eight distinct defects are fixed after deduplication: one former high-severity work-loss risk and seven former medium-severity correctness, focus, or feedback risks. The largest cluster was workspace setup, switching, and discovery. The fixes have canonical automated coverage; B-01, B-02, and B-07 also have post-fix desktop evidence. B-08 has an exact automated Reply-textarea test and supporting desktop input evidence, but its exact Reply-textarea live rerun remains outstanding.
 
-| ID | Title | Severity | Area | Decision needed | Issue |
-| --- | --- | --- | --- | --- | --- |
-| B-01 | New profile replaces a Dirty draft without a choice | high | Settings / Workspace | fix | — |
-| B-02 | Scalar profile validation falls through to a generic request error | medium | Settings / Workspace | fix | — |
-| B-03 | Open Review recommendation preempts ready-to-merge action | medium | Pull requests | fix | — |
-| B-04 | Stale Review-opening error remains on the first-run screen | medium | First run / Pull requests | fix | — |
-| B-05 | Repository grouping treats a path prefix as containment | medium | Settings / Workspace discovery | fix | — |
-| B-06 | A failed root scan is omitted from an otherwise successful discovery result | medium | Workspace discovery | fix | — |
-| B-07 | Profile switch can leave the Repository picker unset after rows reload | medium | Pull requests / Workspace | fix | — |
-| B-08 | Navigate shortcut opens from a focused Review reply editor | medium | Review workbench / Keyboard | fix | — |
+| ID   | Title                                                                       | Severity | Area                           | Resolution        | Issue |
+| ---- | --------------------------------------------------------------------------- | -------- | ------------------------------ | ----------------- | ----- |
+| B-01 | New profile replaces a Dirty draft without a choice                         | high     | Settings / Workspace           | fixed (`31284f3`) | —     |
+| B-02 | Scalar profile validation falls through to a generic request error          | medium   | Settings / Workspace           | fixed (`8dce9e7`) | —     |
+| B-03 | Open Review recommendation preempts ready-to-merge action                   | medium   | Pull requests                  | fixed (`b66a0a9`) | —     |
+| B-04 | Stale Review-opening error remains on the first-run screen                  | medium   | First run / Pull requests      | fixed (`8d372ab`) | —     |
+| B-05 | Repository grouping treats a path prefix as containment                     | medium   | Settings / Workspace discovery | fixed (`c59d249`) | —     |
+| B-06 | A failed root scan is omitted from an otherwise successful discovery result | medium   | Workspace discovery            | fixed (`c49045d`) | —     |
+| B-07 | Profile switch can leave the Repository picker unset after rows reload      | medium   | Pull requests / Workspace      | fixed (`c1ce7a2`) | —     |
+| B-08 | Navigate shortcut opens from a focused Review reply editor                  | medium   | Review workbench / Keyboard    | fixed (`75fadec`) | —     |
 
 ## High
 
@@ -28,7 +28,7 @@ Eight distinct candidates remain after deduplication: one high-severity work-los
 - **Severity:** `high`. The action can discard maintainer work with no recovery choice.
 - **Decision needed:** `fix`. Route New profile through the same Dirty-draft guard used by close and profile switching, or make the replacement behavior an explicit product decision with a recoverable confirmation.
 - **Affected documents/checklists:** [`Workspace profile editor`](settings/workspace-profile-editor.md#cancel-and-interrupt), [`SETUP-04`](verification/foundations-and-settings.md#settingsworkspace-profile-editormd).
-- **Status:** `live-confirmed - SETUP-04 failed on 2026-08-31`; New profile replaced the Dirty draft without a guard. Evidence: `/private/tmp/patchdesk-product-verification-new-profile.png`.
+- **Status:** fixed by `31284f3`; canonical regression: `tests/renderer/profile-settings.test.tsx`. Post-fix live pass: `SETUP-04` guard offers Cancel and Discard changes, with evidence in `/private/tmp/patchdesk-followup-verification-evidence/followup-b01-guard.png` and `/private/tmp/patchdesk-followup-verification-evidence/followup-b01-discard-new.png`.
 - **Issue:** —
 
 ## Medium
@@ -42,7 +42,7 @@ Eight distinct candidates remain after deduplication: one high-severity work-los
 - **Severity:** `medium`. The user can recover by correcting the field, but the error does not identify the invalid input and may require trial and error.
 - **Decision needed:** `fix`. Validate scalar fields in the editor or map typed invalid-input failures to the affected field before sending the request.
 - **Affected documents/checklists:** [`Workspace profile editor`](settings/workspace-profile-editor.md#open-questions-and-verification), [`SETUP-03`](verification/foundations-and-settings.md#settingsworkspace-profile-editormd).
-- **Status:** `live-confirmed - SETUP-03 failed on 2026-08-31`; malformed GitHub host returned HTTP 400 with only the generic `Profile update failed` alert and no field guidance. Evidence: `/private/tmp/patchdesk-product-verification-malformed-host.png`.
+- **Status:** fixed by `8dce9e7`; canonical regression: `tests/renderer/profile-settings.test.tsx`. Post-fix live pass: `SETUP-03` reports field-associated validation before a request; evidence: `/private/tmp/patchdesk-followup-verification-evidence/followup-b02-invalid.png` and `/private/tmp/patchdesk-followup-verification-evidence/followup-b02-one-field-corrected.png`.
 - **Issue:** —
 
 ### B-03: Open Review recommendation preempts ready-to-merge action
@@ -54,7 +54,7 @@ Eight distinct candidates remain after deduplication: one high-severity work-los
 - **Severity:** `medium`. The row remains usable, but the primary action can conceal a consequential readiness path.
 - **Decision needed:** `fix`. Decide and encode whether merge readiness, Review reopening, or a combined action should win when both are true.
 - **Affected documents/checklists:** [`Repository listing`](pull-requests/repository-listing.md#edge-cases), [`LIST-02`](verification/pull-requests.md#pull-requestsrepository-listingmd).
-- **Status:** `suspected - static evidence, live unverified`.
+- **Status:** fixed by `b66a0a9`; canonical regression: `tests/domain/maintainer-inbox.test.ts` and `tests/services/maintainer-inbox-cache-secondary-action.test.ts`. Automated coverage proves the primary Review action and separate read-only merge-readiness action. No exact ready live fixture was available.
 - **Issue:** —
 
 ### B-04: Stale Review-opening error remains on the first-run screen
@@ -66,7 +66,7 @@ Eight distinct candidates remain after deduplication: one high-severity work-los
 - **Severity:** `medium`. It is recoverable, but the first-run screen can show an error for a different profile and mislead the next action.
 - **Decision needed:** `fix`. Clear opening errors on profile/screen identity changes or key the flow state to the active profile.
 - **Affected documents/checklists:** [`First-run setup`](first-run/setup-checklist.md#open-questions-and-verification), [`Opening a Review`](pull-requests/opening-a-review.md#open-questions-and-verification), [`OPEN-03`](verification/pull-requests.md#pull-requestsopening-a-reviewmd).
-- **Status:** `suspected - static evidence, live unverified`.
+- **Status:** fixed by `8d372ab`; canonical regression: `tests/renderer/inbox-flow.ui.test.tsx`. Automated coverage proves opening state is profile-scoped; no exact first-run failure fixture was rerun manually.
 - **Issue:** —
 
 ### B-05: Repository grouping treats a path prefix as containment
@@ -78,7 +78,7 @@ Eight distinct candidates remain after deduplication: one high-severity work-los
 - **Severity:** `medium`. The repository remains in the watchlist but appears under the wrong workspace scope, which can mislead discovery and profile editing.
 - **Decision needed:** `fix`. Use path-aware containment with a directory boundary and add a sibling-prefix regression case.
 - **Affected documents/checklists:** [`Repository discovery`](first-run/repository-discovery.md#edge-cases), [`DISC-01`](verification/pull-requests.md#first-runrepository-discoverymd).
-- **Status:** `suspected - static evidence, live unverified`.
+- **Status:** fixed by `c59d249`; canonical regression: `tests/renderer/settings-workspace-repositories.test.ts`. Automated coverage covers exact roots, sibling prefixes, duplicate roots, and nested roots; no exact manual fixture was rerun.
 - **Issue:** —
 
 ### B-06: A failed root scan is omitted from an otherwise successful discovery result
@@ -90,7 +90,7 @@ Eight distinct candidates remain after deduplication: one high-severity work-los
 - **Severity:** `medium`. A maintainer can believe a root is empty and miss repositories without a clear recovery action.
 - **Decision needed:** `fix`. Preserve per-root scan outcomes or expose an aggregate partial/error status that cannot be rendered as zero candidates.
 - **Affected documents/checklists:** [`Repository discovery`](first-run/repository-discovery.md#while-the-action-runs), [`DISC-01`](verification/pull-requests.md#first-runrepository-discoverymd).
-- **Status:** `suspected - static evidence, live unverified`.
+- **Status:** fixed by `c49045d`; canonical regression: `tests/adapters/workspace-origin-finder.test.ts`, `tests/services/profile-dashboard-services.test.ts`, and `tests/renderer/workspace-root-discovery.ui.test.tsx`; protected-loopback browser coverage also proves partial ready/failed roots. No controlled desktop failing-root fixture was available.
 - **Issue:** —
 
 ### B-07: Profile switch can leave the Repository picker unset after rows reload
@@ -102,7 +102,7 @@ Eight distinct candidates remain after deduplication: one high-severity work-los
 - **Severity:** `medium`. Rows are readable and the maintainer can recover with one manual selection, but the scope control disagrees with the loaded data and can misstate which repository is active.
 - **Decision needed:** `fix`. Ensure profile-switch settlement writes the new profile's saved-or-first watched repository into the request and picker before or with the inbox rows.
 - **Affected documents/checklists:** [`Workspace profile and identity`](foundations/workspace-profile-and-identity.md#settle), [`PROFILE-02`](verification/foundations-and-settings.md#foundationsworkspace-profile-and-identitymd), [`Selected repository`](pull-requests/selected-repository.md#arrive).
-- **Status:** `live-confirmed - PROFILE-02 failed on 2026-08-31`; Baseline dirty switch loaded PR #33 and #34 while the picker stayed at `Select a repository` until manual selection. Evidence: `/private/tmp/patchdesk-repository-picker-blank-after-switch.png`, `/private/tmp/patchdesk-repository-picker-manually-selected.png`.
+- **Status:** fixed by `c1ce7a2`; canonical regression: `tests/renderer/use-workspace-inbox.test.ts`. Post-fix live pass: `PROFILE-02` settled A/B/A switches each show the matching Repository picker and rows. Evidence: `/private/tmp/patchdesk-followup-verification-evidence/followup-b07-a-initial.png`, `/private/tmp/patchdesk-followup-verification-evidence/followup-b07-b-settled-2.png`, and `/private/tmp/patchdesk-followup-verification-evidence/followup-b07-a-return-settled.png`.
 - **Issue:** —
 
 ### B-08: Navigate shortcut opens from a focused Review reply editor
@@ -114,11 +114,11 @@ Eight distinct candidates remain after deduplication: one high-severity work-los
 - **Severity:** `medium`. The draft remains present, but an ordinary editor keystroke opens an unrelated overlay and interrupts Review writing.
 - **Decision needed:** `fix`. Ignore the Navigate shortcut when focus is in an input, textarea, content-editable control, or another editor-owned surface.
 - **Affected documents/checklists:** [`Keyboard, focus, and desktop behavior`](cross-cutting/keyboard-focus-and-desktop.md#begin-an-action), [`FOCUS-01`](verification/insights-and-cross-cutting.md#cross-cuttingkeyboard-focus-and-desktopmd).
-- **Status:** `live-confirmed - FOCUS-01 failed on 2026-08-31`; Meta+K opened Navigate while the Reply textarea stayed focused. Evidence: `/private/tmp/patchdesk-focus-01-editor-shortcut.png`.
+- **Status:** fixed by `75fadec`; canonical textarea regression: `tests/renderer/app-shell.ui.test.tsx`. Supporting post-fix desktop input evidence is `/private/tmp/patchdesk-followup-verification-evidence/followup-b08-input-meta-k.png`. The exact Reply-textarea live rerun is still missing.
 - **Issue:** —
 
 ## Not filed
 
-No candidates were rejected or merged: all eight candidates map to distinct user-visible symptoms or state mismatches. The thread-resolution HTTP 403 and inconclusive reverse diff-navigation attempts remain verification blockers rather than separate triage entries because their product causes were not established. No GitHub issue or external tracker entry has been created.
+No candidates were rejected or merged: all eight map to distinct user-visible symptoms or state mismatches and are now fixed. The thread-resolution HTTP 403 and inconclusive reverse diff-navigation attempts remain verification blockers rather than separate triage entries because their product causes were not established. No GitHub issue or external tracker entry has been created.
 
-Verified against Patchdesk application source commit `3100615`.
+The original source snapshot was verified at application commit `3100615`. This follow-up records later fix commits, canonical tests, and current-HEAD live evidence.

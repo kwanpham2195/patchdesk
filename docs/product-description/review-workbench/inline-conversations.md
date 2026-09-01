@@ -50,29 +50,29 @@ Start a review closes the composer immediately and shows a transient starting ca
 
 A direct `CommentCreated` receipt confirms the comment. If it includes a GitHub thread ID, the card upgrades to full thread controls; without a thread ID, it stays comment-only and explains why Reply and Resolve are unavailable. Read-back later reconciles the optimistic published card with authoritative GitHub data.
 
-A pending-review command settles only from its returned pending-review projection. Newly created thread IDs enter the recent-write journal. Malformed success or unknown outcome locks pending-review mutation until explicit recovery reloads the Review or reports that manual resolution is required.
+A pending-review command settles only from its returned pending-review projection. Newly created thread IDs enter the recent-write journal. A forbidden Resolve or Unresolve keeps the thread visible and gives permission or access guidance; Patchdesk does not assume permission through a preflight check. Other thread-state errors use generic retryable failure guidance. Malformed success or unknown outcome locks pending-review mutation until explicit recovery reloads the Review or reports that manual resolution is required.
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | The active profile and viewer identity determine the repository and ownership controls. | A profile switch cannot reuse a location fingerprint from the prior Review session. |
-| Pull request and Review state | Direct authoring needs an open, Fresh Review with a patch hash. Pending-review availability decides which composer actions appear. | Terminal or revision changes discovered by the shared gate prevent a stale direct write. |
-| GitHub permissions and merge readiness | Comment permission is independent of merge readiness. Existing comments stay readable without write permission. | A forbidden or validation response becomes a confirmed rejection; Patchdesk does not call it published. |
-| Network, local tool, and Insight provider availability | Diff data must contain the target location. No Insight provider is required for manual authoring. | Network uncertainty triggers recovery. Local highlighting failure can use plain text without changing the comment fingerprint. |
-| Input path: mouse, keyboard, or desktop menu | Mouse selects lines and buttons; keyboard can reach the fallback composer and use Ctrl+Enter. | Both paths share the same synchronous duplicate guard. Desktop menus do not publish comments. |
+| Variant                                                | Before the action runs                                                                                                             | While the action runs                                                                                                                                                                        |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | The active profile and viewer identity determine the repository and ownership controls.                                            | A profile switch cannot reuse a location fingerprint from the prior Review session.                                                                                                          |
+| Pull request and Review state                          | Direct authoring needs an open, Fresh Review with a patch hash. Pending-review availability decides which composer actions appear. | Terminal or revision changes discovered by the shared gate prevent a stale direct write.                                                                                                     |
+| GitHub permissions and merge readiness                 | Comment and thread-state permission are independent of merge readiness. Existing comments stay readable without write permission.  | A forbidden response becomes a confirmed rejection; Resolve or Unresolve retains the thread and explains the permission or access problem. Patchdesk does not call it published or resolved. |
+| Network, local tool, and Insight provider availability | Diff data must contain the target location. No Insight provider is required for manual authoring.                                  | Network uncertainty triggers recovery. Local highlighting failure can use plain text without changing the comment fingerprint.                                                               |
+| Input path: mouse, keyboard, or desktop menu           | Mouse selects lines and buttons; keyboard can reach the fallback composer and use Ctrl+Enter.                                      | Both paths share the same synchronous duplicate guard. Desktop menus do not publish comments.                                                                                                |
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | Cancel closes the composer and discards its renderer-only draft. | No Stop exists after a GitHub request begins. Pending controls stay guarded until settlement. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | A non-empty composer makes the Review navigation state dirty. | A pending write makes navigation state write-pending and blocks leaving until the outcome is known. |
-| Start another action or request a refresh | Another composer may open only within the current UI's selection rules; each submission has its own location. | Same-composer duplicates are ignored. Refresh and other writes wait behind the detect/write coordinator. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | Unavailable GitHub authoring leaves the diff readable. | Confirmed rejection keeps a failed or retryable surface; unknown outcome removes speculation and pauses writes. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Settings overlays the diff. Renderer-only drafts do not have documented restart persistence. | Durable unknown outcomes restore the write pause after reload. Window-close behavior during a confirmed-but-unreconciled comment needs live verification. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A changed revision makes the old location ineligible for a new write. | The exact session, head, patch hash, and pending-review receipt prevent another target from confirming this action. |
-| macOS focus, a file or folder picker, or another input path takes control | Keyboard shortcuts are ignored inside text fields and dialogs. | Focus loss does not cancel publication. Focus placement after failure or reconciliation needs live verification. |
+| Event                                                                                                 | Before the action runs                                                                                        | While the action runs                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | Cancel closes the composer and discards its renderer-only draft.                                              | No Stop exists after a GitHub request begins. Pending controls stay guarded until settlement.                                                             |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | A non-empty composer makes the Review navigation state dirty.                                                 | A pending write makes navigation state write-pending and blocks leaving until the outcome is known.                                                       |
+| Start another action or request a refresh                                                             | Another composer may open only within the current UI's selection rules; each submission has its own location. | Same-composer duplicates are ignored. Refresh and other writes wait behind the detect/write coordinator.                                                  |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | Unavailable GitHub authoring leaves the diff readable.                                                        | Confirmed rejection keeps a failed or retryable surface; unknown outcome removes speculation and pauses writes.                                           |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Settings overlays the diff. Renderer-only drafts do not have documented restart persistence.                  | Durable unknown outcomes restore the write pause after reload. Window-close behavior during a confirmed-but-unreconciled comment needs live verification. |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | A changed revision makes the old location ineligible for a new write.                                         | The exact session, head, patch hash, and pending-review receipt prevent another target from confirming this action.                                       |
+| macOS focus, a file or folder picker, or another input path takes control                             | Keyboard shortcuts are ignored inside text fields and dialogs.                                                | Focus loss does not cancel publication. Focus placement after failure or reconciliation needs live verification.                                          |
 
 ## Interactions with other systems
 
@@ -104,6 +104,7 @@ A pending-review command settles only from its returned pending-review projectio
 - Two threads at the same line remain distinct by GitHub thread ID.
 - A response from an older patch generation cannot attach to the current diff.
 - Analysis Findings outside the represented diff cannot offer Add to review.
+- Resolve and Unresolve do not preflight permission. A forbidden response retains the thread and gives permission or access guidance; other errors use generic failure guidance.
 
 ## Open questions and verification
 
@@ -112,4 +113,4 @@ A pending-review command settles only from its returned pending-review projectio
 - Confirm navigation behavior when a non-empty composer is open and the maintainer selects another file.
 - Confirm the visible recovery path when a pending-review Start outcome is unknown and no speculative card remains.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`.

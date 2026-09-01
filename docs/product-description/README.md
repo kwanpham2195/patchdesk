@@ -21,8 +21,8 @@ The documents are for designers, engineers, writers, testers, and anyone decidin
 - Describe the experience, not the code. Write "The Save button stays disabled while Patchdesk waits for the profile update" rather than "the hook sets `savingProfile`."
 - Technical detail goes in block quotes prefixed with `Technical note:`. Use it only when the mechanism changes what the maintainer would expect.
 - Use sentence case for headings.
-- Name the vocabulary consistently. The [glossary](glossary.md) owns terms such as *Pull requests screen*, *Selected repository*, *Review*, *Review session*, *Insight*, and *Fresh*.
-- Every feature document ends with the Patchdesk application-source commit it was checked against and a list of open questions.
+- Name the vocabulary consistently. The [glossary](glossary.md) owns terms such as _Pull requests screen_, _Selected repository_, _Review_, _Review session_, _Insight_, and _Fresh_.
+- Every feature document ends with its baseline source commit, any scoped follow-up implementation commit, and a list of open questions.
 - State surprising behavior plainly and give the reason when the source or a comment supplies one.
 
 ## The work to be done
@@ -96,7 +96,7 @@ Progress is tracked in the [coverage table](#coverage).
 ### Scope decisions
 
 - **Surface.** The whole default Patchdesk desktop app on supported Apple Silicon macOS is in scope. The maintainer uses one local app window, a keyboard and mouse, workspace profiles, local checkouts, GitHub CLI authentication, and optional configured Insight providers.
-- **Source snapshot.** Application behavior is pinned to committed source `3100615`. Uncommitted source changes in the checkout are not evidence for this pass. Documentation-only commits after that snapshot do not change the pinned application behavior.
+- **Source snapshot.** The baseline drafting pass used committed source `3100615`. Follow-up behavior in the documents updated by the 2026-08-31 product-verification work is verified through `c49045d`, which contains the completed follow-up fixes. This does not reverify untouched documents or revise historical live-pass evidence.
 - **Runtime.** Development verification uses `REMOTE_DEBUGGING_PORT=9233 pnpm dev` and `agent-browser` over CDP 9233. The raw app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
 - **Fixture routes.** Browser and performance fixture routes are test harnesses, not maintainer-facing product surfaces, so they are out of scope.
 - **Installation and release production.** Downloading a release, Gatekeeper recovery, packaging, signing, notarization, and release publication are out of scope. Startup after installation and single-instance behavior remain in scope where they affect the running app.
@@ -168,43 +168,43 @@ cross-cutting/
 
 Status is one of `not started`, `drafted`, or `verified`.
 
-| Document | Status |
-| --- | --- |
-| glossary.md | drafted |
-| bug-triage.md | drafted |
-| verification/ (4 checklists) | drafted |
-| foundations/task-lifecycle-and-interruption.md | drafted |
-| foundations/navigation-and-overlays.md | drafted |
-| foundations/workspace-profile-and-identity.md | drafted |
-| foundations/review-session-and-revision.md | drafted |
-| foundations/persistence-and-recovery.md | drafted |
-| first-run/setup-checklist.md | drafted |
-| first-run/repository-discovery.md | drafted |
-| pull-requests/selected-repository.md | drafted |
+| Document                                        | Status  |
+| ----------------------------------------------- | ------- |
+| glossary.md                                     | drafted |
+| bug-triage.md                                   | drafted |
+| verification/ (4 checklists)                    | drafted |
+| foundations/task-lifecycle-and-interruption.md  | drafted |
+| foundations/navigation-and-overlays.md          | drafted |
+| foundations/workspace-profile-and-identity.md   | drafted |
+| foundations/review-session-and-revision.md      | drafted |
+| foundations/persistence-and-recovery.md         | drafted |
+| first-run/setup-checklist.md                    | drafted |
+| first-run/repository-discovery.md               | drafted |
+| pull-requests/selected-repository.md            | drafted |
 | pull-requests/filters-pagination-and-refresh.md | drafted |
-| pull-requests/repository-listing.md | drafted |
-| pull-requests/opening-a-review.md | drafted |
-| review-workbench/conversation-and-metadata.md | drafted |
-| review-workbench/files-diff-and-navigation.md | drafted |
-| review-workbench/inline-conversations.md | drafted |
-| review-workbench/brief.md | drafted |
-| review-workbench/analysis.md | drafted |
-| review-workbench/walkthrough.md | drafted |
-| review-workbench/pending-review-and-finish.md | drafted |
-| review-workbench/merge.md | drafted |
-| settings/workspace-profile-editor.md | drafted |
-| settings/appearance-and-diff-theme.md | drafted |
-| settings/review-defaults.md | drafted |
-| settings/data-and-recovery.md | drafted |
-| settings/logs-and-diagnostics.md | drafted |
-| cross-cutting/write-safety-and-freshness.md | drafted |
-| cross-cutting/errors-and-recovery.md | drafted |
-| cross-cutting/local-storage-and-privacy.md | drafted |
-| cross-cutting/keyboard-focus-and-desktop.md | drafted |
+| pull-requests/repository-listing.md             | drafted |
+| pull-requests/opening-a-review.md               | drafted |
+| review-workbench/conversation-and-metadata.md   | drafted |
+| review-workbench/files-diff-and-navigation.md   | drafted |
+| review-workbench/inline-conversations.md        | drafted |
+| review-workbench/brief.md                       | drafted |
+| review-workbench/analysis.md                    | drafted |
+| review-workbench/walkthrough.md                 | drafted |
+| review-workbench/pending-review-and-finish.md   | drafted |
+| review-workbench/merge.md                       | drafted |
+| settings/workspace-profile-editor.md            | drafted |
+| settings/appearance-and-diff-theme.md           | drafted |
+| settings/review-defaults.md                     | drafted |
+| settings/data-and-recovery.md                   | drafted |
+| settings/logs-and-diagnostics.md                | drafted |
+| cross-cutting/write-safety-and-freshness.md     | drafted |
+| cross-cutting/errors-and-recovery.md            | drafted |
+| cross-cutting/local-storage-and-privacy.md      | drafted |
+| cross-cutting/keyboard-focus-and-desktop.md     | drafted |
 
 ## Reference
 
-The source of truth is Patchdesk at `/Users/kwanpham/Work/patchdesk`, pinned to application-source commit `3100615`. Relevant locations are:
+The baseline source of truth is Patchdesk at `/Users/kwanpham/Work/patchdesk`, pinned to application-source commit `3100615`. Documents changed by the follow-up additionally reflect behavior through `c49045d`; that scope does not extend to untouched documents. Relevant locations are:
 
 - [`src/renderer/src/app.tsx`](../../src/renderer/src/app.tsx): root screen routing, Settings overlay, profile switching, and leave guards.
 - [`src/renderer/src/flows/`](../../src/renderer/src/flows/): Pull requests, Review workbench, Settings, and their interaction hooks.

@@ -50,31 +50,31 @@ The two probes may finish in either order. Re-checking while a prior attempt is 
 
 The checklist settles with a mixture of pass and corrective lines; one failed check does not hide the other result. A successful check does not mark setup complete by itself. The first repository is still added explicitly in Workspace settings.
 
-After a repository is checked in the Workspace repository checklist, the watchlist change is saved and workspace data reloads. The next successful inbox response can render the normal Pull requests listing. Existing local profile and Review data remain available if a later GitHub read fails.
+After a repository is checked in the Workspace repository checklist, the watchlist change is saved and workspace data reloads. The next successful inbox response can render the normal Pull requests listing. Review-opening progress and errors are scoped to their profile; a late result from an older profile cannot show a stale `Could not open review` alert above this first-run state. Existing local profile and Review data remain available if a later GitHub read fails.
 
 ## Variants
 
-| Variant | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Workspace profile and GitHub account | The active profile supplies the GitHub host and expected account. A first-run Default profile may be ephemeral when no account was detected. | GitHub access is checked against the active profile; the checklist does not change the profile or credentials. |
-| Pull request and Review state | An empty watchlist produces an empty setup state, not a Review workbench. | A repository is not read until it is explicitly watched; no Review state is created by the checks. |
-| GitHub permissions and merge readiness | Setup needs an authenticated account check, not merge permission or a pull-request decision. | The checklist reports authentication and tool availability; merge readiness has no effect. |
-| Network, local tool, and Insight provider availability | Git, `gh`, and GitHub CLI authentication determine the local-tool lines. Insight providers are not required for setup. | A missing tool, authentication failure, request failure, or timeout produces its own corrective line; no provider run starts. |
-| Input path: mouse, keyboard, or desktop menu | The card's buttons use the same Workspace Settings destination as the rest of the app. | Re-check and Settings targeting do not change behavior based on input device. |
+| Variant                                                | Before the action runs                                                                                                                       | While the action runs                                                                                                         |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | The active profile supplies the GitHub host and expected account. A first-run Default profile may be ephemeral when no account was detected. | GitHub access is checked against the active profile; the checklist does not change the profile or credentials.                |
+| Pull request and Review state                          | An empty watchlist produces an empty setup state, not a Review workbench.                                                                    | A repository is not read until it is explicitly watched; no Review state is created by the checks.                            |
+| GitHub permissions and merge readiness                 | Setup needs an authenticated account check, not merge permission or a pull-request decision.                                                 | The checklist reports authentication and tool availability; merge readiness has no effect.                                    |
+| Network, local tool, and Insight provider availability | Git, `gh`, and GitHub CLI authentication determine the local-tool lines. Insight providers are not required for setup.                       | A missing tool, authentication failure, request failure, or timeout produces its own corrective line; no provider run starts. |
+| Input path: mouse, keyboard, or desktop menu           | The card's buttons use the same Workspace Settings destination as the rest of the app.                                                       | Re-check and Settings targeting do not change behavior based on input device.                                                 |
 
 The checklist cannot be completed by confirming probes alone. The watchlist remains empty until a repository is selected explicitly in Workspace settings.
 
 ## Cancel and interrupt
 
-| Event | Before the action runs | While the action runs |
-| --- | --- | --- |
-| Cancel, Stop, or Escape | There is no checklist-wide Cancel or Stop. Escape has no setup side effect. | There is no cancellation control for an in-flight probe; the card can be left while the request settles. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Opening Settings targets Workspace. Other navigation follows the normal clear navigation rules. | Leaving the card does not add a repository or cancel the local request; returning starts the component's probes again if it remounts. |
-| Start another action or request a refresh | Refresh is a separate workspace read and does not edit setup. | Re-check starts a newer probe attempt. Refresh can reload the empty state while probe results remain owned by the mounted checklist. |
-| GitHub, the network, a local tool, or an Insight provider fails or times out | The checklist is still reachable without a successful GitHub read because the empty inbox response is local state. | The affected probe settles to its generic failure or corrective status. The card does not retry automatically; Re-check is explicit. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Closing a clean Settings overlay returns to the checklist. | A probe is not durable work. Reload or quit drops its in-memory status; the next mounted checklist starts fresh probes. |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | No pull request target exists yet. A profile or account change can alter the next workspace read. | Probe results do not authorize a Review or preserve a remote target. The next inbox load is authoritative for whether setup is still needed. |
-| macOS focus, a file or folder picker, or another input path takes control | The Workspace folder picker is owned by Settings, not by this card. | Focus can leave the card while a probe runs; returning does not change its result. |
+| Event                                                                                                 | Before the action runs                                                                                             | While the action runs                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | There is no checklist-wide Cancel or Stop. Escape has no setup side effect.                                        | There is no cancellation control for an in-flight probe; the card can be left while the request settles.                                     |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Opening Settings targets Workspace. Other navigation follows the normal clear navigation rules.                    | Leaving the card does not add a repository or cancel the local request; returning starts the component's probes again if it remounts.        |
+| Start another action or request a refresh                                                             | Refresh is a separate workspace read and does not edit setup.                                                      | Re-check starts a newer probe attempt. Refresh can reload the empty state while probe results remain owned by the mounted checklist.         |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | The checklist is still reachable without a successful GitHub read because the empty inbox response is local state. | The affected probe settles to its generic failure or corrective status. The card does not retry automatically; Re-check is explicit.         |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Closing a clean Settings overlay returns to the checklist.                                                         | A probe is not durable work. Reload or quit drops its in-memory status; the next mounted checklist starts fresh probes.                      |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | No pull request target exists yet. A profile or account change can alter the next workspace read.                  | Probe results do not authorize a Review or preserve a remote target. The next inbox load is authoritative for whether setup is still needed. |
+| macOS focus, a file or folder picker, or another input path takes control                             | The Workspace folder picker is owned by Settings, not by this card.                                                | Focus can leave the card while a probe runs; returning does not change its result.                                                           |
 
 After an interrupt, the maintainer remains in the current destination unless navigation was accepted. Probe results are disposable UI state. A checked repository, by contrast, is a durable watchlist mutation owned by Workspace settings and is reloaded there.
 
@@ -108,7 +108,7 @@ After an interrupt, the maintainer remains in the current destination unless nav
 - Re-checking after `gh auth login` is required to replace a stale failure; the checklist does not watch the terminal.
 - Adding a repository is not implicit discovery. The maintainer must save the root if needed and check the repository row.
 - A profile with watched repositories can skip this card even when the latest repository read has no open pull requests; that is a different settled state.
-- A stale open-review error can remain visible above the setup card after an earlier failed attempt to open a Review; verify whether that presentation should be cleared on a new first-run load.
+- A late Review-opening result from a prior profile is ignored when the current profile reaches first-run.
 
 ## Open questions and verification
 
@@ -116,6 +116,5 @@ After an interrupt, the maintainer remains in the current destination unless nav
 - Confirm the visual order and focus when the two probes finish in opposite orders.
 - Confirm that a renderer reload during an in-flight Re-check starts exactly one fresh pair of probes and leaves no stale status visible.
 - Confirm the transition from the card to Settings → Workspace and back after the first watchlist add.
-- Confirm whether the stale `Could not open review` banner should be cleared when the setup card is shown after a profile change; source currently allows it to remain.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`.

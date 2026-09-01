@@ -4,13 +4,13 @@ The feature documents were drafted from committed source and tests. This directo
 
 ## What is here
 
-| File | Covers |
-| --- | --- |
-| [foundations-and-settings.md](foundations-and-settings.md) | Foundations, the workspace-profile pilot, and Settings |
-| [pull-requests.md](pull-requests.md) | First run and the Pull requests screen |
-| [review-workbench.md](review-workbench.md) | Conversation, diff, inline conversations, pending review, and merge |
-| [insights-and-cross-cutting.md](insights-and-cross-cutting.md) | Insights plus cross-cutting safety, recovery, privacy, and desktop behavior |
-| [unblocking-notes.md](unblocking-notes.md) | Next-pass scope, checklist corrections, UI clarity candidates, fixtures, and deferred cases |
+| File                                                           | Covers                                                                                      |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [foundations-and-settings.md](foundations-and-settings.md)     | Foundations, the workspace-profile pilot, and Settings                                      |
+| [pull-requests.md](pull-requests.md)                           | First run and the Pull requests screen                                                      |
+| [review-workbench.md](review-workbench.md)                     | Conversation, diff, inline conversations, pending review, and merge                         |
+| [insights-and-cross-cutting.md](insights-and-cross-cutting.md) | Insights plus cross-cutting safety, recovery, privacy, and desktop behavior                 |
+| [unblocking-notes.md](unblocking-notes.md)                     | Next-pass scope, checklist corrections, UI clarity candidates, fixtures, and deferred cases |
 
 Each checklist has one table per document. Every row has a stable ID, priority, required condition, one claim linked to its owning section, precise setup, numbered steps, an observable expected result, and a Result column. Results remain `—` until a live pass records `pass`, `fail`, or `blocked`.
 
@@ -73,3 +73,9 @@ A third read-only and local continuation ran on 2026-08-31 from the same pinned 
 Current results: 35 pass, 4 fail, and 46 blocked across 85 rows. The continuation added passes for Settings overlay/focus, all three first-run dependency states, saved and unsaved repository discovery, explicit watchlist confirmation, sole/saved/fallback repository selection, the merged-row action, three local Analysis behaviors, and valid-versus-invalid Walkthrough section restoration. Diff boundaries, inline draft opening, Walkthrough `j`/`k` and close behavior, pagination, complete listing variants, unresolved-thread navigation, approved writes, failure/recovery fixtures, and merge cases remain blocked. No new fail or bug candidate was found.
 
 GitHub remained read-only throughout: `symphony-go#5` stayed at zero issue comments, reviews, and review threads. No provider run, merge action, cleanup confirmation, metadata change, or application-source change occurred. See [Verification unblocking notes](unblocking-notes.md) for the completed ordinary-pass outcome and remaining fixture boundaries.
+
+## Follow-up verification
+
+The current follow-up ran against current `main` after the `3100615` source snapshot. It records 38 pass, 0 fail, and 47 blocked across the same 85 unique checklist IDs. `SETUP-03`, `SETUP-04`, and `PROFILE-02` now pass with isolated current-HEAD desktop evidence under `/private/tmp/patchdesk-followup-verification-evidence`. `FOCUS-01` is blocked rather than passed: its exact Reply-textarea desktop rerun is still missing, despite an automated textarea regression and supporting focused-input evidence. The other fixed defects have canonical automated or browser coverage where a precise live fixture was unavailable.
+
+The follow-up used isolated Electron and Patchdesk data with a fail-closed `gh` wrapper. It performed no GitHub write, provider run, merge, or cleanup. The wrapper blocked two automatic read-shaped commands during Workspace discovery; neither reached GitHub and they are not application write attempts. The source snapshot remains `3100615`; later fix commits and current-HEAD runtime evidence do not revise the historical passes above.

@@ -81,6 +81,15 @@ One Selected repository, remembered per profile. GitHub answers the filter, the 
   - A repository with no open pull requests must read differently from a filter that excludes everything.
 - `run when:` anything changes in `maintainer-inbox-service.ts`, `inbox-refresh-coordinator.ts`, the search queries in `github-graphql-queries.ts`, `use-inbox-view.ts`, `inbox-view-preferences.ts`, `maintainer-inbox.tsx`, `inbox-flow.tsx`, or `desktop-menu.ts`.
 
+### Follow-up profile, listing, and discovery cases
+
+- `automated:` `tests/renderer/inbox-flow.ui.test.tsx` and `tests/renderer/use-workspace-inbox.test.ts` (B-04/B-07: Review opening and late inbox results stay scoped to the active profile, and selected repository scope restores after a switch); `tests/domain/maintainer-inbox.test.ts`, `tests/renderer/maintainer-inbox.ui.test.tsx`, `tests/services/maintainer-inbox-cache-secondary-action.test.ts`, and `tests/services/profile-dashboard-services.test.ts` (B-03: a current Review remains Open Review, fresh merge readiness is a separate read-only action, and cached rows strip it).
+- `automated:` `tests/renderer/profile-settings.test.tsx` and `tests/renderer/reviewing-as-panel.test.tsx` (B-01/B-02: Dirty New profile uses Save, Discard, or Cancel; scalar field guidance prevents a request); `tests/renderer/settings-modal.ui.test.tsx` (empty Review activity); `tests/adapters/workspace-origin-finder.test.ts`, `tests/services/profile-dashboard-services.test.ts`, `tests/renderer/workspace-root-discovery.ui.test.tsx`, and `tests/browser/protected-loopback-workflow.spec.ts` (B-05/B-06: directory-boundary grouping and per-root ready/failed discovery, including watched rows under a failed root).
+- `manual:`
+  - In an isolated two-profile app, make a dirty Workspace edit and choose New profile. Save, Discard, and Cancel must preserve or replace the draft as chosen. Try malformed ID, label, host, and account values; each must show field-local guidance without a profile request.
+  - Switch A → B → A after each profile has a different Selected repository. Each settled listing must show that profile's repository and never a late open-Review error from the other profile.
+  - Use multiple saved workspace roots, including nested and failed roots. A ready root stays usable; a failed root shows its alert and watched rows but no unverified candidates.
+
 ## Open and prepare a Review
 
 Opening a Review prepares one immutable session: PR fetch, canonical patch, context bundle, review input, debug ledger, and the represented-review worktree.
@@ -116,6 +125,11 @@ The coordinator owns the run lifecycle; the child is a throwaway; results are va
   - Run Analysis, push a commit, run again: the earlier result must be superseded, not merged with the new one.
   - Run a Walkthrough on a large patch (over 2 MiB): the run must fail with a clear diagnostic, not a crash. This case changes when chunked passes land.
 - `run when:` anything changes in `insight-run-coordinator.ts`, the Flue child (`runtime/flue/src/`), `model-review-runner.ts`, `walkthrough-operation.ts`, or the insight record state machine in `src/domain/insight-record.ts`.
+
+### Follow-up empty and navigation states
+
+- `automated:` `tests/renderer/analysis-reader.ui.test.tsx` (zero Findings shows No findings and no add/dismiss controls) and `tests/domain/narrative-walkthrough.test.ts`, `tests/renderer/narrative-walkthrough.ui.test.tsx`, and `tests/renderer/narrative-walkthrough-diff.test.tsx` (visible count plus zero-, one-, and multi-section navigation boundaries).
+- `manual:` Run Analysis and Walkthrough with approved disposable/provider fixtures. Confirm a zero-Finding result differs visibly from all handled Findings; confirm zero and one-section Walkthroughs omit the controls named above.
 
 ## Insight runs: Brief
 
@@ -156,6 +170,11 @@ Writes require a Fresh Review, explicit action, durable intent, and a read-only 
   - Edit and delete an own published comment: must work with confirmation.
   - Delete or dismiss a comment you did not author: must be rejected.
 - `run when:` anything changes in `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, `inline-conversation-service.ts`, `review-write-gate.ts`, `use-pending-review-actions.ts`, `use-direct-summary-actions.ts`, or the GitHub adapter write methods.
+
+### Follow-up conversation permission guidance
+
+- `automated:` `tests/renderer/conversation-thread-card.ui.test.tsx`, `tests/renderer/use-direct-conversation-actions.test.ts`, and `tests/services/inline-conversation-service.test.ts` (forbidden Resolve or Unresolve retains the thread and gives permission/access guidance; unrelated failures remain generic).
+- `manual:` Against a disposable restricted account, attempt Resolve or Unresolve on a mapped thread. Confirm the thread remains visible and the guidance identifies permission or access. This write-required row remains blocked until that fixture is available.
 
 ## Merge
 
@@ -224,6 +243,11 @@ The built app is the outermost boundary.
   - Package a build (`pnpm package:mac`) and run the packaged app against a real PR: open, refresh, analysis, walkthrough, and one write flow.
   - In the packaged app, open the performance fixture and confirm the diff stays responsive.
 - `run when:` anything changes in `src/renderer/src/`, `electron.vite.config.ts`, packaging, or the staged Flue runtime.
+
+### Follow-up diff navigation feedback
+
+- `automated:` `tests/renderer/review-diff-navigation-feedback.ui.test.tsx`, `tests/renderer/review-diff-keyboard-nav.test.ts`, `tests/renderer/review-diff-active-file.test.ts`, and `tests/browser/review-diff-keyboard-nav.spec.ts` (B-08: text editors suppress navigation shortcuts; latest file, hunk, and thread target or boundary feedback appears only after materialization, and stale/fallback effects do not claim success).
+- `manual:` In a real Review, use file, hunk, and unresolved-thread shortcuts and confirm the visible latest status. Focus the exact Reply textarea and press Meta+K; Navigate must not open. The exact Reply-textarea pass remains blocked despite the automated regression and general editable-input live evidence.
 
 ## Keeping the registry honest
 
