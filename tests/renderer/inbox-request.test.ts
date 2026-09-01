@@ -71,6 +71,18 @@ describe("inboxRequestPath", () => {
     );
   });
 
+  it("serializes selected review state and check status only when selected", () => {
+    expect(
+      inboxRequestPath(
+        request({ reviewState: "approved", checkStatus: "failure" }),
+      ),
+    ).toBe(
+      "/v1/inbox?state=open&pageSize=25&reviewState=approved&checkStatus=failure",
+    );
+    expect(inboxRequestPath(request())).not.toContain("reviewState");
+    expect(inboxRequestPath(request())).not.toContain("checkStatus");
+  });
+
   it("sends the page cursor opaquely, without decoding or re-encoding its parts", () => {
     // The cursor is minted by the main process; the renderer must round-trip
     // it as one string, so an encoded cursor survives percent-encoding once.
@@ -121,6 +133,8 @@ describe("nextInboxRequest", () => {
       { pageSize: 10 as const },
       { selectedLabels: ["bug"] },
       { awaitingMyReview: true },
+      { reviewState: "approved" as const },
+      { checkStatus: "failure" as const },
     ]) {
       const next = nextInboxRequest(onPageTwo, change);
       expect(next.pageToken).toBeUndefined();
@@ -165,6 +179,8 @@ describe("sameInboxRows", () => {
       { state: "merged" },
       { pageSize: 10 },
       { awaitingMyReview: true },
+      { reviewState: "approved" },
+      { checkStatus: "failure" },
       { pageToken: "page-1" },
       { selectedLabels: ["bug", "chore"] },
       { selectedLabels: ["chore"] },
@@ -203,12 +219,16 @@ describe("firstInboxRequestFor", () => {
       pageSize: 10,
       selectedLabels: ["bug"],
       awaitingMyReview: true,
+      reviewState: "approved",
+      checkStatus: "failure",
     });
     expect(firstInboxRequestFor([profile()])).toEqual({
       state: "merged",
       pageSize: 10,
       selectedLabels: ["bug"],
       awaitingMyReview: true,
+      reviewState: "approved",
+      checkStatus: "failure",
       previousPageTokens: [],
     });
   });
@@ -245,6 +265,29 @@ describe("reconcileInboxRepository", () => {
       repoA,
     );
     expect(loadInboxViewPreferences("profile").selectedLabels).toEqual([]);
+  });
+
+  it("carries review and check filters across repository changes while clearing labels", () => {
+    saveInboxViewPreferences("profile", {
+      selectedRepository: repoB,
+      selectedLabels: ["bug"],
+      reviewState: "approved",
+      checkStatus: "failure",
+    });
+    const base = request({
+      repository: repoB,
+      selectedLabels: ["bug"],
+      reviewState: "approved",
+      checkStatus: "failure",
+    });
+    const next = reconcileInboxRepository(
+      base,
+      [profile({ repos: [repoA] })],
+      "profile",
+    );
+    expect(next.selectedLabels).toEqual([]);
+    expect(next.reviewState).toBe("approved");
+    expect(next.checkStatus).toBe("failure");
   });
 
   it("returns the request untouched when the repository is still watched", () => {
