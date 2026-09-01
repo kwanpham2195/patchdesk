@@ -84,7 +84,7 @@ export type WorkspaceInbox = {
   readonly changeInboxCheckStatus: (
     checkStatus: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly clearInboxReviewFilters: () => void;
+  readonly clearInboxReviewAndCheckFilters: () => void;
   readonly changeInboxRepository: (repository: Repo) => void;
   readonly previousInboxPage: () => void;
   readonly nextInboxPage: () => void;
@@ -406,7 +406,7 @@ export function useWorkspaceInbox({
     [refreshInbox, updateInboxRequest],
   );
   /** Clears both More filters as one profile update and one inbox request. */
-  const clearInboxReviewFilters = useCallback((): void => {
+  const clearInboxReviewAndCheckFilters = useCallback((): void => {
     const request = nextInboxRequest(inboxRequestRef.current, {
       reviewState: undefined,
       checkStatus: undefined,
@@ -500,7 +500,7 @@ export function useWorkspaceInbox({
     changeInboxAwaitingMyReview,
     changeInboxReviewState,
     changeInboxCheckStatus,
-    clearInboxReviewFilters,
+    clearInboxReviewAndCheckFilters,
     changeInboxRepository,
     previousInboxPage,
     nextInboxPage,
