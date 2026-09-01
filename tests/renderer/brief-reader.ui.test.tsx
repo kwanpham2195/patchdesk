@@ -109,6 +109,16 @@ const FLOW = {
               ],
               children: [],
             },
+            {
+              // The domain keeps an added step even when it could not place
+              // it in the diff; the reader must show that honestly rather
+              // than dropping it (maintainer decision: hunk citations are
+              // best effort).
+              label: "queue background retry",
+              change: "added" as const,
+              citations: [],
+              children: [],
+            },
           ],
         },
       ],
@@ -486,6 +496,38 @@ describe("BriefReader", () => {
     expect(removedRow?.textContent).toContain("−");
     expect(unchangedRow?.textContent).not.toContain("+");
     expect(unchangedRow?.textContent).not.toContain("−");
+  });
+
+  it("keeps an uncited added row visible with a muted marker, no chip, and a title explaining why", () => {
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithFlow()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: "Flow" });
+
+    // Cited added row keeps its chip.
+    const citedRow = within(region).getByText("read patch").closest("div");
+    if (citedRow === null) throw new Error("Expected the cited row's div");
+    expect(
+      within(citedRow).getByRole("button", { name: "Show hunk a.ts · h1" }),
+    ).toBeTruthy();
+
+    // Uncited added row still renders its label, but with no "Show hunk"
+    // button and a marker span carrying the explanatory title.
+    const uncitedRow = within(region)
+      .getByText("queue background retry")
+      .closest("div");
+    if (uncitedRow === null) throw new Error("Expected the uncited row's div");
+    expect(
+      within(uncitedRow).queryByRole("button", { name: /Show hunk/ }),
+    ).toBeNull();
+    expect(
+      within(uncitedRow).getByTitle("No hunk cited for this step"),
+    ).toBeTruthy();
   });
 
   it("indents a child row further than its parent", () => {

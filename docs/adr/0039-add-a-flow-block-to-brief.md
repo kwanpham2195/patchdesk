@@ -52,7 +52,7 @@ Within a tree, the model proposes a label plus a change of `added`,
 most fifteen nodes per tree, labels capped at 120 characters — longer than
 the rest of Brief's 80, because signatures run longer than sentences.
 
-### Flow cites hunks only
+### Flow citations are best effort
 
 Brief's citation manifest carries three alias kinds: `h*` hunks, `d*`
 description paragraphs, `c*` commits (ADR 0036). Flow accepts only `h*`. An
@@ -61,29 +61,20 @@ only the diff can support that claim — a description or commit citation is a
 claim about the change, not evidence from it. A citation that resolves to a
 `d*` or `c*` alias is discarded exactly like one that resolves to nothing.
 
-- An `added` or `removed` node needs at least one surviving hunk citation. One
-  without it is dropped, and its whole subtree is dropped with it — a step
-  the model could not place in the diff has children the model could not
-  place either.
+- An `added` or `removed` node keeps its place whether or not a hunk citation
+  survives for it. An uncited changed step is drawn without a citation chip,
+  and it counts toward `citationStatus`: any uncited changed step makes the
+  Brief `partially_verified`, the same signal a discarded alias already gives.
 - An `unchanged` node needs no citation. It is the spine that gives the added
   and removed steps context. Any citations it does carry are still resolved
   against the manifest, so a bad one still counts as rejected, but it never
   costs the node its place.
 - A tree left with no surviving `added`/`removed` node anywhere in it is
-  dropped whole. A tree of only unchanged steps says nothing changed, so
-  showing it would be noise dressed as a diff.
+  still dropped whole. A tree of only unchanged steps says nothing changed,
+  so showing it would be noise dressed as a diff.
 - The block itself is absent when no tree survives, the same rule as every
   other Brief block: absent evidence draws nothing rather than an empty
   shell.
-
-One consequence is accepted on purpose. A tree can have a correct, verifiable
-spine and lose its only changed step to a missing citation, and the whole
-tree goes with it — the spine had nothing left to explain. Keeping the spine
-anyway, as an uncited assumption, was considered and rejected: every other
-demotion in Brief keeps a citable claim readable at a lower confidence
-(ADR 0036's demoted Goal line), and a Flow spine with no changed step is not
-a claim at all, just scaffolding. Making it the first uncited structure in
-Brief would be a new kind of exception, not a graceful degradation.
 
 ### Deterministic bookkeeping, model-free counting
 
@@ -135,9 +126,9 @@ inventing one.
 - A pull request that only renames things or reorders unrelated code has no
   Flow block, by the model's own instruction to omit rather than by a
   citation failure — there is nothing wrong to report, just nothing to show.
-- A correct spine can vanish alongside its one changed step if that step's
-  citation does not resolve. This is accepted, not overlooked: see the
-  rejected alternative above.
+- An invented step can reach the reader; the missing chip and the
+  partially-verified status are the signal, and the model is told to leave
+  citations empty rather than drop a step.
 - Brief is moving toward structure-first views. A follow-up ADR (0040)
   removes the Goal, Assumptions, and Description-vs-diff blocks and
   re-anchors the citation rule on Flow.

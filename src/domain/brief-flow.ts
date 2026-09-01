@@ -9,30 +9,29 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
  * or component -- and the Brief keeps at most one tree per kind, so up to
  * `MAX_FLOW_TREES` trees survive, one for each kind the patch changes.
  *
- * Flow cites hunks only -- only the diff can show that a step was added or
- * removed, so a description or commit alias never counts as evidence of a
- * code change, no matter how it is paired with a real hunk. An `unchanged`
- * step is the spine connecting the changed ones: it needs no citation at
- * all, but anything it does cite is resolved by the same hunk-only rule, and
- * a non-hunk or unknown alias is discarded and counted exactly like one on a
- * changed step.
+ * Citations are best effort: an added or removed step keeps its place with
+ * or without a hunk citation; a discarded alias or an uncited changed step
+ * counts toward `rejected` so the Brief reads as partially verified, but the
+ * tree is never cut for it. Only the diff can prove a step changed, so
+ * description and commit aliases are still discarded, no matter how they are
+ * paired with a real hunk. An `unchanged` step is the spine connecting the
+ * changed ones: it needs no citation at all, but anything it does cite is
+ * resolved by the same hunk-only rule, and a non-hunk or unknown alias is
+ * discarded and counted exactly like one on a changed step.
  *
- * An `added`/`removed` step that ends with no surviving hunk citation is
- * dropped, and its whole proposed subtree goes with it -- a changed step
- * Patchdesk cannot back up is not shown, and nothing invented underneath an
- * invented step survives either. A tree left with no surviving changed step
- * at any depth says nothing changed, so the whole tree is dropped; of the
- * survivors, a second tree of a kind already kept is dropped too (input
- * order wins), and only the first `MAX_FLOW_TREES` survivors after that are
- * kept, in the order the model proposed them.
+ * A tree left with no surviving changed step at any depth says nothing
+ * changed, so the whole tree is dropped; of the survivors, a second tree of
+ * a kind already kept is dropped too (input order wins), and only the first
+ * `MAX_FLOW_TREES` survivors after that are kept, in the order the model
+ * proposed them.
  *
  * `rejected` counts citation failures only -- a discarded alias, and an
- * `added`/`removed` node dropped for keeping no surviving hunk citation.
- * Every other cap below (the per-tree node cap, the depth cap, a
- * whitespace-only label, an all-unchanged tree, a repeat-kind tree, a
- * surviving tree past `MAX_FLOW_TREES`) is silent, the same way
- * `normalizeBriefStartHere`'s five-file cap and an unmatched Start here path
- * are silent.
+ * `added`/`removed` node left with zero surviving hunk citations (kept, but
+ * counted as an unverified claim, not a dropped one). Every other cap below
+ * (the per-tree node cap, the depth cap, a whitespace-only label, an
+ * all-unchanged tree, a repeat-kind tree, a surviving tree past
+ * `MAX_FLOW_TREES`) is silent, the same way `normalizeBriefStartHere`'s
+ * five-file cap and an unmatched Start here path are silent.
  *
  * Patchdesk does not reshape a tree the model proposes -- a step nested
  * under itself, or repeated, is drawn as proposed; the guidance, not the
@@ -100,8 +99,8 @@ const MAX_FLOW_ALIAS_LENGTH = 16;
  * This type stays recursive on purpose, even though the schema below is not:
  * a value bounded to `MAX_FLOW_DEPTH` levels (the schema's own guarantee)
  * still satisfies this wider, unbounded type, because `children` is optional
- * at every level -- so `walkFlowNodes` and `countFlowDescendants` can walk
- * any of the three concrete depths through one shared parameter type.
+ * at every level -- so `walkFlowNodes` can walk any of the three concrete
+ * depths through one shared parameter type.
  */
 type BriefFlowNodeOutput = {
   readonly label: string;
@@ -231,34 +230,16 @@ function resolveFlowCitations(
 }
 
 /**
- * Counts one proposed subtree node by node, for the citation-rule cascade
- * only: when a changed step is dropped for citing no hunk, everything the
- * model proposed underneath it is gone too, without being depth-checked,
- * label-checked, or citation-checked on its own -- it is counted once per
- * node purely because its parent did not survive.
- */
-function countFlowDescendants(
-  rawNodes: ReadonlyArray<BriefFlowNodeOutput>,
-): number {
-  let count = 0;
-  for (const raw of rawNodes) {
-    count += 1;
-    count += countFlowDescendants(raw.children ?? []);
-  }
-  return count;
-}
-
-/**
  * Walks one tree's proposed nodes in pre-order, applying, in this order: the
  * `MAX_FLOW_NODES_PER_TREE` cap, the `MAX_FLOW_DEPTH` cap, the label cap,
  * and finally -- for `added`/`removed` nodes only -- the rule that a changed
- * step must keep at least one hunk citation or it (and its whole proposed
- * subtree) is dropped. `unchanged` nodes need no citation at all, but any
- * they carry are still resolved so a non-hunk or unknown alias still counts
- * toward `rejected`.
+ * step left with no surviving hunk citation still keeps its place, but
+ * counts toward `rejected` as an unverified claim. `unchanged` nodes need no
+ * citation at all, but any they carry are still resolved so a non-hunk or
+ * unknown alias still counts toward `rejected`.
  *
- * Only the citation-rule drop counts toward `rejected`; the node cap, the
- * depth cap, and a whitespace-only label are silent.
+ * Only citation failures count toward `rejected`; the node cap, the depth
+ * cap, and a whitespace-only label are silent.
  */
 function walkFlowNodes(
   rawNodes: ReadonlyArray<BriefFlowNodeOutput>,
@@ -284,8 +265,7 @@ function walkFlowNodes(
     ctx.rejected += resolved.rejected;
 
     if (raw.change !== "unchanged" && resolved.citations.length === 0) {
-      ctx.rejected += 1 + countFlowDescendants(raw.children ?? []);
-      continue;
+      ctx.rejected += 1;
     }
 
     const children = walkFlowNodes(raw.children ?? [], depth + 1, byAlias, ctx);
@@ -322,16 +302,21 @@ function normalizeFlowTitle(rawTitle: string): string {
  * means the block was not offered, so it returns with no `value` and
  * nothing rejected.
  *
+ * Citations are best effort: an added or removed step keeps its place with
+ * or without a hunk citation; a discarded alias or an uncited changed step
+ * counts toward `rejected` so the Brief reads as partially verified, but the
+ * tree is never cut for it. Only the diff can prove a step changed, so
+ * description and commit aliases are still discarded.
+ *
  * `rejected` counts citation failures only: a discarded alias (unknown,
  * repeated, or -- for a changed step -- resolved to a non-hunk kind), and an
- * `added`/`removed` node dropped for keeping no surviving hunk citation (its
- * whole proposed subtree counted with it). Every other cap here is silent,
- * the same way `normalizeBriefStartHere`'s five-file cap and an unmatched
- * Start here path are silent: the per-tree node cap, the `MAX_FLOW_DEPTH`
- * cap (also enforced by the schema itself, see `flowNodeSchema`), a
- * whitespace-only label, a tree with no surviving changed node, a second
- * surviving tree of a kind already kept, and a surviving tree past
- * `MAX_FLOW_TREES`.
+ * `added`/`removed` node left with zero surviving hunk citations. Every
+ * other cap here is silent, the same way `normalizeBriefStartHere`'s
+ * five-file cap and an unmatched Start here path are silent: the per-tree
+ * node cap, the `MAX_FLOW_DEPTH` cap (also enforced by the schema itself,
+ * see `flowNodeSchema`), a whitespace-only label, a tree with no surviving
+ * changed node, a second surviving tree of a kind already kept, and a
+ * surviving tree past `MAX_FLOW_TREES`.
  */
 export function normalizeBriefFlow(
   raw: BriefFlowOutput,

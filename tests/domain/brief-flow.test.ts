@@ -101,7 +101,7 @@ describe("normalizeBriefFlow", () => {
     ).toEqual([["h1"], ["h1"], ["h3"]]);
   });
 
-  it("drops a changed node with no citation, and its child, counting 2 rejected", () => {
+  it("keeps an uncited added node and its child, counting 1 rejected", () => {
     const raw: BriefFlowOutput = [
       {
         kind: "call_tree",
@@ -118,13 +118,21 @@ describe("normalizeBriefFlow", () => {
       },
     ];
     const result = normalize(raw);
-    expect(result.rejected).toBe(2);
+    expect(result.rejected).toBe(1);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "valid change",
+      "invented step",
+    ]);
+    const kept = result.value?.trees[0]?.nodes.find(
+      (node) => node.label === "invented step",
+    );
+    expect(kept?.citations).toEqual([]);
+    expect(kept?.children.map((node) => node.label)).toEqual([
+      "invented child",
     ]);
   });
 
-  it("drops a removed node that cites only the description", () => {
+  it("keeps a removed node that cites only the description, with 0 citations", () => {
     const raw: BriefFlowOutput = [
       {
         kind: "call_tree",
@@ -140,11 +148,16 @@ describe("normalizeBriefFlow", () => {
       },
     ];
     const result = normalize(raw);
-    // 1 for the discarded d1 alias, 1 for the node dropped with no hunk left.
+    // 1 for the discarded d1 alias, 1 for the node left with no hunk citation.
     expect(result.rejected).toBe(2);
     expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
       "valid change",
+      "retire the legacy check",
     ]);
+    const kept = result.value?.trees[0]?.nodes.find(
+      (node) => node.label === "retire the legacy check",
+    );
+    expect(kept?.citations).toEqual([]);
   });
 
   it("keeps an unchanged node with a bogus citation, discarding the citation", () => {
@@ -202,6 +215,27 @@ describe("normalizeBriefFlow", () => {
     const result = normalize(raw);
     expect(result.value).toBeUndefined();
     expect(result.rejected).toBe(0);
+  });
+
+  it("keeps a tree whose only changed step is uncited, since it is not all-unchanged", () => {
+    const raw: BriefFlowOutput = [
+      {
+        kind: "call_tree",
+        title: "Uncited change only",
+        nodes: [
+          { label: "Read the form state", change: "unchanged" },
+          { label: "Validate the field", change: "added", citations: [] },
+          { label: "Save the profile", change: "unchanged" },
+        ],
+      },
+    ];
+    const result = normalize(raw);
+    expect(result.rejected).toBe(1);
+    expect(result.value?.trees[0]?.nodes.map((node) => node.label)).toEqual([
+      "Read the form state",
+      "Validate the field",
+      "Save the profile",
+    ]);
   });
 
   it("keeps three trees of three different kinds, in input order", () => {

@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Made hunk citation chips in Brief open a preview of the cited hunk as a rendered diff; a hunk too large to preview keeps a plain chip, and so does a Brief retained before this change.
-- Added a **Flow** block to Brief: up to three diff-styled views, one per kind — call_tree, control_flow, component — with each step marked added, removed, or unchanged, a hunk citation required on every changed step, and a per-view Copy as diff action; a Brief retained before this change has no Flow.
+- Added a **Flow** block to Brief: up to three diff-styled views, one per kind — call_tree, control_flow, component — with each step marked added, removed, or unchanged, hunk citations on changed steps where the patch shows them, and a per-view Copy as diff action; a Brief retained before this change has no Flow.
 
 ## 0.1.3 - 2026-09-01
 

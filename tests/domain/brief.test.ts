@@ -399,7 +399,7 @@ describe("insightOutputGuidance", () => {
       "each step is the real function or method name with its parameter names as written in the patch, such as validateManualDays(command, suggestion)",
     );
     expect(guidance).toContain(
-      "Give every added or removed step an h alias citing the hunk that adds or removes it; a description or commit alias does not count for flow",
+      "Give an added or removed step the h alias of the hunk that shows it when the patch shows it, and leave citations empty when it does not -- never omit a step for lack of a citation, and never cite a description or commit alias in flow.",
     );
     expect(guidance).toContain(
       "omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",

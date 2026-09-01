@@ -58,7 +58,7 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
     "For example, a change that adds validation before saving is the root handleSave(request) unchanged, with children validateRequest(request) added and persistPlan(plan) unchanged.",
     "A control_flow step is one short pseudocode line, such as on(save), if stops are empty, or return cached result, never a full sentence. A component step is the component name in angle brackets, such as <SessionToolbar>, with hooks as plain names.",
     "Build each tree as nested steps, and mark each step added, removed, or unchanged.",
-    "Give every added or removed step an h alias citing the hunk that adds or removes it; a description or commit alias does not count for flow, and an unchanged step needs no citation and only gives the changed steps their place.",
+    "Give an added or removed step the h alias of the hunk that shows it when the patch shows it, and leave citations empty when it does not -- never omit a step for lack of a citation, and never cite a description or commit alias in flow. An unchanged step needs no citation.",
     "Keep each label within 120 characters. Keep each tree at most three levels deep and fifteen steps.",
     "Never invent motivation, intent, trade-offs, or product impact. If the evidence does not state why the change was made, say so as an assumption.",
     "Do not narrate the patch file by file and do not restate code that the diff already shows.",

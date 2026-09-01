@@ -61,23 +61,35 @@ const OWNERSHIP_STATUS_MARKS = {
  * custom properties the web component consumes internally -- nothing outside
  * it can read or reapply them -- so this falls back to a plain Tailwind tint
  * at the same hue. `unchanged` carries no glyph and no tint -- it is the
- * dimmed spine, not a claim.
+ * dimmed spine, not a claim. Each changed kind also carries an `uncited*`
+ * variant, a dimmer version of its own hue for a changed step the model
+ * could not cite a hunk for -- see `FlowRowView`.
  */
 const FLOW_CHANGE_MARKS = {
   added: {
     glyph: "+",
     className: "text-emerald-700 dark:text-emerald-400",
     rowClassName: "bg-emerald-500/10",
+    // An uncited changed step is a claim without evidence: the missing chip
+    // and this muted marker are the signal, not an error state.
+    uncitedClassName: "text-emerald-700/60 dark:text-emerald-400/60",
+    uncitedRowClassName: "bg-emerald-500/5",
   },
   removed: {
     glyph: "−",
     className: "text-rose-700 dark:text-rose-400",
     rowClassName: "bg-rose-500/10",
+    // Same reasoning as `added` above: no surviving hunk citation, so the row
+    // draws as a dimmer version of itself rather than losing its glyph.
+    uncitedClassName: "text-rose-700/60 dark:text-rose-400/60",
+    uncitedRowClassName: "bg-rose-500/5",
   },
   unchanged: {
     glyph: "",
     className: "text-muted-foreground",
     rowClassName: "",
+    uncitedClassName: "text-muted-foreground",
+    uncitedRowClassName: "",
   },
 } as const satisfies Record<
   BriefFlowNode["change"],
@@ -85,6 +97,8 @@ const FLOW_CHANGE_MARKS = {
     readonly glyph: string;
     readonly className: string;
     readonly rowClassName: string;
+    readonly uncitedClassName: string;
+    readonly uncitedRowClassName: string;
   }
 >;
 
@@ -502,6 +516,12 @@ function FlowView({
  * same popover any other chip in Brief does. Added and removed rows get the
  * diff-hue tint from `FLOW_CHANGE_MARKS`; unchanged rows are dimmed and
  * untinted, so the changed steps stand out.
+ *
+ * Hunk citations on a changed step are best effort: the model keeps a step it
+ * added or removed even when it could not place it in the diff. Such a row
+ * has zero citations, so it draws with the dimmer `uncited*` variant of its
+ * hue and no chip -- a claim the Brief could not verify, shown honestly
+ * rather than dropped.
  */
 function FlowRowView({
   row,
@@ -511,13 +531,15 @@ function FlowRowView({
   readonly citedHunks?: Readonly<Record<string, string>> | undefined;
 }): React.JSX.Element {
   const mark = FLOW_CHANGE_MARKS[row.change];
+  const uncited = row.change !== "unchanged" && row.citations.length === 0;
   return (
     <div
-      className={`flex items-baseline gap-2 rounded px-1 py-0.5 font-mono text-xs ${mark.rowClassName}`}
+      className={`flex items-baseline gap-2 rounded px-1 py-0.5 font-mono text-xs ${uncited ? mark.uncitedRowClassName : mark.rowClassName}`}
     >
       <span
         aria-hidden="true"
-        className={`w-3 shrink-0 text-center ${mark.className}`}
+        title={uncited ? "No hunk cited for this step" : undefined}
+        className={`w-3 shrink-0 text-center ${uncited ? mark.uncitedClassName : mark.className}`}
       >
         {mark.glyph}
       </span>

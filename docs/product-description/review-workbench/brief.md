@@ -50,7 +50,7 @@ On success, Patchdesk retains the new Brief for this session and renders its str
 
 Description drift can show both additions in code not reflected in the pull request description and claims in the description not supported by the patch. Reach states how counts were produced. Resolved citations reduce the assumption count.
 
-Flow draws up to three diff-styled views, one per kind — call_tree with real function or method signatures like `validateManualDays(command, suggestion)`, control_flow as short pseudocode lines like `on(save)`, and component as a UI tree like `<SessionToolbar>` — each marking a step added, removed, or unchanged in a marker-column row indented by depth, so the maintainer can see whether the change added a step, dropped one, or reordered around it. An added or removed step needs a surviving hunk citation, while an unchanged step needs none. A tree left with no surviving changed step is dropped, and Flow itself is absent when no view survives. Each view carries a kind badge and its own Copy as diff action, copying that view back out as fenced diff text for pasting elsewhere.
+Flow draws up to three diff-styled views, one per kind — call_tree with real function or method signatures like `validateManualDays(command, suggestion)`, control_flow as short pseudocode lines like `on(save)`, and component as a UI tree like `<SessionToolbar>` — each marking a step added, removed, or unchanged in a marker-column row indented by depth, so the maintainer can see whether the change added a step, dropped one, or reordered around it. Hunk citations are best effort — a changed step with a cited hunk shows a chip that opens the hunk; a changed step the model could not place in the diff is kept, drawn with a muted marker and no chip, and the Brief reads as partially verified. A tree left with no surviving changed step is dropped, and Flow itself is absent when no view survives. Each view carries a kind badge and its own Copy as diff action, copying that view back out as fenced diff text for pasting elsewhere.
 
 ## Variants
 
@@ -100,8 +100,8 @@ Flow draws up to three diff-styled views, one per kind — call_tree with real f
 - A failed Reach calculation explains the omission; a legacy absence is silent.
 - A Brief retained before hunk previews existed keeps plain citation chips with no preview.
 - A Brief retained before Flow existed has no Flow block.
-- A Flow tree is dropped whole when its only changed step cannot be cited, even if the rest of the tree is correct.
 - A second tree of the same kind is not shown; Flow keeps at most one view per kind.
+- A changed Flow step without a hunk citation stays visible with a muted marker and no chip.
 - Directories with more than twelve files collapse the remainder into a count.
 - Evidence chips use short identifiers but keep the full path available in the title. A hunk chip opens a popover showing the cited hunk as a rendered diff; the chip stays plain text when the hunk is too large to preview. Description and commit chips never open a preview.
 - Both directions of description drift can appear together.
