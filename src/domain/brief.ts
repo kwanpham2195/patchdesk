@@ -14,6 +14,7 @@ import {
 import { definedProps } from "./defined-props";
 import type { RepoRelativePath } from "./ids";
 import {
+  filterNarrativePatchToHunks,
   narrativeHunkManifest,
   type NarrativeSnapshot,
 } from "./narrative-walkthrough";
@@ -117,6 +118,14 @@ export type NormalizedBrief = {
   readonly reach?: BriefReach;
   /** Why there is no `reach`; present only when the search was attempted and could not answer. */
   readonly reachUnavailable?: BriefReachUnavailableReason;
+  /**
+   * The one-hunk unified patch text for every `h*` alias this Brief cites,
+   * keyed by alias, so a citation chip can show the hunk in a popover. Cut
+   * from the session patch by Patchdesk, never text the model wrote. Absent
+   * on a Brief retained before this existed, and whenever no cited hunk
+   * could be cut.
+   */
+  readonly citedHunks?: Readonly<Record<string, string>>;
 };
 
 /** Reasons a Brief result is rejected before it can be retained. */
@@ -140,6 +149,17 @@ const MAX_COMMIT_CITATIONS = 100;
 const MAX_LABEL_LENGTH = 200;
 /** `h*` hunks, `d*` description paragraphs, `c*` commits; anything else is not an alias. */
 export const BRIEF_ALIAS_SYNTAX = /^[hdc][1-9]\d*$/;
+/** A hunk larger than this is not something a popover can show; the chip then has no preview. */
+export const MAX_CITED_HUNK_RAW_LENGTH = 16_000;
+/**
+ * The whole `citedHunks` map stays under this many characters, no matter how
+ * many hunks a Brief cites: the workbench projection response the desktop
+ * bridge returns is capped at 8 MB (`maxResponseBytes` in
+ * `src/main/desktop-bridge.ts`), and a Brief can cite up to ~160 hunks, each
+ * as large as `MAX_CITED_HUNK_RAW_LENGTH` -- unchecked, that alone could
+ * approach the cap and fail the projection the Review needs to open.
+ */
+export const MAX_CITED_HUNKS_TOTAL_LENGTH = 256_000;
 
 const citationAliasesSchema = v.pipe(
   v.array(v.pipe(v.string(), v.maxLength(MAX_ALIAS_LENGTH))),
@@ -357,6 +377,15 @@ export function normalizeBrief(
   );
   rejectedCitationCount += startHere.rejected;
 
+  const citedHunks = cutCitedHunks(
+    [
+      ...goal.flatMap((item) => item.citations),
+      ...(drift.value?.claimed.flatMap((item) => item.citations) ?? []),
+      ...(drift.value?.undescribed.flatMap((item) => item.citations) ?? []),
+    ],
+    patch,
+  );
+
   return ok({
     snapshot,
     citationStatus:
@@ -374,6 +403,7 @@ export function normalizeBrief(
     ...definedProps({
       descriptionDrift: drift.value,
       startHere: startHere.value,
+      citedHunks: Object.keys(citedHunks).length > 0 ? citedHunks : undefined,
     }),
     ownership: ownership.value,
   });
@@ -451,6 +481,44 @@ function normalizeDescriptionDrift(
     undescribed.push({ text: item.text.trim(), citations: resolved.citations });
   }
   return { value: { claimed, undescribed }, rejected };
+}
+
+/**
+ * Cuts the one-hunk unified patch text for every `h*` alias among the given
+ * citations, keyed by alias. A hunk `filterNarrativePatchToHunks` cannot cut,
+ * or one whose raw text runs past `MAX_CITED_HUNK_RAW_LENGTH`, is left out of
+ * the map instead of failing the Brief -- the chip then just has no preview.
+ * The ownership contract hunk is never in `citations` here: it already
+ * carries its own `raw` and is not part of `goal` or `descriptionDrift`.
+ *
+ * Aliases are cut in manifest order (`h1`, `h2`, ...) rather than citation
+ * order, so which hunks survive is deterministic. Once the running total would
+ * cross `MAX_CITED_HUNKS_TOTAL_LENGTH`, cutting stops -- a Brief that cites
+ * many large hunks gets the leading ones rather than none, and the map never
+ * grows large enough to threaten the projection response budget.
+ */
+function cutCitedHunks(citations: ReadonlyArray<BriefCitation>, patch: string) {
+  const aliases = new Set<string>();
+  for (const citation of citations)
+    if (citation.kind === "hunk") aliases.add(citation.alias);
+  const ordered = [...aliases].sort(
+    (left, right) => hunkAliasIndex(left) - hunkAliasIndex(right),
+  );
+  const citedHunks: Record<string, string> = {};
+  let totalLength = 0;
+  for (const alias of ordered) {
+    const raw = filterNarrativePatchToHunks(patch, [alias]);
+    if (raw.length === 0 || raw.length > MAX_CITED_HUNK_RAW_LENGTH) continue;
+    if (totalLength + raw.length > MAX_CITED_HUNKS_TOTAL_LENGTH) break;
+    citedHunks[alias] = raw;
+    totalLength += raw.length;
+  }
+  return citedHunks;
+}
+
+/** The number after the `h` in a hunk alias, so cited hunks sort into manifest order. */
+function hunkAliasIndex(alias: string): number {
+  return Number(alias.slice(1));
 }
 
 function invalidBrief(reason: BriefError["reason"]): Result<never, BriefError> {

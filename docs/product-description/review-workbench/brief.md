@@ -96,8 +96,9 @@ Description drift can show both additions in code not reflected in the pull requ
 
 - An older Brief can omit Reach and Start here without showing an error.
 - A failed Reach calculation explains the omission; a legacy absence is silent.
+- A Brief retained before hunk previews existed keeps plain citation chips with no preview.
 - Directories with more than twelve files collapse the remainder into a count.
-- Evidence chips use short identifiers but keep the full path available in the title.
+- Evidence chips use short identifiers but keep the full path available in the title. A hunk chip opens a popover showing the cited hunk as a rendered diff; the chip stays plain text when the hunk is too large to preview. Description and commit chips never open a preview.
 - Both directions of description drift can appear together.
 - A retained Brief remains readable when no provider can start a new run.
 - Generate Walkthrough is offered only when no current Walkthrough stands for the revision; otherwise Open walkthrough is shown.

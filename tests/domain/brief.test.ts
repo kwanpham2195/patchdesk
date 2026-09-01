@@ -4,6 +4,7 @@ import {
   briefManifest,
   normalizeBrief,
   renderBriefManifest,
+  MAX_CITED_HUNKS_TOTAL_LENGTH,
   type BriefOutput,
   type BriefSnapshot,
   type NormalizedBrief,
@@ -15,6 +16,7 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { insightOutputGuidance } from "../../src/domain/insight-output-guidance";
+import { filterNarrativePatchToHunks } from "../../src/domain/narrative-walkthrough";
 import type { Result } from "../../src/domain/result";
 import { parseStoredBrief } from "../../src/domain/stored-brief";
 
@@ -478,5 +480,196 @@ describe("normalizeBrief start here", () => {
     const normalized = startHere(undefined);
     expect(normalized.startHere).toBeUndefined();
     expect(normalized.citationStatus).toBe("verified");
+  });
+});
+
+describe("normalizeBrief cited hunks", () => {
+  /** A patch with one small hunk (h1) and one hunk (h2) past `MAX_CITED_HUNK_RAW_LENGTH`. */
+  function patchWithHugeHunk(): string {
+    const hugeLines = Array.from(
+      { length: 3_000 },
+      (_, index) => `+const huge${String(index)} = ${String(index)};`,
+    );
+    const newCount = 1 + hugeLines.length;
+    return [
+      "diff --git a/src/recovery.ts b/src/recovery.ts",
+      "--- a/src/recovery.ts",
+      "+++ b/src/recovery.ts",
+      "@@ -1,1 +1,2 @@",
+      " const before = true;",
+      "+const first = true;",
+      "diff --git a/src/huge.ts b/src/huge.ts",
+      "--- a/src/huge.ts",
+      "+++ b/src/huge.ts",
+      `@@ -1,1 +1,${String(newCount)} @@`,
+      " const before = true;",
+      ...hugeLines,
+      "",
+    ].join("\n");
+  }
+
+  /** `fileCount` files, each with one same-size hunk, so every cut hunk is the same length. */
+  function patchWithManyHunks(fileCount: number, linesPerHunk: number): string {
+    const lines: Array<string> = [];
+    for (let index = 0; index < fileCount; index += 1) {
+      const path = `src/f${String(index)}.ts`;
+      lines.push(
+        `diff --git a/${path} b/${path}`,
+        `--- a/${path}`,
+        `+++ b/${path}`,
+        `@@ -1,1 +1,${String(linesPerHunk + 1)} @@`,
+        " const before = true;",
+        ...Array.from(
+          { length: linesPerHunk },
+          (_, line) => `+const v${String(line)} = ${String(line)};`,
+        ),
+      );
+    }
+    lines.push("");
+    return lines.join("\n");
+  }
+
+  it("cuts the hunk a Goal cites into citedHunks, keyed by alias", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: [{ text: "Recovery restarts after a crash.", citations: ["h1"] }],
+        assumptions: [],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.citedHunks?.h1).toBe(
+      filterNarrativePatchToHunks(PATCH, ["h1"]),
+    );
+    expect(normalized.value.citedHunks?.h1).toContain("@@ -1,2 +1,3 @@");
+  });
+
+  it("omits citedHunks entirely when every citation is description or commit", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: [
+          { text: "Recovery restarts after a crash.", citations: ["d1"] },
+          { text: "A regression test covers the guard.", citations: ["c2"] },
+        ],
+        assumptions: [],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(Object.hasOwn(normalized.value, "citedHunks")).toBe(false);
+  });
+
+  it("keys one entry per alias however many items cite it", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: [{ text: "Recovery restarts after a crash.", citations: ["h1"] }],
+        assumptions: [],
+        descriptionDrift: {
+          claimed: [],
+          undescribed: [
+            { text: "The same hunk also does this.", citations: ["h1"] },
+          ],
+        },
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(Object.keys(normalized.value.citedHunks ?? {})).toEqual(["h1"]);
+  });
+
+  it("omits a cited hunk whose raw exceeds MAX_CITED_HUNK_RAW_LENGTH but keeps the rest", () => {
+    const patch = patchWithHugeHunk();
+    const normalized = normalizeBrief(
+      {
+        goal: [
+          {
+            text: "Recovery restarts after a crash.",
+            citations: ["h1", "h2"],
+          },
+        ],
+        assumptions: [],
+      },
+      briefManifest({ patch, commits: [] }),
+      patch,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(Object.keys(normalized.value.citedHunks ?? {})).toEqual(["h1"]);
+  });
+
+  it("stops cutting once the running total would cross MAX_CITED_HUNKS_TOTAL_LENGTH", () => {
+    const fileCount = 30;
+    const patch = patchWithManyHunks(fileCount, 700);
+    const manifest = briefManifest({ patch, commits: [] });
+    const aliases = manifest
+      .filter((entry) => entry.kind === "hunk")
+      .map((entry) => entry.alias);
+    const goal: BriefOutput["goal"] = [];
+    for (let start = 0; start < aliases.length; start += 8)
+      goal.push({
+        text: `Group starting at ${String(start)} restarts after a crash.`,
+        citations: aliases.slice(start, start + 8),
+      });
+    const normalized = normalizeBrief(
+      { goal, assumptions: [] },
+      manifest,
+      patch,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    const kept = Object.keys(normalized.value.citedHunks ?? {});
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.length).toBeLessThan(fileCount);
+    expect(kept).toEqual(
+      Array.from(
+        { length: kept.length },
+        (_, index) => `h${String(index + 1)}`,
+      ),
+    );
+    const totalLength = Object.values(normalized.value.citedHunks ?? {}).reduce(
+      (sum, raw) => sum + raw.length,
+      0,
+    );
+    expect(totalLength).toBeLessThanOrEqual(MAX_CITED_HUNKS_TOTAL_LENGTH);
+  });
+
+  it("round-trips citedHunks through the stored-Brief parser", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: [{ text: "Recovery restarts after a crash.", citations: ["h1"] }],
+        assumptions: [],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(normalized.value.citedHunks?.h1).toBeDefined();
+    expect(
+      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
+    ).toEqual({ _tag: "ok", value: normalized.value });
+  });
+
+  it("still reads a stored Brief with no citedHunks", () => {
+    const normalized = normalizeBrief(
+      {
+        goal: [{ text: "Recovery restarts after a crash.", citations: ["d1"] }],
+        assumptions: [],
+      },
+      MANIFEST,
+      PATCH,
+      SNAPSHOT,
+    );
+    if (normalized._tag === "err") throw new Error("expected a Brief");
+    expect(Object.hasOwn(normalized.value, "citedHunks")).toBe(false);
+    expect(
+      parseStoredBrief(JSON.parse(JSON.stringify(normalized.value))),
+    ).toEqual({ _tag: "ok", value: normalized.value });
   });
 });

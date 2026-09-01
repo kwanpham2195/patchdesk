@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Made hunk citation chips in Brief open a preview of the cited hunk as a rendered diff; a hunk too large to preview keeps a plain chip, and so does a Brief retained before this change.
+
 ## 0.1.3 - 2026-09-01
 
 - Fixed release installs when the machine's pnpm peer setting differs from the locked Flue runtime.

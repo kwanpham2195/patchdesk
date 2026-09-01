@@ -145,6 +145,13 @@ const storedBriefSchema = v.strictObject({
       "timed_out",
     ]),
   ),
+  /** Absent on a Brief retained before this existed, and whenever no cited hunk could be cut. */
+  citedHunks: v.optional(
+    v.record(
+      v.pipe(v.string(), v.regex(BRIEF_ALIAS_SYNTAX)),
+      v.pipe(v.string(), v.minLength(1)),
+    ),
+  ),
 });
 
 type StoredBriefCitation = v.InferOutput<typeof storedCitationSchema>;
@@ -207,6 +214,7 @@ export function parseStoredBrief(
       startHere: storedStartHere(parsed.output.startHere),
       reach: storedReach(parsed.output.reach),
       reachUnavailable: parsed.output.reachUnavailable,
+      citedHunks: parsed.output.citedHunks,
     }),
   });
 }

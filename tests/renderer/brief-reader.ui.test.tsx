@@ -64,6 +64,14 @@ const CONTRACT = {
   caption: "the writer's new return type",
 };
 
+const retainedWithCitedHunk = () => {
+  const base = retained();
+  return {
+    ...base,
+    value: { ...briefValue, citedHunks: { h1: CONTRACT_PATCH } },
+  };
+};
+
 const retainedWithOwnership = (withContract: boolean) => {
   const base = retained();
   return {
@@ -335,6 +343,43 @@ describe("BriefReader", () => {
       screen.getByRole("button", { name: "Generate walkthrough" }),
     );
     expect(onOpenWalkthrough).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a hunk preview from a cited chip", async () => {
+    const user = userEvent.setup();
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retainedWithCitedHunk()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "Show hunk a.ts · h1",
+    });
+    expect(trigger.textContent).toContain("a.ts · h1");
+    expect(screen.queryByText("src/a.ts")).toBeNull();
+
+    await user.click(trigger);
+
+    expect(screen.getByText("src/a.ts")).toBeTruthy();
+    expect(screen.getByText("-old")).toBeTruthy();
+  });
+
+  it("renders a plain chip when the hunk has no preview", () => {
+    render(
+      <BriefReader
+        {...walkthroughLink}
+        retained={retained()}
+        onRegenerate={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Show hunk a.ts · h1" }),
+    ).toBeNull();
+    expect(screen.queryByText("src/a.ts")).toBeNull();
   });
 
   it("disables regeneration when no run may start", () => {

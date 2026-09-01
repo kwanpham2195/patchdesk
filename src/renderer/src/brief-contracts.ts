@@ -3,6 +3,9 @@ import * as v from "valibot";
 import { definedProps } from "../../domain/defined-props";
 import { insightFields, retainedInsightFields } from "./insight-contracts";
 
+/** Mirrors `BRIEF_ALIAS_SYNTAX` in `src/domain/brief.ts`. */
+const BRIEF_ALIAS_SYNTAX = /^[hdc][1-9]\d*$/;
+
 /**
  * The renderer's view of one retained Brief.
  *
@@ -151,6 +154,13 @@ const briefSchema = v.strictObject({
       "search_failed",
       "timed_out",
     ]),
+  ),
+  /** Absent on a Brief retained before this existed, and whenever no cited hunk could be cut. */
+  citedHunks: v.optional(
+    v.record(
+      v.pipe(v.string(), v.regex(BRIEF_ALIAS_SYNTAX)),
+      v.pipe(v.string(), v.minLength(1)),
+    ),
   ),
 });
 

@@ -25,6 +25,7 @@ import { GeneratedMarkdownInline } from "./generated-markdown";
 import { ReviewDiffView } from "./review-diff-view";
 import { ScopeGauge } from "./scope-gauge";
 import { Button } from "./ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type RetainedBrief = NonNullable<BriefInsight["retained"]>;
 
@@ -102,7 +103,11 @@ export function BriefReader({
               <p key={item.text}>
                 <GeneratedMarkdownInline markdown={item.text} />{" "}
                 {item.citations.map((citation) => (
-                  <CitationChip key={citation.alias} citation={citation} />
+                  <CitationChip
+                    key={citation.alias}
+                    citation={citation}
+                    raw={brief.citedHunks?.[citation.alias]}
+                  />
                 ))}
               </p>
             ))}
@@ -148,6 +153,7 @@ export function BriefReader({
                     mark="!"
                     markClassName="bg-status-warning/15 text-status-warning"
                     citations={item.citations}
+                    citedHunks={brief.citedHunks}
                   >
                     <q className="text-muted-foreground">
                       <GeneratedMarkdownInline markdown={item.quote} />
@@ -166,6 +172,7 @@ export function BriefReader({
                     mark="+"
                     markClassName="bg-status-info/15 text-status-info"
                     citations={item.citations}
+                    citedHunks={brief.citedHunks}
                   >
                     <GeneratedMarkdownInline markdown={item.text} />
                   </DriftItem>
@@ -372,19 +379,39 @@ function OwnershipContract({
         <span className="font-mono">{contract.path}</span> ·{" "}
         <GeneratedMarkdownInline markdown={contract.caption} />
       </p>
-      <div className="max-h-96 overflow-auto">
-        <ReviewDiffView
-          patch={contract.raw}
-          parsedFiles={parsed.files}
-          fileStatsByPath={parsed.statsByPath}
-          selectedPath={contract.path}
-          preferences={contractPreferences}
-          collapsedPaths={new Set()}
-          onPreferencesChange={() => undefined}
-          onCollapsedPathsChange={() => undefined}
-          virtualized={false}
-        />
-      </div>
+      <HunkDiff raw={contract.raw} path={contract.path} />
+    </div>
+  );
+}
+
+/**
+ * The one place that renders a complete one-hunk unified patch: the Shape
+ * card's contract hunk and a clicked hunk-citation popover both mount this,
+ * rather than each carrying its own `<ReviewDiffView>`. `raw` is app-owned
+ * bytes cut by the main process, never anything the model wrote.
+ */
+function HunkDiff({
+  raw,
+  path,
+}: {
+  readonly raw: string;
+  readonly path?: string | undefined;
+}): React.JSX.Element | null {
+  const parsed = useMemo(() => parseReviewDiff(raw), [raw]);
+  if (parsed.files.length === 0) return null;
+  return (
+    <div className="max-h-96 overflow-auto">
+      <ReviewDiffView
+        patch={raw}
+        parsedFiles={parsed.files}
+        fileStatsByPath={parsed.statsByPath}
+        selectedPath={path}
+        preferences={contractPreferences}
+        collapsedPaths={new Set()}
+        onPreferencesChange={() => undefined}
+        onCollapsedPathsChange={() => undefined}
+        virtualized={false}
+      />
     </div>
   );
 }
@@ -432,11 +459,13 @@ function DriftItem({
   mark,
   markClassName,
   citations,
+  citedHunks,
   children,
 }: {
   readonly mark: string;
   readonly markClassName: string;
   readonly citations: ReadonlyArray<BriefCitation>;
+  readonly citedHunks?: Readonly<Record<string, string>> | undefined;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   return (
@@ -450,7 +479,11 @@ function DriftItem({
       <span className="min-w-0">
         {children}{" "}
         {citations.map((citation) => (
-          <CitationChip key={citation.alias} citation={citation} />
+          <CitationChip
+            key={citation.alias}
+            citation={citation}
+            raw={citedHunks?.[citation.alias]}
+          />
         ))}
       </span>
     </li>
@@ -472,24 +505,64 @@ function ProvenanceRow({
   );
 }
 
+const CITATION_CHIP_CLASS_NAME =
+  "mx-0.5 inline-flex items-center gap-1 rounded border bg-accent px-1.5 align-baseline font-mono text-[10px] text-muted-foreground";
+
 /**
  * One resolved citation. The kind is carried by an icon rather than a color:
  * hunk, description, and commit are evidence kinds, not statuses, so they never
- * take a status hue.
+ * take a status hue. `raw` is the one-hunk patch this citation's alias cut out
+ * of the session patch (only ever present for a `kind === "hunk"` citation);
+ * when it is present the chip becomes a button that opens the hunk in a
+ * popover, and when it is absent the chip stays the plain, non-interactive
+ * span it always was.
  */
 function CitationChip({
   citation,
+  raw,
 }: {
   readonly citation: BriefCitation;
+  readonly raw?: string | undefined;
 }): React.JSX.Element {
   const Icon = CITATION_ICONS[citation.kind];
+  const chipLabel = briefCitationChipLabel(citation);
+  if (raw === undefined) {
+    return (
+      <span
+        title={briefCitationChipTitle(citation)}
+        className={CITATION_CHIP_CLASS_NAME}
+      >
+        <Icon aria-hidden="true" className="size-3" />
+        {chipLabel}
+      </span>
+    );
+  }
   return (
-    <span
-      title={briefCitationChipTitle(citation)}
-      className="mx-0.5 inline-flex items-center gap-1 rounded border bg-accent px-1.5 align-baseline font-mono text-[10px] text-muted-foreground"
-    >
-      <Icon aria-hidden="true" className="size-3" />
-      {briefCitationChipLabel(citation)}
-    </span>
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            title={briefCitationChipTitle(citation)}
+            aria-label={`Show hunk ${chipLabel}`}
+            className={`${CITATION_CHIP_CLASS_NAME} hover:bg-accent/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring`}
+          />
+        }
+      >
+        <Icon aria-hidden="true" className="size-3" />
+        {chipLabel}
+      </PopoverTrigger>
+      <PopoverContent className="w-[min(48rem,90vw)] gap-0 p-0">
+        <p className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {citation.path === undefined ? null : (
+            <>
+              <span className="font-mono">{citation.path}</span> ·{" "}
+            </>
+          )}
+          {citation.label}
+        </p>
+        <HunkDiff raw={raw} path={citation.path} />
+      </PopoverContent>
+    </Popover>
   );
 }
