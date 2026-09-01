@@ -1,18 +1,23 @@
 import {
   access,
+  cp,
   mkdtemp,
   mkdir,
+  readdir,
   readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { stageFlueRuntime } from "../../scripts/stage-flue-runtime-lib.mjs";
 
 const roots: string[] = [];
+const execFileAsync = promisify(execFile);
 afterEach(
   async () =>
     await Promise.all(
@@ -120,10 +125,9 @@ describe("stageFlueRuntime", () => {
     expect(runtimePackage.scripts["deploy:verify"]).toContain(
       "--config.auto-install-peers=false",
     );
-    expect(runtimePackage.devDependencies).not.toHaveProperty("typescript");
+    expect(runtimePackage.devDependencies.typescript).toBe("5.9.3");
     expect(runtimePackage.dependencies.zod).toBe("4.4.3");
     expect(runtimeLock).toContain("autoInstallPeers: false");
-    expect(runtimeLock).not.toMatch(/\/typescript@|valibot@[^\n]*typescript/);
     for (const providerSdk of [
       "@anthropic-ai/sdk",
       "@aws-sdk/client-bedrock-runtime",
@@ -140,6 +144,47 @@ describe("stageFlueRuntime", () => {
       );
     }
   });
+
+  it("keeps TypeScript for development but removes it from the staged production tree", async () => {
+    const projectRoot = resolve(import.meta.dirname, "../..");
+    const fixture = await createFixture();
+    await Promise.all([
+      cp(
+        join(projectRoot, "runtime/flue/package.json"),
+        join(fixture.projectRoot, "runtime/flue/package.json"),
+      ),
+      cp(
+        join(projectRoot, "runtime/flue/pnpm-lock.yaml"),
+        join(fixture.projectRoot, "runtime/flue/pnpm-lock.yaml"),
+      ),
+    ]);
+
+    await stageFlueRuntime({
+      ...fixture,
+      run: async (command: string, args: string[]) => {
+        if (args.includes("build")) return "";
+        const { stdout } = await execFileAsync(command, args, {
+          cwd: fixture.projectRoot,
+        });
+        return stdout;
+      },
+    });
+
+    const stagedPaths = await readdir(
+      join(fixture.runtimeRoot, "node_modules"),
+      { recursive: true },
+    );
+    expect(
+      stagedPaths.filter((path) =>
+        path
+          .split("/")
+          .some(
+            (segment) =>
+              segment === "typescript" || segment.startsWith("typescript@"),
+          ),
+      ),
+    ).toEqual([]);
+  }, 30_000);
 });
 
 async function createFixture() {

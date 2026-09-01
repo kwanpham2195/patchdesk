@@ -1,4 +1,12 @@
-import { access, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
@@ -75,6 +83,35 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
       { cause: error },
     );
   }
+  // pnpm 8 links a direct dev-only TypeScript into Valibot's optional peer
+  // graph even for --prod, so remove that type-only payload after resolution.
+  const nodeModules = join(runtimeRoot, "node_modules");
+  const virtualStore = join(nodeModules, ".pnpm");
+  const virtualStoreEntries = await readdir(virtualStore, {
+    withFileTypes: true,
+  }).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  await Promise.all([
+    rm(join(nodeModules, "typescript"), { recursive: true, force: true }),
+    ...virtualStoreEntries
+      .filter((entry) => entry.isDirectory())
+      .flatMap((entry) => [
+        ...(entry.name.startsWith("typescript@")
+          ? [
+              rm(join(virtualStore, entry.name), {
+                recursive: true,
+                force: true,
+              }),
+            ]
+          : []),
+        rm(join(virtualStore, entry.name, "node_modules", "typescript"), {
+          recursive: true,
+          force: true,
+        }),
+      ]),
+  ]);
   await Promise.all([
     access(join(runtimeRoot, "patchdesk-insight-runner.js")),
     access(join(runtimeRoot, "package-smoke-runner.js")),

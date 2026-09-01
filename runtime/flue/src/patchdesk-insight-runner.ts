@@ -169,7 +169,7 @@ export async function runPatchdeskChild(
       return {
         ok: false,
         reason: "execution_failed",
-        detail: redactedFailureDetail(cause),
+        ...definedProps({ detail: redactedFailureDetail(cause) }),
       };
     } finally {
       options.signal?.removeEventListener("abort", abort);
