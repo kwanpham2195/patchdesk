@@ -4,6 +4,10 @@
 
 - Moved the review navigator toggle into the diff header, keeping the file path aligned when the navigator opens or closes.
 - Improved motion across dialogs, popovers, drawers, disclosures, busy progress, Insight completions, and Walkthrough focus transitions, while keeping the command palette, tooltips, and trigger-aligned selects instant.
+- Protected Settings profile edits when creating a new profile, showed field-specific validation before saving, and kept the Repository picker in sync after a profile switch.
+- Improved workspace discovery by grouping repositories at directory boundaries and preserving usable ready and watched repositories when one workspace root fails.
+- Made Pull requests and Review actions more reliable with separate Open Review and merge-readiness actions, profile-scoped opening errors, text-editor shortcut protection, and clear Resolve permission guidance.
+- Clarified reading surfaces with Analysis and Review activity empty states, Walkthrough section counts and boundary controls, and visible Diff file, hunk, and thread targets and boundaries.
 
 ## 0.1.0 - 2026-08-30
 
