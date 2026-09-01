@@ -143,10 +143,34 @@ async function expectStatus(input: {
   });
 }
 
+async function expectFileTargetOrFirst(): Promise<void> {
+  await waitFor(() => {
+    const status = screen.getByRole("status", {
+      name: "Diff navigation status",
+    });
+    expect(status.dataset.navigationKind).toBe("file");
+    expect(["target", "first"]).toContain(status.dataset.navigationState);
+  });
+}
+
+async function expectHunkTargetOrFirst(): Promise<void> {
+  await waitFor(() => {
+    const status = screen.getByRole("status", {
+      name: "Diff navigation status",
+    });
+    expect(status.dataset.navigationKind).toBe("hunk");
+    expect(["target", "first"]).toContain(status.dataset.navigationState);
+  });
+}
+
 describe("ReviewDiffView navigation feedback", () => {
   it("shows one structured landed or boundary status for file, hunk, and comment navigation", async () => {
     enablePierre();
     renderNavigationDiff();
+    press(",");
+    await expectFileTargetOrFirst();
+    press(",");
+    await expectStatus({ kind: "file", state: "first", total: 2 });
     press(".");
     await expectStatus({
       kind: "file",
@@ -157,6 +181,22 @@ describe("ReviewDiffView navigation feedback", () => {
     });
     press(".");
     await expectStatus({ kind: "file", state: "last", total: 2 });
+    press(",");
+    await expectStatus({
+      kind: "file",
+      state: "target",
+      position: 1,
+      total: 2,
+      path: "src/a.ts",
+    });
+    press(",");
+    await expectStatus({ kind: "file", state: "first", total: 2 });
+    press("[");
+    await expectHunkTargetOrFirst();
+    press("[");
+    await expectHunkTargetOrFirst();
+    press("[");
+    await expectStatus({ kind: "hunk", state: "first", total: 3 });
     press("]");
     await expectStatus({
       kind: "hunk",
