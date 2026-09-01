@@ -2,7 +2,7 @@
 
 ## Summary
 
-Brief gives the maintainer a reading orientation for the represented Review before detailed inspection. It combines deterministic change shape, reach, description drift, a suggested reading order, and optionally model-backed prose retained for the exact Review session. The maintainer reaches it in Insights. A retained Brief remains readable even when a new Insight run cannot start.
+Brief gives the maintainer a reading orientation for the represented Review before detailed inspection. It combines model-drawn Flow views, deterministic change shape and reach, and a suggested reading order, retained for the exact Review session. The maintainer reaches it in Insights. A retained Brief remains readable even when a new Insight run cannot start.
 
 ## The simple case
 
@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Brief occupies the Insights slot for the represented Review. A retained result can contain generated Markdown, description-drift regions, a grouped Shape tree, up to three Flow views, one per kind, an optional contract hunk, four Reach rows, Start here reading order, citations, and assumptions.
+Brief occupies the Insights slot for the represented Review. A retained result can contain up to three Flow views, one per kind, a grouped Shape tree, an optional contract hunk, Start here reading order, four Reach rows, and citations.
 
 Older retained Briefs can lack Reach or Start here because those fields did not exist when the artifact was stored. Patchdesk omits an absent legacy block without inventing data. When Reach was attempted but could not answer, the reader says why.
 
@@ -46,11 +46,11 @@ Provider unavailability, invocation failure, timeout, invalid output, or cancell
 
 ### Settle
 
-On success, Patchdesk retains the new Brief for this session and renders its structured sections. Shape groups files by directory and collapses a directory after twelve files into a counted remainder. Evidence uses its shortest meaningful identifier while preserving full paths in titles.
-
-Description drift can show both additions in code not reflected in the pull request description and claims in the description not supported by the patch. Reach states how counts were produced. Resolved citations reduce the assumption count.
+On success, Patchdesk retains the new Brief for this session and renders its structured sections.
 
 Flow draws up to three diff-styled views, one per kind — call_tree with real function or method signatures like `validateManualDays(command, suggestion)`, control_flow as short pseudocode lines like `on(save)`, and component as a UI tree like `<SessionToolbar>` — each marking a step added, removed, or unchanged in a marker-column row indented by depth, so the maintainer can see whether the change added a step, dropped one, or reordered around it. Hunk citations are best effort — a changed step with a cited hunk shows a chip that opens the hunk; a changed step the model could not place in the diff is kept, drawn with a muted marker and no chip, and the Brief reads as partially verified. A tree left with no surviving changed step is dropped, and Flow itself is absent when no view survives. Each view carries a kind badge and its own Copy as diff action, copying that view back out as fenced diff text for pasting elsewhere.
+
+Shape groups files by directory and collapses a directory after twelve files into a counted remainder. Evidence uses its shortest meaningful identifier while preserving full paths in titles. Reach states how counts were produced.
 
 ## Variants
 
@@ -103,8 +103,7 @@ Flow draws up to three diff-styled views, one per kind — call_tree with real f
 - A second tree of the same kind is not shown; Flow keeps at most one view per kind.
 - A changed Flow step without a hunk citation stays visible with a muted marker and no chip.
 - Directories with more than twelve files collapse the remainder into a count.
-- Evidence chips use short identifiers but keep the full path available in the title. A hunk chip opens a popover showing the cited hunk as a rendered diff; the chip stays plain text when the hunk is too large to preview. Description and commit chips never open a preview.
-- Both directions of description drift can appear together.
+- Evidence chips use short identifiers but keep the full path available in the title. A hunk chip opens a popover showing the cited hunk as a rendered diff; the chip stays plain text when the hunk is too large to preview. A description or commit chip from an older Brief never opens a preview.
 - A retained Brief remains readable when no provider can start a new run.
 - Generate Walkthrough is offered only when no current Walkthrough stands for the revision; otherwise Open walkthrough is shown.
 - A status-read failure retains the run identity so polling can resume.

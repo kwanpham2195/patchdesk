@@ -195,7 +195,7 @@ It re-validates every projection: a 200 response from the API does not mean the 
 
 The isolated model runtime (ADR "Run Flue 2 Insights in Patchdesk-owned one-shot children").
 Each Analysis run, Walkthrough, or Brief runs in one dedicated one-shot child built on the Flue 2 programmatic Node API.
-The Brief child is the narrowest of the three: it mounts only the result-submission tool, and its evidence — the patch, the pull request description, and the commit subjects — is supplied on the invocation rather than fetched, so the child reads nothing for itself.
+The Brief child is the narrowest of the three: it mounts only the result-submission tool, and its evidence — the patch — is supplied on the invocation rather than fetched, so the child reads nothing for itself.
 
 The parent sends one bounded, strictly parsed invocation through stdin.
 The child starts one in-memory Flue runtime, runs one finite request, submits one strict result, and exits.
