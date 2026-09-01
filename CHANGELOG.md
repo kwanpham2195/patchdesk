@@ -4,7 +4,7 @@
 
 - Made hunk citation chips in Brief open a preview of the cited hunk as a rendered diff; a hunk too large to preview keeps a plain chip, and so does a Brief retained before this change.
 - Added a **Flow** block to Brief: up to three diff-styled views, one per kind — call_tree, control_flow, component — with each step marked added, removed, or unchanged, hunk citations on changed steps where the patch shows them, and a per-view Copy as diff action; a Brief retained before this change has no Flow.
-- Removed the Goal, Assumptions, and Description vs diff blocks from Brief; Brief now shows Flow, Shape, Start here, and Reach, and Briefs retained by earlier releases still open without those blocks.
+- Removed the Goal, Assumptions, and Description vs diff blocks from Brief, and the Shape block's contract hunk; Brief now shows Flow, Shape, Start here, and Reach, and Briefs retained by earlier releases still open without those blocks.
 
 ## 0.1.3 - 2026-09-01
 

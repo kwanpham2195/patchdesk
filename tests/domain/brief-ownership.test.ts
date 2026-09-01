@@ -92,7 +92,6 @@ describe("normalizeBriefOwnership", () => {
     const normalized = normalizeBriefOwnership(undefined, PATCH);
     expect(normalized.value.files).toHaveLength(4);
     expect(normalized.value.notes).toEqual([]);
-    expect(normalized.value.contract).toBeUndefined();
     expect(normalized.rejected).toBe(0);
   });
 
@@ -122,40 +121,5 @@ describe("normalizeBriefOwnership", () => {
       notes: [{ path: "src/writer.ts", note: "n".repeat(200) }],
     });
     expect(normalized.value.notes[0]?.note).toHaveLength(140);
-  });
-
-  it("cuts the contract hunk out of the patch when its citation resolves", () => {
-    const normalized = ownership({
-      notes: [],
-      contract: { citation: "h1", caption: "the writer's new return type" },
-    });
-    expect(normalized.value.contract?.path).toBe("src/writer.ts");
-    expect(normalized.value.contract?.caption).toBe(
-      "the writer's new return type",
-    );
-    expect(normalized.value.contract?.raw).toContain(
-      "diff --git a/src/writer.ts b/src/writer.ts",
-    );
-    expect(normalized.value.contract?.raw).toContain("+const after = 2;");
-    expect(normalized.value.contract?.raw).not.toContain("src/added.ts");
-    expect(normalized.rejected).toBe(0);
-  });
-
-  it("drops a contract whose citation names no hunk of this patch", () => {
-    const normalized = ownership({
-      notes: [],
-      contract: { citation: "h99", caption: "nothing points here" },
-    });
-    expect(normalized.value.contract).toBeUndefined();
-    expect(normalized.rejected).toBe(1);
-  });
-
-  it("drops a contract cited by something that is not a hunk alias", () => {
-    const normalized = ownership({
-      notes: [],
-      contract: { citation: "d1", caption: "a description is not a hunk" },
-    });
-    expect(normalized.value.contract).toBeUndefined();
-    expect(normalized.rejected).toBe(1);
   });
 });

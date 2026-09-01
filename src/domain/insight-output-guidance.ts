@@ -46,7 +46,6 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
     SIMPLIFIED_TECHNICAL_ENGLISH,
     "Write a Brief: the structure of this change -- its flow, ownership, and where to start reading.",
     "In ownership.notes, give at most one short note for each changed file, keyed by its exact path from the patch. Say what the file is responsible for after the change; do not say what the code does.",
-    "In ownership.contract, name the one hunk whose signature or type explains the rest of the patch: put its h alias in citation and write a one-line caption. Omit ownership.contract if no single hunk does that.",
     "In startHere.lead, write one sentence of reading advice: which file to read first, and why the rest follow from it.",
     "In startHere.order, list the first 3 to 5 files to read, in the order to read them, each by its exact path from the patch and with a short why. Patchdesk drops a path that is not a file this patch changes.",
     "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, and component. Omit a kind the patch does not change, and omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",

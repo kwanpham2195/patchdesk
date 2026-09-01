@@ -42,14 +42,8 @@ const storedOwnershipSchema = v.strictObject({
       note: v.pipe(v.string(), v.minLength(1)),
     }),
   ),
-  contract: v.optional(
-    v.strictObject({
-      path: v.pipe(v.string(), v.minLength(1)),
-      header: v.string(),
-      raw: v.pipe(v.string(), v.minLength(1)),
-      caption: v.pipe(v.string(), v.minLength(1)),
-    }),
-  ),
+  /** Written by Briefs retained before this release; read and ignored. Delete after the next release (ADR 0040 drops the Shape contract hunk). */
+  contract: v.optional(v.unknown()),
 });
 const storedStartHereSchema = v.strictObject({
   lead: v.pipe(v.string(), v.minLength(1)),
@@ -261,11 +255,7 @@ function storedOwnership(
   stored: v.InferOutput<typeof storedOwnershipSchema> | undefined,
 ): BriefOwnership | undefined {
   if (stored === undefined) return undefined;
-  return {
-    files: stored.files,
-    notes: stored.notes,
-    ...definedProps({ contract: stored.contract }),
-  };
+  return { files: stored.files, notes: stored.notes };
 }
 
 /**

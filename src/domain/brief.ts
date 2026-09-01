@@ -167,21 +167,20 @@ export const briefOutputSchema = v.strictObject({
  * The JSON contract every Brief child is given, stated once for both
  * providers. Brief is structure-first (ADR 0040): four blocks, no prose.
  *
- * `ownership` is Patchdesk's own skeleton with the model's per-file notes and
- * its one contract caption. `startHere` is the reading order. `flow` is
- * optional, like `ownership` and `startHere`: a Brief with no flow proposed
- * is still a complete Brief. Every tree carries a `kind`: `call_tree` is real
- * function or method names with parameter names as written in the patch,
- * `control_flow` is short pseudocode lines, and `component` is a
- * `<ComponentName>` tree. Every `added`/`removed` node should cite a hunk
- * when the patch shows it -- a description or commit alias is never
- * evidence that a runtime step changed, no matter how it is paired with a
- * real one; an uncited step is kept and marked, not dropped. `reachSymbols`
- * names the candidates for the counted Reach block; the model never writes
- * the count itself.
+ * `ownership` is Patchdesk's own skeleton with the model's per-file notes.
+ * `startHere` is the reading order. `flow` is optional, like `ownership` and
+ * `startHere`: a Brief with no flow proposed is still a complete Brief.
+ * Every tree carries a `kind`: `call_tree` is real function or method names
+ * with parameter names as written in the patch, `control_flow` is short
+ * pseudocode lines, and `component` is a `<ComponentName>` tree. Every
+ * `added`/`removed` node should cite a hunk when the patch shows it -- a
+ * description or commit alias is never evidence that a runtime step
+ * changed, no matter how it is paired with a real one; an uncited step is
+ * kept and marked, not dropped. `reachSymbols` names the candidates for the
+ * counted Reach block; the model never writes the count itself.
  */
 export const BRIEF_RESULT_CONTRACT =
-  '{"ownership":{"notes":[{"path":string,"note":string}],"contract":{"citation":string,"caption":string}},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"kind":"call_tree"|"control_flow"|"component","title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"reachSymbols":[string]}';
+  '{"ownership":{"notes":[{"path":string,"note":string}]},"startHere":{"lead":string,"order":[{"path":string,"why":string}]},"flow":[{"kind":"call_tree"|"control_flow"|"component","title":string,"nodes":[{"label":string,"change":"added"|"removed"|"unchanged","citations":[string],"children":[...]}]}],"reachSymbols":[string]}';
 
 export type BriefOutput = v.InferOutput<typeof briefOutputSchema>;
 export type InvalidBriefOutput = { readonly _tag: "InvalidBriefOutput" };
@@ -246,9 +245,8 @@ export function renderBriefManifest(manifest: BriefManifest): string {
  * all -- a rename, a docs change, a pure refactor -- is still a complete,
  * valid Brief with Ownership, Start here, and Reach.
  *
- * The patch is passed beside the manifest because the Ownership block's skeleton
- * and its one contract hunk are cut from the patch itself, never asked of the
- * model.
+ * The patch is passed beside the manifest because the Ownership block's
+ * skeleton is cut from the patch itself, never asked of the model.
  */
 export function normalizeBrief(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the Brief result's normalization boundary; the very next statement runs `safeParse(briefOutputSchema, raw)` against it before anything else touches it.
@@ -301,8 +299,6 @@ export function normalizeBrief(
  * citations, keyed by alias. A hunk `filterNarrativePatchToHunks` cannot cut,
  * or one whose raw text runs past `MAX_CITED_HUNK_RAW_LENGTH`, is left out of
  * the map instead of failing the Brief -- the chip then just has no preview.
- * The ownership contract hunk is never in `citations` here: it already
- * carries its own `raw` and is not part of Flow.
  *
  * Aliases are cut in manifest order (`h1`, `h2`, ...) rather than citation
  * order, so which hunks survive is deterministic. Once the running total would

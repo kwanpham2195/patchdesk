@@ -151,6 +151,30 @@ describe("normalizeBrief", () => {
     });
   });
 
+  it("still parses a stored Brief whose ownership carries a legacy contract hunk, and returns none of it", () => {
+    // ADR 0040 drops the Shape block's contract hunk; a Brief retained before
+    // that still carries the key in its stored `ownership`, tolerated and
+    // ignored the same way the top-level 0.1.3 keys are below.
+    const stored = {
+      snapshot: SNAPSHOT,
+      citationStatus: "verified",
+      ownership: {
+        files: [],
+        notes: [],
+        contract: {
+          path: "src/recovery.ts",
+          header: "@@ -1,2 +1,3 @@",
+          raw: "diff --git a/src/recovery.ts b/src/recovery.ts\n",
+          caption: "the old contract caption",
+        },
+      },
+    };
+    const parsed = parseStoredBrief(stored);
+    if (parsed._tag === "err") throw new Error("expected a Brief");
+    expect(parsed.value.ownership).toEqual({ files: [], notes: [] });
+    expect(Object.hasOwn(parsed.value.ownership ?? {}, "contract")).toBe(false);
+  });
+
   it("still parses a stored Brief carrying 0.1.3's goal, assumptions, and descriptionDrift keys, and returns none of them", () => {
     const stored = {
       snapshot: SNAPSHOT,

@@ -1,11 +1,6 @@
 import * as v from "valibot";
 
 import { classifyChangedPath } from "./change-scope";
-import { definedProps } from "./defined-props";
-import {
-  filterNarrativePatchToHunks,
-  narrativeHunkManifest,
-} from "./narrative-walkthrough";
 import { tokenizeUnifiedPatch } from "./unified-patch";
 
 /*
@@ -37,31 +32,16 @@ type BriefOwnershipNote = {
   readonly note: string;
 };
 
-/**
- * The one hunk whose signature or type explains the rest of the patch. The
- * model names it by alias and writes the caption; `raw` is cut from the patch
- * by Patchdesk, so the diff a reviewer reads is never model-written text.
- */
-type BriefOwnershipContract = {
-  readonly path: string;
-  readonly header: string;
-  /** A complete one-hunk unified patch: the file header, then the hunk. */
-  readonly raw: string;
-  readonly caption: string;
-};
-
-/** The Ownership block: Patchdesk's skeleton, the model's notes, and one contract hunk. */
+/** The Ownership block: Patchdesk's skeleton and the model's notes. */
 export type BriefOwnership = {
   readonly files: ReadonlyArray<BriefOwnershipFile>;
   readonly notes: ReadonlyArray<BriefOwnershipNote>;
-  readonly contract?: BriefOwnershipContract;
 };
 
 const MAX_OWNERSHIP_NOTES = 60;
 const MAX_OWNERSHIP_NOTE_LENGTH = 140;
 const MAX_OWNERSHIP_TEXT_LENGTH = 400;
 const MAX_OWNERSHIP_PATH_LENGTH = 1_024;
-const MAX_OWNERSHIP_ALIAS_LENGTH = 16;
 
 /**
  * The Ownership keys a Brief child may return. The skeleton is not among them: a
@@ -86,26 +66,12 @@ export const briefOwnershipOutputSchema = v.optional(
       ),
       v.maxLength(MAX_OWNERSHIP_NOTES),
     ),
-    contract: v.optional(
-      v.strictObject({
-        citation: v.pipe(v.string(), v.maxLength(MAX_OWNERSHIP_ALIAS_LENGTH)),
-        caption: v.pipe(
-          v.string(),
-          v.minLength(1),
-          v.maxLength(MAX_OWNERSHIP_TEXT_LENGTH),
-        ),
-      }),
-    ),
   }),
 );
 
 export type BriefOwnershipOutput = v.InferOutput<
   typeof briefOwnershipOutputSchema
 >;
-
-/** The contract a Brief child offered, before Patchdesk resolves its citation. */
-type BriefOwnershipContractOutput =
-  NonNullable<BriefOwnershipOutput>["contract"];
 
 /** The Ownership block that survived normalization, and what it cost in citations. */
 export type NormalizedBriefOwnership = {
@@ -189,9 +155,7 @@ export function briefOwnershipFiles(
  *
  * A note survives only when its path is one of the changed files the skeleton
  * kept; a note on a file outside the diff is the model naming something it did
- * not read. The contract survives only when its citation names a hunk of this
- * patch, and its diff text is then cut from that patch rather than taken from
- * the model. Everything dropped is counted, so the Brief's citation status
+ * not read. Everything dropped is counted, so the Brief's citation status
  * records it.
  */
 export function normalizeBriefOwnership(
@@ -213,29 +177,7 @@ export function normalizeBriefOwnership(
     noted.add(item.path);
     notes.push({ path: item.path, note });
   }
-  const contract = resolveOwnershipContract(raw.contract, patch);
-  if (raw.contract !== undefined && contract === undefined) rejected += 1;
-  return {
-    value: { files, notes, ...definedProps({ contract }) },
-    rejected,
-  };
-}
-
-/** `undefined` when the citation names no hunk of this patch, so the block is dropped. */
-function resolveOwnershipContract(
-  raw: BriefOwnershipContractOutput,
-  patch: string,
-): BriefOwnershipContract | undefined {
-  if (raw === undefined) return undefined;
-  const caption = raw.caption.trim().slice(0, MAX_OWNERSHIP_NOTE_LENGTH);
-  if (caption === "") return undefined;
-  const hunks = narrativeHunkManifest(patch);
-  if (hunks._tag === "err") return undefined;
-  const hunk = hunks.value.find((entry) => entry.id === raw.citation);
-  if (hunk === undefined) return undefined;
-  const filtered = filterNarrativePatchToHunks(patch, [hunk.id]);
-  if (filtered === "") return undefined;
-  return { path: hunk.path, header: hunk.header, raw: filtered, caption };
+  return { value: { files, notes }, rejected };
 }
 
 /**

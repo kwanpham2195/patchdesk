@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Brief occupies the Insights slot for the represented Review. A retained result can contain up to three Flow views, one per kind, a grouped Shape tree, an optional contract hunk, Start here reading order, four Reach rows, and citations.
+Brief occupies the Insights slot for the represented Review. A retained result can contain up to three Flow views, one per kind, a grouped Shape tree, Start here reading order, four Reach rows, and citations.
 
 Older retained Briefs can lack Reach or Start here because those fields did not exist when the artifact was stored. Patchdesk omits an absent legacy block without inventing data. When Reach was attempted but could not answer, the reader says why.
 

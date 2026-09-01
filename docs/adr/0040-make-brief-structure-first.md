@@ -26,10 +26,19 @@ views (ADR 0039), and the three deterministic blocks — **Shape** (the
 gauge** (ADR 0037) beside them, unchanged, because it was never prose either.
 
 Nothing else about how those four blocks work changes. Shape still groups
-files by directory with its one contract hunk, Start here still orders the
-first files to read, Reach still counts by text match one hop out, and Flow
-still draws up to three kind-labelled trees. This decision only removes the
-two prose blocks and the comparison block built on them.
+files by directory, Start here still orders the first files to read, Reach
+still counts by text match one hop out, and Flow still draws up to three
+kind-labelled trees. This decision only removes the two prose blocks and the
+comparison block built on them.
+
+Shape's one contract hunk goes too. It asked the model to name the one hunk
+whose signature or type explains the rest of the patch, cut that hunk out of
+the patch, and show it under the Shape tree with a one-line caption. Flow now
+covers the same ground: a changed step's citation chip opens the same kind of
+hunk preview, with the same one-line reason, right beside the step it
+explains. Asking the model to additionally pick one hunk to feature under
+Shape bought nothing Flow plus the hunk preview did not already cover, so
+Shape keeps only its file tree and per-file `ownership.notes`.
 
 ### The citation rule, re-anchored on Flow
 
@@ -156,3 +165,7 @@ Flow, Shape, Start here, and Reach guidance is unchanged.
 - The product description (`docs/product-description/review-workbench/brief.md`)
   and Brief's test cases drop coverage of Goal, Assumptions, and description
   drift, and gain coverage of the no-Flow "still a valid Brief" case.
+- Shape drops its one contract hunk and the `ownership.contract` key that fed
+  it; the model is no longer asked to pick one explaining hunk, and a Brief
+  retained before this change keeps `contract` in its stored `ownership` as a
+  tolerated-and-ignored key.

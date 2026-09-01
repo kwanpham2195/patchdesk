@@ -22,7 +22,6 @@ import {
   type BriefFlowNode,
   type BriefInsight,
   type BriefOwnership,
-  type BriefOwnershipContract,
   type BriefOwnershipRow,
   type BriefStartHere,
 } from "../brief-contracts";
@@ -106,7 +105,7 @@ const FLOW_CHANGE_MARKS = {
 const FLOW_KIND_BADGE_CLASS_NAME =
   "inline-flex shrink-0 items-center rounded border bg-accent px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground";
 
-const contractPreferences: ReviewViewPreferences = {
+const hunkPreviewPreferences: ReviewViewPreferences = {
   ...DEFAULT_REVIEW_VIEW_PREFERENCES,
   fileMode: "all",
 };
@@ -269,8 +268,7 @@ function StartHereCard({
 }
 
 /**
- * The Ownership block: a shallow file tree saying who owns what after the change,
- * then the one hunk that explains the rest of the patch.
+ * The Ownership block: a shallow file tree saying who owns what after the change.
  */
 function OwnershipBlock({
   ownership,
@@ -303,9 +301,6 @@ function OwnershipBlock({
           </div>
         ))}
       </div>
-      {ownership.contract === undefined ? null : (
-        <OwnershipContract contract={ownership.contract} />
-      )}
     </section>
   );
 }
@@ -508,33 +503,10 @@ function CopyFlowButton({
 }
 
 /**
- * The contract hunk, drawn by the one diff renderer. `raw` is a complete
- * one-hunk unified patch the main process cut from the session patch, so this
- * reparses app-owned bytes rather than anything the model wrote.
- */
-function OwnershipContract({
-  contract,
-}: {
-  readonly contract: BriefOwnershipContract;
-}): React.JSX.Element | null {
-  const parsed = useMemo(() => parseReviewDiff(contract.raw), [contract.raw]);
-  if (parsed.files.length === 0) return null;
-  return (
-    <div className="overflow-hidden rounded-md border">
-      <p className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-mono">{contract.path}</span> ·{" "}
-        <GeneratedMarkdownInline markdown={contract.caption} />
-      </p>
-      <HunkDiff raw={contract.raw} path={contract.path} />
-    </div>
-  );
-}
-
-/**
- * The one place that renders a complete one-hunk unified patch: the Shape
- * card's contract hunk and a clicked hunk-citation popover both mount this,
- * rather than each carrying its own `<ReviewDiffView>`. `raw` is app-owned
- * bytes cut by the main process, never anything the model wrote.
+ * The one place that renders a complete one-hunk unified patch: a clicked
+ * hunk-citation popover mounts this, rather than carrying its own
+ * `<ReviewDiffView>`. `raw` is app-owned bytes cut by the main process, never
+ * anything the model wrote.
  */
 function HunkDiff({
   raw,
@@ -553,7 +525,7 @@ function HunkDiff({
         parsedFiles={parsed.files}
         fileStatsByPath={parsed.statsByPath}
         selectedPath={path}
-        preferences={contractPreferences}
+        preferences={hunkPreviewPreferences}
         collapsedPaths={new Set()}
         onPreferencesChange={() => undefined}
         onCollapsedPathsChange={() => undefined}

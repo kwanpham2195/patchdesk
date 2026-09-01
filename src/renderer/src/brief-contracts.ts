@@ -24,9 +24,7 @@ const briefCitationSchema = v.strictObject({
 
 /**
  * The Ownership block. `files` is Patchdesk's own skeleton of the patch, so the
- * renderer draws it as given; `notes` and `contract.caption` are the only
- * model-written text here, and `contract.raw` was cut from the session patch by
- * the main process.
+ * renderer draws it as given; `notes` is the only model-written text here.
  */
 const briefOwnershipSchema = v.strictObject({
   files: v.array(
@@ -41,14 +39,6 @@ const briefOwnershipSchema = v.strictObject({
     v.strictObject({
       path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
       note: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-    }),
-  ),
-  contract: v.optional(
-    v.strictObject({
-      path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_024)),
-      header: v.pipe(v.string(), v.maxLength(400)),
-      raw: v.pipe(v.string(), v.minLength(1)),
-      caption: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
     }),
   ),
 });
@@ -213,7 +203,6 @@ export type BriefInsight = v.InferOutput<typeof briefInsightSchema>;
 export type Brief = v.InferOutput<typeof briefSchema>;
 export type BriefCitation = v.InferOutput<typeof briefCitationSchema>;
 export type BriefOwnership = v.InferOutput<typeof briefOwnershipSchema>;
-export type BriefOwnershipContract = NonNullable<BriefOwnership["contract"]>;
 export type BriefReach = v.InferOutput<typeof briefReachSchema>;
 export type BriefStartHere = v.InferOutput<typeof briefStartHereSchema>;
 export type BriefFlow = v.InferOutput<typeof briefFlowSchema>;

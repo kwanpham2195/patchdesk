@@ -5,7 +5,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { changeScopeFromPatch } from "../../src/domain/change-scope";
-import { definedProps } from "../../src/domain/defined-props";
 import {
   briefCitationChipLabel,
   briefCitationChipTitle,
@@ -22,7 +21,7 @@ const retained = () => {
   return projection.retained;
 };
 
-const CONTRACT_PATCH = [
+const HUNK_PATCH = [
   "diff --git a/src/a.ts b/src/a.ts",
   "--- a/src/a.ts",
   "+++ b/src/a.ts",
@@ -32,18 +31,11 @@ const CONTRACT_PATCH = [
   "",
 ].join("\n");
 
-const CONTRACT = {
-  path: "src/a.ts",
-  header: "@@ -1 +1 @@",
-  raw: CONTRACT_PATCH,
-  caption: "the writer's new return type",
-};
-
 const retainedWithCitedHunk = () => {
   const base = retained();
   return {
     ...base,
-    value: { ...briefValue, citedHunks: { h1: CONTRACT_PATCH } },
+    value: { ...briefValue, citedHunks: { h1: HUNK_PATCH } },
   };
 };
 
@@ -114,7 +106,7 @@ const retainedWithFlow = () => {
     value: {
       ...briefValue,
       flow: FLOW,
-      citedHunks: { h1: CONTRACT_PATCH },
+      citedHunks: { h1: HUNK_PATCH },
     },
   };
 };
@@ -154,7 +146,7 @@ const retainedWithTwoFlowViews = () => {
   return { ...base, value: { ...briefValue, flow: TWO_FLOW_VIEWS } };
 };
 
-const retainedWithOwnership = (withContract: boolean) => {
+const retainedWithOwnership = () => {
   const base = retained();
   return {
     ...base,
@@ -176,7 +168,6 @@ const retainedWithOwnership = (withContract: boolean) => {
           },
         ],
         notes: [{ path: "src/a.ts", note: "owns the read-back" }],
-        ...definedProps({ contract: withContract ? CONTRACT : undefined }),
       },
     },
   };
@@ -260,34 +251,16 @@ describe("BriefReader", () => {
     expect(onRegenerate).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the Shape tree and its contract hunk", () => {
+  it("renders the Shape tree", () => {
     render(
       <BriefReader
         {...walkthroughLink}
-        retained={retainedWithOwnership(true)}
+        retained={retainedWithOwnership()}
         onRegenerate={() => undefined}
       />,
     );
 
     expect(screen.getByRole("region", { name: "Shape" })).toBeTruthy();
-    expect(
-      screen.getByRole("region", { name: "Plain text diff" }),
-    ).toBeTruthy();
-  });
-
-  it("renders the Shape tree without a contract hunk", () => {
-    render(
-      <BriefReader
-        {...walkthroughLink}
-        retained={retainedWithOwnership(false)}
-        onRegenerate={() => undefined}
-      />,
-    );
-
-    expect(screen.getByRole("region", { name: "Shape" })).toBeTruthy();
-    expect(
-      screen.queryByRole("region", { name: "Plain text diff" }),
-    ).toBeNull();
   });
 
   it("renders the four Reach rows and states how the counts were made", () => {
