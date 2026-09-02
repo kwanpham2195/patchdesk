@@ -88,14 +88,14 @@ choice for you.
 
 There are two Insight providers.
 
-### Pi
+### API keys
 
-Pi is a model client bundled with Patchdesk — you do not install anything
-separate. Pi talks directly to a model API, and you supply the key through
-an environment variable; there is no key field in the app.
+This provider talks to a model API directly, and you supply the key through
+an environment variable. There is nothing to install, and there is no key
+field in the app.
 
-Pi supports 32 providers. Thirty of them read a key from an environment
-variable:
+Patchdesk supports 32 providers. Thirty of them read a key from an
+environment variable:
 
 - Ant Ling — `ANT_LING_API_KEY`
 - Anthropic — `ANTHROPIC_API_KEY`
@@ -140,8 +140,8 @@ The other two providers use credentials instead of a key:
 The list in `src/adapters/pi/pi-provider-catalog.ts` is the authoritative one.
 
 Providers that sign in through OAuth or a login flow, such as GitHub Copilot
-or the Codex subscription inside Pi, are left out of the Pi provider on
-purpose; the Codex CLI account provider below covers the Codex case.
+or a Codex subscription, are left out of the API key provider on purpose;
+the Codex CLI account provider below covers the Codex case.
 
 Export the variable in your shell profile (`~/.zshrc`), then restart
 Patchdesk:
@@ -166,9 +166,9 @@ That lasts until you log out.
 
 Only the variables the selected provider needs reach the model process, and
 only that process sees them — keys never reach the app's UI. The model list
-you see is Pi's catalog, filtered to providers you have a key for. That
-catalog is refreshed with each Patchdesk release; there is nothing to
-update on your side.
+you see is Patchdesk's model catalog, filtered to providers you have a key
+for. That catalog is refreshed with each Patchdesk release; there is nothing
+to update on your side.
 
 ### Codex CLI account
 

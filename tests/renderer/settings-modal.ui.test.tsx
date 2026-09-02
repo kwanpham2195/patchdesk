@@ -433,7 +433,12 @@ describe("SettingsModal", () => {
     const desktopApi = installDesktopApi({
       models: {
         providers: [
-          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+          {
+            id: "pi",
+            label: "API key",
+            available: true,
+            guidance: "Configured.",
+          },
         ],
         models: [
           {
@@ -487,7 +492,12 @@ describe("SettingsModal", () => {
     installDesktopApi({
       models: {
         providers: [
-          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+          {
+            id: "pi",
+            label: "API key",
+            available: true,
+            guidance: "Configured.",
+          },
         ],
         models: [
           {
@@ -539,7 +549,12 @@ describe("SettingsModal", () => {
     installDesktopApi({
       models: {
         providers: [
-          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+          {
+            id: "pi",
+            label: "API key",
+            available: true,
+            guidance: "Configured.",
+          },
         ],
         models: [
           {
@@ -572,7 +587,12 @@ describe("SettingsModal", () => {
     installDesktopApi({
       models: {
         providers: [
-          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+          {
+            id: "pi",
+            label: "API key",
+            available: true,
+            guidance: "Configured.",
+          },
         ],
         models: Array.from({ length: 493 }, (_, index) => ({
           provider: "pi",
@@ -613,7 +633,12 @@ describe("SettingsModal", () => {
     installDesktopApi({
       models: {
         providers: [
-          { id: "pi", label: "Pi", available: true, guidance: "Configured." },
+          {
+            id: "pi",
+            label: "API key",
+            available: true,
+            guidance: "Configured.",
+          },
         ],
         models: [
           {

@@ -91,10 +91,10 @@ export class InsightProviderCatalog {
       providers: [
         {
           id: "pi",
-          label: "Pi",
+          label: "API key",
           available: piResult._tag === "ok",
           guidance:
-            "Configure an eligible Pi provider in the Electron process.",
+            "Export a provider key such as ANTHROPIC_API_KEY in your shell profile, then relaunch Patchdesk.",
         },
         {
           id: "codex-cli-account",

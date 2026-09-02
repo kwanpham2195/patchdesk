@@ -124,7 +124,7 @@ export function InsightRunDialog({
               value={provider}
               disabled={pending}
               items={[
-                { label: "Pi", value: "pi" },
+                { label: "API key", value: "pi" },
                 { label: "Codex CLI account", value: "codex-cli-account" },
               ]}
               onValueChange={(value) => {
@@ -140,7 +140,7 @@ export function InsightRunDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="pi">Pi</SelectItem>
+                  <SelectItem value="pi">API key</SelectItem>
                   <SelectItem value="codex-cli-account">
                     Codex CLI account
                   </SelectItem>
@@ -245,8 +245,8 @@ export function InsightRunDialog({
             </Select>
           </label>
           <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-            Confirmation: {provider === "pi" ? "Pi" : "Codex CLI account"} using{" "}
-            {selectedModel?.label ?? model ?? "no model"} with {reasoning}{" "}
+            Confirmation: {provider === "pi" ? "API key" : "Codex CLI account"}{" "}
+            using {selectedModel?.label ?? model ?? "no model"} with {reasoning}{" "}
             reasoning will receive the prepared pull-request artifacts
             {provider === "codex-cli-account"
               ? " and may inspect the immutable represented-review worktree with read-only tools"
