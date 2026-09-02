@@ -200,6 +200,7 @@ The Brief child is the narrowest of the three: it mounts only the result-submiss
 The parent sends one bounded, strictly parsed invocation through stdin.
 The child runs the agent loop under a 24-turn ceiling, submits one strict result through its own tool, and exits.
 The parent validates the result again before it can affect retained content or GitHub state.
+Moving the exact `@earendil-works` version this runtime pins is its own procedure: see [Upgrading Pi](upgrading-pi.md).
 
 **Architecture Invariant:** the child mounts no sandbox, no MCP connection, no declared subagent, no generic filesystem or shell capability, and no GitHub writer.
 The agent loop mounts no tool of its own and the runtime installs no MCP client, so no code path here can create one.

@@ -398,6 +398,8 @@ can install it. Nothing is published without a person publishing it.
    you reviewed in step 3 rather than a generated list of commit subjects.
    Run that command locally if you want to read the notes before tagging.
 
+Bumping the bundled Pi client follows `docs/upgrading-pi.md`.
+
 ### Signing and notarization
 
 The release build signs with an Apple Developer ID and notarizes when these
