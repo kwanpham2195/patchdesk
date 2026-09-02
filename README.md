@@ -94,20 +94,54 @@ Pi is a model client bundled with Patchdesk — you do not install anything
 separate. Pi talks directly to a model API, and you supply the key through
 an environment variable; there is no key field in the app.
 
-Common providers and the variable each reads:
+Pi supports 32 providers. Thirty of them read a key from an environment
+variable:
 
+- Ant Ling — `ANT_LING_API_KEY`
 - Anthropic — `ANTHROPIC_API_KEY`
-- OpenAI — `OPENAI_API_KEY`
+- Azure OpenAI — `AZURE_OPENAI_API_KEY`
+- Cerebras — `CEREBRAS_API_KEY`
+- Cloudflare AI Gateway — `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, and
+  `CLOUDFLARE_GATEWAY_ID`; all three are required
 - DeepSeek — `DEEPSEEK_API_KEY`
-- Google Gemini — `GEMINI_API_KEY`
-- OpenRouter — `OPENROUTER_API_KEY`
+- Fireworks — `FIREWORKS_API_KEY`
+- Google — `GEMINI_API_KEY`
 - Groq — `GROQ_API_KEY`
+- Hugging Face — `HF_TOKEN`
+- Kimi Coding — `KIMI_API_KEY`
+- MiniMax — `MINIMAX_API_KEY`
+- MiniMax China — `MINIMAX_CN_API_KEY`
 - Mistral — `MISTRAL_API_KEY`
+- Moonshot — `MOONSHOT_API_KEY`
+- Moonshot China — `MOONSHOT_API_KEY`
+- NVIDIA — `NVIDIA_API_KEY`
+- OpenAI — `OPENAI_API_KEY`
+- OpenCode — `OPENCODE_API_KEY`
+- OpenCode Go — `OPENCODE_API_KEY`
+- OpenRouter — `OPENROUTER_API_KEY`
+- Together — `TOGETHER_API_KEY`
+- Vercel AI Gateway — `AI_GATEWAY_API_KEY`
 - xAI — `XAI_API_KEY`
+- Xiaomi — `XIAOMI_API_KEY`
+- Xiaomi Token Plan (AMS) — `XIAOMI_TOKEN_PLAN_AMS_API_KEY`
+- Xiaomi Token Plan (China) — `XIAOMI_TOKEN_PLAN_CN_API_KEY`
+- Xiaomi Token Plan (Singapore) — `XIAOMI_TOKEN_PLAN_SGP_API_KEY`
+- ZAI — `ZAI_API_KEY`
+- ZAI Coding China — `ZAI_CODING_CN_API_KEY`
 
-And others — see `src/adapters/pi/pi-provider-catalog.ts` for the full list.
-Amazon Bedrock and Google Vertex use your normal AWS or GCP credentials
-instead of a key.
+Moonshot and Moonshot China read the same variable, and so do OpenCode and
+OpenCode Go.
+
+The other two providers use credentials instead of a key:
+
+- Amazon Bedrock — your normal AWS credentials
+- Google Vertex — your normal GCP credentials, or `GOOGLE_CLOUD_API_KEY`
+
+The list in `src/adapters/pi/pi-provider-catalog.ts` is the authoritative one.
+
+Providers that sign in through OAuth or a login flow, such as GitHub Copilot
+or the Codex subscription inside Pi, are left out of the Pi provider on
+purpose; the Codex CLI account provider below covers the Codex case.
 
 Export the variable in your shell profile (`~/.zshrc`), then restart
 Patchdesk:
@@ -132,7 +166,9 @@ That lasts until you log out.
 
 Only the variables the selected provider needs reach the model process, and
 only that process sees them — keys never reach the app's UI. The model list
-you see is Pi's catalog, filtered to providers you have a key for.
+you see is Pi's catalog, filtered to providers you have a key for. That
+catalog is refreshed with each Patchdesk release; there is nothing to
+update on your side.
 
 ### Codex CLI account
 
