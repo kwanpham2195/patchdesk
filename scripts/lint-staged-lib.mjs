@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { countLines, isImportSpecifierOnlyGrowth } from "./file-growth-lib.mjs";
@@ -38,9 +39,25 @@ const SOURCE_EXTENSIONS = new Set([
  */
 
 /**
+ * `head` sentinel meaning "the files as they sit on disk", for a gate that
+ * runs before anything is staged (`pnpm gate:preflight`). Every other head is
+ * a revision git can resolve, or `""` for the index, and neither can name the
+ * working tree. A NUL byte keeps it from ever colliding with a real revision:
+ * git refuses one in a ref name.
+ */
+export const WORKING_TREE = "\u0000worktree";
+
+/**
+ * @typedef {(path: string) => Promise<string | null>} ReadWorkingFile
+ */
+
+/**
  * @typedef {LintStagedOptions & {
  *   readonly base: string;
  *   readonly head: string;
+ *   readonly readWorkingFile?: ReadWorkingFile;
+ *   readonly label?: string;
+ *   readonly noun?: string;
  * }} CheckSourcePathsOptions
  */
 
@@ -50,9 +67,24 @@ const SOURCE_EXTENSIONS = new Set([
  *   readonly run: RunCommand;
  *   readonly base: string;
  *   readonly head: string;
+ *   readonly readWorkingFile?: ReadWorkingFile;
  *   readonly output: CommandOutput;
  * }} CheckFileSizesOptions
  */
+
+/**
+ * Reads a working-tree file, reporting an absent one as `null` the way
+ * `readAtRevision` reports a path absent at a revision.
+ *
+ * @type {ReadWorkingFile}
+ */
+async function defaultReadWorkingFile(path) {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Check staged JavaScript and TypeScript files without changing the index or
@@ -204,11 +236,21 @@ async function stagedBase(run, cwd, output) {
  */
 export async function checkSourcePaths(
   paths,
-  { cwd, run, fileExists = defaultFileExists, output, base, head },
+  {
+    cwd,
+    run,
+    fileExists = defaultFileExists,
+    readWorkingFile = defaultReadWorkingFile,
+    label = "lint-staged",
+    noun = "staged source",
+    output,
+    base,
+    head,
+  },
 ) {
   const files = await selectSourceFiles(paths, cwd, fileExists);
   if (files.length === 0) {
-    output.stdout("lint-staged: no source files to check.\n");
+    output.stdout(`${label}: no source files to check.\n`);
     return 0;
   }
 
@@ -217,11 +259,19 @@ export async function checkSourcePaths(
     run,
     base,
     head,
+    readWorkingFile,
     output,
   });
   if (sizeResult !== 0) return sizeResult;
 
-  return runSourceQualityChecks(files, { cwd, run, fileExists, output });
+  return runSourceQualityChecks(files, {
+    cwd,
+    run,
+    fileExists,
+    label,
+    noun,
+    output,
+  });
 }
 
 const FILE_LINE_CEILING = 1000;
@@ -285,11 +335,14 @@ const NEW_FILE_LINE_LIMIT = 500;
  * @param {CheckFileSizesOptions} options
  * @returns {Promise<number>} A process-style exit code.
  */
-export async function checkFileSizes(files, { cwd, run, base, head, output }) {
+export async function checkFileSizes(
+  files,
+  { cwd, run, base, head, readWorkingFile = defaultReadWorkingFile, output },
+) {
   /** @type {Map<string, boolean>} Revision string -> already-validated result. */
   const validRevisions = new Map();
   async function ensureValidRevision(revision, label) {
-    if (revision === "") return true;
+    if (revision === "" || revision === WORKING_TREE) return true;
     const cached = validRevisions.get(revision);
     if (cached !== undefined) return cached;
     const valid = await validateRevision(run, cwd, revision, label, output);
@@ -305,12 +358,26 @@ export async function checkFileSizes(files, { cwd, run, base, head, output }) {
     if (isGeneratedFile(file)) continue;
 
     if (!(await ensureValidRevision(head, "head"))) return 1;
-    const headContent = await readAtRevision(run, cwd, head, file, output);
+    const headContent = await readAtRevision(
+      run,
+      cwd,
+      head,
+      file,
+      readWorkingFile,
+      output,
+    );
     if (headContent === undefined) return 1;
     if (headContent === null) continue; // deleted at head; nothing to ratchet
 
     if (!(await ensureValidRevision(base, "base"))) return 1;
-    let baseContent = await readAtRevision(run, cwd, base, file, output);
+    let baseContent = await readAtRevision(
+      run,
+      cwd,
+      base,
+      file,
+      readWorkingFile,
+      output,
+    );
     if (baseContent === undefined) return 1;
 
     if (baseContent === null) {
@@ -320,7 +387,14 @@ export async function checkFileSizes(files, { cwd, run, base, head, output }) {
       }
       const oldPath = renameMap.get(file);
       if (oldPath !== undefined) {
-        baseContent = await readAtRevision(run, cwd, base, oldPath, output);
+        baseContent = await readAtRevision(
+          run,
+          cwd,
+          base,
+          oldPath,
+          readWorkingFile,
+          output,
+        );
         if (baseContent === undefined) return 1;
       }
     }
@@ -376,7 +450,7 @@ function isGeneratedFile(file) {
  *   explanatory message has already gone to `output`.
  */
 async function validateRevision(run, cwd, revision, label, output) {
-  if (revision === "") return true;
+  if (revision === "" || revision === WORKING_TREE) return true;
 
   const result = await execute(
     run,
@@ -413,14 +487,11 @@ async function validateRevision(run, cwd, revision, label, output) {
  *   means the git command failed, already reported to `output`.
  */
 async function loadRenameMap(run, cwd, base, head, output) {
-  const args =
-    head === ""
-      ? ["diff", "--cached", "--name-status", "-M", "-z", base]
-      : ["diff", "--name-status", "-M", "-z", base, head];
+  const args = renameDiffArgs(base, head);
   const result = await execute(run, "git", args, cwd, output);
   if (result === undefined) return undefined;
   if (!hasExit(result, 0)) {
-    const headLabel = head === "" ? "the index" : `"${head}"`;
+    const headLabel = describeHead(head);
     output.stderr(
       `git could not check for renames between "${base}" and ${headLabel} (status=${String(result.status)}).\n`,
     );
@@ -428,6 +499,31 @@ async function loadRenameMap(run, cwd, base, head, output) {
     return undefined;
   }
   return parseRenameMap(result.stdout);
+}
+
+/**
+ * The `git diff` that pairs renames between `base` and each shape of head:
+ * the index (`""`), the working tree (`WORKING_TREE`), or a commit-ish.
+ *
+ * @param {string} base
+ * @param {string} head
+ * @returns {ReadonlyArray<string>}
+ */
+function renameDiffArgs(base, head) {
+  if (head === "")
+    return ["diff", "--cached", "--name-status", "-M", "-z", base];
+  if (head === WORKING_TREE) return ["diff", "--name-status", "-M", "-z", base];
+  return ["diff", "--name-status", "-M", "-z", base, head];
+}
+
+/**
+ * @param {string} head
+ * @returns {string}
+ */
+function describeHead(head) {
+  if (head === "") return "the index";
+  if (head === WORKING_TREE) return "the working tree";
+  return `"${head}"`;
 }
 
 /** Parses `git diff --name-status -M -z` output into a new-path -> old-path map. */
@@ -456,11 +552,25 @@ function parseRenameMap(stdout) {
  * just a count: the import-specifier exemption has to see which lines the
  * growth is made of.
  *
+ * `WORKING_TREE` is not a revision git can read, so it is answered from disk
+ * instead. Everything after that point is identical: an absent file is `null`
+ * either way, so the ratchet's new-file and deleted-at-head branches do not
+ * need to know which side they were told from.
+ *
+ * @param {ReadWorkingFile} readWorkingFile
  * @returns {Promise<string | null | undefined>} The content, `null` if the
  *   file does not exist at `revision`, or `undefined` if the `git show`
  *   command itself could not be run (a crash, reported by `execute`).
  */
-async function readAtRevision(run, cwd, revision, path, output) {
+async function readAtRevision(
+  run,
+  cwd,
+  revision,
+  path,
+  readWorkingFile,
+  output,
+) {
+  if (revision === WORKING_TREE) return readWorkingFile(resolve(cwd, path));
   const result = await execute(
     run,
     "git",
@@ -475,7 +585,14 @@ async function readAtRevision(run, cwd, revision, path, output) {
 
 async function runSourceQualityChecks(
   files,
-  { cwd, run, fileExists = defaultFileExists, output },
+  {
+    cwd,
+    run,
+    fileExists = defaultFileExists,
+    label = "lint-staged",
+    noun = "staged source",
+    output,
+  },
 ) {
   const oxfmt = await pinnedTool("oxfmt", cwd, fileExists, output);
   if (oxfmt === undefined) return 1;
@@ -516,9 +633,7 @@ async function runSourceQualityChecks(
     return 1;
   }
 
-  output.stdout(
-    `lint-staged: checked ${files.length} staged source file(s).\n`,
-  );
+  output.stdout(`${label}: checked ${files.length} ${noun} file(s).\n`);
   return 0;
 }
 
