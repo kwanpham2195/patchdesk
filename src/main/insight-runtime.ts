@@ -10,9 +10,10 @@ const PI_VERSION = "0.84.4";
 const NODE_FLOOR = ">=22.19.0";
 
 /**
- * The staged runtime's own manifest, as it is read back off disk. Strict, so a
- * staging written by an older packaging -- one that still carries a dropped
- * framework version field -- is rejected rather than read as current.
+ * The staged runtime's own manifest, as it is read back off disk. The pinned
+ * Pi version rejects every older packaging in practice; strictness is the
+ * second line, so a manifest that still carries a dropped framework version
+ * field is rejected even when its other fields happen to match.
  */
 const runtimeManifestSchema = v.strictObject({
   piVersion: v.string(),

@@ -364,6 +364,28 @@ describe("desktop hardening", () => {
         (path) => files.get(path) ?? "",
       ),
     ).toBeUndefined();
+
+    // The version check catches every real older manifest first, so only a
+    // matching one with a dropped field left on it proves strictness.
+    files.set(
+      `${packagedRoot}/runtime-manifest.json`,
+      JSON.stringify({
+        piVersion: "0.84.4",
+        flueVersion: "0.9.1",
+        catalogDigest,
+        nodeFloor: ">=22.19.0",
+        lockDigest: createHash("sha256").update(lock).digest("hex"),
+      }),
+    );
+    expect(
+      resolveInsightRuntime(
+        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
+        "/workspace/patchdesk",
+        true,
+        (path) => files.has(path),
+        (path) => files.get(path) ?? "",
+      ),
+    ).toBeUndefined();
   });
 
   it("prefers the development build over a staged one only when unpackaged", () => {
