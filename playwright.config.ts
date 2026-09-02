@@ -1,11 +1,14 @@
 import { defineConfig } from "playwright/test";
+import { timingBudget } from "./tests/browser/timing-budget";
 
 export default defineConfig({
-  // Keep the 1,000-file selection proof below its 200 ms ceiling while heavy
-  // Settings/walkthrough fixtures run in the same browser suite.
+  // One worker: the performance proof measures wall-clock interaction latency
+  // against the budget in tests/browser/timing-budget.ts, so nothing else may
+  // compete for this machine.
   workers: 1,
   testDir: "./tests/browser",
   testMatch: "**/*.spec.ts",
   timeout: 30_000,
+  expect: { timeout: timingBudget.expectTimeoutMs },
   use: { browserName: "chromium", headless: true },
 });
