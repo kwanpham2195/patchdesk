@@ -47,7 +47,13 @@ import type {
   InboxResponse,
   RepositoryLabelListResponse,
 } from "../renderer-contracts";
-import type { RepositoryIdentity } from "../../../domain/repository-identity";
+import {
+  sameRepositoryIdentity,
+  type RepositoryIdentity,
+} from "../../../domain/repository-identity";
+import { parseGitHubHost } from "../../../domain/ids";
+import { parsePullRequestInput } from "../../../domain/pull-request";
+import { isTextEntryTarget } from "../text-entry-target";
 import { useInboxReviewOpening } from "./use-inbox-review-opening";
 
 export function InboxFlow({
@@ -147,7 +153,9 @@ export function InboxFlow({
     openError,
     openingOperations,
     openInboxRow,
+    openPullRequestByRef,
     openStoredReviewById,
+    reportOpenError,
   } = useInboxReviewOpening({ dashboard, onOpenWorkbench });
   const fetchInboxLabels = useCallback(async (): Promise<
     RepositoryLabelListResponse | undefined
@@ -181,6 +189,47 @@ export function InboxFlow({
       active = false;
     };
   }, [dashboardProfileId, destination, openStoredReviewById, reviewId]);
+
+  const profileGitHubHost = dashboard?.profile.githubHost;
+  const watchedRepos = dashboard?.profile.repos;
+
+  // The Pull requests screen has no address bar, so a pasted pull-request
+  // link is caught on the document and opened as if its row had been
+  // activated (issue #67).
+  useEffect(() => {
+    if (destination !== "dashboard" || profileGitHubHost === undefined) return;
+    const parsedHost = parseGitHubHost(profileGitHubHost);
+    const onPaste = (event: ClipboardEvent): void => {
+      // A paste into a field belongs to that field, never to the screen.
+      if (isTextEntryTarget(event.target)) return;
+      const parsed = parsePullRequestInput(
+        event.clipboardData?.getData("text/plain")?.trim(),
+        parsedHost._tag === "ok" ? parsedHost.value : undefined,
+      );
+      // Anything that is not a pull-request reference stays an ordinary paste.
+      if (parsed._tag === "err") return;
+      event.preventDefault();
+      const ref = parsed.value;
+      const watched = (watchedRepos ?? []).some((repo) =>
+        sameRepositoryIdentity(repo, ref),
+      );
+      if (!watched) {
+        reportOpenError(
+          `Not opened: ${ref.owner}/${ref.repo} is not a watched repository.`,
+        );
+        return;
+      }
+      openPullRequestByRef(ref);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [
+    destination,
+    openPullRequestByRef,
+    profileGitHubHost,
+    reportOpenError,
+    watchedRepos,
+  ]);
 
   const rowOpenError = [...openingOperations.values()].find(
     ({ status }) => status === "error",
