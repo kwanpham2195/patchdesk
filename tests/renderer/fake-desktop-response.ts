@@ -109,7 +109,9 @@ export type DesktopDouble = {
  * (`/v1/inbox`). Anything the table does not name **throws**, naming the
  * path or operation: a route a test never declared is a route that test does
  * not actually cover, and a double that quietly answered it would let the
- * test pass on traffic nobody scripted.
+ * test pass on traffic nobody scripted. The one exception is the renderer's
+ * own log flush, `POST /v1/logs`, answered with `success(null)` unless the
+ * table routes `/v1/logs` itself — see `answerPath`.
  *
  * `openExternalHttps` throws for the same reason unless `extras` supplies it,
  * so a test that opens an external link it did not expect fails loudly.
@@ -209,6 +211,9 @@ function assertNoUnroutedDesktopCalls(unrouted: readonly string[]): void {
   });
 }
 
+/** The path `lib/logger.ts` flushes the renderer log queue to. */
+const LOG_FLUSH_PATH = "/v1/logs";
+
 async function answerPath(
   routes: Readonly<Record<string, DesktopRoute>>,
   input: LocalApiDesktopRequest,
@@ -216,13 +221,15 @@ async function answerPath(
 ): Promise<DesktopResponse> {
   const route =
     routes[input.path] ?? routes[input.path.split("?")[0] ?? input.path];
-  if (route === undefined) {
-    return refuse(
-      `${input.method ?? "GET"} ${input.path}`,
-      "Add it to the test's route table.",
-    );
-  }
-  return await route(input);
+  if (route !== undefined) return await route(input);
+  // The renderer's 300 ms log flush lands inside a test by timing, not by
+  // script, so refusing it only made slow runs red.
+  if (input.method === "POST" && input.path === LOG_FLUSH_PATH)
+    return success(null);
+  return refuse(
+    `${input.method ?? "GET"} ${input.path}`,
+    "Add it to the test's route table.",
+  );
 }
 
 async function answerOperation(

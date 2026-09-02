@@ -18,7 +18,6 @@ import {
  * instead of being answered with a default nobody wrote.
  */
 const WORKBENCH_PATHS = [
-  "/v1/logs",
   "/v1/insight-providers",
   "/v1/insight-providers/codex/models",
   "/v1/reviews/load",

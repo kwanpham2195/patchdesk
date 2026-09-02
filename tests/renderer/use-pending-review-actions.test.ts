@@ -73,7 +73,6 @@ function installPendingDouble(answers: {
     return success((await route()) as RawJsonValue);
   };
   const double = installDesktopDouble({
-    "/v1/logs": () => success(null),
     [COMMAND]: async () =>
       answers.commandFailure === undefined
         ? await answer(answers.command, COMMAND)

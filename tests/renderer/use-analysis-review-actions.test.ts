@@ -105,7 +105,6 @@ describe("useAnalysisReviewActions", () => {
     };
     const responses: Array<(value: DesktopResponse) => void> = [];
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [COMMAND]: () =>
         new Promise<DesktopResponse>((resolve) => responses.push(resolve)),
     });
@@ -187,7 +186,6 @@ describe("useAnalysisReviewActions", () => {
         release = resolve;
       });
       const double = installDesktopDouble({
-        "/v1/logs": () => success(null),
         [COMMAND]: () => deferred,
       });
       restore = double.restore;
@@ -272,7 +270,6 @@ describe("useAnalysisReviewActions", () => {
       line: 2,
     };
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [COMMAND]: () => {
         call += 1;
         return call === 1
@@ -308,7 +305,6 @@ describe("useAnalysisReviewActions", () => {
   it("applies the exact command projection immediately without reloading the Review", async () => {
     const commandProjection = confirmedProjection();
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [COMMAND]: () => success({ pendingReview: commandProjection }),
     });
     restore = double.restore;
@@ -348,7 +344,6 @@ describe("useAnalysisReviewActions", () => {
 
   it("bounds malformed success as recovery-required without optimistic confirmation", async () => {
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [COMMAND]: () =>
         success({
           pendingReview: { ...confirmedProjection(), unexpected: true },
@@ -383,7 +378,6 @@ describe("useAnalysisReviewActions", () => {
 
   it("keeps deterministic command failure retryable and leaves represented state intact", async () => {
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [COMMAND]: () => failure({ error: "permission_denied" }, 403),
     });
     restore = double.restore;
@@ -403,7 +397,6 @@ describe("useAnalysisReviewActions", () => {
 
   it("locks pending-review mutation after outcome-unknown without confirming evidence", async () => {
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [COMMAND]: () => failure({ error: "outcome_unknown" }, 500),
     });
     restore = double.restore;
@@ -427,7 +420,6 @@ describe("useAnalysisReviewActions", () => {
   it("uses a valid recovery projection carried by an outcome-unknown failure", async () => {
     const recovered = confirmedProjection();
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [COMMAND]: () =>
         failure(
           {
@@ -459,7 +451,6 @@ describe("useAnalysisReviewActions", () => {
 
   it("rejects a well-shaped projection that does not confirm the requested comment", async () => {
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [COMMAND]: () =>
         success({
           pendingReview: {

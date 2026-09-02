@@ -68,7 +68,6 @@ function installSummaryDouble(answers: {
     return success((await route()) as RawJsonValue);
   };
   const double = installDesktopDouble({
-    "/v1/logs": () => success(null),
     [SUBMIT]: async () =>
       answers.submitFailure === undefined
         ? await answer(answers.submit, SUBMIT)

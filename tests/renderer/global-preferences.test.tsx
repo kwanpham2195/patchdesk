@@ -212,10 +212,6 @@ describe("file-backed renderer preferences", () => {
         input.method === "PATCH"
           ? success({ appearance: "dark" })
           : load.promise,
-      // The obsolete failure is logged, and the logger flushes on a timer
-      // that races the end of the test; route the flush so the double
-      // does not refuse it.
-      "/v1/logs": () => success(null),
     });
     const { result } = renderHook(() => useGlobalPreferences(false));
 
@@ -394,7 +390,6 @@ function installPreferenceHookApi(
   patches: Array<DeferredDesktopResponse>,
 ): DesktopDouble {
   return installDesktopDouble({
-    "/v1/logs": () => success(null),
     "/v1/settings": (input) => {
       if (input.method !== "PATCH")
         return success({
@@ -445,7 +440,6 @@ function installDesktopApi(
           inbox: { rows: [], repositories: [], snapshot: {} },
         }),
       "/v1/environment": () => success({}),
-      "/v1/logs": () => success(null),
       // Neither of these is what any test here asserts on; both keep the
       // `dashboard` body the file's previous catch-all returned, so the
       // screen boots exactly as it did before.

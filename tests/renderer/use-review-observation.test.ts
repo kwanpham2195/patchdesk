@@ -71,7 +71,6 @@ function installObservationDouble(answers: {
 }) {
   const detectBodies: unknown[] = [];
   const double = installDesktopDouble({
-    "/v1/logs": () => success(null),
     [DETECT]: async (input) => {
       detectBodies.push(input.body);
       // SAFETY: each case's scripted observation body is JSON fixture data;

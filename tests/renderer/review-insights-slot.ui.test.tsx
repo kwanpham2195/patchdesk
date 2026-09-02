@@ -227,7 +227,6 @@ describe("InsightsSlot run requests", () => {
     desktop = installDesktopDouble({
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/analysis/run": () => start.promise,
-      "/v1/logs": () => success(null),
     });
     const user = userEvent.setup();
     renderInsights();
@@ -251,7 +250,6 @@ describe("InsightsSlot run requests", () => {
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/runs/run-a": () =>
         failure({ message: "status unavailable" }),
-      "/v1/logs": () => success(null),
     });
     renderInsights(
       projection({
@@ -300,7 +298,6 @@ describe("InsightsSlot run requests", () => {
       "/v1/reviews/insights/runs/run-a": () =>
         new Promise<DesktopResponse>(() => undefined),
       "/v1/reviews/insights/analysis/cancel": () => cancellation.promise,
-      "/v1/logs": () => success(null),
     });
     const user = userEvent.setup();
     renderInsights(

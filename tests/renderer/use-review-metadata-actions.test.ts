@@ -107,7 +107,6 @@ function renderActions(
   observe = vi.fn(async () => undefined),
 ) {
   installDesktopDouble({
-    "/v1/logs": () => success(null),
     [path]: async () => response,
   });
   const requireRecovery = vi.fn();
