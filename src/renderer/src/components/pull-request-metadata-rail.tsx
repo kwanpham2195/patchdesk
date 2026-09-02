@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Ban,
-  CheckCircle2,
-  History,
-  MessageCircle,
-  PenLine,
-  XCircle,
-} from "lucide-react";
+import { History, PenLine } from "lucide-react";
 
 import type {
   GitHubLabel,
@@ -28,6 +21,7 @@ import {
 } from "./assignee-picker";
 import { LabelChip } from "./label-chip";
 import { LabelPicker, type LabelPickerActions } from "./label-picker";
+import { ReviewVerdictIcon } from "./review-verdict-icon";
 import { ReviewerPicker, type ReviewerPickerActions } from "./reviewer-picker";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
@@ -139,24 +133,6 @@ function reviewVerdictLabel(verdict: ReviewVerdictState): string {
       return "Commented";
     case "dismissed":
       return "Dismissed";
-  }
-}
-
-/** A verdict's icon, so the outdated marking and each verdict stay legible without relying on colour alone. */
-function ReviewVerdictIcon({
-  verdict,
-}: {
-  readonly verdict: ReviewVerdictState;
-}): React.JSX.Element {
-  switch (verdict) {
-    case "approved":
-      return <CheckCircle2 className="size-3" />;
-    case "changes_requested":
-      return <XCircle className="size-3" />;
-    case "commented":
-      return <MessageCircle className="size-3" />;
-    case "dismissed":
-      return <Ban className="size-3" />;
   }
 }
 

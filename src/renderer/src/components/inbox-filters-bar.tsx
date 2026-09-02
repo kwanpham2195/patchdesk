@@ -1,4 +1,13 @@
-import { ChevronLeft, ChevronRight, UserRoundCheck } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleDashed,
+  Clock3,
+  GitBranch,
+  ListFilter,
+  User,
+  UserRoundCheck,
+} from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import {
@@ -9,10 +18,17 @@ import {
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
+import type { InboxRow } from "@/renderer-contracts";
+import { CheckStatusIcon } from "./inbox-row-item";
+import { ReviewVerdictIcon } from "./review-verdict-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import {
   Popover,
   PopoverContent,
@@ -169,14 +185,103 @@ const REVIEW_STATE_FILTERS: ReadonlyArray<{
   { value: "changes_requested", label: "Changes requested" },
 ];
 
+/** The option a review-state `Select` value names; `undefined` is "Any". */
+function reviewStateOf(value: string): InboxReviewStateFilter | undefined {
+  return REVIEW_STATE_FILTERS.find((option) => option.value === value)?.value;
+}
+
+function reviewStateFilterLabel(
+  value: InboxReviewStateFilter | undefined,
+): string {
+  return (
+    REVIEW_STATE_FILTERS.find((option) => option.value === value)?.label ??
+    "Any"
+  );
+}
+
+/**
+ * The review-state filter's glyph. Approved and Changes requested come from
+ * the shared `ReviewVerdictIcon` the Reviewers rail draws, so one glyph means
+ * one verdict; the two states GitHub has no verdict for get the app's own
+ * waiting (amber `Clock3`) and unknown (muted `CircleDashed`) marks, matching
+ * `CheckStatusIcon`. `undefined` is the "Any" option.
+ */
+function ReviewStateFilterIcon({
+  value,
+}: {
+  readonly value: InboxReviewStateFilter | undefined;
+}): React.JSX.Element {
+  switch (value) {
+    case "approved":
+      return (
+        <ReviewVerdictIcon
+          verdict="approved"
+          className="size-3.5 text-emerald-700 dark:text-emerald-400"
+        />
+      );
+    case "changes_requested":
+      return (
+        <ReviewVerdictIcon
+          verdict="changes_requested"
+          className="size-3.5 text-rose-700 dark:text-rose-400"
+        />
+      );
+    case "required":
+      return (
+        <Clock3
+          className="size-3.5 text-amber-600 dark:text-amber-400"
+          aria-hidden="true"
+        />
+      );
+    case "none":
+    case undefined:
+      return (
+        <CircleDashed
+          className="size-3.5 text-muted-foreground"
+          aria-hidden="true"
+        />
+      );
+  }
+}
+
 const CHECK_STATUS_FILTERS: ReadonlyArray<{
   readonly value: InboxCheckStatusFilter;
   readonly label: string;
+  /** The row's check status this filter selects, so the menu reuses the
+   * row's glyph for it instead of keeping a second set of pairs. */
+  readonly overall: InboxRow["checks"]["overall"];
 }> = [
-  { value: "pending", label: "Pending" },
-  { value: "success", label: "Passing" },
-  { value: "failure", label: "Failing" },
+  { value: "pending", label: "Pending", overall: "pending" },
+  { value: "success", label: "Passing", overall: "passing" },
+  { value: "failure", label: "Failing", overall: "failing" },
 ];
+
+/** The option a check-status `Select` value names; `undefined` is "Any". */
+function checkStatusOf(value: string): InboxCheckStatusFilter | undefined {
+  return CHECK_STATUS_FILTERS.find((option) => option.value === value)?.value;
+}
+
+function checkStatusFilterLabel(
+  value: InboxCheckStatusFilter | undefined,
+): string {
+  return (
+    CHECK_STATUS_FILTERS.find((option) => option.value === value)?.label ??
+    "Any"
+  );
+}
+
+/** The check-status filter's glyph, straight from the row's `CheckStatusIcon`.
+ * `undefined` is the "Any" option, which draws the row's unknown mark. */
+function CheckStatusFilterIcon({
+  value,
+}: {
+  readonly value: InboxCheckStatusFilter | undefined;
+}): React.JSX.Element {
+  const overall =
+    CHECK_STATUS_FILTERS.find((option) => option.value === value)?.overall ??
+    "unknown";
+  return <CheckStatusIcon overall={overall} />;
+}
 
 function MoreFiltersPopover({
   reviewState,
@@ -231,6 +336,7 @@ function MoreFiltersPopover({
                 : `More filters (${activeCount} active)`
             }
           >
+            <ListFilter aria-hidden="true" />
             More filters
             {activeCount === 0 ? null : (
               <Badge
@@ -265,13 +371,24 @@ function MoreFiltersPopover({
               }}
             >
               <SelectTrigger id={reviewStateId} size="sm">
-                <SelectValue />
+                <SelectValue>
+                  {(value: string) => (
+                    <>
+                      <ReviewStateFilterIcon value={reviewStateOf(value)} />
+                      {reviewStateFilterLabel(reviewStateOf(value))}
+                    </>
+                  )}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="any">
+                    <ReviewStateFilterIcon value={undefined} />
+                    Any
+                  </SelectItem>
                   {REVIEW_STATE_FILTERS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
+                      <ReviewStateFilterIcon value={option.value} />
                       {option.label}
                     </SelectItem>
                   ))}
@@ -296,13 +413,24 @@ function MoreFiltersPopover({
               }}
             >
               <SelectTrigger id={checkStatusId} size="sm">
-                <SelectValue />
+                <SelectValue>
+                  {(value: string) => (
+                    <>
+                      <CheckStatusFilterIcon value={checkStatusOf(value)} />
+                      {checkStatusFilterLabel(checkStatusOf(value))}
+                    </>
+                  )}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="any">
+                    <CheckStatusFilterIcon value={undefined} />
+                    Any
+                  </SelectItem>
                   {CHECK_STATUS_FILTERS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
+                      <CheckStatusFilterIcon value={option.value} />
                       {option.label}
                     </SelectItem>
                   ))}
@@ -313,6 +441,7 @@ function MoreFiltersPopover({
           <MoreFiltersTextField
             label="Author"
             placeholder="login or @me"
+            icon={<User aria-hidden="true" />}
             maxLength={MAX_INBOX_FILTER_AUTHOR_LENGTH}
             {...(author === undefined ? {} : { value: author })}
             onCommit={onAuthorChange}
@@ -320,6 +449,7 @@ function MoreFiltersPopover({
           <MoreFiltersTextField
             label="Base branch"
             placeholder="main"
+            icon={<GitBranch aria-hidden="true" />}
             maxLength={MAX_INBOX_FILTER_BASE_BRANCH_LENGTH}
             {...(baseBranch === undefined ? {} : { value: baseBranch })}
             onCommit={onBaseBranchChange}
@@ -349,6 +479,7 @@ function MoreFiltersPopover({
                 />
               }
             >
+              <ReviewStateFilterIcon value={reviewState} />
               Review: {reviewLabel}
             </Badge>
           )}
@@ -363,6 +494,7 @@ function MoreFiltersPopover({
                 />
               }
             >
+              <CheckStatusFilterIcon value={checkStatus} />
               Checks: {checkLabel}
             </Badge>
           )}
@@ -377,6 +509,7 @@ function MoreFiltersPopover({
                 />
               }
             >
+              <User aria-hidden="true" />
               Author: {author}
             </Badge>
           )}
@@ -391,6 +524,7 @@ function MoreFiltersPopover({
                 />
               }
             >
+              <GitBranch aria-hidden="true" />
               Base: {baseBranch}
             </Badge>
           )}
@@ -409,12 +543,14 @@ function MoreFiltersPopover({
 function MoreFiltersTextField({
   label,
   placeholder,
+  icon,
   maxLength,
   value,
   onCommit,
 }: {
   readonly label: string;
   readonly placeholder: string;
+  readonly icon: ReactNode;
   readonly maxLength: number;
   readonly value?: string;
   readonly onCommit: (value: string | undefined) => void;
@@ -439,29 +575,34 @@ function MoreFiltersTextField({
   return (
     <Field>
       <FieldLabel htmlFor={fieldId}>{label}</FieldLabel>
-      <Input
-        id={fieldId}
-        value={draft}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            commit();
-            return;
-          }
-          if (event.key === "Escape") {
-            // Stop the key here so the popover's dismissal never sees it:
-            // undoing a mistyped author must not also close the panel and
-            // hide the other three filters.
-            event.preventDefault();
-            event.stopPropagation();
-            setDraft(committed);
-          }
-        }}
-      />
+      <InputGroup>
+        <InputGroupAddon className="text-muted-foreground">
+          {icon}
+        </InputGroupAddon>
+        <InputGroupInput
+          id={fieldId}
+          value={draft}
+          placeholder={placeholder}
+          maxLength={maxLength}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commit();
+              return;
+            }
+            if (event.key === "Escape") {
+              // Stop the key here so the popover's dismissal never sees it:
+              // undoing a mistyped author must not also close the panel and
+              // hide the other three filters.
+              event.preventDefault();
+              event.stopPropagation();
+              setDraft(committed);
+            }
+          }}
+        />
+      </InputGroup>
     </Field>
   );
 }

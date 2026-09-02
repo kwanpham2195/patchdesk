@@ -173,6 +173,51 @@ function PullRequestLabelColumn({
   );
 }
 
+/** One aggregate check status as a glyph and its tone, with no wrapper of its
+ * own. Shared so the row, the inspector's Checks fact, and the Pull requests
+ * check-status filter (`inbox-filters-bar.tsx`) all draw the same pairs.
+ * Always `aria-hidden`: every caller states the status in words nearby. */
+export function CheckStatusIcon({
+  overall,
+}: {
+  readonly overall: InboxRow["checks"]["overall"];
+}): React.JSX.Element {
+  switch (overall) {
+    case "passing":
+      return (
+        <CheckCircle2
+          className="size-3.5 text-emerald-700 dark:text-emerald-400"
+          aria-hidden="true"
+        />
+      );
+    case "failing":
+      return (
+        <CircleAlert
+          className="size-3.5 text-rose-700 dark:text-rose-400"
+          aria-hidden="true"
+        />
+      );
+    case "pending":
+      return (
+        <Clock3 className="size-3.5 text-muted-foreground" aria-hidden="true" />
+      );
+    case "skipped":
+      return (
+        <CircleSlash
+          className="size-3.5 text-muted-foreground"
+          aria-hidden="true"
+        />
+      );
+    case "unknown":
+      return (
+        <CircleDashed
+          className="size-3.5 text-muted-foreground"
+          aria-hidden="true"
+        />
+      );
+  }
+}
+
 /** The row's check glyph, shared with the inspector's Checks fact so one
  * aggregate check status reads the same in both places. */
 export function CheckIcon({
@@ -180,21 +225,9 @@ export function CheckIcon({
 }: {
   readonly overall: InboxRow["checks"]["overall"];
 }): React.JSX.Element {
-  const icon =
-    overall === "passing" ? (
-      <CheckCircle2 className="size-3.5 text-emerald-700 dark:text-emerald-400" />
-    ) : overall === "failing" ? (
-      <CircleAlert className="size-3.5 text-rose-700 dark:text-rose-400" />
-    ) : overall === "pending" ? (
-      <Clock3 className="size-3.5 text-muted-foreground" />
-    ) : overall === "skipped" ? (
-      <CircleSlash className="size-3.5 text-muted-foreground" />
-    ) : (
-      <CircleDashed className="size-3.5 text-muted-foreground" />
-    );
   return (
     <span className="inline-flex items-center" title={`Checks ${overall}`}>
-      {icon}
+      <CheckStatusIcon overall={overall} />
     </span>
   );
 }
