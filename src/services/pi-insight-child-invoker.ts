@@ -6,18 +6,21 @@ import type {
   CommandFailure,
   CommandRunner,
 } from "../adapters/github/command-runner";
-import { parseBriefOutput, type BriefOutput } from "../domain/brief";
+import { parseBriefOutput } from "../domain/brief";
 import { definedProps } from "../domain/defined-props";
-import {
-  parseModelReviewResult,
-  type ModelReviewResult,
-} from "../domain/review-result";
+import { parseAbsolutePath, type AbsolutePath } from "../domain/ids";
+import { parseModelReviewResult } from "../domain/review-result";
 import { err, ok, type Result } from "../domain/result";
 import type { BriefInput } from "./brief-operation";
 import {
   ANALYSIS_RUN_TIMEOUT_MS,
   BRIEF_RUN_TIMEOUT_MS,
+  invokeWalkthroughWithResolvedTimeout,
 } from "./child-invocation";
+import type {
+  InsightInvocationInput,
+  InsightInvoker,
+} from "./insight-run-coordinator";
 import { readObjectField } from "./read-object-field";
 import {
   parseWalkthroughOutput,
@@ -46,19 +49,35 @@ export type PiInsightChildFailure = {
   readonly stderr?: string;
 };
 
-export type PiInsightChildAnalysisInput = {
+/**
+ * The runner's analysis request. Its four paths are branded because
+ * `invoke` parses them before the child is spawned: the runner reads whatever
+ * it is handed, so an unparsed path would reach a spawned process.
+ */
+type PiInsightChildAnalysisInput = {
   readonly profileId: string;
   readonly sessionId: string;
-  readonly contextPath: string;
-  readonly reviewInputPath: string;
-  readonly patchPath: string;
-  readonly worktreePath: string;
+  readonly contextPath: AbsolutePath;
+  readonly reviewInputPath: AbsolutePath;
+  readonly patchPath: AbsolutePath;
+  readonly worktreePath: AbsolutePath;
   readonly model: string;
   readonly reasoning: "low" | "medium" | "high";
 };
 
+/**
+ * The Pi seam when no verified Insight runtime resolved. The composition root
+ * has no runner path to give `PiInsightChildInvoker`, and a provider that
+ * cannot run is still a provider the dispatch has to name, so it names this.
+ */
+export const unavailablePiInsightInvoker: InsightInvoker = {
+  async invoke() {
+    return err({ reason: "runtime_unavailable" as const });
+  },
+};
+
 /** Runs a bounded app-owned one-shot child with the selected built-in provider's ambient credentials. */
-export class PiInsightChildInvoker {
+export class PiInsightChildInvoker implements InsightInvoker {
   constructor(
     private readonly commands: CommandRunner,
     private readonly projectRoot: string,
@@ -72,49 +91,104 @@ export class PiInsightChildInvoker {
     ),
   ) {}
 
-  async invokeAnalysis(
-    input: PiInsightChildAnalysisInput,
-    options?: { readonly signal?: AbortSignal },
-  ): Promise<Result<ModelReviewResult, PiInsightChildFailure>> {
-    const result = await this.invoke(
-      { type: "analysis", input },
+  /**
+   * Runs one Insight on the built-in runtime.
+   *
+   * Every precondition Pi alone has is checked here rather than in the
+   * composition root, which used to hand-build one object per Insight type and
+   * repeat them: this runtime accepts three reasoning efforts of the app-wide
+   * five, an analysis needs the prepared review input, and the runner reads
+   * whatever paths it is given, so they are parsed before it is spawned. A
+   * rejected request is `execution_failed` because the request was wrong, not
+   * the model's answer.
+   */
+  async invoke(
+    input: InsightInvocationInput,
+    options: { readonly signal: AbortSignal },
+  ): Promise<Result<unknown, PiInsightChildFailure>> {
+    if (input.provider !== "pi") return err({ reason: "execution_failed" });
+    const reasoning = input.reasoning;
+    if (reasoning === "minimal" || reasoning === "xhigh")
+      return err({ reason: "execution_failed" });
+    if (input.type === "walkthrough")
+      return invokeWalkthroughWithResolvedTimeout(
+        this,
+        {
+          profileId: input.profileId,
+          sessionId: input.sessionId,
+          contextPath: input.contextPath,
+          patchPath: input.patchPath,
+          model: input.model,
+          reasoning,
+        },
+        options,
+      );
+    if (input.type === "brief") {
+      const briefInput: BriefInput = {
+        profileId: input.profileId,
+        sessionId: input.sessionId,
+        patchPath: input.patchPath,
+        model: input.model,
+        reasoning,
+      };
+      const brief = await this.runChild(
+        { type: "brief", input: briefInput },
+        BRIEF_RUN_TIMEOUT_MS,
+        options.signal,
+      );
+      if (brief._tag === "err") return brief;
+      const parsed = parseBriefOutput(brief.value);
+      return parsed._tag === "ok"
+        ? ok(parsed.value)
+        : err({ reason: "invalid_result" });
+    }
+    if (input.reviewInputPath === undefined)
+      return err({ reason: "execution_failed" });
+    const contextPath = parseAbsolutePath(input.contextPath);
+    const reviewInputPath = parseAbsolutePath(input.reviewInputPath);
+    const patchPath = parseAbsolutePath(input.patchPath);
+    const worktreePath = parseAbsolutePath(input.worktreePath);
+    if (
+      contextPath._tag === "err" ||
+      reviewInputPath._tag === "err" ||
+      patchPath._tag === "err" ||
+      worktreePath._tag === "err"
+    )
+      return err({ reason: "execution_failed" });
+    const analysisInput: PiInsightChildAnalysisInput = {
+      profileId: input.profileId,
+      sessionId: input.sessionId,
+      contextPath: contextPath.value,
+      reviewInputPath: reviewInputPath.value,
+      patchPath: patchPath.value,
+      worktreePath: worktreePath.value,
+      model: input.model,
+      reasoning,
+    };
+    const analysis = await this.runChild(
+      { type: "analysis", input: analysisInput },
       ANALYSIS_RUN_TIMEOUT_MS,
-      options?.signal,
+      options.signal,
     );
-    if (result._tag === "err") return result;
-    const parsed = parseModelReviewResult(result.value);
+    if (analysis._tag === "err") return analysis;
+    const parsed = parseModelReviewResult(analysis.value);
     return parsed._tag === "ok"
       ? ok(parsed.value)
       : err({ reason: "invalid_result" });
   }
 
   /**
-   * Runs one Brief child. A runtime built before the `brief` request type
-   * existed rejects the request as `invalid_input`, which is reported as a run
-   * failure: the request was wrong, not the model's answer.
+   * The walkthrough half of `invoke`, kept a method of its own because it is
+   * the `WalkthroughChildInvoker` port: `invokeWalkthroughWithResolvedTimeout`
+   * owns resolving the patch-scaled bound under the run's signal, and it can
+   * only do that through a seam it calls.
    */
-  async invokeBrief(
-    input: BriefInput,
-    options?: { readonly signal?: AbortSignal },
-  ): Promise<Result<BriefOutput, PiInsightChildFailure>> {
-    const result = await this.invoke(
-      { type: "brief", input },
-      BRIEF_RUN_TIMEOUT_MS,
-      options?.signal,
-    );
-    if (result._tag === "err") return result;
-    const parsed = parseBriefOutput(result.value);
-    return parsed._tag === "ok"
-      ? ok(parsed.value)
-      : err({ reason: "invalid_result" });
-  }
-
   async invokeWalkthrough(
     input: WalkthroughInput,
     timeoutMs: number,
     options?: { readonly signal?: AbortSignal },
   ): Promise<Result<WalkthroughOutput, PiInsightChildFailure>> {
-    const result = await this.invoke(
+    const result = await this.runChild(
       { type: "walkthrough", input },
       timeoutMs,
       options?.signal,
@@ -126,7 +200,7 @@ export class PiInsightChildInvoker {
       : err({ reason: "invalid_result" });
   }
 
-  private async invoke(
+  private async runChild(
     body: unknown,
     timeoutMs: number,
     signal?: AbortSignal,
