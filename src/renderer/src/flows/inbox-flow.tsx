@@ -72,6 +72,10 @@ export function InboxFlow({
   onInboxReviewStateChange = () => undefined,
   checkStatus,
   onInboxCheckStatusChange = () => undefined,
+  author,
+  onInboxAuthorChange = () => undefined,
+  baseBranch,
+  onInboxBaseBranchChange = () => undefined,
   onClearInboxMoreFilters = () => undefined,
   selectedRepository,
   onRepositoryChange = () => undefined,
@@ -119,6 +123,10 @@ export function InboxFlow({
   readonly onInboxCheckStatusChange?: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
+  readonly author?: string;
+  readonly onInboxAuthorChange?: (value: string | undefined) => void;
+  readonly baseBranch?: string;
+  readonly onInboxBaseBranchChange?: (value: string | undefined) => void;
   readonly onClearInboxMoreFilters?: () => void;
   /** The screen's root state (ADR 0031); only App owns its request
    * transition. Absent only before the active profile's watchlist is known. */
@@ -209,6 +217,10 @@ export function InboxFlow({
       onInboxReviewStateChange={onInboxReviewStateChange}
       {...(checkStatus === undefined ? {} : { checkStatus })}
       onInboxCheckStatusChange={onInboxCheckStatusChange}
+      {...(author === undefined ? {} : { author })}
+      onInboxAuthorChange={onInboxAuthorChange}
+      {...(baseBranch === undefined ? {} : { baseBranch })}
+      onInboxBaseBranchChange={onInboxBaseBranchChange}
       onClearInboxMoreFilters={onClearInboxMoreFilters}
       {...(labelActions === undefined ? {} : { labelActions })}
       {...(selectedRepository === undefined ? {} : { selectedRepository })}
@@ -250,6 +262,10 @@ function InboxScreen({
   onInboxReviewStateChange,
   checkStatus,
   onInboxCheckStatusChange,
+  author,
+  onInboxAuthorChange,
+  baseBranch,
+  onInboxBaseBranchChange,
   onClearInboxMoreFilters,
   labelActions,
   selectedRepository,
@@ -289,6 +305,10 @@ function InboxScreen({
   readonly onInboxCheckStatusChange: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
+  readonly author?: string;
+  readonly onInboxAuthorChange: (value: string | undefined) => void;
+  readonly baseBranch?: string;
+  readonly onInboxBaseBranchChange: (value: string | undefined) => void;
   readonly onClearInboxMoreFilters: () => void;
   readonly labelActions?: InboxLabelActions;
   readonly selectedRepository?: RepositoryIdentity;
@@ -359,6 +379,10 @@ function InboxScreen({
           onReviewStateChange={onInboxReviewStateChange}
           {...(checkStatus === undefined ? {} : { checkStatus })}
           onCheckStatusChange={onInboxCheckStatusChange}
+          {...(author === undefined ? {} : { author })}
+          onAuthorChange={onInboxAuthorChange}
+          {...(baseBranch === undefined ? {} : { baseBranch })}
+          onBaseBranchChange={onInboxBaseBranchChange}
           onClearInboxMoreFilters={onClearInboxMoreFilters}
           {...(labelActions === undefined ? {} : { labelActions })}
           {...(inbox.inbox.matchCount === undefined

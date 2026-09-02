@@ -551,6 +551,76 @@ describe("MaintainerInbox", () => {
     expect(onClearInboxMoreFilters).toHaveBeenCalledTimes(1);
   });
 
+  it("commits the author and base branch fields on Enter or blur, restores on Escape, and counts them as active filters", async () => {
+    const user = userEvent.setup();
+    const onAuthorChange = vi.fn();
+    const onBaseBranchChange = vi.fn();
+    const shared = {
+      profileId: "text-filters",
+      profileLabel: "P",
+      rows: [row],
+      freshness: "fresh",
+      refreshStatus: "Current",
+      onAuthorChange,
+      onBaseBranchChange,
+      onOpenReview: vi.fn(),
+      onOpenReviewId: vi.fn(),
+    } as const;
+    const { rerender } = render(<MaintainerInbox {...shared} />);
+
+    await user.click(screen.getByRole("button", { name: "More filters" }));
+    const authorField = screen.getByLabelText("Author");
+    const baseField = screen.getByLabelText("Base branch");
+
+    // Typing alone never re-reads GitHub; only Enter or blur commits.
+    await user.type(authorField, "  octocat  ");
+    expect(onAuthorChange).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
+    expect(onAuthorChange).toHaveBeenCalledWith("octocat");
+
+    // Escape restores the draft to the committed value and leaves the
+    // popover open, so the other filters stay reachable.
+    onAuthorChange.mockClear();
+    await user.clear(authorField);
+    await user.type(authorField, "typo");
+    await user.keyboard("{Escape}");
+    expect(onAuthorChange).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Author") as HTMLInputElement).value).toBe(
+      "",
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "More filters" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+
+    // Blur commits the base-branch draft without an Enter press. This also
+    // proves the popover survived the Escape: a dismissed panel would leave
+    // the field unreachable.
+    await user.type(baseField, " release ");
+    await user.tab();
+    expect(onBaseBranchChange).toHaveBeenCalledWith("release");
+
+    rerender(
+      <MaintainerInbox {...shared} author="octocat" baseBranch="release" />,
+    );
+    expect(
+      screen.getByRole("button", { name: "More filters (2 active)" }),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("2 active filters")).toBeTruthy();
+
+    onAuthorChange.mockClear();
+    await user.click(
+      screen.getByRole("button", { name: "Clear author filter" }),
+    );
+    expect(onAuthorChange).toHaveBeenCalledWith(undefined);
+    onBaseBranchChange.mockClear();
+    await user.click(
+      screen.getByRole("button", { name: "Clear base branch filter" }),
+    );
+    expect(onBaseBranchChange).toHaveBeenCalledWith(undefined);
+  });
+
   it("renders large change counts in compact form", () => {
     const sized: InboxRow = {
       ...row,

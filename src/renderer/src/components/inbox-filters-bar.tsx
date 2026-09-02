@@ -1,14 +1,18 @@
 import { ChevronLeft, ChevronRight, UserRoundCheck } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import {
   INBOX_STATE_FILTERS,
+  MAX_INBOX_FILTER_AUTHOR_LENGTH,
+  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   type InboxCheckStatusFilter,
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -37,6 +41,10 @@ export function InboxFiltersBar({
   onReviewStateChange,
   checkStatus,
   onCheckStatusChange,
+  author,
+  onAuthorChange,
+  baseBranch,
+  onBaseBranchChange,
   onClearInboxMoreFilters,
   rowCount,
   matchCount,
@@ -57,6 +65,10 @@ export function InboxFiltersBar({
   readonly onCheckStatusChange: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
+  readonly author?: string;
+  readonly onAuthorChange: (value: string | undefined) => void;
+  readonly baseBranch?: string;
+  readonly onBaseBranchChange: (value: string | undefined) => void;
   readonly onClearInboxMoreFilters: () => void;
   readonly rowCount: number;
   readonly matchCount?: number;
@@ -119,6 +131,10 @@ export function InboxFiltersBar({
         onReviewStateChange={onReviewStateChange}
         {...(checkStatus === undefined ? {} : { checkStatus })}
         onCheckStatusChange={onCheckStatusChange}
+        {...(author === undefined ? {} : { author })}
+        onAuthorChange={onAuthorChange}
+        {...(baseBranch === undefined ? {} : { baseBranch })}
+        onBaseBranchChange={onBaseBranchChange}
         onClearInboxMoreFilters={onClearInboxMoreFilters}
       />
       <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
@@ -167,6 +183,10 @@ function MoreFiltersPopover({
   onReviewStateChange,
   checkStatus,
   onCheckStatusChange,
+  author,
+  onAuthorChange,
+  baseBranch,
+  onBaseBranchChange,
   onClearInboxMoreFilters,
 }: {
   readonly reviewState?: InboxReviewStateFilter;
@@ -177,11 +197,18 @@ function MoreFiltersPopover({
   readonly onCheckStatusChange: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
+  readonly author?: string;
+  readonly onAuthorChange: (value: string | undefined) => void;
+  readonly baseBranch?: string;
+  readonly onBaseBranchChange: (value: string | undefined) => void;
   readonly onClearInboxMoreFilters: () => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const activeCount =
-    Number(reviewState !== undefined) + Number(checkStatus !== undefined);
+    Number(reviewState !== undefined) +
+    Number(checkStatus !== undefined) +
+    Number(author !== undefined) +
+    Number(baseBranch !== undefined);
   const reviewLabel = REVIEW_STATE_FILTERS.find(
     (option) => option.value === reviewState,
   )?.label;
@@ -214,7 +241,7 @@ function MoreFiltersPopover({
           </Button>
         }
       />
-      <PopoverContent className="w-72">
+      <PopoverContent className="w-80">
         <PopoverHeader>
           <PopoverTitle>More filters</PopoverTitle>
         </PopoverHeader>
@@ -275,6 +302,20 @@ function MoreFiltersPopover({
               </SelectGroup>
             </SelectContent>
           </Select>
+          <MoreFiltersTextField
+            label="Author"
+            placeholder="login or @me"
+            maxLength={MAX_INBOX_FILTER_AUTHOR_LENGTH}
+            {...(author === undefined ? {} : { value: author })}
+            onCommit={onAuthorChange}
+          />
+          <MoreFiltersTextField
+            label="Base branch"
+            placeholder="main"
+            maxLength={MAX_INBOX_FILTER_BASE_BRANCH_LENGTH}
+            {...(baseBranch === undefined ? {} : { value: baseBranch })}
+            onCommit={onBaseBranchChange}
+          />
           {activeCount === 0 ? null : (
             <Button
               type="button"
@@ -317,9 +358,103 @@ function MoreFiltersPopover({
               Checks: {checkLabel}
             </Badge>
           )}
+          {author === undefined ? null : (
+            <Badge
+              variant="outline"
+              render={
+                <button
+                  type="button"
+                  aria-label="Clear author filter"
+                  onClick={() => onAuthorChange(undefined)}
+                />
+              }
+            >
+              Author: {author}
+            </Badge>
+          )}
+          {baseBranch === undefined ? null : (
+            <Badge
+              variant="outline"
+              render={
+                <button
+                  type="button"
+                  aria-label="Clear base branch filter"
+                  onClick={() => onBaseBranchChange(undefined)}
+                />
+              }
+            >
+              Base: {baseBranch}
+            </Badge>
+          )}
         </div>
       )}
     </Popover>
+  );
+}
+
+/**
+ * A More-filters text field that commits its draft on Enter or blur, never on
+ * every keystroke: each committed value becomes a GitHub qualifier, and a read
+ * only happens when the query changes (ADR 0032). Escape restores the draft to
+ * the committed value without committing, and without dismissing the popover.
+ */
+function MoreFiltersTextField({
+  label,
+  placeholder,
+  maxLength,
+  value,
+  onCommit,
+}: {
+  readonly label: string;
+  readonly placeholder: string;
+  readonly maxLength: number;
+  readonly value?: string;
+  readonly onCommit: (value: string | undefined) => void;
+}): React.JSX.Element {
+  const fieldId = useId();
+  const committed = value ?? "";
+  const [draft, setDraft] = useState(committed);
+  const [seed, setSeed] = useState(committed);
+  // Re-seed the draft when the committed value changes underneath it — the
+  // chips and "Clear all filters" both clear the field from outside.
+  if (seed !== committed) {
+    setSeed(committed);
+    setDraft(committed);
+  }
+
+  const commit = (): void => {
+    const next = draft.trim();
+    if (next === committed) return;
+    onCommit(next === "" ? undefined : next);
+  };
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={fieldId}>{label}</FieldLabel>
+      <Input
+        id={fieldId}
+        value={draft}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+            return;
+          }
+          if (event.key === "Escape") {
+            // Stop the key here so the popover's dismissal never sees it:
+            // undoing a mistyped author must not also close the panel and
+            // hide the other three filters.
+            event.preventDefault();
+            event.stopPropagation();
+            setDraft(committed);
+          }
+        }}
+      />
+    </Field>
   );
 }
 

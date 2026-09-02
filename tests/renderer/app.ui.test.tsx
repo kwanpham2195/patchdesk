@@ -355,6 +355,28 @@ describe("App inbox More filters", () => {
       expect(desktop.paths.at(-1)).toContain("checkStatus=failure"),
     );
   });
+
+  it("passes a typed author through the visible filter bar into the request", async () => {
+    const user = userEvent.setup();
+    const desktop = installRepoDesktop();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Pull requests" });
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain(`owner=${repoA.owner}`),
+    );
+
+    await user.click(screen.getByRole("button", { name: "More filters" }));
+    await user.type(screen.getByLabelText("Author"), "octocat");
+    // Typing is not a query change; only the commit re-reads GitHub.
+    expect(desktop.paths.at(-1)).not.toContain("author=");
+    await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(desktop.paths.at(-1)).toContain("author=octocat"),
+    );
+    expect(
+      screen.getByRole("button", { name: "Clear author filter" }),
+    ).toBeTruthy();
+  });
 });
 
 describe("App repository picker", () => {
