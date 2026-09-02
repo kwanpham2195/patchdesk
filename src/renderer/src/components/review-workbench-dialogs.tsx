@@ -8,6 +8,7 @@ import { FinishReviewDialog } from "./finish-review-dialog";
 import {
   CanonicalReviewOverviewSheet,
   type CanonicalReviewOverview,
+  type OverviewFocusSection,
 } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import { SummaryReviewDialog } from "./summary-review-dialog";
@@ -17,7 +18,9 @@ export function ReviewWorkbenchDialogs({
   actions,
   overview,
   overviewOpen,
+  overviewFocusSection,
   setOverviewOpen,
+  onReviewFindings,
   summaryDialogOpen,
   setSummaryDialogOpen,
   externalPullRequest,
@@ -25,7 +28,9 @@ export function ReviewWorkbenchDialogs({
   readonly actions: ReviewWorkbenchActions;
   readonly overview: CanonicalReviewOverview;
   readonly overviewOpen: boolean;
+  readonly overviewFocusSection: OverviewFocusSection | undefined;
   readonly setOverviewOpen: (open: boolean) => void;
+  readonly onReviewFindings: (findingIds: ReadonlyArray<string>) => void;
   readonly summaryDialogOpen: boolean;
   readonly setSummaryDialogOpen: (open: boolean) => void;
   readonly externalPullRequest: PullRequestRef | undefined;
@@ -36,6 +41,10 @@ export function ReviewWorkbenchDialogs({
         open={overviewOpen}
         onOpenChange={setOverviewOpen}
         overview={overview}
+        {...(overviewFocusSection === undefined
+          ? {}
+          : { focusSection: overviewFocusSection })}
+        onReviewFindings={onReviewFindings}
         {...(actions.merge === undefined ? {} : { merge: actions.merge })}
       />
       {actions.pendingReview === undefined ||

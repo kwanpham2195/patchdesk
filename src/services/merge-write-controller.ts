@@ -6,6 +6,7 @@ import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { mergeGateFindings } from "../domain/analysis-merge-findings";
+import type { MergeWarningCode } from "../domain/merge-readiness";
 import {
   parseContentHash,
   parseGitSha,
@@ -259,9 +260,7 @@ type MergeWarningAcknowledgement = {
     readonly baseSha: string;
     readonly patchHash: string;
   };
-  readonly warningCodes: ReadonlyArray<
-    "request_changes" | "high_severity_finding" | "analysis_finding"
-  >;
+  readonly warningCodes: ReadonlyArray<MergeWarningCode>;
 };
 
 function parseAcknowledgement(
@@ -303,9 +302,7 @@ function isMergeWarningCode(
   value: unknown,
 ): value is MergeWarningAcknowledgement["warningCodes"][number] {
   return (
-    value === "request_changes" ||
-    value === "high_severity_finding" ||
-    value === "analysis_finding"
+    value === "request_changes" || value === "findings_need_acknowledgement"
   );
 }
 

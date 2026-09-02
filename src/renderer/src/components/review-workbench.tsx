@@ -46,7 +46,10 @@ import type {
   ReviewInlineAnnotation,
 } from "./review-diff-view";
 import type { ReviewConversationActions } from "./conversation-thread-card";
-import type { PullRequestOverviewMerge } from "./pr-overview-sheet";
+import type {
+  OverviewFocusSection,
+  PullRequestOverviewMerge,
+} from "./pr-overview-sheet";
 import { ReviewNavigator } from "./review-navigator";
 import {
   buildAnnotations,
@@ -390,6 +393,13 @@ export function ReviewWorkbench({
   const [overviewOpen, setOverviewOpen] = useState(
     initialState?.overviewOpen ?? false,
   );
+  const [overviewFocusSection, setOverviewFocusSection] = useState<
+    OverviewFocusSection | undefined
+  >(undefined);
+  const openOverview = useCallback((section?: OverviewFocusSection): void => {
+    setOverviewFocusSection(section);
+    setOverviewOpen(true);
+  }, []);
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
   const [navigatorVisible, setNavigatorVisible] = useState(true);
   const [navigatorWidthRem, setNavigatorWidthRem] = useState(
@@ -495,6 +505,14 @@ export function ReviewWorkbench({
   const findingNavigation = useMemo(
     () => ({ openFindingInDiff, findingFocusRequest }),
     [findingFocusRequest, openFindingInDiff],
+  );
+  // The readiness card lists every counted finding; the reader lands on the first.
+  const reviewFindings = useCallback(
+    (findingIds: ReadonlyArray<string>): void => {
+      const first = findingIds[0];
+      if (first !== undefined) openFindingInAnalysis(first);
+    },
+    [openFindingInAnalysis],
   );
   const selectedCommit =
     selectedCommitSha === undefined
@@ -630,7 +648,7 @@ export function ReviewWorkbench({
           hasUpdates={hasUpdates}
           terminal={terminal}
           externalPullRequest={externalPullRequest}
-          setOverviewOpen={setOverviewOpen}
+          openOverview={openOverview}
           setSummaryDialogOpen={setSummaryDialogOpen}
         />
 
@@ -915,7 +933,9 @@ export function ReviewWorkbench({
           actions={actions}
           overview={overview}
           overviewOpen={overviewOpen}
+          overviewFocusSection={overviewFocusSection}
           setOverviewOpen={setOverviewOpen}
+          onReviewFindings={reviewFindings}
           summaryDialogOpen={summaryDialogOpen}
           setSummaryDialogOpen={setSummaryDialogOpen}
           externalPullRequest={externalPullRequest}

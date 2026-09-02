@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { useState } from "react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CanonicalReviewOverviewSheet,
@@ -62,6 +64,35 @@ function renderOverview(overview: CanonicalReviewOverview): void {
       onOpenChange={() => undefined}
       overview={overview}
     />,
+  );
+}
+
+const findingsWarning: Readiness = {
+  _tag: "NeedsAcknowledgement",
+  blockers: [],
+  warnings: [
+    {
+      code: "findings_need_acknowledgement",
+      findingIds: ["finding-1", "finding-2"],
+    },
+  ],
+};
+
+// The sheet only hands the ids over once it has closed, so the harness
+// must actually close it the way the workbench does.
+function ClosableOverview({
+  onReviewFindings,
+}: {
+  readonly onReviewFindings: (findingIds: ReadonlyArray<string>) => void;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(true);
+  return (
+    <CanonicalReviewOverviewSheet
+      open={open}
+      onOpenChange={setOpen}
+      overview={baseOverview({ mergeReadiness: findingsWarning })}
+      onReviewFindings={onReviewFindings}
+    />
   );
 }
 
@@ -214,6 +245,69 @@ describe("pr overview sheet merge readiness", () => {
       );
     },
   );
+
+  it("renders one findings card whose name carries the count", () => {
+    renderOverview(baseOverview({ mergeReadiness: findingsWarning }));
+    expect(
+      screen.getAllByRole("group", {
+        name: /need(s)? acknowledgement before merge/,
+      }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("group", {
+        name: "2 findings need acknowledgement before merge",
+      }),
+    ).toBeTruthy();
+    // No Review findings action without a workbench to land on.
+    expect(
+      screen.queryByRole("button", { name: "Review findings" }),
+    ).toBeNull();
+  });
+
+  it("names a single finding in the singular", () => {
+    renderOverview(
+      baseOverview({
+        mergeReadiness: {
+          ...findingsWarning,
+          warnings: [
+            { code: "findings_need_acknowledgement", findingIds: ["only"] },
+          ],
+        },
+      }),
+    );
+    expect(
+      screen.getByRole("group", {
+        name: "1 finding needs acknowledgement before merge",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("closes the sheet on Review findings, then calls back with the counted ids", async () => {
+    const onReviewFindings = vi.fn();
+    render(<ClosableOverview onReviewFindings={onReviewFindings} />);
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Review findings" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "PR overview" })).toBeNull(),
+    );
+    expect(onReviewFindings).toHaveBeenCalledTimes(1);
+    expect(onReviewFindings).toHaveBeenCalledWith(["finding-1", "finding-2"]);
+  });
+
+  it("lands focus on the Merge readiness row when asked to", async () => {
+    render(
+      <CanonicalReviewOverviewSheet
+        open
+        onOpenChange={() => undefined}
+        overview={baseOverview({ mergeReadiness: findingsWarning })}
+        focusSection="merge_readiness"
+      />,
+    );
+    const row = screen.getByRole("button", { name: "Merge readiness" });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+  });
 
   it("shows Open on GitHub only once when several reasons request it", () => {
     renderOverview(

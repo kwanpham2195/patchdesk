@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import type { FindingId } from "../../src/domain/ids";
+import { analysisMergeInput } from "../../src/domain/analysis-merge-findings";
 import {
   deriveCheckReasons,
   evaluateMergeReadiness,
 } from "../../src/domain/merge-readiness";
+
+// SAFETY: fixture ids; the brand marks a parsed safe slug and these are ones.
+const firstFindingId = "finding-1" as FindingId;
+const secondFindingId = "finding-2" as FindingId;
+const findingIds = [firstFindingId, secondFindingId];
 
 const passing = {
   overall: "passing" as const,
@@ -26,7 +33,7 @@ const neutral = {
   mergeability: "mergeable" as const,
   hasGitHubReviewBlocker: false,
   hasRequestChanges: false,
-  hasHighSeverityFinding: false,
+  openHighSeverityFindingIds: [],
 };
 
 describe("merge readiness", () => {
@@ -50,7 +57,7 @@ describe("merge readiness", () => {
         },
         hasGitHubReviewBlocker: true,
         hasRequestChanges: true,
-        hasHighSeverityFinding: true,
+        openHighSeverityFindingIds: findingIds,
       }),
     ).toEqual({
       _tag: "Blocked",
@@ -62,7 +69,10 @@ describe("merge readiness", () => {
         "required_check",
         "github_review",
       ],
-      warnings: ["request_changes", "high_severity_finding"],
+      warnings: [
+        { code: "request_changes" },
+        { code: "findings_need_acknowledgement", findingIds },
+      ],
     });
     expect(
       evaluateMergeReadiness({
@@ -73,13 +83,58 @@ describe("merge readiness", () => {
         checks: passing,
         hasGitHubReviewBlocker: false,
         hasRequestChanges: true,
-        hasHighSeverityFinding: true,
+        openHighSeverityFindingIds: findingIds,
       }),
     ).toEqual({
       _tag: "NeedsAcknowledgement",
       blockers: [],
-      warnings: ["request_changes", "high_severity_finding"],
+      warnings: [
+        { code: "request_changes" },
+        { code: "findings_need_acknowledgement", findingIds },
+      ],
     });
+  });
+
+  // The readiness card and the Analysis banner count one list, so the
+  // warning carries the ids rather than a count a second store could drift from.
+  it("emits one findings warning carrying the open P0/P1 ids, and none once they are dismissed", () => {
+    const findings = [
+      {
+        id: firstFindingId,
+        severity: "P1" as const,
+        disposition: "open" as const,
+      },
+      {
+        id: secondFindingId,
+        severity: "P1" as const,
+        disposition: "open" as const,
+      },
+      { id: "finding-3" as FindingId, severity: "P2" as const },
+    ];
+    expect(
+      evaluateMergeReadiness({
+        ...neutral,
+        checks: passing,
+        ...analysisMergeInput(findings, undefined),
+      }),
+    ).toEqual({
+      _tag: "NeedsAcknowledgement",
+      blockers: [],
+      warnings: [{ code: "findings_need_acknowledgement", findingIds }],
+    });
+    expect(
+      evaluateMergeReadiness({
+        ...neutral,
+        checks: passing,
+        ...analysisMergeInput(
+          findings.map((finding) => ({
+            ...finding,
+            disposition: "dismissed" as const,
+          })),
+          undefined,
+        ),
+      }),
+    ).toEqual({ _tag: "Ready", blockers: [], warnings: [] });
   });
 
   it("does not report GitHub-blocked or unknown mergeability as a conflict", () => {
@@ -92,7 +147,7 @@ describe("merge readiness", () => {
         checks: passing,
         hasGitHubReviewBlocker: false,
         hasRequestChanges: false,
-        hasHighSeverityFinding: false,
+        openHighSeverityFindingIds: [],
       }),
     ).toEqual({ _tag: "Blocked", blockers: ["merge_blocked"], warnings: [] });
     expect(
@@ -104,7 +159,7 @@ describe("merge readiness", () => {
         checks: passing,
         hasGitHubReviewBlocker: false,
         hasRequestChanges: false,
-        hasHighSeverityFinding: false,
+        openHighSeverityFindingIds: [],
       }),
     ).toEqual({
       _tag: "Blocked",
@@ -122,31 +177,21 @@ describe("merge readiness", () => {
       checks: passing,
       hasGitHubReviewBlocker: false,
       hasRequestChanges: false,
-      hasHighSeverityFinding: false,
-      analysisFindingCount: 1,
+      openHighSeverityFindingIds: [firstFindingId],
+    };
+    const warning = {
+      code: "findings_need_acknowledgement",
+      findingIds: [firstFindingId],
     };
     expect(
       evaluateMergeReadiness({ ...base, analysisMergePolicy: "advisory" }),
-    ).toMatchObject({
-      _tag: "NeedsAcknowledgement",
-      warnings: ["analysis_finding"],
-    });
+    ).toMatchObject({ _tag: "NeedsAcknowledgement", warnings: [warning] });
     expect(
       evaluateMergeReadiness({
         ...base,
         analysisMergePolicy: "require_acknowledgement",
       }),
-    ).toMatchObject({
-      _tag: "NeedsAcknowledgement",
-      warnings: ["analysis_finding"],
-    });
-    expect(
-      evaluateMergeReadiness({
-        ...base,
-        analysisMergePolicy: "require_acknowledgement",
-        analysisAcknowledged: true,
-      }),
-    ).toMatchObject({ _tag: "Ready" });
+    ).toMatchObject({ _tag: "NeedsAcknowledgement", warnings: [warning] });
     expect(
       evaluateMergeReadiness({ ...base, analysisMergePolicy: "block" }),
     ).toMatchObject({ _tag: "Blocked", blockers: ["analysis_finding"] });

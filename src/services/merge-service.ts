@@ -9,6 +9,7 @@ import {
 import {
   evaluateMergeReadiness,
   type MergeReadiness,
+  type MergeWarningCode,
 } from "../domain/merge-readiness";
 import type { GitSha } from "../domain/ids";
 import type { PullRequestRef } from "../domain/pull-request";
@@ -18,7 +19,6 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 
 export type MergeMethod = "merge" | "squash" | "rebase";
-type MergeWarningCode = MergeReadiness["warnings"][number];
 
 type MergeGateway = Pick<
   GitHubReader,
@@ -119,7 +119,12 @@ export async function mergePullRequest(input: {
   });
   if (readiness._tag === "Blocked")
     return err({ _tag: "MergeBlocked", readiness });
-  if (!sameWarningCodes(readiness.warnings, input.acknowledgedWarningCodes))
+  if (
+    !sameWarningCodes(
+      readiness.warnings.map((warning) => warning.code),
+      input.acknowledgedWarningCodes,
+    )
+  )
     return err({ _tag: "MergeAcknowledgementRequired", readiness });
 
   // No await occurs between this final canonical revision proof and the explicit merge request.

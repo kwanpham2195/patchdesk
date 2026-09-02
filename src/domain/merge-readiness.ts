@@ -4,7 +4,20 @@ import type {
   GitHubMergeEvidence,
   MergeDisplayReason,
 } from "./github-context";
+import type { FindingId } from "./ids";
 import type { AnalysisMergePolicy } from "./workspace-profile";
+
+/** One merge warning the maintainer must acknowledge before the gate lets a merge through. */
+type MergeWarning =
+  | { readonly code: "request_changes" }
+  | {
+      readonly code: "findings_need_acknowledgement";
+      /** The open P0/P1 Findings of the current Analysis, so the readiness card can lead to them. */
+      readonly findingIds: ReadonlyArray<FindingId>;
+    };
+
+/** The acknowledgement wire form: the merge request carries codes, not whole warnings. */
+export type MergeWarningCode = MergeWarning["code"];
 
 export type MergeReadiness = {
   readonly _tag: "Ready" | "Blocked" | "NeedsAcknowledgement";
@@ -20,9 +33,7 @@ export type MergeReadiness = {
     | "github_review"
     | "analysis_finding"
   >;
-  readonly warnings: ReadonlyArray<
-    "request_changes" | "high_severity_finding" | "analysis_finding"
-  >;
+  readonly warnings: ReadonlyArray<MergeWarning>;
 };
 
 /** Decide only GitHub/PR hard blockers; executing a merge remains outside the domain layer. */
@@ -41,10 +52,9 @@ export function evaluateMergeReadiness(input: {
   readonly hasFailingChecks?: boolean;
   readonly hasGitHubReviewBlocker: boolean;
   readonly hasRequestChanges: boolean;
-  readonly hasHighSeverityFinding: boolean;
-  readonly analysisFindingCount?: number;
+  /** The current Analysis's open P0/P1 Findings; empty when no Analysis is current. */
+  readonly openHighSeverityFindingIds: ReadonlyArray<FindingId>;
   readonly analysisMergePolicy?: AnalysisMergePolicy;
-  readonly analysisAcknowledged?: boolean;
 }): MergeReadiness {
   const blockers: Array<MergeReadiness["blockers"][number]> = [];
   if (!input.isCurrentHead) blockers.push("stale_head");
@@ -56,22 +66,17 @@ export function evaluateMergeReadiness(input: {
   if (hasBlockingRequiredCheck(input.checks)) blockers.push("required_check");
   if (input.hasFailingChecks === true) blockers.push("failing_check");
   if (input.hasGitHubReviewBlocker) blockers.push("github_review");
-  const analysisFindingCount = input.analysisFindingCount ?? 0;
+  const findingIds = input.openHighSeverityFindingIds;
   const analysisPolicy = input.analysisMergePolicy ?? "advisory";
-  if (analysisFindingCount > 0 && analysisPolicy === "block")
+  if (findingIds.length > 0 && analysisPolicy === "block")
     blockers.push("analysis_finding");
 
-  const warnings: Array<MergeReadiness["warnings"][number]> = [];
-  if (input.hasRequestChanges) warnings.push("request_changes");
-  if (input.hasHighSeverityFinding) warnings.push("high_severity_finding");
-  if (analysisFindingCount > 0 && analysisPolicy === "advisory")
-    warnings.push("analysis_finding");
-  if (
-    analysisFindingCount > 0 &&
-    analysisPolicy === "require_acknowledgement" &&
-    input.analysisAcknowledged !== true
-  )
-    warnings.push("analysis_finding");
+  const warnings: Array<MergeWarning> = [];
+  if (input.hasRequestChanges) warnings.push({ code: "request_changes" });
+  // One warning for all open P0/P1 Findings, whatever the policy, so the
+  // readiness card and the Analysis banner count the same list.
+  if (findingIds.length > 0)
+    warnings.push({ code: "findings_need_acknowledgement", findingIds });
   return {
     _tag:
       blockers.length > 0
