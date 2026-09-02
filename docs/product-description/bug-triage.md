@@ -6,16 +6,16 @@ A consolidated record of defects raised by the product documents and verificatio
 
 Eight distinct defects are fixed after deduplication: one former high-severity work-loss risk and seven former medium-severity correctness, focus, or feedback risks. The largest cluster was workspace setup, switching, and discovery. The fixes have canonical automated coverage; B-01, B-02, and B-07 also have post-fix desktop evidence. B-08 has an exact automated Reply-textarea test and supporting desktop input evidence, but its exact Reply-textarea live rerun remains outstanding.
 
-| ID   | Title                                                                       | Severity | Area                           | Resolution        | Issue |
-| ---- | --------------------------------------------------------------------------- | -------- | ------------------------------ | ----------------- | ----- |
-| B-01 | New profile replaces a Dirty draft without a choice                         | high     | Settings / Workspace           | fixed (`31284f3`) | —     |
-| B-02 | Scalar profile validation falls through to a generic request error          | medium   | Settings / Workspace           | fixed (`8dce9e7`) | —     |
-| B-03 | Open Review recommendation preempts ready-to-merge action                   | medium   | Pull requests                  | fixed (`b66a0a9`) | —     |
-| B-04 | Stale Review-opening error remains on the first-run screen                  | medium   | First run / Pull requests      | fixed (`8d372ab`) | —     |
-| B-05 | Repository grouping treats a path prefix as containment                     | medium   | Settings / Workspace discovery | fixed (`c59d249`) | —     |
-| B-06 | A failed root scan is omitted from an otherwise successful discovery result | medium   | Workspace discovery            | fixed (`c49045d`) | —     |
-| B-07 | Profile switch can leave the Repository picker unset after rows reload      | medium   | Pull requests / Workspace      | fixed (`c1ce7a2`) | —     |
-| B-08 | Navigate shortcut opens from a focused Review reply editor                  | medium   | Review workbench / Keyboard    | fixed (`75fadec`) | —     |
+| ID   | Title                                                                       | Severity | Area                           | Resolution                    | Issue |
+| ---- | --------------------------------------------------------------------------- | -------- | ------------------------------ | ----------------------------- | ----- |
+| B-01 | New profile replaces a Dirty draft without a choice                         | high     | Settings / Workspace           | fixed (`31284f3`)             | —     |
+| B-02 | Scalar profile validation falls through to a generic request error          | medium   | Settings / Workspace           | fixed (`8dce9e7`)             | —     |
+| B-03 | Open Review recommendation preempts ready-to-merge action                   | medium   | Pull requests                  | fixed (`b66a0a9`), superseded | —     |
+| B-04 | Stale Review-opening error remains on the first-run screen                  | medium   | First run / Pull requests      | fixed (`8d372ab`)             | —     |
+| B-05 | Repository grouping treats a path prefix as containment                     | medium   | Settings / Workspace discovery | fixed (`c59d249`)             | —     |
+| B-06 | A failed root scan is omitted from an otherwise successful discovery result | medium   | Workspace discovery            | fixed (`c49045d`)             | —     |
+| B-07 | Profile switch can leave the Repository picker unset after rows reload      | medium   | Pull requests / Workspace      | fixed (`c1ce7a2`)             | —     |
+| B-08 | Navigate shortcut opens from a focused Review reply editor                  | medium   | Review workbench / Keyboard    | fixed (`75fadec`)             | —     |
 
 ## High
 
@@ -54,7 +54,7 @@ Eight distinct defects are fixed after deduplication: one former high-severity w
 - **Severity:** `medium`. The row remains usable, but the primary action can conceal a consequential readiness path.
 - **Decision needed:** `fix`. Decide and encode whether merge readiness, Review reopening, or a combined action should win when both are true.
 - **Affected documents/checklists:** [`Repository listing`](pull-requests/repository-listing.md#edge-cases), [`LIST-02`](verification/pull-requests.md#pull-requestsrepository-listingmd).
-- **Status:** fixed by `b66a0a9`; canonical regression: `tests/domain/maintainer-inbox.test.ts` and `tests/services/maintainer-inbox-cache-secondary-action.test.ts`. Automated coverage proves the primary Review action and separate read-only merge-readiness action. No exact ready live fixture was available.
+- **Status:** fixed by `b66a0a9`; canonical regression: `tests/domain/maintainer-inbox.test.ts` and `tests/services/maintainer-inbox-cache-secondary-action.test.ts`. Automated coverage proves the primary Review action and separate read-only merge-readiness action. No exact ready live fixture was available. Superseded 2026-09-02: the inspector now has one Open action and the separate merge-readiness action was removed; `tests/services/maintainer-inbox-cache-secondary-action.test.ts` no longer exists. Ready to merge remains a category.
 - **Issue:** —
 
 ### B-04: Stale Review-opening error remains on the first-run screen

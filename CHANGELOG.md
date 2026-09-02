@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed a Pull requests row so a click only selects it and shows it in **Review details**; open it from the row title, a double-click, Enter, or the single **Open** button. The inspector now leads with the review status — Not reviewed, Current, Updates available, or Merged — and shows a Scope legend where a saved review supplies one. The separate merge-readiness action is gone; merge readiness is still in PR overview inside the review. The pull request icon is now coloured by state: open, draft, or merged.
+- Pull requests loads fresh on first open after this release; rows cached by 0.0.1 are read again from GitHub once.
 - Added newer models to choose from for Insight runs, among them Grok 4.6, Gemini 3.7 Flash, GLM-5.3, and Claude Opus 5 Fast on Vercel AI Gateway.
 - Some providers renamed their model ids: Cloudflare AI Gateway's Anthropic models now separate the version with a dot (`claude-sonnet-4.5` rather than `claude-sonnet-4-5`), and Vercel AI Gateway moved its xAI models from `xai/` to `spacexai/`. A **Default model** saved under an old id no longer matches and needs picking again in Settings.
 - Insight runs now talk to the model through Pi directly instead of through a framework layered over it, so Patchdesk bundles a smaller runtime with the app, and Analysis, Walkthrough, and Brief no longer offer the model two framework tools none of them used. A transient provider error, such as a rate limit or a server hiccup, is still retried before a run is reported as failed.

@@ -23,7 +23,7 @@ The follow-up promoted these complete live observations:
 
 `FOCUS-01` changed from fail to blocked. The fixed shortcut has an exact automated Reply-textarea regression and supporting focused Settings-input evidence, but the precise Reply-textarea desktop scenario was not rerun.
 
-The completed clarity changes are also supported by focused tests: the Pull requests row exposes merge readiness separately from Open Review; per-root discovery preserves ready and failed outcomes; Resolve explains permission failures; Analysis explains empty findings; Walkthrough clarifies section navigation; Review activity explains an empty history; and Diff navigation exposes its active target and boundaries. These are no longer unresolved candidate framing. Their exact manual fixtures remain blocked where the checklist requires one.
+The completed clarity changes are also supported by focused tests: the Pull requests row selects on click and opens from the title, a double-click, Enter, or the inspector's Open action; per-root discovery preserves ready and failed outcomes; Resolve explains permission failures; Analysis explains empty findings; Walkthrough clarifies section navigation; Review activity explains an empty history; and Diff navigation exposes its active target and boundaries. These are no longer unresolved candidate framing. Their exact manual fixtures remain blocked where the checklist requires one. The separate merge-readiness affordance on a Pull requests row was removed on 2026-09-02; `LIST-02-B` now checks the single Open action instead.
 
 ## Remaining fixture requirements
 

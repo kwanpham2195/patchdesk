@@ -6,7 +6,7 @@ Opening a Review turns one Pull requests row into a readable Review workbench. T
 
 ## The simple case
 
-The maintainer activates a row's recommended action with a click, Enter, the inspector button, or the command palette. Patchdesk shows Opening… and a shared Opening Review… busy indicator. It reads the pull request and prepares or resumes the Review session for the exact revision.
+The maintainer opens a row from its title, a double-click on the row, Enter on the focused row, the inspector's Open button, or the command palette. A single row click only selects. Patchdesk shows Opening… and a shared Opening Review… busy indicator. It reads the pull request and prepares or resumes the Review session for the exact revision.
 
 When preparation succeeds, the app navigates to the keyed Review workbench. The workbench receives the pull-request context, represented revision, diff, checks, comments, and any retained Insights. If a saved Review cannot be loaded, Patchdesk retries by Pull request identity so a missing local record can be healed.
 
@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The row supplies profile, host, owner, repository, pull-request number, and recommended action. `Run review` opens a normal pull request. `Open Review` loads the saved Review ID first. `View merged pull request` uses the terminal-only opening path. The app retains the row identity while the request runs.
+The row supplies profile, host, owner, repository, and pull-request number, and one Open action serves every row state. An unreviewed row opens as a new Review. A row with a saved Review loads that saved Review ID first. A merged row uses the terminal-only opening path. The app retains the row identity while the request runs.
 
 ### Leave unchanged
 
@@ -32,7 +32,7 @@ Selecting a row, reading its inspector, or opening the details panel does not pr
 
 ### Begin an action
 
-The first accepted activation disables that row, records its Opening… state, clears prior opening feedback, and starts the corresponding local API request. Saved-review opening first requests the durable Review projection. New and merged openings send the Pull request identity; merged opening also asserts the terminal-only path.
+The first accepted activation marks that row busy, records its Opening… state, clears prior opening feedback, and starts the corresponding local API request. Saved-review opening first requests the durable Review projection. New and merged openings send the Pull request identity; merged opening also asserts the terminal-only path.
 
 The main process resolves the profile, reads current pull-request identity and revision evidence, and either resumes the matching session or begins preparation for a new one. The session ID includes the profile, repository, pull-request number, head, base, and revision identity.
 
@@ -48,7 +48,7 @@ The row and inspector show Opening… only for that row. Other rows can be opene
 
 A successful preparation commits the Review session and enters its Review workbench. A saved session reports resumed behavior to the workbench; a new session has the freshly prepared represented revision. The Pull requests screen records a short Review opened notice when it remains mounted.
 
-A failed opening re-enables the row and shows `Could not open review` with the preparation reason. Loading a saved Review can fall back to `/v1/reviews/open` by row identity. If both load and fallback fail, the row remains in the listing and no workbench is opened. An invalid workbench projection is treated as failure rather than navigating to an unvalidated screen.
+A failed opening clears the row's busy state and shows `Could not open review` with the preparation reason. Loading a saved Review can fall back to `/v1/reviews/open` by row identity. If both load and fallback fail, the row remains in the listing and no workbench is opened. An invalid workbench projection is treated as failure rather than navigating to an unvalidated screen.
 
 ## Variants
 
@@ -58,7 +58,7 @@ A failed opening re-enables the row and shows `Could not open review` with the p
 | Pull request and Review state | Unreviewed, saved-review, updated-review, and merged rows choose different opening routes. | New preparation pins one exact revision. Merged opening requires the pull request to remain non-open through final checks. |
 | GitHub permissions and merge readiness | Opening is read-only and does not require merge readiness. | GitHub authentication, read, or permission failures stop preparation; no write is attempted. |
 | Network, local tool, and Insight provider availability | A local checkout enables worktree mode; otherwise a snapshot mode may be used. Insights are retained if available but are not required to open. | GitHub reads, local Git preparation, storage, and context generation can fail independently; the opening settles with a named failure. |
-| Input path: mouse, keyboard, or desktop menu | Row click, Enter, inspector action, and command palette use the same operation owner. | The row-local disabled state and busy feedback apply across entry points. |
+| Input path: mouse, keyboard, or desktop menu | The row title, a double-click, Enter, the inspector's Open button, and the command palette use the same operation owner; a single row click only selects. | The row-local busy state and its feedback apply across entry points. |
 
 The chosen opening route is fixed at admission. A remote change discovered during preparation does not silently switch a normal opening into a merged opening or adopt a different head.
 
@@ -105,7 +105,7 @@ After failure, no partially prepared session is presented as current. Recovery r
 - A watched repository without a usable local checkout can still open in metadata-only or snapshot mode with a visible limitation.
 - A malformed workbench response does not navigate.
 - A missing or invalid saved Review does not erase the Pull request row.
-- Opening one row does not disable unrelated rows, but the same row's row and inspector controls are disabled.
+- Opening one row leaves unrelated rows interactive, but the busy row's title, double-click, and inspector Open button are inert.
 - A failure after partial preparation is cleaned through the journal before the operation settles.
 - A stale listing can still be readable while opening performs its own current reads and may reject the target.
 
@@ -118,4 +118,4 @@ After failure, no partially prepared session is presented as current. Recovery r
 - Confirm the error and retry experience after a saved-review load fails and identity fallback also fails.
 - Confirm cleanup and visible behavior when preparation sees a changed head between its first and final reads.
 
-Verified against Patchdesk application source commit `3100615`.
+Verified against Patchdesk application source commit `3100615`; scoped select-then-open entry points and single Open action behavior updated through `838a47e`.
