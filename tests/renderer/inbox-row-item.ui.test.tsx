@@ -99,9 +99,14 @@ describe("InboxRowItem", () => {
   });
 });
 
-/** The title is styled text inside the row, found by the label it carries. */
+/** The title is styled text with no role, found by the slot it carries. */
 function rowTitle(): HTMLElement {
-  return within(screen.getByRole("option")).getByTitle("Open #1");
+  const title = screen
+    .getByRole("option")
+    .querySelector('[data-slot="pull-request-title"]');
+  if (!(title instanceof HTMLElement))
+    throw new Error("expected a pull request title in the row");
+  return title;
 }
 
 function renderActionableRow() {

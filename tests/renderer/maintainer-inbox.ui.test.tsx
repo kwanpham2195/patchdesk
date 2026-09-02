@@ -153,7 +153,7 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={open}
       />,
     );
-    fireEvent.click(within(screen.getByRole("option")).getByTitle("Open #1"));
+    fireEvent.click(rowTitle(screen.getByRole("option")));
     expect(open).toHaveBeenCalledWith("review-1");
   });
 
@@ -632,7 +632,7 @@ describe("MaintainerInbox", () => {
     expect(within(labelColumn).getByTitle("bug")).toBeTruthy();
     expect(within(labelColumn).getByTitle("enhancement")).toBeTruthy();
     expect(labelColumn.className).toContain("flex-col");
-    const title = within(inboxRow).getByTitle("Open #1");
+    const title = rowTitle(inboxRow);
     expect(title.className).toContain("line-clamp-2");
     // The single row is auto-selected, so the Inspector still gives the
     // complete label count when GitHub returned only a partial label list.
@@ -912,3 +912,11 @@ describe("MaintainerInbox", () => {
     expect(screen.queryByText(/^0$/)).toBeNull();
   });
 });
+
+/** The row title is styled text with no role, found by the slot it carries. */
+function rowTitle(option: HTMLElement): HTMLElement {
+  const title = option.querySelector('[data-slot="pull-request-title"]');
+  if (!(title instanceof HTMLElement))
+    throw new Error("expected a pull request title in the row");
+  return title;
+}

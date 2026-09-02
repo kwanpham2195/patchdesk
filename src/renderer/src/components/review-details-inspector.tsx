@@ -1,4 +1,4 @@
-import { CircleAlert } from "lucide-react";
+import { ArrowRight, CircleAlert } from "lucide-react";
 
 import type { InboxRow } from "@/renderer-contracts";
 import type { InboxDataFreshness } from "../../../domain/maintainer-inbox";
@@ -10,8 +10,11 @@ import {
 import { LabelChip } from "./label-chip";
 import { CheckIcon } from "./inbox-row-item";
 import { ScopeGauge } from "./scope-gauge";
-import { InspectorActionButtons } from "./inspector-action-buttons";
-import { type ReviewOpeningState } from "./review-opening-status";
+import {
+  ReviewOpeningButtonContent,
+  type ReviewOpeningState,
+} from "./review-opening-status";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InlineError } from "@/components/ui/inline-error";
 import { cn } from "@/lib/utils";
@@ -95,10 +98,20 @@ export function ReviewDetailsInspector({
           </CardContent>
         </Card>
       ) : null}
-      <InspectorActionButtons
-        onAction={onAction}
-        {...(openingState === undefined ? {} : { openingState })}
-      />
+      {/* The inspector's one read-only Review entry point; every row state
+          opens the same way, so the button says Open rather than naming a
+          per-state action. */}
+      <Button
+        size="sm"
+        className="h-8 w-full text-xs"
+        onClick={onAction}
+        disabled={openingState?.status === "opening"}
+      >
+        <ReviewOpeningButtonContent state={openingState}>
+          <ArrowRight />
+          Open
+        </ReviewOpeningButtonContent>
+      </Button>
       {openingState?.status === "error" ? (
         <InlineError className="text-xs">{openingState.error}</InlineError>
       ) : null}

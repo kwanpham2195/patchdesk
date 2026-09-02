@@ -10,29 +10,6 @@ import type { ContextualMessages } from "./api-client";
  * raw error terms" rule.
  */
 
-export type RecoveryActionKey =
-  | "run_review"
-  | "reconnect"
-  | "start_again"
-  | "try_again"
-  | "prepare_again";
-
-/** Return copy for an action key when the UI only knows the next action. */
-export function recoveryActionLabel(key: RecoveryActionKey): string {
-  switch (key) {
-    case "run_review":
-      return "Run Analysis";
-    case "reconnect":
-      return "Reconnect";
-    case "start_again":
-      return "Start again";
-    case "try_again":
-      return "Try again";
-    case "prepare_again":
-      return "Prepare again";
-  }
-}
-
 export type WalkthroughLifecycleKey =
   | "idle"
   | "generating"
@@ -105,15 +82,6 @@ const CLEANUP_COPY = {
 export function cleanupCopy(key: CleanupActionKey): CleanupCopy {
   return CLEANUP_COPY[key];
 }
-
-/** Combined list of recovery action keys exposed for type guards. */
-export const RECOVERY_ACTION_KEYS: ReadonlyArray<RecoveryActionKey> = [
-  "run_review",
-  "reconnect",
-  "start_again",
-  "try_again",
-  "prepare_again",
-];
 
 // The review-write failure copy. Each table names only the failure kinds its
 // screen words better than the API does; `contextualMessage` falls back to
