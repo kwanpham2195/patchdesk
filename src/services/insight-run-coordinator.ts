@@ -19,6 +19,7 @@ import {
   requestInsightCancellation,
   sameInsightRevision,
   updateWalkthroughProgress,
+  type InsightFailureCategory,
   type InsightRevision,
   type InsightType,
   type WalkthroughProgress,
@@ -58,20 +59,24 @@ export type InsightInvocationInput = {
   readonly model: string;
   readonly reasoning: InsightReasoning;
 };
+/**
+ * Why one Insight invocation failed, in the app's own vocabulary. The set is
+ * closed so a provider classifies its own failures at its edge, where its
+ * vocabulary is in scope, rather than handing the executor a string only it
+ * understands; `cancelled` stands apart because a cancelled run is not a failure.
+ */
+type InsightInvocationFailure = {
+  readonly reason: InsightFailureCategory | "cancelled";
+  /** Where in the provider's own run the failure happened, for diagnostics. */
+  readonly phase?: string;
+  /** The provider's bounded, redacted account of the failure, when it gave one. */
+  readonly stderr?: string;
+};
 export type InsightInvoker = {
   invoke(
     input: InsightInvocationInput,
     options: { readonly signal: AbortSignal },
-  ): Promise<
-    Result<
-      unknown,
-      {
-        readonly reason: string;
-        readonly phase?: string;
-        readonly stderr?: string;
-      }
-    >
-  >;
+  ): Promise<Result<unknown, InsightInvocationFailure>>;
 };
 export type InsightRunResponse = {
   readonly runId: InsightRunId;
