@@ -214,9 +214,15 @@ function openErrorAlert(): HTMLElement | undefined {
     );
 }
 
-/** A row click only selects; the title inside it is what opens the Review. */
+/**
+ * A row click only selects; the title inside it is what opens the Review. The
+ * title is styled text with no role, so it is found by the slot it carries.
+ */
 function openRowTitle(option: HTMLElement = screen.getByRole("option")): void {
-  fireEvent.click(within(option).getByTitle(/^Open #/));
+  const title = option.querySelector('[data-slot="pull-request-title"]');
+  if (!(title instanceof HTMLElement))
+    throw new Error("expected a pull request title in the row");
+  fireEvent.click(title);
 }
 
 /** Rows carry `aria-disabled` while opening; they are not `<button>` elements. */

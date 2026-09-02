@@ -41,7 +41,7 @@ export type InboxCacheRepository = {
 };
 
 export type MaintainerInboxCache = {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly refreshedAt: string;
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
   readonly repository: InboxCacheRepository;
@@ -54,7 +54,6 @@ const actionSchema = v.variant("kind", [
     kind: v.literal("open_saved_review"),
     reviewId: v.string(),
   }),
-  v.strictObject({ kind: v.literal("inspect_checks") }),
 ]);
 
 const rowSchema = v.strictObject({
@@ -110,7 +109,7 @@ const rowSchema = v.strictObject({
 });
 
 const cacheSchema = v.strictObject({
-  schemaVersion: v.literal(1),
+  schemaVersion: v.literal(2),
   refreshedAt: v.string(),
   rows: v.array(rowSchema),
   repository: v.strictObject({
@@ -135,7 +134,9 @@ const cacheSchema = v.strictObject({
  * and `repo` are already validated path-safe slugs (see
  * `parseGitHubOwner`/`parseGitHubRepoName` in `domain/ids.ts`), and `__` is
  * the same repository-identity separator `reviewIdSyntax`/`sessionIdSyntax`
- * already use elsewhere in this codebase.
+ * already use elsewhere in this codebase. The `v1` in that name is the file
+ * layout, not `schemaVersion`: a stale payload is rejected by the schema and
+ * then overwritten in place, so the name never has to change with the version.
  */
 export class MaintainerInboxCacheStore {
   constructor(private readonly paths: PatchdeskPaths) {}
@@ -187,7 +188,7 @@ export function parseMaintainerInboxCache(
   const identity = parseRepositoryIdentity(raw.output.repository.identity);
   if (identity._tag === "err") return invalidCache();
   return ok({
-    schemaVersion: 1,
+    schemaVersion: 2,
     refreshedAt: refreshedAt.value,
     rows,
     repository: {
@@ -325,13 +326,6 @@ function parseAction(
       return ok(input);
     case "open_merged_review":
       return ok(input);
-    // Cached inboxes from before failed checks could start a review retain this old
-    // shape. The cache is local, and the current policy always permits analysis.
-    // Remove this branch the next time cacheSchema's schemaVersion changes for any
-    // reason - that bump already invalidates old caches via invalidCache(), so this
-    // migration arm stops being reachable and can be deleted in the same change.
-    case "inspect_checks":
-      return ok({ kind: "run_review" });
     default: {
       const reviewId = parseReviewId(input.reviewId);
       return reviewId._tag === "ok"

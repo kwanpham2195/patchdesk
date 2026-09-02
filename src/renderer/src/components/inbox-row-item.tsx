@@ -33,11 +33,9 @@ export function InboxRowItem({
   const key = inboxIdentityKey(row);
   const opening = openingState?.status === "opening";
   return (
-    // A plain element, not a `<button>`: an `option`'s descendants are
-    // presentational under ARIA, so the row cannot hold a nested control and
-    // the title below is styled text the row's own click handler reads.
-    // `aria-disabled` stands in for the `disabled` attribute a div cannot
-    // carry.
+    // An `option`'s descendants are presentational under ARIA, so the row
+    // cannot hold a nested control and the title below is styled text the
+    // row's own click handler reads.
     <div
       id={`inbox-row-${key}`}
       role="option"
@@ -71,7 +69,7 @@ export function InboxRowItem({
               <span
                 data-slot="pull-request-title"
                 className="min-w-0 line-clamp-2 cursor-pointer text-[13px] leading-5 font-medium hover:text-primary hover:underline"
-                title={`Open #${row.identity.number}`}
+                title={`#${row.identity.number} ${row.title}`}
               >
                 #{row.identity.number} {row.title}
               </span>

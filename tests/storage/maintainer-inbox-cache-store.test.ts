@@ -66,7 +66,7 @@ describe("maintainer inbox cache store", () => {
   it("round-trips only parsed JSON-safe inbox data", async () => {
     const { store, profileId } = await fixtureStore();
     const cache = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       refreshedAt: updatedAt,
       rows: [
         {
@@ -115,7 +115,7 @@ describe("maintainer inbox cache store", () => {
   it("round-trips the Brief tag, so a tagged row does not invalidate the cache", async () => {
     const { store, profileId } = await fixtureStore();
     const cache = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       refreshedAt: updatedAt,
       rows: [
         {
@@ -170,7 +170,7 @@ describe("maintainer inbox cache store", () => {
       repo: must(parseGitHubRepoName("dynamic-onboarding-service")),
     };
     const cache = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       refreshedAt: updatedAt,
       rows: [],
       repository: {
@@ -192,7 +192,7 @@ describe("maintainer inbox cache store", () => {
   it("round-trips a row carrying labels and labelCount", async () => {
     const { store, profileId } = await fixtureStore();
     const cache = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       refreshedAt: updatedAt,
       rows: [
         {
@@ -239,9 +239,9 @@ describe("maintainer inbox cache store", () => {
     });
   });
 
-  it("parses a pre-labels cache row that omits `labels` entirely, defaulting it to an empty array (no invalidation of old caches)", () => {
+  it("defaults a cache row that omits `labels` entirely to an empty array", () => {
     const parsed = parseMaintainerInboxCache({
-      schemaVersion: 1,
+      schemaVersion: 2,
       refreshedAt: updatedAt,
       rows: [
         {
@@ -288,7 +288,12 @@ describe("maintainer inbox cache store", () => {
       expect(parsed.value.rows[0]).not.toHaveProperty("labelCount");
   });
 
-  it("upgrades a cached failed-check action to a review action", () => {
+  // Schema version 2 is a deliberate reset: the inbox actions lost their
+  // persisted `label` and their `secondaryAction`, so every cache release
+  // 0.0.1 wrote is rejected rather than migrated. This pins that reset — the
+  // fixture is the exact shape 0.0.1 wrote, copied from the schema at
+  // 923d33e^.
+  it("rejects a release 0.0.1 cache instead of reading its retired action shape", () => {
     const parsed = parseMaintainerInboxCache({
       schemaVersion: 1,
       refreshedAt: updatedAt,
@@ -308,14 +313,23 @@ describe("maintainer inbox cache store", () => {
           isDraft: false,
           updatedAt,
           changeStats: {},
-          checks: { overall: "failing", checks: [] },
-          reviewState: "none",
-          mergeability: "blocked",
-          categories: ["updated_since_review"],
+          checks: { overall: "passing", checks: [] },
+          reviewState: "approved",
+          mergeability: "mergeable",
+          categories: ["ready_to_merge"],
           recommendedAction: {
-            kind: "inspect_checks",
+            kind: "open_saved_review",
+            label: "Open Review",
+            reviewId:
+              "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
           },
-          dataFreshness: "cached",
+          secondaryAction: {
+            kind: "open_merge_readiness",
+            label: "Open merge readiness",
+            reviewId:
+              "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+          },
+          dataFreshness: "fresh",
         },
       ],
       repository: {
@@ -329,10 +343,12 @@ describe("maintainer inbox cache store", () => {
       },
     });
 
-    expect(parsed).toMatchObject({
-      _tag: "ok",
-      value: {
-        rows: [{ recommendedAction: { kind: "run_review" } }],
+    expect(parsed).toEqual({
+      _tag: "err",
+      error: {
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "invalid_stored_value",
       },
     });
   });
@@ -340,7 +356,7 @@ describe("maintainer inbox cache store", () => {
   it("reads back a check whose url is an empty string (a v.url() refinement here rejected data the cache itself wrote)", async () => {
     const { store, profileId } = await fixtureStore();
     const cache = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       refreshedAt: updatedAt,
       rows: [
         {
@@ -404,7 +420,7 @@ describe("maintainer inbox cache store", () => {
   it("reads back a check whose name is an empty string (a minLength(1) refinement here rejected data the cache itself wrote)", async () => {
     const { store, profileId } = await fixtureStore();
     const cache = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       refreshedAt: updatedAt,
       rows: [
         {
@@ -474,7 +490,7 @@ describe("maintainer inbox cache store", () => {
       // valid cache payload; `as never` only bypasses the compile-time
       // shape check for this intentionally-invalid fixture.
       await store.save(profileId, repository, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         refreshedAt: updatedAt,
         rows: [],
         repository: {

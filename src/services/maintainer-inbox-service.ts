@@ -289,7 +289,7 @@ export class MaintainerInboxService {
       dataFreshness === "fresh"
     ) {
       const cached: MaintainerInboxCache = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         refreshedAt,
         rows: visible.map((entry) => entry.row),
         repository: {

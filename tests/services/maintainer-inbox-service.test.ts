@@ -872,7 +872,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
     const service = serviceWithCache({
       read: async () =>
         ok({
-          schemaVersion: 1,
+          schemaVersion: 2,
           refreshedAt,
           rows: [],
           repository: { identity: repository, state: "ready", complete: true },
@@ -892,7 +892,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
     const service = serviceWithCache({
       read: async () =>
         ok({
-          schemaVersion: 1,
+          schemaVersion: 2,
           refreshedAt,
           rows: [],
           repository: { identity: repository, state: "ready", complete: true },
