@@ -25,8 +25,6 @@ See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the
 - Prefer concrete behavior and small illustrations over abstract summaries, dense terminology, or unexplained lists of changes.
 - When the user asks a question, answer it first before making edits or running implementation commands.
 - When responding to user feedback or an analysis, explicitly say whether you agree or disagree before saying what you changed.
-- An audit or an inventory ships with a disposition per finding: fix now, a named follow-up, or an evidence-backed rejection.
-- A remediation program pins its metric to one exact command, written in its plan file; every progress report reruns that command.
 
 ## Development and Verification
 
@@ -40,18 +38,13 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Verification commands live in `CONTRIBUTING.md`. `pnpm check` (typecheck,
   renderer error surfaces, root test suite, staged lint) is the pre-handoff
   command.
-- Drive the running app with `agent-browser` over CDP. Read-only by default; ask before any write.
-- A renderer change is finished only when you have opened the affected screen and looked at a screenshot taken after the change loaded. An API response, a log line, or a passing test is not live verification; say which of them you have.
-- Check CDP before claiming anything about the running app, and again before reporting. `pnpm cdp:ready` is the check, and it names the port. Say so when it is down, and never delegate a live-verification slice before it passes.
-- Port 9233 is the maintainer's app. A session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, and never kills a process it did not start. Ask before restarting 9233.
+- Drive the running app with `agent-browser` over CDP. Read-only by default; ask before any write. A renderer change is finished only when you have looked at a screenshot of the affected screen taken after the change loaded; an API response, a log line, or a passing test is not live verification, so say which you have.
+- CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, never kills a process it did not start, and asks before restarting 9233. `pnpm cdp:ready` checks the port: run it before claiming anything about the running app, before reporting, and before delegating a live-verification slice.
 - Package only when asked, when the change is packaging-specific, or when distribution proof is required. A packaged app is evidence only for the commit it was built from.
 - Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use a low-cost model such as `gpt-5.6-luna` on the Codex CLI account provider, not `gpt-5.6-sol`; pick it in the run dialog rather than changing the maintainer's stored preference.
-- Subagent model tiers: scouts and inventory runs go on the cheap tier (`sonnet` on Claude Code, `gpt-5.6-luna` on Pi); writers and evaluators go on the strong tier (`opus` on Claude Code, `gpt-5.6-terra` on Pi).
-- Never delegate to `gpt-5.6-sol`, and never give an explore agent Fable.
-- Those names drift. The tier is the rule; the names are today's examples.
-- `pnpm dev` exposes CDP only with `REMOTE_DEBUGGING_PORT=9233` in the environment.
-- macOS `sed -i` needs an empty argument (`sed -i ''`); prefer a node one-liner.
-- Quote every glob: zsh expands `--include=*.ts` before the tool ever sees it.
+- Subagent model tiers: scouts and inventory runs on the cheap tier (`sonnet` on Claude Code, `gpt-5.6-luna` on Pi); writers and evaluators on the strong tier (`opus` on Claude Code, `gpt-5.6-terra` on Pi). Never `gpt-5.6-sol`, and never Fable for an explore agent. Names drift; the tier is the rule.
+- An audit or inventory ships with a disposition per finding: fix now, a named follow-up, or an evidence-backed rejection.
+- A remediation program pins its metric to one exact command in its plan file; every progress report reruns it.
 
 ## Code and Testing Conventions
 
@@ -62,8 +55,6 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Documentation ownership: ADRs record durable decisions and consequences; code comments explain local constraints; commit messages record change history. Link to the owning source instead of repeating it.
 - When a later ADR changes current guidance, add a supersession note to the earlier ADR. Keep its historical decision intact.
 - Check node_modules for external API types; don't guess.
-- Always ask before removing functionality or code that appears intentional.
-- Do not preserve backward compatibility unless the user asks for it.
 
 ## Testing
 
@@ -107,15 +98,12 @@ Committing:
 - Only commit files YOU changed in THIS session.
 - Stage explicit paths (`git add <path1> <path2>`); never `git add -A` / `git add .`.
 - Before committing, run `git status` and verify you are only staging your files.
-- Long multi-phase tasks: commit each accepted phase or milestone after its verification gate; do not collapse the entire task into one final commit.
-- A report may not say "uncommitted" or list pending work while your own files are dirty. Commit the finished slice, then report, ending with the SHA.
+- Commit each accepted phase or milestone after its verification gate, and report with the SHA. A report may not say "uncommitted" or list pending work while your own files are dirty.
 - Message format: informative and concise.
 
 Stopping:
 
-- Stop for a decision the plan does not cover, a failed gate, a GitHub write, or removing code that looks intentional.
-- "Continue with the next step?" is not a stop. Take the next step.
-- When you do stop, name the decision you are waiting on.
+- Stop only for a decision the plan does not cover, a failed gate, or a GitHub write, and name the decision you are waiting on. "Continue with the next step?" is not a stop. The `delegated-execution` skill has the full rule.
 
 Never run (destroys other agents' work or bypasses checks):
 
