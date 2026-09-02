@@ -298,7 +298,30 @@ try {
   if (browser !== undefined) await browser.close();
   await stopPackagedApp(cdpPort);
   if (!packagedApp.killed) packagedApp.kill("SIGTERM");
+  // Electron writes its shutdown lock into user-data while exiting, so the
+  // directory is only safe to remove once the process is gone.
+  await waitForExit(packagedApp, 10_000);
   await rm(home, { recursive: true, force: true });
+}
+
+/**
+ * @param {import("node:child_process").ChildProcess} child
+ * @param {number} timeoutMs
+ * @returns {Promise<void>}
+ */
+function waitForExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null)
+    return Promise.resolve();
+  return new Promise((resolveExit) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolveExit();
+    }, timeoutMs);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolveExit();
+    });
+  });
 }
 
 async function connectToPackagedApp(port) {
