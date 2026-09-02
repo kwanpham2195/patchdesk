@@ -135,7 +135,7 @@ export class InsightRunExecutor {
             invocation.error.reason === "cancelled");
         const category =
           invocation._tag === "err" && invocation.error.reason !== "cancelled"
-            ? safeFailureCategory(invocation.error.reason)
+            ? invocation.error.reason
             : undefined;
         // Attach a truncated stderr diagnostic when the walkthrough process provides one.
         const stderr =
@@ -421,19 +421,4 @@ function phaseLabel(phase: string | undefined): string {
 
 function safeFailureDetail(): "unexpected_failure" {
   return "unexpected_failure";
-}
-
-function safeFailureCategory(value: string): InsightFailureCategory {
-  switch (value) {
-    case "authentication_required":
-    case "rate_limited":
-    case "runtime_unavailable":
-    case "timed_out":
-    case "execution_failed":
-    case "invalid_result":
-    case "unexpected_failure":
-      return value;
-    default:
-      return "unexpected_failure";
-  }
 }
