@@ -1,9 +1,15 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { init } from "@flue/runtime";
-import { start } from "@flue/runtime/node";
-import type { Provider } from "@earendil-works/pi-ai";
+import { Agent } from "@earendil-works/pi-agent-core";
+import {
+  createModels,
+  type Api,
+  type Model,
+  type Models,
+  type Provider,
+} from "@earendil-works/pi-ai";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import * as v from "valibot";
 
 import { CommandRunner } from "../../../src/adapters/github/command-runner";
@@ -40,6 +46,7 @@ import {
   modelReviewResultSchema,
   walkthroughResultSchema,
   walkthroughInvocationSchema,
+  type InsightAgentSpec,
   type InspectorOperations,
 } from "./patchdesk-insight-agent";
 
@@ -104,7 +111,15 @@ export function parsePatchdeskChildInvocation(
   return parsed.success ? parsed.output : undefined;
 }
 
-/** Executes one fresh in-memory Flue runtime and returns only one data-channel result. */
+/**
+ * The turn ceiling one child run may reach. Only a tool call continues Pi's
+ * agent loop and the inspector budget stops at eight calls, so a well-behaved
+ * insight settles far below this; the cap exists to bound a model that keeps
+ * calling tools without ever submitting a result.
+ */
+const MAX_AGENT_TURNS = 24;
+
+/** Executes one fresh in-memory Pi agent and returns only its one submitted result. */
 export async function runPatchdeskChild(
   invocation: PatchdeskChildInvocation,
   options: {
@@ -119,46 +134,48 @@ export async function runPatchdeskChild(
   try {
     assertSupportedNode();
     if (options.signal?.aborted) return { ok: false, reason: "cancelled" };
-    const agent = await createAgent(invocation, options);
-    if (agent === undefined)
+    const created = await createAgent(invocation, options);
+    if (created === undefined)
       return { ok: false, reason: "runtime_unavailable" };
-    const flue =
-      options.providers === undefined
-        ? await start({ agents: [agent.agent] })
-        : await start({ agents: [agent.agent], providers: options.providers });
+    let agent: Agent;
+    try {
+      agent = createInsightAgent(created.spec, options.providers);
+    } catch (cause: unknown) {
+      return {
+        ok: false,
+        reason: "execution_failed",
+        ...definedProps({ detail: redactedFailureDetail(cause) }),
+      };
+    }
     let abortRequested = false;
-    const handle = init(agent.agent, { id: `patchdesk-${invocation.type}` });
-    options.onHandle?.(() => handle.abort());
     const abort = (): void => {
+      if (abortRequested) return;
       abortRequested = true;
       options.onAbortRequested?.();
-      void handle.abort();
+      agent.abort();
     };
+    options.onHandle?.(async () => abort());
     options.signal?.addEventListener("abort", abort, { once: true });
     try {
       if (options.signal?.aborted) {
         abort();
         return { ok: false, reason: "cancelled" };
       }
-      const receipt = await handle.dispatch(
-        "Complete the prepared Patchdesk operation.",
-      );
-      if (options.signal?.aborted) {
-        abort();
-        return { ok: false, reason: "cancelled" };
-      }
-      const reply = await handle.read(receipt);
+      // `prompt` settles on a provider failure and on an abort alike: the
+      // outcome is read off the agent afterwards, never from a rejection.
+      await agent.prompt("Complete the prepared Patchdesk operation.");
       if (abortRequested || options.signal?.aborted)
         return { ok: false, reason: "cancelled" };
-      const values = reply.data.patchdeskResult;
-      if (
-        agent.state.duplicateSubmissionAttempted() ||
-        values === undefined ||
-        values.length !== 1
-      ) {
+      const failure = runFailureMessage(agent);
+      if (failure !== undefined)
+        return {
+          ok: false,
+          reason: "execution_failed",
+          ...definedProps({ detail: redactedFailureDetail(failure) }),
+        };
+      const value = created.state.submittedResult();
+      if (created.state.duplicateSubmissionAttempted() || value === undefined)
         return { ok: false, reason: "invalid_result" };
-      }
-      const value = values[0];
       const parsed = v.safeParse(resultSchemaFor(invocation.type), value);
       return parsed.success
         ? { ok: true, value: parsed.output }
@@ -173,12 +190,66 @@ export async function runPatchdeskChild(
       };
     } finally {
       options.signal?.removeEventListener("abort", abort);
-      await boundedStop(flue.stop());
     }
   } catch (cause: unknown) {
     void cause;
     return { ok: false, reason: "runtime_unavailable" };
   }
+}
+
+/** Builds the one Pi agent that runs an invocation, with only its own tools mounted. */
+function createInsightAgent(
+  spec: InsightAgentSpec,
+  providers: ReadonlyArray<Provider> | undefined,
+): Agent {
+  const models = createModels();
+  for (const provider of providers ?? builtinProviders())
+    models.setProvider(provider);
+  const model = resolveModel(models, spec.model);
+  let turns = 0;
+  return new Agent({
+    initialState: {
+      systemPrompt: spec.systemPrompt,
+      model,
+      thinkingLevel: spec.thinkingLevel,
+      tools: [...spec.tools],
+    },
+    streamFn: (requested, context, streamOptions) =>
+      models.streamSimple(requested, context, streamOptions),
+    toolExecution: "parallel",
+    shouldStopAfterTurn: () => {
+      turns += 1;
+      return turns >= MAX_AGENT_TURNS;
+    },
+  });
+}
+
+/** Resolves one `provider-id/model-id` specifier against the registered providers. */
+function resolveModel(models: Models, specifier: string): Model<Api> {
+  const slash = specifier.indexOf("/");
+  const providerId = slash === -1 ? "" : specifier.slice(0, slash);
+  const modelId = slash === -1 ? "" : specifier.slice(slash + 1);
+  const model =
+    providerId === "" || modelId === ""
+      ? undefined
+      : models.getModel(providerId, modelId);
+  if (model === undefined)
+    throw new Error(`Unknown Patchdesk model specifier "${specifier}"`);
+  return model;
+}
+
+/**
+ * The provider failure one settled run carries, if any. Pi never rejects
+ * `prompt()`: a refused request, an exhausted account, and a rejected model
+ * all land on the agent's own error state and on the final assistant message.
+ */
+function runFailureMessage(agent: Agent): string | undefined {
+  if (agent.state.errorMessage !== undefined) return agent.state.errorMessage;
+  const last = agent.state.messages.at(-1);
+  if (last === undefined || last.role !== "assistant") return undefined;
+  if (last.stopReason !== "error" && last.stopReason !== "aborted")
+    return undefined;
+  return last.errorMessage ?? "The model run failed without a reason";
 }
 
 /** The one result schema the child parses each insight's submitted data with. */
@@ -370,20 +441,6 @@ function resolvePatchdeskReviewSkillPath(): string {
   );
 }
 
-async function boundedStop(stop: Promise<void>): Promise<void> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      stop.catch(() => undefined),
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, 1_000);
-      }),
-    ]);
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
-  }
-}
-
 export { resolvePatchdeskReviewSkillPath };
 
 export function canonicalizeProductionInvocation(
@@ -451,12 +508,13 @@ function inspectorOperations(inspector: ReviewInspector): InspectorOperations {
 const MAX_FAILURE_DETAIL_CHARS = 200;
 
 /**
- * Renders one bounded line from a provider failure. The runtime wraps the
- * provider's own message ("402: Insufficient Balance") inside a generic
- * "Agent run failed" error, so the deepest message in the cause chain is the
- * one worth keeping. Credentials never appear in these messages, but a
- * provider is free to echo request material, so any long opaque token-shaped
- * run is replaced before the line leaves the child.
+ * Renders one bounded line from a provider failure, given either the agent's
+ * own error message or a thrown cause. A thrown cause may wrap the provider's
+ * own message ("402: Insufficient Balance") inside a generic error, so the
+ * deepest message in the cause chain is the one worth keeping. Credentials
+ * never appear in these messages, but a provider is free to echo request
+ * material, so any long opaque token-shaped run is replaced before the line
+ * leaves the child.
  */
 export function redactedFailureDetail(cause: unknown): string | undefined {
   const message = deepestFailureMessage(cause);

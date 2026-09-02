@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
@@ -292,7 +292,13 @@ describe("Flue 2 one-shot insight runtime", () => {
         instructions: "Review safely.",
       },
     );
-    expect(tools.agent).toBeTypeOf("function");
+    expect(tools.spec.tools.map((tool) => tool.name)).toEqual([
+      "submit_patchdesk_result",
+      "list_changed_files",
+      "search_files",
+      "read_file_range",
+      "git_show",
+    ]);
     expect(modelReviewResultSchema).toBeDefined();
     expect(walkthroughResultSchema).toBeDefined();
     const provider = fake([
@@ -430,7 +436,7 @@ describe("Flue 2 one-shot insight runtime", () => {
         providers: [walkthroughProvider.provider],
       }),
     ).resolves.toEqual({ ok: true, value: walkthrough });
-    expect(walkthroughTools).toEqual(["task", "submit_patchdesk_result"]);
+    expect(walkthroughTools).toEqual(["submit_patchdesk_result"]);
 
     let analysisTools: ReadonlyArray<string> = [];
     const analysisProvider = fake([
@@ -466,8 +472,6 @@ describe("Flue 2 one-shot insight runtime", () => {
       }),
     ).resolves.toEqual({ ok: true, value: analysis });
     expect(analysisTools).toEqual([
-      "task",
-      "activate_skill",
       "submit_patchdesk_result",
       "list_changed_files",
       "search_files",
@@ -484,6 +488,49 @@ describe("Flue 2 one-shot insight runtime", () => {
         "github",
       ]),
     );
+  });
+
+  it("carries the trusted skill's own instructions in the Analysis system prompt", async () => {
+    const skillPath = new URL(
+      "../../../src/skills/patchdesk-code-review/SKILL.md",
+      import.meta.url,
+    ).pathname;
+    const skillFile = await readFile(skillPath, "utf8");
+    const instructions = skillFile.slice(skillFile.indexOf("# Patchdesk"));
+    let systemPrompt = "";
+    const provider = fake([
+      (context) => {
+        systemPrompt = context.systemPrompt ?? "";
+        return fauxAssistantMessage(
+          fauxToolCall("submit_patchdesk_result", analysis),
+          { stopReason: "toolUse" },
+        );
+      },
+    ]);
+    await expect(
+      runPatchdeskChild(analysisInvocation(), {
+        providers: [provider.provider],
+        inspectors: {
+          async listChangedFiles() {
+            return { files: [] };
+          },
+          async searchFiles() {
+            return { files: [] };
+          },
+          async readFileRange() {
+            return { denied: true };
+          },
+          async gitShow() {
+            return { denied: true };
+          },
+        },
+        skillPath,
+      }),
+    ).resolves.toEqual({ ok: true, value: analysis });
+    expect(instructions.length).toBeGreaterThan(200);
+    expect(systemPrompt).toContain("Inspect then submit one result.");
+    expect(systemPrompt).toContain("patchdesk-code-review");
+    expect(systemPrompt).toContain(instructions.trim());
   });
 
   it("keeps one real inspector budget across turns and denies concurrent call nine", async () => {
@@ -620,7 +667,7 @@ describe("Flue 2 one-shot insight runtime", () => {
           },
         ),
       ).resolves.toEqual({ ok: true, value: brief });
-      expect(briefTools).toEqual(["task", "submit_patchdesk_result"]);
+      expect(briefTools).toEqual(["submit_patchdesk_result"]);
       expect(systemPrompt).toContain("BRIEF CITATION MANIFEST");
       expect(systemPrompt).toContain("h1 | hunk | @@ -1,2 +1,3 @@");
       // ADR 0040: the manifest is hunks only now -- nothing cites a
@@ -680,7 +727,9 @@ describe("Flue 2 one-shot insight runtime", () => {
 
   it("does not add a sandbox, MCP connection, declared subagent, or inspector tool to Brief", () => {
     const created = createBriefAgent(briefInvocation().input);
-    expect(created.agent).toBeTypeOf("function");
+    expect(created.spec.tools.map((tool) => tool.name)).toEqual([
+      "submit_patchdesk_result",
+    ]);
     expect(created.capabilities).toEqual({
       customTools: ["submit_patchdesk_result"],
       usesSkill: false,
@@ -692,7 +741,9 @@ describe("Flue 2 one-shot insight runtime", () => {
 
   it("does not add a sandbox, MCP connection, declared subagent, or inspector tool to Walkthrough", () => {
     const created = createWalkthroughAgent(walkthroughInvocation().input);
-    expect(created.agent).toBeTypeOf("function");
+    expect(created.spec.tools.map((tool) => tool.name)).toEqual([
+      "submit_patchdesk_result",
+    ]);
     expect(created.capabilities).toEqual({
       customTools: ["submit_patchdesk_result"],
       usesSkill: false,

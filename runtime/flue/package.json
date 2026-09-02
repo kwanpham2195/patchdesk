@@ -8,16 +8,10 @@
     "test": "vitest",
     "deploy:verify": "pnpm install --frozen-lockfile --prod --offline --ignore-scripts --config.auto-install-peers=false"
   },
-  "pnpm": {
-    "overrides": {
-      "@earendil-works/pi-agent-core": "0.84.4",
-      "@earendil-works/pi-ai": "0.84.4",
-      "valibot": "1.4.2"
-    }
-  },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "0.84.4",
     "@earendil-works/pi-ai": "0.84.4",
-    "@flue/runtime": "2.0.3",
+    "@valibot/to-json-schema": "1.7.1",
     "valibot": "1.4.2"
   },
   "devDependencies": {
