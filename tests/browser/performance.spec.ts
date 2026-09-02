@@ -2,8 +2,11 @@ import { expect, test } from "playwright/test";
 import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 // A single renderer scheduling pause can contaminate one timing sample when
-// the full browser suite has just exercised many heavy fixtures. Retries keep
-// the strict per-attempt ceiling intact without accepting a slow measurement.
+// the full browser suite has just exercised many heavy fixtures, so
+// `playwright.config.ts` puts this file in its own `performance` project that
+// every other spec depends on: it runs first, in a fresh browser, never after
+// another spec's fixtures. Retries keep the strict per-attempt ceiling intact
+// without accepting a slow measurement.
 test.describe.configure({ retries: 2 });
 
 test("1,000-file and approximately 10 MB patch remains responsive", async ({
