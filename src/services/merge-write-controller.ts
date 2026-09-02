@@ -5,7 +5,10 @@ import type {
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
-import { mergeGateFindings } from "../domain/analysis-merge-findings";
+import {
+  mergeGateFindings,
+  type MergeGateFinding,
+} from "../domain/analysis-merge-findings";
 import type { MergeWarningCode } from "../domain/merge-readiness";
 import {
   parseContentHash,
@@ -29,7 +32,8 @@ import {
 } from "../domain/merge-operation";
 import { markReviewTerminal } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
-import { parseReviewResult, type ReviewResult } from "../domain/review-result";
+import { parseReviewResult } from "../domain/review-result";
+import type { ReviewSession } from "../domain/review-session";
 import { mergePullRequest, type MergeMethod } from "./merge-service";
 import { readObjectField } from "./read-object-field";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
@@ -127,6 +131,7 @@ export class MergeWriteController {
           headSha: expectedHead.value,
           patchHash: expectedPatch.value,
         },
+        session.value.findingReviewReceipts,
       );
       if (findings._tag === "err") return err({ reason: "storage_failed" });
       const startedAt = this.now();
@@ -238,7 +243,10 @@ export class MergeWriteController {
       readonly headSha: GitSha;
       readonly patchHash: ContentHash;
     },
-  ): Promise<Result<ReviewResult["findings"], { readonly reason: string }>> {
+    receipts: ReviewSession["findingReviewReceipts"],
+  ): Promise<
+    Result<ReadonlyArray<MergeGateFinding>, { readonly reason: string }>
+  > {
     const analysis = await this.stores.insights.loadTyped(
       profileId,
       reviewId,
@@ -250,7 +258,7 @@ export class MergeWriteController {
         analysis.error.reason === "invalid_stored_value"
         ? ok([])
         : err({ reason: "storage_failed" });
-    return ok(mergeGateFindings(analysis.value, revision));
+    return ok(mergeGateFindings(analysis.value, revision, receipts));
   }
 }
 
