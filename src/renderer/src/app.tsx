@@ -170,6 +170,8 @@ export function App({
     changeInboxAwaitingMyReview,
     changeInboxReviewState,
     changeInboxCheckStatus,
+    changeInboxAuthor,
+    changeInboxBaseBranch,
     clearInboxMoreFilters,
     changeInboxRepository,
     previousInboxPage,
@@ -422,6 +424,14 @@ export function App({
           ? {}
           : { checkStatus: inboxRequest.checkStatus })}
         onInboxCheckStatusChange={changeInboxCheckStatus}
+        {...(inboxRequest.author === undefined
+          ? {}
+          : { author: inboxRequest.author })}
+        onInboxAuthorChange={changeInboxAuthor}
+        {...(inboxRequest.baseBranch === undefined
+          ? {}
+          : { baseBranch: inboxRequest.baseBranch })}
+        onInboxBaseBranchChange={changeInboxBaseBranch}
         onClearInboxMoreFilters={clearInboxMoreFilters}
         {...(inboxRequest.repository === undefined
           ? {}
