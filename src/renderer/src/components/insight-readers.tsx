@@ -26,6 +26,8 @@ type InsightReaderBuilderInput = {
   /** Drives the Brief "Start here" card's Walkthrough link: open the one that exists, or run one. */
   readonly onOpenWalkthrough: () => void;
   readonly runEnabled: boolean;
+  /** Opens the Diff tab at a mapped finding's lines; absent outside the workbench. */
+  readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
 };
 export function buildInsightReaders({
   workbench,
@@ -35,6 +37,7 @@ export function buildInsightReaders({
   onFinishWithAnalysisSummary,
   addFinding,
   dismissFinding,
+  onOpenFindingInDiff,
   walkthroughFocused,
   setWalkthroughFocused,
   onRegenerateBrief,
@@ -77,6 +80,10 @@ export function buildInsightReaders({
         {...(workbench.insights.analysis.status === "current" &&
         workbench.fullPatch !== undefined
           ? { evidencePatch: workbench.fullPatch }
+          : {})}
+        {...(workbench.insights.analysis.status === "current" &&
+        onOpenFindingInDiff !== undefined
+          ? { onOpenFindingInDiff }
           : {})}
         canFinishWithAnalysisSummary={
           workbench.analysisReviewActions?.canFinishWithAnalysisSummary ?? false

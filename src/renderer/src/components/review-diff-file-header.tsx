@@ -8,25 +8,61 @@ import {
 } from "lucide-react";
 
 import type { FileChangeStats } from "@/review-diff-data";
+import {
+  describeFileFindingCount,
+  type FileFindingCount,
+  type FindingSeverity,
+} from "@/review-finding-counts";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
+/** Text tone for a finding badge, matching the severity badge in the Analysis reader. */
+function findingSeverityToneClass(severity: FindingSeverity): string {
+  switch (severity) {
+    case "P0":
+    case "P1":
+      return "text-destructive";
+    case "P2":
+      return "text-status-warning";
+    case "P3":
+      return "text-muted-foreground";
+  }
+}
+
 export function FileChangeCounts({
   stats,
+  findings,
 }: {
   readonly stats: FileChangeStats;
+  readonly findings?: FileFindingCount;
 }): React.JSX.Element {
   return (
-    <span
-      className="ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums"
-      data-file-header-change-stats
-      data-additions={stats.additions}
-      data-deletions={stats.deletions}
-      aria-label={`${stats.additions} additions, ${stats.deletions} deletions`}
-    >
-      <span className="text-status-success">+{stats.additions}</span>
-      <span className="text-destructive">-{stats.deletions}</span>
+    <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums">
+      {findings === undefined ? null : (
+        <span
+          role="img"
+          aria-label={describeFileFindingCount(findings)}
+          title={describeFileFindingCount(findings)}
+          data-file-header-finding-count={findings.count}
+          className={cn(
+            "inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-current px-1 text-[10px] font-semibold",
+            findingSeverityToneClass(findings.highest),
+          )}
+        >
+          {findings.count}
+        </span>
+      )}
+      <span
+        className="inline-flex items-center gap-1.5"
+        data-file-header-change-stats
+        data-additions={stats.additions}
+        data-deletions={stats.deletions}
+        aria-label={`${stats.additions} additions, ${stats.deletions} deletions`}
+      >
+        <span className="text-status-success">+{stats.additions}</span>
+        <span className="text-destructive">-{stats.deletions}</span>
+      </span>
     </span>
   );
 }

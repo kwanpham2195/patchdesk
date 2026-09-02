@@ -84,4 +84,27 @@ describe("PierreFileTree", () => {
 
     expect(after).not.toBe(before);
   });
+
+  it("badges a row that Analysis findings cite and leaves other rows unbadged", () => {
+    const { container } = render(
+      <PierreFileTree
+        files={[{ ...fileA, findings: { count: 2, highest: "P1" } }, fileB]}
+        activePath="src/a.ts"
+        onSelect={() => {}}
+      />,
+    );
+    const shadowRoot = treeContainer(container).shadowRoot;
+    if (shadowRoot === null) throw new Error("Expected a tree shadow root");
+
+    const badge = shadowRoot.querySelector(
+      '[data-item-path="src/a.ts"] [data-item-section="decoration"] > span',
+    );
+    expect(badge?.textContent).toBe("2");
+    expect(badge?.getAttribute("title")).toBe("2 findings, highest P1");
+    expect(
+      shadowRoot.querySelector(
+        '[data-item-path="src/b.ts"] [data-item-section="decoration"] > span',
+      ),
+    ).toBeNull();
+  });
 });

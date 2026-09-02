@@ -15,6 +15,7 @@ import {
   type SelectedDiffRange,
 } from "./review-diff-view";
 import { parseReviewDiff } from "@/review-diff-data";
+import type { FileFindingCount } from "@/review-finding-counts";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_REVIEW_VIEW_PREFERENCES,
@@ -50,6 +51,8 @@ export function DiffWorkbench({
   preferences: controlledPreferences,
   onPreferencesChange,
   annotations,
+  findingCountsByPath,
+  onOpenFindingInAnalysis,
   selectedRange,
   leadingAction,
 }: {
@@ -76,6 +79,8 @@ export function DiffWorkbench({
     update: Partial<ReviewViewPreferences>,
   ) => void;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
+  readonly findingCountsByPath?: ReadonlyMap<string, FileFindingCount>;
+  readonly onOpenFindingInAnalysis?: (findingId: string) => void;
   readonly selectedRange?: SelectedDiffRange;
   readonly leadingAction?: React.ReactNode;
 }): React.JSX.Element {
@@ -266,6 +271,12 @@ export function DiffWorkbench({
               ? {}
               : { conversationActions })}
             {...(annotations === undefined ? {} : { annotations })}
+            {...(findingCountsByPath === undefined
+              ? {}
+              : { findingCountsByPath })}
+            {...(onOpenFindingInAnalysis === undefined
+              ? {}
+              : { onOpenFindingInAnalysis })}
             {...(selectedRange === undefined ? {} : { selectedRange })}
           />
         </div>

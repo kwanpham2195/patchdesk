@@ -7,6 +7,7 @@ import {
 } from "../conversation-thread-entries";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { parseReviewDiff } from "../review-diff-data";
+import type { FileFindingCount } from "../review-finding-counts";
 import { cn } from "@/lib/utils";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import { Badge } from "./ui/badge";
@@ -24,6 +25,8 @@ type ReviewNavigatorProps = {
   readonly patch: string;
   readonly commits: WorkbenchResponse["commits"];
   readonly conversationThreadEntries: ReadonlyArray<ReviewInlineAnnotation>;
+  /** Mapped Analysis findings per file, shown as a badge on Browse rows. */
+  readonly findingCountsByPath?: ReadonlyMap<string, FileFindingCount>;
   readonly section: ReviewNavigatorSection;
   readonly selectedPath?: string;
   readonly activePath?: string;
@@ -40,6 +43,7 @@ export function ReviewNavigator({
   patch,
   commits,
   conversationThreadEntries,
+  findingCountsByPath,
   section,
   selectedPath,
   activePath,
@@ -53,17 +57,21 @@ export function ReviewNavigator({
   const parsed = useMemo(() => {
     const files = parseUnifiedPatch(patch);
     const diff = parseReviewDiff(patch);
-    const items: ReadonlyArray<PierreFileTreeItem> = files.map((file) => ({
-      path: file.newPath,
-      stats: diff.statsByPath.get(file.newPath) ?? {
+    const items: ReadonlyArray<PierreFileTreeItem> = files.map((file) => {
+      const item: PierreFileTreeItem = {
         path: file.newPath,
-        additions: 0,
-        deletions: 0,
-      },
-      gitStatus: diff.gitStatusByPath.get(file.newPath),
-    }));
+        stats: diff.statsByPath.get(file.newPath) ?? {
+          path: file.newPath,
+          additions: 0,
+          deletions: 0,
+        },
+        gitStatus: diff.gitStatusByPath.get(file.newPath),
+      };
+      const findings = findingCountsByPath?.get(file.newPath);
+      return findings === undefined ? item : { ...item, findings };
+    });
     return { files: items, firstPath: items[0]?.path };
-  }, [patch]);
+  }, [findingCountsByPath, patch]);
   const threadRows = useMemo(
     () =>
       projectConversationThreadRows(

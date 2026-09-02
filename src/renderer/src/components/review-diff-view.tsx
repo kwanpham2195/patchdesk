@@ -41,18 +41,12 @@ import { type GitHubThreadId } from "../../../domain/ids";
 import { definedProps } from "../../../domain/defined-props";
 import { tokenizeUnifiedPatch } from "../../../domain/unified-patch";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
-import {
-  ConversationThreadCard,
-  type ConversationThreadCardData,
-  type ReviewConversationActions,
+import { renderReviewDiffAnnotation } from "./review-diff-finding-card";
+import type {
+  ConversationThreadCardData,
+  ReviewConversationActions,
 } from "./conversation-thread-card";
-import {
-  InlineCommentComposer,
-  LocalCommentThread,
-  PendingConversationCard,
-  PendingReviewThreadCard,
-  PendingReviewWriteCard,
-} from "./review-diff-authoring";
+import { InlineCommentComposer } from "./review-diff-authoring";
 import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
@@ -63,6 +57,7 @@ import {
   type DiffThemePreferences,
 } from "@/diff-theme-preferences";
 import type { FileChangeStats } from "@/review-diff-data";
+import type { FileFindingCount } from "@/review-finding-counts";
 import { registerPierreThemeLoaders } from "@/pierre-theme-loaders";
 import type { ReviewDiffSourceSession } from "@/hooks/use-review-diff-hydration";
 import { useReviewCommentNavigation } from "@/hooks/use-review-comment-navigation";
@@ -229,9 +224,13 @@ type ReviewDiffViewProps = {
   readonly patch: string;
   readonly parsedFiles: ReadonlyArray<FileDiffMetadata>;
   readonly fileStatsByPath: ReadonlyMap<string, FileChangeStats>;
+  /** Mapped Analysis findings per file, shown as a badge in each file header. */
+  readonly findingCountsByPath?: ReadonlyMap<string, FileFindingCount>;
   readonly selectedPath?: string | undefined;
   readonly selectedRange?: SelectedDiffRange;
   readonly annotations?: ReadonlyArray<ReviewInlineAnnotation>;
+  /** Wires the "Open in Analysis" action on inline finding cards. */
+  readonly onOpenFindingInAnalysis?: (findingId: string) => void;
   readonly preferences: ReviewViewPreferences;
   readonly collapsedPaths: ReadonlySet<string>;
   readonly onPreferencesChange: (
@@ -379,9 +378,11 @@ function ReviewDiffSurface({
   patch,
   parsedFiles,
   fileStatsByPath,
+  findingCountsByPath,
   selectedPath,
   selectedRange,
   annotations = EMPTY_ANNOTATIONS,
+  onOpenFindingInAnalysis,
   preferences,
   collapsedPaths,
   onPreferencesChange,
@@ -546,8 +547,10 @@ function ReviewDiffSurface({
       collapsedPaths={collapsedPaths}
       files={files}
       fileStatsByPath={fileStatsByPath}
+      findingCountsByPath={findingCountsByPath}
       onCollapsedPathsChange={onCollapsedPathsChange}
       decorateConversationThread={decorateConversationThread}
+      onOpenFindingInAnalysis={onOpenFindingInAnalysis}
       virtualized={virtualized}
       browserSupportsPierre={browserSupportsPierre}
       navigationStatus={navigationStatus}
@@ -586,10 +589,14 @@ type ReviewDiffRenderSiteProps = {
   readonly collapsedPaths: ReadonlySet<string>;
   readonly files: ReadonlyArray<FileDiffMetadata>;
   readonly fileStatsByPath: ReadonlyMap<string, FileChangeStats>;
+  readonly findingCountsByPath:
+    | ReadonlyMap<string, FileFindingCount>
+    | undefined;
   readonly onCollapsedPathsChange: (paths: ReadonlySet<string>) => void;
   readonly decorateConversationThread: (
     thread: ConversationThreadCardData,
   ) => ConversationThreadCardData;
+  readonly onOpenFindingInAnalysis: ((findingId: string) => void) | undefined;
   readonly virtualized: boolean;
   readonly browserSupportsPierre: boolean;
   readonly syntaxHighlightingStatus: "loading" | "ready" | "unavailable";
@@ -630,8 +637,10 @@ function ReviewDiffRenderSite({
   collapsedPaths,
   files,
   fileStatsByPath,
+  findingCountsByPath,
   onCollapsedPathsChange,
   decorateConversationThread,
+  onOpenFindingInAnalysis,
   virtualized,
   browserSupportsPierre,
   navigationStatus,
@@ -697,9 +706,15 @@ function ReviewDiffRenderSite({
         additions: 0,
         deletions: 0,
       };
-      return <FileChangeCounts stats={stats} />;
+      const findings = findingCountsByPath?.get(path);
+      return (
+        <FileChangeCounts
+          stats={stats}
+          {...(findings === undefined ? {} : { findings })}
+        />
+      );
     },
-    [fileStatsByPath],
+    [fileStatsByPath, findingCountsByPath],
   );
   const renderCodeViewHeader = useCallback(
     (item: CodeViewItem) => {
@@ -720,8 +735,12 @@ function ReviewDiffRenderSite({
   );
   const renderAnnotation = useCallback(
     (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) =>
-      renderReviewDiffAnnotation(annotation, decorateConversationThread),
-    [decorateConversationThread],
+      renderReviewDiffAnnotation(
+        annotation,
+        decorateConversationThread,
+        onOpenFindingInAnalysis,
+      ),
+    [decorateConversationThread, onOpenFindingInAnalysis],
   );
   const renderGutterUtility = useCallback(
     (
@@ -792,7 +811,9 @@ function ReviewDiffRenderSite({
           selectedAnnotations={selectedAnnotations}
           selectedLines={selectedLines}
           fileStatsByPath={fileStatsByPath}
+          findingCountsByPath={findingCountsByPath}
           decorateConversationThread={decorateConversationThread}
+          onOpenFindingInAnalysis={onOpenFindingInAnalysis}
           beginAuthoring={beginAuthoring}
         />
       ) : (
@@ -836,7 +857,9 @@ type NonVirtualizedReviewDiffProps = Pick<
   | "selectedAnnotations"
   | "selectedLines"
   | "fileStatsByPath"
+  | "findingCountsByPath"
   | "decorateConversationThread"
+  | "onOpenFindingInAnalysis"
   | "beginAuthoring"
 >;
 
@@ -857,13 +880,19 @@ function NonVirtualizedReviewDiff({
   selectedAnnotations,
   selectedLines,
   fileStatsByPath,
+  findingCountsByPath,
   decorateConversationThread,
+  onOpenFindingInAnalysis,
   beginAuthoring,
 }: NonVirtualizedReviewDiffProps): React.JSX.Element {
   const renderAnnotation = useCallback(
     (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) =>
-      renderReviewDiffAnnotation(annotation, decorateConversationThread),
-    [decorateConversationThread],
+      renderReviewDiffAnnotation(
+        annotation,
+        decorateConversationThread,
+        onOpenFindingInAnalysis,
+      ),
+    [decorateConversationThread, onOpenFindingInAnalysis],
   );
   const renderPatchHeader = useCallback(
     (file: FileDiffMetadata) => {
@@ -872,11 +901,20 @@ function NonVirtualizedReviewDiff({
         additions: 0,
         deletions: 0,
       };
+      const findings = findingCountsByPath?.get(file.name);
       return (
-        <FileHeaderRow file={file} stats={<FileChangeCounts stats={stats} />} />
+        <FileHeaderRow
+          file={file}
+          stats={
+            <FileChangeCounts
+              stats={stats}
+              {...(findings === undefined ? {} : { findings })}
+            />
+          }
+        />
       );
     },
-    [fileStatsByPath],
+    [fileStatsByPath, findingCountsByPath],
   );
   const renderGutterUtility = useCallback(
     (
@@ -986,68 +1024,6 @@ function NonVirtualizedReviewDiff({
         })
       }
     />
-  );
-}
-
-function renderReviewDiffAnnotation(
-  annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>,
-  decorateConversationThread: (
-    thread: ConversationThreadCardData,
-  ) => ConversationThreadCardData,
-): React.JSX.Element | null {
-  const finding = annotation.metadata;
-  if (finding === undefined) return null;
-  if (finding.localComposer !== undefined) {
-    return <InlineCommentComposer {...finding.localComposer} />;
-  }
-  if (finding.pendingConversation !== undefined) {
-    return <PendingConversationCard {...finding.pendingConversation} />;
-  }
-  if (finding.pendingReviewWrite !== undefined) {
-    return <PendingReviewWriteCard {...finding.pendingReviewWrite} />;
-  }
-  if (finding.pendingReviewThread !== undefined) {
-    return <PendingReviewThreadCard {...finding.pendingReviewThread} />;
-  }
-  if (finding.conversationThread !== undefined) {
-    return (
-      <ConversationThreadCard
-        thread={decorateConversationThread(finding.conversationThread)}
-        navAnchorId={finding.id}
-      />
-    );
-  }
-  if (finding.localComment !== undefined) {
-    return (
-      <LocalCommentThread
-        path={finding.path}
-        startLine={finding.start}
-        line={finding.end}
-        body={finding.localComment.body}
-      />
-    );
-  }
-  return (
-    <article
-      className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden whitespace-normal rounded-md border border-primary/30 bg-primary/5 px-3 py-2 font-sans text-sm text-foreground shadow-sm"
-      data-review-inline-finding={finding.id}
-      aria-label={`${finding.severity} finding: ${finding.title}`}
-    >
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="text-xs font-semibold text-primary">
-          {finding.severity}
-        </span>
-        {/* Not a document heading: this is a label on a floating
-        annotation card, not a section of the page's outline, and the
-        enclosing article already carries the same text in its
-        aria-label. A real <h3> here skips straight from the page's
-        <h1> with no <h2> between them (axe: heading-order). */}
-        <span className="min-w-0 break-words font-medium">{finding.title}</span>
-      </div>
-      <p className="mt-1 break-words text-muted-foreground">
-        {finding.explanation}
-      </p>
-    </article>
   );
 }
 
