@@ -2,7 +2,7 @@
 import type { RawJsonValue } from "../../domain/json";
 
 export const generatedPiAiCatalog: RawJsonValue = {
-  piVersion: "0.84.1",
+  piVersion: "0.84.4",
   catalog: [
     {
       provider: "amazon-bedrock",
@@ -225,6 +225,21 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "global.anthropic.claude-sonnet-5",
           name: "Claude Sonnet 5 (Global)",
+          provider: "amazon-bedrock",
+        },
+        {
+          id: "global.openai.gpt-5.6-luna",
+          name: "GPT-5.6 Luna (Global)",
+          provider: "amazon-bedrock",
+        },
+        {
+          id: "global.openai.gpt-5.6-sol",
+          name: "GPT-5.6 Sol (Global)",
+          provider: "amazon-bedrock",
+        },
+        {
+          id: "global.openai.gpt-5.6-terra",
+          name: "GPT-5.6 Terra (Global)",
           provider: "amazon-bedrock",
         },
         {
@@ -563,6 +578,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "amazon-bedrock",
         },
         {
+          id: "xai.grok-4.6",
+          name: "Grok 4.6",
+          provider: "amazon-bedrock",
+        },
+        {
           id: "zai.glm-4.7",
           name: "GLM-4.7",
           provider: "amazon-bedrock",
@@ -877,83 +897,38 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "GPT OSS 120B",
           provider: "cerebras",
         },
-        {
-          id: "zai-glm-4.7",
-          name: "Z.AI GLM-4.7",
-          provider: "cerebras",
-        },
       ],
     },
     {
       provider: "cloudflare-ai-gateway",
       models: [
         {
-          id: "claude-3-5-haiku",
-          name: "Claude Haiku 3.5 (latest)",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "claude-3-haiku",
-          name: "Claude Haiku 3",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "claude-3-opus",
-          name: "Claude Opus 3",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "claude-3-sonnet",
-          name: "Claude Sonnet 3",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "claude-3.5-haiku",
-          name: "Claude Haiku 3.5 (latest)",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "claude-3.5-sonnet",
-          name: "Claude Sonnet 3.5 v2",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
           id: "claude-fable-5",
           name: "Claude Fable 5",
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "claude-haiku-4-5",
+          id: "claude-haiku-4.5",
           name: "Claude Haiku 4.5 (latest)",
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "claude-opus-4",
-          name: "Claude Opus 4 (latest)",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "claude-opus-4-1",
-          name: "Claude Opus 4.1 (latest)",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "claude-opus-4-5",
+          id: "claude-opus-4.5",
           name: "Claude Opus 4.5 (latest)",
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "claude-opus-4-6",
-          name: "Claude Opus 4.6 (latest)",
+          id: "claude-opus-4.6",
+          name: "Claude Opus 4.6",
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "claude-opus-4-7",
+          id: "claude-opus-4.7",
           name: "Claude Opus 4.7",
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "claude-opus-4-8",
+          id: "claude-opus-4.8",
           name: "Claude Opus 4.8",
           provider: "cloudflare-ai-gateway",
         },
@@ -963,17 +938,12 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "claude-sonnet-4",
-          name: "Claude Sonnet 4 (latest)",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "claude-sonnet-4-5",
+          id: "claude-sonnet-4.5",
           name: "Claude Sonnet 4.5 (latest)",
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "claude-sonnet-4-6",
+          id: "claude-sonnet-4.6",
           name: "Claude Sonnet 4.6",
           provider: "cloudflare-ai-gateway",
         },
@@ -983,13 +953,18 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "gpt-4",
-          name: "GPT-4",
+          id: "gpt-4.1",
+          name: "GPT-4.1",
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "gpt-4-turbo",
-          name: "GPT-4 Turbo",
+          id: "gpt-4.1-mini",
+          name: "GPT-4.1 mini",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "gpt-4.1-nano",
+          name: "GPT-4.1 nano",
           provider: "cloudflare-ai-gateway",
         },
         {
@@ -1003,28 +978,23 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "cloudflare-ai-gateway",
         },
         {
+          id: "gpt-5",
+          name: "GPT-5",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "gpt-5-mini",
+          name: "GPT-5 Mini",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "gpt-5-nano",
+          name: "GPT-5 Nano",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
           id: "gpt-5.1",
           name: "GPT-5.1",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "gpt-5.1-codex",
-          name: "GPT-5.1 Codex",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "gpt-5.2",
-          name: "GPT-5.2",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "gpt-5.2-codex",
-          name: "GPT-5.2 Codex",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
-          id: "gpt-5.3-codex",
-          name: "GPT-5.3 Codex",
           provider: "cloudflare-ai-gateway",
         },
         {
@@ -1033,8 +1003,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "cloudflare-ai-gateway",
         },
         {
+          id: "gpt-5.4-mini",
+          name: "GPT-5.4 mini",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "gpt-5.4-nano",
+          name: "GPT-5.4 nano",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "gpt-5.4-pro",
+          name: "GPT-5.4 Pro",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
           id: "gpt-5.5",
           name: "GPT-5.5",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "gpt-5.5-pro",
+          name: "GPT-5.5 Pro",
           provider: "cloudflare-ai-gateway",
         },
         {
@@ -1053,11 +1043,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "o1",
-          name: "o1",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
           id: "o3",
           name: "o3",
           provider: "cloudflare-ai-gateway",
@@ -1068,18 +1053,43 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "o3-pro",
-          name: "o3-pro",
-          provider: "cloudflare-ai-gateway",
-        },
-        {
           id: "o4-mini",
           name: "o4-mini",
           provider: "cloudflare-ai-gateway",
         },
         {
-          id: "workers-ai/@cf/moonshotai/kimi-k2.5",
-          name: "Kimi K2.5",
+          id: "workers-ai/@cf/deepseek-ai/deepseek-v4-flash-0731",
+          name: "DeepSeek V4 Flash 0731",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/deepseek-ai/deepseek-v4-pro-0813",
+          name: "DeepSeek V4 Pro 0813",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/google/gemma-4-26b-a4b-it",
+          name: "Gemma 4 26B A4B IT",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/ibm-granite/granite-4.0-h-micro",
+          name: "Granite 4.0 H Micro",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          name: "Llama 3.3 70B Instruct fp8 Fast",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/meta/llama-4-scout-17b-16e-instruct",
+          name: "Llama 4 Scout 17B 16E Instruct",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/mistralai/mistral-small-3.1-24b-instruct",
+          name: "Mistral Small 3.1 24B Instruct",
           provider: "cloudflare-ai-gateway",
         },
         {
@@ -1088,8 +1098,33 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "cloudflare-ai-gateway",
         },
         {
+          id: "workers-ai/@cf/moonshotai/kimi-k2.7-code",
+          name: "Kimi K2.7 Code",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
           id: "workers-ai/@cf/nvidia/nemotron-3-120b-a12b",
           name: "Nemotron 3 Super 120B",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/openai/gpt-oss-120b",
+          name: "GPT OSS 120B",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/openai/gpt-oss-20b",
+          name: "GPT OSS 20B",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/qwen/qwen3-30b-a3b-fp8",
+          name: "Qwen3 30B A3b fp8",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/qwen/qwen3.8-27b",
+          name: "Qwen3.8 27B",
           provider: "cloudflare-ai-gateway",
         },
         {
@@ -1102,6 +1137,16 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Glm 5.2",
           provider: "cloudflare-ai-gateway",
         },
+        {
+          id: "workers-ai/@cf/zai-org/glm-5.3",
+          name: "Glm 5.3",
+          provider: "cloudflare-ai-gateway",
+        },
+        {
+          id: "workers-ai/@cf/zai-org/glm-5.3-flash",
+          name: "Glm 5.3 Flash",
+          provider: "cloudflare-ai-gateway",
+        },
       ],
     },
     {
@@ -1110,6 +1155,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "deepseek-v4-flash",
           name: "DeepSeek V4 Flash",
+          provider: "deepseek",
+        },
+        {
+          id: "deepseek-v4-flash-vision-exp",
+          name: "DeepSeek V4 Flash Vision Exp",
           provider: "deepseek",
         },
         {
@@ -1133,8 +1183,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "fireworks",
         },
         {
-          id: "accounts/fireworks/models/deepseek-v4-pro",
-          name: "DeepSeek V4 Pro",
+          id: "accounts/fireworks/models/deepseek-v4-pro-0813",
+          name: "DeepSeek V4 Pro 0813",
           provider: "fireworks",
         },
         {
@@ -1148,8 +1198,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "fireworks",
         },
         {
-          id: "accounts/fireworks/models/gpt-oss-20b",
-          name: "GPT OSS 20B",
+          id: "accounts/fireworks/models/inkling",
+          name: "Inkling",
           provider: "fireworks",
         },
         {
@@ -1168,13 +1218,23 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "fireworks",
         },
         {
-          id: "accounts/fireworks/models/minimax-m2p7",
-          name: "MiniMax-M2.7",
+          id: "accounts/fireworks/models/minimax-m3",
+          name: "MiniMax-M3",
           provider: "fireworks",
         },
         {
-          id: "accounts/fireworks/models/minimax-m3",
-          name: "MiniMax-M3",
+          id: "accounts/fireworks/models/muse-glimmer-30b",
+          name: "Muse Glimmer 30B",
+          provider: "fireworks",
+        },
+        {
+          id: "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+          name: "Nemotron 3 Ultra 550B A55B",
+          provider: "fireworks",
+        },
+        {
+          id: "accounts/fireworks/models/nemotron-lightning-3p5-30b-a3b",
+          name: "Nemotron 3.5 Lightning 30B A3B",
           provider: "fireworks",
         },
         {
@@ -1183,23 +1243,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "fireworks",
         },
         {
+          id: "accounts/fireworks/models/qwen3p8-max",
+          name: "Qwen3.8 Max",
+          provider: "fireworks",
+        },
+        {
           id: "accounts/fireworks/routers/glm-5p2-fast",
           name: "GLM 5.2 Fast",
-          provider: "fireworks",
-        },
-        {
-          id: "accounts/fireworks/routers/kimi-k2p6-fast",
-          name: "Kimi K2.6 Fast",
-          provider: "fireworks",
-        },
-        {
-          id: "accounts/fireworks/routers/kimi-k2p6-turbo",
-          name: "Kimi K2.6 Turbo",
-          provider: "fireworks",
-        },
-        {
-          id: "accounts/fireworks/routers/kimi-k2p7-code-fast",
-          name: "Kimi K2.7 Code Fast",
           provider: "fireworks",
         },
         {
@@ -1220,16 +1270,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "deep-research-preview-04-2026",
           name: "Deep Research Preview (Apr-21-2026)",
-          provider: "google",
-        },
-        {
-          id: "gemini-2.0-flash",
-          name: "Gemini 2.0 Flash",
-          provider: "google",
-        },
-        {
-          id: "gemini-2.0-flash-lite",
-          name: "Gemini 2.0 Flash-Lite",
           provider: "google",
         },
         {
@@ -1255,11 +1295,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "gemini-3-flash-preview",
           name: "Gemini 3 Flash Preview",
-          provider: "google",
-        },
-        {
-          id: "gemini-3-pro-preview",
-          name: "Gemini 3 Pro Preview",
           provider: "google",
         },
         {
@@ -1305,6 +1340,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "gemini-3.6-flash",
           name: "Gemini 3.6 Flash",
+          provider: "google",
+        },
+        {
+          id: "gemini-3.7-flash",
+          name: "Gemini 3.7 Flash",
           provider: "google",
         },
         {
@@ -1388,6 +1428,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "google-vertex",
         },
         {
+          id: "gemini-3.7-flash",
+          name: "Gemini 3.7 Flash",
+          provider: "google-vertex",
+        },
+        {
           id: "gemini-flash-latest",
           name: "Gemini Flash Latest",
           provider: "google-vertex",
@@ -1453,6 +1498,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "huggingface",
         },
         {
+          id: "deepseek-ai/DeepSeek-V3-0324",
+          name: "DeepSeek V3 0324",
+          provider: "huggingface",
+        },
+        {
           id: "deepseek-ai/DeepSeek-V3.1",
           name: "DeepSeek-V3.1",
           provider: "huggingface",
@@ -1478,6 +1528,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "huggingface",
         },
         {
+          id: "deepseek-ai/DeepSeek-V4-Pro-0813",
+          name: "DeepSeek V4 Pro 0813",
+          provider: "huggingface",
+        },
+        {
           id: "google/gemma-4-26B-A4B-it",
           name: "Gemma 4 26B A4B IT",
           provider: "huggingface",
@@ -1485,6 +1540,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "google/gemma-4-31B-it",
           name: "Gemma 4 31B IT",
+          provider: "huggingface",
+        },
+        {
+          id: "meta-llama/Llama-3.1-8B-Instruct",
+          name: "Llama-3.1-8B-Instruct",
           provider: "huggingface",
         },
         {
@@ -1563,6 +1623,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "huggingface",
         },
         {
+          id: "Qwen/Qwen2.5-Coder-32B-Instruct",
+          name: "Qwen2.5-Coder-32B-Instruct",
+          provider: "huggingface",
+        },
+        {
           id: "Qwen/Qwen3-235B-A22B",
           name: "Qwen3 235B-A22B",
           provider: "huggingface",
@@ -1575,6 +1640,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "Qwen/Qwen3-235B-A22B-Thinking-2507",
           name: "Qwen3-235B-A22B-Thinking-2507",
+          provider: "huggingface",
+        },
+        {
+          id: "Qwen/Qwen3-30B-A3B",
+          name: "Qwen3 30B A3B",
           provider: "huggingface",
         },
         {
@@ -1605,6 +1675,16 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "Qwen/Qwen3-Next-80B-A3B-Thinking",
           name: "Qwen3-Next-80B-A3B-Thinking",
+          provider: "huggingface",
+        },
+        {
+          id: "Qwen/Qwen3-VL-235B-A22B-Instruct",
+          name: "Qwen3 VL 235B A22B Instruct",
+          provider: "huggingface",
+        },
+        {
+          id: "Qwen/Qwen3-VL-235B-A22B-Thinking",
+          name: "Qwen3 VL 235B A22B Thinking",
           provider: "huggingface",
         },
         {
@@ -1640,6 +1720,16 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "Qwen/Qwen3.6-35B-A3B",
           name: "Qwen3.6 35B-A3B",
+          provider: "huggingface",
+        },
+        {
+          id: "Qwen/Qwen3.8-2.4T-A95B",
+          name: "Qwen3.8 2.4T A95B",
+          provider: "huggingface",
+        },
+        {
+          id: "Qwen/Qwen3.8-27B",
+          name: "Qwen3.8 27B",
           provider: "huggingface",
         },
         {
@@ -1703,6 +1793,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "huggingface",
         },
         {
+          id: "zai-org/GLM-4.6V-Flash",
+          name: "GLM-4.6V-Flash",
+          provider: "huggingface",
+        },
+        {
           id: "zai-org/GLM-4.7",
           name: "GLM-4.7",
           provider: "huggingface",
@@ -1725,6 +1820,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "zai-org/GLM-5.2",
           name: "GLM-5.2",
+          provider: "huggingface",
+        },
+        {
+          id: "zai-org/GLM-5.3-Flash",
+          name: "GLM-5.3-Flash",
           provider: "huggingface",
         },
       ],
@@ -1952,6 +2052,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "Voxtral Small (latest)",
           provider: "mistral",
         },
+        {
+          id: "zai-glm-5-2",
+          name: "GLM-5.2",
+          provider: "mistral",
+        },
       ],
     },
     {
@@ -2068,6 +2173,16 @@ export const generatedPiAiCatalog: RawJsonValue = {
       provider: "nvidia",
       models: [
         {
+          id: "deepseek-ai/deepseek-v4-flash-0731",
+          name: "DeepSeek V4 Flash 0731",
+          provider: "nvidia",
+        },
+        {
+          id: "deepseek-ai/deepseek-v4-pro-0813",
+          name: "DeepSeek V4 Pro 0813",
+          provider: "nvidia",
+        },
+        {
           id: "google/gemma-3-12b-it",
           name: "Gemma 3 12B IT",
           provider: "nvidia",
@@ -2075,16 +2190,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "google/gemma-3-4b-it",
           name: "Gemma 3 4B IT",
-          provider: "nvidia",
-        },
-        {
-          id: "meta/llama-3.1-70b-instruct",
-          name: "Llama 3.1 70b Instruct",
-          provider: "nvidia",
-        },
-        {
-          id: "meta/llama-3.1-8b-instruct",
-          name: "Llama 3.1 8B Instruct",
           provider: "nvidia",
         },
         {
@@ -2098,8 +2203,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "nvidia",
         },
         {
-          id: "meta/llama-3.3-70b-instruct",
-          name: "Llama 3.3 70b Instruct",
+          id: "meta/muse-glimmer-30b",
+          name: "Muse Glimmer 30B",
           provider: "nvidia",
         },
         {
@@ -2113,13 +2218,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "nvidia",
         },
         {
-          id: "mistralai/mistral-medium-3.5-128b",
-          name: "Mistral Medium 3.5",
+          id: "moonshotai/kimi-k2.6",
+          name: "Kimi K2.6",
           provider: "nvidia",
         },
         {
-          id: "moonshotai/kimi-k2.6",
-          name: "Kimi K2.6",
+          id: "moonshotai/kimi-k3",
+          name: "Kimi K3",
           provider: "nvidia",
         },
         {
@@ -2133,28 +2238,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "nvidia",
         },
         {
-          id: "nvidia/llama-3.1-nemotron-nano-8b-v1",
-          name: "Llama 3.1 Nemotron Nano 8B v1",
-          provider: "nvidia",
-        },
-        {
-          id: "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
-          name: "Llama 3.1 Nemotron Nano VL 8B v1",
-          provider: "nvidia",
-        },
-        {
           id: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
           name: "Llama 3.1 Nemotron Ultra 253B",
-          provider: "nvidia",
-        },
-        {
-          id: "nvidia/llama-3.3-nemotron-super-49b-v1",
-          name: "Llama 3.3 Nemotron Super 49B v1",
-          provider: "nvidia",
-        },
-        {
-          id: "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-          name: "Llama 3.3 Nemotron Super 49B v1.5",
           provider: "nvidia",
         },
         {
@@ -2178,13 +2263,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "nvidia",
         },
         {
-          id: "nvidia/nemotron-nano-12b-v2-vl",
-          name: "Nemotron Nano 12B v2 VL",
-          provider: "nvidia",
-        },
-        {
-          id: "nvidia/nvidia-nemotron-nano-9b-v2",
-          name: "nvidia-nemotron-nano-9b-v2",
+          id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+          name: "Nemotron 3.5 Lightning 30B A3B",
           provider: "nvidia",
         },
         {
@@ -2200,21 +2280,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "poolside/laguna-xs-2.1",
           name: "Laguna XS 2.1",
-          provider: "nvidia",
-        },
-        {
-          id: "stepfun-ai/step-3.7-flash",
-          name: "Step 3.7 Flash",
-          provider: "nvidia",
-        },
-        {
-          id: "thinkingmachines/inkling",
-          name: "Inkling",
-          provider: "nvidia",
-        },
-        {
-          id: "z-ai/glm-5.2",
-          name: "GLM-5.2",
           provider: "nvidia",
         },
       ],
@@ -2479,12 +2544,7 @@ export const generatedPiAiCatalog: RawJsonValue = {
         },
         {
           id: "deepseek-v4-flash",
-          name: "DeepSeek V4 Flash (New)",
-          provider: "opencode",
-        },
-        {
-          id: "deepseek-v4-flash-free",
-          name: "DeepSeek V4 Flash Free (New)",
+          name: "DeepSeek V4 Flash",
           provider: "opencode",
         },
         {
@@ -2515,6 +2575,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "gemini-3.6-flash",
           name: "Gemini 3.6 Flash",
+          provider: "opencode",
+        },
+        {
+          id: "gemini-3.7-flash",
+          name: "Gemini 3.7 Flash",
           provider: "opencode",
         },
         {
@@ -2619,7 +2684,7 @@ export const generatedPiAiCatalog: RawJsonValue = {
         },
         {
           id: "gpt-5.6-sol",
-          name: "GPT-5.6 Sol",
+          name: "GPT-5.6 Sol (50% Off)",
           provider: "opencode",
         },
         {
@@ -2633,8 +2698,18 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "opencode",
         },
         {
+          id: "grok-4.6",
+          name: "Grok 4.6",
+          provider: "opencode",
+        },
+        {
           id: "grok-build-0.1",
           name: "Grok Build 0.1",
+          provider: "opencode",
+        },
+        {
+          id: "hy3-free",
+          name: "Hy3 Free",
           provider: "opencode",
         },
         {
@@ -2658,18 +2733,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "opencode",
         },
         {
-          id: "laguna-s-2.1-free",
-          name: "Laguna S 2.1 Free",
-          provider: "opencode",
-        },
-        {
-          id: "ling-3.0-flash-free",
-          name: "Ling-3.0-flash Free",
-          provider: "opencode",
-        },
-        {
-          id: "longcat-2.0-free",
-          name: "LongCat-2.0 Free",
+          id: "ling-3.0-flash-fin-free",
+          name: "Ling 3.0 Flash Fin Free",
           provider: "opencode",
         },
         {
@@ -2693,13 +2758,23 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "opencode",
         },
         {
+          id: "muse-spark-1.2",
+          name: "Muse Spark 1.2",
+          provider: "opencode",
+        },
+        {
+          id: "muse-spark-1.2-contributor-free",
+          name: "Muse Spark 1.2 Free",
+          provider: "opencode",
+        },
+        {
           id: "nemotron-3-ultra-free",
           name: "Nemotron 3 Ultra Free",
           provider: "opencode",
         },
         {
-          id: "north-mini-code-free",
-          name: "North Mini Code Free",
+          id: "nemotron-3.5-lightning-free",
+          name: "Nemotron 3.5 Lightning Free",
           provider: "opencode",
         },
         {
@@ -2719,12 +2794,17 @@ export const generatedPiAiCatalog: RawJsonValue = {
       models: [
         {
           id: "deepseek-v4-flash",
-          name: "DeepSeek V4 Flash (New)",
+          name: "DeepSeek V4 Flash",
+          provider: "opencode-go",
+        },
+        {
+          id: "deepseek-v4-flash-vision-exp",
+          name: "DeepSeek V4 Flash Vision Exp",
           provider: "opencode-go",
         },
         {
           id: "deepseek-v4-pro",
-          name: "DeepSeek V4 Pro",
+          name: "DeepSeek V4 Pro (New)",
           provider: "opencode-go",
         },
         {
@@ -2738,18 +2818,33 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "opencode-go",
         },
         {
-          id: "gpt-5.6-luna",
-          name: "GPT-5.6 Luna (2x usage)",
+          id: "glm-5.3",
+          name: "GLM-5.3",
           provider: "opencode-go",
         },
         {
-          id: "grok-4.5",
-          name: "Grok 4.5",
+          id: "glm-5.3-flash",
+          name: "GLM-5.3-Flash (2x usage)",
+          provider: "opencode-go",
+        },
+        {
+          id: "gpt-5.6-luna",
+          name: "GPT-5.6 Luna",
+          provider: "opencode-go",
+        },
+        {
+          id: "grok-4.6",
+          name: "Grok 4.6",
           provider: "opencode-go",
         },
         {
           id: "hy3",
-          name: "Hy3",
+          name: "Hy3 (8x usage)",
+          provider: "opencode-go",
+        },
+        {
+          id: "hy4-preview",
+          name: "Hy4 preview",
           provider: "opencode-go",
         },
         {
@@ -2765,6 +2860,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "kimi-k3",
           name: "Kimi K3",
+          provider: "opencode-go",
+        },
+        {
+          id: "longcat-2.0",
+          name: "LongCat-2.0",
           provider: "opencode-go",
         },
         {
@@ -2788,6 +2888,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "opencode-go",
         },
         {
+          id: "muse-spark-1.2-contributor",
+          name: "Muse Spark 1.2 Contributor",
+          provider: "opencode-go",
+        },
+        {
           id: "qwen3.6-plus",
           name: "Qwen3.6 Plus",
           provider: "opencode-go",
@@ -2800,6 +2905,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "qwen3.7-plus",
           name: "Qwen3.7 Plus",
+          provider: "opencode-go",
+        },
+        {
+          id: "qwen3.8-flash",
+          name: "Qwen3.8 Flash",
           provider: "opencode-go",
         },
         {
@@ -2868,8 +2978,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "ai21/jamba-large-1.7",
-          name: "AI21: Jamba Large 1.7",
+          id: "~z-ai/glm-latest",
+          name: "Z.ai: GLM Latest",
           provider: "openrouter",
         },
         {
@@ -3078,6 +3188,16 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "bytedance-seed/seed-2-1-turbo",
+          name: "ByteDance Seed: Seed 2.1 Turbo",
+          provider: "openrouter",
+        },
+        {
+          id: "bytedance-seed/seed-2.0-code",
+          name: "ByteDance Seed: Seed-2.0-Code",
+          provider: "openrouter",
+        },
+        {
           id: "bytedance-seed/seed-2.0-lite",
           name: "ByteDance Seed: Seed-2.0-Lite",
           provider: "openrouter",
@@ -3153,8 +3273,33 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "deepseek/deepseek-v4-flash-0731:batch",
+          name: "DeepSeek: DeepSeek V4 Flash 0731 (batch)",
+          provider: "openrouter",
+        },
+        {
+          id: "deepseek/deepseek-v4-flash-vision-exp",
+          name: "DeepSeek: DeepSeek V4 Flash Vision Exp",
+          provider: "openrouter",
+        },
+        {
           id: "deepseek/deepseek-v4-pro",
-          name: "DeepSeek: DeepSeek V4 Pro",
+          name: "DeepSeek: DeepSeek V4 Pro 0423",
+          provider: "openrouter",
+        },
+        {
+          id: "deepseek/deepseek-v4-pro-0813",
+          name: "DeepSeek: DeepSeek V4 Pro 0813",
+          provider: "openrouter",
+        },
+        {
+          id: "deepseek/deepseek-v4-pro-0813:batch",
+          name: "DeepSeek: DeepSeek V4 Pro 0813 (batch)",
+          provider: "openrouter",
+        },
+        {
+          id: "dots-studio/dots-3-note-preview:free",
+          name: "Dots Studio: Dots3-Note Preview (free)",
           provider: "openrouter",
         },
         {
@@ -3273,6 +3418,16 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "google/gemini-3.7-flash",
+          name: "Google: Gemini 3.7 Flash",
+          provider: "openrouter",
+        },
+        {
+          id: "google/gemini-3.7-flash:batch",
+          name: "Google: Gemini 3.7 Flash (batch)",
+          provider: "openrouter",
+        },
+        {
           id: "google/gemma-3-12b-it",
           name: "Google: Gemma 3 12B",
           provider: "openrouter",
@@ -3298,6 +3453,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "google/gemma-4-31b-it:batch",
+          name: "Google: Gemma 4 31B (batch)",
+          provider: "openrouter",
+        },
+        {
           id: "google/gemma-4-31b-it:free",
           name: "Google: Gemma 4 31B (free)",
           provider: "openrouter",
@@ -3313,28 +3473,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "inclusionai/ling-2.6-1t",
-          name: "inclusionAI: Ling-2.6-1T",
-          provider: "openrouter",
-        },
-        {
-          id: "inclusionai/ling-2.6-flash",
-          name: "inclusionAI: Ling-2.6-flash",
-          provider: "openrouter",
-        },
-        {
           id: "inclusionai/ling-3.0-flash",
           name: "Ling-3.0-flash",
           provider: "openrouter",
         },
         {
-          id: "inclusionai/ling-3.0-tiny:free",
-          name: "inclusionAI: Ling 3.0 Tiny (free)",
-          provider: "openrouter",
-        },
-        {
-          id: "inclusionai/ring-2.6-1t",
-          name: "inclusionAI: Ring-2.6-1T",
+          id: "inclusionai/ling-3.0-flash-fin:free",
+          name: "Ling 3.0 Flash Fin (free)",
           provider: "openrouter",
         },
         {
@@ -3350,6 +3495,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "kwaipilot/kat-coder-pro-v2.5",
           name: "Kwaipilot: KAT-Coder-Pro V2.5",
+          provider: "openrouter",
+        },
+        {
+          id: "liquid/lfm-2.5-2.6b:free",
+          name: "LiquidAI: LFM2.5-2.6B (free)",
           provider: "openrouter",
         },
         {
@@ -3383,6 +3533,16 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "meta/muse-glimmer-30b",
+          name: "Meta: Muse Glimmer 30B",
+          provider: "openrouter",
+        },
+        {
+          id: "meta/muse-glimmer-30b:batch",
+          name: "Meta: Muse Glimmer 30B (batch)",
+          provider: "openrouter",
+        },
+        {
           id: "meta/muse-spark-1.1",
           name: "Meta: Muse Spark 1.1",
           provider: "openrouter",
@@ -3390,6 +3550,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "meta/muse-spark-1.2",
           name: "Meta: Muse Spark 1.2",
+          provider: "openrouter",
+        },
+        {
+          id: "meta/muse-spark-1.2-contributor",
+          name: "Meta: Muse Spark 1.2 Contributor",
           provider: "openrouter",
         },
         {
@@ -3418,6 +3583,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "minimax/minimax-m2.7:free",
+          name: "MiniMax: MiniMax M2.7 (free)",
+          provider: "openrouter",
+        },
+        {
           id: "minimax/minimax-m3",
           name: "MiniMax: MiniMax M3",
           provider: "openrouter",
@@ -3428,8 +3598,23 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "minimax/minimax-m3:free",
+          name: "MiniMax: MiniMax M3 (free)",
+          provider: "openrouter",
+        },
+        {
           id: "mistralai/codestral-2508",
           name: "Mistral: Codestral 2508",
+          provider: "openrouter",
+        },
+        {
+          id: "mistralai/codestral-2508:batch",
+          name: "Mistral: Codestral 2508 (batch)",
+          provider: "openrouter",
+        },
+        {
+          id: "mistralai/devstral-2512",
+          name: "Mistral: Devstral 2 2512",
           provider: "openrouter",
         },
         {
@@ -3448,6 +3633,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "mistralai/ministral-8b-2512:batch",
+          name: "Mistral: Ministral 3 8B 2512 (batch)",
+          provider: "openrouter",
+        },
+        {
           id: "mistralai/mistral-large",
           name: "Mistral Large",
           provider: "openrouter",
@@ -3463,6 +3653,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "mistralai/mistral-large-2512:batch",
+          name: "Mistral: Mistral Large 3 2512 (batch)",
+          provider: "openrouter",
+        },
+        {
           id: "mistralai/mistral-medium-3",
           name: "Mistral: Mistral Medium 3",
           provider: "openrouter",
@@ -3473,8 +3668,18 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "mistralai/mistral-medium-3-5:batch",
+          name: "Mistral: Mistral Medium 3.5 (batch)",
+          provider: "openrouter",
+        },
+        {
           id: "mistralai/mistral-medium-3.1",
           name: "Mistral: Mistral Medium 3.1",
+          provider: "openrouter",
+        },
+        {
+          id: "mistralai/mistral-medium-3.1:batch",
+          name: "Mistral: Mistral Medium 3.1 (batch)",
           provider: "openrouter",
         },
         {
@@ -3490,6 +3695,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "mistralai/mistral-small-2603",
           name: "Mistral: Mistral Small 4",
+          provider: "openrouter",
+        },
+        {
+          id: "mistralai/mistral-small-2603:batch",
+          name: "Mistral: Mistral Small 4 (batch)",
           provider: "openrouter",
         },
         {
@@ -3538,13 +3748,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "moonshotai/kimi-k2.7-code:batch",
-          name: "MoonshotAI: Kimi K2.7 Code (batch)",
+          id: "moonshotai/kimi-k3",
+          name: "MoonshotAI: Kimi K3",
           provider: "openrouter",
         },
         {
-          id: "moonshotai/kimi-k3",
-          name: "MoonshotAI: Kimi K3",
+          id: "moonshotai/kimi-k3:batch",
+          name: "MoonshotAI: Kimi K3 (batch)",
           provider: "openrouter",
         },
         {
@@ -3560,11 +3770,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "nvidia/nemotron-3-nano-30b-a3b",
           name: "NVIDIA: Nemotron 3 Nano 30B A3B",
-          provider: "openrouter",
-        },
-        {
-          id: "nvidia/nemotron-3-nano-30b-a3b:free",
-          name: "NVIDIA: Nemotron 3 Nano 30B A3B (free)",
           provider: "openrouter",
         },
         {
@@ -3598,13 +3803,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "nvidia/nemotron-nano-12b-v2-vl:free",
-          name: "NVIDIA: Nemotron Nano 12B 2 VL (free)",
+          id: "nvidia/nemotron-3.5-lightning",
+          name: "NVIDIA: Nemotron 3.5 Lightning",
           provider: "openrouter",
         },
         {
-          id: "nvidia/nemotron-nano-9b-v2:free",
-          name: "NVIDIA: Nemotron Nano 9B V2 (free)",
+          id: "nvidia/nemotron-3.5-lightning:free",
+          name: "NVIDIA: Nemotron 3.5 Lightning (free)",
           provider: "openrouter",
         },
         {
@@ -3623,11 +3828,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-3.5-turbo:batch",
-          name: "OpenAI: GPT-3.5 Turbo (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-4",
           name: "OpenAI: GPT-4",
           provider: "openrouter",
@@ -3643,11 +3843,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-4-turbo:batch",
-          name: "OpenAI: GPT-4 Turbo (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-4.1",
           name: "OpenAI: GPT-4.1",
           provider: "openrouter",
@@ -3658,23 +3853,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-4.1-mini:batch",
-          name: "OpenAI: GPT-4.1 Mini (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-4.1-nano",
           name: "OpenAI: GPT-4.1 Nano",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-4.1-nano:batch",
-          name: "OpenAI: GPT-4.1 Nano (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-4.1:batch",
-          name: "OpenAI: GPT-4.1 (batch)",
           provider: "openrouter",
         },
         {
@@ -3708,23 +3888,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-4o-mini:batch",
-          name: "OpenAI: GPT-4o-mini (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-4o:batch",
-          name: "OpenAI: GPT-4o (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5",
           name: "OpenAI: GPT-5",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5-codex:batch",
-          name: "OpenAI: GPT-5 Codex (batch)",
           provider: "openrouter",
         },
         {
@@ -3733,33 +3898,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-5-mini:batch",
-          name: "OpenAI: GPT-5 Mini (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5-nano",
           name: "OpenAI: GPT-5 Nano",
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-5-nano:batch",
-          name: "OpenAI: GPT-5 Nano (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5-pro",
           name: "OpenAI: GPT-5 Pro",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5-pro:batch",
-          name: "OpenAI: GPT-5 Pro (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5:batch",
-          name: "OpenAI: GPT-5 (batch)",
           provider: "openrouter",
         },
         {
@@ -3783,11 +3928,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-5.1:batch",
-          name: "OpenAI: GPT-5.1 (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5.2",
           name: "OpenAI: GPT-5.2",
           provider: "openrouter",
@@ -3808,21 +3948,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-5.2-pro:batch",
-          name: "OpenAI: GPT-5.2 Pro (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.2:batch",
-          name: "OpenAI: GPT-5.2 (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.3-chat",
-          name: "OpenAI: GPT-5.3 Chat",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5.3-codex",
           name: "OpenAI: GPT-5.3-Codex",
           provider: "openrouter",
@@ -3838,33 +3963,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-5.4-mini:batch",
-          name: "OpenAI: GPT-5.4 Mini (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5.4-nano",
           name: "OpenAI: GPT-5.4 Nano",
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-5.4-nano:batch",
-          name: "OpenAI: GPT-5.4 Nano (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5.4-pro",
           name: "OpenAI: GPT-5.4 Pro",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.4-pro:batch",
-          name: "OpenAI: GPT-5.4 Pro (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.4:batch",
-          name: "OpenAI: GPT-5.4 (batch)",
           provider: "openrouter",
         },
         {
@@ -3878,16 +3983,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-5.5-pro:batch",
-          name: "OpenAI: GPT-5.5 Pro (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.5:batch",
-          name: "OpenAI: GPT-5.5 (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5.6-luna",
           name: "OpenAI: GPT-5.6 Luna",
           provider: "openrouter",
@@ -3895,16 +3990,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "openai/gpt-5.6-luna-pro",
           name: "OpenAI: GPT-5.6 Luna Pro",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.6-luna-pro:batch",
-          name: "OpenAI: GPT-5.6 Luna Pro (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.6-luna:batch",
-          name: "OpenAI: GPT-5.6 Luna (batch)",
           provider: "openrouter",
         },
         {
@@ -3918,16 +4003,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-5.6-sol-pro:batch",
-          name: "OpenAI: GPT-5.6 Sol Pro (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.6-sol:batch",
-          name: "OpenAI: GPT-5.6 Sol (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/gpt-5.6-terra",
           name: "OpenAI: GPT-5.6 Terra",
           provider: "openrouter",
@@ -3935,16 +4010,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "openai/gpt-5.6-terra-pro",
           name: "OpenAI: GPT-5.6 Terra Pro",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.6-terra-pro:batch",
-          name: "OpenAI: GPT-5.6 Terra Pro (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/gpt-5.6-terra:batch",
-          name: "OpenAI: GPT-5.6 Terra (batch)",
           provider: "openrouter",
         },
         {
@@ -3968,13 +4033,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-oss-20b",
-          name: "OpenAI: gpt-oss-20b",
+          id: "openai/gpt-oss-120b:batch",
+          name: "OpenAI: gpt-oss-120b (batch)",
           provider: "openrouter",
         },
         {
-          id: "openai/gpt-oss-20b:free",
-          name: "OpenAI: gpt-oss-20b (free)",
+          id: "openai/gpt-oss-20b",
+          name: "OpenAI: gpt-oss-20b",
           provider: "openrouter",
         },
         {
@@ -3985,11 +4050,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "openai/o1",
           name: "OpenAI: o1",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/o1:batch",
-          name: "OpenAI: o1 (batch)",
           provider: "openrouter",
         },
         {
@@ -4008,28 +4068,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "openai/o3-mini-high:batch",
-          name: "OpenAI: o3 Mini High (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/o3-mini:batch",
-          name: "OpenAI: o3 Mini (batch)",
-          provider: "openrouter",
-        },
-        {
           id: "openai/o3-pro",
           name: "OpenAI: o3 Pro",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/o3-pro:batch",
-          name: "OpenAI: o3 Pro (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/o3:batch",
-          name: "OpenAI: o3 (batch)",
           provider: "openrouter",
         },
         {
@@ -4040,16 +4080,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "openai/o4-mini-high",
           name: "OpenAI: o4 Mini High",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/o4-mini-high:batch",
-          name: "OpenAI: o4 Mini High (batch)",
-          provider: "openrouter",
-        },
-        {
-          id: "openai/o4-mini:batch",
-          name: "OpenAI: o4 Mini (batch)",
           provider: "openrouter",
         },
         {
@@ -4110,11 +4140,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "qwen/qwen-plus-2025-07-28",
           name: "Qwen: Qwen Plus 0728",
-          provider: "openrouter",
-        },
-        {
-          id: "qwen/qwen-plus-2025-07-28:thinking",
-          name: "Qwen: Qwen Plus 0728 (thinking)",
           provider: "openrouter",
         },
         {
@@ -4268,6 +4293,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "qwen/qwen3.5-9b:batch",
+          name: "Qwen: Qwen3.5-9B (batch)",
+          provider: "openrouter",
+        },
+        {
           id: "qwen/qwen3.5-flash-02-23",
           name: "Qwen: Qwen3.5-Flash",
           provider: "openrouter",
@@ -4323,6 +4353,26 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "qwen/qwen3.8-2.4t-a95b",
+          name: "Qwen: Qwen3.8 2.4T A95B",
+          provider: "openrouter",
+        },
+        {
+          id: "qwen/qwen3.8-2.4t-a95b:batch",
+          name: "Qwen: Qwen3.8 2.4T A95B (batch)",
+          provider: "openrouter",
+        },
+        {
+          id: "qwen/qwen3.8-27b",
+          name: "Qwen: Qwen3.8 27B",
+          provider: "openrouter",
+        },
+        {
+          id: "qwen/qwen3.8-flash",
+          name: "Qwen: Qwen3.8 Flash",
+          provider: "openrouter",
+        },
+        {
           id: "qwen/qwen3.8-max",
           name: "Qwen: Qwen3.8 Max",
           provider: "openrouter",
@@ -4340,6 +4390,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "sakana/fugu-ultra",
           name: "Sakana: Fugu Ultra",
+          provider: "openrouter",
+        },
+        {
+          id: "sakana/sakana-namazu",
+          name: "Sakana: Sakana Namazu",
           provider: "openrouter",
         },
         {
@@ -4368,6 +4423,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "tencent/hy4-preview",
+          name: "Tencent: Hy4 preview",
+          provider: "openrouter",
+        },
+        {
           id: "thedrummer/unslopnemo-12b",
           name: "TheDrummer: UnslopNemo 12B",
           provider: "openrouter",
@@ -4383,13 +4443,33 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
+          id: "thinkingmachines/inkling-small:batch",
+          name: "Thinking Machines: Inkling Small (batch)",
+          provider: "openrouter",
+        },
+        {
+          id: "thinkingmachines/inkling-small:free",
+          name: "Thinking Machines: Inkling Small (free)",
+          provider: "openrouter",
+        },
+        {
           id: "thinkingmachines/inkling:batch",
           name: "Thinking Machines: Inkling (batch)",
           provider: "openrouter",
         },
         {
+          id: "thinkingmachines/inkling:free",
+          name: "Thinking Machines: Inkling (free)",
+          provider: "openrouter",
+        },
+        {
           id: "upstage/solar-pro-3",
           name: "Upstage: Solar Pro 3",
+          provider: "openrouter",
+        },
+        {
+          id: "upstage/solar-pro4",
+          name: "Upstage: Solar Pro 4",
           provider: "openrouter",
         },
         {
@@ -4405,6 +4485,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "x-ai/grok-4.5",
           name: "SpaceXAI: Grok 4.5",
+          provider: "openrouter",
+        },
+        {
+          id: "x-ai/grok-4.6",
+          name: "SpaceXAI: Grok 4.6",
           provider: "openrouter",
         },
         {
@@ -4478,8 +4563,23 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "openrouter",
         },
         {
-          id: "z-ai/glm-5.2:batch",
-          name: "Z.ai: GLM 5.2 (batch)",
+          id: "z-ai/glm-5.2:free",
+          name: "Z.ai: GLM 5.2 (free)",
+          provider: "openrouter",
+        },
+        {
+          id: "z-ai/glm-5.3",
+          name: "Z.ai: GLM 5.3",
+          provider: "openrouter",
+        },
+        {
+          id: "z-ai/glm-5.3-flash",
+          name: "Z.ai: GLM 5.3 Flash",
+          provider: "openrouter",
+        },
+        {
+          id: "z-ai/glm-5.3-flash:batch",
+          name: "Z.ai: GLM 5.3 Flash (batch)",
           provider: "openrouter",
         },
         {
@@ -4500,6 +4600,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "deepseek-ai/DeepSeek-V4-Pro",
           name: "DeepSeek V4 Pro",
+          provider: "together",
+        },
+        {
+          id: "deepseek-ai/DeepSeek-V4-Pro-0813",
+          name: "DeepSeek V4 Pro 0813",
           provider: "together",
         },
         {
@@ -4580,6 +4685,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "zai-org/GLM-5.2",
           name: "GLM-5.2",
+          provider: "together",
+        },
+        {
+          id: "zai-org/GLM-5.3-Flash",
+          name: "GLM-5.3-Flash",
           provider: "together",
         },
       ],
@@ -4713,6 +4823,21 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "alibaba/qwen3.8-2.4t-a95b",
+          name: "Qwen3.8 2.4T A95B",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "alibaba/qwen3.8-27b",
+          name: "Qwen3.8 27B",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "alibaba/qwen3.8-flash",
+          name: "Qwen 3.8 Flash",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "alibaba/qwen3.8-max",
           name: "Qwen 3.8 Max",
           provider: "vercel-ai-gateway",
@@ -4788,6 +4913,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "anthropic/claude-opus-5-fast",
+          name: "Claude Opus 5 (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "anthropic/claude-sonnet-4",
           name: "Claude Sonnet 4",
           provider: "vercel-ai-gateway",
@@ -4810,11 +4940,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "arcee-ai/trinity-large-thinking",
           name: "Trinity Large Thinking",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "arcee-ai/trinity-mini",
-          name: "Trinity Mini",
           provider: "vercel-ai-gateway",
         },
         {
@@ -4873,8 +4998,18 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "deepseek/deepseek-v4-flash-vision-exp",
+          name: "DeepSeek V4 Flash Vision Exp",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "deepseek/deepseek-v4-pro",
           name: "DeepSeek V4 Pro",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "deepseek/deepseek-v4-pro-0813",
+          name: "DeepSeek V4 Pro 0813",
           provider: "vercel-ai-gateway",
         },
         {
@@ -4923,8 +5058,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "google/gemini-3.7-flash",
+          name: "Gemini 3.7 Flash",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "google/gemma-4-26b-a4b-it",
-          name: "Gemma 4 26B A4B IT",
+          name: "Google Gemma 4 26B A4B",
           provider: "vercel-ai-gateway",
         },
         {
@@ -4948,8 +5088,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
-          id: "inclusionai/ling-3.0-tiny-free",
-          name: "Ling 3.0 Tiny (Free)",
+          id: "inclusionai/ling-3.0-flash-fin",
+          name: "Ling 3.0 Flash Fin",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "inclusionai/ling-3.0-flash-fin-free",
+          name: "Ling 3.0 Flash Fin (Free)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5003,6 +5148,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "meta/muse-glimmer-30b",
+          name: "Muse Glimmer 30B",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "meta/muse-spark-1.1",
           name: "Muse Spark 1.1",
           provider: "vercel-ai-gateway",
@@ -5044,7 +5194,12 @@ export const generatedPiAiCatalog: RawJsonValue = {
         },
         {
           id: "minimax/minimax-m2.7",
-          name: "Minimax M2.7",
+          name: "MiniMax M2.7",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "minimax/minimax-m2.7-free",
+          name: "MiniMax M2.7 (Free)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5055,6 +5210,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "minimax/minimax-m3",
           name: "MiniMax M3",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "minimax/minimax-m3-free",
+          name: "MiniMax M3 (Free)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5070,16 +5230,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "mistral/devstral-small-2",
           name: "Devstral Small 2",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "mistral/magistral-medium",
-          name: "Magistral Medium 2509",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "mistral/magistral-small",
-          name: "Magistral Small 2509",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5183,6 +5333,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "nvidia/nemotron-3.5-lightning",
+          name: "Nemotron 3.5 Lightning 30B",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "nvidia/nemotron-nano-12b-v2-vl",
           name: "Nvidia Nemotron Nano 12B V2 VL",
           provider: "vercel-ai-gateway",
@@ -5208,8 +5363,18 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-4.1-fast",
+          name: "GPT-4.1 (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-4.1-mini",
           name: "GPT-4.1 mini",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "openai/gpt-4.1-mini-fast",
+          name: "GPT-4.1 mini (Fast)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5218,13 +5383,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-4.1-nano-fast",
+          name: "GPT-4.1 nano (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-4o",
           name: "GPT-4o",
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-4o-fast",
+          name: "GPT-4o (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-4o-mini",
           name: "GPT-4o mini",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "openai/gpt-4o-mini-fast",
+          name: "GPT-4o mini (Fast)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5238,8 +5418,18 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-5-fast",
+          name: "GPT-5 (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-5-mini",
           name: "GPT-5 mini",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "openai/gpt-5-mini-fast",
+          name: "GPT-5 mini (Fast)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5268,13 +5458,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
-          id: "openai/gpt-5.1-instant",
-          name: "GPT-5.1 Instant",
+          id: "openai/gpt-5.1-thinking",
+          name: "GPT 5.1 Thinking",
           provider: "vercel-ai-gateway",
         },
         {
-          id: "openai/gpt-5.1-thinking",
-          name: "GPT 5.1 Thinking",
+          id: "openai/gpt-5.1-thinking-fast",
+          name: "GPT 5.1 Thinking (Fast)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5288,13 +5478,13 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
-          id: "openai/gpt-5.2-pro",
-          name: "GPT 5.2 ",
+          id: "openai/gpt-5.2-fast",
+          name: "GPT 5.2 (Fast)",
           provider: "vercel-ai-gateway",
         },
         {
-          id: "openai/gpt-5.3-chat",
-          name: "GPT-5.3 Chat",
+          id: "openai/gpt-5.2-pro",
+          name: "GPT 5.2 ",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5303,13 +5493,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-5.3-codex-fast",
+          name: "GPT 5.3 Codex (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-5.4",
           name: "GPT 5.4",
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-5.4-fast",
+          name: "GPT 5.4 (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-5.4-mini",
           name: "GPT 5.4 Mini",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "openai/gpt-5.4-mini-fast",
+          name: "GPT 5.4 Mini (Fast)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5328,6 +5533,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-5.5-fast",
+          name: "GPT 5.5 (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-5.5-pro",
           name: "GPT 5.5 Pro",
           provider: "vercel-ai-gateway",
@@ -5338,13 +5548,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-5.6-luna-fast",
+          name: "GPT 5.6 Luna (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-5.6-sol",
           name: "GPT 5.6 Sol",
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/gpt-5.6-sol-fast",
+          name: "GPT 5.6 Sol (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "openai/gpt-5.6-terra",
           name: "GPT 5.6 Terra",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "openai/gpt-5.6-terra-fast",
+          name: "GPT 5.6 Terra (Fast)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5355,6 +5580,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "openai/gpt-oss-20b",
           name: "GPT OSS 20B",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "openai/gpt-oss-safeguard-120b",
+          name: "GPT OSS Safeguard 120B",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5373,8 +5603,8 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
-          id: "openai/o3-deep-research",
-          name: "o3-deep-research",
+          id: "openai/o3-fast",
+          name: "o3 (Fast)",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5393,6 +5623,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "openai/o4-mini-fast",
+          name: "o4-mini (Fast)",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "poolside/laguna-s-2.1",
           name: "Laguna S 2.1",
           provider: "vercel-ai-gateway",
@@ -5405,6 +5640,71 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "sakana/fugu-ultra",
           name: "Fugu Ultra",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "sakana/namazu",
+          name: "Sakana Namazu",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.1-fast-non-reasoning",
+          name: "Grok 4.1 Fast Non-Reasoning",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.1-fast-reasoning",
+          name: "Grok 4.1 Fast Reasoning",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.20-multi-agent",
+          name: "Grok 4.20 Multi-Agent",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.20-multi-agent-beta",
+          name: "Grok 4.20 Multi Agent Beta",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.20-non-reasoning",
+          name: "Grok 4.20 Non-Reasoning",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.20-non-reasoning-beta",
+          name: "Grok 4.20 Beta Non-Reasoning",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.20-reasoning",
+          name: "Grok 4.20 Reasoning",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.20-reasoning-beta",
+          name: "Grok 4.20 Beta Reasoning",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.3",
+          name: "Grok 4.3",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.5",
+          name: "Grok 4.5",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-4.6",
+          name: "Grok 4.6",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "spacexai/grok-build-0.1",
+          name: "Grok Build 0.1",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5423,6 +5723,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "tencent/hy4-preview",
+          name: "Tencent Hy4 Preview",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "thinkingmachines/inkling",
           name: "Inkling",
           provider: "vercel-ai-gateway",
@@ -5430,61 +5735,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "thinkingmachines/inkling-small",
           name: "Inkling Small",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.1-fast-non-reasoning",
-          name: "Grok 4.1 Fast Non-Reasoning",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.1-fast-reasoning",
-          name: "Grok 4.1 Fast Reasoning",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.20-multi-agent",
-          name: "Grok 4.20 Multi-Agent",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.20-multi-agent-beta",
-          name: "Grok 4.20 Multi Agent Beta",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.20-non-reasoning",
-          name: "Grok 4.20 Non-Reasoning",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.20-non-reasoning-beta",
-          name: "Grok 4.20 Beta Non-Reasoning",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.20-reasoning",
-          name: "Grok 4.20 Reasoning",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.20-reasoning-beta",
-          name: "Grok 4.20 Beta Reasoning",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.3",
-          name: "Grok 4.3",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-4.5",
-          name: "Grok 4.5",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "xai/grok-build-0.1",
-          name: "Grok Build 0.1",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5515,16 +5765,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "zai/glm-4.6",
           name: "GLM 4.6",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "zai/glm-4.6v",
-          name: "GLM-4.6V",
-          provider: "vercel-ai-gateway",
-        },
-        {
-          id: "zai/glm-4.6v-flash",
-          name: "GLM-4.6V-Flash",
           provider: "vercel-ai-gateway",
         },
         {
@@ -5568,6 +5808,16 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "vercel-ai-gateway",
         },
         {
+          id: "zai/glm-5.3",
+          name: "GLM 5.3",
+          provider: "vercel-ai-gateway",
+        },
+        {
+          id: "zai/glm-5.3-flash",
+          name: "GLM 5.3 Flash",
+          provider: "vercel-ai-gateway",
+        },
+        {
           id: "zai/glm-5v-turbo",
           name: "GLM 5V Turbo",
           provider: "vercel-ai-gateway",
@@ -5588,6 +5838,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
           provider: "xai",
         },
         {
+          id: "grok-4.6",
+          name: "Grok 4.6",
+          provider: "xai",
+        },
+        {
           id: "grok-build-0.1",
           name: "Grok Build 0.1",
           provider: "xai",
@@ -5597,21 +5852,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
     {
       provider: "xiaomi",
       models: [
-        {
-          id: "mimo-v2-flash",
-          name: "MiMo-V2-Flash",
-          provider: "xiaomi",
-        },
-        {
-          id: "mimo-v2-omni",
-          name: "MiMo-V2-Omni",
-          provider: "xiaomi",
-        },
-        {
-          id: "mimo-v2-pro",
-          name: "MiMo-V2-Pro",
-          provider: "xiaomi",
-        },
         {
           id: "mimo-v2.5",
           name: "MiMo-V2.5",
@@ -5633,11 +5873,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
       provider: "xiaomi-token-plan-ams",
       models: [
         {
-          id: "mimo-v2-pro",
-          name: "MiMo-V2-Pro",
-          provider: "xiaomi-token-plan-ams",
-        },
-        {
           id: "mimo-v2.5",
           name: "MiMo-V2.5",
           provider: "xiaomi-token-plan-ams",
@@ -5653,11 +5888,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
       provider: "xiaomi-token-plan-cn",
       models: [
         {
-          id: "mimo-v2-pro",
-          name: "MiMo-V2-Pro",
-          provider: "xiaomi-token-plan-cn",
-        },
-        {
           id: "mimo-v2.5",
           name: "MiMo-V2.5",
           provider: "xiaomi-token-plan-cn",
@@ -5672,11 +5902,6 @@ export const generatedPiAiCatalog: RawJsonValue = {
     {
       provider: "xiaomi-token-plan-sgp",
       models: [
-        {
-          id: "mimo-v2-pro",
-          name: "MiMo-V2-Pro",
-          provider: "xiaomi-token-plan-sgp",
-        },
         {
           id: "mimo-v2.5",
           name: "MiMo-V2.5",
@@ -5712,11 +5937,31 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "GLM-5.2 Highspeed",
           provider: "zai",
         },
+        {
+          id: "glm-5.3",
+          name: "GLM-5.3",
+          provider: "zai",
+        },
+        {
+          id: "glm-5.3-flash",
+          name: "GLM-5.3-Flash",
+          provider: "zai",
+        },
+        {
+          id: "glm-5.3-highspeed",
+          name: "GLM-5.3 Highspeed",
+          provider: "zai",
+        },
       ],
     },
     {
       provider: "zai-coding-cn",
       models: [
+        {
+          id: "glm-4.6v",
+          name: "GLM-4.6V",
+          provider: "zai-coding-cn",
+        },
         {
           id: "glm-4.7",
           name: "GLM-4.7",
@@ -5725,6 +5970,11 @@ export const generatedPiAiCatalog: RawJsonValue = {
         {
           id: "glm-5-turbo",
           name: "GLM-5-Turbo",
+          provider: "zai-coding-cn",
+        },
+        {
+          id: "glm-5.1",
+          name: "GLM-5.1",
           provider: "zai-coding-cn",
         },
         {
@@ -5737,8 +5987,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           name: "GLM-5.2 Highspeed",
           provider: "zai-coding-cn",
         },
+        {
+          id: "glm-5.3",
+          name: "GLM-5.3",
+          provider: "zai-coding-cn",
+        },
+        {
+          id: "glm-5.3-flash",
+          name: "GLM-5.3-Flash",
+          provider: "zai-coding-cn",
+        },
+        {
+          id: "glm-5.3-highspeed",
+          name: "GLM-5.3 Highspeed",
+          provider: "zai-coding-cn",
+        },
+        {
+          id: "glm-5v-turbo",
+          name: "GLM-5V-Turbo",
+          provider: "zai-coding-cn",
+        },
       ],
     },
   ],
-  digest: "e355e8c4bccc51112b8b14a1bc1c455b6169b8af48c7169aeac265feef522ffb",
+  digest: "93c58f2edf999494024512aaa7beec1020933d871f62d87bd59a0578019a3ebb",
 };

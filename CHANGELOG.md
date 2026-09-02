@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added newer models to choose from for Insight runs, among them Grok 4.6, Gemini 3.7 Flash, GLM-5.3, and Claude Opus 5 Fast on Vercel AI Gateway.
+- Some providers renamed their model ids: Cloudflare AI Gateway's Anthropic models now separate the version with a dot (`claude-sonnet-4.5` rather than `claude-sonnet-4-5`), and Vercel AI Gateway moved its xAI models from `xai/` to `spacexai/`. A **Default model** saved under an old id no longer matches and needs picking again in Settings.
+
 ## 0.0.1 - 2026-09-02
 
 - Added More filters to Pull requests so you can filter by Review state or Check status; active selections remain visible as chips, persist with the profile, and can be cleared individually or together.

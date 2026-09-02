@@ -324,7 +324,7 @@ describe("desktop hardening", () => {
         `${packagedRoot}/runtime-manifest.json`,
         JSON.stringify({
           flueVersion: "2.0.3",
-          piVersion: "0.84.1",
+          piVersion: "0.84.4",
           catalogDigest,
           nodeFloor: ">=22.19.0",
           lockDigest: createHash("sha256").update(lock).digest("hex"),
@@ -351,7 +351,7 @@ describe("desktop hardening", () => {
       `${packagedRoot}/runtime-manifest.json`,
       JSON.stringify({
         flueVersion: "2.0.2",
-        piVersion: "0.84.1",
+        piVersion: "0.84.4",
         catalogDigest,
         nodeFloor: ">=22.19.0",
         lockDigest: createHash("sha256").update(lock).digest("hex"),
@@ -383,7 +383,7 @@ describe("desktop hardening", () => {
     // `pnpm dev` run, which rebuilds `runtime/flue/dist` on every start.
     const manifest = JSON.stringify({
       flueVersion: "2.0.3",
-      piVersion: "0.84.1",
+      piVersion: "0.84.4",
       catalogDigest,
       nodeFloor: ">=22.19.0",
       lockDigest: createHash("sha256").update(lock).digest("hex"),
