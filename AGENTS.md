@@ -51,7 +51,7 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Read files in full before wide-ranging changes, before editing files you have not fully inspected, and when asked to investigate or audit. Do not rely on search snippets for broad changes.
 - No `any` unless absolutely necessary.
 - Inline single-line helpers that have only one call site.
-- Comments preserve non-obvious intent, invariants, trade-offs, or external constraints. Prefer one sentence explaining why; let code describe what and how. Use longer comments only when a complex invariant cannot be expressed clearly in code.
+- Comments preserve non-obvious intent, invariants, trade-offs, or external constraints. Prefer one sentence explaining why; let code describe what and how. Use longer comments only when a complex invariant cannot be expressed clearly in code. The codebase still carries long comments from before this rule; they are not a pattern to copy. Follow this rule, not the neighbouring code.
 - Documentation ownership: ADRs record durable decisions and consequences; code comments explain local constraints; commit messages record change history. Link to the owning source instead of repeating it.
 - When a later ADR changes current guidance, add a supersession note to the earlier ADR. Keep its historical decision intact.
 - Check node_modules for external API types; don't guess.
