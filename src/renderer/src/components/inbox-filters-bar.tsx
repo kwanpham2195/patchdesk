@@ -15,6 +15,7 @@ import {
   MAX_INBOX_FILTER_AUTHOR_LENGTH,
   MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   type InboxCheckStatusFilter,
+  type InboxFilterTextFailure,
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
@@ -23,7 +24,7 @@ import { CheckStatusIcon } from "./inbox-row-item";
 import { ReviewVerdictIcon } from "./review-verdict-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupAddon,
@@ -82,9 +83,13 @@ export function InboxFiltersBar({
     value: InboxCheckStatusFilter | undefined,
   ) => void;
   readonly author?: string;
-  readonly onAuthorChange: (value: string | undefined) => void;
+  readonly onAuthorChange: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly baseBranch?: string;
-  readonly onBaseBranchChange: (value: string | undefined) => void;
+  readonly onBaseBranchChange: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly onClearInboxMoreFilters: () => void;
   readonly rowCount: number;
   readonly matchCount?: number;
@@ -199,13 +204,7 @@ function reviewStateFilterLabel(
   );
 }
 
-/**
- * The review-state filter's glyph. Approved and Changes requested come from
- * the shared `ReviewVerdictIcon` the Reviewers rail draws, so one glyph means
- * one verdict; the two states GitHub has no verdict for get the app's own
- * waiting (amber `Clock3`) and unknown (muted `CircleDashed`) marks, matching
- * `CheckStatusIcon`. `undefined` is the "Any" option.
- */
+/** The review-state filter's glyph, taken from the shared `ReviewVerdictIcon` where GitHub has a verdict so one glyph means one verdict, and drawn as an amber `Clock3` or a muted `CircleDashed` where it has none. */
 function ReviewStateFilterIcon({
   value,
 }: {
@@ -303,9 +302,13 @@ function MoreFiltersPopover({
     value: InboxCheckStatusFilter | undefined,
   ) => void;
   readonly author?: string;
-  readonly onAuthorChange: (value: string | undefined) => void;
+  readonly onAuthorChange: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly baseBranch?: string;
-  readonly onBaseBranchChange: (value: string | undefined) => void;
+  readonly onBaseBranchChange: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly onClearInboxMoreFilters: () => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -534,12 +537,7 @@ function MoreFiltersPopover({
   );
 }
 
-/**
- * A More-filters text field that commits its draft on Enter or blur, never on
- * every keystroke: each committed value becomes a GitHub qualifier, and a read
- * only happens when the query changes (ADR 0032). Escape restores the draft to
- * the committed value without committing, and without dismissing the popover.
- */
+/** A More-filters text field that commits its draft on Enter or blur rather than on every keystroke, because each committed value becomes a GitHub read (ADR 0032). */
 function MoreFiltersTextField({
   label,
   placeholder,
@@ -553,27 +551,44 @@ function MoreFiltersTextField({
   readonly icon: ReactNode;
   readonly maxLength: number;
   readonly value?: string;
-  readonly onCommit: (value: string | undefined) => void;
+  readonly onCommit: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
 }): React.JSX.Element {
   const fieldId = useId();
+  const errorId = useId();
   const committed = value ?? "";
   const [draft, setDraft] = useState(committed);
   const [seed, setSeed] = useState(committed);
+  const [failure, setFailure] = useState<InboxFilterTextFailure>();
   // Re-seed the draft when the committed value changes underneath it — the
   // chips and "Clear all filters" both clear the field from outside.
   if (seed !== committed) {
     setSeed(committed);
     setDraft(committed);
+    setFailure(undefined);
   }
 
+  // A refused value keeps the draft on screen so it can be corrected in place;
+  // only a commit the owner accepted clears the message.
   const commit = (): void => {
     const next = draft.trim();
-    if (next === committed) return;
-    onCommit(next === "" ? undefined : next);
+    if (next === committed) {
+      setFailure(undefined);
+      return;
+    }
+    setFailure(onCommit(next === "" ? undefined : next));
   };
 
+  const message =
+    failure === undefined
+      ? undefined
+      : failure === "too_long"
+        ? `At most ${maxLength} characters`
+        : "No spaces or quotes";
+
   return (
-    <Field>
+    <Field data-invalid={message === undefined ? undefined : true}>
       <FieldLabel htmlFor={fieldId}>{label}</FieldLabel>
       <InputGroup>
         <InputGroupAddon className="text-muted-foreground">
@@ -584,6 +599,8 @@ function MoreFiltersTextField({
           value={draft}
           placeholder={placeholder}
           maxLength={maxLength}
+          aria-invalid={message === undefined ? undefined : true}
+          {...(message === undefined ? {} : { "aria-describedby": errorId })}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
           onKeyDown={(event) => {
@@ -599,10 +616,14 @@ function MoreFiltersTextField({
               event.preventDefault();
               event.stopPropagation();
               setDraft(committed);
+              setFailure(undefined);
             }
           }}
         />
       </InputGroup>
+      {message === undefined ? null : (
+        <FieldError id={errorId}>{message}</FieldError>
+      )}
     </Field>
   );
 }

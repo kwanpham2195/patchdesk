@@ -450,6 +450,40 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     },
   );
 
+  it("refuses an author with a space without saving, sending, or refreshing", async () => {
+    const paths: string[] = [];
+    saveInboxViewPreferences("a", { author: "octocat" });
+    desktop = installDesktopDouble({
+      "/v1/profiles": () => success([profileA]),
+      "/v1/logs": () => success({}),
+      "/v1/inbox": (input) => {
+        paths.push(input.path);
+        return success(inbox(profileA));
+      },
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceInbox({ fixtureMode: true, initialState: undefined }),
+    );
+    await act(async () => {
+      await result.current.loadWorkspace();
+    });
+    await waitFor(() => expect(result.current.dashboard?.profile.id).toBe("a"));
+    await waitFor(() =>
+      expect(result.current.inboxRequest.author).toBe("octocat"),
+    );
+    const pathsBefore = paths.length;
+
+    let refusal: string | undefined;
+    act(() => {
+      refusal = result.current.changeInboxAuthor("John Smith");
+    });
+
+    expect(refusal).toBe("characters");
+    expect(result.current.inboxRequest.author).toBe("octocat");
+    expect(loadInboxViewPreferences("a").author).toBe("octocat");
+    expect(paths).toHaveLength(pathsBefore);
+  });
+
   it("clears all four More filters in one request while preserving other filters", async () => {
     const paths: string[] = [];
     saveInboxViewPreferences("a", {

@@ -327,6 +327,40 @@ it("does not coalesce different author or base branch filters for the same repos
   ).resolves.toEqual([ok(inbox), ok(inbox), ok(inbox)]);
 });
 
+it("does not coalesce the author literally named any with an absent author", async () => {
+  let resolveScan:
+    | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
+    | undefined;
+  const scan = new Promise<ReturnType<typeof ok<MaintainerInbox>>>(
+    (resolve) => {
+      resolveScan = resolve;
+    },
+  );
+  const list = vi.fn(() => scan);
+  const coordinator = new InboxRefreshCoordinator({ list });
+
+  const byAny = coordinator.refresh(profile, repository, {
+    filter: { state: "open", author: "any" },
+    pageSize: 25,
+  });
+  const byAnyone = coordinator.refresh(profile, repository, {
+    filter: { state: "open" },
+    pageSize: 25,
+  });
+  const ontoAny = coordinator.refresh(profile, repository, {
+    filter: { state: "open", baseBranch: "any" },
+    pageSize: 25,
+  });
+
+  expect(list).toHaveBeenCalledTimes(3);
+  resolveScan?.(ok(inbox));
+  await expect(Promise.all([byAny, byAnyone, ontoAny])).resolves.toEqual([
+    ok(inbox),
+    ok(inbox),
+    ok(inbox),
+  ]);
+});
+
 it("coalesces label filters that differ only by order or repetition", async () => {
   let resolveScan:
     | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)

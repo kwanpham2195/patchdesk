@@ -686,6 +686,23 @@ describe("GET /v1/inbox page size boundary", () => {
     );
   });
 
+  it("forwards a login literally named invalid rather than reading it as a rejection", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox?author=invalid", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery:
+          'repo:centraldigital/patchdesk is:pr is:open author:"invalid"',
+      }),
+    );
+  });
+
   it("rejects quoted, spaced, empty, or over-long author and base branch values without reading GitHub", async () => {
     const { api, searchMaintainerPullRequests } =
       await startWithWatchedProfile();

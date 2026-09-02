@@ -22,6 +22,7 @@ import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_PAGE_SIZES,
   type InboxCheckStatusFilter,
+  type InboxFilterTextFailure,
   type InboxPageSize,
   type InboxDataFreshness,
   type InboxReviewStateFilter,
@@ -118,10 +119,14 @@ type MaintainerInboxProps = {
   ) => void;
   /** GitHub's `author:"…"` qualifier; App owns its request transition. */
   readonly author?: string;
-  readonly onAuthorChange?: (value: string | undefined) => void;
+  readonly onAuthorChange?: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   /** GitHub's `base:"…"` qualifier; App owns its request transition. */
   readonly baseBranch?: string;
-  readonly onBaseBranchChange?: (value: string | undefined) => void;
+  readonly onBaseBranchChange?: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly onClearInboxMoreFilters?: () => void;
   /** Absent only before the screen has a Selected repository to read labels
    * from (absent only during bootstrap). See {@link InboxLabelActions}. */

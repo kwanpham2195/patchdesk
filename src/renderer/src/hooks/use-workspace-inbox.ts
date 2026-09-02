@@ -36,12 +36,16 @@ import {
   workspaceReducer,
   type WorkspaceAction,
 } from "../workspace-state";
-import type {
-  InboxCheckStatusFilter,
-  InboxPageSize,
-  InboxReviewStateFilter,
+import {
+  parseInboxAuthorFilter,
+  parseInboxBaseBranchFilter,
+  type InboxCheckStatusFilter,
+  type InboxFilterTextFailure,
+  type InboxPageSize,
+  type InboxReviewStateFilter,
 } from "../../../domain/maintainer-inbox";
 import { sameRepositoryIdentity } from "../../../domain/repository-identity";
+import { ok, type Result } from "../../../domain/result";
 
 /**
  * The Pull requests screen's whole read path: the workspace the renderer has
@@ -84,8 +88,13 @@ export type WorkspaceInbox = {
   readonly changeInboxCheckStatus: (
     checkStatus: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly changeInboxAuthor: (author: string | undefined) => void;
-  readonly changeInboxBaseBranch: (baseBranch: string | undefined) => void;
+  /** Returns the broken rule when the value is refused: nothing is saved, sent, or refreshed, and the field reports it. */
+  readonly changeInboxAuthor: (
+    author: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
+  readonly changeInboxBaseBranch: (
+    baseBranch: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly clearInboxMoreFilters: () => void;
   readonly changeInboxRepository: (repository: Repo) => void;
   readonly previousInboxPage: () => void;
@@ -95,15 +104,15 @@ export type WorkspaceInbox = {
   readonly resetInboxStateOnProfileLoad: RefObject<boolean>;
 };
 
-/**
- * Normalizes a free-text More filter typed into the filter bar: trimmed, and
- * cleared outright when nothing is left. Everything stricter — the length cap
- * and the rejected characters — stays at the route, which is the only place
- * that can refuse a value; the renderer only has to not send a blank one.
- */
-function filterTextOrCleared(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed === "" ? undefined : trimmed;
+/** Resolves a free-text More filter to the value to send: an empty one clears the filter, while any other broken rule refuses the commit so the field can report it. */
+function commitFilterText(
+  value: string | undefined,
+  parse: (value: string) => Result<string, InboxFilterTextFailure>,
+): Result<string | undefined, InboxFilterTextFailure> {
+  if (value === undefined) return ok(undefined);
+  const parsed = parse(value);
+  if (parsed._tag === "ok") return parsed;
+  return parsed.error === "empty" ? ok(undefined) : parsed;
 }
 
 export function useWorkspaceInbox({
@@ -420,34 +429,35 @@ export function useWorkspaceInbox({
     },
     [refreshInbox, updateInboxRequest],
   );
-  /**
-   * Changes GitHub's author qualifier and starts a fresh first page. An empty
-   * or whitespace-only value clears the filter: the renderer's job is only to
-   * avoid sending a blank qualifier, while the length cap and the character
-   * rules stay at the route (`parseInboxAuthorQuery` in dashboard-routes.ts).
-   */
+  /** Changes GitHub's author qualifier and starts a fresh first page; a value the route would refuse is reported back instead of being saved or sent. */
   const changeInboxAuthor = useCallback(
-    (value: string | undefined): void => {
-      const author = filterTextOrCleared(value);
+    (value: string | undefined): InboxFilterTextFailure | undefined => {
+      const parsed = commitFilterText(value, parseInboxAuthorFilter);
+      if (parsed._tag === "err") return parsed.error;
+      const author = parsed.value;
       const request = nextInboxRequest(inboxRequestRef.current, { author });
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { author });
       updateInboxRequest(request);
       void refreshInbox(request);
+      return undefined;
     },
     [refreshInbox, updateInboxRequest],
   );
-  /** Changes GitHub's base-branch qualifier; empty clears it, as for the author. */
+  /** Changes GitHub's base-branch qualifier; empty clears it and a refused value is reported, as for the author. */
   const changeInboxBaseBranch = useCallback(
-    (value: string | undefined): void => {
-      const baseBranch = filterTextOrCleared(value);
+    (value: string | undefined): InboxFilterTextFailure | undefined => {
+      const parsed = commitFilterText(value, parseInboxBaseBranchFilter);
+      if (parsed._tag === "err") return parsed.error;
+      const baseBranch = parsed.value;
       const request = nextInboxRequest(inboxRequestRef.current, { baseBranch });
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { baseBranch });
       updateInboxRequest(request);
       void refreshInbox(request);
+      return undefined;
     },
     [refreshInbox, updateInboxRequest],
   );

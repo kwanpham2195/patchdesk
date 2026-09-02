@@ -7,6 +7,7 @@ import type {
 } from "./github-context";
 import type { GitSha, IsoTimestamp, ReviewId } from "./ids";
 import type { PullRequestRef } from "./pull-request";
+import { err, ok, type Result } from "./result";
 
 /** The only page sizes the main process accepts. */
 export const INBOX_PAGE_SIZES = [10, 25, 50] as const;
@@ -76,6 +77,55 @@ export const MAX_INBOX_FILTER_AUTHOR_LENGTH = 39;
 /** A generous bound on a branch name, which Git itself leaves unbounded. */
 export const MAX_INBOX_FILTER_BASE_BRANCH_LENGTH = 100;
 
+/** Which rule a free-text inbox filter value broke, so the field that refused it can name the rule. */
+export type InboxFilterTextFailure = "empty" | "characters" | "too_long";
+
+/** The last control-character code point below the printable range; a value carrying one could smuggle a newline into a search query. */
+const LAST_CONTROL_CHARACTER = 0x1f;
+/** The DEL code point, the one control character above the printable range. */
+const DELETE_CHARACTER = 0x7f;
+
+/** Validates the `author:` qualifier value — one login, or `@me`, which GitHub resolves to the authenticated viewer server-side. */
+export function parseInboxAuthorFilter(
+  value: string,
+): Result<string, InboxFilterTextFailure> {
+  return parseInboxFilterText(value, MAX_INBOX_FILTER_AUTHOR_LENGTH);
+}
+
+/** Validates the `base:` qualifier value — one base branch name. */
+export function parseInboxBaseBranchFilter(
+  value: string,
+): Result<string, InboxFilterTextFailure> {
+  return parseInboxFilterText(value, MAX_INBOX_FILTER_BASE_BRANCH_LENGTH);
+}
+
+/** The one rule for both free-text qualifiers, so the route, the page token, the stored preference, and the filter field cannot drift apart. */
+function parseInboxFilterText(
+  value: string,
+  maxLength: number,
+): Result<string, InboxFilterTextFailure> {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return err("empty");
+  if (trimmed.length > maxLength) return err("too_long");
+  if (containsUnusableFilterCharacter(trimmed)) return err("characters");
+  return ok(trimmed);
+}
+
+/** Rejects the double quote, whitespace, or control character that would let a value close its own `author:"NAME"` qualifier and open a second one. */
+function containsUnusableFilterCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (
+      value[index] === '"' ||
+      code <= LAST_CONTROL_CHARACTER ||
+      code === DELETE_CHARACTER ||
+      /\s/u.test(value[index] ?? "")
+    )
+      return true;
+  }
+  return false;
+}
+
 /**
  * A structured, enumerated inbox filter. Every field is validated at the
  * route the same way `scope` used to be — the renderer never sends a GitHub
@@ -101,16 +151,9 @@ export type InboxFilter = {
   readonly reviewState?: InboxReviewStateFilter;
   /** GitHub's `status:<value>` qualifier; absent means any check status. */
   readonly checkStatus?: InboxCheckStatusFilter;
-  /** GitHub's `author:<value>` qualifier — one login, or `@me` for the
-   * authenticated viewer, which GitHub resolves server-side exactly as it does
-   * for `user-review-requested:@me`. Free text, so like `labels` it is
-   * sanitized at the route: trimmed, within `MAX_INBOX_FILTER_AUTHOR_LENGTH`,
-   * and free of the quote, whitespace, or control character that would let a
-   * value break out of its own qualifier. Absent means any author. */
+  /** GitHub's `author:<value>` qualifier, validated by `parseInboxAuthorFilter`; absent means any author. */
   readonly author?: string;
-  /** GitHub's `base:<value>` qualifier — one base branch name, sanitized at
-   * the route the same way `author` is, within
-   * `MAX_INBOX_FILTER_BASE_BRANCH_LENGTH`. Absent means any base branch. */
+  /** GitHub's `base:<value>` qualifier, validated by `parseInboxBaseBranchFilter`; absent means any base branch. */
   readonly baseBranch?: string;
 };
 
