@@ -76,7 +76,7 @@ describe("validatePackageSizes", () => {
   it("pins rounded production limits with headroom", () => {
     expect(PACKAGE_SIZE_LIMITS_MIB).toEqual({
       asar: 30,
-      insightRuntime: 50,
+      insightRuntime: 30,
       app: 360,
       dmg: 135,
       zip: 145,

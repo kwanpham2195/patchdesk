@@ -220,7 +220,7 @@ type PatchdeskResultSchema =
  * rather than `warn` -- `warn` printed that one known omission to stderr on
  * every walkthrough child run.
  */
-function jsonSchemaFor(
+export function jsonSchemaFor(
   schema: PatchdeskResultSchema | v.GenericSchema,
 ): AgentTool["parameters"] {
   const projected: object = toJsonSchema(schema, { errorMode: "ignore" });
@@ -232,6 +232,28 @@ function jsonSchemaFor(
 
 function textContent(text: string): TextContent {
   return { type: "text", text };
+}
+
+/** How much of a rejected submission's issue list the tool error carries back. */
+const MAX_SUBMISSION_ISSUE_CHARS = 600;
+
+/**
+ * Names every constraint a rejected submission broke, because the projected
+ * JSON Schema Pi validates first drops `v.check` and a submission it accepted
+ * can still fail here with nothing for the model to correct.
+ */
+function submissionIssueDetail(
+  issues: ReadonlyArray<v.BaseIssue<unknown>>,
+): string {
+  const rendered = issues
+    .map((issue) => {
+      const path = v.getDotPath(issue);
+      return path === null ? issue.message : `${path}: ${issue.message}`;
+    })
+    .join("; ");
+  return rendered.length > MAX_SUBMISSION_ISSUE_CHARS
+    ? `${rendered.slice(0, MAX_SUBMISSION_ISSUE_CHARS - 1)}…`
+    : rendered;
 }
 
 function createResultTool(
@@ -258,8 +280,10 @@ function createResultTool(
       const parsed = v.safeParse(schema, args);
       if (!parsed.success)
         throw new Error(
-          "The submitted result does not match the Patchdesk result schema.",
+          `The submitted result does not match the Patchdesk result schema: ${submissionIssueDetail(parsed.issues)}`,
         );
+      // The one submission is spent only once a result is recorded, so a
+      // rejected one leaves the model its chance to correct and resubmit.
       state.submitted = true;
       state.value = parsed.output;
       return {

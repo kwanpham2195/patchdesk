@@ -5,7 +5,7 @@ const MIB = 1024 * 1024;
 
 export const PACKAGE_SIZE_LIMITS_MIB = Object.freeze({
   asar: 30,
-  insightRuntime: 50,
+  insightRuntime: 30,
   app: 360,
   dmg: 135,
   zip: 145,
