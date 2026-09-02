@@ -116,7 +116,7 @@ type MaintainerInboxProps = {
   readonly onCheckStatusChange?: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly onClearInboxReviewAndCheckFilters?: () => void;
+  readonly onClearInboxMoreFilters?: () => void;
   /** Absent only before the screen has a Selected repository to read labels
    * from (absent only during bootstrap). See {@link InboxLabelActions}. */
   readonly labelActions?: InboxLabelActions;
@@ -169,7 +169,7 @@ export function MaintainerInbox({
   onReviewStateChange = () => undefined,
   checkStatus,
   onCheckStatusChange = () => undefined,
-  onClearInboxReviewAndCheckFilters = () => undefined,
+  onClearInboxMoreFilters = () => undefined,
   labelActions,
   onPageSizeChange = () => undefined,
   onPreviousPage = () => undefined,
@@ -240,7 +240,7 @@ export function MaintainerInbox({
         onReviewStateChange={onReviewStateChange}
         {...(checkStatus === undefined ? {} : { checkStatus })}
         onCheckStatusChange={onCheckStatusChange}
-        onClearInboxReviewAndCheckFilters={onClearInboxReviewAndCheckFilters}
+        onClearInboxMoreFilters={onClearInboxMoreFilters}
         rowCount={effectiveRows.length}
         {...(matchCount === undefined ? {} : { matchCount })}
         listPending={listPending}

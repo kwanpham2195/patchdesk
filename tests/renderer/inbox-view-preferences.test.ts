@@ -16,7 +16,8 @@ const DEFAULTS = {
   inspectorOpen: true,
 };
 
-const KEY = "patchdesk.inbox-view.v6.profile-1";
+const KEY = "patchdesk.inbox-view.v7.profile-1";
+const V6_KEY = "patchdesk.inbox-view.v6.profile-1";
 const V2_KEY = "patchdesk.inbox-view.v2.profile-1";
 const LEGACY_KEY = "patchdesk.inbox-view.v1.profile-1";
 
@@ -29,7 +30,14 @@ type StoredValue =
   | { readonly [key: string]: StoredValue };
 
 function store(preferences: Record<string, StoredValue>): void {
-  window.localStorage.setItem(KEY, JSON.stringify({ version: 6, preferences }));
+  window.localStorage.setItem(KEY, JSON.stringify({ version: 7, preferences }));
+}
+
+function storeV6(preferences: Record<string, StoredValue>): void {
+  window.localStorage.setItem(
+    V6_KEY,
+    JSON.stringify({ version: 6, preferences }),
+  );
 }
 
 function storeV2(preferences: Record<string, StoredValue>): void {
@@ -94,6 +102,11 @@ describe("inbox view preferences", () => {
     expect(loadInboxViewPreferences("profile-1")).toEqual(DEFAULTS);
   });
 
+  it("discards version 6 data, which predates the author and base branch bounds", () => {
+    storeV6({ state: "merged", pageSize: 50, reviewState: "approved" });
+    expect(loadInboxViewPreferences("profile-1")).toEqual(DEFAULTS);
+  });
+
   it("migrates version 1 preferences with an open state", () => {
     storeLegacy({ state: "merged", selectedLabels: ["bug"] });
     expect(loadInboxViewPreferences("profile-1")).toMatchObject({
@@ -150,21 +163,71 @@ describe("inbox view preferences", () => {
     );
   });
 
+  it("round-trips the author and base branch filters", () => {
+    saveInboxViewPreferences("profile-1", {
+      author: "octocat",
+      baseBranch: "release/2026-09",
+    });
+    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
+      author: "octocat",
+      baseBranch: "release/2026-09",
+    });
+  });
+
+  // The two free-text filters are bounded, not enumerated, so an over-long
+  // stored value is capped to the route's limit rather than dropped, while a
+  // value that is not usable text at all falls back to absent. Each resolves
+  // on its own, without taking its sibling or a sound field down with it.
+  it("caps an over-long author and resets an unusable base branch independently", () => {
+    store({
+      state: "merged",
+      author: "a".repeat(60),
+      baseBranch: 42,
+    });
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded.state).toBe("merged");
+    expect(loaded.author).toBe("a".repeat(39));
+    expect(loaded).not.toHaveProperty("baseBranch");
+  });
+
+  it("resets an author that is only whitespace while keeping the base branch", () => {
+    store({ author: "   ", baseBranch: " main " });
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded).not.toHaveProperty("author");
+    expect(loaded.baseBranch).toBe("main");
+  });
+
   it("does not restore a filter after it is explicitly cleared", () => {
     saveInboxViewPreferences("profile-1", {
       reviewState: "approved",
       checkStatus: "failure",
+      author: "octocat",
+      baseBranch: "main",
     });
     saveInboxViewPreferences("profile-1", {
       reviewState: undefined,
       checkStatus: undefined,
+      author: undefined,
+      baseBranch: undefined,
     });
-    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty(
-      "reviewState",
-    );
-    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty(
-      "checkStatus",
-    );
+    const loaded = loadInboxViewPreferences("profile-1");
+    expect(loaded).not.toHaveProperty("reviewState");
+    expect(loaded).not.toHaveProperty("checkStatus");
+    expect(loaded).not.toHaveProperty("author");
+    expect(loaded).not.toHaveProperty("baseBranch");
+  });
+
+  it("keeps a stored filter when an unrelated field is saved", () => {
+    saveInboxViewPreferences("profile-1", {
+      author: "octocat",
+      baseBranch: "main",
+    });
+    saveInboxViewPreferences("profile-1", { state: "merged" });
+    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
+      state: "merged",
+      author: "octocat",
+      baseBranch: "main",
+    });
   });
 
   it("caps selectedLabels at MAX_INBOX_FILTER_LABELS entries", () => {

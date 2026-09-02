@@ -84,7 +84,9 @@ export type WorkspaceInbox = {
   readonly changeInboxCheckStatus: (
     checkStatus: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly clearInboxReviewAndCheckFilters: () => void;
+  readonly changeInboxAuthor: (author: string | undefined) => void;
+  readonly changeInboxBaseBranch: (baseBranch: string | undefined) => void;
+  readonly clearInboxMoreFilters: () => void;
   readonly changeInboxRepository: (repository: Repo) => void;
   readonly previousInboxPage: () => void;
   readonly nextInboxPage: () => void;
@@ -92,6 +94,17 @@ export type WorkspaceInbox = {
   readonly inboxRefreshGeneration: RefObject<number>;
   readonly resetInboxStateOnProfileLoad: RefObject<boolean>;
 };
+
+/**
+ * Normalizes a free-text More filter typed into the filter bar: trimmed, and
+ * cleared outright when nothing is left. Everything stricter — the length cap
+ * and the rejected characters — stays at the route, which is the only place
+ * that can refuse a value; the renderer only has to not send a blank one.
+ */
+function filterTextOrCleared(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
 
 export function useWorkspaceInbox({
   fixtureMode,
@@ -297,6 +310,8 @@ export function useWorkspaceInbox({
       awaitingMyReview: preferences.awaitingMyReview,
       reviewState: preferences.reviewState,
       checkStatus: preferences.checkStatus,
+      author: preferences.author,
+      baseBranch: preferences.baseBranch,
     });
     updateInboxRequest(request);
     void refreshInbox(request);
@@ -405,18 +420,48 @@ export function useWorkspaceInbox({
     },
     [refreshInbox, updateInboxRequest],
   );
-  /** Clears both More filters as one profile update and one inbox request. */
-  const clearInboxReviewAndCheckFilters = useCallback((): void => {
-    const request = nextInboxRequest(inboxRequestRef.current, {
+  /**
+   * Changes GitHub's author qualifier and starts a fresh first page. An empty
+   * or whitespace-only value clears the filter: the renderer's job is only to
+   * avoid sending a blank qualifier, while the length cap and the character
+   * rules stay at the route (`parseInboxAuthorQuery` in dashboard-routes.ts).
+   */
+  const changeInboxAuthor = useCallback(
+    (value: string | undefined): void => {
+      const author = filterTextOrCleared(value);
+      const request = nextInboxRequest(inboxRequestRef.current, { author });
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { author });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /** Changes GitHub's base-branch qualifier; empty clears it, as for the author. */
+  const changeInboxBaseBranch = useCallback(
+    (value: string | undefined): void => {
+      const baseBranch = filterTextOrCleared(value);
+      const request = nextInboxRequest(inboxRequestRef.current, { baseBranch });
+      const profileId = activeInboxProfileId.current;
+      if (profileId !== undefined)
+        saveInboxViewPreferences(profileId, { baseBranch });
+      updateInboxRequest(request);
+      void refreshInbox(request);
+    },
+    [refreshInbox, updateInboxRequest],
+  );
+  /** Clears all four More filters as one profile update and one inbox request. */
+  const clearInboxMoreFilters = useCallback((): void => {
+    const cleared = {
       reviewState: undefined,
       checkStatus: undefined,
-    });
+      author: undefined,
+      baseBranch: undefined,
+    };
+    const request = nextInboxRequest(inboxRequestRef.current, cleared);
     const profileId = activeInboxProfileId.current;
-    if (profileId !== undefined)
-      saveInboxViewPreferences(profileId, {
-        reviewState: undefined,
-        checkStatus: undefined,
-      });
+    if (profileId !== undefined) saveInboxViewPreferences(profileId, cleared);
     updateInboxRequest(request);
     void refreshInbox(request);
   }, [refreshInbox, updateInboxRequest]);
@@ -500,7 +545,9 @@ export function useWorkspaceInbox({
     changeInboxAwaitingMyReview,
     changeInboxReviewState,
     changeInboxCheckStatus,
-    clearInboxReviewAndCheckFilters,
+    changeInboxAuthor,
+    changeInboxBaseBranch,
+    clearInboxMoreFilters,
     changeInboxRepository,
     previousInboxPage,
     nextInboxPage,

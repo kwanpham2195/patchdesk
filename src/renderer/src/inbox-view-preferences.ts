@@ -3,6 +3,8 @@ import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
+  MAX_INBOX_FILTER_AUTHOR_LENGTH,
+  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   MAX_INBOX_FILTER_LABELS,
   MAX_INBOX_FILTER_LABEL_LENGTH,
   INBOX_REVIEW_STATE_FILTER_VALUES,
@@ -69,6 +71,18 @@ const preferencesSchema = v.object({
     v.optional(v.picklist(INBOX_CHECK_STATUS_FILTER_VALUES)),
     undefined,
   ),
+  // author and baseBranch are free text rather than enumerated, so they are
+  // trimmed and length-capped here to the same bounds the route enforces
+  // (`parseInboxAuthorQuery` and `parseInboxBaseBranchQuery` in
+  // dashboard-routes.ts), so a stored value cannot outgrow them.
+  author: v.fallback(
+    v.optional(trimmed(MAX_INBOX_FILTER_AUTHOR_LENGTH)),
+    undefined,
+  ),
+  baseBranch: v.fallback(
+    v.optional(trimmed(MAX_INBOX_FILTER_BASE_BRANCH_LENGTH)),
+    undefined,
+  ),
   inspectorOpen: v.fallback(v.boolean(), true),
   selectedIdentity: v.fallback(v.optional(trimmed(200)), undefined),
   // The Selected repository (see ADR 0031).
@@ -91,6 +105,10 @@ export type InboxViewPreferences = {
   readonly reviewState?: InboxReviewStateFilter;
   /** The optional GitHub `status:<value>` qualifier. */
   readonly checkStatus?: InboxCheckStatusFilter;
+  /** The optional GitHub `author:<value>` qualifier — one login, or `@me`. */
+  readonly author?: string;
+  /** The optional GitHub `base:<value>` qualifier — one base branch name. */
+  readonly baseBranch?: string;
   readonly inspectorOpen: boolean;
   readonly selectedIdentity?: string;
   /** The last repository selected from the watchlist, per profile. Falls
@@ -99,12 +117,25 @@ export type InboxViewPreferences = {
   readonly selectedRepository?: RepositoryIdentity;
 };
 
+/**
+ * The four More-filters fields. They differ from every other stored field in
+ * that an explicitly named `undefined` clears them rather than carrying the
+ * stored value over — see `saveInboxViewPreferences`.
+ */
+type OptionalInboxFilterKey =
+  | "reviewState"
+  | "checkStatus"
+  | "author"
+  | "baseBranch";
+
 type InboxViewPreferencesUpdate = Omit<
   Partial<InboxViewPreferences>,
-  "reviewState" | "checkStatus"
+  OptionalInboxFilterKey
 > & {
   readonly reviewState?: InboxReviewStateFilter | undefined;
   readonly checkStatus?: InboxCheckStatusFilter | undefined;
+  readonly author?: string | undefined;
+  readonly baseBranch?: string | undefined;
 };
 
 const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
@@ -119,12 +150,15 @@ const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
 // box — every filter now reaches GitHub as a structured, server-side
 // qualifier instead of filtering the loaded page — see ADR 0031. v6 renames
 // the stored `scope` field to `state`, the one spelling the domain, the
-// route, and the renderer all use for the same value.
-// Bumping VERSION (rather than migrating the v5 key) resets every field
+// route, and the renderer all use for the same value. v7 adds the `author`
+// and `baseBranch` filters, the first stored filters holding free text rather
+// than an enumerated value; a v6 blob predates their bounds, so it is
+// discarded rather than read as if those bounds had always applied.
+// Bumping VERSION (rather than migrating the previous key) resets every field
 // to default on an old-version read, matching how v1 -> v2 -> v3 -> v4
 // already worked: only the v1 key is still recognized, so any other stale
 // version falls straight through to `DEFAULT_INBOX_VIEW_PREFERENCES`.
-const VERSION = 6;
+const VERSION = 7;
 
 const storedSchema = v.pipe(
   v.object({
@@ -183,53 +217,87 @@ export function saveInboxViewPreferences(
   const {
     reviewState: updatedReviewState,
     checkStatus: updatedCheckStatus,
+    author: updatedAuthor,
+    baseBranch: updatedBaseBranch,
     ...otherUpdates
   } = update;
   const {
     reviewState: storedReviewState,
     checkStatus: storedCheckStatus,
+    author: storedAuthor,
+    baseBranch: storedBaseBranch,
     ...storedWithoutFilters
   } = stored;
-  const reviewState = Object.hasOwn(update, "reviewState")
-    ? updatedReviewState
-    : storedReviewState;
-  const checkStatus = Object.hasOwn(update, "checkStatus")
-    ? updatedCheckStatus
-    : storedCheckStatus;
-  const withReviewState =
-    reviewState === undefined
-      ? { ...storedWithoutFilters, ...otherUpdates }
-      : { ...storedWithoutFilters, ...otherUpdates, reviewState };
-  const next: InboxViewPreferences =
-    checkStatus === undefined
-      ? withReviewState
-      : { ...withReviewState, checkStatus };
+  const next = withOptionalFilters(
+    { ...storedWithoutFilters, ...otherUpdates },
+    {
+      reviewState: Object.hasOwn(update, "reviewState")
+        ? updatedReviewState
+        : storedReviewState,
+      checkStatus: Object.hasOwn(update, "checkStatus")
+        ? updatedCheckStatus
+        : storedCheckStatus,
+      author: Object.hasOwn(update, "author") ? updatedAuthor : storedAuthor,
+      baseBranch: Object.hasOwn(update, "baseBranch")
+        ? updatedBaseBranch
+        : storedBaseBranch,
+    },
+  );
   inboxViewPreference.save(profileId, next);
   return next;
+}
+
+/**
+ * Re-attaches the four More filters, leaving out each key whose value is
+ * `undefined` rather than storing the key with an undefined value —
+ * `exactOptionalPropertyTypes` treats those as different, and only an absent
+ * key survives the round trip through JSON.
+ */
+function withOptionalFilters(
+  base: Omit<InboxViewPreferences, OptionalInboxFilterKey>,
+  filters: {
+    readonly [Key in OptionalInboxFilterKey]: InboxViewPreferences[Key];
+  },
+): InboxViewPreferences {
+  const withReviewState =
+    filters.reviewState === undefined
+      ? base
+      : { ...base, reviewState: filters.reviewState };
+  const withCheckStatus =
+    filters.checkStatus === undefined
+      ? withReviewState
+      : { ...withReviewState, checkStatus: filters.checkStatus };
+  const withAuthor =
+    filters.author === undefined
+      ? withCheckStatus
+      : { ...withCheckStatus, author: filters.author };
+  return filters.baseBranch === undefined
+    ? withAuthor
+    : { ...withAuthor, baseBranch: filters.baseBranch };
 }
 
 function preferencesFrom(
   parsed: v.InferOutput<typeof preferencesSchema>,
 ): InboxViewPreferences {
-  const base = {
-    state: parsed.state,
-    pageSize: parsed.pageSize,
-    selectedLabels: parsed.selectedLabels,
-    awaitingMyReview: parsed.awaitingMyReview,
-    inspectorOpen: parsed.inspectorOpen,
-  };
-  const withReviewState =
-    parsed.reviewState === undefined
-      ? base
-      : { ...base, reviewState: parsed.reviewState };
-  const withCheckStatus =
-    parsed.checkStatus === undefined
-      ? withReviewState
-      : { ...withReviewState, checkStatus: parsed.checkStatus };
+  const withFilters = withOptionalFilters(
+    {
+      state: parsed.state,
+      pageSize: parsed.pageSize,
+      selectedLabels: parsed.selectedLabels,
+      awaitingMyReview: parsed.awaitingMyReview,
+      inspectorOpen: parsed.inspectorOpen,
+    },
+    {
+      reviewState: parsed.reviewState,
+      checkStatus: parsed.checkStatus,
+      author: parsed.author,
+      baseBranch: parsed.baseBranch,
+    },
+  );
   const withIdentity =
     parsed.selectedIdentity === undefined
-      ? withCheckStatus
-      : { ...withCheckStatus, selectedIdentity: parsed.selectedIdentity };
+      ? withFilters
+      : { ...withFilters, selectedIdentity: parsed.selectedIdentity };
   if (parsed.selectedRepository === undefined) return withIdentity;
   return { ...withIdentity, selectedRepository: parsed.selectedRepository };
 }

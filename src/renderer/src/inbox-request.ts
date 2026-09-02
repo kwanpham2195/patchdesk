@@ -40,6 +40,12 @@ export type InboxRequestState = {
   readonly reviewState?: InboxReviewStateFilter;
   /** The optional GitHub `status:<value>` qualifier. Portable across repositories. */
   readonly checkStatus?: InboxCheckStatusFilter;
+  /** The optional GitHub `author:<value>` qualifier — one login, or `@me`.
+   * Portable across repositories: a login means the same thing in each. */
+  readonly author?: string;
+  /** The optional GitHub `base:<value>` qualifier — one base branch name.
+   * Portable across repositories, the same way `author` is. */
+  readonly baseBranch?: string;
   readonly pageToken?: string;
   readonly previousPageTokens: ReadonlyArray<string | undefined>;
 };
@@ -67,15 +73,17 @@ export function resolveInboxRepository(
  * Builds the next inbox request from the current one. Each caller states only
  * what it changes; every field it does not name carries over, and the page
  * cursor resets — a cursor minted under a different repository, state, page
- * size, label, review, or check filter belongs to a different GitHub search
- * and is rejected as `invalid_page`, so carrying one forward could only
- * produce a failed read. The two paging callers are the exception and name
- * `pageToken` and
+ * size, label, review, check, author, or base-branch filter belongs to a
+ * different GitHub search and is rejected as `invalid_page`, so carrying one
+ * forward could only produce a failed read. The two paging callers are the
+ * exception and name `pageToken` and
  * `previousPageTokens` themselves.
  *
  * `repository` is honoured by key presence rather than by value: passing
  * `{ repository: undefined }` clears it, which the bootstrap request and an
  * emptied watchlist both need, while omitting the key keeps the current one.
+ * The four optional filters — `reviewState`, `checkStatus`, `author`, and
+ * `baseBranch` — are honoured the same way, so each can be cleared explicitly.
  */
 export function nextInboxRequest(
   current: InboxRequestState,
@@ -87,6 +95,8 @@ export function nextInboxRequest(
     readonly awaitingMyReview?: boolean;
     readonly reviewState?: InboxReviewStateFilter | undefined;
     readonly checkStatus?: InboxCheckStatusFilter | undefined;
+    readonly author?: string | undefined;
+    readonly baseBranch?: string | undefined;
     readonly pageToken?: string | undefined;
     readonly previousPageTokens?: ReadonlyArray<string | undefined>;
   } = {},
@@ -105,6 +115,14 @@ export function nextInboxRequest(
     ? overrides.checkStatus
     : current.checkStatus;
   const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
+  const author = Object.hasOwn(overrides, "author")
+    ? overrides.author
+    : current.author;
+  const authorField = author === undefined ? {} : { author };
+  const baseBranch = Object.hasOwn(overrides, "baseBranch")
+    ? overrides.baseBranch
+    : current.baseBranch;
+  const baseBranchField = baseBranch === undefined ? {} : { baseBranch };
   return {
     ...repositoryField,
     ...pageTokenField,
@@ -114,6 +132,8 @@ export function nextInboxRequest(
     awaitingMyReview: overrides.awaitingMyReview ?? current.awaitingMyReview,
     ...reviewStateField,
     ...checkStatusField,
+    ...authorField,
+    ...baseBranchField,
     previousPageTokens: overrides.previousPageTokens ?? [],
   };
 }
@@ -124,9 +144,9 @@ export function nextInboxRequest(
  * Every field that changes the answer is compared, because any of them
  * leaves the displayed rows describing the previous request until the new
  * one lands. Comparing the response instead cannot work: it echoes only the
- * state filter and the page size, and says nothing about the label filter or
- * the "Awaiting review from you" preset, review state, or check status, so a
- * label change looked identical to no change at all.
+ * state filter and the page size, and says nothing about the label filter,
+ * the "Awaiting review from you" preset, review state, check status, author,
+ * or base branch, so a label change looked identical to no change at all.
  */
 export function sameInboxRows(
   left: InboxRequestState,
@@ -139,6 +159,8 @@ export function sameInboxRows(
     left.awaitingMyReview === right.awaitingMyReview &&
     left.reviewState === right.reviewState &&
     left.checkStatus === right.checkStatus &&
+    left.author === right.author &&
+    left.baseBranch === right.baseBranch &&
     left.pageToken === right.pageToken &&
     left.selectedLabels.length === right.selectedLabels.length &&
     left.selectedLabels.every(
@@ -181,9 +203,13 @@ export function firstInboxRequestFor(
     awaitingMyReview,
     reviewState,
     checkStatus,
+    author,
+    baseBranch,
   } = loadInboxViewPreferences(profileId);
   const reviewStateField = reviewState === undefined ? {} : { reviewState };
   const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
+  const authorField = author === undefined ? {} : { author };
+  const baseBranchField = baseBranch === undefined ? {} : { baseBranch };
   return {
     state,
     pageSize,
@@ -191,6 +217,8 @@ export function firstInboxRequestFor(
     awaitingMyReview,
     ...reviewStateField,
     ...checkStatusField,
+    ...authorField,
+    ...baseBranchField,
     previousPageTokens: [],
   };
 }
@@ -212,6 +240,8 @@ export function inboxRequestPath(request: InboxRequestState): string {
     query.set("reviewState", request.reviewState);
   if (request.checkStatus !== undefined)
     query.set("checkStatus", request.checkStatus);
+  if (request.author !== undefined) query.set("author", request.author);
+  if (request.baseBranch !== undefined) query.set("base", request.baseBranch);
   if (request.pageToken !== undefined) query.set("page", request.pageToken);
   return `/v1/inbox?${query.toString()}`;
 }
