@@ -313,9 +313,11 @@ function waitForExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null)
     return Promise.resolve();
   return new Promise((resolveExit) => {
-    const timer = setTimeout(() => {
+    let timer = setTimeout(() => {
       child.kill("SIGKILL");
-      resolveExit();
+      // Wait for the kill to land before the caller removes the home; one
+      // second is ample for the kernel to reap an uncatchable SIGKILL.
+      timer = setTimeout(resolveExit, 1_000);
     }, timeoutMs);
     child.once("exit", () => {
       clearTimeout(timer);
