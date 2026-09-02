@@ -29,6 +29,13 @@ describe("ScopeGauge", () => {
     expect(bar.getAttribute("aria-label")).toContain("Tests");
   });
 
+  it("lists only the buckets with files at the legend size", () => {
+    render(<ScopeGauge scope={scope} size="legend" />);
+    expect(
+      screen.getAllByRole("listitem").map((item) => item.textContent),
+    ).toEqual(["Core2", "Tests1", "Generated1"]);
+  });
+
   it("draws one segment per bucket and none for an empty scope", () => {
     render(<ScopeGauge scope={scope} size="card" />);
     expect(screen.getByRole("img").childElementCount).toBe(3);

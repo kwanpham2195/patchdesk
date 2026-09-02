@@ -129,7 +129,6 @@ describe("MaintainerInbox", () => {
         rows={[row]}
         freshness="fresh"
         refreshStatus="Current"
-
         onOpenReview={vi.fn()}
         onOpenReviewId={open}
       />,
@@ -443,10 +442,10 @@ describe("MaintainerInbox", () => {
       />,
     );
 
-    // The row's Merged badge, and the filter bar's state Select showing its
-    // current value — the queue rail is gone entirely (slice 8a), so no
-    // third "Merged" source remains.
-    expect(screen.getAllByText("Merged")).toHaveLength(2);
+    // The row's Merged badge, the filter bar's state Select showing its
+    // current value, and the inspector's review-state card — the queue rail
+    // is gone entirely (slice 8a), so no fourth "Merged" source remains.
+    expect(screen.getAllByText("Merged")).toHaveLength(3);
     const stateSelect = screen.getByRole("combobox", {
       name: "Pull request state",
     });
