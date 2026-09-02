@@ -215,6 +215,16 @@ function openErrorAlert(): HTMLElement | undefined {
     );
 }
 
+/** A row click only selects; the title inside it is what opens the Review. */
+function openRowTitle(option: HTMLElement = screen.getByRole("option")): void {
+  fireEvent.click(within(option).getByRole("button", { name: /^#\d/ }));
+}
+
+/** Rows carry `aria-disabled` while opening; they are not `<button>` elements. */
+function rowBusy(option: HTMLElement): boolean {
+  return option.getAttribute("aria-disabled") === "true";
+}
+
 const SHARED_INBOX_ROUTES = {
   "/v1/logs": () => success(null),
   "/v1/github/access": () => success({}),
@@ -252,7 +262,7 @@ describe("InboxFlow saved-review recovery", () => {
         onOpenWorkbench={onOpenWorkbench}
       />,
     );
-    fireEvent.click(screen.getByRole("option"));
+    openRowTitle();
     await waitFor(() => expect(onOpenWorkbench).toHaveBeenCalled());
     expect(reviewRequestPaths(desktop)).toEqual([
       "/v1/reviews/load",
@@ -306,7 +316,7 @@ describe("InboxFlow merged review opening", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("option"));
+    openRowTitle();
 
     await waitFor(() => expect(onOpenWorkbench).toHaveBeenCalledOnce());
     expect(reviewRequestPaths(desktop)).toEqual(["/v1/reviews/open-merged"]);
@@ -570,7 +580,7 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("option"));
+    openRowTitle();
 
     // The original profile still renders its row-opening error. The alert,
     // rather than the repeated title text, is the observable contract.
@@ -688,7 +698,7 @@ describe("InboxFlow stored-review error ownership", () => {
         />
       </BusyProvider>,
     );
-    fireEvent.click(screen.getByRole("option"));
+    openRowTitle();
     expect(reviewRequestPaths(desktop)).toEqual([
       "/v1/reviews/load",
       "/v1/reviews/open",
@@ -711,7 +721,7 @@ describe("InboxFlow stored-review error ownership", () => {
     );
 
     expect(openErrorAlert()).toBeDefined();
-    expect(screen.getByRole("option").hasAttribute("disabled")).toBe(false);
+    expect(rowBusy(screen.getByRole("option"))).toBe(false);
   });
 });
 
@@ -751,7 +761,7 @@ describe("InboxFlow profile-scoped Review opening", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("option"));
+    openRowTitle();
     expect(reviewRequestPaths(desktop)).toEqual(["/v1/reviews/open"]);
 
     const changedDashboard = {
@@ -780,8 +790,8 @@ describe("InboxFlow profile-scoped Review opening", () => {
     );
 
     const changedProfileRow = screen.getByRole("option");
-    expect(changedProfileRow.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(changedProfileRow);
+    expect(rowBusy(changedProfileRow)).toBe(false);
+    openRowTitle(changedProfileRow);
     expect(reviewRequestPaths(desktop)).toEqual([
       "/v1/reviews/open",
       "/v1/reviews/open",
@@ -835,13 +845,13 @@ describe("InboxFlow Review opening ownership", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Review" }));
-    fireEvent.click(screen.getByRole("option"));
+    openRowTitle();
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
     window.dispatchEvent(new Event("patchdesk:inbox-action"));
 
     expect(reviewRequestPaths(desktop)).toEqual(["/v1/reviews/load"]);
     const openingRow = screen.getByRole("option");
-    expect(openingRow.hasAttribute("disabled")).toBe(true);
+    expect(rowBusy(openingRow)).toBe(true);
     expect(within(openingRow).getByText("Opening…")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: /Opening…/ }).hasAttribute("disabled"),
@@ -897,26 +907,26 @@ describe("InboxFlow Review opening ownership", () => {
     const [rowOne, rowTwo] = screen.getAllByRole("option");
     if (rowOne === undefined || rowTwo === undefined)
       throw new Error("Expected two inbox rows");
-    fireEvent.click(rowOne);
-    expect(rowOne.hasAttribute("disabled")).toBe(true);
-    expect(rowTwo.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(rowTwo);
+    openRowTitle(rowOne);
+    expect(rowBusy(rowOne)).toBe(true);
+    expect(rowBusy(rowTwo)).toBe(false);
+    openRowTitle(rowTwo);
     expect(reviewRequestPaths(desktop)).toEqual([
       "/v1/reviews/open",
       "/v1/reviews/open",
     ]);
-    expect(rowOne.hasAttribute("disabled")).toBe(true);
-    expect(rowTwo.hasAttribute("disabled")).toBe(true);
+    expect(rowBusy(rowOne)).toBe(true);
+    expect(rowBusy(rowTwo)).toBe(true);
 
     second.resolve(success(asJsonBody(projection)));
-    await waitFor(() => expect(rowTwo.hasAttribute("disabled")).toBe(false));
-    expect(rowOne.hasAttribute("disabled")).toBe(true);
+    await waitFor(() => expect(rowBusy(rowTwo)).toBe(false));
+    expect(rowBusy(rowOne)).toBe(true);
     expect(
       screen.getByRole("progressbar", { name: "Opening Review…" }),
     ).toBeTruthy();
 
     first.resolve(success(asJsonBody(projection)));
-    await waitFor(() => expect(rowOne.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(rowBusy(rowOne)).toBe(false));
     await waitFor(() => expect(screen.queryByRole("progressbar")).toBeNull());
   });
 });

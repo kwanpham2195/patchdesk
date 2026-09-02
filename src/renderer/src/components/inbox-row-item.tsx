@@ -33,38 +33,53 @@ export function InboxRowItem({
   const key = inboxIdentityKey(row);
   const opening = openingState?.status === "opening";
   return (
-    <button
+    // A plain element, not a `<button>`: the title below is its own button,
+    // and a button inside a button is invalid HTML. `aria-disabled` stands in
+    // for the `disabled` attribute a div cannot carry.
+    <div
       id={`inbox-row-${key}`}
-      type="button"
       role="option"
       aria-selected={selected}
+      aria-disabled={opening}
       // Roving tabindex: only the selected option sits in the Tab order,
       // the way a native `<select>`'s options do. Arrow keys move both the
       // selection and real DOM focus (see `onListKeyDown` in
       // `use-inbox-view.ts`); Tab never has to step through every row.
       tabIndex={selected ? 0 : -1}
-      disabled={opening}
-      onClick={() => {
-        onSelect();
-        onAction();
+      onClick={() => onSelect()}
+      onDoubleClick={() => {
+        if (!opening) onAction();
       }}
       className={cn(
         "block w-full content-auto border-l-2 border-transparent px-3 py-2 text-left transition-colors [contain-intrinsic-size:auto_60px] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         selected && "border-l-primary bg-primary/8",
+        opening && "opacity-60",
       )}
     >
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 min-[1280px]:grid-cols-[minmax(10rem,1fr)_8rem_6rem_8rem_1.75rem_2.75rem]">
         <div className="flex min-w-0 items-start gap-2">
-          <GitPullRequest className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+          <GitPullRequest
+            className={cn("mt-0.5 size-3.5 shrink-0", pullRequestIconTone(row))}
+          />
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <p
+              <button
+                type="button"
                 data-slot="pull-request-title"
-                className="min-w-0 line-clamp-2 text-[13px] leading-5 font-medium"
-                title={`#${row.identity.number} ${row.title}`}
+                disabled={opening}
+                // The row itself only selects, so the title carries opening:
+                // it selects and opens, and keeps its click off the row so
+                // the select does not run twice.
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect();
+                  onAction();
+                }}
+                className="min-w-0 line-clamp-2 text-left text-[13px] leading-5 font-medium hover:text-primary hover:underline focus-visible:text-primary focus-visible:underline focus-visible:outline-none"
+                title={`Open #${row.identity.number}`}
               >
                 #{row.identity.number} {row.title}
-              </p>
+              </button>
               {row.isDraft ? (
                 <Badge variant="outline" className="h-4 px-1 text-[10px]">
                   Draft
@@ -125,8 +140,15 @@ export function InboxRowItem({
           }
         />
       </div>
-    </button>
+    </div>
   );
+}
+
+/** Same emerald pair `CheckIcon` uses, so "live" reads the same across the row. */
+function pullRequestIconTone(row: InboxRow): string {
+  if (row.remoteState === "merged") return "text-primary";
+  if (row.isDraft) return "text-muted-foreground";
+  return "text-emerald-700 dark:text-emerald-400";
 }
 
 function PullRequestLabelColumn({

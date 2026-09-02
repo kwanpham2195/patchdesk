@@ -160,6 +160,50 @@ describe("MaintainerInbox", () => {
       />,
     );
     fireEvent.click(screen.getByRole("option"));
+    expect(open).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(screen.getByRole("option"));
+    expect(open).toHaveBeenCalledWith("review-1");
+  });
+
+  it("opens a Review from the row title", () => {
+    const open = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={open}
+      />,
+    );
+    fireEvent.click(
+      within(screen.getByRole("option")).getByRole("button", {
+        name: `#1 ${row.title}`,
+      }),
+    );
+    expect(open).toHaveBeenCalledWith("review-1");
+  });
+
+  it("opens the selected Review on Enter without leaving the row list", async () => {
+    const user = userEvent.setup();
+    const open = vi.fn();
+    render(
+      <MaintainerInbox
+        profileId="p"
+        profileLabel="P"
+        rows={[row]}
+        freshness="fresh"
+        refreshStatus="Current"
+        onOpenReview={vi.fn()}
+        onOpenReviewId={open}
+      />,
+    );
+    const option = screen.getByRole("option");
+    option.focus();
+    await user.keyboard("{Enter}");
     expect(open).toHaveBeenCalledWith("review-1");
   });
 
@@ -177,7 +221,9 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={() => undefined}
       />,
     );
-    expect(screen.getByRole("option").hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("option").getAttribute("aria-disabled")).toBe(
+      "true",
+    );
     expect(
       screen.getByRole("button", { name: /Opening…/ }).hasAttribute("disabled"),
     ).toBe(true);
@@ -196,7 +242,9 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={() => undefined}
       />,
     );
-    expect(screen.getByRole("option").hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("option").getAttribute("aria-disabled")).toBe(
+      "false",
+    );
     expect(within(screen.getByRole("option")).getByRole("alert")).toBeTruthy();
   });
 
@@ -617,7 +665,9 @@ describe("MaintainerInbox", () => {
     expect(within(labelColumn).getByTitle("bug")).toBeTruthy();
     expect(within(labelColumn).getByTitle("enhancement")).toBeTruthy();
     expect(labelColumn.className).toContain("flex-col");
-    const title = within(inboxRow).getByTitle(`#1 ${labeled.title}`);
+    const title = within(inboxRow).getByRole("button", {
+      name: `#1 ${labeled.title}`,
+    });
     expect(title.className).toContain("line-clamp-2");
     // The single row is auto-selected, so the Inspector still gives the
     // complete label count when GitHub returned only a partial label list.
