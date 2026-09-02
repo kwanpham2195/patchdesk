@@ -53,7 +53,13 @@ import {
   buildConversationAnnotations,
   buildPendingReviewAnnotations,
   buildReadOnlyConversationAnnotations,
+  type MappedFinding,
 } from "./review-workbench-annotations";
+import {
+  ReviewWorkbenchFindingNavigationContext,
+  type FindingFocusRequest,
+} from "./review-workbench-finding-navigation";
+import { countFindingsByPath } from "../review-finding-counts";
 import { ReviewWorkbenchDialogs } from "./review-workbench-dialogs";
 import { ReviewWorkbenchHeader } from "./review-workbench-header";
 import {
@@ -430,11 +436,66 @@ export function ReviewWorkbench({
     model.insights.analysis.status === "current" &&
     retainedAnalysis?.sessionId === model.session.id &&
     retainedAnalysis.headSha === model.revision.reviewedHeadSha;
-  const findings = analysisIsCurrent
-    ? retainedAnalysis.value.findings.filter(
-        (finding) => finding.mappingStatus === "mapped",
+  const findings = useMemo(
+    () =>
+      analysisIsCurrent
+        ? retainedAnalysis.value.findings.filter(
+            (finding) => finding.mappingStatus === "mapped",
+          )
+        : [],
+    [analysisIsCurrent, retainedAnalysis],
+  );
+  const findingCountsByPath = useMemo(
+    () => countFindingsByPath(findings),
+    [findings],
+  );
+  const [findingFocusRequest, setFindingFocusRequest] = useState<
+    FindingFocusRequest | undefined
+  >(undefined);
+  const findingFocusSequence = useRef(0);
+  const openFindingInDiff = useCallback(
+    (finding: MappedFinding): void => {
+      if (
+        finding.file === undefined ||
+        finding.lineStart === undefined ||
+        finding.diffSide === undefined
       )
-    : [];
+        return;
+      setSelectedThreadId(undefined);
+      setSelectedRange({
+        start: finding.lineStart,
+        end: finding.lineEnd ?? finding.lineStart,
+        side: finding.diffSide,
+      });
+      commitWorkbenchPosition({
+        activeTab: "diff",
+        section: "files",
+        selectedPath: finding.file,
+      });
+      setActivePath(finding.file);
+    },
+    [
+      commitWorkbenchPosition,
+      setActivePath,
+      setSelectedRange,
+      setSelectedThreadId,
+    ],
+  );
+  const openFindingInAnalysis = useCallback(
+    (findingId: string): void => {
+      findingFocusSequence.current += 1;
+      setFindingFocusRequest({
+        findingId,
+        token: findingFocusSequence.current,
+      });
+      commitWorkbenchPosition({ activeTab: "insights", section: "files" });
+    },
+    [commitWorkbenchPosition],
+  );
+  const findingNavigation = useMemo(
+    () => ({ openFindingInDiff, findingFocusRequest }),
+    [findingFocusRequest, openFindingInDiff],
+  );
   const selectedCommit =
     selectedCommitSha === undefined
       ? undefined
@@ -642,6 +703,7 @@ export function ReviewWorkbench({
                       patch={model.fullPatch}
                       commits={model.commits}
                       conversationThreadEntries={conversationThreadEntries}
+                      findingCountsByPath={findingCountsByPath}
                       section={section}
                       {...(selectedPath === undefined ? {} : { selectedPath })}
                       {...(activePath === undefined ? {} : { activePath })}
@@ -735,7 +797,11 @@ export function ReviewWorkbench({
                               }
                             : {})}
                           {...(selectedCommitSha === undefined
-                            ? { annotations }
+                            ? {
+                                annotations,
+                                findingCountsByPath,
+                                onOpenFindingInAnalysis: openFindingInAnalysis,
+                              }
                             : {})}
                           {...(selectedRange === undefined
                             ? {}
@@ -822,7 +888,11 @@ export function ReviewWorkbench({
               data-review-workbench-insights
               className="min-h-0 flex-1 overflow-hidden p-4"
             >
-              {slots.insights}
+              <ReviewWorkbenchFindingNavigationContext.Provider
+                value={findingNavigation}
+              >
+                {slots.insights}
+              </ReviewWorkbenchFindingNavigationContext.Provider>
             </div>
           )}
         </div>

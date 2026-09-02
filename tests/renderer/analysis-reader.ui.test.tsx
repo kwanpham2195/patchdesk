@@ -96,6 +96,46 @@ describe("AnalysisReader", () => {
     ).toBeTruthy();
   });
 
+  it("offers Open in diff only for a mapped Finding and hands back that Finding", async () => {
+    const user = userEvent.setup();
+    const onOpenFindingInDiff = vi.fn();
+    const unmapped = {
+      ...findingFixture,
+      id: "finding-unmapped",
+      title: "Unmapped finding",
+      file: "src/missing.ts",
+      lineStart: 9,
+      mappingStatus: "unmapped" as const,
+    };
+    render(
+      <AnalysisReader
+        result={{ ...result, findings: [findingFixture, unmapped] }}
+        onOpenFindingInDiff={onOpenFindingInDiff}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Open in diff: src/missing.ts:9" }),
+    ).toBeNull();
+    expect(screen.getByText("src/missing.ts:9")).toBeTruthy();
+    const open = screen.getByRole("button", {
+      name: "Open in diff: src/a.ts:2",
+    });
+    open.focus();
+    expect(document.activeElement).toBe(open);
+    await user.click(open);
+    expect(onOpenFindingInDiff).toHaveBeenCalledWith(findingFixture);
+  });
+
+  it("keeps the location as plain text when no diff navigation is wired", () => {
+    render(<AnalysisReader result={result} />);
+    expect(
+      screen.queryByRole("button", { name: "Open in diff: src/a.ts:2" }),
+    ).toBeNull();
+    expect(screen.getByText("src/a.ts:2")).toBeTruthy();
+    expect(document.getElementById("finding-finding-1")).toBeTruthy();
+  });
+
   it("keeps dismissal detail hidden until requested", async () => {
     const user = userEvent.setup();
     const onDismissFinding = vi.fn(async () => undefined);

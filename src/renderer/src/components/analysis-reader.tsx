@@ -5,6 +5,7 @@ import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { FindingEvidenceHunk } from "./finding-evidence-hunk";
+import { analysisFindingRowId } from "./review-workbench-finding-navigation";
 import { GeneratedMarkdown } from "./generated-markdown";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -68,6 +69,8 @@ export type AnalysisReaderProps = {
   readonly checkStatus?: CheckStatus;
   readonly canFinishWithAnalysisSummary?: boolean;
   readonly onFinishWithAnalysisSummary?: () => void;
+  /** Opens the Diff tab at a mapped finding's lines. */
+  readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
 };
 
 /** Decision-first read-side view of one retained Analysis result. */
@@ -80,6 +83,7 @@ export function AnalysisReader({
   checkStatus = "unknown",
   canFinishWithAnalysisSummary = false,
   onFinishWithAnalysisSummary,
+  onOpenFindingInDiff,
 }: AnalysisReaderProps): React.JSX.Element {
   const admittedFindingIds = useRef<Set<string>>(new Set());
   const [findingActions, setFindingActions] = useState<
@@ -220,6 +224,9 @@ export function AnalysisReader({
                   actionState={findingActions.get(finding.id)}
                   actionError={findingErrors.get(finding.id)}
                   {...(evidencePatch === undefined ? {} : { evidencePatch })}
+                  {...(onOpenFindingInDiff === undefined
+                    ? {}
+                    : { onOpenFindingInDiff })}
                   {...(onAddFinding === undefined
                     ? {}
                     : {
@@ -315,12 +322,14 @@ function AnalysisFindingRow({
   evidencePatch,
   onAddFinding,
   onDismissFinding,
+  onOpenFindingInDiff,
 }: {
   readonly finding: AnalysisFinding;
   readonly status?: FindingStatus | undefined;
   readonly actionState?: FindingActionState | undefined;
   readonly actionError?: string | undefined;
   readonly evidencePatch?: string | undefined;
+  readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly onDismissFinding?: (
     finding: AnalysisFinding,
@@ -373,8 +382,18 @@ function AnalysisFindingRow({
     }
   };
 
+  const location =
+    finding.file === undefined
+      ? undefined
+      : `${finding.file}${finding.lineStart === undefined ? "" : `:${finding.lineStart}`}`;
+
   return (
-    <li className="rounded-lg border bg-background p-3">
+    // Focusable so a Diff card's "Open in Analysis" can land keyboard focus here.
+    <li
+      id={analysisFindingRowId(finding.id)}
+      tabIndex={-1}
+      className="rounded-lg border bg-background p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -393,10 +412,19 @@ function AnalysisFindingRow({
             markdown={finding.explanation}
             className="mt-2 max-w-4xl text-muted-foreground"
           />
-          {finding.file === undefined ? null : (
+          {location === undefined ? null : onOpenFindingInDiff !== undefined &&
+            finding.mappingStatus === "mapped" ? (
+            <button
+              type="button"
+              aria-label={`Open in diff: ${location}`}
+              className="mt-2 block max-w-full truncate text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => onOpenFindingInDiff(finding)}
+            >
+              {location}
+            </button>
+          ) : (
             <p className="mt-2 truncate text-xs text-muted-foreground">
-              {finding.file}
-              {finding.lineStart === undefined ? "" : `:${finding.lineStart}`}
+              {location}
             </p>
           )}
         </div>

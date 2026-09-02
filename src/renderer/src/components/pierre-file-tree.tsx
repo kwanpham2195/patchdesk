@@ -3,12 +3,22 @@ import type { FileTreeOptions, GitStatus } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 
 import type { FileChangeStats } from "@/review-diff-data";
-import { buildActivePathTreeStyle } from "./pierre-file-tree-active-style";
+import {
+  describeFileFindingCount,
+  type FileFindingCount,
+  type FindingSeverity,
+} from "@/review-finding-counts";
+import {
+  buildActivePathTreeStyle,
+  escapeCssAttributeValue,
+} from "./pierre-file-tree-active-style";
 
 export type PierreFileTreeItem = {
   readonly path: string;
   readonly stats: FileChangeStats;
   readonly gitStatus: GitStatus | undefined;
+  /** Mapped Analysis findings citing this file; absent when there are none. */
+  readonly findings?: FileFindingCount;
 };
 
 type PierreFileTreeProps = {
@@ -23,12 +33,14 @@ type PierreFileTreeProps = {
 // @pierre/trees' internal `#syncUnsafeCSS` adopts and removes any element
 // carrying that attribute, which would delete ours out from under it.
 const ACTIVE_PATH_STYLE_ATTRIBUTE = "data-patchdesk-active-path-style";
+const FINDING_TONE_STYLE_ATTRIBUTE = "data-patchdesk-finding-tone-style";
 
 /** Pierre owns tree focus and scrolling; selection only reveals the matching diff file. */
 export function PierreFileTree(props: PierreFileTreeProps): React.JSX.Element {
-  // Keyed on the file SET (paths + git status), not the active file: the
-  // underlying `useFileTree` call captures its `paths`/`gitStatus` options
-  // once at construction and never re-reads them, so a changed revision
+  // Keyed on the file SET (paths, git status, finding counts), not the
+  // active file: the underlying `useFileTree` call captures its `paths`/
+  // `gitStatus`/`renderRowDecoration` options once at construction and
+  // never re-reads them, so a changed revision or a newly current Analysis
   // needs a fresh model. A changed active file does not -- see the
   // shadow-root style injection below for how that highlight is drawn
   // instead, without a remount.
@@ -36,14 +48,46 @@ export function PierreFileTree(props: PierreFileTreeProps): React.JSX.Element {
 }
 
 /**
- * A key that changes whenever the file set (paths or git status) changes,
- * and stays stable across active-file changes. NUL/SOH separate fields and
- * entries so two different file lists can't collide onto the same key.
+ * A key that changes whenever the file set (paths, git status, or finding
+ * counts) changes, and stays stable across active-file changes. NUL/SOH
+ * separate fields and entries so two different file lists can't collide
+ * onto the same key.
  */
 function filesKey(files: ReadonlyArray<PierreFileTreeItem>): string {
   return files
-    .map((file) => `${file.path}\0${file.gitStatus ?? ""}`)
+    .map(
+      (file) =>
+        `${file.path}\0${file.gitStatus ?? ""}\0${file.findings === undefined ? "" : `${file.findings.count}${file.findings.highest}`}`,
+    )
     .join("\u0001");
+}
+
+// The tree's decoration lane is plain library markup with no severity hook,
+// so the badge tone is a per-path rule in the same shadow root.
+function findingToneColor(severity: FindingSeverity): string {
+  switch (severity) {
+    case "P0":
+    case "P1":
+      return "var(--trees-git-deleted-color-override)";
+    case "P2":
+      return "var(--trees-git-renamed-color-override)";
+    case "P3":
+      return "var(--trees-fg-muted)";
+  }
+}
+
+function buildFindingToneTreeStyle(
+  files: ReadonlyArray<PierreFileTreeItem>,
+): string {
+  return files
+    .flatMap((file) =>
+      file.findings === undefined
+        ? []
+        : [
+            `[data-type="item"][data-item-path="${escapeCssAttributeValue(file.path)}"] [data-item-section="decoration"] > span { color: ${findingToneColor(file.findings.highest)}; font-weight: 600; }`,
+          ],
+    )
+    .join(" ");
 }
 
 function PierreFileTreeModel({
@@ -53,8 +97,14 @@ function PierreFileTreeModel({
   onSelect,
 }: PierreFileTreeProps): React.JSX.Element {
   const activePathStyleRef = useRef<HTMLStyleElement | null>(null);
+  const findingToneStyleRef = useRef<HTMLStyleElement | null>(null);
   const [appearance, setAppearance] = useState<"light" | "dark">(() =>
     document.documentElement.dataset.appearance === "light" ? "light" : "dark",
+  );
+  const findingsByPath = new Map(
+    files.flatMap((file) =>
+      file.findings === undefined ? [] : [[file.path, file.findings] as const],
+    ),
   );
   const fileTreeOptions: FileTreeOptions = {
     paths: files.map((file) => file.path),
@@ -68,6 +118,15 @@ function PierreFileTreeModel({
     onSelectionChange: (paths) => {
       const path = paths[0];
       if (path !== undefined) onSelect(path);
+    },
+    renderRowDecoration: ({ item }) => {
+      const findings = findingsByPath.get(item.path);
+      return findings === undefined
+        ? null
+        : {
+            text: String(findings.count),
+            title: describeFileFindingCount(findings),
+          };
     },
   };
   if (activePath !== undefined)
@@ -104,6 +163,18 @@ function PierreFileTreeModel({
     styleElement.textContent =
       activePath === undefined ? "" : buildActivePathTreeStyle(activePath);
   }, [activePath, model]);
+  useEffect(() => {
+    const shadowRoot = model.getFileTreeContainer()?.shadowRoot;
+    if (shadowRoot == null) return;
+    let styleElement = findingToneStyleRef.current;
+    if (styleElement === null || styleElement.getRootNode() !== shadowRoot) {
+      styleElement = document.createElement("style");
+      styleElement.setAttribute(FINDING_TONE_STYLE_ATTRIBUTE, "");
+      shadowRoot.appendChild(styleElement);
+      findingToneStyleRef.current = styleElement;
+    }
+    styleElement.textContent = buildFindingToneTreeStyle(files);
+  }, [files, model]);
   useEffect(() => {
     const onAppearance = (event: Event): void => {
       // SAFETY: only `window.dispatchEvent(new CustomEvent("patchdesk:appearance", ...))`

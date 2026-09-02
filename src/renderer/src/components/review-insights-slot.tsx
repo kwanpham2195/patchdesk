@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { XIcon } from "lucide-react";
 import { definedProps } from "../../../domain/defined-props";
+import {
+  analysisFindingRowId,
+  ReviewWorkbenchFindingNavigationContext,
+} from "./review-workbench-finding-navigation";
 
 import type { InsightProvider } from "../../../domain/insight-provider";
 import { INSIGHT_NOUNS, InsightRunDialog } from "./insight-run-dialog";
@@ -144,6 +148,23 @@ export function InsightsSlot({
   const [selectedInsight, setSelectedInsight] = useState<InsightSelection>(
     initialDetail ?? "analysis",
   );
+  const findingNavigation = useContext(ReviewWorkbenchFindingNavigationContext);
+  const findingFocusRequest = findingNavigation?.findingFocusRequest;
+  // A Diff card's "Open in Analysis" lands here: select the Analysis reader,
+  // then focus the finding's row once that reader is on screen.
+  useEffect(() => {
+    if (findingFocusRequest === undefined) return;
+    if (selectedInsight !== "analysis") {
+      setSelectedInsight("analysis");
+      return;
+    }
+    const row = document.getElementById(
+      analysisFindingRowId(findingFocusRequest.findingId),
+    );
+    if (row === null) return;
+    row.scrollIntoView?.({ block: "center" });
+    row.focus({ preventScroll: true });
+  }, [findingFocusRequest, selectedInsight]);
   const {
     walkthroughFocused,
     walkthroughFocusTransition,
@@ -219,6 +240,7 @@ export function InsightsSlot({
     ...definedProps({
       onFinishWithAnalysisSummary,
       addFinding: onAddFinding,
+      onOpenFindingInDiff: findingNavigation?.openFindingInDiff,
     }),
     dismissFinding,
     walkthroughFocused,
