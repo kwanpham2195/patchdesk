@@ -652,6 +652,65 @@ describe("GET /v1/inbox page size boundary", () => {
     expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
   });
 
+  it("forwards author and base branch filter values as GitHub qualifiers", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(
+      new URL("v1/inbox?author=octocat&base=release%2F1.0", api.url),
+      { headers: headers() },
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery:
+          'repo:centraldigital/patchdesk is:pr is:open author:"octocat" base:"release/1.0"',
+      }),
+    );
+  });
+
+  it("forwards @me as the author qualifier for GitHub to resolve", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox?author=%40me", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery: 'repo:centraldigital/patchdesk is:pr is:open author:"@me"',
+      }),
+    );
+  });
+
+  it("rejects quoted, spaced, empty, or over-long author and base branch values without reading GitHub", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    for (const query of [
+      `v1/inbox?author=${encodeURIComponent('octo"cat')}`,
+      `v1/inbox?author=${encodeURIComponent("octo cat")}`,
+      "v1/inbox?author=",
+      `v1/inbox?author=${"a".repeat(40)}`,
+      `v1/inbox?base=${encodeURIComponent('main" OR base:"secret')}`,
+      `v1/inbox?base=${encodeURIComponent("release 1.0")}`,
+      "v1/inbox?base=",
+      `v1/inbox?base=${"b".repeat(101)}`,
+    ]) {
+      const response = await fetch(new URL(query, api.url), {
+        headers: headers(),
+      });
+      expect(response.status, query).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_input",
+      });
+    }
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
   it("rejects a repository the active profile does not watch, with no GitHub read", async () => {
     const { api, searchMaintainerPullRequests } =
       await startWithWatchedProfile();

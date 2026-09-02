@@ -3,6 +3,8 @@ import { parseGitSha } from "../../src/domain/ids";
 import {
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
+  MAX_INBOX_FILTER_AUTHOR_LENGTH,
+  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   projectMaintainerInboxRow,
 } from "../../src/domain/maintainer-inbox";
 
@@ -56,6 +58,11 @@ describe("maintainer inbox", () => {
       "success",
       "failure",
     ]);
+  });
+
+  it("bounds the author and base branch filter text", () => {
+    expect(MAX_INBOX_FILTER_AUTHOR_LENGTH).toBe(39);
+    expect(MAX_INBOX_FILTER_BASE_BRANCH_LENGTH).toBe(100);
   });
 
   it("opens an existing changed Review without adopting its new revision", () => {

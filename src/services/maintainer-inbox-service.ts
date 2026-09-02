@@ -25,6 +25,8 @@ import {
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
+  MAX_INBOX_FILTER_AUTHOR_LENGTH,
+  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   type InboxPageRequest,
   type InboxPageSize,
   INBOX_STATE_FILTER_VALUES,
@@ -83,6 +85,23 @@ const inboxPageTokenSchema = v.strictObject({
   reviewState: v.optional(v.picklist(INBOX_REVIEW_STATE_FILTER_VALUES)),
   /** The check-status qualifier the token's cursor was cut under. */
   checkStatus: v.optional(v.picklist(INBOX_CHECK_STATUS_FILTER_VALUES)),
+  /** The author qualifier the token's cursor was cut under; bounded here as
+   * well as at the route, because a token is renderer-supplied input. */
+  author: v.optional(
+    v.pipe(
+      v.string(),
+      v.minLength(1),
+      v.maxLength(MAX_INBOX_FILTER_AUTHOR_LENGTH),
+    ),
+  ),
+  /** The base-branch qualifier the token's cursor was cut under. */
+  baseBranch: v.optional(
+    v.pipe(
+      v.string(),
+      v.minLength(1),
+      v.maxLength(MAX_INBOX_FILTER_BASE_BRANCH_LENGTH),
+    ),
+  ),
   cursor: v.optional(
     v.pipe(
       v.string(),
@@ -168,8 +187,9 @@ export class MaintainerInboxService {
    * `cachedOrUnavailable`, `unavailablePage`, and `buildInboxSearchQuery`.
    *
    * Only the wholly unfiltered listing — no labels, no review/check qualifier,
-   * and no "Awaiting review from you" preset — is ever written to the cache. The cache is
-   * keyed by profile and repository alone, and `cachedOrUnavailable` reads it
+   * no author or base branch, and no "Awaiting review from you" preset — is
+   * ever written to the cache. The cache is keyed by profile and repository
+   * alone, and `cachedOrUnavailable` reads it
    * back with no label argument at all — so a label-filtered result saved
    * there would come back later as the repository's whole inbox, three
    * `label:"bug"` rows presented as everything open. Widening the key to hold
@@ -192,6 +212,8 @@ export class MaintainerInboxService {
     const awaitingMyReview = request.filter.awaitingMyReview ?? false;
     const reviewState = request.filter.reviewState;
     const checkStatus = request.filter.checkStatus;
+    const author = request.filter.author;
+    const baseBranch = request.filter.baseBranch;
     const pageToken = decodeInboxPageToken(
       request,
       repository,
@@ -200,6 +222,8 @@ export class MaintainerInboxService {
       awaitingMyReview,
       reviewState,
       checkStatus,
+      author,
+      baseBranch,
     );
     if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
 
@@ -228,6 +252,8 @@ export class MaintainerInboxService {
       awaitingMyReview,
       reviewState,
       checkStatus,
+      author,
+      baseBranch,
       request.pageSize,
       pageToken.cursor,
       repositorySessions,
@@ -257,6 +283,8 @@ export class MaintainerInboxService {
       awaitingMyReview,
       reviewState,
       checkStatus,
+      author,
+      baseBranch,
     };
     const nextPageToken = hasNextPage
       ? encodeInboxPageToken(
@@ -284,6 +312,8 @@ export class MaintainerInboxService {
       !awaitingMyReview &&
       reviewState === undefined &&
       checkStatus === undefined &&
+      author === undefined &&
+      baseBranch === undefined &&
       request.pageToken === undefined &&
       complete &&
       dataFreshness === "fresh"
@@ -317,6 +347,8 @@ export class MaintainerInboxService {
     awaitingMyReview: boolean,
     reviewState: InboxReviewStateFilter | undefined,
     checkStatus: InboxCheckStatusFilter | undefined,
+    author: string | undefined,
+    baseBranch: string | undefined,
     pageSize: InboxPageSize,
     cursor: string | undefined,
     sessions: ReadonlyArray<ReviewSession>,
@@ -333,6 +365,8 @@ export class MaintainerInboxService {
       awaitingMyReview,
       reviewState,
       checkStatus,
+      author,
+      baseBranch,
     );
     const searched = await this.github.searchMaintainerPullRequests(
       cursor === undefined
@@ -462,14 +496,16 @@ export class MaintainerInboxService {
 
 /**
  * Builds the GitHub search qualifier string for one repository, state, label
- * filter, review/check qualifiers, and preset: `repo:OWNER/NAME is:pr is:open
- * user-review-requested:@me review:approved status:failure label:"NAME"`. The sole place
+ * filter, review/check qualifiers, author, base branch, and preset:
+ * `repo:OWNER/NAME is:pr is:open user-review-requested:@me review:approved
+ * status:failure author:"LOGIN" base:"BRANCH" label:"NAME"`. The sole place
  * that builds this string, so every renderer-chosen filter extends it here
  * rather than through ad hoc concatenation elsewhere — and so GitHub's
- * 256-character search cap has one place to be enforced. `labels` is trusted
- * here: the route already bounds its count, length, and character set
- * (see `parseInboxLabelsQuery` in `local-api.ts`) before it reaches this
- * function, so a label name can never contain the quote it is wrapped in.
+ * 256-character search cap has one place to be enforced. `labels`, `author`
+ * and `baseBranch` are trusted here: the route already bounds their count,
+ * length, and character set (see `parseInboxLabelsQuery` and
+ * `parseInboxQualifierTextQuery` in `dashboard-routes.ts`) before they reach
+ * this function, so none of them can contain the quote it is wrapped in.
  */
 function buildInboxSearchQuery(
   repo: InboxRepositoryRef,
@@ -478,6 +514,8 @@ function buildInboxSearchQuery(
   awaitingMyReview: boolean,
   reviewState: InboxReviewStateFilter | undefined,
   checkStatus: InboxCheckStatusFilter | undefined,
+  author: string | undefined,
+  baseBranch: string | undefined,
 ): string {
   const stateQualifier = state === "merged" ? "is:merged" : "is:open";
   // `@me` is GitHub's own token for the authenticated viewer and is resolved
@@ -487,6 +525,8 @@ function buildInboxSearchQuery(
     ...(awaitingMyReview ? ["user-review-requested:@me"] : []),
     ...(reviewState === undefined ? [] : [`review:${reviewState}`]),
     ...(checkStatus === undefined ? [] : [`status:${checkStatus}`]),
+    ...(author === undefined ? [] : [`author:"${author}"`]),
+    ...(baseBranch === undefined ? [] : [`base:"${baseBranch}"`]),
     ...labels.map((label) => `label:"${label}"`),
   ].join(" ");
   const base = `repo:${repo.owner}/${repo.repo} is:pr ${stateQualifier}`;
@@ -571,6 +611,8 @@ function decodeInboxPageToken(
   awaitingMyReview: boolean,
   reviewState: InboxReviewStateFilter | undefined,
   checkStatus: InboxCheckStatusFilter | undefined,
+  author: string | undefined,
+  baseBranch: string | undefined,
 ): InboxPageToken | undefined {
   if (request.pageToken === undefined) {
     const token: InboxPageToken = {
@@ -587,6 +629,8 @@ function decodeInboxPageToken(
     };
     if (reviewState !== undefined) token.reviewState = reviewState;
     if (checkStatus !== undefined) token.checkStatus = checkStatus;
+    if (author !== undefined) token.author = author;
+    if (baseBranch !== undefined) token.baseBranch = baseBranch;
     return token;
   }
   if (request.pageToken.length > MAX_PAGE_TOKEN_LENGTH) return undefined;
@@ -604,7 +648,9 @@ function decodeInboxPageToken(
       !sameLabels(value.labels, labels) ||
       value.awaitingMyReview !== awaitingMyReview ||
       value.reviewState !== reviewState ||
-      value.checkStatus !== checkStatus
+      value.checkStatus !== checkStatus ||
+      value.author !== author ||
+      value.baseBranch !== baseBranch
     )
       return undefined;
     return value;
