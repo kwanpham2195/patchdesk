@@ -9,7 +9,6 @@ await writeFile(
   new URL("../runtime-manifest.json", import.meta.url),
   `${JSON.stringify(
     {
-      flueVersion: "2.0.3",
       piVersion: "0.84.4",
       catalogDigest: catalog.digest,
       nodeFloor: ">=22.19.0",

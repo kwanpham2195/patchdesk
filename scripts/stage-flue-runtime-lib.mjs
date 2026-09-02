@@ -10,7 +10,6 @@ import {
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-const FLUE_VERSION = "2.0.3";
 const PI_VERSION = "0.84.4";
 const NODE_FLOOR = ">=22.19.0";
 
@@ -26,7 +25,8 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
   await Promise.all([access(manifest), access(lockfile)]);
   const sourceManifest = JSON.parse(await readFile(manifest, "utf8"));
   if (
-    sourceManifest.dependencies?.["@flue/runtime"] !== FLUE_VERSION ||
+    sourceManifest.dependencies?.["@earendil-works/pi-agent-core"] !==
+      PI_VERSION ||
     sourceManifest.dependencies?.["@earendil-works/pi-ai"] !== PI_VERSION
   )
     throw new Error(
@@ -122,6 +122,6 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
     .digest("hex");
   await writeFile(
     join(runtimeRoot, "runtime-manifest.json"),
-    `${JSON.stringify({ flueVersion: FLUE_VERSION, piVersion: PI_VERSION, catalogDigest, nodeFloor: NODE_FLOOR, lockDigest })}\n`,
+    `${JSON.stringify({ piVersion: PI_VERSION, catalogDigest, nodeFloor: NODE_FLOOR, lockDigest })}\n`,
   );
 }

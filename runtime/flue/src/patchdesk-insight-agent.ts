@@ -127,7 +127,7 @@ export type InspectorOperations = {
 };
 
 /** The one value a submission records, already parsed by its own result schema. */
-export type SubmittedInsightResult =
+type SubmittedInsightResult =
   | v.InferOutput<typeof modelReviewResultSchema>
   | v.InferOutput<typeof walkthroughResultSchema>
   | v.InferOutput<typeof briefResultSchema>;
@@ -215,14 +215,17 @@ type PatchdeskResultSchema =
 
 /**
  * Projects one Valibot schema onto the JSON Schema Pi validates tool arguments
- * against. `warn` keeps a projection going past a constraint JSON Schema
- * cannot express — the Walkthrough section-count check is the only one — which
- * the tool's own `v.safeParse` still enforces before anything is recorded.
+ * against. Exactly one constraint cannot be expressed and is dropped: the
+ * top-level `v.check` in `src/services/walkthrough-operation.ts` capping a
+ * Walkthrough's total section count across chapters. The tool's own
+ * `v.safeParse` still enforces it before anything is recorded, so `ignore`
+ * rather than `warn` -- `warn` printed that one known omission to stderr on
+ * every walkthrough child run.
  */
 function jsonSchemaFor(
   schema: PatchdeskResultSchema | v.GenericSchema,
 ): AgentTool["parameters"] {
-  const projected: object = toJsonSchema(schema, { errorMode: "warn" });
+  const projected: object = toJsonSchema(schema, { errorMode: "ignore" });
   // SAFETY: the agent loop validates tool arguments against plain JSON Schema
   // and only its declared TypeBox type is narrower than what it accepts, so
   // one projected JSON Schema object is exactly the value it validates with.

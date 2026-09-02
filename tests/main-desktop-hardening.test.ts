@@ -323,7 +323,6 @@ describe("desktop hardening", () => {
       [
         `${packagedRoot}/runtime-manifest.json`,
         JSON.stringify({
-          flueVersion: "2.0.3",
           piVersion: "0.84.4",
           catalogDigest,
           nodeFloor: ">=22.19.0",
@@ -350,8 +349,7 @@ describe("desktop hardening", () => {
     files.set(
       `${packagedRoot}/runtime-manifest.json`,
       JSON.stringify({
-        flueVersion: "2.0.2",
-        piVersion: "0.84.4",
+        piVersion: "0.84.3",
         catalogDigest,
         nodeFloor: ">=22.19.0",
         lockDigest: createHash("sha256").update(lock).digest("hex"),
@@ -376,13 +374,12 @@ describe("desktop hardening", () => {
     // SAFETY: as above -- the generated catalog literal always carries `digest`.
     const catalogDigest = (generatedPiAiCatalog as { readonly digest: string })
       .digest;
-    // Both roots pass every manifest check: the manifest pins the Flue and Pi
-    // versions, the catalog digest, the node floor and the lock digest, so a
-    // staging built before a request type existed is indistinguishable from a
-    // fresh one. Only the resolution order keeps the stale runner out of a
+    // Both roots pass every manifest check: the manifest pins the Pi version,
+    // the catalog digest, the node floor and the lock digest, so a staging
+    // built before a request type existed is indistinguishable from a fresh
+    // one. Only the resolution order keeps the stale runner out of a
     // `pnpm dev` run, which rebuilds `runtime/flue/dist` on every start.
     const manifest = JSON.stringify({
-      flueVersion: "2.0.3",
       piVersion: "0.84.4",
       catalogDigest,
       nodeFloor: ">=22.19.0",
