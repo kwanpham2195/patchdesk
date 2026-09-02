@@ -27,6 +27,7 @@ import {
   walkthroughResultSchema,
 } from "../src/patchdesk-insight-agent";
 import {
+  MAX_AGENT_TURNS,
   canonicalizeProductionInvocation,
   parseProductionInvocation,
   resolvePatchdeskReviewSkillPath,
@@ -152,6 +153,29 @@ function analysisInvocation() {
   };
 }
 
+const reviewSkillPath = new URL(
+  "../../../src/skills/patchdesk-code-review/SKILL.md",
+  import.meta.url,
+).pathname;
+
+/** Inspectors that always answer, so a test pins the runner rather than a budget. */
+function benignInspectors() {
+  return {
+    async listChangedFiles() {
+      return { files: ["src/a.ts"] };
+    },
+    async searchFiles() {
+      return { files: [] };
+    },
+    async readFileRange() {
+      return { content: "" };
+    },
+    async gitShow() {
+      return { content: "" };
+    },
+  };
+}
+
 function fake(responses: ReadonlyArray<FauxResponseStep>) {
   const provider = fauxProvider({ provider: "faux", models: [{ id: "test" }] });
   provider.setResponses([...responses]);
@@ -252,12 +276,15 @@ describe("one-shot insight runtime", () => {
     );
   });
 
-  it("rejects duplicate submission attempts after recording only the first data part", async () => {
+  it("records only the first data part of a duplicate submission and returns it", async () => {
     const provider = fake([
       fauxAssistantMessage(
         [
           fauxToolCall("submit_patchdesk_result", walkthrough),
-          fauxToolCall("submit_patchdesk_result", walkthrough),
+          fauxToolCall("submit_patchdesk_result", {
+            ...walkthrough,
+            title: "Second submission",
+          }),
         ],
         { stopReason: "toolUse" },
       ),
@@ -266,7 +293,7 @@ describe("one-shot insight runtime", () => {
       runPatchdeskChild(walkthroughInvocation(), {
         providers: [provider.provider],
       }),
-    ).resolves.toEqual({ ok: false, reason: "invalid_result" });
+    ).resolves.toEqual({ ok: true, value: walkthrough });
   });
 
   it("gives Analysis exactly four bounded inspectors plus submission and preserves one shared budget", async () => {
@@ -369,6 +396,79 @@ describe("one-shot insight runtime", () => {
       }),
     ).resolves.toEqual({ ok: true, value: analysis });
     expect(provider.state.callCount).toBe(1);
+  });
+
+  it("keeps the recorded result when an inspector-first batch buys one more failing turn", async () => {
+    const provider = fake([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("list_changed_files", {}),
+          fauxToolCall("submit_patchdesk_result", analysis),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxText("The provider refused."), {
+        stopReason: "error",
+        errorMessage: '402: {"message":"Insufficient Balance"}',
+      }),
+    ]);
+    await expect(
+      runPatchdeskChild(analysisInvocation(), {
+        providers: [provider.provider],
+        inspectors: benignInspectors(),
+        skillPath: reviewSkillPath,
+      }),
+    ).resolves.toEqual({ ok: true, value: analysis });
+    expect(provider.state.callCount).toBe(2);
+  });
+
+  it("keeps the first recorded result when a later turn submits again", async () => {
+    const provider = fake([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("list_changed_files", {}),
+          fauxToolCall("submit_patchdesk_result", analysis),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("submit_patchdesk_result", {
+          ...analysis,
+          verdict: "request_changes",
+        }),
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    await expect(
+      runPatchdeskChild(analysisInvocation(), {
+        providers: [provider.provider],
+        inspectors: benignInspectors(),
+        skillPath: reviewSkillPath,
+      }),
+    ).resolves.toEqual({ ok: true, value: analysis });
+    expect(provider.state.callCount).toBe(2);
+  });
+
+  it("names the turn cap rather than blaming the model when the budget runs out", async () => {
+    const provider = fake(
+      Array.from({ length: MAX_AGENT_TURNS + 4 }, () =>
+        fauxAssistantMessage(fauxToolCall("list_changed_files", {}), {
+          stopReason: "toolUse",
+        }),
+      ),
+    );
+    await expect(
+      runPatchdeskChild(analysisInvocation(), {
+        providers: [provider.provider],
+        inspectors: benignInspectors(),
+        skillPath: reviewSkillPath,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "invalid_result",
+      detail: `The model reached the ${MAX_AGENT_TURNS}-turn limit before submitting a result`,
+    });
+    expect(provider.state.callCount).toBe(MAX_AGENT_TURNS);
   });
 
   it("requests a durable abort through the agent handle when the caller cancels", async () => {

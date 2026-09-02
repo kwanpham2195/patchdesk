@@ -117,7 +117,7 @@ export function parsePatchdeskChildInvocation(
  * insight settles far below this; the cap exists to bound a model that keeps
  * calling tools without ever submitting a result.
  */
-const MAX_AGENT_TURNS = 24;
+export const MAX_AGENT_TURNS = 24;
 
 /**
  * How many times Pi's own `retryProviderRequest` may retry one transient
@@ -145,9 +145,9 @@ export async function runPatchdeskChild(
     const created = await createAgent(invocation, options);
     if (created === undefined)
       return { ok: false, reason: "runtime_unavailable" };
-    let agent: Agent;
+    let built: InsightAgentRun;
     try {
-      agent = createInsightAgent(created.spec, options.providers);
+      built = createInsightAgent(created.spec, options.providers);
     } catch (cause: unknown) {
       return {
         ok: false,
@@ -155,6 +155,7 @@ export async function runPatchdeskChild(
         ...definedProps({ detail: redactedFailureDetail(cause) }),
       };
     }
+    const { agent, turnCapReached } = built;
     let abortRequested = false;
     const abort = (): void => {
       if (abortRequested) return;
@@ -174,6 +175,16 @@ export async function runPatchdeskChild(
       await agent.prompt("Complete the prepared Patchdesk operation.");
       if (abortRequested || options.signal?.aborted)
         return { ok: false, reason: "cancelled" };
+      // A recorded result wins: a batch ends only when every call in it
+      // terminates, so an inspector ahead of the submission buys one more turn
+      // whose provider failure or repeat submission must not discard it.
+      const value = created.state.submittedResult();
+      if (value !== undefined) {
+        const parsed = v.safeParse(resultSchemaFor(invocation.type), value);
+        return parsed.success
+          ? { ok: true, value: parsed.output }
+          : { ok: false, reason: "invalid_result" };
+      }
       const failure = runFailureMessage(agent);
       if (failure !== undefined)
         return {
@@ -181,13 +192,13 @@ export async function runPatchdeskChild(
           reason: "execution_failed",
           ...definedProps({ detail: redactedFailureDetail(failure) }),
         };
-      const value = created.state.submittedResult();
-      if (created.state.duplicateSubmissionAttempted() || value === undefined)
-        return { ok: false, reason: "invalid_result" };
-      const parsed = v.safeParse(resultSchemaFor(invocation.type), value);
-      return parsed.success
-        ? { ok: true, value: parsed.output }
-        : { ok: false, reason: "invalid_result" };
+      return {
+        ok: false,
+        reason: "invalid_result",
+        ...definedProps({
+          detail: turnCapReached() ? TURN_CAP_DETAIL : undefined,
+        }),
+      };
     } catch (cause: unknown) {
       if (abortRequested || options.signal?.aborted)
         return { ok: false, reason: "cancelled" };
@@ -205,17 +216,29 @@ export async function runPatchdeskChild(
   }
 }
 
+/**
+ * The one detail an exhausted turn budget reports, so a run the app's own cap
+ * stopped is not read as a malformed model result.
+ */
+const TURN_CAP_DETAIL = `The model reached the ${MAX_AGENT_TURNS}-turn limit before submitting a result`;
+
+/** One built agent and the turn budget it ran against. */
+type InsightAgentRun = {
+  readonly agent: Agent;
+  readonly turnCapReached: () => boolean;
+};
+
 /** Builds the one Pi agent that runs an invocation, with only its own tools mounted. */
 function createInsightAgent(
   spec: InsightAgentSpec,
   providers: ReadonlyArray<Provider> | undefined,
-): Agent {
+): InsightAgentRun {
   const models = createModels();
   for (const provider of providers ?? builtinProviders())
     models.setProvider(provider);
   const model = resolveModel(models, spec.model);
   let turns = 0;
-  return new Agent({
+  const agent = new Agent({
     initialState: {
       systemPrompt: spec.systemPrompt,
       model,
@@ -233,6 +256,7 @@ function createInsightAgent(
       return turns >= MAX_AGENT_TURNS;
     },
   });
+  return { agent, turnCapReached: () => turns >= MAX_AGENT_TURNS };
 }
 
 /** Resolves one `provider-id/model-id` specifier against the registered providers. */
