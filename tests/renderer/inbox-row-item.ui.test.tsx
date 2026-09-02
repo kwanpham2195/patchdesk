@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InboxRowItem } from "../../src/renderer/src/components/inbox-row-item";
@@ -59,7 +65,7 @@ describe("InboxRowItem", () => {
 
   it("selects and opens once from the title, twice from a double click", () => {
     const { onSelect, onAction } = renderActionableRow();
-    fireEvent.click(screen.getByRole("button", { name: "#1 PR" }));
+    fireEvent.click(rowTitle());
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onAction).toHaveBeenCalledTimes(1);
 
@@ -80,11 +86,23 @@ describe("InboxRowItem", () => {
     );
     const option = screen.getByRole("option");
     expect(option.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "#1 PR" }));
+    fireEvent.click(rowTitle());
     fireEvent.doubleClick(option);
     expect(onAction).not.toHaveBeenCalled();
   });
+
+  it("keeps the row free of nested controls, leaving it the only tab stop", () => {
+    renderActionableRow();
+    expect(
+      within(screen.getByRole("option")).queryAllByRole("button"),
+    ).toHaveLength(0);
+  });
 });
+
+/** The title is styled text inside the row, found by the label it carries. */
+function rowTitle(): HTMLElement {
+  return within(screen.getByRole("option")).getByTitle("Open #1");
+}
 
 function renderActionableRow() {
   const onSelect = vi.fn();

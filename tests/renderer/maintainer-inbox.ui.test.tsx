@@ -179,11 +179,7 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={open}
       />,
     );
-    fireEvent.click(
-      within(screen.getByRole("option")).getByRole("button", {
-        name: `#1 ${row.title}`,
-      }),
-    );
+    fireEvent.click(within(screen.getByRole("option")).getByTitle("Open #1"));
     expect(open).toHaveBeenCalledWith("review-1");
   });
 
@@ -665,9 +661,7 @@ describe("MaintainerInbox", () => {
     expect(within(labelColumn).getByTitle("bug")).toBeTruthy();
     expect(within(labelColumn).getByTitle("enhancement")).toBeTruthy();
     expect(labelColumn.className).toContain("flex-col");
-    const title = within(inboxRow).getByRole("button", {
-      name: `#1 ${labeled.title}`,
-    });
+    const title = within(inboxRow).getByTitle("Open #1");
     expect(title.className).toContain("line-clamp-2");
     // The single row is auto-selected, so the Inspector still gives the
     // complete label count when GitHub returned only a partial label list.
