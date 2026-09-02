@@ -71,6 +71,10 @@ export type InboxRepositoryOutcome = (typeof INBOX_REPOSITORY_OUTCOMES)[number];
 export const MAX_INBOX_FILTER_LABELS = 5;
 /** GitHub's own label-name length cap. */
 export const MAX_INBOX_FILTER_LABEL_LENGTH = 50;
+/** GitHub's own login length cap; `@me` is well inside it. */
+export const MAX_INBOX_FILTER_AUTHOR_LENGTH = 39;
+/** A generous bound on a branch name, which Git itself leaves unbounded. */
+export const MAX_INBOX_FILTER_BASE_BRANCH_LENGTH = 100;
 
 /**
  * A structured, enumerated inbox filter. Every field is validated at the
@@ -97,6 +101,17 @@ export type InboxFilter = {
   readonly reviewState?: InboxReviewStateFilter;
   /** GitHub's `status:<value>` qualifier; absent means any check status. */
   readonly checkStatus?: InboxCheckStatusFilter;
+  /** GitHub's `author:<value>` qualifier — one login, or `@me` for the
+   * authenticated viewer, which GitHub resolves server-side exactly as it does
+   * for `user-review-requested:@me`. Free text, so like `labels` it is
+   * sanitized at the route: trimmed, within `MAX_INBOX_FILTER_AUTHOR_LENGTH`,
+   * and free of the quote, whitespace, or control character that would let a
+   * value break out of its own qualifier. Absent means any author. */
+  readonly author?: string;
+  /** GitHub's `base:<value>` qualifier — one base branch name, sanitized at
+   * the route the same way `author` is, within
+   * `MAX_INBOX_FILTER_BASE_BRANCH_LENGTH`. Absent means any base branch. */
+  readonly baseBranch?: string;
 };
 
 /** Presented together in the filter bar and the command palette; one list so the two surfaces cannot drift. */

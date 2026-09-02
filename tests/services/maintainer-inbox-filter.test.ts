@@ -170,6 +170,98 @@ describe("MaintainerInboxService review and check filters", () => {
   });
 });
 
+describe("MaintainerInboxService author and base branch filters", () => {
+  it("composes author and base branch filters in canonical qualifier order", async () => {
+    const searchQueries: Array<string> = [];
+    const service = serviceWithSearch(async (input) => {
+      searchQueries.push(input.searchQuery);
+      return ok({ entries: [], hasNextPage: false, issueCount: 0 });
+    });
+
+    await service.list(profile, repository, {
+      filter: {
+        state: "open",
+        labels: ["bug"],
+        awaitingMyReview: true,
+        reviewState: "approved",
+        checkStatus: "failure",
+        author: "octocat",
+        baseBranch: "release/1.0",
+      },
+      pageSize: 25,
+    });
+
+    expect(searchQueries).toEqual([
+      'repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me review:approved status:failure author:"octocat" base:"release/1.0" label:"bug"',
+    ]);
+  });
+
+  it("passes @me through as the author qualifier for GitHub to resolve", async () => {
+    const searchQueries: Array<string> = [];
+    const service = serviceWithSearch(async (input) => {
+      searchQueries.push(input.searchQuery);
+      return ok({ entries: [], hasNextPage: false, issueCount: 0 });
+    });
+
+    await service.list(profile, repository, {
+      filter: { state: "open", author: "@me" },
+      pageSize: 25,
+    });
+
+    expect(searchQueries).toEqual([
+      'repo:centraldigital/patchdesk is:pr is:open author:"@me"',
+    ]);
+  });
+
+  it("rejects a page token changed to a different author or base branch before GitHub", async () => {
+    let githubReads = 0;
+    const service = serviceWithSearch(async () => {
+      githubReads += 1;
+      return ok({
+        entries: [],
+        hasNextPage: true,
+        endCursor: "cursor-2",
+        issueCount: 0,
+      });
+    });
+    const firstPage = await service.list(profile, repository, {
+      filter: { state: "open", author: "octocat", baseBranch: "main" },
+      pageSize: 25,
+    });
+    expect(firstPage._tag).toBe("ok");
+    if (firstPage._tag !== "ok") return;
+    const pageToken = firstPage.value.nextPageToken;
+    if (pageToken === undefined) throw new Error("expected a next page token");
+
+    await expect(
+      service.list(profile, repository, {
+        filter: { state: "open", author: "hubber", baseBranch: "main" },
+        pageSize: 25,
+        pageToken,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+    await expect(
+      service.list(profile, repository, {
+        filter: {
+          state: "open",
+          author: "octocat",
+          baseBranch: "release/1.0",
+        },
+        pageSize: 25,
+        pageToken,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+    await expect(
+      service.list(profile, repository, {
+        filter: { state: "open", author: "octocat" },
+        pageSize: 25,
+        pageToken,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "invalid_page" });
+    expect(githubReads).toBe(1);
+  });
+});
+
 function pullRequestEntry(
   number: number,
   cursor: string,
@@ -204,9 +296,13 @@ describe("MaintainerInboxService filtered cache writes", () => {
   const filteredCases = [
     { reviewState: "approved" },
     { checkStatus: "failure" },
+    { author: "octocat" },
+    { baseBranch: "release/1.0" },
   ] satisfies ReadonlyArray<{
     readonly reviewState?: InboxReviewStateFilter;
     readonly checkStatus?: InboxCheckStatusFilter;
+    readonly author?: string;
+    readonly baseBranch?: string;
   }>;
 
   it.each(filteredCases)(

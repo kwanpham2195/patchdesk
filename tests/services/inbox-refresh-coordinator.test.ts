@@ -295,6 +295,38 @@ it("does not coalesce different review or check filters for the same repository"
   ]);
 });
 
+it("does not coalesce different author or base branch filters for the same repository", async () => {
+  let resolveScan:
+    | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
+    | undefined;
+  const scan = new Promise<ReturnType<typeof ok<MaintainerInbox>>>(
+    (resolve) => {
+      resolveScan = resolve;
+    },
+  );
+  const list = vi.fn(() => scan);
+  const coordinator = new InboxRefreshCoordinator({ list });
+
+  const byOctocat = coordinator.refresh(profile, repository, {
+    filter: { state: "open", author: "octocat" },
+    pageSize: 25,
+  });
+  const byHubber = coordinator.refresh(profile, repository, {
+    filter: { state: "open", author: "hubber" },
+    pageSize: 25,
+  });
+  const ontoRelease = coordinator.refresh(profile, repository, {
+    filter: { state: "open", baseBranch: "release/1.0" },
+    pageSize: 25,
+  });
+
+  expect(list).toHaveBeenCalledTimes(3);
+  resolveScan?.(ok(inbox));
+  await expect(
+    Promise.all([byOctocat, byHubber, ontoRelease]),
+  ).resolves.toEqual([ok(inbox), ok(inbox), ok(inbox)]);
+});
+
 it("coalesces label filters that differ only by order or repetition", async () => {
   let resolveScan:
     | ((value: ReturnType<typeof ok<MaintainerInbox>>) => void)
