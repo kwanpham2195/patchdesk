@@ -305,10 +305,6 @@ export function MaintainerInbox({
         onAction={() =>
           selected === undefined ? undefined : triggerAction(selected)
         }
-        onSecondaryAction={() => {
-          if (selected?.secondaryAction !== undefined)
-            onOpenReviewId(selected.secondaryAction.reviewId);
-        }}
         openingOperations={openingOperations}
       />
     </div>
@@ -810,7 +806,6 @@ function ReviewDetailsPanel({
   freshness,
   onToggleInspector,
   onAction,
-  onSecondaryAction,
   openingOperations,
 }: {
   readonly inspectorOpen: boolean;
@@ -819,7 +814,6 @@ function ReviewDetailsPanel({
   readonly freshness: InboxDataFreshness;
   readonly onToggleInspector: () => void;
   readonly onAction: () => void;
-  readonly onSecondaryAction: () => void;
   readonly openingOperations: ReadonlyMap<
     string,
     Exclude<ReviewOpeningState, undefined>
@@ -843,7 +837,6 @@ function ReviewDetailsPanel({
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
             onAction={onAction}
-            onSecondaryAction={onSecondaryAction}
             {...(openingState === undefined ? {} : { openingState })}
           />
         </ScrollArea>
@@ -862,7 +855,6 @@ function ReviewDetailsPanel({
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
             onAction={onAction}
-            onSecondaryAction={onSecondaryAction}
             {...(openingState === undefined ? {} : { openingState })}
           />
         </SheetContent>
@@ -934,13 +926,11 @@ function Inspector({
   row,
   freshness,
   onAction,
-  onSecondaryAction,
   openingState,
 }: {
   readonly row?: InboxRow;
   readonly freshness: InboxDataFreshness;
   readonly onAction: () => void | undefined;
-  readonly onSecondaryAction: () => void;
   readonly openingState?: Exclude<ReviewOpeningState, undefined>;
 }): React.JSX.Element {
   if (row === undefined)
@@ -1023,24 +1013,17 @@ function Inspector({
         <Card className="gap-1.5 border-amber-500/30 bg-amber-500/5 py-2.5">
           <CardContent className="flex gap-2 px-2.5 text-[11px] leading-4 text-muted-foreground">
             <CircleAlert className="size-3.5 shrink-0 text-amber-500" />
-            GitHub data is cached. Merge-oriented actions remain unavailable.
+            GitHub data is cached.
           </CardContent>
         </Card>
       ) : null}
       <InspectorActionButtons
-        row={row}
-        freshness={freshness}
         onAction={onAction}
-        onSecondaryAction={onSecondaryAction}
         {...(openingState === undefined ? {} : { openingState })}
       />
       {openingState?.status === "error" ? (
         <InlineError className="text-xs">{openingState.error}</InlineError>
       ) : null}
-      <p className="text-[11px] leading-4 text-muted-foreground">
-        Starting a review is read-only. Patchdesk requires a separate
-        confirmation for every GitHub write.
-      </p>
     </div>
   );
 }

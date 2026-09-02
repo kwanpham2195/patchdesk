@@ -231,10 +231,7 @@ export function useInboxReviewOpening({
         dashboardProfileIdRef.current === profileId;
 
       const request = async (): Promise<void> => {
-        if (
-          row.recommendedAction.kind === "open_saved_review" ||
-          row.recommendedAction.kind === "open_merge_readiness"
-        ) {
+        if (row.recommendedAction.kind === "open_saved_review") {
           await loadStoredReview(
             profileId,
             githubHost,

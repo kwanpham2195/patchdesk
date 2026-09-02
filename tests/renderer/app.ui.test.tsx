@@ -636,11 +636,8 @@ function stateFilteredInbox(
             state === "open" ? (["updated_since_review"] as const) : [],
           recommendedAction:
             state === "open"
-              ? { kind: "run_review", label: "Run review" }
-              : {
-                  kind: "open_merged_review",
-                  label: "View merged pull request",
-                },
+              ? { kind: "run_review" }
+              : { kind: "open_merged_review" },
           dataFreshness: "fresh",
         },
       ],
@@ -741,7 +738,7 @@ function repoInboxResponse(
           mergeability: "unknown",
           labels: [],
           categories: ["updated_since_review"],
-          recommendedAction: { kind: "run_review", label: "Run review" },
+          recommendedAction: { kind: "run_review" },
           dataFreshness: "fresh",
         },
       ],

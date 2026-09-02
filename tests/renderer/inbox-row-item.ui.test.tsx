@@ -29,7 +29,7 @@ const row: InboxRow = {
   mergeability: "unknown",
   labels: [],
   categories: [],
-  recommendedAction: { kind: "run_review", label: "Run review" },
+  recommendedAction: { kind: "run_review" },
   dataFreshness: "fresh",
 };
 

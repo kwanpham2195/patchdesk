@@ -713,13 +713,5 @@ function latestReviewFor(
       };
 }
 function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
-  const { secondaryAction: _secondaryAction, ...cachedRow } = row;
-  return {
-    ...cachedRow,
-    dataFreshness: "cached",
-    recommendedAction:
-      row.recommendedAction.kind === "open_merge_readiness"
-        ? { kind: "run_review", label: "Run review" }
-        : row.recommendedAction,
-  };
+  return { ...row, dataFreshness: "cached" };
 }

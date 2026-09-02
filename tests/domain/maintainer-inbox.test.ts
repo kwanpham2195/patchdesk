@@ -73,13 +73,12 @@ describe("maintainer inbox", () => {
     });
     expect(row.recommendedAction).toEqual({
       kind: "open_saved_review",
-      label: "Open Review",
       reviewId,
     });
     expect(row.categories).toContain("updated_since_review");
   });
 
-  it("keeps Open Review primary while also exposing fresh merge readiness for a matching Review", () => {
+  it("keeps Open Review as the one action for a ready-to-merge matching Review", () => {
     const row = projectMaintainerInboxRow({
       ...input,
       summary: { ...input.summary, mergeability: "mergeable" },
@@ -92,42 +91,11 @@ describe("maintainer inbox", () => {
       },
     });
 
+    expect(row.categories).toContain("ready_to_merge");
     expect(row.recommendedAction).toEqual({
       kind: "open_saved_review",
-      label: "Open Review",
       reviewId,
     });
-    expect(row.secondaryAction).toEqual({
-      kind: "open_merge_readiness",
-      label: "Open merge readiness",
-      reviewId,
-    });
-  });
-
-  it("does not expose merge readiness beside a changed or non-ready Review", () => {
-    const changed = projectMaintainerInboxRow({
-      ...input,
-      summary: { ...input.summary, mergeability: "mergeable" },
-      checks: { overall: "passing", checks: [] },
-      latestReview: {
-        reviewId,
-        reviewedHeadSha: previousSha.value,
-        updatedAt: reviewTimestamp,
-        matchesCurrentHead: false,
-      },
-    });
-    const nonReady = projectMaintainerInboxRow({
-      ...input,
-      latestReview: {
-        reviewId,
-        reviewedHeadSha: sha.value,
-        updatedAt: reviewTimestamp,
-        matchesCurrentHead: true,
-      },
-    });
-
-    expect(changed.secondaryAction).toBeUndefined();
-    expect(nonReady.secondaryAction).toBeUndefined();
   });
 
   it("projects a merged pull request outside active-work queues", () => {
@@ -139,10 +107,7 @@ describe("maintainer inbox", () => {
     expect(row).toMatchObject({
       remoteState: "merged",
       categories: [],
-      recommendedAction: {
-        kind: "open_merged_review",
-        label: "View merged pull request",
-      },
+      recommendedAction: { kind: "open_merged_review" },
     });
     expect(row.latestReview).toBeUndefined();
   });
@@ -174,7 +139,6 @@ describe("maintainer inbox", () => {
         dataFreshness: "cached",
       });
       expect(row.categories).not.toContain("ready_to_merge");
-      expect(row.secondaryAction).toBeUndefined();
     });
 
     it("is absent when the saved session no longer matches the current head", () => {
