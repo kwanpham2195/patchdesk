@@ -4,8 +4,8 @@ AGENTS.md
 
 The main session reviews and delegates. It decides what to do, hands the work
 to subagents, reviews what comes back, and reports. It does not carry out the
-work itself. Generators run on `opus`; evaluators run on `opus`, because
-breaking a claim is harder than making one.
+work itself. Which model each role runs on is in AGENTS.md, under Development
+and Verification.
 
 Delegate:
 
@@ -21,21 +21,14 @@ Delegate:
   Restart the app after a main-process change; the renderer hot-reloads but
   the main process keeps the old code.
 
-Do not delegate:
-
-- Live app interaction the maintainer is watching.
-- A single-file edit.
-- Anything whose brief takes longer to write than the work itself.
-
-Three concurrent subagents is the ceiling. One reviewer at a time, unless the
-surfaces under review are disjoint.
-
 Give each subagent the file paths, constraints, and verification commands it
-needs. Treat its report as a claim, not a result: review the diff, and send it
-back or delegate an independent check when the claim is load-bearing. Nothing
-is reported as done on a subagent's word alone.
+needs, plus the Non-negotiables from the top of AGENTS.md, pasted verbatim.
+Treat its report as a claim, not a result: review the diff, and send it back
+or delegate an independent check when the claim is load-bearing. Nothing is
+reported as done on a subagent's word alone.
 
-How the delegation itself is run — slice sizing, spiking unknowns, working-tree
-and fan-out rules — lives in the `delegated-execution` skill rather than being
-restated here. The points above are the patchdesk-specific parts: what to hand
-off, and that a subagent's report is a claim until the diff is reviewed.
+How the delegation itself is run — slice sizing, what not to delegate,
+spiking unknowns, working-tree, fan-out, and stopping rules — lives in the
+`delegated-execution` skill rather than being restated here. The points above
+are the patchdesk-specific parts: what to hand off, and that a subagent's
+report is a claim until the diff is reviewed.
