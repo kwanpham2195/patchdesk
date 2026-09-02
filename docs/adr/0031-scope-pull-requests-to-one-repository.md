@@ -26,6 +26,14 @@
 > for those fields. The review-state half of the earlier validation proof now
 > exists; the author half remains pending.
 
+> **Progress update (2026-09-02, later):** Author and base branch are now
+> implemented in `1837c01` on `main` as free text rather than enumerated
+> values. Each is one trimmed value, free of quotes, whitespace, and control
+> characters, bounded at 39 characters for author and 100 for base branch,
+> and sent to GitHub as an `author:` or `base:` qualifier. Four filter fields
+> remain: assignee, milestone, project, and date. GitHub's 256-character
+> search cap is still not enforced, on a field or on the composed query.
+
 > **Local review listing removed.** The **Local review listing** described
 > below was built (commit `151162c`) and then removed at the maintainer's
 > request. The Repository listing is now the screen's only source. The
