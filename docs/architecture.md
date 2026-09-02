@@ -207,7 +207,7 @@ The shipped child is an exact locked package, staged at package time and validat
 
 ### `src/skills/`
 
-`patchdesk-code-review` is the only skill mounted into model agents.
+`patchdesk-code-review` is the only skill a model sees: its instructions are concatenated into the Analysis system prompt, and no agent can activate any other.
 It is analysis guidance, never permission: no shell commands, no GitHub writes, no credential exposure, and only evidence-backed findings.
 
 ### `docs/adr/`
