@@ -45,7 +45,6 @@ const confirmedReceipt = {
 describe("useReviewMergeAction", () => {
   it("commits terminal confirmation before a rejected projection refresh and never retries the mutation", async () => {
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [MERGE]: () => success(confirmedReceipt),
       [LOAD]: () => failure({ error: "unavailable" }, 503),
     });
@@ -87,7 +86,6 @@ describe("useReviewMergeAction", () => {
       releaseLoad = resolve;
     });
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [MERGE]: () => success(confirmedReceipt),
       [LOAD]: () => load,
     });
@@ -131,7 +129,6 @@ describe("useReviewMergeAction", () => {
   it("rejects open projections after confirmation without replacing terminal state or retrying merge", async () => {
     const openProjection = projection();
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [MERGE]: () => success(confirmedReceipt),
       [LOAD]: () => success(openProjection as never),
       "/v1/reviews/merge/recover": () => success(openProjection as never),
@@ -169,7 +166,6 @@ describe("useReviewMergeAction", () => {
       release = resolve;
     });
     const double = installDesktopDouble({
-      "/v1/logs": () => success(null),
       [MERGE]: () => deferred,
       [LOAD]: () =>
         success(
@@ -207,7 +203,6 @@ describe("useReviewMergeAction", () => {
       { ...confirmedReceipt, rawResponse: "unsafe" },
     ]) {
       const double = installDesktopDouble({
-        "/v1/logs": () => success(null),
         [MERGE]: () => success(receipt),
       });
       restore = double.restore;

@@ -828,7 +828,6 @@ function installDesktopApi(
   desktop = installDesktopDouble(
     {
       "/v1/environment": () => success(options.environment ?? {}),
-      "/v1/logs": () => success(null),
       "/v1/profiles/select": () => success({}),
       "/v1/watchlist": () =>
         options.rejectWatchlist === true

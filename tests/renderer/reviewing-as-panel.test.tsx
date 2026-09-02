@@ -364,6 +364,5 @@ function installDesktopApi(
     // successful outcome rather than an unrelated missing-root scan failure.
     "/v1/watchlist/suggestions": () =>
       success([{ root: "/workspace/cfw", state: "ready", repositories: [] }]),
-    "/v1/logs": () => success(null),
   });
 }

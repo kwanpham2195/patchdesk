@@ -114,7 +114,6 @@ function asJsonBody(value: BridgeBody): RawJsonValue {
  * for an id no test scripted is a bug, not a route to answer quietly.
  */
 const INSIGHT_RUN_PATHS = [
-  "/v1/logs",
   "/v1/reviews/insights/analysis/run",
   "/v1/reviews/insights/walkthrough/run",
   "/v1/reviews/insights/brief/run",
@@ -135,7 +134,7 @@ function installBridge(
       ok: true,
       status: 200,
       correlationId: input.path,
-      body: input.path === "/v1/logs" ? null : asJsonBody(await handler(input)),
+      body: asJsonBody(await handler(input)),
     };
   };
   desktop = installDesktopDouble(

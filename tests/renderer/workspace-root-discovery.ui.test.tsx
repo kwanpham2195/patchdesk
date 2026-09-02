@@ -229,7 +229,6 @@ function installDesktopApi(
 ): DesktopDouble {
   desktop = installDesktopDouble({
     "/v1/environment": () => success(options.environment ?? {}),
-    "/v1/logs": () => success(null),
     "/v1/watchlist": () => success({}),
     "/v1/watchlist/suggestions": () =>
       options.suggestions === "reject"

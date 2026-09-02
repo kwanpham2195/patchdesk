@@ -60,7 +60,6 @@ describe("useReviewWriteRecovery", () => {
       pullRequest: { ...projection().pullRequest, title: "Recovered" },
     } as never);
     desktop = installDesktopDouble({
-      "/v1/logs": () => success(null),
       // SAFETY: the validated workbench fixture is JSON-only renderer data.
       "/v1/reviews/write/recover": () => success(next as RawJsonValue),
     });
@@ -91,7 +90,6 @@ describe("useReviewWriteRecovery", () => {
   it("keeps the lock with bounded errors for malformed and failed checks", async () => {
     let malformed = true;
     desktop = installDesktopDouble({
-      "/v1/logs": () => success(null),
       "/v1/reviews/write/recover": () =>
         malformed
           ? success({ state: "review" })
@@ -121,7 +119,6 @@ describe("useReviewWriteRecovery", () => {
       release = resolve;
     });
     desktop = installDesktopDouble({
-      "/v1/logs": () => success(null),
       "/v1/reviews/write/recover": () => response,
     });
     const rendered = renderRecovery(

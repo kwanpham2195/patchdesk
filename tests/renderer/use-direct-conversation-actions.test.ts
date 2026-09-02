@@ -143,7 +143,6 @@ function renderActions(
   answer: () => DesktopResponse | Promise<DesktopResponse>,
 ) {
   desktop = installDesktopDouble({
-    "/v1/logs": () => success(null),
     [COMMAND]: answer,
     [PUBLISHED_EDIT]: answer,
     [PUBLISHED_DELETE]: answer,

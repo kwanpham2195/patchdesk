@@ -34,18 +34,15 @@ function deferred(): Deferred {
  * Installs a bridge whose responses this test drives one at a time. Returns
  * the spy so a test can assert how many requests actually went out.
  *
- * `/v1/logs` is answered without consuming a scripted response. The renderer
- * logs every `requestJson` call and `lib/logger.ts` flushes that queue
- * through this same bridge on a 300 ms timer, so a fixture that treated
- * every call alike would hand a probe's scripted response to a log flush,
- * and count log traffic as probe traffic.
+ * Only `PROBE_PATH` is routed. The renderer's log flush through this same
+ * bridge is answered by the double itself, so it never consumes a scripted
+ * response, and `probeCalls` counts only the probe's own requests.
  */
 function installBridge(
   respond: (call: number) => Promise<DesktopResponse> | DesktopResponse,
 ): DesktopDouble {
   let call = 0;
   desktop = installDesktopDouble({
-    "/v1/logs": () => success(null),
     [PROBE_PATH]: () => {
       call += 1;
       return respond(call);
