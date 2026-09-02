@@ -236,6 +236,40 @@ describe("AnalysisReader", () => {
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
+  // The banner and merge readiness share one handled rule: a receipt handles
+  // a finding the same way a dismissal does.
+  it("drops a finding from the attention count once it has a review receipt", () => {
+    const { rerender } = render(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{
+          "finding-1": "actionable",
+          "finding-2": "actionable",
+        }}
+      />,
+    );
+    expect(screen.getByText("2 items need attention")).toBeTruthy();
+
+    rerender(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{
+          "finding-1": "pending_review",
+          "finding-2": "actionable",
+        }}
+      />,
+    );
+    expect(screen.getByText("1 item needs attention")).toBeTruthy();
+
+    rerender(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{ "finding-1": "published", "finding-2": "locked" }}
+      />,
+    );
+    expect(screen.getByText("1 item needs attention")).toBeTruthy();
+  });
+
   it("admits Add synchronously once and leaves another Finding usable", async () => {
     const first = deferred();
     const second = deferred();

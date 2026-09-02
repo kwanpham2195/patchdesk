@@ -433,11 +433,15 @@ export class ReviewWorkbenchProjectionService {
             // The merge gate reads the same Findings through the same two
             // helpers, so the badge never offers a merge the gate refuses.
             ...analysisMergeInput(
-              mergeGateFindings(storedInsights.value.analysis, {
-                sessionId: session.id,
-                headSha: session.key.headSha,
-                patchHash,
-              }),
+              mergeGateFindings(
+                storedInsights.value.analysis,
+                {
+                  sessionId: session.id,
+                  headSha: session.key.headSha,
+                  patchHash,
+                },
+                session.findingReviewReceipts,
+              ),
               profile.analysisMergePolicy,
             ),
           })

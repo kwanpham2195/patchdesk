@@ -47,10 +47,10 @@ export async function mergePullRequest(input: {
   readonly profile: WorkspaceProfileConfig;
   readonly session: ReviewSession;
   /**
-   * The current Analysis Findings, dismissals already applied. Absent means
-   * "no current Analysis", not "no Findings were checked" -- the caller reads
-   * them with `mergeGateFindings`, which returns nothing for an Analysis that
-   * does not belong to the revision being merged.
+   * The current Analysis Findings, dismissals and review receipts already
+   * applied. Absent means "no current Analysis", not "no Findings were
+   * checked" -- the caller reads them with `mergeGateFindings`, which returns
+   * nothing for an Analysis that does not belong to the revision being merged.
    */
   readonly result?: {
     readonly findings: ReadonlyArray<MergeGateFinding>;

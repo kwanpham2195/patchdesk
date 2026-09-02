@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Linked the Review workbench together: each file a current Analysis cites shows a finding count in the Browse tree and its header, a finding's file and line opens the Diff at those lines, the diff card opens the finding in Analysis, merge readiness shows one findings card with a **Review findings** action instead of two warnings, and a finding you dismissed or added to the review counts as handled for merge readiness and the Analysis banner alike.
 - Added **Author** and **Base branch** to More filters on Pull requests. Both are text fields: type a GitHub login (or `@me`) or a branch name and apply it with Enter or by leaving the field. Each active value shows as a chip you can clear on its own, **Clear all filters** now clears all four More filters fields at once, and both choices persist with the profile.
 - Changed a Pull requests row so a click only selects it and shows it in **Review details**; open it from the row title, a double-click, Enter, or the single **Open** button. The inspector now leads with the review status — Not reviewed, Current, Updates available, or Merged — and shows a Scope legend where a saved review supplies one. The separate merge-readiness action is gone; merge readiness is still in PR overview inside the review. The pull request icon is now coloured by state: open, draft, or merged.
 - Pull requests loads fresh on first open after this release; rows cached by 0.0.1 are read again from GitHub once.

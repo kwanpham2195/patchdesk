@@ -242,11 +242,13 @@ function request() {
 type AnalysisFixture = {
   readonly severity: "P0" | "P1" | "P2" | "P3";
   readonly dismissed?: boolean;
+  readonly addedToReview?: boolean;
   readonly patchHash?: string;
   readonly readFailure?: StorageFailure["reason"];
 };
 
 const analysisFindingId = "finding-1";
+const analysisRunId = "insight-analysis-1-aaaaaaaaaaaa-x";
 
 function analysisInsights(analysis: AnalysisFixture | undefined) {
   const loadTyped = async () => {
@@ -268,7 +270,7 @@ function analysisInsights(analysis: AnalysisFixture | undefined) {
       type: "analysis",
       nextToken: 1,
       retained: {
-        runId: "insight-analysis-1-aaaaaaaaaaaa-x",
+        runId: analysisRunId,
         revision: {
           sessionId,
           headSha: values.headSha,
@@ -331,13 +333,32 @@ function fixture(
     readonly analysisMergePolicy?: AnalysisMergePolicy;
   } = {},
 ) {
-  const session = createReviewSession({
+  const created = createReviewSession({
     key: values.session.key,
     pr: values.session.pr,
     patchPath: values.session.patchPath,
     worktree: values.session.worktree,
     createdAt: values.session.createdAt,
   });
+  const session: ReviewSession =
+    options.analysis?.addedToReview === true
+      ? {
+          ...created,
+          findingReviewReceipts: [
+            {
+              analysisRunId: analysisRunId as never,
+              findingId: analysisFindingId as never,
+              sessionId,
+              headSha: values.headSha,
+              patchHash,
+              // SAFETY: plain strings already satisfy the branded thread and node id runtime shapes.
+              threadId: "thread-1" as never,
+              pendingReviewNodeId: "node" as never,
+              state: "pending",
+            },
+          ],
+        }
+      : created;
   const review: Review = {
     ...values.review,
     currentSessionId: session.id,
@@ -545,6 +566,20 @@ describe("MergeWriteController", () => {
   it("allows the merge when the only high-severity Finding was dismissed", async () => {
     const current = fixture({
       analysis: { severity: "P0", dismissed: true },
+      analysisMergePolicy: "block",
+    });
+    await expect(current.controller.merge(request())).resolves.toMatchObject({
+      _tag: "ok",
+      value: { review: { status: { _tag: "Terminal", state: "merged" } } },
+    });
+    expect(current.gateway.mergeRequests).toHaveLength(1);
+  });
+
+  // The Analysis banner reads a Finding with a review receipt as handled, so
+  // the gate must too, or the badge offers a merge the gate then refuses.
+  it("allows the merge when the only high-severity Finding was added to the review", async () => {
+    const current = fixture({
+      analysis: { severity: "P0", addedToReview: true },
       analysisMergePolicy: "block",
     });
     await expect(current.controller.merge(request())).resolves.toMatchObject({

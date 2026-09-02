@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
+import { isAnalysisFindingHandled } from "../../../domain/analysis-merge-findings";
 import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -95,9 +96,19 @@ export function AnalysisReader({
   const [verifiedSteps, setVerifiedSteps] = useState<ReadonlySet<number>>(
     new Set(),
   );
-  const openFindings = result.findings.filter(
-    (finding) => (finding.disposition ?? "open") === "open",
-  );
+  // Same handled rule as merge readiness, so the banner and the readiness
+  // card never disagree on how many findings are still open.
+  const unhandledFindings = result.findings.filter((finding) => {
+    const status = findingStatuses?.[finding.id];
+    return !isAnalysisFindingHandled({
+      disposition: finding.disposition === "dismissed" ? "dismissed" : "open",
+      // The contract's "added" disposition names the same state as a receipt.
+      addedToReview:
+        finding.disposition === "added" ||
+        status === "pending_review" ||
+        status === "published",
+    });
+  });
   const hasNoGeneratedFindings = result.findings.length === 0;
   const supportingDetailGroups = supportingDetailsFor(result);
   const supportingDetailCount = supportingDetailGroups.reduce(
@@ -165,9 +176,9 @@ export function AnalysisReader({
               {recommendation.label}
             </Badge>
             <Badge variant="outline">
-              {openFindings.length === 0
+              {unhandledFindings.length === 0
                 ? "No findings need attention"
-                : `${openFindings.length} ${openFindings.length === 1 ? "item needs" : "items need"} attention`}
+                : `${unhandledFindings.length} ${unhandledFindings.length === 1 ? "item needs" : "items need"} attention`}
             </Badge>
             <Badge
               variant={checkStatus === "failing" ? "destructive" : "outline"}
@@ -195,14 +206,14 @@ export function AnalysisReader({
           <CardTitle>
             {hasNoGeneratedFindings
               ? "No findings"
-              : openFindings.length === 0
+              : unhandledFindings.length === 0
                 ? "No findings need attention"
                 : "Needs attention"}
           </CardTitle>
           <CardDescription>
             {hasNoGeneratedFindings
               ? "Analysis generated no findings for this Review."
-              : openFindings.length === 0
+              : unhandledFindings.length === 0
                 ? "All findings are already handled."
                 : "Resolve or add each item before you finish the review."}
           </CardDescription>

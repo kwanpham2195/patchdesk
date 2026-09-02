@@ -130,6 +130,32 @@ describe("merge service", () => {
     expect(merge).toHaveBeenCalledTimes(1);
   });
 
+  // A Finding already on the review is handled; the gate must not ask the
+  // maintainer to acknowledge it again.
+  it("does not ask to acknowledge a high-severity Finding already added to the review", async () => {
+    const merge = vi.fn(async () => ({ _tag: "ok" as const, value: {} }));
+    await expect(
+      mergePullRequest({
+        profile,
+        session,
+        // SAFETY: a plain string already satisfies the branded FindingId's runtime shape.
+        result: {
+          findings: [
+            { id: "finding-1" as never, severity: "P1", addedToReview: true },
+          ],
+        },
+        gateway: gateway("unknown", merge),
+        method: "squash",
+        supportedMethods: ["squash"],
+        acknowledgedWarningCodes: [],
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { readiness: { _tag: "Ready", blockers: [], warnings: [] } },
+    });
+    expect(merge).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses the merge when GitHub requires a review", async () => {
     const merge = vi.fn(async () => ({ _tag: "ok" as const, value: {} }));
     await expect(

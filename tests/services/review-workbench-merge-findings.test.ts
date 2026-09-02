@@ -13,6 +13,7 @@ import {
   profileId,
   review,
   reviewId,
+  session,
   sessionId,
   snapshot,
 } from "./review-workbench-projection-fixture";
@@ -50,10 +51,34 @@ describe("ReviewWorkbenchProjectionService merge badge Analysis findings", () =>
   async function badge(options: {
     readonly severity: "P0" | "P1" | "P2" | "P3";
     readonly dismissed?: boolean;
+    readonly addedToReview?: boolean;
     readonly patchHash?: string;
     readonly policy?: AnalysisMergePolicy;
   }) {
     const fx = fixture(review(), undefined, patchPath);
+    if (options.addedToReview === true)
+      fx.sessions.load.mockImplementation(
+        // SAFETY: cast `as never` for the same reason as the profile mock
+        // above; the session is the fixture's plus the one receipt this rule
+        // reads.
+        (async () =>
+          ok(
+            Object.assign({}, session(undefined, patchPath), {
+              findingReviewReceipts: [
+                {
+                  analysisRunId,
+                  findingId,
+                  sessionId,
+                  headSha,
+                  patchHash,
+                  threadId: "thread-1",
+                  pendingReviewNodeId: "node",
+                  state: "pending",
+                },
+              ],
+            }),
+          )) as never,
+      );
     if (options.policy !== undefined)
       fx.profiles.load.mockImplementation(
         // SAFETY: cast `as never` because the fixture's default
@@ -153,6 +178,14 @@ describe("ReviewWorkbenchProjectionService merge badge Analysis findings", () =>
   it("reads Ready when the only high-severity Finding was dismissed", async () => {
     await expect(
       badge({ severity: "P0", dismissed: true, policy: "block" }),
+    ).resolves.toEqual({ _tag: "Ready", blockers: [], warnings: [] });
+  });
+
+  // Adding a Finding to the review handles it the same as dismissing it: the
+  // review already carries the thread, so readiness has nothing left to ask.
+  it("reads Ready when the only high-severity Finding was added to the review", async () => {
+    await expect(
+      badge({ severity: "P0", addedToReview: true, policy: "block" }),
     ).resolves.toEqual({ _tag: "Ready", blockers: [], warnings: [] });
   });
 
