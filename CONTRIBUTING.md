@@ -72,8 +72,6 @@ journeys and for what only a real browser shows, never for a behaviour an RTL
 or hook test already proves. There is no assistive-technology lane (ADR 0034):
 no axe scans, no screen-reader narration checks, no forced-colors or
 reduced-motion checks. Use the shared doubles rather than hand-rolling one.
-`docs/test-cases.md` then names the canonical test for each user-facing flow;
-keep it true in the same commit that moves or deletes a test.
 
 ## Making changes
 

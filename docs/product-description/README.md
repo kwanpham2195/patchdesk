@@ -71,7 +71,7 @@ For each document:
 
 1. Read the renderer flow, hook, or component that owns the interaction and the domain values it displays.
 2. Read the service and route that perform the action where the task crosses the local API.
-3. Read matching domain, service, renderer, and browser tests. The canonical user-facing cases are indexed in [`docs/test-cases.md`](../test-cases.md).
+3. Read matching domain, service, renderer, and browser tests.
 4. Draft the document from that evidence.
 5. Try ambiguous behavior in the running desktop app over CDP port 9233. Code and tests settle what happens; the running app settles what appears, what receives focus, and how intermediate states feel.
 6. Record the source commit.
@@ -213,5 +213,4 @@ The baseline source of truth is Patchdesk at `/Users/kwanpham/Work/patchdesk`, p
 - [`src/services/`](../../src/services/): preparation, refresh, observation, Insights, GitHub writes, recovery, storage management, and listing orchestration.
 - [`src/main/routes/`](../../src/main/routes/): local API actions requested by the renderer.
 - [`tests/renderer/`](../../tests/renderer/), [`tests/services/`](../../tests/services/), and [`tests/browser/`](../../tests/browser/): executable behavior evidence at the UI, orchestration, and built-app boundaries.
-- [`docs/test-cases.md`](../test-cases.md): canonical automated and manual cases for user-facing flows.
 - [`CONTEXT.md`](../../CONTEXT.md): canonical product vocabulary and words to avoid.

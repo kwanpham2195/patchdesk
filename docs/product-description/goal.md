@@ -12,7 +12,7 @@ For each document, read in this order:
 
 1. The renderer flow, hook, and component that own the feature in `src/renderer/src/flows/`, `src/renderer/src/hooks/`, and `src/renderer/src/components/`.
 2. The domain types and transitions in `src/domain/`, then the service and local route in `src/services/` and `src/main/routes/` where the action crosses the local API.
-3. Matching tests in `tests/domain/`, `tests/services/`, `tests/renderer/`, and `tests/browser/`. Use `docs/test-cases.md` to find the canonical case and avoid duplicating evidence.
+3. Matching tests in `tests/domain/`, `tests/services/`, `tests/renderer/`, and `tests/browser/`.
 4. Product language in `CONTEXT.md`, visible copy in the renderer, and the relevant public overview in `README.md`.
 5. Defaults and limits in domain constants, renderer preference modules, service options, and route parsers.
 
