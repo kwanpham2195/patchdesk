@@ -245,6 +245,7 @@ describe("maintainer inbox cache store", () => {
       refreshedAt: updatedAt,
       rows: [
         {
+          remoteState: "open",
           identity: {
             host: "github.com",
             owner: "centraldigital",
@@ -286,6 +287,61 @@ describe("maintainer inbox cache store", () => {
     });
     if (parsed._tag === "ok")
       expect(parsed.value.rows[0]).not.toHaveProperty("labelCount");
+  });
+
+  // Every version-2 write carries `remoteState`, so a row missing it is a
+  // file this build never wrote: reject the cache rather than guess a state
+  // the row itself does not claim.
+  it("rejects a version 2 row that omits remoteState", () => {
+    const parsed = parseMaintainerInboxCache({
+      schemaVersion: 2,
+      refreshedAt: updatedAt,
+      rows: [
+        {
+          identity: {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "patchdesk",
+            number: 42,
+          },
+          title: "Guard duplicate input",
+          author: "author",
+          baseBranch: "sit",
+          headBranch: "feature/duplicate-guard",
+          currentHeadSha: sha,
+          isDraft: false,
+          updatedAt,
+          changeStats: {},
+          checks: { overall: "passing", checks: [] },
+          reviewState: "none",
+          mergeability: "unknown",
+          labels: [],
+          categories: [],
+          recommendedAction: {
+            kind: "run_review",
+          },
+          dataFreshness: "fresh",
+        },
+      ],
+      repository: {
+        identity: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+        state: "ready",
+        complete: true,
+      },
+    });
+
+    expect(parsed).toEqual({
+      _tag: "err",
+      error: {
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "invalid_stored_value",
+      },
+    });
   });
 
   // Schema version 2 is a deliberate reset: the inbox actions lost their

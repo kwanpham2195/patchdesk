@@ -17,6 +17,7 @@ import {
 import {
   INBOX_DATA_FRESHNESS,
   INBOX_REPOSITORY_OUTCOMES,
+  INBOX_STATE_FILTER_VALUES,
   type InboxRepositoryOutcome,
   type InboxCategory,
   type InboxRecommendedAction,
@@ -57,9 +58,7 @@ const actionSchema = v.variant("kind", [
 ]);
 
 const rowSchema = v.strictObject({
-  // Cache version 1 predates remoteState. Cache is open-only, so its omitted
-  // state is reconstructed as open while merged pages remain uncached.
-  remoteState: v.optional(v.literal("open")),
+  remoteState: v.picklist(INBOX_STATE_FILTER_VALUES),
   identity: v.strictObject({
     host: v.string(),
     owner: v.string(),
@@ -240,7 +239,7 @@ function parseRow(
   const labelCountField =
     input.labelCount === undefined ? {} : { labelCount: input.labelCount };
   return ok({
-    remoteState: input.remoteState ?? "open",
+    remoteState: input.remoteState,
     identity: identity.value,
     title: input.title,
     author: input.author,
