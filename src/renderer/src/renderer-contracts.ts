@@ -8,10 +8,7 @@ import {
 } from "./review-write-receipts";
 import { briefInsightSchema } from "./brief-contracts";
 import { insightFields, retainedInsightFields } from "./insight-contracts";
-import {
-  inboxMergeReadinessActionSchema,
-  inboxRecommendedActionSchema,
-} from "./inbox-action-contract";
+import { inboxRecommendedActionSchema } from "./inbox-action-contract";
 import { changeScopeSchema } from "../../domain/change-scope";
 import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
@@ -103,7 +100,6 @@ const inboxRowSchema = v.strictObject({
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
   recommendedAction: inboxRecommendedActionSchema,
-  secondaryAction: v.optional(inboxMergeReadinessActionSchema),
   dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
 

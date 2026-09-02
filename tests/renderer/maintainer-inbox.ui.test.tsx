@@ -39,31 +39,25 @@ const row: InboxRow = {
   categories: ["updated_since_review"],
   recommendedAction: {
     kind: "open_saved_review" as const,
-    label: "Open Review" as const,
     reviewId: "review-1",
   },
   dataFreshness: "fresh" as const,
 };
 describe("MaintainerInbox", () => {
-  it("shows both saved Review and merge-readiness actions only for a combined row", () => {
+  it("offers one Open action for a ready-to-merge row, cached or fresh", () => {
     const openReview = vi.fn();
     const openReviewId = vi.fn();
-    const combinedRow: InboxRow = {
+    const readyRow: InboxRow = {
       ...row,
       categories: ["ready_to_merge"],
       checks: { overall: "passing", checks: [] },
       mergeability: "mergeable",
-      secondaryAction: {
-        kind: "open_merge_readiness",
-        label: "Open merge readiness",
-        reviewId: "review-1",
-      },
     };
     const { rerender } = render(
       <MaintainerInbox
-        profileId="combined-actions"
+        profileId="ready-actions"
         profileLabel="P"
-        rows={[combinedRow]}
+        rows={[readyRow]}
         freshness="fresh"
         refreshStatus="Current"
         onOpenReview={openReview}
@@ -71,24 +65,17 @@ describe("MaintainerInbox", () => {
       />,
     );
 
-    const openReviewButton = screen.getByRole("button", {
-      name: "Open Review",
-    });
-    const readinessButton = screen.getByRole("button", {
-      name: "Open merge readiness",
-    });
-    fireEvent.click(openReviewButton);
-    fireEvent.click(readinessButton);
+    expect(screen.getAllByRole("button", { name: "Open" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(openReview).not.toHaveBeenCalled();
-    expect(openReviewId).toHaveBeenCalledTimes(2);
+    expect(openReviewId).toHaveBeenCalledTimes(1);
     expect(openReviewId).toHaveBeenNthCalledWith(1, "review-1");
-    expect(openReviewId).toHaveBeenNthCalledWith(2, "review-1");
 
     rerender(
       <MaintainerInbox
-        profileId="combined-actions"
+        profileId="ready-actions"
         profileLabel="P"
-        rows={[combinedRow]}
+        rows={[readyRow]}
         freshness="cached"
         refreshStatus="Cached after refresh failure"
         onOpenReview={openReview}
@@ -96,21 +83,14 @@ describe("MaintainerInbox", () => {
       />,
     );
     expect(
-      screen
-        .getByRole("button", { name: "Open Review" })
-        .hasAttribute("disabled"),
+      screen.getByRole("button", { name: "Open" }).hasAttribute("disabled"),
     ).toBe(false);
-    expect(
-      screen
-        .getByRole("button", { name: "Open merge readiness" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
 
     rerender(
       <MaintainerInbox
-        profileId="combined-actions"
+        profileId="ready-actions"
         profileLabel="P"
-        rows={[combinedRow]}
+        rows={[readyRow]}
         freshness="fresh"
         refreshStatus="Current"
         openingOperations={
@@ -137,12 +117,7 @@ describe("MaintainerInbox", () => {
         onOpenReviewId={openReviewId}
       />,
     );
-    expect(screen.getAllByRole("button", { name: "Open Review" })).toHaveLength(
-      1,
-    );
-    expect(
-      screen.queryByRole("button", { name: "Open merge readiness" }),
-    ).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Open" })).toHaveLength(1);
   });
 
   it("opens a saved Review by review id", () => {
@@ -452,10 +427,7 @@ describe("MaintainerInbox", () => {
       ...row,
       remoteState: "merged",
       categories: [],
-      recommendedAction: {
-        kind: "open_merged_review",
-        label: "View merged pull request",
-      },
+      recommendedAction: { kind: "open_merged_review" },
     };
     render(
       <MaintainerInbox

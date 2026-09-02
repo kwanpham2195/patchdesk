@@ -117,25 +117,13 @@ export type InboxPageRequest = {
 
 export type InboxCategory = "updated_since_review" | "ready_to_merge";
 
-/** A fresh-snapshot, read-only view of merge readiness; it never performs a merge mutation. */
-export type InboxMergeReadinessAction = {
-  readonly kind: "open_merge_readiness";
-  readonly label: "Open merge readiness";
-  readonly reviewId: ReviewId;
-};
-
 export type InboxRecommendedAction =
-  | { readonly kind: "run_review"; readonly label: "Run review" }
-  | {
-      readonly kind: "open_merged_review";
-      readonly label: "View merged pull request";
-    }
+  | { readonly kind: "run_review" }
+  | { readonly kind: "open_merged_review" }
   | {
       readonly kind: "open_saved_review";
-      readonly label: "Open Review";
       readonly reviewId: ReviewId;
-    }
-  | InboxMergeReadinessAction;
+    };
 
 export type InboxReviewSummary = {
   readonly reviewId: ReviewId;
@@ -182,8 +170,6 @@ export type MaintainerInboxRow = {
   readonly labelCount?: number;
   readonly categories: ReadonlyArray<InboxCategory>;
   readonly recommendedAction: InboxRecommendedAction;
-  /** An additional read-only view for matching saved Reviews that are ready to merge. */
-  readonly secondaryAction?: InboxMergeReadinessAction;
   readonly dataFreshness: InboxDataFreshness;
 };
 
@@ -214,12 +200,6 @@ export function projectMaintainerInboxRow(input: {
   const recommendedAction = recommendedActionFor({
     categories,
     ...reviewField,
-    dataFreshness: input.dataFreshness,
-  });
-  const secondaryAction = secondaryActionFor({
-    categories,
-    recommendedAction,
-    ...reviewField,
   });
   const additionsField =
     input.summary.additions === undefined
@@ -240,8 +220,6 @@ export function projectMaintainerInboxRow(input: {
     input.summary.labelCount === undefined
       ? {}
       : { labelCount: input.summary.labelCount };
-  const secondaryActionField =
-    secondaryAction === undefined ? {} : { secondaryAction };
   return {
     remoteState: "open",
     identity: input.summary.ref,
@@ -267,7 +245,6 @@ export function projectMaintainerInboxRow(input: {
     ...labelCountField,
     categories,
     recommendedAction,
-    ...secondaryActionField,
     dataFreshness: input.dataFreshness,
   };
 }
@@ -315,10 +292,7 @@ function projectMergedMaintainerInboxRow(input: {
     labels: input.summary.labels,
     ...labelCountField,
     categories: [],
-    recommendedAction: {
-      kind: "open_merged_review",
-      label: "View merged pull request",
-    },
+    recommendedAction: { kind: "open_merged_review" },
     dataFreshness: input.dataFreshness,
   };
 }
@@ -326,50 +300,13 @@ function projectMergedMaintainerInboxRow(input: {
 function recommendedActionFor(input: {
   readonly categories: ReadonlyArray<InboxCategory>;
   readonly review?: InboxReviewSummary;
-  readonly dataFreshness: InboxDataFreshness;
 }): InboxRecommendedAction {
   if (
     input.review !== undefined &&
     input.categories.includes("updated_since_review")
   )
-    return {
-      kind: "open_saved_review",
-      label: "Open Review",
-      reviewId: input.review.reviewId,
-    };
+    return { kind: "open_saved_review", reviewId: input.review.reviewId };
   if (input.review?.matchesCurrentHead)
-    return {
-      kind: "open_saved_review",
-      label: "Open Review",
-      reviewId: input.review.reviewId,
-    };
-  if (
-    input.dataFreshness === "fresh" &&
-    input.categories.includes("ready_to_merge") &&
-    input.review !== undefined
-  )
-    return {
-      kind: "open_merge_readiness",
-      label: "Open merge readiness",
-      reviewId: input.review.reviewId,
-    };
-  return { kind: "run_review", label: "Run review" };
-}
-
-function secondaryActionFor(input: {
-  readonly categories: ReadonlyArray<InboxCategory>;
-  readonly recommendedAction: InboxRecommendedAction;
-  readonly review?: InboxReviewSummary;
-}): InboxMergeReadinessAction | undefined {
-  if (
-    input.recommendedAction.kind !== "open_saved_review" ||
-    !input.categories.includes("ready_to_merge") ||
-    input.review === undefined
-  )
-    return undefined;
-  return {
-    kind: "open_merge_readiness",
-    label: "Open merge readiness",
-    reviewId: input.review.reviewId,
-  };
+    return { kind: "open_saved_review", reviewId: input.review.reviewId };
+  return { kind: "run_review" };
 }

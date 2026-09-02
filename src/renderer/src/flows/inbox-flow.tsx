@@ -221,8 +221,7 @@ export function InboxFlow({
       onOpenReviewId={(savedReviewId) => {
         const row = inbox.inbox.rows.find(
           (candidate) =>
-            (candidate.recommendedAction.kind === "open_saved_review" ||
-              candidate.recommendedAction.kind === "open_merge_readiness") &&
+            candidate.recommendedAction.kind === "open_saved_review" &&
             candidate.recommendedAction.reviewId === savedReviewId,
         );
         if (row !== undefined) openInboxRow(row);

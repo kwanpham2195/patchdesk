@@ -60,7 +60,6 @@ function requestAction(
       onOpenReview(row);
       return;
     case "open_saved_review":
-    case "open_merge_readiness":
       onOpenReviewId(row.recommendedAction.reviewId);
       return;
   }

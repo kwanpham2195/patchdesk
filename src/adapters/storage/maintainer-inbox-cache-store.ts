@@ -18,7 +18,6 @@ import {
   INBOX_DATA_FRESHNESS,
   INBOX_REPOSITORY_OUTCOMES,
   type InboxRepositoryOutcome,
-  type InboxMergeReadinessAction,
   type InboxCategory,
   type InboxRecommendedAction,
   type InboxReviewSummary,
@@ -49,28 +48,13 @@ export type MaintainerInboxCache = {
 };
 
 const actionSchema = v.variant("kind", [
-  v.strictObject({
-    kind: v.literal("run_review"),
-    label: v.literal("Run review"),
-  }),
-  v.strictObject({
-    kind: v.literal("open_merged_review"),
-    label: v.literal("View merged pull request"),
-  }),
+  v.strictObject({ kind: v.literal("run_review") }),
+  v.strictObject({ kind: v.literal("open_merged_review") }),
   v.strictObject({
     kind: v.literal("open_saved_review"),
-    label: v.literal("Open Review"),
     reviewId: v.string(),
   }),
-  v.strictObject({
-    kind: v.literal("inspect_checks"),
-    label: v.literal("Inspect failing checks"),
-  }),
-  v.strictObject({
-    kind: v.literal("open_merge_readiness"),
-    label: v.literal("Open merge readiness"),
-    reviewId: v.string(),
-  }),
+  v.strictObject({ kind: v.literal("inspect_checks") }),
 ]);
 
 const rowSchema = v.strictObject({
@@ -122,13 +106,6 @@ const rowSchema = v.strictObject({
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
   recommendedAction: actionSchema,
-  secondaryAction: v.optional(
-    v.strictObject({
-      kind: v.literal("open_merge_readiness"),
-      label: v.literal("Open merge readiness"),
-      reviewId: v.string(),
-    }),
-  ),
   dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
 
@@ -232,17 +209,12 @@ function parseRow(
       ? undefined
       : parseLatestReview(input.latestReview);
   const action = parseAction(input.recommendedAction);
-  const secondaryAction =
-    input.secondaryAction === undefined
-      ? undefined
-      : parseSecondaryAction(input.secondaryAction);
   if (
     identity._tag === "err" ||
     currentHeadSha._tag === "err" ||
     updatedAt._tag === "err" ||
     latestReview?._tag === "err" ||
-    action._tag === "err" ||
-    secondaryAction?._tag === "err"
+    action._tag === "err"
   )
     return invalidCache();
   const checks = projectChecks(input.checks);
@@ -266,10 +238,6 @@ function parseRow(
   const labels = input.labels ?? [];
   const labelCountField =
     input.labelCount === undefined ? {} : { labelCount: input.labelCount };
-  const secondaryActionField =
-    secondaryAction === undefined
-      ? {}
-      : { secondaryAction: secondaryAction.value };
   return ok({
     remoteState: input.remoteState ?? "open",
     identity: identity.value,
@@ -291,7 +259,6 @@ function parseRow(
     ...labelCountField,
     categories,
     recommendedAction: action.value,
-    ...secondaryActionField,
     dataFreshness: input.dataFreshness,
   });
 }
@@ -350,15 +317,6 @@ function parseLatestReview(
     : invalidCache();
 }
 
-function parseSecondaryAction(
-  input: NonNullable<v.InferOutput<typeof rowSchema>["secondaryAction"]>,
-): Result<InboxMergeReadinessAction, StorageFailure> {
-  const reviewId = parseReviewId(input.reviewId);
-  return reviewId._tag === "ok"
-    ? ok({ ...input, reviewId: reviewId.value })
-    : invalidCache();
-}
-
 function parseAction(
   input: v.InferOutput<typeof actionSchema>,
 ): Result<InboxRecommendedAction, StorageFailure> {
@@ -373,7 +331,7 @@ function parseAction(
     // reason - that bump already invalidates old caches via invalidCache(), so this
     // migration arm stops being reachable and can be deleted in the same change.
     case "inspect_checks":
-      return ok({ kind: "run_review", label: "Run review" });
+      return ok({ kind: "run_review" });
     default: {
       const reviewId = parseReviewId(input.reviewId);
       return reviewId._tag === "ok"

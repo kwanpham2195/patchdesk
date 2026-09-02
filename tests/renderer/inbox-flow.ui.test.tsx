@@ -49,7 +49,6 @@ const savedRow = {
   categories: ["updated_since_review"],
   recommendedAction: {
     kind: "open_saved_review",
-    label: "Open Review",
     reviewId: "review-1",
   },
   dataFreshness: "fresh",
@@ -287,10 +286,7 @@ describe("InboxFlow merged review opening", () => {
       ...savedRow,
       remoteState: "merged" as const,
       categories: [],
-      recommendedAction: {
-        kind: "open_merged_review" as const,
-        label: "View merged pull request" as const,
-      },
+      recommendedAction: { kind: "open_merged_review" as const },
     };
     // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
     const mergedInbox = {
@@ -547,10 +543,7 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
   it("clears a stale 'Could not open review' error after the active profile changes or clears", async () => {
     const runReviewRow = {
       ...savedRow,
-      recommendedAction: {
-        kind: "run_review" as const,
-        label: "Run review" as const,
-      },
+      recommendedAction: { kind: "run_review" as const },
     };
     // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
     const runReviewInbox = {
@@ -655,7 +648,7 @@ describe("InboxFlow stored-review error ownership", () => {
     const runReviewRow = {
       ...savedRow,
       latestReview: undefined,
-      recommendedAction: { kind: "run_review" as const, label: "Run review" },
+      recommendedAction: { kind: "run_review" as const },
     };
     const profileB = {
       ...dashboard,
@@ -740,7 +733,7 @@ describe("InboxFlow profile-scoped Review opening", () => {
     const runReviewRow = {
       ...savedRow,
       latestReview: undefined,
-      recommendedAction: { kind: "run_review" as const, label: "Run review" },
+      recommendedAction: { kind: "run_review" as const },
     };
     // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
     const runReviewInbox = {
@@ -844,7 +837,7 @@ describe("InboxFlow Review opening ownership", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
     openRowTitle();
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
     window.dispatchEvent(new Event("patchdesk:inbox-action"));
@@ -879,7 +872,7 @@ describe("InboxFlow Review opening ownership", () => {
     const firstRow = {
       ...savedRow,
       latestReview: undefined,
-      recommendedAction: { kind: "run_review", label: "Run review" },
+      recommendedAction: { kind: "run_review" },
     };
     const secondRow = {
       ...firstRow,

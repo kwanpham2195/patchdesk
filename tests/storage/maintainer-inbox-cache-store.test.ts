@@ -16,7 +16,6 @@ import {
   parseGitSha,
   parseIsoTimestamp,
   parsePullRequestNumber,
-  parseReviewId,
   parseWorkspaceProfileId,
   type WorkspaceProfileId,
 } from "../../src/domain/ids";
@@ -57,9 +56,6 @@ async function fixtureStore(): Promise<{
 
 const updatedAt = must(parseIsoTimestamp("2026-07-18T00:00:00.000Z"));
 const sha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
-const reviewId = must(
-  parseReviewId("cfw__centraldigital__patchdesk__pr-42__review-abcdef123456"),
-);
 const repository = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("centraldigital")),
@@ -96,7 +92,6 @@ describe("maintainer inbox cache store", () => {
           categories: ["updated_since_review"] as const,
           recommendedAction: {
             kind: "run_review" as const,
-            label: "Run review" as const,
           },
           dataFreshness: "fresh" as const,
         },
@@ -114,124 +109,6 @@ describe("maintainer inbox cache store", () => {
     expect(await store.read(profileId, repository)).toEqual({
       _tag: "ok",
       value: cache,
-    });
-  });
-
-  it("round-trips a fresh ready secondary action without invalidating the cache", async () => {
-    const { store, profileId } = await fixtureStore();
-    const cache = {
-      schemaVersion: 1 as const,
-      refreshedAt: updatedAt,
-      rows: [
-        {
-          remoteState: "open" as const,
-          identity: {
-            host: must(parseGitHubHost("github.com")),
-            owner: must(parseGitHubOwner("centraldigital")),
-            repo: must(parseGitHubRepoName("patchdesk")),
-            number: must(parsePullRequestNumber(42)),
-          },
-          title: "Ready review",
-          author: "author",
-          baseBranch: "sit",
-          headBranch: "feature/ready-review",
-          currentHeadSha: sha,
-          isDraft: false,
-          updatedAt,
-          changeStats: {},
-          checks: { overall: "passing" as const, checks: [] },
-          reviewState: "approved" as const,
-          mergeability: "mergeable" as const,
-          latestReview: {
-            reviewId: reviewId,
-            reviewedHeadSha: sha,
-            updatedAt,
-            matchesCurrentHead: true,
-          },
-          labels: [],
-          categories: ["ready_to_merge"] as const,
-          recommendedAction: {
-            kind: "open_saved_review" as const,
-            label: "Open Review" as const,
-            reviewId: reviewId,
-          },
-          secondaryAction: {
-            kind: "open_merge_readiness" as const,
-            label: "Open merge readiness" as const,
-            reviewId: reviewId,
-          },
-          dataFreshness: "fresh" as const,
-        },
-      ],
-      repository: {
-        identity: repository,
-        state: "ready" as const,
-        complete: true,
-      },
-    };
-
-    expect(await store.save(profileId, repository, cache)).toEqual({
-      _tag: "ok",
-      value: undefined,
-    });
-    expect(await store.read(profileId, repository)).toEqual({
-      _tag: "ok",
-      value: cache,
-    });
-  });
-
-  it("rejects a malformed secondary action", () => {
-    const parsed = parseMaintainerInboxCache({
-      schemaVersion: 1,
-      refreshedAt: updatedAt,
-      rows: [
-        {
-          identity: {
-            host: "github.com",
-            owner: "centraldigital",
-            repo: "patchdesk",
-            number: 42,
-          },
-          title: "Ready review",
-          author: "author",
-          baseBranch: "sit",
-          headBranch: "feature/ready-review",
-          currentHeadSha: sha,
-          isDraft: false,
-          updatedAt,
-          changeStats: {},
-          checks: { overall: "passing", checks: [] },
-          reviewState: "approved",
-          mergeability: "mergeable",
-          labels: [],
-          categories: ["ready_to_merge"],
-          recommendedAction: {
-            kind: "open_saved_review",
-            label: "Open Review",
-            reviewId: "review-123",
-          },
-          secondaryAction: {
-            kind: "open_merge_readiness",
-            label: "Open Review",
-            reviewId: "review-123",
-          },
-          dataFreshness: "fresh",
-        },
-      ],
-      repository: {
-        identity: {
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "patchdesk",
-        },
-        state: "ready",
-        complete: true,
-      },
-    });
-
-    expect(parsed).toMatchObject({
-      _tag: "err",
-      error: { reason: "invalid_stored_value" },
     });
   });
 
@@ -265,7 +142,6 @@ describe("maintainer inbox cache store", () => {
           categories: [],
           recommendedAction: {
             kind: "run_review" as const,
-            label: "Run review" as const,
           },
           dataFreshness: "fresh" as const,
         },
@@ -343,7 +219,6 @@ describe("maintainer inbox cache store", () => {
           categories: ["updated_since_review"] as const,
           recommendedAction: {
             kind: "run_review" as const,
-            label: "Run review" as const,
           },
           dataFreshness: "fresh" as const,
         },
@@ -390,7 +265,6 @@ describe("maintainer inbox cache store", () => {
           categories: ["updated_since_review"],
           recommendedAction: {
             kind: "run_review",
-            label: "Run review",
           },
           dataFreshness: "fresh",
         },
@@ -440,7 +314,6 @@ describe("maintainer inbox cache store", () => {
           categories: ["updated_since_review"],
           recommendedAction: {
             kind: "inspect_checks",
-            label: "Inspect failing checks",
           },
           dataFreshness: "cached",
         },
@@ -459,9 +332,7 @@ describe("maintainer inbox cache store", () => {
     expect(parsed).toMatchObject({
       _tag: "ok",
       value: {
-        rows: [
-          { recommendedAction: { kind: "run_review", label: "Run review" } },
-        ],
+        rows: [{ recommendedAction: { kind: "run_review" } }],
       },
     });
   });
@@ -510,7 +381,6 @@ describe("maintainer inbox cache store", () => {
           categories: [],
           recommendedAction: {
             kind: "run_review" as const,
-            label: "Run review" as const,
           },
           dataFreshness: "fresh" as const,
         },
@@ -575,7 +445,6 @@ describe("maintainer inbox cache store", () => {
           categories: [],
           recommendedAction: {
             kind: "run_review" as const,
-            label: "Run review" as const,
           },
           dataFreshness: "fresh" as const,
         },
