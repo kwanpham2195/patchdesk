@@ -16,21 +16,22 @@ jobs:
   verify:
     name: Verify pull request
     runs-on: macos-14
+    timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       # No `version:` here on purpose. `package.json`'s `packageManager`
-      # field already pins pnpm, and action-setup refuses to start when both
-      # are set: "Multiple versions of pnpm specified". One source, and it is
-      # the one the repository uses locally.
+      # field already pins pnpm, and action-setup refuses to start when the
+      # two disagree: "Multiple versions of pnpm specified". One source, and
+      # it is the one the repository uses locally.
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22.19.0
           cache: pnpm
@@ -62,6 +63,9 @@ jobs:
           "${{ github.event.pull_request.base.sha }}"
           "${{ github.event.pull_request.head.sha }}"
 
+      - name: Check renderer error surfaces
+        run: pnpm check:error-ui
+
       - name: Lint the whole repository
         run: pnpm lint
 
@@ -71,8 +75,11 @@ jobs:
       - name: Run complete tests
         run: pnpm test:all
 
+      - name: Build the app
+        run: pnpm build
+
       - name: Check renderer bundle separation
-        run: pnpm test:bundle
+        run: pnpm check:bundle
 
       - name: Run browser tests
-        run: pnpm test:e2e
+        run: pnpm exec playwright test

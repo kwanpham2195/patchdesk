@@ -1,0 +1,10 @@
+version: 2
+
+updates:
+  # The workflows pin their actions by major tag, so this is what notices a
+  # new major. npm is deliberately absent: dependencies move on the
+  # maintainer's schedule, not on a bot's.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
