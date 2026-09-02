@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added **Author** and **Base branch** to More filters on Pull requests. Both are text fields: type a GitHub login (or `@me`) or a branch name and apply it with Enter or by leaving the field. Each active value shows as a chip you can clear on its own, **Clear all filters** now clears all four More filters fields at once, and both choices persist with the profile. Your saved Pull requests filter and page-size choices reset once to their defaults after this release.
 - Changed a Pull requests row so a click only selects it and shows it in **Review details**; open it from the row title, a double-click, Enter, or the single **Open** button. The inspector now leads with the review status — Not reviewed, Current, Updates available, or Merged — and shows a Scope legend where a saved review supplies one. The separate merge-readiness action is gone; merge readiness is still in PR overview inside the review. The pull request icon is now coloured by state: open, draft, or merged.
 - Pull requests loads fresh on first open after this release; rows cached by 0.0.1 are read again from GitHub once.
 - Added newer models to choose from for Insight runs, among them Grok 4.6, Gemini 3.7 Flash, GLM-5.3, and Claude Opus 5 Fast on Vercel AI Gateway.
