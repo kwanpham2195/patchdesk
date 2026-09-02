@@ -37,7 +37,7 @@ export function InboxFiltersBar({
   onReviewStateChange,
   checkStatus,
   onCheckStatusChange,
-  onClearInboxReviewAndCheckFilters,
+  onClearInboxMoreFilters,
   rowCount,
   matchCount,
   listPending,
@@ -57,7 +57,7 @@ export function InboxFiltersBar({
   readonly onCheckStatusChange: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly onClearInboxReviewAndCheckFilters: () => void;
+  readonly onClearInboxMoreFilters: () => void;
   readonly rowCount: number;
   readonly matchCount?: number;
   readonly listPending: boolean;
@@ -119,7 +119,7 @@ export function InboxFiltersBar({
         onReviewStateChange={onReviewStateChange}
         {...(checkStatus === undefined ? {} : { checkStatus })}
         onCheckStatusChange={onCheckStatusChange}
-        onClearInboxReviewAndCheckFilters={onClearInboxReviewAndCheckFilters}
+        onClearInboxMoreFilters={onClearInboxMoreFilters}
       />
       <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
         {listPending
@@ -167,7 +167,7 @@ function MoreFiltersPopover({
   onReviewStateChange,
   checkStatus,
   onCheckStatusChange,
-  onClearInboxReviewAndCheckFilters,
+  onClearInboxMoreFilters,
 }: {
   readonly reviewState?: InboxReviewStateFilter;
   readonly onReviewStateChange: (
@@ -177,7 +177,7 @@ function MoreFiltersPopover({
   readonly onCheckStatusChange: (
     value: InboxCheckStatusFilter | undefined,
   ) => void;
-  readonly onClearInboxReviewAndCheckFilters: () => void;
+  readonly onClearInboxMoreFilters: () => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const activeCount =
@@ -280,7 +280,7 @@ function MoreFiltersPopover({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={onClearInboxReviewAndCheckFilters}
+              onClick={onClearInboxMoreFilters}
             >
               Clear all filters
             </Button>

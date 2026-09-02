@@ -83,6 +83,14 @@ describe("inboxRequestPath", () => {
     expect(inboxRequestPath(request())).not.toContain("checkStatus");
   });
 
+  it("serializes the author and base branch only when set, under the route's own names", () => {
+    expect(
+      inboxRequestPath(request({ author: "@me", baseBranch: "main" })),
+    ).toBe("/v1/inbox?state=open&pageSize=25&author=%40me&base=main");
+    expect(inboxRequestPath(request())).not.toContain("author");
+    expect(inboxRequestPath(request())).not.toContain("base=");
+  });
+
   it("sends the page cursor opaquely, without decoding or re-encoding its parts", () => {
     // The cursor is minted by the main process; the renderer must round-trip
     // it as one string, so an encoded cursor survives percent-encoding once.
@@ -135,6 +143,24 @@ describe("nextInboxRequest", () => {
     expect(cleared).not.toHaveProperty("checkStatus");
   });
 
+  it("clears the author and base branch only when their override keys are present", () => {
+    const current = request({ author: "octocat", baseBranch: "main" });
+    expect(nextInboxRequest(current)).toMatchObject({
+      author: "octocat",
+      baseBranch: "main",
+    });
+    expect(nextInboxRequest(current, { state: "merged" })).toMatchObject({
+      author: "octocat",
+      baseBranch: "main",
+    });
+    const cleared = nextInboxRequest(current, {
+      author: undefined,
+      baseBranch: undefined,
+    });
+    expect(cleared).not.toHaveProperty("author");
+    expect(cleared).not.toHaveProperty("baseBranch");
+  });
+
   it("drops the page cursor for every change that is not itself a page move", () => {
     const onPageTwo = request({
       repository: repoA,
@@ -152,6 +178,8 @@ describe("nextInboxRequest", () => {
       { awaitingMyReview: true },
       { reviewState: "approved" as const },
       { checkStatus: "failure" as const },
+      { author: "octocat" },
+      { baseBranch: "main" },
     ]) {
       const next = nextInboxRequest(onPageTwo, change);
       expect(next.pageToken).toBeUndefined();
@@ -198,6 +226,8 @@ describe("sameInboxRows", () => {
       { awaitingMyReview: true },
       { reviewState: "approved" },
       { checkStatus: "failure" },
+      { author: "octocat" },
+      { baseBranch: "main" },
       { pageToken: "page-1" },
       { selectedLabels: ["bug", "chore"] },
       { selectedLabels: ["chore"] },
@@ -238,6 +268,8 @@ describe("firstInboxRequestFor", () => {
       awaitingMyReview: true,
       reviewState: "approved",
       checkStatus: "failure",
+      author: "octocat",
+      baseBranch: "main",
     });
     expect(firstInboxRequestFor([profile()])).toEqual({
       state: "merged",
@@ -246,6 +278,8 @@ describe("firstInboxRequestFor", () => {
       awaitingMyReview: true,
       reviewState: "approved",
       checkStatus: "failure",
+      author: "octocat",
+      baseBranch: "main",
       previousPageTokens: [],
     });
   });
@@ -305,6 +339,29 @@ describe("reconcileInboxRepository", () => {
     expect(next.selectedLabels).toEqual([]);
     expect(next.reviewState).toBe("approved");
     expect(next.checkStatus).toBe("failure");
+  });
+
+  it("carries the author and base branch across repository changes while clearing labels", () => {
+    saveInboxViewPreferences("profile", {
+      selectedRepository: repoB,
+      selectedLabels: ["bug"],
+      author: "octocat",
+      baseBranch: "main",
+    });
+    const base = request({
+      repository: repoB,
+      selectedLabels: ["bug"],
+      author: "octocat",
+      baseBranch: "main",
+    });
+    const next = reconcileInboxRepository(
+      base,
+      [profile({ repos: [repoA] })],
+      "profile",
+    );
+    expect(next.selectedLabels).toEqual([]);
+    expect(next.author).toBe("octocat");
+    expect(next.baseBranch).toBe("main");
   });
 
   it("returns the request untouched when the repository is still watched", () => {

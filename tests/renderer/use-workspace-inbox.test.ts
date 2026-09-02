@@ -96,6 +96,26 @@ function targetRequest(repository: RepositoryFixture): string {
   return `/v1/inbox?state=open&pageSize=25&host=${repository.host}&owner=${repository.owner}&repo=${repository.repo}`;
 }
 
+/** The four More filters, each cleared by an explicitly stored `undefined`. */
+const MORE_FILTER_KEYS = [
+  "reviewState",
+  "checkStatus",
+  "author",
+  "baseBranch",
+] as const;
+
+/**
+ * What the saved preferences must hold after one More-filters change. A key
+ * that is absent or `undefined` must not be present in the stored record at
+ * all, so a cleared filter cannot come back on the next load.
+ */
+type ExpectedStoredFilters = {
+  readonly reviewState?: string | undefined;
+  readonly checkStatus?: string | undefined;
+  readonly author?: string | undefined;
+  readonly baseBranch?: string | undefined;
+};
+
 function saveConflictingPreferences(): void {
   saveInboxViewPreferences("a", {
     state: "merged",
@@ -329,6 +349,49 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       preference: { checkStatus: undefined },
       query: "reviewState=approved",
     },
+    {
+      // The renderer only trims and drops a blank value; the length cap and
+      // the rejected characters are the route's to enforce.
+      name: "typing an author, which is trimmed",
+      apply: (workspace: WorkspaceInbox) =>
+        workspace.changeInboxAuthor("  octocat  "),
+      initialFilter: { baseBranch: "main" as const },
+      requestFilter: { author: "octocat", baseBranch: "main" },
+      preference: { author: "octocat" as const },
+      query: "author=octocat&base=main",
+    },
+    {
+      name: "emptying the author, which clears it",
+      apply: (workspace: WorkspaceInbox) => workspace.changeInboxAuthor("   "),
+      initialFilter: {
+        author: "octocat" as const,
+        baseBranch: "main" as const,
+      },
+      requestFilter: { baseBranch: "main" },
+      preference: { author: undefined },
+      query: "base=main",
+    },
+    {
+      name: "typing a base branch",
+      apply: (workspace: WorkspaceInbox) =>
+        workspace.changeInboxBaseBranch("release/2026-09"),
+      initialFilter: { author: "octocat" as const },
+      requestFilter: { author: "octocat", baseBranch: "release/2026-09" },
+      preference: { baseBranch: "release/2026-09" as const },
+      query: "author=octocat&base=release%2F2026-09",
+    },
+    {
+      name: "clearing the base branch",
+      apply: (workspace: WorkspaceInbox) =>
+        workspace.changeInboxBaseBranch(undefined),
+      initialFilter: {
+        author: "octocat" as const,
+        baseBranch: "main" as const,
+      },
+      requestFilter: { author: "octocat" },
+      preference: { baseBranch: undefined },
+      query: "author=octocat",
+    },
   ])(
     "changes the $name, resets pagination, persists it, and preserves the other filters",
     async ({ apply, initialFilter, requestFilter, preference, query }) => {
@@ -372,14 +435,13 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       });
       expect(result.current.inboxRequest).not.toHaveProperty("pageToken");
       const savedPreferences = loadInboxViewPreferences("a");
-      if (preference.reviewState !== undefined)
-        expect(savedPreferences.reviewState).toBe(preference.reviewState);
-      if (preference.reviewState === undefined)
-        expect(savedPreferences).not.toHaveProperty("reviewState");
-      if (preference.checkStatus !== undefined)
-        expect(savedPreferences.checkStatus).toBe(preference.checkStatus);
-      if (preference.checkStatus === undefined)
-        expect(savedPreferences).not.toHaveProperty("checkStatus");
+      const expectedStored: ExpectedStoredFilters = preference;
+      for (const key of MORE_FILTER_KEYS) {
+        const expected = expectedStored[key];
+        if (expected === undefined)
+          expect(savedPreferences).not.toHaveProperty(key);
+        else expect(savedPreferences).toHaveProperty(key, expected);
+      }
       await waitFor(() =>
         expect(paths.at(-1)).toBe(
           `/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&awaitingMyReview=1&${query}`,
@@ -388,11 +450,13 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     },
   );
 
-  it("clears both More filters in one request while preserving other filters", async () => {
+  it("clears all four More filters in one request while preserving other filters", async () => {
     const paths: string[] = [];
     saveInboxViewPreferences("a", {
       reviewState: "approved",
       checkStatus: "failure",
+      author: "octocat",
+      baseBranch: "main",
     });
     desktop = installDesktopDouble({
       "/v1/profiles": () => success([profileA]),
@@ -416,22 +480,27 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
         awaitingMyReview: true,
         reviewState: "approved",
         checkStatus: "failure",
+        author: "octocat",
+        baseBranch: "main",
         pageToken: "stale-page",
         previousPageTokens: ["older-page"],
       });
-      result.current.clearInboxReviewAndCheckFilters();
+      result.current.clearInboxMoreFilters();
     });
 
     expect(result.current.inboxRequest).toMatchObject({
       repository: repositoryA,
+      state: "open",
+      pageSize: 25,
       selectedLabels: ["bug"],
       awaitingMyReview: true,
       previousPageTokens: [],
     });
-    expect(result.current.inboxRequest).not.toHaveProperty("reviewState");
-    expect(result.current.inboxRequest).not.toHaveProperty("checkStatus");
-    expect(loadInboxViewPreferences("a")).not.toHaveProperty("reviewState");
-    expect(loadInboxViewPreferences("a")).not.toHaveProperty("checkStatus");
+    const savedPreferences = loadInboxViewPreferences("a");
+    for (const key of MORE_FILTER_KEYS) {
+      expect(result.current.inboxRequest).not.toHaveProperty(key);
+      expect(savedPreferences).not.toHaveProperty(key);
+    }
     await waitFor(() =>
       expect(paths.at(-1)).toBe(
         "/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&awaitingMyReview=1",
