@@ -11,7 +11,6 @@ import type {
   CodexModel,
 } from "../adapters/codex/codex-app-server-client";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
-import { canonicalModelId } from "../adapters/pi/pi-runtime-model-catalog";
 
 /** Renderer-safe provider availability. It never contains a path or account detail. */
 type InsightProviderStatus = {
@@ -46,6 +45,24 @@ export type InsightProviderCatalogFailure = {
     | "invalid_result";
 };
 
+/** One provider's status paired with the models that listing produced. */
+type ProviderSurvey = {
+  readonly status: InsightProviderStatus;
+  readonly models: ReadonlyArray<InsightProviderModel>;
+};
+
+/**
+ * The single listing seam a provider is reached through. Every provider
+ * registers exactly one, so adding a provider is a registry entry rather than
+ * another branch inside the catalog's methods.
+ */
+type ProviderModelSource = {
+  /** Status and the models this provider lists without starting a runtime. */
+  survey(): Promise<ProviderSurvey>;
+  /** Status and live models, starting the provider's runtime when it has one. */
+  activate(): Promise<Result<ProviderSurvey, InsightProviderCatalogFailure>>;
+};
+
 /** The catalog only ever lists models, so it asks for only that one method. */
 type CodexClientFactory = (
   executablePath: string,
@@ -53,60 +70,37 @@ type CodexClientFactory = (
 
 /** Coordinates passive status, explicit Codex discovery, and exact run validation. */
 export class InsightProviderCatalog {
-  private readonly codexClientFactory: CodexClientFactory;
-  private readonly executableResolver: (
-    name: string,
-  ) => Promise<string | undefined>;
+  /**
+   * Insertion order is the order the catalog publishes providers in, and the
+   * record type is what forces every provider to have a source at all.
+   */
+  private readonly sources: Readonly<
+    Record<InsightProvider, ProviderModelSource>
+  >;
 
   constructor(
-    private readonly pi: PiRuntimeModelCatalog,
+    pi: PiRuntimeModelCatalog,
     clientFactory: CodexClientFactory,
     executableResolver: (name: string) => Promise<string | undefined> = (
       name,
     ) => discoverPathOnlyExecutable(name),
   ) {
-    this.codexClientFactory = clientFactory;
-    this.executableResolver = executableResolver;
+    this.sources = {
+      pi: piModelSource(pi),
+      "codex-cli-account": codexModelSource(clientFactory, executableResolver),
+    };
   }
 
-  /** Returns provider statuses and Pi models without starting Codex. */
+  /** Returns provider statuses and the models no provider runtime is needed for. */
   async passive(): Promise<
     Result<InsightProviderCatalogSnapshot, InsightProviderCatalogFailure>
   > {
-    const [piResult, codexPath] = await Promise.all([
-      this.pi.get(),
-      this.executableResolver("codex"),
-    ]);
-    const piModels =
-      piResult._tag === "ok"
-        ? piResult.value.models.map((model) => ({
-            provider: "pi" as const,
-            id: model.id,
-            label: model.label,
-            reasoning: ["low", "medium", "high"] as const,
-            defaultReasoning: "medium" as const,
-          }))
-        : [];
+    const surveys = await Promise.all(
+      Object.values(this.sources).map((source) => source.survey()),
+    );
     return ok({
-      providers: [
-        {
-          id: "pi",
-          label: "API key",
-          available: piResult._tag === "ok",
-          guidance:
-            "Export a provider key such as ANTHROPIC_API_KEY in your shell profile, then relaunch Patchdesk.",
-        },
-        {
-          id: "codex-cli-account",
-          label: "Codex CLI account",
-          available: codexPath !== undefined,
-          guidance:
-            codexPath === undefined
-              ? "Install Codex and expose codex on the app launch PATH, then log in externally."
-              : "Use the existing local Codex CLI login.",
-        },
-      ],
-      models: piModels,
+      providers: surveys.map((survey) => survey.status),
+      models: surveys.flatMap((survey) => survey.models),
     });
   }
 
@@ -114,28 +108,11 @@ export class InsightProviderCatalog {
   async activateCodex(): Promise<
     Result<InsightProviderCatalogSnapshot, InsightProviderCatalogFailure>
   > {
-    const executablePath = await this.executableResolver("codex");
-    if (executablePath === undefined)
-      return err({
-        _tag: "InsightProviderCatalogUnavailable",
-        reason: "runtime_unavailable",
-      });
-    const result = await this.codexClientFactory(executablePath).listModels();
-    if (result._tag === "err")
-      return err({
-        _tag: "InsightProviderCatalogUnavailable",
-        reason: mapCodexFailure(result.error),
-      });
+    const activated = await this.sources["codex-cli-account"].activate();
+    if (activated._tag === "err") return activated;
     return ok({
-      providers: [
-        {
-          id: "codex-cli-account",
-          label: "Codex CLI account",
-          available: true,
-          guidance: "Use the existing local Codex CLI login.",
-        },
-      ],
-      models: result.value.map((model) => codexModel(model)),
+      providers: [activated.value.status],
+      models: activated.value.models,
     });
   }
 
@@ -143,28 +120,96 @@ export class InsightProviderCatalog {
   async validate(
     selection: InsightSelection,
   ): Promise<Result<void, "model_unavailable" | "catalog_unavailable">> {
-    if (selection.provider === "pi") {
-      if (selection.reasoning === "minimal" || selection.reasoning === "xhigh")
-        return err("model_unavailable");
-      const result = await this.pi.get();
-      if (result._tag === "err") return err("catalog_unavailable");
-      const model = canonicalModelId(selection.model);
-      return model !== undefined &&
-        result.value.models.some((candidate) => candidate.id === model)
-        ? ok(undefined)
-        : err("model_unavailable");
-    }
-    const activated = await this.activateCodex();
+    const activated = await this.sources[selection.provider].activate();
     if (activated._tag === "err") return err("catalog_unavailable");
     return activated.value.models.some(
       (model) =>
-        model.provider === selection.provider &&
         model.id === selection.model &&
         model.reasoning.includes(selection.reasoning),
     )
       ? ok(undefined)
       : err("model_unavailable");
   }
+}
+
+const PI_GUIDANCE =
+  "Export a provider key such as ANTHROPIC_API_KEY in your shell profile, then relaunch Patchdesk.";
+
+/** Pi lists from the local runtime catalog, so listing never starts anything. */
+function piModelSource(pi: PiRuntimeModelCatalog): ProviderModelSource {
+  const survey = async (): Promise<ProviderSurvey> => {
+    const result = await pi.get();
+    return {
+      status: {
+        id: "pi",
+        label: "API key",
+        available: result._tag === "ok",
+        guidance: PI_GUIDANCE,
+      },
+      models:
+        result._tag === "ok"
+          ? result.value.models.map((model) => ({
+              provider: "pi" as const,
+              id: model.id,
+              label: model.label,
+              reasoning: ["low", "medium", "high"] as const,
+              defaultReasoning: "medium" as const,
+            }))
+          : [],
+    };
+  };
+  return {
+    survey,
+    // Pi has no runtime to activate: the passive listing is already the live one.
+    async activate() {
+      const surveyed = await survey();
+      return surveyed.status.available
+        ? ok(surveyed)
+        : err({
+            _tag: "InsightProviderCatalogUnavailable",
+            reason: "runtime_unavailable",
+          });
+    },
+  };
+}
+
+/** Codex lists only from a started app server, so surveying stops at PATH discovery. */
+function codexModelSource(
+  clientFactory: CodexClientFactory,
+  executableResolver: (name: string) => Promise<string | undefined>,
+): ProviderModelSource {
+  const status = (available: boolean): InsightProviderStatus => ({
+    id: "codex-cli-account",
+    label: "Codex CLI account",
+    available,
+    guidance: available
+      ? "Use the existing local Codex CLI login."
+      : "Install Codex and expose codex on the app launch PATH, then log in externally.",
+  });
+  return {
+    async survey() {
+      const executablePath = await executableResolver("codex");
+      return { status: status(executablePath !== undefined), models: [] };
+    },
+    async activate() {
+      const executablePath = await executableResolver("codex");
+      if (executablePath === undefined)
+        return err({
+          _tag: "InsightProviderCatalogUnavailable",
+          reason: "runtime_unavailable",
+        });
+      const result = await clientFactory(executablePath).listModels();
+      if (result._tag === "err")
+        return err({
+          _tag: "InsightProviderCatalogUnavailable",
+          reason: mapCodexFailure(result.error),
+        });
+      return ok({
+        status: status(true),
+        models: result.value.map((model) => codexModel(model)),
+      });
+    },
+  };
 }
 
 function codexModel(model: CodexModel): InsightProviderModel {
