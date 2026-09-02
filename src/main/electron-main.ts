@@ -41,12 +41,15 @@ import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
-import { parseAbsolutePath, parseGitSha } from "../domain/ids";
+import { parseGitSha } from "../domain/ids";
+import type { InsightProvider } from "../domain/insight-provider";
 import { loggableMetaValue } from "../domain/log-entry";
 import { err } from "../domain/result";
-import { PiInsightChildInvoker } from "../services/pi-insight-child-invoker";
+import {
+  PiInsightChildInvoker,
+  unavailablePiInsightInvoker,
+} from "../services/pi-insight-child-invoker";
 import { resolveInsightRuntime } from "./insight-runtime";
-import { invokeWalkthroughWithResolvedTimeout } from "../services/child-invocation";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
@@ -62,7 +65,7 @@ import { CodexInsightInvoker } from "../services/codex-insight-invoker";
 import { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import {
   InsightRunCoordinator,
-  type InsightInvocationInput,
+  type InsightInvoker,
 } from "../services/insight-run-coordinator";
 
 const rendererOrigin = getRendererOrigin();
@@ -231,15 +234,6 @@ function createInsightCoordinator(
         : `Insight runtime resolved from the ${runtime.kind} build`,
     meta: runtime === undefined ? {} : { runnerPath: runtime.runnerPath },
   });
-  const insightInvoker =
-    runtime === undefined
-      ? undefined
-      : new PiInsightChildInvoker(
-          new CommandRunner(undefined, logUnclassifiedCommandFailure),
-          runtime.root,
-          process.execPath,
-          runtime.runnerPath,
-        );
   const readHead = async (
     worktreePath: string,
   ): Promise<string | undefined> => {
@@ -255,105 +249,43 @@ function createInsightCoordinator(
     const parsed = parseGitSha(output.value.trim());
     return parsed._tag === "ok" ? parsed.value : undefined;
   };
-  const codexInvoke = async (
-    input: InsightInvocationInput,
-    options: { readonly signal: AbortSignal },
-  ) => {
-    const executablePath = await discoverPathOnlyExecutable("codex");
-    if (executablePath === undefined)
-      return err({ reason: "runtime_unavailable" as const });
-    return new CodexInsightInvoker(
-      paths,
-      (path) => new CodexAppServerClient(path),
-      executablePath,
-      readHead,
-    ).invoke(input, options);
-  };
-  const analysis = {
-    async invoke(
-      input: InsightInvocationInput,
-      options: { readonly signal: AbortSignal },
-    ) {
-      if (input.provider === "codex-cli-account")
-        return codexInvoke(input, options);
-      if (input.reasoning === "minimal" || input.reasoning === "xhigh")
-        return err({ reason: "execution_failed" as const });
-      if (input.reviewInputPath === undefined)
-        return err({ reason: "execution_failed" as const });
-      const contextPath = parseAbsolutePath(input.contextPath);
-      const reviewInputPath = parseAbsolutePath(input.reviewInputPath);
-      const patchPath = parseAbsolutePath(input.patchPath);
-      const worktreePath = parseAbsolutePath(input.worktreePath);
-      if (
-        contextPath._tag === "err" ||
-        reviewInputPath._tag === "err" ||
-        patchPath._tag === "err" ||
-        worktreePath._tag === "err"
-      )
-        return err({ reason: "execution_failed" as const });
-      if (insightInvoker === undefined)
+  /**
+   * Codex is discovered per run rather than once here: the executable can
+   * appear or move between runs, and a PATH lookup is cheaper than a run.
+   */
+  const codexInvoker: InsightInvoker = {
+    async invoke(input, options) {
+      const executablePath = await discoverPathOnlyExecutable("codex");
+      if (executablePath === undefined)
         return err({ reason: "runtime_unavailable" as const });
-      return insightInvoker.invokeAnalysis(
-        {
-          profileId: input.profileId,
-          sessionId: input.sessionId,
-          contextPath: contextPath.value,
-          reviewInputPath: reviewInputPath.value,
-          patchPath: patchPath.value,
-          worktreePath: worktreePath.value,
-          model: input.model,
-          reasoning: input.reasoning,
-        },
-        options,
-      );
+      return new CodexInsightInvoker(
+        paths,
+        (path) => new CodexAppServerClient(path),
+        executablePath,
+        readHead,
+      ).invoke(input, options);
     },
   };
-  const walkthrough = {
-    async invoke(
-      input: InsightInvocationInput,
-      options: { readonly signal: AbortSignal },
-    ) {
-      if (input.provider === "codex-cli-account")
-        return codexInvoke(input, options);
-      if (input.reasoning === "minimal" || input.reasoning === "xhigh")
-        return err({ reason: "execution_failed" as const });
-      if (insightInvoker === undefined)
-        return err({ reason: "runtime_unavailable" as const });
-      return invokeWalkthroughWithResolvedTimeout(
-        insightInvoker,
-        {
-          profileId: input.profileId,
-          sessionId: input.sessionId,
-          contextPath: input.contextPath,
-          patchPath: input.patchPath,
-          model: input.model,
-          reasoning: input.reasoning,
-        },
-        options,
-      );
-    },
-  };
-  const brief = {
-    async invoke(
-      input: InsightInvocationInput,
-      options: { readonly signal: AbortSignal },
-    ) {
-      if (input.provider === "codex-cli-account")
-        return codexInvoke(input, options);
-      if (input.reasoning === "minimal" || input.reasoning === "xhigh")
-        return err({ reason: "execution_failed" as const });
-      if (insightInvoker === undefined)
-        return err({ reason: "runtime_unavailable" as const });
-      return insightInvoker.invokeBrief(
-        {
-          profileId: input.profileId,
-          sessionId: input.sessionId,
-          patchPath: input.patchPath,
-          model: input.model,
-          reasoning: input.reasoning,
-        },
-        options,
-      );
+  const providerInvokers = {
+    pi:
+      runtime === undefined
+        ? unavailablePiInsightInvoker
+        : new PiInsightChildInvoker(
+            new CommandRunner(undefined, logUnclassifiedCommandFailure),
+            runtime.root,
+            process.execPath,
+            runtime.runnerPath,
+          ),
+    "codex-cli-account": codexInvoker,
+  } satisfies Readonly<Record<InsightProvider, InsightInvoker>>;
+  /**
+   * The one place a provider is chosen. Each run carries the provider it was
+   * started with, so the same dispatch serves every Insight type instead of
+   * three hand-built objects repeating the same branch.
+   */
+  const invoker: InsightInvoker = {
+    async invoke(input, options) {
+      return providerInvokers[input.provider].invoke(input, options);
     },
   };
   return new InsightRunCoordinator(
@@ -362,7 +294,7 @@ function createInsightCoordinator(
     new InsightStore(paths),
     paths,
     modelCatalog,
-    { analysis, walkthrough, brief },
+    { analysis: invoker, walkthrough: invoker, brief: invoker },
     operations,
     undefined,
     diagnostics,
