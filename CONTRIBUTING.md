@@ -97,6 +97,12 @@ The repo-wide Oxlint count ratchet does not run here. It runs once, inside
 `pnpm lint:changed` (see "The count ratchet" and "Verifying before
 pushing"), which is the shape CI enforces.
 
+Pushes run `pnpm prepush`: `pnpm typecheck`, `pnpm typecheck:scripts`,
+`pnpm check:error-ui`, then `pnpm knip:ratchet`. This is where the
+whole-project ratchets live locally, because a push is where the whole branch
+becomes the unit rather than one commit. `git push --no-verify` skips it, and
+CI runs the same checks again on the pull request.
+
 The staged gate is check-only. It rejects partially staged source files and
 never changes the index or working tree. If it blocks, run
 `pnpm exec oxfmt --write <files>` and
@@ -166,7 +172,8 @@ The Knip ratchet (`pnpm knip:ratchet`, baseline `knip-baseline.json`) works
 the same way. It is not part of `pnpm precommit`: Knip answers a whole-project
 reachability question, so an ordinary mid-refactor commit moves its count for
 a reason that has nothing wrong with it, and a gate that rejects that commit
-gets switched off. It runs in `pnpm check` and in the pull request gates.
+gets switched off. It runs in `pnpm prepush`, in `pnpm check`, and in the pull
+request gates.
 
 The Knip baseline is zero. Every unused file, export, and type has been
 removed or made module-private, so the ratchet and a bare blocking `pnpm knip`
@@ -180,9 +187,10 @@ modules are plain JavaScript, and `tsconfig.json`'s `include` does not list
 them. `tsconfig.scripts.json` does, with `allowJs` and `checkJs`, and
 `pnpm typecheck:scripts` (baseline `scripts-typecheck-baseline.json`) holds
 the count the same way the Oxlint and Knip ratchets hold theirs: a rise fails,
-and so does a drop nobody records. It runs in `pnpm check` and in the pull
-request gates, not in `pnpm precommit` — it builds a whole `tsc` program and
-answers a repository-wide question, not one about the staged files.
+and so does a drop nobody records. It runs in `pnpm prepush`, in `pnpm check`,
+and in the pull request gates, not in `pnpm precommit` — it builds a whole
+`tsc` program and answers a repository-wide question, not one about the staged
+files.
 
 Seven hand-written `scripts/*.d.mts` files stood beside these modules until
 2026-08-29. They were not a convenience: TypeScript prefers a declaration file
@@ -246,12 +254,15 @@ invariant the surrounding code checked, not restate what the code does.
 ## Verifying before pushing
 
 `pnpm check` is the pre-handoff command: it runs `pnpm typecheck`,
-`pnpm typecheck:scripts`, `pnpm test:all`, `pnpm lint:staged` (checks what you
-will commit),
+`pnpm typecheck:scripts`, `pnpm check:error-ui`, `pnpm test:all`,
+`pnpm lint:staged` (checks what you will commit),
 `pnpm lint:changed -- origin/main` (checks the whole branch the way the pull
 request gates will), then `pnpm knip:ratchet`, in that order, and stops at the
-first failure. `pnpm lint:staged` reports "no staged source files" when
-nothing is staged. The repo-wide count ratchet runs once, inside
+first failure. `pnpm check:error-ui` scans the renderer for a literal
+`role="alert"` outside the three primitives that own one (`alert.tsx`,
+`field.tsx`, `inline-error.tsx`), so error surfaces stay in those components.
+`pnpm lint:staged` reports "no staged source files" when nothing is staged.
+The repo-wide count ratchet runs once, inside
 `pnpm lint:changed`, which is the shape CI enforces.
 
 `pnpm check` runs both shapes of the changed-source gate on purpose. The
@@ -283,11 +294,18 @@ Pull requests targeting `main` run the `Pull request gates` workflow on
   files only, plus the Oxlint count ratchet;
 - `pnpm knip:ratchet -- <base> <head>`;
 - `pnpm typecheck:scripts -- <base> <head>`;
+- `pnpm check:error-ui`;
 - `pnpm lint` over the whole repository;
 - `pnpm typecheck`;
 - `pnpm test:all`, including the root suite and separate `runtime/flue` suite;
-- `pnpm test:bundle`; and
-- `pnpm test:e2e`.
+- `pnpm build`, once, for both checks below it;
+- `pnpm check:bundle` against that build; and
+- `pnpm exec playwright test` against that same build.
+
+The gate builds once. `pnpm test:bundle` and `pnpm test:e2e` each run
+`pnpm build` first, which is what you want locally and a wasted second build
+in CI, so CI runs `pnpm build` as its own step and then the two check-only
+commands underneath it.
 
 `pnpm lint:changed` also checks formatting, which is why it stays beside the
 repo-wide `pnpm lint`: one covers the shape of the changed files, the other
@@ -326,12 +344,20 @@ can install it. Nothing is published without a person publishing it.
 
 4. Pushing the tag runs the `Release` workflow
    (`.github/workflows/release.yml`) on `macos-14`. It checks the tag against
-   `package.json`, runs `pnpm package:mac`, runs `pnpm test:package-smoke`
-   against the app it just built, and opens a **draft** GitHub release with
-   the `.dmg` and the `.zip` attached.
+   `package.json` and reads the release notes out of `CHANGELOG.md`, so a
+   mismatched version or a missing changelog entry stops it before the long
+   build. It then runs `pnpm lint`, `pnpm typecheck`, and `pnpm test:all` —
+   a tag can land on a commit that never went through the pull request gates,
+   so the release repeats the fast checks against the exact tree it is about
+   to ship — runs `pnpm package:mac`, runs `pnpm test:package-smoke` against
+   the app it just built, and opens a **draft** GitHub release with the
+   `.dmg` and the `.zip` attached.
 
-5. Open the draft release, read its generated notes against the changelog
-   entry, edit them if they need it, and publish.
+5. Open the draft release, read the notes, and publish. The notes are the
+   `## <version>` section of `CHANGELOG.md`, extracted by
+   `pnpm release:notes <version>`, so what the release page says is the entry
+   you reviewed in step 3 rather than a generated list of commit subjects.
+   Run that command locally if you want to read the notes before tagging.
 
 ### Signing and notarization
 

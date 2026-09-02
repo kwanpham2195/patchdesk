@@ -26,7 +26,8 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
 - Verification commands live in `CONTRIBUTING.md`. `pnpm check` (typecheck,
-  root test suite, staged lint) is the pre-handoff command.
+  renderer error surfaces, root test suite, staged lint) is the pre-handoff
+  command.
 - For live verification of the running app, drive it with `agent-browser` over CDP 9233. Read-only by default; ask before any write.
 - Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use a low-cost model such as `gpt-5.6-luna` on the Codex CLI account provider, not `gpt-5.6-sol`; pick it in the run dialog rather than changing the maintainer's stored preference.
 - `pnpm dev` exposes CDP only with `REMOTE_DEBUGGING_PORT=9233` in the environment.
