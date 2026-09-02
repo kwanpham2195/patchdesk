@@ -1,5 +1,10 @@
 # Run Flue 2 Insights in Patchdesk-owned one-shot children
 
+> **Status: Superseded in part by ADR 0041 for the runtime choice.** The child
+> no longer runs on Flue; it drives a Pi agent loop directly. Everything else
+> below — the one-shot child, the bounded stdin and stdout protocol, the
+> non-authoritative result, and the child's narrow environment — still holds.
+
 Patchdesk runs each Pi Analysis or Walkthrough in one dedicated child process built on Flue 2's programmatic Node API. The child starts one in-memory Flue runtime, creates one invocation-scoped agent, dispatches one finite request, reads one strict result, stops the runtime, and exits. Patchdesk does not use the Flue CLI, workflow discovery, a long-lived in-process runtime, or Flue persistence as Review authority.
 
 The parent sends one bounded, strictly parsed invocation through stdin. The child returns one bounded JSON result through stdout. Model prose is never authoritative. The agent must submit its result through one Valibot-backed `submit_patchdesk_result` tool and an unconditional `useDataWriter`; the child requires exactly one matching `AgentReply.data` value and parses it again before returning it. Duplicate submissions, missing data, malformed data, and extra fields fail closed.

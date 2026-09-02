@@ -12,8 +12,8 @@ used across the codebase.
   embeds a compatible Node release.
 - `pnpm install` installs the pre-commit hook automatically (husky).
 - Development runs on macOS; `pnpm package:mac` builds the release package.
-- The isolated Flue 2 insight runtime (`runtime/flue/`) has an exact lock
-  and is validated during package smoke.
+- The isolated insight runtime (`runtime/flue/`) has an exact lock and is
+  validated during package smoke.
 
 ## Codebase map
 
@@ -21,7 +21,9 @@ used across the codebase.
 - `src/services/` — orchestration.
 - `src/adapters/` — I/O (GitHub, storage, providers).
 - `src/main/` — Electron main process; `src/renderer/src/` — React.
-- `runtime/flue/` — the isolated Flue 2 insight runtime.
+- `runtime/flue/` — the isolated insight runtime. It builds one Pi agent per
+  Insight run; the directory keeps its `flue` name from the framework it used
+  to run on (ADR 0041).
 - `tests/` mirrors those boundaries; browser coverage in `tests/browser/`.
 - Architecture: `docs/architecture.md`; decisions: `docs/adr/`.
 
@@ -453,7 +455,7 @@ pnpm test:package-smoke
 ```
 
 `pnpm package:mac` runs `pnpm stage:flue-runtime` as part of the build,
-which builds and stages the exact isolated Flue runtime into the package.
+which builds and stages the exact isolated insight runtime into the package.
 Package smoke runs fixed faux Analysis and Walkthrough fixtures before UI
 checks, validates size ceilings for the packaged app and downloads, and reads
 the expected version out of `package.json`.

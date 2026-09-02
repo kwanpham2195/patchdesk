@@ -8,6 +8,10 @@
 > bounded and never authoritative), and ADR 0018 (one throwaway Flue child
 > per run, no new model-visible capability). Terms in bold are defined in
 > `CONTEXT.md`.
+>
+> The child no longer runs on Flue (ADR 0041). Every "Flue child" below means
+> one throwaway Pi agent child per run; `createBriefAgent` and the Analysis
+> child's four inspectors are unchanged.
 
 A maintainer opening a pull request has two Insights. **Analysis** returns
 Findings: concerns, each anchored to a diff location. **Walkthrough** returns a
