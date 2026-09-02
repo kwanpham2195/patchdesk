@@ -4,7 +4,9 @@ import { dirname, join } from "node:path";
 import { Agent } from "@earendil-works/pi-agent-core";
 import {
   createModels,
+  retryAssistantCall,
   type Api,
+  type AssistantMessageEventStream,
   type Model,
   type Models,
   type Provider,
@@ -120,12 +122,22 @@ export function parsePatchdeskChildInvocation(
 export const MAX_AGENT_TURNS = 24;
 
 /**
- * How many times Pi's own `retryProviderRequest` may retry one transient
- * provider request. It defaults to zero and the agent loop never sets it, so a
- * single 429 or 5xx would otherwise fail the whole insight on the first try;
- * three restores the count the previous runtime used.
+ * How many times the runner restarts one model turn that failed on a transient
+ * provider error. Pi's own `retryProviderRequest` reaches only some provider
+ * APIs and only while a stream is being opened, so the budget is spent here
+ * instead: every provider gets the same three attempts the previous runtime
+ * gave them, and a failure part-way through a stream is retried too.
  */
 const MAX_TRANSIENT_MODEL_RETRIES = 3;
+
+/** The first retry's wait; each further attempt doubles it. */
+const DEFAULT_RETRY_BASE_DELAY_MS = 500;
+
+/**
+ * The one detail an exhausted retry budget reports, so a run that failed after
+ * four provider attempts is not read as a run that failed on the first.
+ */
+const RETRIES_EXHAUSTED_PREFIX = `Retried ${MAX_TRANSIENT_MODEL_RETRIES} times without success`;
 
 /** Executes one fresh in-memory Pi agent and returns only its one submitted result. */
 export async function runPatchdeskChild(
@@ -137,6 +149,8 @@ export async function runPatchdeskChild(
     readonly signal?: AbortSignal;
     readonly onHandle?: (abort: () => Promise<void>) => void;
     readonly onAbortRequested?: () => void;
+    /** The transient-retry backoff base, so a test need not wait it out. */
+    readonly retryBaseDelayMs?: number;
   } = {},
 ): Promise<PatchdeskChildResult> {
   try {
@@ -147,7 +161,11 @@ export async function runPatchdeskChild(
       return { ok: false, reason: "runtime_unavailable" };
     let built: InsightAgentRun;
     try {
-      built = createInsightAgent(created.spec, options.providers);
+      built = createInsightAgent(
+        created.spec,
+        options.providers,
+        options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS,
+      );
     } catch (cause: unknown) {
       return {
         ok: false,
@@ -155,7 +173,7 @@ export async function runPatchdeskChild(
         ...definedProps({ detail: redactedFailureDetail(cause) }),
       };
     }
-    const { agent, turnCapReached } = built;
+    const { agent, turnCapReached, retriesExhausted } = built;
     let abortRequested = false;
     const abort = (): void => {
       if (abortRequested) return;
@@ -190,7 +208,13 @@ export async function runPatchdeskChild(
         return {
           ok: false,
           reason: "execution_failed",
-          ...definedProps({ detail: redactedFailureDetail(failure) }),
+          ...definedProps({
+            detail: redactedFailureDetail(
+              retriesExhausted()
+                ? `${RETRIES_EXHAUSTED_PREFIX}: ${failure}`
+                : failure,
+            ),
+          }),
         };
       return {
         ok: false,
@@ -222,22 +246,25 @@ export async function runPatchdeskChild(
  */
 const TURN_CAP_DETAIL = `The model reached the ${MAX_AGENT_TURNS}-turn limit before submitting a result`;
 
-/** One built agent and the turn budget it ran against. */
+/** One built agent and the budgets it ran against. */
 type InsightAgentRun = {
   readonly agent: Agent;
   readonly turnCapReached: () => boolean;
+  readonly retriesExhausted: () => boolean;
 };
 
 /** Builds the one Pi agent that runs an invocation, with only its own tools mounted. */
 function createInsightAgent(
   spec: InsightAgentSpec,
   providers: ReadonlyArray<Provider> | undefined,
+  retryBaseDelayMs: number,
 ): InsightAgentRun {
   const models = createModels();
   for (const provider of providers ?? builtinProviders())
     models.setProvider(provider);
   const model = resolveModel(models, spec.model);
   let turns = 0;
+  let exhausted = false;
   const agent = new Agent({
     initialState: {
       systemPrompt: spec.systemPrompt,
@@ -245,18 +272,48 @@ function createInsightAgent(
       thinkingLevel: spec.thinkingLevel,
       tools: [...spec.tools],
     },
-    streamFn: (requested, context, streamOptions) =>
-      models.streamSimple(requested, context, {
-        ...streamOptions,
-        maxRetries: MAX_TRANSIENT_MODEL_RETRIES,
-      }),
+    streamFn: async (requested, context, streamOptions) => {
+      exhausted = false;
+      let attempted: AssistantMessageEventStream | undefined;
+      await retryAssistantCall(
+        async () => {
+          // Pi's own client-side retry stays off, so this budget is the only
+          // one and a provider that honours `maxRetries` cannot multiply it.
+          attempted = models.streamSimple(requested, context, {
+            ...streamOptions,
+            maxRetries: 0,
+          });
+          return await attempted.result();
+        },
+        {
+          enabled: true,
+          maxRetries: MAX_TRANSIENT_MODEL_RETRIES,
+          baseDelayMs: retryBaseDelayMs,
+        },
+        streamOptions?.signal,
+        {
+          onRetryFinished: (succeeded, attempt) => {
+            exhausted = !succeeded && attempt >= MAX_TRANSIENT_MODEL_RETRIES;
+          },
+        },
+      );
+      // Nothing has read the stream while the retry loop awaited its result, so
+      // every event of the last attempt is still queued for the agent loop.
+      if (attempted === undefined)
+        throw new Error("The transient retry loop started no model request");
+      return attempted;
+    },
     toolExecution: "parallel",
     shouldStopAfterTurn: () => {
       turns += 1;
       return turns >= MAX_AGENT_TURNS;
     },
   });
-  return { agent, turnCapReached: () => turns >= MAX_AGENT_TURNS };
+  return {
+    agent,
+    turnCapReached: () => turns >= MAX_AGENT_TURNS,
+    retriesExhausted: () => exhausted,
+  };
 }
 
 /** Resolves one `provider-id/model-id` specifier against the registered providers. */

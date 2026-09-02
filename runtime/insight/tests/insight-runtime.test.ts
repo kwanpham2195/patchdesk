@@ -176,6 +176,11 @@ function benignInspectors() {
   };
 }
 
+/** One errored turn with no content, so its stream settles before any abort lands. */
+function transientFailure(errorMessage: string) {
+  return fauxAssistantMessage([], { stopReason: "error", errorMessage });
+}
+
 function fake(responses: ReadonlyArray<FauxResponseStep>) {
   const provider = fauxProvider({ provider: "faux", models: [{ id: "test" }] });
   provider.setResponses([...responses]);
@@ -420,6 +425,76 @@ describe("one-shot insight runtime", () => {
       }),
     ).resolves.toEqual({ ok: true, value: analysis });
     expect(provider.state.callCount).toBe(2);
+  });
+
+  it("retries a transient provider turn and returns the result the retry submitted", async () => {
+    const provider = fake([
+      transientFailure('503: {"message":"Service Unavailable"}'),
+      fauxAssistantMessage(
+        fauxToolCall("submit_patchdesk_result", walkthrough),
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    await expect(
+      runPatchdeskChild(walkthroughInvocation(), {
+        providers: [provider.provider],
+        retryBaseDelayMs: 0,
+      }),
+    ).resolves.toEqual({ ok: true, value: walkthrough });
+    expect(provider.state.callCount).toBe(2);
+  });
+
+  it("fails a non-transient provider refusal on the first attempt rather than retrying it", async () => {
+    const provider = fake([
+      fauxAssistantMessage([], {
+        stopReason: "error",
+        errorMessage: '402: {"message":"Insufficient Balance"}',
+      }),
+    ]);
+    const result = await runPatchdeskChild(walkthroughInvocation(), {
+      providers: [provider.provider],
+      retryBaseDelayMs: 0,
+    });
+    if (result.ok) throw new Error("expected the provider refusal to fail");
+    expect(result.reason).toBe("execution_failed");
+    expect(result.detail).toContain("Insufficient Balance");
+    expect(result.detail).not.toContain("Retried");
+    expect(provider.state.callCount).toBe(1);
+  });
+
+  it("stops after three retries and names the exhausted budget in the failure detail", async () => {
+    const provider = fake(
+      Array.from({ length: 4 }, () => transientFailure("503: overloaded")),
+    );
+    const result = await runPatchdeskChild(walkthroughInvocation(), {
+      providers: [provider.provider],
+      retryBaseDelayMs: 0,
+    });
+    if (result.ok) throw new Error("expected the exhausted retries to fail");
+    expect(result.reason).toBe("execution_failed");
+    expect(result.detail).toContain("Retried 3 times without success");
+    expect(result.detail).toContain("overloaded");
+    expect((result.detail ?? "").length).toBeLessThanOrEqual(200);
+    expect(provider.state.callCount).toBe(4);
+  });
+
+  it("treats an abort during the retry backoff as terminal and never starts the retry", async () => {
+    const controller = new AbortController();
+    const provider = fake([
+      () => {
+        setTimeout(() => controller.abort(), 5);
+        return transientFailure("503: overloaded");
+      },
+    ]);
+    await expect(
+      runPatchdeskChild(walkthroughInvocation(), {
+        providers: [provider.provider],
+        signal: controller.signal,
+        // Long enough that a retry that ignored the abort would hang the test.
+        retryBaseDelayMs: 10_000,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "cancelled" });
+    expect(provider.state.callCount).toBe(1);
   });
 
   it("keeps the first recorded result when a later turn submits again", async () => {

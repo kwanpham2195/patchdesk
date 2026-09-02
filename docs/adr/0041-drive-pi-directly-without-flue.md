@@ -65,10 +65,16 @@ The loop stops after 24 turns. Only a tool call continues it and the inspector
 budget stops at eight calls, so a well-behaved insight settles far below the
 cap; it is there to bound a model that keeps calling tools and never submits.
 
-A transient provider error is retried three times. `pi-ai`'s
-`retryProviderRequest` is gated by `maxRetries`, which defaults to zero and
-which the agent loop never sets, so the child sets it rather than let one 429
-end a run.
+A transient provider error is retried three times, by the runner, at the turn
+level. `pi-ai`'s own `retryProviderRequest` is not the mechanism: it reaches
+only the provider APIs that call it, it covers only the opening of a stream,
+and the agent loop ends a turn the moment an assistant message stops on an
+error. So the child wraps `streamFn` instead. It classifies the failed turn
+with `pi-ai`'s `isRetryableAssistantError`, which holds a quota or billing
+refusal back as deterministic, and restarts the whole request up to three times
+with exponential backoff. Pi's client-side retry is set to zero so this is the
+only budget, an abort is terminal and is never retried, and the rule reads the
+same for every provider rather than only for the ones that implement it.
 
 ### Isolation is now structural
 
@@ -88,8 +94,8 @@ machine credentials.
 - Flue's context compaction is given up, not replaced. One insight is a single
   bounded prompt under a 24-turn ceiling, so no run reaches the context window
   compaction existed to save.
-- Flue's own three-attempt transient retry is replaced by Pi's
-  `retryProviderRequest`, set to the same three attempts.
+- Flue's own three-attempt transient retry is replaced by a turn-level retry the
+  runner owns, keeping the same three attempts for every provider.
 - The staged runtime is twenty packages smaller and ships no MCP client, no
   HTTP server, and no `zod`.
 - The runtime manifest drops `flueVersion`. It carries `piVersion`,
