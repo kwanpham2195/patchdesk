@@ -5,7 +5,7 @@
       "out/**",
       "release/**",
       "test-results/**",
-      "runtime/flue/**",
+      "runtime/insight/**",
       "tools/oxlint/anti-slop/**",
       ".agents/skills/install-anti-slop/**"
     ],

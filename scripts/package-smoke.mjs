@@ -31,7 +31,7 @@ const { version } = JSON.parse(
 const archFolder = process.arch === "arm64" ? "mac-arm64" : "mac";
 const bundle = join(releaseRoot, archFolder, "Patchdesk.app");
 const executable = join(bundle, "Contents/MacOS/Patchdesk");
-const runtimeRoot = join(bundle, "Contents/Resources/flue-runtime");
+const runtimeRoot = join(bundle, "Contents/Resources/insight-runtime");
 await validatePackagedRuntime(executable, runtimeRoot);
 const plist = join(bundle, "Contents/Info.plist");
 await access(executable);
@@ -117,7 +117,7 @@ try {
   smoke = await runRuntimeSmoke(executable, runtimeRoot, home);
   const runtimeAfter = await snapshotTree(runtimeRoot);
   if (JSON.stringify(runtimeAfter) !== JSON.stringify(runtimeBefore))
-    throw new Error("Packaged Flue smoke modified app Resources.");
+    throw new Error("Packaged insight-runtime smoke modified app Resources.");
 } finally {
   await makeTreeWritable(runtimeRoot);
 }
@@ -128,7 +128,7 @@ if (
   smoke.cancellation?.reason !== "cancelled"
 )
   throw new Error(
-    "Packaged Flue smoke fixtures did not produce the required strict results.",
+    "Packaged insight-runtime smoke fixtures did not produce the required strict results.",
   );
 const cdpPort = 20_000 + Math.floor(Math.random() * 20_000);
 const packagedApp = spawn(
@@ -361,7 +361,9 @@ async function runRuntimeSmoke(executable, runtime, home) {
     try {
       return JSON.parse(stdout);
     } catch {
-      throw new Error("Packaged Flue smoke child returned invalid JSON.");
+      throw new Error(
+        "Packaged insight-runtime smoke child returned invalid JSON.",
+      );
     }
   } finally {
     for (const [key, value] of previous) {
@@ -462,7 +464,7 @@ async function validatePackagedRuntime(executable, runtime) {
     manifest.lockDigest !== lockDigest
   ) {
     throw new Error(
-      "Packaged Flue runtime manifest does not match its exact runtime closure.",
+      "Packaged insight runtime manifest does not match its exact runtime closure.",
     );
   }
   if (
@@ -471,7 +473,7 @@ async function validatePackagedRuntime(executable, runtime) {
     runtimePackage.dependencies?.["@earendil-works/pi-ai"] !== "0.84.4"
   ) {
     throw new Error(
-      "Packaged Flue runtime package does not contain the expected exact versions.",
+      "Packaged insight runtime package does not contain the expected exact versions.",
     );
   }
   console.log(

@@ -23,7 +23,7 @@ const artifactSchema = v.strictObject({
 
 type PiAiModel = v.InferOutput<typeof modelSchema>;
 
-/** Generated from runtime/flue's exact Pi catalog; this root module never imports Pi. */
+/** Generated from runtime/insight's exact Pi catalog; this root module never imports Pi. */
 function parseGeneratedCatalog(input: RawJsonValue): ReadonlyArray<{
   readonly provider: string;
   readonly models: ReadonlyArray<PiAiModel>;

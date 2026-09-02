@@ -29,7 +29,7 @@ const MAX_CHILD_STDIN_BYTES = 2 * 1024 * 1024;
 /** The child bounds its own detail; this is the app-side backstop. */
 const MAX_CHILD_DETAIL_CHARS = 200;
 
-export type FlueInsightChildFailure = {
+export type PiInsightChildFailure = {
   readonly reason:
     | "cancelled"
     | "authentication_required"
@@ -46,7 +46,7 @@ export type FlueInsightChildFailure = {
   readonly stderr?: string;
 };
 
-export type FlueInsightChildAnalysisInput = {
+export type PiInsightChildAnalysisInput = {
   readonly profileId: string;
   readonly sessionId: string;
   readonly contextPath: string;
@@ -58,7 +58,7 @@ export type FlueInsightChildAnalysisInput = {
 };
 
 /** Runs a bounded app-owned one-shot child with the selected built-in provider's ambient credentials. */
-export class FlueInsightChildInvoker {
+export class PiInsightChildInvoker {
   constructor(
     private readonly commands: CommandRunner,
     private readonly projectRoot: string,
@@ -66,16 +66,16 @@ export class FlueInsightChildInvoker {
     private readonly runnerPath = join(
       projectRoot,
       "runtime",
-      "flue",
+      "insight",
       "dist",
       "patchdesk-insight-runner.js",
     ),
   ) {}
 
   async invokeAnalysis(
-    input: FlueInsightChildAnalysisInput,
+    input: PiInsightChildAnalysisInput,
     options?: { readonly signal?: AbortSignal },
-  ): Promise<Result<ModelReviewResult, FlueInsightChildFailure>> {
+  ): Promise<Result<ModelReviewResult, PiInsightChildFailure>> {
     const result = await this.invoke(
       { type: "analysis", input },
       ANALYSIS_RUN_TIMEOUT_MS,
@@ -96,7 +96,7 @@ export class FlueInsightChildInvoker {
   async invokeBrief(
     input: BriefInput,
     options?: { readonly signal?: AbortSignal },
-  ): Promise<Result<BriefOutput, FlueInsightChildFailure>> {
+  ): Promise<Result<BriefOutput, PiInsightChildFailure>> {
     const result = await this.invoke(
       { type: "brief", input },
       BRIEF_RUN_TIMEOUT_MS,
@@ -113,7 +113,7 @@ export class FlueInsightChildInvoker {
     input: WalkthroughInput,
     timeoutMs: number,
     options?: { readonly signal?: AbortSignal },
-  ): Promise<Result<WalkthroughOutput, FlueInsightChildFailure>> {
+  ): Promise<Result<WalkthroughOutput, PiInsightChildFailure>> {
     const result = await this.invoke(
       { type: "walkthrough", input },
       timeoutMs,
@@ -130,7 +130,7 @@ export class FlueInsightChildInvoker {
     body: unknown,
     timeoutMs: number,
     signal?: AbortSignal,
-  ): Promise<Result<unknown, FlueInsightChildFailure>> {
+  ): Promise<Result<unknown, PiInsightChildFailure>> {
     if (signal?.aborted) return err({ reason: "cancelled" });
     const stdin = JSON.stringify(body);
     if (Buffer.byteLength(stdin, "utf8") > MAX_CHILD_STDIN_BYTES)
@@ -169,9 +169,7 @@ export class FlueInsightChildInvoker {
  * `invalid_input` as an invalid result blamed the model for a request the app
  * or a stale staged runtime got wrong.
  */
-function childResponseReason(
-  reason: string,
-): FlueInsightChildFailure["reason"] {
+function childResponseReason(reason: string): PiInsightChildFailure["reason"] {
   switch (reason) {
     case "cancelled":
       return "cancelled";
@@ -245,7 +243,7 @@ function parseChildResponse(input: unknown):
 
 function childFailureReason(
   failure: CommandFailure,
-): FlueInsightChildFailure["reason"] {
+): PiInsightChildFailure["reason"] {
   switch (failure._tag) {
     case "CommandAuthenticationRequired":
       return "authentication_required";

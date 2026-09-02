@@ -180,7 +180,7 @@ function briefProductionInput(patchPath: string) {
   };
 }
 
-describe("Flue 2 one-shot insight runtime", () => {
+describe("one-shot insight runtime", () => {
   it("uses start/init/dispatch/read and returns one strict data value without parsing prose", async () => {
     const provider = fake([
       fauxAssistantMessage(
@@ -595,7 +595,7 @@ describe("Flue 2 one-shot insight runtime", () => {
   });
 
   it("accepts only exact app-owned production paths", () => {
-    const paths = PatchdeskPaths.forTest("/tmp/patchdesk-flue-paths");
+    const paths = PatchdeskPaths.forTest("/tmp/patchdesk-insight-paths");
     const parsedProfile = parseWorkspaceProfileId("profile");
     const parsedSession = parseReviewSessionId(canonicalSessionId);
     if (parsedProfile._tag === "err" || parsedSession._tag === "err") {
@@ -699,7 +699,7 @@ describe("Flue 2 one-shot insight runtime", () => {
 
   it("never accepts model prompt text on a production Brief invocation", () => {
     const { profileId, sessionId } = canonicalIdentity();
-    const paths = PatchdeskPaths.forTest("/tmp/patchdesk-flue-brief");
+    const paths = PatchdeskPaths.forTest("/tmp/patchdesk-insight-brief");
     const input = briefProductionInput(paths.patchFile(profileId, sessionId));
     expect(parseProductionInvocation({ type: "brief", input })).toMatchObject({
       type: "brief",

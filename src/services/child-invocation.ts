@@ -9,10 +9,10 @@ import {
  *
  * Analysis reads a whole prepared bundle whose size the caller has already
  * bounded, so the bound is flat rather than scaled the way the walkthrough's
- * is. Both `FlueInsightChildInvoker.invokeAnalysis` and
+ * is. Both `PiInsightChildInvoker.invokeAnalysis` and
  * `CodexInsightInvoker` spend it, and it is one constant so the two cannot
  * drift: before this it was a named constant on the Codex side and a bare
- * `10 * 60_000` on the Flue side, kept in step only by a comment.
+ * `10 * 60_000` on the insight-runtime side, kept in step only by a comment.
  */
 export const ANALYSIS_RUN_TIMEOUT_MS = 10 * 60_000;
 

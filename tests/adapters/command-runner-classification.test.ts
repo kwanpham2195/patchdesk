@@ -250,7 +250,7 @@ describe("CommandRunner classifyExecution — structured signal precedence", () 
     expect(failure).toEqual({ _tag: "CommandUnsupported" });
   });
 
-  it("does not misclassify the non-gh flue-insight child's failure shape", async () => {
+  it("does not misclassify the non-gh pi-insight child's failure shape", async () => {
     const failure = await classify(
       loadFixture("runtime-unavailable-regex.json"),
     );

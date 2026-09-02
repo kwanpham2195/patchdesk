@@ -6,7 +6,7 @@ import {
   type CommandExecutor,
   type CommandRequest,
 } from "../../src/adapters/github/command-runner";
-import { FlueInsightChildInvoker } from "../../src/services/flue-insight-child-invoker";
+import { PiInsightChildInvoker } from "../../src/services/pi-insight-child-invoker";
 import { ANALYSIS_RUN_TIMEOUT_MS } from "../../src/services/child-invocation";
 
 const sessionId =
@@ -53,7 +53,7 @@ class RecordingExecutor implements CommandExecutor {
   }
 }
 
-describe("FlueInsightChildInvoker", () => {
+describe("PiInsightChildInvoker", () => {
   it("passes a bounded strict stdin protocol and parses only the child data result", async () => {
     process.env.DEEPSEEK_API_KEY = "selected-provider-secret";
     const executor = new RecordingExecutor({
@@ -62,7 +62,7 @@ describe("FlueInsightChildInvoker", () => {
       stdout: JSON.stringify({ ok: true, value: walkthrough }),
       stderr: "private child output",
     });
-    const invoker = new FlueInsightChildInvoker(
+    const invoker = new PiInsightChildInvoker(
       new CommandRunner(executor),
       "/workspace/patchdesk",
       "/runtime/node",
@@ -110,7 +110,7 @@ describe("FlueInsightChildInvoker", () => {
   });
 
   // The Codex invoker's own test pins the same constant on its side
-  // (`codex-insight-invoker.test.ts`). This is the Flue half: without it the
+  // (`codex-insight-invoker.test.ts`). This is the Pi half: without it the
   // shared bound is only observed through one of the two invokers that
   // spend it.
   it("bounds an analysis run by the shared analysis timeout", async () => {
@@ -121,7 +121,7 @@ describe("FlueInsightChildInvoker", () => {
       stdout: JSON.stringify({ ok: true, value: analysisResult }),
       stderr: "",
     });
-    const invoker = new FlueInsightChildInvoker(
+    const invoker = new PiInsightChildInvoker(
       new CommandRunner(executor),
       "/workspace/patchdesk",
       "/runtime/node",
@@ -143,7 +143,7 @@ describe("FlueInsightChildInvoker", () => {
   });
 
   it("fails closed for invalid child protocol, crash, overflow-sized input, and cancellation", async () => {
-    const invalid = new FlueInsightChildInvoker(
+    const invalid = new PiInsightChildInvoker(
       new CommandRunner(
         new RecordingExecutor({
           _tag: "Exited",
@@ -167,7 +167,7 @@ describe("FlueInsightChildInvoker", () => {
         60_000,
       ),
     ).resolves.toEqual({ _tag: "err", error: { reason: "invalid_result" } });
-    const crash = new FlueInsightChildInvoker(
+    const crash = new PiInsightChildInvoker(
       new CommandRunner(
         new RecordingExecutor({
           _tag: "Exited",
@@ -210,11 +210,11 @@ describe("FlueInsightChildInvoker", () => {
   });
 });
 
-describe("FlueInsightChildInvoker failure classification", () => {
+describe("PiInsightChildInvoker failure classification", () => {
   it("reports a provider refusal as a run failure carrying the child's account of it", async () => {
     const detail =
       'dispatch([redacted]) failed: 402: {"message":"Insufficient Balance"}';
-    const invoker = new FlueInsightChildInvoker(
+    const invoker = new PiInsightChildInvoker(
       new CommandRunner(
         new RecordingExecutor({
           _tag: "Exited",
@@ -249,7 +249,7 @@ describe("FlueInsightChildInvoker failure classification", () => {
   });
 
   it("does not blame the model for a request the child rejected", async () => {
-    const invoker = new FlueInsightChildInvoker(
+    const invoker = new PiInsightChildInvoker(
       new CommandRunner(
         new RecordingExecutor({
           _tag: "Exited",
@@ -277,9 +277,9 @@ describe("FlueInsightChildInvoker failure classification", () => {
   });
 });
 
-describe("FlueInsightChildInvoker strict response boundary", () => {
+describe("PiInsightChildInvoker strict response boundary", () => {
   it("rejects ambiguous child objects", async () => {
-    const invoker = new FlueInsightChildInvoker(
+    const invoker = new PiInsightChildInvoker(
       new CommandRunner(
         new RecordingExecutor({
           _tag: "Exited",

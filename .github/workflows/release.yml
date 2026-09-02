@@ -37,7 +37,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
-            runtime/flue/pnpm-lock.yaml
+            runtime/insight/pnpm-lock.yaml
 
       # The tag names the version people download, and package smoke checks
       # the packaged app's version against `package.json`. Disagreement here

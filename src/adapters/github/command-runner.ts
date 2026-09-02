@@ -298,8 +298,8 @@ function classifyExecution(
  * github-adapter.ts (~50 sites), which a concurrent change was landing
  * against at the same time. Content-sniffing is safe here because every
  * non-gh-api caller of CommandRunner (`git` subcommands, `gh auth status`,
- * `gh --version`, and the non-gh flue-insight child in
- * flue-insight-child-invoker.ts) never emits a JSON stdout body containing a
+ * `gh --version`, and the non-gh pi-insight child in
+ * pi-insight-child-invoker.ts) never emits a JSON stdout body containing a
  * string `status` field or an `errors` array shaped like GitHub's API
  * responses, so those callers safely fall through untouched. The one risk
  * the plan calls out for content-sniffing — a plain exit code carrying no
@@ -525,7 +525,7 @@ function parseJson(text: string): unknown {
  * Last-resort fallback: gh's stderr prose is not a stable contract. Prefer
  * the structured paths above; these regexes exist for shapes gh doesn't
  * expose structurally (network-level failures, older gh versions, and the
- * non-gh flue-insight child process).
+ * non-gh pi-insight child process).
  */
 function classifyByStderrPattern(stderr: string): CommandFailure | undefined {
   if (isAuthenticationFailure(stderr)) {

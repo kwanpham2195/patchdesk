@@ -12,7 +12,7 @@ used across the codebase.
   embeds a compatible Node release.
 - `pnpm install` installs the pre-commit hook automatically (husky).
 - Development runs on macOS; `pnpm package:mac` builds the release package.
-- The isolated insight runtime (`runtime/flue/`) has an exact lock and is
+- The isolated insight runtime (`runtime/insight/`) has an exact lock and is
   validated during package smoke.
 
 ## Codebase map
@@ -21,9 +21,8 @@ used across the codebase.
 - `src/services/` — orchestration.
 - `src/adapters/` — I/O (GitHub, storage, providers).
 - `src/main/` — Electron main process; `src/renderer/src/` — React.
-- `runtime/flue/` — the isolated insight runtime. It builds one Pi agent per
-  Insight run; the directory keeps its `flue` name from the framework it used
-  to run on (ADR 0041).
+- `runtime/insight/` — the isolated insight runtime. It builds one Pi agent per
+  Insight run (ADR 0041).
 - `tests/` mirrors those boundaries; browser coverage in `tests/browser/`.
 - Architecture: `docs/architecture.md`; decisions: `docs/adr/`.
 
@@ -38,7 +37,7 @@ pnpm dev
 ```
 
 `pnpm install` runs the root `prepare` script, which installs and builds
-`runtime/flue`'s dependencies — the isolated runtime the Insight feature
+`runtime/insight`'s dependencies — the isolated runtime the Insight feature
 needs. `pnpm dev` builds that runtime again before starting electron-vite, so
 Insight works with no extra step even if the runtime is stale.
 
@@ -46,8 +45,8 @@ If you ran `pnpm install --ignore-scripts`, `prepare` did not run and the
 runtime is missing; recover with:
 
 ```bash
-pnpm --dir runtime/flue install
-pnpm --dir runtime/flue build
+pnpm --dir runtime/insight install
+pnpm --dir runtime/insight build
 ```
 
 **Fast checks.**
@@ -58,7 +57,7 @@ pnpm typecheck
 pnpm test -- --run
 ```
 
-Use `pnpm test -- --run <file>` for focused root-suite development. The complete pre-push test gate is `pnpm test:all`; it runs the root suite and the separate `runtime/flue` suite.
+Use `pnpm test -- --run <file>` for focused root-suite development. The complete pre-push test gate is `pnpm test:all`; it runs the root suite and the separate `runtime/insight` suite.
 
 ## Where a test belongs
 
@@ -297,7 +296,7 @@ Pull requests targeting `main` run the `Pull request gates` workflow on
 - `pnpm check:error-ui`;
 - `pnpm lint` over the whole repository;
 - `pnpm typecheck`;
-- `pnpm test:all`, including the root suite and separate `runtime/flue` suite;
+- `pnpm test:all`, including the root suite and separate `runtime/insight` suite;
 - `pnpm build`, once, for both checks below it;
 - `pnpm check:bundle` against that build; and
 - `pnpm exec playwright test` against that same build.
@@ -409,7 +408,7 @@ pnpm package:mac
 pnpm test:package-smoke
 ```
 
-`pnpm package:mac` runs `pnpm stage:flue-runtime` as part of the build,
+`pnpm package:mac` runs `pnpm stage:insight-runtime` as part of the build,
 which builds and stages the exact isolated insight runtime into the package.
 Package smoke runs fixed faux Analysis and Walkthrough fixtures before UI
 checks, validates size ceilings for the packaged app and downloads, and reads
@@ -418,7 +417,7 @@ the expected version out of `package.json`.
 `pnpm package:mac` produces `release/mac-arm64/Patchdesk.app` (the unpacked
 app `pnpm test:package-smoke` reads, 278.26 MiB allocated). Its
 `Contents/Resources/app.asar` is 25.54 MiB and its
-`Contents/Resources/flue-runtime` is 22.74 MiB allocated. The downloads are
+`Contents/Resources/insight-runtime` is 22.74 MiB allocated. The downloads are
 `release/Patchdesk-0.0.1-arm64.dmg` (110.66 MiB) and
 `release/Patchdesk-0.0.1-arm64-mac.zip` (113.38 MiB) — both sit directly in
 `release/`, not in `release/mac-arm64/`. The `.dmg` is the one to hand to

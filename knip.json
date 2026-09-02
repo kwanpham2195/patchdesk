@@ -17,7 +17,7 @@
       ],
       "ignore": ["**/*.generated.ts", "src/renderer/src/components/ui/**"]
     },
-    "runtime/flue": {
+    "runtime/insight": {
       "entry": [
         "src/patchdesk-insight-runner.ts",
         "src/package-smoke-runner.ts",

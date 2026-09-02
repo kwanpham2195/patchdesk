@@ -14,7 +14,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { stageFlueRuntime } from "../../scripts/stage-flue-runtime-lib.mjs";
+import { stageInsightRuntime } from "../../scripts/stage-insight-runtime-lib.mjs";
 
 const roots: string[] = [];
 const execFileAsync = promisify(execFile);
@@ -25,11 +25,11 @@ afterEach(
     ),
 );
 
-describe("stageFlueRuntime", () => {
-  it("stages only the exact Flue 2 runner, smoke entry, skill, lock, and manifest", async () => {
+describe("stageInsightRuntime", () => {
+  it("stages only the exact insight runner, smoke entry, skill, lock, and manifest", async () => {
     const fixture = await createFixture();
     const calls: Array<{ command: string; args: string[] }> = [];
-    await stageFlueRuntime({
+    await stageInsightRuntime({
       ...fixture,
       run: async (command: string, args: string[]) => {
         calls.push({ command, args });
@@ -42,7 +42,7 @@ describe("stageFlueRuntime", () => {
     });
     expect(calls).toContainEqual({
       command: "pnpm",
-      args: ["--dir", join(fixture.projectRoot, "runtime", "flue"), "build"],
+      args: ["--dir", join(fixture.projectRoot, "runtime", "insight"), "build"],
     });
     expect(calls).toContainEqual({
       command: "pnpm",
@@ -91,28 +91,28 @@ describe("stageFlueRuntime", () => {
     const fixture = await createFixture();
     await mkdir(join(fixture.runtimeRoot, "old"), { recursive: true });
     await expect(
-      stageFlueRuntime({
+      stageInsightRuntime({
         ...fixture,
         run: async (_command: string, args: string[]) => {
           if (args.includes("install")) throw new Error("store incomplete");
           return "";
         },
       }),
-    ).rejects.toThrow("exact locked Flue runtime");
+    ).rejects.toThrow("exact locked insight runtime");
     await expect(access(join(fixture.runtimeRoot, "old"))).rejects.toThrow();
   });
 
   it("locks a peer-safe production runtime and filters package-only metadata", async () => {
     const projectRoot = resolve(import.meta.dirname, "../..");
     const runtimePackage = JSON.parse(
-      await readFile(join(projectRoot, "runtime/flue/package.json"), "utf8"),
+      await readFile(join(projectRoot, "runtime/insight/package.json"), "utf8"),
     ) as {
       scripts: { "deploy:verify": string };
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
     };
     const runtimeLock = await readFile(
-      join(projectRoot, "runtime/flue/pnpm-lock.yaml"),
+      join(projectRoot, "runtime/insight/pnpm-lock.yaml"),
       "utf8",
     );
     const rootPackage = JSON.parse(
@@ -153,16 +153,16 @@ describe("stageFlueRuntime", () => {
     const fixture = await createFixture();
     await Promise.all([
       cp(
-        join(projectRoot, "runtime/flue/package.json"),
-        join(fixture.projectRoot, "runtime/flue/package.json"),
+        join(projectRoot, "runtime/insight/package.json"),
+        join(fixture.projectRoot, "runtime/insight/package.json"),
       ),
       cp(
-        join(projectRoot, "runtime/flue/pnpm-lock.yaml"),
-        join(fixture.projectRoot, "runtime/flue/pnpm-lock.yaml"),
+        join(projectRoot, "runtime/insight/pnpm-lock.yaml"),
+        join(fixture.projectRoot, "runtime/insight/pnpm-lock.yaml"),
       ),
     ]);
 
-    await stageFlueRuntime({
+    await stageInsightRuntime({
       ...fixture,
       run: async (command: string, args: string[]) => {
         if (args.includes("build")) return "";
@@ -192,11 +192,11 @@ describe("stageFlueRuntime", () => {
 
 async function createFixture() {
   const projectRoot = await mkdtemp(
-    join(tmpdir(), "patchdesk-stage-flue-runtime-"),
+    join(tmpdir(), "patchdesk-stage-insight-runtime-"),
   );
   roots.push(projectRoot);
   const runtimeRoot = join(projectRoot, "out", "workflow-runtime");
-  const source = join(projectRoot, "runtime", "flue");
+  const source = join(projectRoot, "runtime", "insight");
   await Promise.all([
     mkdir(join(source, "dist"), { recursive: true }),
     mkdir(join(projectRoot, "src", "skills", "patchdesk-code-review"), {

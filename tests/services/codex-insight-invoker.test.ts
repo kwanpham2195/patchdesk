@@ -12,7 +12,7 @@ import {
 } from "../../src/adapters/codex/codex-app-server-client";
 import { ok } from "../../src/domain/result";
 
-// Matches FlueInsightChildInvoker.invokeAnalysis's Analysis run bound.
+// Matches PiInsightChildInvoker.invokeAnalysis's Analysis run bound.
 const EXPECTED_ANALYSIS_TIMEOUT_MS = 10 * 60_000;
 
 // Five-minute floor plus one step for this fixture's single-hunk patch.

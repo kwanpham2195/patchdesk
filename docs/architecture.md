@@ -143,7 +143,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-lifecycle-gate.ts` serializes durable lifecycle mutations per workspace profile.
 - `review-write-gate.ts` is the shared precondition for every GitHub write: the Review must be Fresh.
 - `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results.
-- `flue-insight-child-invoker.ts` and `codex-insight-invoker.ts` start model children.
+- `pi-insight-child-invoker.ts` and `codex-insight-invoker.ts` start model children.
 - `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` over the represented-review worktree, so no model gains a search capability (ADR 0036).
 - `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows.
 - `review-worktree-service.ts` owns the read-only git commands that create a session checkout.
@@ -191,9 +191,9 @@ The React view layer.
 It requests actions and renders confirmed results; it never decides writes.
 It re-validates every projection: a 200 response from the API does not mean the workbench will open.
 
-### `runtime/flue/`
+### `runtime/insight/`
 
-The isolated model runtime (ADR "Drive Pi directly without Flue", superseding the runtime choice in ADR "Run Flue 2 Insights in Patchdesk-owned one-shot children"). The directory keeps its `flue` name; nothing in it runs on Flue.
+The isolated model runtime (ADR 0041, superseding the runtime choice in ADR 0018).
 Each Analysis run, Walkthrough, or Brief runs in one dedicated one-shot child that builds a single `@earendil-works/pi-agent-core` agent and drives its loop once.
 The Brief child is the narrowest of the three: it mounts only the result-submission tool, and its evidence — the patch — is supplied on the invocation rather than fetched, so the child reads nothing for itself.
 
@@ -326,9 +326,9 @@ They do not depend on external resources, GitHub accounts, or network access.
 
 Some files are generated and committed:
 
-- The Pi AI model catalog (`src/adapters/pi/pi-ai-catalog.generated.ts`) and the insight runtime manifest (`runtime/flue/runtime-manifest.json`), both written by `runtime/flue`'s own build.
+- The Pi AI model catalog (`src/adapters/pi/pi-ai-catalog.generated.ts`) and the insight runtime manifest (`runtime/insight/runtime-manifest.json`), both written by `runtime/insight`'s own build.
 - The Pierre theme catalog (`src/renderer/src/pierre-theme-catalog.generated.ts`), checked by `pnpm test:bundle`.
 
 **Architecture Invariant:** generated code is committed.
 The root `prepare` script runs that build on every `pnpm install`, so the catalog and the manifest are rewritten from the installed Pi packages each time.
-`pnpm stage:flue-runtime` runs it once more at packaging time and refuses to stage when the manifest's `catalogDigest` does not match the digest in the committed catalog.
+`pnpm stage:insight-runtime` runs it once more at packaging time and refuses to stage when the manifest's `catalogDigest` does not match the digest in the committed catalog.
