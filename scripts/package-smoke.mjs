@@ -457,7 +457,6 @@ async function validatePackagedRuntime(executable, runtime) {
   const runtimePackage = JSON.parse(packageRaw);
   const lockDigest = createHash("sha256").update(lock).digest("hex");
   if (
-    manifest.flueVersion !== "2.0.3" ||
     manifest.piVersion !== "0.84.4" ||
     manifest.nodeFloor !== ">=22.19.0" ||
     manifest.lockDigest !== lockDigest
@@ -467,7 +466,8 @@ async function validatePackagedRuntime(executable, runtime) {
     );
   }
   if (
-    runtimePackage.dependencies?.["@flue/runtime"] !== "2.0.3" ||
+    runtimePackage.dependencies?.["@earendil-works/pi-agent-core"] !==
+      "0.84.4" ||
     runtimePackage.dependencies?.["@earendil-works/pi-ai"] !== "0.84.4"
   ) {
     throw new Error(
@@ -475,7 +475,7 @@ async function validatePackagedRuntime(executable, runtime) {
     );
   }
   console.log(
-    `Packaged runtime: Flue ${manifest.flueVersion}, Pi ${manifest.piVersion}, Node ${nodeVersion.trim()}`,
+    `Packaged runtime: Pi ${manifest.piVersion}, Node ${nodeVersion.trim()}`,
   );
 }
 

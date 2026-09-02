@@ -6,13 +6,15 @@ import * as v from "valibot";
 
 import { generatedPiAiCatalog } from "../adapters/pi/pi-ai-catalog.generated";
 
-const FLUE_VERSION = "2.0.3";
 const PI_VERSION = "0.84.4";
 const NODE_FLOOR = ">=22.19.0";
 
-/** The staged runtime's own manifest, as it is read back off disk. */
-const runtimeManifestSchema = v.object({
-  flueVersion: v.string(),
+/**
+ * The staged runtime's own manifest, as it is read back off disk. Strict, so a
+ * staging written by an older packaging -- one that still carries the dropped
+ * Flue version field -- is rejected rather than read as current.
+ */
+const runtimeManifestSchema = v.strictObject({
   piVersion: v.string(),
   catalogDigest: v.string(),
   nodeFloor: v.string(),
@@ -41,8 +43,8 @@ export type InsightRuntime = {
  * An unpackaged run prefers the development build over the staged one.
  * `pnpm dev` rebuilds `runtime/flue/dist` on every start, while
  * `out/workflow-runtime` is written only by `pnpm stage:flue-runtime` during
- * packaging, and `runtime-manifest.json` pins the Flue and Pi versions, the
- * catalog digest, the node floor and the lock digest -- nothing that changes
+ * packaging, and `runtime-manifest.json` pins the Pi version, the catalog
+ * digest, the node floor and the lock digest -- nothing that changes
  * when the runner itself gains a request type. A staging left over from an
  * earlier packaging therefore passes every manifest check and still answers
  * `invalid_input` to a request type it predates. Packaged resolution is
@@ -98,7 +100,6 @@ function validManifest(
     );
     if (
       !manifest.success ||
-      manifest.output.flueVersion !== FLUE_VERSION ||
       manifest.output.piVersion !== PI_VERSION ||
       manifest.output.catalogDigest !== catalogDigest() ||
       manifest.output.nodeFloor !== NODE_FLOOR

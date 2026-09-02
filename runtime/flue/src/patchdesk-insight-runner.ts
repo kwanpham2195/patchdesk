@@ -119,6 +119,14 @@ export function parsePatchdeskChildInvocation(
  */
 const MAX_AGENT_TURNS = 24;
 
+/**
+ * How many times Pi's own `retryProviderRequest` may retry one transient
+ * provider request. It defaults to zero and the agent loop never sets it, so a
+ * single 429 or 5xx would otherwise fail the whole insight on the first try;
+ * three restores the count the previous runtime used.
+ */
+const MAX_TRANSIENT_MODEL_RETRIES = 3;
+
 /** Executes one fresh in-memory Pi agent and returns only its one submitted result. */
 export async function runPatchdeskChild(
   invocation: PatchdeskChildInvocation,
@@ -215,7 +223,10 @@ function createInsightAgent(
       tools: [...spec.tools],
     },
     streamFn: (requested, context, streamOptions) =>
-      models.streamSimple(requested, context, streamOptions),
+      models.streamSimple(requested, context, {
+        ...streamOptions,
+        maxRetries: MAX_TRANSIENT_MODEL_RETRIES,
+      }),
     toolExecution: "parallel",
     shouldStopAfterTurn: () => {
       turns += 1;

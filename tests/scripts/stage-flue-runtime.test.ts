@@ -81,7 +81,6 @@ describe("stageFlueRuntime", () => {
         ),
       ),
     ).toMatchObject({
-      flueVersion: "2.0.3",
       piVersion: "0.84.4",
       catalogDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
       nodeFloor: ">=22.19.0",
@@ -133,7 +132,6 @@ describe("stageFlueRuntime", () => {
     expect(runtimePackage.devDependencies.typescript).toBe("5.9.3");
     expect(runtimePackage.dependencies).not.toHaveProperty("zod");
     expect(runtimeLock).toContain("autoInstallPeers: false");
-    expect(runtimeLock).toContain("/zod@4.4.3:");
     for (const providerSdk of [
       "@anthropic-ai/sdk",
       "@aws-sdk/client-bedrock-runtime",
@@ -209,7 +207,7 @@ async function createFixture() {
   await Promise.all([
     writeFile(
       join(source, "package.json"),
-      '{"dependencies":{"@flue/runtime":"2.0.3","@earendil-works/pi-ai":"0.84.4"}}\n',
+      '{"dependencies":{"@earendil-works/pi-agent-core":"0.84.4","@earendil-works/pi-ai":"0.84.4"}}\n',
     ),
     writeFile(join(source, "pnpm-lock.yaml"), "lockfileVersion: '6.0'\n"),
     writeFile(join(source, "dist", "patchdesk-insight-runner.js"), ""),
