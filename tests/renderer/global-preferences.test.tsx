@@ -212,6 +212,10 @@ describe("file-backed renderer preferences", () => {
         input.method === "PATCH"
           ? success({ appearance: "dark" })
           : load.promise,
+      // The obsolete failure is logged, and the logger flushes on a timer
+      // that races the end of the test; route the flush so the double
+      // does not refuse it.
+      "/v1/logs": () => success(null),
     });
     const { result } = renderHook(() => useGlobalPreferences(false));
 
