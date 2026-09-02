@@ -46,14 +46,14 @@ import { resolveBriefCitations } from "./brief-citation-resolution";
  */
 
 /** Whether one Flow step is new, gone, or the spine connecting the changed ones. */
-export type BriefFlowChange = "added" | "removed" | "unchanged";
+type BriefFlowChange = "added" | "removed" | "unchanged";
 
 /**
  * What a Flow tree draws: a call tree of real function/method names, a
  * pseudocode control-flow sketch, or a component tree. The Brief keeps at
  * most one tree per kind (see `MAX_FLOW_TREES`).
  */
-export type BriefFlowKind = "call_tree" | "control_flow" | "component";
+type BriefFlowKind = "call_tree" | "control_flow" | "component";
 
 /** One step of a Flow tree, already checked against the citation manifest. */
 export type BriefFlowNode = {
@@ -76,7 +76,7 @@ export type BriefFlow = {
 };
 
 /** File extensions that mark a changed path as a user-interface component file. */
-export const UI_COMPONENT_FILE_EXTENSIONS = [
+const UI_COMPONENT_FILE_EXTENSIONS = [
   ".tsx",
   ".jsx",
   ".vue",

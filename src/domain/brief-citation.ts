@@ -15,7 +15,7 @@ import type { RepoRelativePath } from "./ids";
  * `c*` (ADR 0040) -- Flow, the one block left that cites anything, cites
  * hunks only.
  */
-export type BriefCitationKind = "hunk" | "description" | "commit";
+type BriefCitationKind = "hunk" | "description" | "commit";
 
 /**
  * One resolvable alias offered to the Brief model and, once resolved, one
