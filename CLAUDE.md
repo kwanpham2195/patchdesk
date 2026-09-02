@@ -4,7 +4,7 @@ AGENTS.md
 
 The main session reviews and delegates. It decides what to do, hands the work
 to subagents, reviews what comes back, and reports. It does not carry out the
-work itself. Generators run on `sonnet`; evaluators run on `opus`, because
+work itself. Generators run on `opus`; evaluators run on `opus`, because
 breaking a claim is harder than making one.
 
 Delegate:
@@ -20,6 +20,15 @@ Delegate:
   merges unless the maintainer asks for that write.
   Restart the app after a main-process change; the renderer hot-reloads but
   the main process keeps the old code.
+
+Do not delegate:
+
+- Live app interaction the maintainer is watching.
+- A single-file edit.
+- Anything whose brief takes longer to write than the work itself.
+
+Three concurrent subagents is the ceiling. One reviewer at a time, unless the
+surfaces under review are disjoint.
 
 Give each subagent the file paths, constraints, and verification commands it
 needs. Treat its report as a claim, not a result: review the diff, and send it

@@ -1,5 +1,15 @@
 # Repository Guidelines
 
+## Non-negotiables
+
+Subagents do not read this file. Paste these five lines into every brief.
+
+- Commit each accepted slice with explicit paths, and end the report with the SHA.
+- A renderer change is finished only after you looked at a screenshot of the affected screen over CDP.
+- Run `pnpm check` before handoff.
+- No compatibility shims or fallbacks unless asked for.
+- Ask before removing code that looks intentional.
+
 ## Project Structure
 
 See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the full picture.
@@ -15,6 +25,8 @@ See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the
 - Prefer concrete behavior and small illustrations over abstract summaries, dense terminology, or unexplained lists of changes.
 - When the user asks a question, answer it first before making edits or running implementation commands.
 - When responding to user feedback or an analysis, explicitly say whether you agree or disagree before saying what you changed.
+- An audit or an inventory ships with a disposition per finding: fix now, a named follow-up, or an evidence-backed rejection.
+- A remediation program pins its metric to one exact command, written in its plan file; every progress report reruns that command.
 
 ## Development and Verification
 
@@ -28,9 +40,18 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Verification commands live in `CONTRIBUTING.md`. `pnpm check` (typecheck,
   renderer error surfaces, root test suite, staged lint) is the pre-handoff
   command.
-- For live verification of the running app, drive it with `agent-browser` over CDP 9233. Read-only by default; ask before any write.
+- Drive the running app with `agent-browser` over CDP. Read-only by default; ask before any write.
+- A renderer change is finished only when you have opened the affected screen and looked at a screenshot taken after the change loaded. An API response, a log line, or a passing test is not live verification; say which of them you have.
+- Check CDP before claiming anything about the running app, and again before reporting. `pnpm cdp:ready` is the check, and it names the port. Say so when it is down, and never delegate a live-verification slice before it passes.
+- Port 9233 is the maintainer's app. A session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, and never kills a process it did not start. Ask before restarting 9233.
+- Package only when asked, when the change is packaging-specific, or when distribution proof is required. A packaged app is evidence only for the commit it was built from.
 - Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use a low-cost model such as `gpt-5.6-luna` on the Codex CLI account provider, not `gpt-5.6-sol`; pick it in the run dialog rather than changing the maintainer's stored preference.
+- Subagent model tiers: scouts and inventory runs go on the cheap tier (`sonnet` on Claude Code, `gpt-5.6-luna` on Pi); writers and evaluators go on the strong tier (`opus` on Claude Code, `gpt-5.6-terra` on Pi).
+- Never delegate to `gpt-5.6-sol`, and never give an explore agent Fable.
+- Those names drift. The tier is the rule; the names are today's examples.
 - `pnpm dev` exposes CDP only with `REMOTE_DEBUGGING_PORT=9233` in the environment.
+- macOS `sed -i` needs an empty argument (`sed -i ''`); prefer a node one-liner.
+- Quote every glob: zsh expands `--include=*.ts` before the tool ever sees it.
 
 ## Code and Testing Conventions
 
@@ -87,7 +108,14 @@ Committing:
 - Stage explicit paths (`git add <path1> <path2>`); never `git add -A` / `git add .`.
 - Before committing, run `git status` and verify you are only staging your files.
 - Long multi-phase tasks: commit each accepted phase or milestone after its verification gate; do not collapse the entire task into one final commit.
+- A report may not say "uncommitted" or list pending work while your own files are dirty. Commit the finished slice, then report, ending with the SHA.
 - Message format: informative and concise.
+
+Stopping:
+
+- Stop for a decision the plan does not cover, a failed gate, a GitHub write, or removing code that looks intentional.
+- "Continue with the next step?" is not a stop. Take the next step.
+- When you do stop, name the decision you are waiting on.
 
 Never run (destroys other agents' work or bypasses checks):
 
@@ -103,11 +131,13 @@ If rebase conflicts occur:
 
 Use the named skill when its trigger matches the task. Read the skill file before acting; it is the canonical workflow.
 
+- `code-review`: before any handoff that changed `src/`. Run it yourself; do not wait to be asked.
+- `delegated-execution`: work that spans several files or several subagents.
 - `react-doctor`: finishing React work or checking React diagnostics before handoff.
 - `diffs`: working with `@pierre/diffs`, code views, patches, or review surfaces.
 - `trees`: working with `@pierre/trees` file trees.
 - `shadcn`: adding, debugging, or composing shadcn/ui components.
-- `agent-browser`: live browser or Electron verification over CDP 9233.
+- `agent-browser`: live browser or Electron verification over CDP.
 - `herdr`: dev servers, log tails, watchers, and named panes.
 - `github`: GitHub issues, pull requests, reviews, CI, or releases. Use its more specific leaf skill when applicable.
 - `librarian`: caching or consulting an upstream repository or dependency source.
@@ -125,3 +155,6 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 - A completed task package is closed reference material. Do not add research,
   plans, or implementation artifacts to it; route follow-up work using the
   locations above.
+- Update the plan file in the same commit as the work it describes.
+- Run `node .agents/PLANS/program/program.mjs status` before reporting
+  progress on the program.
