@@ -204,6 +204,8 @@ function MoreFiltersPopover({
   readonly onClearInboxMoreFilters: () => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const reviewStateId = useId();
+  const checkStatusId = useId();
   const activeCount =
     Number(reviewState !== undefined) +
     Number(checkStatus !== undefined) +
@@ -246,62 +248,68 @@ function MoreFiltersPopover({
           <PopoverTitle>More filters</PopoverTitle>
         </PopoverHeader>
         <div className="grid gap-3">
-          <Select
-            value={reviewState ?? "any"}
-            items={[{ value: "any", label: "Any" }, ...REVIEW_STATE_FILTERS]}
-            onValueChange={(value) => {
-              if (value === "any") {
-                onReviewStateChange(undefined);
-                return;
-              }
-              const next = REVIEW_STATE_FILTERS.find(
-                (option) => option.value === value,
-              );
-              if (next !== undefined) onReviewStateChange(next.value);
-            }}
-          >
-            <SelectTrigger aria-label="Review state" size="sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="any">Any</SelectItem>
-                {REVIEW_STATE_FILTERS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <Select
-            value={checkStatus ?? "any"}
-            items={[{ value: "any", label: "Any" }, ...CHECK_STATUS_FILTERS]}
-            onValueChange={(value) => {
-              if (value === "any") {
-                onCheckStatusChange(undefined);
-                return;
-              }
-              const next = CHECK_STATUS_FILTERS.find(
-                (option) => option.value === value,
-              );
-              if (next !== undefined) onCheckStatusChange(next.value);
-            }}
-          >
-            <SelectTrigger aria-label="Check status" size="sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="any">Any</SelectItem>
-                {CHECK_STATUS_FILTERS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <Field>
+            <FieldLabel htmlFor={reviewStateId}>Review state</FieldLabel>
+            <Select
+              value={reviewState ?? "any"}
+              items={[{ value: "any", label: "Any" }, ...REVIEW_STATE_FILTERS]}
+              onValueChange={(value) => {
+                if (value === "any") {
+                  onReviewStateChange(undefined);
+                  return;
+                }
+                const next = REVIEW_STATE_FILTERS.find(
+                  (option) => option.value === value,
+                );
+                if (next !== undefined) onReviewStateChange(next.value);
+              }}
+            >
+              <SelectTrigger id={reviewStateId} size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="any">Any</SelectItem>
+                  {REVIEW_STATE_FILTERS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={checkStatusId}>Check status</FieldLabel>
+            <Select
+              value={checkStatus ?? "any"}
+              items={[{ value: "any", label: "Any" }, ...CHECK_STATUS_FILTERS]}
+              onValueChange={(value) => {
+                if (value === "any") {
+                  onCheckStatusChange(undefined);
+                  return;
+                }
+                const next = CHECK_STATUS_FILTERS.find(
+                  (option) => option.value === value,
+                );
+                if (next !== undefined) onCheckStatusChange(next.value);
+              }}
+            >
+              <SelectTrigger id={checkStatusId} size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="any">Any</SelectItem>
+                  {CHECK_STATUS_FILTERS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
           <MoreFiltersTextField
             label="Author"
             placeholder="login or @me"
