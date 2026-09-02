@@ -2,10 +2,20 @@ import * as v from "valibot";
 
 import { GITHUB_LOGIN_MAX_LENGTH, parseGitHubLogin } from "../../domain/ids";
 
+// The findings warning carries the ids it counts so the readiness card can
+// lead to them; the union mirrors the domain's `MergeWarning`.
+const mergeWarningSchema = v.variant("code", [
+  v.strictObject({ code: v.literal("request_changes") }),
+  v.strictObject({
+    code: v.literal("findings_need_acknowledgement"),
+    findingIds: v.array(v.pipe(v.string(), v.minLength(1))),
+  }),
+]);
+
 export const mergeReadinessSchema = v.strictObject({
   _tag: v.picklist(["Ready", "Blocked", "NeedsAcknowledgement"]),
   blockers: v.array(v.string()),
-  warnings: v.array(v.string()),
+  warnings: v.array(mergeWarningSchema),
 });
 
 const mergeReceiptSchema = v.strictObject({

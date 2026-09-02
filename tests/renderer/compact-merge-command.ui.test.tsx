@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompactMergeCommand } from "../../src/renderer/src/components/compact-merge-command";
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import type { FindingId } from "../../src/domain/ids";
 import { deriveCheckReasons } from "../../src/domain/merge-readiness";
 import { installDesktopDouble } from "./fake-desktop-response";
 
@@ -102,7 +103,14 @@ describe("compact merge command", () => {
         readiness={{
           _tag: "NeedsAcknowledgement",
           blockers: [],
-          warnings: ["request_changes", "high_severity_finding"],
+          warnings: [
+            { code: "request_changes" },
+            {
+              code: "findings_need_acknowledgement",
+              // SAFETY: a fixture id; the brand marks a parsed safe slug.
+              findingIds: ["finding-1" as FindingId],
+            },
+          ],
         }}
         context={{
           repo: "centraldigital/patchdesk",
@@ -117,7 +125,7 @@ describe("compact merge command", () => {
       />,
     );
     expect(
-      screen.getByText(/request changes, high severity finding/),
+      screen.getByText(/request changes, findings need acknowledgement/),
     ).toBeTruthy();
     const mergeButton = screen.getByRole("button", { name: "Merge" });
     // SAFETY: The Merge role query returns the native button rendered by Button.
@@ -126,7 +134,7 @@ describe("compact merge command", () => {
     await user.click(screen.getByRole("button", { name: "Merge" }));
     expect(merge).toHaveBeenCalledWith("squash", [
       "request_changes",
-      "high_severity_finding",
+      "findings_need_acknowledgement",
     ]);
     expect(screen.getByText("Merged abcdef.")).toBeTruthy();
   });
@@ -363,7 +371,7 @@ it("preserves confirmed terminal merge UI when refresh is required", async () =>
       readiness={{
         _tag: "NeedsAcknowledgement",
         blockers: [],
-        warnings: ["request_changes"],
+        warnings: [{ code: "request_changes" }],
       }}
       context={{
         repo: "centraldigital/patchdesk",

@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
 import type * as PierreDiffs from "@pierre/diffs";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
+import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { providerCatalog, withAnalysis } from "./review-workbench-fixtures";
 
 /**
@@ -35,7 +36,67 @@ afterEach(() => {
   restoreBridge();
 });
 
+/** The current Analysis's one P1 finding, counted by merge readiness. */
+function withFindingsWarning(): WorkbenchResponse {
+  return {
+    ...withAnalysis("actionable"),
+    mergeReadiness: {
+      _tag: "NeedsAcknowledgement",
+      blockers: [],
+      warnings: [
+        { code: "findings_need_acknowledgement", findingIds: ["finding-1"] },
+      ],
+    },
+  };
+}
+
 describe("ReviewWorkbenchFlow finding navigation", () => {
+  it("opens PR overview at Merge readiness from the header chip and leads from its findings card to the Finding row", async () => {
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      throw new Error(input.path);
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withFindingsWarning()}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Open PR overview: merge warnings" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "PR overview" });
+    const readinessRow = within(dialog).getByRole("button", {
+      name: "Merge readiness",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(readinessRow));
+    expect(readinessRow.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      within(dialog).getAllByRole("group", {
+        name: "1 finding needs acknowledgement before merge",
+      }),
+    ).toHaveLength(1);
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Review findings" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "PR overview" })).toBeNull(),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Insights" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    const row = await screen.findByText("Missing boundary check");
+    await waitFor(() => expect(document.activeElement).toBe(row.closest("li")));
+  });
+
   it("links an Analysis Finding to its diff lines and the diff card back to the Finding row", async () => {
     // Pierre's CodeView only mounts when `CSSStyleSheet.replaceSync` exists;
     // jsdom lacks it, and the plain-text fallback draws no finding cards.

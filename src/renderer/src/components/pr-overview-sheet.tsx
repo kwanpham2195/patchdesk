@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   AlertTriangle,
   BookOpen,
@@ -106,17 +106,28 @@ export type CanonicalReviewOverview = {
   readonly terminalState?: "merged" | "closed";
 };
 
+/** The row the sheet lands focus on when it opens; the header's Merge chip asks for readiness. */
+export type OverviewFocusSection = "merge_readiness";
+
+type OverviewMergeWarning =
+  CanonicalReviewOverview["mergeReadiness"]["warnings"][number];
+
 /** Canonical read-only PR context for the unified Review workbench. */
 export function CanonicalReviewOverviewSheet({
   open,
   onOpenChange,
   overview,
   merge,
+  focusSection,
+  onReviewFindings,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly overview: CanonicalReviewOverview;
   readonly merge?: PullRequestOverviewMerge;
+  readonly focusSection?: OverviewFocusSection;
+  /** Called with the findings card's ids once the sheet has closed. */
+  readonly onReviewFindings?: (findingIds: ReadonlyArray<string>) => void;
 }): React.JSX.Element {
   const terminal = overview.terminalState !== undefined;
   const checks = presentOverallCheckResult(
@@ -126,11 +137,37 @@ export function CanonicalReviewOverviewSheet({
   const freshness = overview.revision?.freshness;
   const checkFreshness = checksFreshness(freshness);
   const CheckIcon = checks.Icon;
+  const readinessTriggerRef = useRef<HTMLButtonElement>(null);
+  // Review findings hands its ids over only after the close finishes, and
+  // tells the dialog not to return focus, so the Analysis row keeps focus.
+  const reviewFindingsRef = useRef<ReadonlyArray<string> | undefined>(
+    undefined,
+  );
+  const requestReviewFindings = (findingIds: ReadonlyArray<string>): void => {
+    reviewFindingsRef.current = findingIds;
+    onOpenChange(false);
+  };
+  const handleOpenChangeComplete = (isOpen: boolean): void => {
+    if (isOpen) {
+      reviewFindingsRef.current = undefined;
+      return;
+    }
+    const findingIds = reviewFindingsRef.current;
+    if (findingIds !== undefined) onReviewFindings?.(findingIds);
+  };
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={handleOpenChangeComplete}
+    >
       <SheetContent
         side="right"
         className="w-[370px] max-w-[calc(100vw-24px)] gap-0 sm:max-w-[370px]"
+        {...(focusSection === "merge_readiness"
+          ? { initialFocus: readinessTriggerRef }
+          : {})}
+        finalFocus={() => reviewFindingsRef.current === undefined}
       >
         <SheetHeader className="border-b px-5 py-4 pr-12">
           <SheetTitle>PR overview</SheetTitle>
@@ -187,6 +224,7 @@ export function CanonicalReviewOverviewSheet({
           <OverviewRow
             title="Merge readiness"
             defaultOpen
+            triggerRef={readinessTriggerRef}
             icon={<GitMerge className="size-3.5" />}
             trailing={mergeReadinessLabel(
               overview.mergeReadiness._tag,
@@ -197,7 +235,12 @@ export function CanonicalReviewOverviewSheet({
               overview.mergeReadiness.blockers,
             )}
           >
-            <MergeReadinessDetail overview={overview} />
+            <MergeReadinessDetail
+              overview={overview}
+              {...(onReviewFindings === undefined
+                ? {}
+                : { onReviewFindings: requestReviewFindings })}
+            />
             {merge === undefined ||
             terminal ||
             overview.mergeReadiness._tag === "Blocked" ? null : (
@@ -334,8 +377,10 @@ function StatusRow({
 
 function MergeReadinessDetail({
   overview,
+  onReviewFindings,
 }: {
   readonly overview: CanonicalReviewOverview;
+  readonly onReviewFindings?: (findingIds: ReadonlyArray<string>) => void;
 }): React.JSX.Element {
   const { mergeReadiness, mergeReasons } = overview;
   const pullRequest = overview.pullRequest;
@@ -422,21 +467,31 @@ function MergeReadinessDetail({
             );
           })
         : null}
-      {mergeReadiness.warnings.map((warning) => (
-        <p
-          key={`warning-${warning}`}
-          className={cn(
-            "flex items-start gap-2 rounded-md border px-3 py-2",
-            warningCard,
-          )}
-        >
-          <AlertTriangle
-            className="mt-0.5 size-4 shrink-0"
-            aria-hidden="true"
+      {mergeReadiness.warnings.map((warning) =>
+        warning.code === "findings_need_acknowledgement" ? (
+          <FindingsAcknowledgementCard
+            key={`warning-${warning.code}`}
+            warning={warning}
+            {...(onReviewFindings === undefined
+              ? {}
+              : { onReview: () => onReviewFindings(warning.findingIds) })}
           />
-          {readinessWarningLabel(warning)}
-        </p>
-      ))}
+        ) : (
+          <p
+            key={`warning-${warning.code}`}
+            className={cn(
+              "flex items-start gap-2 rounded-md border px-3 py-2",
+              warningCard,
+            )}
+          >
+            <AlertTriangle
+              className="mt-0.5 size-4 shrink-0"
+              aria-hidden="true"
+            />
+            {readinessWarningLabel(warning)}
+          </p>
+        ),
+      )}
       {isEmpty ? (
         <p
           className={cn(
@@ -452,9 +507,53 @@ function MergeReadinessDetail({
   );
 }
 
+/** The one findings warning, with the action that leads to the findings it counts. */
+function FindingsAcknowledgementCard({
+  warning,
+  onReview,
+}: {
+  readonly warning: Extract<
+    OverviewMergeWarning,
+    { readonly code: "findings_need_acknowledgement" }
+  >;
+  readonly onReview?: () => void;
+}): React.JSX.Element {
+  const messageId = useId();
+  return (
+    <div
+      role="group"
+      aria-labelledby={messageId}
+      className={cn(
+        "flex flex-col gap-1.5 rounded-md border px-3 py-2",
+        warningCard,
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <span id={messageId} className="min-w-0">
+          {readinessWarningLabel(warning)}
+        </span>
+      </div>
+      {onReview === undefined ? null : (
+        <div className="pl-6">
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-inherit"
+            onClick={onReview}
+          >
+            Review findings
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OverviewRow({
   title,
   defaultOpen = false,
+  triggerRef,
   icon,
   trailing,
   trailingTone,
@@ -463,6 +562,7 @@ function OverviewRow({
 }: {
   readonly title: string;
   readonly defaultOpen?: boolean;
+  readonly triggerRef?: React.RefObject<HTMLButtonElement | null>;
   readonly icon?: React.ReactNode;
   readonly trailing?: React.ReactNode;
   readonly trailingTone?: string;
@@ -489,7 +589,10 @@ function OverviewRow({
               {icon}
             </span>
           )}
-          <CollapsibleTrigger className="-ml-2 inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[0.8rem] font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50">
+          <CollapsibleTrigger
+            ref={triggerRef}
+            className="-ml-2 inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[0.8rem] font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
             {title}
             <ChevronDown
               data-disclosure-motion="chevron"
@@ -553,16 +656,16 @@ function readinessBlockerLabel(blocker: string): string {
   }
 }
 
-function readinessWarningLabel(warning: string): string {
-  switch (warning) {
+function readinessWarningLabel(warning: OverviewMergeWarning): string {
+  switch (warning.code) {
     case "request_changes":
       return "Changes requested.";
-    case "high_severity_finding":
-      return "High-severity local findings need acknowledgement.";
-    case "analysis_finding":
-      return "A current Analysis finding requires acknowledgement before merge.";
-    default:
-      return "Merge warning requires acknowledgement.";
+    case "findings_need_acknowledgement": {
+      const count = warning.findingIds.length;
+      return count === 1
+        ? "1 finding needs acknowledgement before merge"
+        : `${count} findings need acknowledgement before merge`;
+    }
   }
 }
 

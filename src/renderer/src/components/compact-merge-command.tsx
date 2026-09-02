@@ -88,7 +88,9 @@ export function CompactMergeCommand(props: {
     try {
       const result = await props.onMerge(
         method,
-        acknowledged ? props.readiness.warnings : [],
+        acknowledged
+          ? props.readiness.warnings.map((warning) => warning.code)
+          : [],
       );
       setOutcome(confirmedOutcome(result.state, result.mergeCommitSha));
     } catch (cause: unknown) {
@@ -268,7 +270,7 @@ export function CompactMergeCommand(props: {
             <Label htmlFor="merge-ack" className="leading-5">
               I acknowledge:{" "}
               {props.readiness.warnings
-                .map((warning) => warning.replaceAll("_", " "))
+                .map((warning) => warning.code.replaceAll("_", " "))
                 .join(", ")}
               .
             </Label>

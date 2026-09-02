@@ -1,6 +1,7 @@
 import { DiffWorkbench } from "../components/diff-workbench";
 import { CompactMergeCommand } from "../components/compact-merge-command";
 import { PullRequestDescription } from "../components/pull-request-description";
+import type { FindingId } from "../../../domain/ids";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parsePullRequestInput } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
@@ -26,6 +27,10 @@ import {
   longWorkbenchFixtureData,
   workbenchFixtureData,
 } from "./fixtures/workbench-fixture-data";
+
+// SAFETY: "mapped" is the id of the P1 finding in `workbenchFixtureData`,
+// already a valid safe slug; the brand only marks it as parsed.
+const fixtureFindingId = "mapped" as FindingId;
 
 type FixtureRenderer = (
   onNavigationStateChange: (state: NavigationState) => void,
@@ -285,7 +290,13 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
           readiness={{
             _tag: "NeedsAcknowledgement",
             blockers: [],
-            warnings: ["request_changes", "high_severity_finding"],
+            warnings: [
+              { code: "request_changes" },
+              {
+                code: "findings_need_acknowledgement",
+                findingIds: [fixtureFindingId],
+              },
+            ],
           }}
           context={{
             repo: "centraldigital/patchdesk",
@@ -329,7 +340,13 @@ function renderMergeReadinessFixture(
     : {
         _tag: "NeedsAcknowledgement",
         blockers: [],
-        warnings: ["request_changes", "analysis_finding"],
+        warnings: [
+          { code: "request_changes" },
+          {
+            code: "findings_need_acknowledgement",
+            findingIds: [fixtureFindingId],
+          },
+        ],
       };
   // SAFETY: `readiness` is a MergeReadiness domain value built two lines
   // above; its `blockers`/`warnings` are readonly arrays of a narrower

@@ -13,6 +13,7 @@ import {
   pullRequestPageUrl,
 } from "../external-links";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import { ScopeGauge } from "./scope-gauge";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,7 @@ export function ReviewWorkbenchHeader({
   hasUpdates,
   terminal,
   externalPullRequest,
-  setOverviewOpen,
+  openOverview,
   setSummaryDialogOpen,
 }: {
   readonly model: WorkbenchResponse;
@@ -44,7 +45,8 @@ export function ReviewWorkbenchHeader({
   readonly hasUpdates: boolean;
   readonly terminal: boolean;
   readonly externalPullRequest: PullRequestRef | undefined;
-  readonly setOverviewOpen: (open: boolean) => void;
+  /** Opens PR overview, landing focus on `section` when one is named. */
+  readonly openOverview: (section?: OverviewFocusSection) => void;
   readonly setSummaryDialogOpen: (open: boolean) => void;
 }): React.JSX.Element {
   return (
@@ -79,7 +81,7 @@ export function ReviewWorkbenchHeader({
               "hover:bg-status-success/20 hover:text-status-success",
               checksPillColor(model.checks.overall),
             )}
-            onClick={() => setOverviewOpen(true)}
+            onClick={() => openOverview()}
             aria-label={`Open PR overview: checks ${checksLabel.toLowerCase()}`}
           >
             {checksIcon(model.checks.overall)}
@@ -92,7 +94,7 @@ export function ReviewWorkbenchHeader({
               "hover:bg-destructive/20 hover:text-destructive",
               mergePillColor(mergeStatus),
             )}
-            onClick={() => setOverviewOpen(true)}
+            onClick={() => openOverview("merge_readiness")}
             aria-label={`Open PR overview: merge ${mergeLabel(mergeStatus).toLowerCase()}`}
           >
             {mergeIcon(mergeStatus)}

@@ -26,7 +26,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The Review header shows separate Checks and Merge status controls; either opens PR overview. Readiness distinguishes Ready, Needs acknowledgement, and Blocked. Blockers and warnings remain separate. A sole unknown-mergeability condition is not presented with the same destructive certainty as a confirmed policy block.
+The Review header shows separate Checks and Merge status controls; either opens PR overview, and the Merge control opens it with the Merge readiness row expanded and focused. Readiness distinguishes Ready, Needs acknowledgement, and Blocked. Blockers and warnings remain separate. Open P0 or P1 findings from the current Analysis appear as one card that counts them; its Review findings action closes PR overview and opens the first of those findings on the Insights tab. A sole unknown-mergeability condition is not presented with the same destructive certainty as a confirmed policy block.
 
 The merge command names repository and pull-request number, base and head branches, and short represented head SHA. Methods remain the catalogued Squash, Merge, and Rebase choices. GitHub-originated reasons can offer Open on GitHub when the safe external pull-request URL is available.
 

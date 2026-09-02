@@ -126,11 +126,15 @@ describe("ReviewWorkbenchProjectionService merge badge Analysis findings", () =>
     return result._tag === "ok" ? result.value.mergeReadiness : result;
   }
 
-  it("asks the maintainer to acknowledge an open high-severity Finding", async () => {
+  // The ids travel with the warning so the drawer's findings card can lead
+  // to the exact Findings it counts.
+  it("asks the maintainer to acknowledge an open high-severity Finding, naming it", async () => {
     await expect(badge({ severity: "P0" })).resolves.toEqual({
       _tag: "NeedsAcknowledgement",
       blockers: [],
-      warnings: ["high_severity_finding", "analysis_finding"],
+      warnings: [
+        { code: "findings_need_acknowledgement", findingIds: [findingId] },
+      ],
     });
   });
 

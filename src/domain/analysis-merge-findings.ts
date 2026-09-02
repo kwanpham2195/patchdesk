@@ -1,4 +1,4 @@
-import type { ContentHash, GitSha, ReviewSessionId } from "./ids";
+import type { ContentHash, FindingId, GitSha, ReviewSessionId } from "./ids";
 import {
   sameInsightRevision,
   type InsightFindingDismissal,
@@ -8,8 +8,9 @@ import {
 import type { ReviewResult } from "./review-result";
 import type { AnalysisMergePolicy } from "./workspace-profile";
 
-/** The two Finding fields the merge rule reads. */
+/** The three Finding fields the merge rule reads. */
 export type MergeGateFinding = {
+  readonly id: FindingId;
   readonly severity: "P0" | "P1" | "P2" | "P3";
   readonly disposition?: "open" | "dismissed";
 };
@@ -65,7 +66,7 @@ export function mergeGateFindings(
 }
 
 /**
- * The Analysis half of `evaluateMergeReadiness`'s input, counted in one place.
+ * The Analysis half of `evaluateMergeReadiness`'s input, listed in one place.
  *
  * Only an *open* P0 or P1 Finding affects merge, per the ADR "Make Analysis
  * merge policy configurable": "Under the Block policy, only open P0 or P1
@@ -76,16 +77,15 @@ export function analysisMergeInput(
   findings: ReadonlyArray<MergeGateFinding>,
   policy: AnalysisMergePolicy | undefined,
 ) {
-  const openHighSeverity = findings.filter(
-    (finding) =>
-      finding.disposition !== "dismissed" &&
-      (finding.severity === "P0" || finding.severity === "P1"),
-  ).length;
-  const counted = {
-    hasHighSeverityFinding: openHighSeverity > 0,
-    analysisFindingCount: openHighSeverity,
-  };
+  const openHighSeverityFindingIds = findings
+    .filter(
+      (finding) =>
+        finding.disposition !== "dismissed" &&
+        (finding.severity === "P0" || finding.severity === "P1"),
+    )
+    .map((finding) => finding.id);
+  const listed = { openHighSeverityFindingIds };
   return policy === undefined
-    ? counted
-    : { ...counted, analysisMergePolicy: policy };
+    ? listed
+    : { ...listed, analysisMergePolicy: policy };
 }
