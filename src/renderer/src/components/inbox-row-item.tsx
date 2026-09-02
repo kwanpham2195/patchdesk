@@ -175,7 +175,9 @@ function PullRequestLabelColumn({
   );
 }
 
-function CheckIcon({
+/** The row's check glyph, shared with the inspector's Checks fact so one
+ * aggregate check status reads the same in both places. */
+export function CheckIcon({
   overall,
 }: {
   readonly overall: InboxRow["checks"]["overall"];

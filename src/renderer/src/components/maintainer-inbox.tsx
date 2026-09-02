@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { ChevronLeft, ChevronRight, CircleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
   inboxIdentityKey,
@@ -12,9 +12,9 @@ import {
   rateLimitedCopy,
   type RepositoryLabelReadState,
 } from "@/github-read-failure-copy";
-import { LabelChip } from "./label-chip";
 import { InboxFiltersBar } from "./inbox-filters-bar";
 import { InboxRowItem } from "./inbox-row-item";
+import { ReviewDetailsInspector } from "./review-details-inspector";
 import { useInboxView } from "../hooks/use-inbox-view";
 import { formatInboxAge, type InboxFreshnessLabel } from "@/inbox-freshness";
 import { isInboxCacheDegraded } from "../../../domain/inbox-freshness-policy";
@@ -29,16 +29,8 @@ import {
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { InlineError } from "@/components/ui/inline-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Pagination,
@@ -54,7 +46,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { type ReviewOpeningState } from "./review-opening-status";
-import { InspectorActionButtons } from "./inspector-action-buttons";
 import {
   Select,
   SelectContent,
@@ -64,7 +55,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { RepositoryIdentity } from "../../../domain/repository-identity";
@@ -833,7 +823,7 @@ function ReviewDetailsPanel({
         aria-label="Review details"
       >
         <ScrollArea className="h-full overflow-x-hidden">
-          <Inspector
+          <ReviewDetailsInspector
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
             onAction={onAction}
@@ -851,7 +841,7 @@ function ReviewDetailsPanel({
           side="right"
           className="w-[min(24rem,calc(100vw-1rem))] p-0 min-[1280px]:hidden"
         >
-          <Inspector
+          <ReviewDetailsInspector
             {...(selected === undefined ? {} : { row: selected })}
             freshness={freshness}
             onAction={onAction}
@@ -920,141 +910,6 @@ function InboxFreshness({
       ) : null}
     </div>
   );
-}
-
-function Inspector({
-  row,
-  freshness,
-  onAction,
-  openingState,
-}: {
-  readonly row?: InboxRow;
-  readonly freshness: InboxDataFreshness;
-  readonly onAction: () => void | undefined;
-  readonly openingState?: Exclude<ReviewOpeningState, undefined>;
-}): React.JSX.Element {
-  if (row === undefined)
-    return (
-      <div className="p-3 text-sm text-muted-foreground">
-        Select a pull request to inspect its exact review state.
-      </div>
-    );
-  const reviewChanged =
-    row.latestReview !== undefined && !row.latestReview.matchesCurrentHead;
-  return (
-    <div className="space-y-3 p-3">
-      <div>
-        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          Review details
-        </p>
-        <h2 className="mt-1.5 text-[13px] leading-5 font-semibold">
-          #{row.identity.number} {row.title}
-        </h2>
-        <p
-          className="mt-0.5 truncate text-[11px] text-muted-foreground"
-          title={`${row.identity.owner}/${row.identity.repo}`}
-        >
-          {row.identity.owner}/{row.identity.repo}
-        </p>
-      </div>
-      <Separator />
-      <div className="space-y-1.5 text-[11px]">
-        <Detail label="Author" value={row.author} />
-        <Detail
-          label="Branch"
-          value={`${row.baseBranch} ← ${row.headBranch}`}
-        />
-        <Detail label="Current head" value={shortSha(row.currentHeadSha)} />
-        <Detail label="Checks" value={row.checks.overall} />
-        <Detail label="Changes" value={changeStatsText(row.changeStats)} />
-      </div>
-      {row.labels.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1 text-[11px]">
-          <span className="text-muted-foreground">Labels</span>
-          {row.labels.map((label) => (
-            <LabelChip key={label.name} label={label} />
-          ))}
-          {row.labelCount !== undefined &&
-          row.labelCount > row.labels.length ? (
-            <span className="text-muted-foreground">
-              +{row.labelCount - row.labels.length} more
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      <div className="space-y-1.5 text-[11px]">
-        {row.latestReview === undefined ? (
-          <Detail label="Last review" value="Not reviewed" />
-        ) : (
-          <>
-            <Detail
-              label="Reviewed head"
-              value={shortSha(row.latestReview.reviewedHeadSha)}
-            />
-            <Detail
-              label="Local review"
-              value={reviewChanged ? "Updates available" : "Current"}
-            />
-          </>
-        )}
-      </div>
-      {reviewChanged ? (
-        <Card className="gap-1.5 border-primary/30 bg-primary/5 py-2.5">
-          <CardHeader className="px-2.5">
-            <CardTitle className="text-xs">Updates since your review</CardTitle>
-            <CardDescription className="text-[11px] leading-4">
-              Current head differs from the exact saved review head. Open it,
-              then use Refresh to adopt new code.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      ) : null}
-      {freshness === "cached" ? (
-        <Card className="gap-1.5 border-amber-500/30 bg-amber-500/5 py-2.5">
-          <CardContent className="flex gap-2 px-2.5 text-[11px] leading-4 text-muted-foreground">
-            <CircleAlert className="size-3.5 shrink-0 text-amber-500" />
-            GitHub data is cached.
-          </CardContent>
-        </Card>
-      ) : null}
-      <InspectorActionButtons
-        onAction={onAction}
-        {...(openingState === undefined ? {} : { openingState })}
-      />
-      {openingState?.status === "error" ? (
-        <InlineError className="text-xs">{openingState.error}</InlineError>
-      ) : null}
-    </div>
-  );
-}
-
-function Detail({
-  label,
-  value,
-}: {
-  readonly label: string;
-  readonly value: string;
-}): React.JSX.Element {
-  return (
-    <div className="flex min-w-0 items-start justify-between gap-3">
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">
-        {value}
-      </span>
-    </div>
-  );
-}
-function shortSha(value: string): string {
-  return value.slice(0, 12);
-}
-function changeStatsText(stats: InboxRow["changeStats"]): string {
-  const { additions, deletions, changedFiles } = stats;
-  const parts = [
-    changedFiles === undefined ? undefined : `${changedFiles} files`,
-    additions === undefined ? undefined : `+${additions}`,
-    deletions === undefined ? undefined : `-${deletions}`,
-  ].filter((value): value is string => value !== undefined);
-  return parts.length === 0 ? "Not available" : parts.join(" · ");
 }
 function inboxPageSizeFrom(value: string | null): InboxPageSize | undefined {
   return INBOX_PAGE_SIZES.find((size) => String(size) === value);

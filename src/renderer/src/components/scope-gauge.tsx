@@ -46,9 +46,11 @@ const LEGEND_BUCKETS: ReadonlyArray<ChangeScopeBucket> = [
  * The Scope gauge: one bar whose segments are the changed lines per bucket.
  * `bar` is the inbox row, whose Changes cell already prints the totals; `mini`
  * is the workbench header chip, which has no other place to show them; `card`
- * is the Scope card in the Insights tab. Bucket colors are categorical
- * (`--scope-*`) and never the status hues, so a large generated diff never
- * reads as a failure.
+ * is the Scope card in the Insights tab; `legend` is the inspector's Scope
+ * cell, which sits inside a `<dl>` that already carries the heading and so
+ * only wants the bar and the buckets that actually have files. Bucket colors
+ * are categorical (`--scope-*`) and never the status hues, so a large
+ * generated diff never reads as a failure.
  */
 export function ScopeGauge({
   scope,
@@ -56,7 +58,7 @@ export function ScopeGauge({
   className,
 }: {
   readonly scope: ChangeScope;
-  readonly size: "bar" | "mini" | "card";
+  readonly size: "bar" | "mini" | "card" | "legend";
   readonly className?: string;
 }): React.JSX.Element {
   const label = scopeGaugeLabel(scope);
@@ -82,6 +84,34 @@ export function ScopeGauge({
   const counted = new Map(
     scope.buckets.map((bucket) => [bucket.bucket, bucket]),
   );
+  if (size === "legend")
+    return (
+      <div className={cn("flex flex-col gap-1.5", className)}>
+        <ScopeBar scope={scope} label={label} className="h-1.5 w-full" />
+        <ul className="flex flex-wrap gap-x-3 gap-y-1">
+          {LEGEND_BUCKETS.map((bucket) => counted.get(bucket)).map((totals) =>
+            totals === undefined ? null : (
+              <li
+                key={totals.bucket}
+                className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-2 shrink-0 rounded-[2px]",
+                    BUCKET_FILLS[totals.bucket],
+                  )}
+                />
+                <span>{BUCKET_LABELS[totals.bucket]}</span>
+                <span className="font-mono tabular-nums text-foreground">
+                  {totals.files}
+                </span>
+              </li>
+            ),
+          )}
+        </ul>
+      </div>
+    );
   return (
     <div className={cn("flex flex-col gap-2 rounded-md border p-3", className)}>
       <div className="flex items-baseline justify-between gap-3">
