@@ -44,7 +44,7 @@ import { InsightStore } from "../adapters/storage/insight-store";
 import { parseAbsolutePath, parseGitSha } from "../domain/ids";
 import { loggableMetaValue } from "../domain/log-entry";
 import { err } from "../domain/result";
-import { FlueInsightChildInvoker } from "../services/flue-insight-child-invoker";
+import { PiInsightChildInvoker } from "../services/pi-insight-child-invoker";
 import { resolveInsightRuntime } from "./insight-runtime";
 import { invokeWalkthroughWithResolvedTimeout } from "../services/child-invocation";
 import { ReviewDiagnosticService } from "../services/review-diagnostic-service";
@@ -234,7 +234,7 @@ function createInsightCoordinator(
   const insightInvoker =
     runtime === undefined
       ? undefined
-      : new FlueInsightChildInvoker(
+      : new PiInsightChildInvoker(
           new CommandRunner(undefined, logUnclassifiedCommandFailure),
           runtime.root,
           process.execPath,

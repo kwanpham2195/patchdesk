@@ -21,15 +21,15 @@
     "typecheck:scripts": "node scripts/check-scripts-types.mjs",
     "test": "vitest",
     "test:root": "vitest --run",
-    "test:flue": "pnpm --dir runtime/flue test -- --run",
-    "test:all": "pnpm test:root && pnpm test:flue",
+    "test:insight": "pnpm --dir runtime/insight test -- --run",
+    "test:all": "pnpm test:root && pnpm test:insight",
     "test:e2e": "pnpm build && playwright test",
-    "dev": "pnpm --dir runtime/flue build && electron-vite dev",
+    "dev": "pnpm --dir runtime/insight build && electron-vite dev",
     "build": "electron-vite build",
-    "stage:flue-runtime": "node scripts/stage-flue-runtime.mjs",
+    "stage:insight-runtime": "node scripts/stage-insight-runtime.mjs",
     "build:icon": "node scripts/build-app-icon.mjs",
     "verify:icon": "node scripts/verify-app-icon.mjs",
-    "package:mac": "pnpm build && pnpm stage:flue-runtime && pnpm verify:icon && node scripts/package-mac.mjs",
+    "package:mac": "pnpm build && pnpm stage:insight-runtime && pnpm verify:icon && node scripts/package-mac.mjs",
     "electron-builder:mac": "electron-builder --mac --publish never",
     "release:prepare": "node scripts/prepare-release.mjs",
     "release:notes": "node scripts/release-notes.mjs",
@@ -42,7 +42,7 @@
     "prepush": "pnpm typecheck && pnpm typecheck:scripts && pnpm check:error-ui && pnpm knip:ratchet",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepare": "husky && pnpm --dir runtime/flue install --frozen-lockfile --config.auto-install-peers=false && pnpm --dir runtime/flue build"
+    "prepare": "husky && pnpm --dir runtime/insight install --frozen-lockfile --config.auto-install-peers=false && pnpm --dir runtime/insight build"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
@@ -105,7 +105,7 @@
     "extraResources": [
       {
         "from": "out/workflow-runtime",
-        "to": "flue-runtime",
+        "to": "insight-runtime",
         "filter": [
           "!node_modules/**",
           "!**/*.{d.ts,d.mts,d.cts,map}",
@@ -114,7 +114,7 @@
       },
       {
         "from": "out/workflow-runtime/node_modules",
-        "to": "flue-runtime/node_modules",
+        "to": "insight-runtime/node_modules",
         "filter": [
           "**/*",
           "!**/*.{d.ts,d.mts,d.cts,map}",

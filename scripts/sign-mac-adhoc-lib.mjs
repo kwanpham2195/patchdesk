@@ -75,7 +75,7 @@ export async function adhocSignPackagedApp({
   // One `--deep` pass over the bundle is enough here, and was checked against
   // this exact bundle: `codesign --verify --deep --strict` passes afterwards
   // with 18948 sealed files, covering the Electron Framework, the helper apps,
-  // and the Flue runtime's node binaries and `.node` addons under
+  // and the insight runtime's node binaries and `.node` addons under
   // `Contents/Resources`. Signing inside-out by hand would only be needed if
   // an inner bundle carried a signature `--deep` refused to replace, and
   // `--force` replaces them.

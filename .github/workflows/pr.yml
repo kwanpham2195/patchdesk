@@ -37,7 +37,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
-            runtime/flue/pnpm-lock.yaml
+            runtime/insight/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

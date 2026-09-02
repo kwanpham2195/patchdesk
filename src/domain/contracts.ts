@@ -6,7 +6,7 @@ import { err, ok, type Result } from "./result";
 
 export type InvalidDomainContract = {
   readonly _tag: "InvalidDomainContract";
-  readonly boundary: "config" | "github" | "storage" | "flue" | "ui";
+  readonly boundary: "config" | "github" | "storage" | "runtime" | "ui";
 };
 
 export type PatchdeskConfigFile = {

@@ -115,7 +115,7 @@ export class CodexInsightInvoker implements InsightInvoker {
       const prompt = buildCodexWalkthroughPrompt({ walkthroughPrompt, policy });
       if (prompt._tag === "err")
         return err({ reason: "execution_failed" as const });
-      // Match the Flue path: scale the run bound with the patch instead of a flat five minutes.
+      // Match the insight-runtime path: scale the run bound with the patch instead of a flat five minutes.
       const runTimeoutMs = await resolveWalkthroughTimeoutMs(
         { contextPath, patchPath },
         options.signal,

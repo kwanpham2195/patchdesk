@@ -310,7 +310,7 @@ describe("desktop hardening", () => {
 
   it("prefers a packaged one-shot runtime with an exact manifest and lock digest", () => {
     const packagedRoot =
-      "/Applications/Patchdesk.app/Contents/Resources/flue-runtime";
+      "/Applications/Patchdesk.app/Contents/Resources/insight-runtime";
     const lock = "lockfileVersion: '6.0'\n";
     // SAFETY: pi-ai-catalog.generated.ts's literal always carries a top-level
     // `digest: string` field (see the file's last property), even though its
@@ -369,7 +369,7 @@ describe("desktop hardening", () => {
   it("prefers the development build over a staged one only when unpackaged", () => {
     const cwd = "/workspace/patchdesk";
     const stagedRoot = `${cwd}/out/workflow-runtime`;
-    const developmentRoot = `${cwd}/runtime/flue`;
+    const developmentRoot = `${cwd}/runtime/insight`;
     const lock = "lockfileVersion: '6.0'\n";
     // SAFETY: as above -- the generated catalog literal always carries `digest`.
     const catalogDigest = (generatedPiAiCatalog as { readonly digest: string })
@@ -378,7 +378,7 @@ describe("desktop hardening", () => {
     // the catalog digest, the node floor and the lock digest, so a staging
     // built before a request type existed is indistinguishable from a fresh
     // one. Only the resolution order keeps the stale runner out of a
-    // `pnpm dev` run, which rebuilds `runtime/flue/dist` on every start.
+    // `pnpm dev` run, which rebuilds `runtime/insight/dist` on every start.
     const manifest = JSON.stringify({
       piVersion: "0.84.4",
       catalogDigest,

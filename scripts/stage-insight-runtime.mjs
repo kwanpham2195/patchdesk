@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 
-import { stageFlueRuntime } from "./stage-flue-runtime-lib.mjs";
+import { stageInsightRuntime } from "./stage-insight-runtime-lib.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const runtimeRoot = join(projectRoot, "out", "workflow-runtime");
 
-await stageFlueRuntime({ projectRoot, runtimeRoot, run });
+await stageInsightRuntime({ projectRoot, runtimeRoot, run });
 
 function run(command, args) {
   return new Promise((resolveRun, reject) => {

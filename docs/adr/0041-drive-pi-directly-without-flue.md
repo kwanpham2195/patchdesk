@@ -23,21 +23,20 @@ force the pinned versions through every install.
 
 The insight child builds one `pi-agent-core` `Agent` per invocation and drives
 it itself. The three factories in
-`runtime/flue/src/patchdesk-insight-agent.ts` return a plain spec — system
+`runtime/insight/src/patchdesk-insight-agent.ts` return a plain spec — system
 prompt, model specifier, thinking level, and the tools the model may see — and
-`runtime/flue/src/patchdesk-insight-runner.ts` resolves the model against a
+`runtime/insight/src/patchdesk-insight-runner.ts` resolves the model against a
 fresh `pi-ai` `Models` registry, runs the loop once, and reads the one
 submitted result off the submit tool's own state.
 
-`@flue/runtime` is gone from `runtime/flue/package.json`, and twenty packages
+`@flue/runtime` is gone from `runtime/insight/package.json`, and twenty packages
 leave the runtime's lock with it: the Model Context Protocol client and core, a
 Hono server, and `zod` — a third schema library beside Valibot and the JSON
 Schema the agent loop validates against — among them. The `pnpm.overrides`
 block goes too.
 
-The directory and the identifiers keep their `flue` names: `runtime/flue/`,
-`pnpm stage:flue-runtime`, `flue-insight-child-invoker.ts`. Renaming them is a
-separate decision and is not made here.
+The directory and the identifiers were renamed in the same change:
+`runtime/insight/`, `pnpm stage:insight-runtime`, `pi-insight-child-invoker.ts`.
 
 ### What the model sees
 
@@ -101,6 +100,5 @@ machine credentials.
   0036 hold by construction rather than by configuration. Bringing any of them
   back means adding a dependency, which is a new decision and a new threat
   review.
-- The names still say Flue. A rename would touch the directory, the staging
-  script, the packaged resource folder, and the invoker, and it is left for its
-  own decision.
+- The directory, the staging script, the packaged resource folder, and the
+  invoker were renamed away from Flue in the same change.

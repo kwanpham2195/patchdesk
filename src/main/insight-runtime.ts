@@ -11,8 +11,8 @@ const NODE_FLOOR = ">=22.19.0";
 
 /**
  * The staged runtime's own manifest, as it is read back off disk. Strict, so a
- * staging written by an older packaging -- one that still carries the dropped
- * Flue version field -- is rejected rather than read as current.
+ * staging written by an older packaging -- one that still carries a dropped
+ * framework version field -- is rejected rather than read as current.
  */
 const runtimeManifestSchema = v.strictObject({
   piVersion: v.string(),
@@ -41,8 +41,8 @@ export type InsightRuntime = {
  * never qualify.
  *
  * An unpackaged run prefers the development build over the staged one.
- * `pnpm dev` rebuilds `runtime/flue/dist` on every start, while
- * `out/workflow-runtime` is written only by `pnpm stage:flue-runtime` during
+ * `pnpm dev` rebuilds `runtime/insight/dist` on every start, while
+ * `out/workflow-runtime` is written only by `pnpm stage:insight-runtime` during
  * packaging, and `runtime-manifest.json` pins the Pi version, the catalog
  * digest, the node floor and the lock digest -- nothing that changes
  * when the runner itself gains a request type. A staging left over from an
@@ -58,9 +58,9 @@ export function resolveInsightRuntime(
   exists: (path: string) => boolean = existsSync,
   readFile: (path: string) => string = (path) => readFileSync(path, "utf8"),
 ): InsightRuntime | undefined {
-  const packagedRoot = join(dirname(appPath), "flue-runtime");
+  const packagedRoot = join(dirname(appPath), "insight-runtime");
   const stagedRoot = join(cwd, "out", "workflow-runtime");
-  const developmentRoot = join(cwd, "runtime", "flue");
+  const developmentRoot = join(cwd, "runtime", "insight");
   const packaged = {
     kind: "packaged",
     root: packagedRoot,

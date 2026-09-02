@@ -13,9 +13,9 @@ import { join } from "node:path";
 const PI_VERSION = "0.84.4";
 const NODE_FLOOR = ">=22.19.0";
 
-/** Stages the exact self-contained Flue 2 one-shot runtime for Electron resources. */
-export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
-  const source = join(projectRoot, "runtime", "flue");
+/** Stages the exact self-contained one-shot insight runtime for Electron resources. */
+export async function stageInsightRuntime({ projectRoot, runtimeRoot, run }) {
+  const source = join(projectRoot, "runtime", "insight");
   const manifest = join(source, "package.json");
   const lockfile = join(source, "pnpm-lock.yaml");
   const dist = join(source, "dist");
@@ -30,7 +30,7 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
     sourceManifest.dependencies?.["@earendil-works/pi-ai"] !== PI_VERSION
   )
     throw new Error(
-      "The dedicated Flue runtime manifest does not contain the expected exact versions.",
+      "The dedicated insight runtime manifest does not contain the expected exact versions.",
     );
 
   await run("pnpm", ["--dir", source, "build"]);
@@ -79,7 +79,7 @@ export async function stageFlueRuntime({ projectRoot, runtimeRoot, run }) {
     ]);
   } catch (error) {
     throw new Error(
-      "The exact locked Flue runtime could not be staged offline. Populate the pnpm store through the normal dependency preparation path, then retry.",
+      "The exact locked insight runtime could not be staged offline. Populate the pnpm store through the normal dependency preparation path, then retry.",
       { cause: error },
     );
   }

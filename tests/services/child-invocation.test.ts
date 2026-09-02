@@ -81,7 +81,7 @@ async function walkthroughInput(): Promise<WalkthroughInput> {
   };
 }
 
-/** Stands in for `FlueInsightChildInvoker`, recording what the wiring spends
+/** Stands in for `PiInsightChildInvoker`, recording what the wiring spends
  * on it instead of starting a child process. */
 function recordingChild() {
   const bounds: Array<number> = [];

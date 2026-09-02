@@ -1,5 +1,5 @@
 {
-  "name": "patchdesk-flue-runtime",
+  "name": "patchdesk-insight-runtime",
   "private": true,
   "type": "module",
   "scripts": {

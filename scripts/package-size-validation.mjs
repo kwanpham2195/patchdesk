@@ -5,7 +5,7 @@ const MIB = 1024 * 1024;
 
 export const PACKAGE_SIZE_LIMITS_MIB = Object.freeze({
   asar: 30,
-  flue: 50,
+  insightRuntime: 50,
   app: 360,
   dmg: 135,
   zip: 145,
@@ -17,7 +17,7 @@ export const PACKAGE_SIZE_LIMITS_MIB = Object.freeze({
  * symlinks are not followed, so the result is deterministic across filesystems.
  *
  * @param {{ bundle: string; dmg: string; zip: string }} paths
- * @param {{ asar: number; flue: number; app: number; dmg: number; zip: number }} [limitsMiB]
+ * @param {{ asar: number; insightRuntime: number; app: number; dmg: number; zip: number }} [limitsMiB]
  */
 export async function validatePackageSizes(
   paths,
@@ -31,10 +31,10 @@ export async function validatePackageSizes(
       limitMiB: limitsMiB.asar,
     },
     {
-      name: "flue-runtime",
-      path: join(paths.bundle, "Contents", "Resources", "flue-runtime"),
+      name: "insight-runtime",
+      path: join(paths.bundle, "Contents", "Resources", "insight-runtime"),
       kind: "directory",
-      limitMiB: limitsMiB.flue,
+      limitMiB: limitsMiB.insightRuntime,
     },
     {
       name: "Patchdesk.app",

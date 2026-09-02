@@ -39,7 +39,7 @@ type PackageSummary = {
  *   Patchdesk does not control and npm lets carry any number of keys
  *   Patchdesk does not model. So `looseObject`. `strictObject` would reject
  *   every real manifest — measured: it blanks the summary for this repo's
- *   own `package.json` and for `runtime/flue`'s.
+ *   own `package.json` and for `runtime/insight`'s.
  * - Should one invalid piece fail the whole record? No. This summary is
  *   advisory context handed to the model; it has no error channel of its
  *   own — the only outcome short of success is a silently emptier summary —
