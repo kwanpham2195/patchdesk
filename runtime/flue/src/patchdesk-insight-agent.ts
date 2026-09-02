@@ -1,14 +1,8 @@
 import { readFile } from "node:fs/promises";
 
-import {
-  defineSkill,
-  defineTool,
-  useDataWriter,
-  useModel,
-  useSkill,
-  useTool,
-  type Agent,
-} from "@flue/runtime";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { TextContent, ThinkingLevel } from "@earendil-works/pi-ai";
+import { toJsonSchema } from "@valibot/to-json-schema";
 import * as v from "valibot";
 
 import { briefOutputSchema } from "../../../src/domain/brief";
@@ -132,10 +126,31 @@ export type InspectorOperations = {
   ) => Promise<{ readonly content: string } | { readonly denied: true }>;
 };
 
-type AgentExecutionState = {
-  readonly duplicateSubmissionAttempted: () => boolean;
+/** The one value a submission records, already parsed by its own result schema. */
+export type SubmittedInsightResult =
+  | v.InferOutput<typeof modelReviewResultSchema>
+  | v.InferOutput<typeof walkthroughResultSchema>
+  | v.InferOutput<typeof briefResultSchema>;
+
+/** The one submission each invocation is allowed to make, and what it carried. */
+type SubmissionState = {
+  submitted: boolean;
+  duplicate: boolean;
+  value?: SubmittedInsightResult;
 };
 
+type AgentExecutionState = {
+  readonly duplicateSubmissionAttempted: () => boolean;
+  /** The one submitted result, or undefined while nothing has been submitted. */
+  readonly submittedResult: () => SubmittedInsightResult | undefined;
+};
+
+/**
+ * What one invocation's agent may reach. The child drives Pi's agent loop
+ * directly and the loop mounts no tool of its own, so a sandbox, an MCP
+ * connection, and a subagent are not merely undeclared here: no code path in
+ * this runtime can create one.
+ */
 type AgentCapabilityReport = {
   readonly customTools: ReadonlyArray<string>;
   readonly usesSkill: boolean;
@@ -144,7 +159,7 @@ type AgentCapabilityReport = {
   readonly usesSubagent: false;
 };
 
-/** Verifies the Node runtime requirement before a child configures Flue. */
+/** Verifies the Node runtime requirement before a child builds an agent. */
 export function assertSupportedNode(
   version: string = process.versions.node,
 ): void {
@@ -164,10 +179,17 @@ export function assertSupportedNode(
     throw new Error("runtime_unavailable");
 }
 
+/** The fixed trusted skill an Analysis system prompt carries verbatim. */
+export type PatchdeskReviewSkill = {
+  readonly name: string;
+  readonly description: string;
+  readonly instructions: string;
+};
+
 /** Reads the fixed trusted skill and rejects malformed or resource-bearing skill folders. */
 export async function loadPatchdeskReviewSkill(
   skillPath: string,
-): Promise<ReturnType<typeof defineSkill>> {
+): Promise<PatchdeskReviewSkill> {
   const raw = await readFile(skillPath, "utf8");
   const match =
     /^---\r?\nname:\s*([^\r\n]+)\r?\ndescription:\s*(?:"([^"\r\n]+)"|([^\r\n]+))\r?\n---\r?\n([\s\S]+)$/u.exec(
@@ -182,7 +204,7 @@ export async function loadPatchdeskReviewSkill(
     instructions === undefined
   )
     throw new Error("runtime_unavailable");
-  return defineSkill({ name: name.trim(), description, instructions });
+  return { name: name.trim(), description, instructions };
 }
 
 /** The one result schema each agent submits through `submit_patchdesk_result`. */
@@ -191,128 +213,200 @@ type PatchdeskResultSchema =
   | typeof walkthroughResultSchema
   | typeof briefResultSchema;
 
-function createResultTool<TSchema extends PatchdeskResultSchema>(
-  schema: TSchema,
-  write: (value: v.InferOutput<TSchema>) => void,
-  state: { submitted: boolean; duplicate: boolean },
-) {
-  return defineTool({
+/**
+ * Projects one Valibot schema onto the JSON Schema Pi validates tool arguments
+ * against. `warn` keeps a projection going past a constraint JSON Schema
+ * cannot express — the Walkthrough section-count check is the only one — which
+ * the tool's own `v.safeParse` still enforces before anything is recorded.
+ */
+function jsonSchemaFor(
+  schema: PatchdeskResultSchema | v.GenericSchema,
+): AgentTool["parameters"] {
+  const projected: object = toJsonSchema(schema, { errorMode: "warn" });
+  // SAFETY: the agent loop validates tool arguments against plain JSON Schema
+  // and only its declared TypeBox type is narrower than what it accepts, so
+  // one projected JSON Schema object is exactly the value it validates with.
+  return projected as AgentTool["parameters"];
+}
+
+function textContent(text: string): TextContent {
+  return { type: "text", text };
+}
+
+function createResultTool(
+  schema: PatchdeskResultSchema,
+  state: SubmissionState,
+): AgentTool {
+  return {
     name: "submit_patchdesk_result",
+    label: "Submit Patchdesk result",
     description:
       "Submit the one complete Patchdesk result after all needed inspection. This ends the operation.",
-    input: schema,
-    async run({ data }) {
+    parameters: jsonSchemaFor(schema),
+    // Two submissions inside one assistant message must not race: sequential
+    // execution is what makes the duplicate guard below deterministic.
+    executionMode: "sequential",
+    async execute(_toolCallId, args) {
       if (state.submitted) {
         state.duplicate = true;
-        return { output: "Result already recorded.", terminate: true };
+        return {
+          content: [textContent("Result already recorded.")],
+          details: undefined,
+          terminate: true,
+        };
       }
+      const parsed = v.safeParse(schema, args);
+      if (!parsed.success)
+        throw new Error(
+          "The submitted result does not match the Patchdesk result schema.",
+        );
       state.submitted = true;
-      write(data);
-      return { output: "Result recorded.", terminate: true };
+      state.value = parsed.output;
+      return {
+        content: [textContent("Result recorded.")],
+        details: undefined,
+        terminate: true,
+      };
     },
-  });
+  };
 }
+
+/** The one bounded value an inspector call hands back to the model. */
+type InspectorOutcome =
+  | { readonly files: Array<string> }
+  | { readonly content: string }
+  | { readonly denied: true };
+
+const listChangedFilesInput = v.object({});
+const searchFilesInput = v.object({
+  query: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+});
+const readFileRangeInput = v.object({
+  path: v.pipe(v.string(), v.minLength(1)),
+  startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  endLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
+});
+const gitShowInput = v.object({
+  revision: v.pipe(v.string(), v.minLength(1)),
+});
 
 function inspectorTools(
   operations: InspectorOperations,
-  state: { submitted: boolean },
-) {
+  state: SubmissionState,
+): Array<AgentTool> {
+  /** An inspector never ends a run of its own; it only follows a submission. */
+  function inspectorResult(output: InspectorOutcome) {
+    return {
+      content: [textContent(JSON.stringify(output))],
+      details: output,
+      terminate: state.submitted,
+    };
+  }
   return [
-    defineTool({
+    {
       name: "list_changed_files",
+      label: "List changed files",
       description:
         "List the repository-relative files changed by this pull request.",
-      input: v.object({}),
-      output: v.union([
-        v.object({ files: v.array(v.string()) }),
-        v.object({ denied: v.literal(true) }),
-      ]),
-      async run() {
-        const output = await operations.listChangedFiles();
-        return { output, terminate: state.submitted };
+      parameters: jsonSchemaFor(listChangedFilesInput),
+      async execute() {
+        return inspectorResult(await operations.listChangedFiles());
       },
-    }),
-    defineTool({
+    },
+    {
       name: "search_files",
+      label: "Search changed files",
       description: "Search the changed files for a literal query.",
-      input: v.object({
-        query: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-      }),
-      output: v.union([
-        v.object({ files: v.array(v.string()) }),
-        v.object({ denied: v.literal(true) }),
-      ]),
-      async run({ data }) {
-        const output = await operations.searchFiles(data.query);
-        return { output, terminate: state.submitted };
+      parameters: jsonSchemaFor(searchFilesInput),
+      async execute(_toolCallId, args) {
+        const data = v.parse(searchFilesInput, args);
+        return inspectorResult(await operations.searchFiles(data.query));
       },
-    }),
-    defineTool({
+    },
+    {
       name: "read_file_range",
+      label: "Read a file range",
       description:
         "Read an inclusive line range from one repository-relative file.",
-      input: v.object({
-        path: v.pipe(v.string(), v.minLength(1)),
-        startLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
-        endLine: v.pipe(v.number(), v.integer(), v.minValue(1)),
-      }),
-      output: v.union([
-        v.object({ content: v.string() }),
-        v.object({ denied: v.literal(true) }),
-      ]),
-      async run({ data }) {
-        const output = await operations.readFileRange(
-          data.path,
-          data.startLine,
-          data.endLine,
+      parameters: jsonSchemaFor(readFileRangeInput),
+      async execute(_toolCallId, args) {
+        const data = v.parse(readFileRangeInput, args);
+        return inspectorResult(
+          await operations.readFileRange(
+            data.path,
+            data.startLine,
+            data.endLine,
+          ),
         );
-        return { output, terminate: state.submitted };
       },
-    }),
-    defineTool({
+    },
+    {
       name: "git_show",
+      label: "Show a Git revision",
       description:
         "Read the immutable prepared review head or an explicitly supplied full Git revision.",
-      input: v.object({ revision: v.pipe(v.string(), v.minLength(1)) }),
-      output: v.union([
-        v.object({ content: v.string() }),
-        v.object({ denied: v.literal(true) }),
-      ]),
-      async run({ data }) {
-        const output = await operations.gitShow(data.revision);
-        return { output, terminate: state.submitted };
+      parameters: jsonSchemaFor(gitShowInput),
+      async execute(_toolCallId, args) {
+        const data = v.parse(gitShowInput, args);
+        return inspectorResult(await operations.gitShow(data.revision));
       },
-    }),
+    },
   ];
 }
 
-/** One invocation-scoped agent, with the state and capabilities it was built with. */
+/**
+ * Everything one invocation needs to drive Pi's agent loop once: the system
+ * prompt the child composed, the model specifier to resolve, the reasoning
+ * level, and the only tools the model may see.
+ */
+export type InsightAgentSpec = {
+  readonly systemPrompt: string;
+  readonly model: string;
+  readonly thinkingLevel: ThinkingLevel;
+  readonly tools: ReadonlyArray<AgentTool>;
+};
+
+/** One invocation-scoped agent spec, with the state and capabilities it was built with. */
 export type CreatedInsightAgent = {
-  readonly agent: Agent;
+  readonly spec: InsightAgentSpec;
   readonly state: AgentExecutionState;
   readonly capabilities: AgentCapabilityReport;
 };
+
+function executionState(state: SubmissionState): AgentExecutionState {
+  return {
+    duplicateSubmissionAttempted: () => state.duplicate,
+    submittedResult: () => state.value,
+  };
+}
+
+/**
+ * Renders the trusted review skill into the Analysis system prompt. The child
+ * has no skill-activation tool to offer the model, so the instructions the
+ * skill file carries are part of the prompt from the first turn.
+ */
+function skillSection(skill: PatchdeskReviewSkill): string {
+  return `# Patchdesk review skill: ${skill.name}\n\n${skill.description}\n\n${skill.instructions.trim()}`;
+}
 
 /** Creates an invocation-scoped Analysis agent with only four inspectors and result submission. */
 export function createAnalysisAgent(
   input: AnalysisInvocation,
   operations: InspectorOperations,
-  skill: ReturnType<typeof defineSkill>,
+  skill: PatchdeskReviewSkill,
 ): CreatedInsightAgent {
-  const state = { submitted: false, duplicate: false };
-  function PatchdeskAnalysisAgent() {
-    useModel(input.model, { thinkingLevel: input.reasoning });
-    const write = useDataWriter("patchdeskResult", {
-      schema: modelReviewResultSchema,
-    });
-    useSkill(skill);
-    useTool(createResultTool(modelReviewResultSchema, write, state));
-    for (const tool of inspectorTools(operations, state)) useTool(tool);
-    return `${input.prompt}\n\nActivate the Patchdesk review skill. Use only the supplied inspection tools. Submit exactly one result with submit_patchdesk_result and do not provide an independent answer.`;
-  }
+  const state: SubmissionState = { submitted: false, duplicate: false };
   return {
-    agent: PatchdeskAnalysisAgent,
-    state: { duplicateSubmissionAttempted: () => state.duplicate },
+    spec: {
+      systemPrompt: `${input.prompt}\n\n${skillSection(skill)}\n\nFollow the Patchdesk review skill above. Use only the supplied inspection tools. Submit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
+      model: input.model,
+      thinkingLevel: input.reasoning,
+      tools: [
+        createResultTool(modelReviewResultSchema, state),
+        ...inspectorTools(operations, state),
+      ],
+    },
+    state: executionState(state),
     capabilities: {
       customTools: [
         "list_changed_files",
@@ -333,18 +427,15 @@ export function createAnalysisAgent(
 export function createWalkthroughAgent(
   input: WalkthroughInvocation,
 ): CreatedInsightAgent {
-  const state = { submitted: false, duplicate: false };
-  function PatchdeskWalkthroughAgent() {
-    useModel(input.model, { thinkingLevel: input.reasoning });
-    const write = useDataWriter("patchdeskResult", {
-      schema: walkthroughResultSchema,
-    });
-    useTool(createResultTool(walkthroughResultSchema, write, state));
-    return `${input.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`;
-  }
+  const state: SubmissionState = { submitted: false, duplicate: false };
   return {
-    agent: PatchdeskWalkthroughAgent,
-    state: { duplicateSubmissionAttempted: () => state.duplicate },
+    spec: {
+      systemPrompt: `${input.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
+      model: input.model,
+      thinkingLevel: input.reasoning,
+      tools: [createResultTool(walkthroughResultSchema, state)],
+    },
+    state: executionState(state),
     capabilities: {
       customTools: ["submit_patchdesk_result"],
       usesSkill: false,
@@ -361,18 +452,15 @@ export function createWalkthroughAgent(
  * inspector can only see the changed-file snapshots the prompt is built from.
  */
 export function createBriefAgent(input: BriefInvocation): CreatedInsightAgent {
-  const state = { submitted: false, duplicate: false };
-  function PatchdeskBriefAgent() {
-    useModel(input.model, { thinkingLevel: input.reasoning });
-    const write = useDataWriter("patchdeskResult", {
-      schema: briefResultSchema,
-    });
-    useTool(createResultTool(briefResultSchema, write, state));
-    return `${input.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`;
-  }
+  const state: SubmissionState = { submitted: false, duplicate: false };
   return {
-    agent: PatchdeskBriefAgent,
-    state: { duplicateSubmissionAttempted: () => state.duplicate },
+    spec: {
+      systemPrompt: `${input.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
+      model: input.model,
+      thinkingLevel: input.reasoning,
+      tools: [createResultTool(briefResultSchema, state)],
+    },
+    state: executionState(state),
     capabilities: {
       customTools: ["submit_patchdesk_result"],
       usesSkill: false,

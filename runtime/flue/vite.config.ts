@@ -16,9 +16,10 @@ export default defineConfig({
     },
     rollupOptions: {
       external: [
-        "@flue/runtime",
-        "@flue/runtime/node",
+        "@earendil-works/pi-agent-core",
         "@earendil-works/pi-ai",
+        "@earendil-works/pi-ai/providers/all",
+        "@valibot/to-json-schema",
         "valibot",
       ],
     },
