@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { err } from "../../domain/result";
+import { err, ok, type Result } from "../../domain/result";
 
 import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
 import { listAuthenticatedGitHubAccounts } from "../../adapters/github/github-auth-accounts";
@@ -8,12 +8,13 @@ import {
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
-  MAX_INBOX_FILTER_AUTHOR_LENGTH,
-  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   MAX_INBOX_FILTER_LABELS,
   MAX_INBOX_FILTER_LABEL_LENGTH,
+  parseInboxAuthorFilter,
+  parseInboxBaseBranchFilter,
   type InboxCheckStatusFilter,
   type InboxFilter,
+  type InboxFilterTextFailure,
   type InboxPageSize,
   type InboxReviewStateFilter,
 } from "../../domain/maintainer-inbox";
@@ -117,11 +118,17 @@ export function registerDashboardRoutes(
       );
       if (checkStatus === "invalid")
         return response(context, err({ reason: "invalid_input" }));
-      const author = parseInboxAuthorQuery(context.req.query("author"));
-      if (author === "invalid")
+      const author = parseInboxFilterTextQuery(
+        context.req.query("author"),
+        parseInboxAuthorFilter,
+      );
+      if (author._tag === "err")
         return response(context, err({ reason: "invalid_input" }));
-      const baseBranch = parseInboxBaseBranchQuery(context.req.query("base"));
-      if (baseBranch === "invalid")
+      const baseBranch = parseInboxFilterTextQuery(
+        context.req.query("base"),
+        parseInboxBaseBranchFilter,
+      );
+      if (baseBranch._tag === "err")
         return response(context, err({ reason: "invalid_input" }));
       const labelsField = labels.length === 0 ? {} : { labels };
       const awaitingMyReviewField = awaitingMyReview
@@ -129,8 +136,10 @@ export function registerDashboardRoutes(
         : {};
       const reviewStateField = reviewState === undefined ? {} : { reviewState };
       const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
-      const authorField = author === undefined ? {} : { author };
-      const baseBranchField = baseBranch === undefined ? {} : { baseBranch };
+      const authorField =
+        author.value === undefined ? {} : { author: author.value };
+      const baseBranchField =
+        baseBranch.value === undefined ? {} : { baseBranch: baseBranch.value };
       const filter: InboxFilter = {
         state,
         ...labelsField,
@@ -323,51 +332,13 @@ function parseInboxCheckStatusQuery(
   );
 }
 
-/**
- * Parses the optional GitHub `author:<value>` qualifier — one login, or the
- * literal `@me`, which GitHub resolves to the authenticated viewer server-side
- * exactly as it does for `user-review-requested:@me`, so Patchdesk never looks
- * the login up.
- */
-function parseInboxAuthorQuery(
+/** An absent param means the filter is off; a present one must survive the domain parser, so an unusable value is `invalid_input` rather than a silently dropped filter. */
+function parseInboxFilterTextQuery(
   value: string | undefined,
-): string | undefined | "invalid" {
-  return parseInboxQualifierTextQuery(value, MAX_INBOX_FILTER_AUTHOR_LENGTH);
-}
-
-/** Parses the optional GitHub `base:<value>` qualifier — one base branch name. */
-function parseInboxBaseBranchQuery(
-  value: string | undefined,
-): string | undefined | "invalid" {
-  return parseInboxQualifierTextQuery(
-    value,
-    MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
-  );
-}
-
-/**
- * The shared rule for the single-value free-text qualifiers. Absent means the
- * filter is off; anything present must survive `trim()` non-empty, stay within
- * its own length cap, and carry none of the double quote, whitespace, or
- * control character that would let a value close its own `author:"NAME"`
- * qualifier and open a second one. This is the same injection boundary
- * `parseInboxLabelsQuery` guards, so an unusable value is `invalid_input`
- * rather than a silently dropped filter.
- */
-function parseInboxQualifierTextQuery(
-  value: string | undefined,
-  maxLength: number,
-): string | undefined | "invalid" {
-  if (value === undefined) return undefined;
-  const trimmed = value.trim();
-  if (
-    trimmed.length === 0 ||
-    trimmed.length > maxLength ||
-    containsQuoteOrControlCharacter(trimmed) ||
-    containsWhitespace(trimmed)
-  )
-    return "invalid";
-  return trimmed;
+  parse: (value: string) => Result<string, InboxFilterTextFailure>,
+): Result<string | undefined, InboxFilterTextFailure> {
+  if (value === undefined) return ok(undefined);
+  return parse(value);
 }
 
 function parseInboxLabelsQuery(
@@ -397,12 +368,4 @@ function containsQuoteOrControlCharacter(value: string): boolean {
     if (value[i] === '"' || code <= 0x1f || code === 0x7f) return true;
   }
   return false;
-}
-
-/** Rejects the interior whitespace that would end a quoted qualifier early and
- * start a second one. Kept apart from `containsQuoteOrControlCharacter`
- * because a GitHub label name may legitimately contain a space, while a login
- * and a branch name may not. */
-function containsWhitespace(value: string): boolean {
-  return /\s/u.test(value);
 }

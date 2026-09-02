@@ -101,10 +101,10 @@ const preferences = [
   },
   {
     name: "inbox view",
-    key: "patchdesk.inbox-view.v7.profile",
+    key: "patchdesk.inbox-view.v6.profile",
     rejected: JSON.stringify({ version: 2, preferences: {} }),
     accepted: JSON.stringify({
-      version: 7,
+      version: 6,
       preferences: { state: "merged" },
     }),
     load: () => loadInboxViewPreferences("profile"),

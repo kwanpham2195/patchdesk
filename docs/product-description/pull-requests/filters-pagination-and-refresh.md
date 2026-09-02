@@ -31,7 +31,7 @@ The freshness badge says GitHub: Current, Aged, Partial, Cached after refresh fa
 
 ### Leave unchanged
 
-Opening the label menu or More filters does not change the listing until a choice is selected. Choosing `Any` removes that field's qualifier. Typing in the Author or Base branch field changes nothing until the value is applied with Enter or by leaving the field, because every applied value is a new GitHub read. Escape in either field restores the last applied value and keeps the popover open. Any active chip can be cleared without changing the other three fields. Closing either popover without a change has no effect. Clicking a disabled Previous or Next control does nothing. Reading the count or freshness badge without activating it does not issue a request.
+Opening the label menu or More filters does not change the listing until a choice is selected. Choosing `Any` removes that field's qualifier. Typing in the Author or Base branch field changes nothing until the value is applied with Enter or by leaving the field, because every applied value is a new GitHub read. A value carrying spaces or quotes, or one past its length limit, is refused before any read: the typed text stays in the field, the field is marked invalid, and a one-line reason appears under it until the next applied value or Escape. Escape in either field restores the last applied value and keeps the popover open. Any active chip can be cleared without changing the other three fields. Closing either popover without a change has no effect. Clicking a disabled Previous or Next control does nothing. Reading the count or freshness badge without activating it does not issue a request.
 
 ### Begin an action
 
@@ -89,7 +89,7 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 
 **Review revision and freshness.** Listing freshness describes the GitHub snapshot for rows; opening a Review performs its own represented-revision preparation and checks.
 
-**Local persistence and recovery.** Filter, size, Selected repository, selected identity, and inspector choices are local preferences. Review state, Check status, Author, and Base branch restore after renderer reload. The stored view preferences moved to a new version when the two text fields arrived, so a profile's saved filter and page-size choices reset once to their defaults after this release. The reusable inbox cache is separate and only covers an unfiltered open first page.
+**Local persistence and recovery.** Filter, size, Selected repository, selected identity, and inspector choices are local preferences. Review state, Check status, Author, and Base branch restore after renderer reload. The reusable inbox cache is separate and only covers an unfiltered open first page.
 
 **GitHub permissions and write authority.** Listing is read-only. A Current or cached result does not authorize a Review write or merge.
 
@@ -132,4 +132,4 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 - Confirm whether a stale cache should remain actionable for opening Reviews while merge-oriented actions are disabled.
 - Confirm the behavior when a page token expires remotely even though its local shape still validates.
 
-Baseline drafted from Patchdesk application source commit `3100615`; scoped Review state and Check status filter behavior updated and live-verified through `359770f`; scoped Author and Base branch filter behavior drafted from application commit `1837c01` and not yet live-verified.
+Baseline drafted from Patchdesk application source commit `3100615`; scoped Review state and Check status filter behavior updated and live-verified through `359770f`; scoped Author and Base branch filter behavior drafted from PR #65 and not yet live-verified.

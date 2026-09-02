@@ -25,8 +25,8 @@ import {
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
-  MAX_INBOX_FILTER_AUTHOR_LENGTH,
-  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
+  parseInboxAuthorFilter,
+  parseInboxBaseBranchFilter,
   type InboxPageRequest,
   type InboxPageSize,
   INBOX_STATE_FILTER_VALUES,
@@ -85,21 +85,20 @@ const inboxPageTokenSchema = v.strictObject({
   reviewState: v.optional(v.picklist(INBOX_REVIEW_STATE_FILTER_VALUES)),
   /** The check-status qualifier the token's cursor was cut under. */
   checkStatus: v.optional(v.picklist(INBOX_CHECK_STATUS_FILTER_VALUES)),
-  /** The author qualifier the token's cursor was cut under; bounded here as
-   * well as at the route, because a token is renderer-supplied input. */
+  /** The author qualifier the token's cursor was cut under; run through the
+   * domain parser here as well as at the route, because a token is
+   * renderer-supplied input. */
   author: v.optional(
     v.pipe(
       v.string(),
-      v.minLength(1),
-      v.maxLength(MAX_INBOX_FILTER_AUTHOR_LENGTH),
+      v.check((value) => parseInboxAuthorFilter(value)._tag === "ok"),
     ),
   ),
   /** The base-branch qualifier the token's cursor was cut under. */
   baseBranch: v.optional(
     v.pipe(
       v.string(),
-      v.minLength(1),
-      v.maxLength(MAX_INBOX_FILTER_BASE_BRANCH_LENGTH),
+      v.check((value) => parseInboxBaseBranchFilter(value)._tag === "ok"),
     ),
   ),
   cursor: v.optional(

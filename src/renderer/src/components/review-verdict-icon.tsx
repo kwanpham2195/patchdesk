@@ -2,14 +2,7 @@ import { Ban, CheckCircle2, MessageCircle, XCircle } from "lucide-react";
 
 import type { ReviewVerdictState } from "../../../domain/review-verdicts";
 
-/**
- * A verdict's icon, so the outdated marking and each verdict stay legible
- * without relying on colour alone. Shared so the Reviewers rail
- * (`pull-request-metadata-rail.tsx`) and the Pull requests review-state
- * filter (`inbox-filters-bar.tsx`) draw one glyph per verdict rather than
- * each keeping its own pairs. Always `aria-hidden`: every place that draws
- * one also writes the verdict out in words.
- */
+/** Shared so the Reviewers rail and the Pull requests review-state filter draw one glyph per verdict, and always `aria-hidden` because every place that draws one also writes the verdict out in words. */
 export function ReviewVerdictIcon({
   verdict,
   className = "size-3",

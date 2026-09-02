@@ -3,10 +3,11 @@ import { parseGitSha } from "../../src/domain/ids";
 import {
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
-  MAX_INBOX_FILTER_AUTHOR_LENGTH,
-  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
+  parseInboxAuthorFilter,
+  parseInboxBaseBranchFilter,
   projectMaintainerInboxRow,
 } from "../../src/domain/maintainer-inbox";
+import { err, ok } from "../../src/domain/result";
 
 const sha = parseGitSha("a".repeat(40));
 if (sha._tag === "err") throw new Error("fixture SHA invalid");
@@ -60,9 +61,26 @@ describe("maintainer inbox", () => {
     ]);
   });
 
-  it("bounds the author and base branch filter text", () => {
-    expect(MAX_INBOX_FILTER_AUTHOR_LENGTH).toBe(39);
-    expect(MAX_INBOX_FILTER_BASE_BRANCH_LENGTH).toBe(100);
+  it("accepts a login, @me, and a slashed branch name as filter text", () => {
+    expect(parseInboxAuthorFilter("octocat")).toEqual(ok("octocat"));
+    expect(parseInboxAuthorFilter("  @me  ")).toEqual(ok("@me"));
+    expect(parseInboxBaseBranchFilter("release/2.0")).toEqual(
+      ok("release/2.0"),
+    );
+  });
+
+  it("names the rule a refused author or base branch broke", () => {
+    expect(parseInboxAuthorFilter("John Smith")).toEqual(err("characters"));
+    expect(parseInboxAuthorFilter('"x"')).toEqual(err("characters"));
+    expect(parseInboxAuthorFilter(`octo${String.fromCharCode(1)}cat`)).toEqual(
+      err("characters"),
+    );
+    expect(parseInboxAuthorFilter("a".repeat(40))).toEqual(err("too_long"));
+    expect(parseInboxBaseBranchFilter("b".repeat(101))).toEqual(
+      err("too_long"),
+    );
+    expect(parseInboxAuthorFilter("   ")).toEqual(err("empty"));
+    expect(parseInboxBaseBranchFilter("")).toEqual(err("empty"));
   });
 
   it("opens an existing changed Review without adopting its new revision", () => {

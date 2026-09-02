@@ -3,18 +3,20 @@ import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
-  MAX_INBOX_FILTER_AUTHOR_LENGTH,
-  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   MAX_INBOX_FILTER_LABELS,
   MAX_INBOX_FILTER_LABEL_LENGTH,
   INBOX_REVIEW_STATE_FILTER_VALUES,
   INBOX_STATE_FILTER_VALUES,
+  parseInboxAuthorFilter,
+  parseInboxBaseBranchFilter,
   type InboxCheckStatusFilter,
+  type InboxFilterTextFailure,
   type InboxPageSize,
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
 import type { RepositoryIdentity } from "../../domain/repository-identity";
+import type { Result } from "../../domain/result";
 import { definePreference } from "./lib/local-preference";
 
 const inboxStateFilterSchema = v.picklist(INBOX_STATE_FILTER_VALUES);
@@ -32,6 +34,18 @@ const trimmed = (limit: number) =>
     v.string(),
     v.transform((value) => value.trim().slice(0, limit)),
     v.minLength(1),
+  );
+
+// A stored free-text filter runs the same domain parser the route does, so a
+// stale or hand-edited value the server would refuse falls back to absent
+// instead of being sent.
+const filterText = (
+  parse: (value: string) => Result<string, InboxFilterTextFailure>,
+) =>
+  v.pipe(
+    v.string(),
+    v.check((value) => parse(value)._tag === "ok"),
+    v.transform((value) => value.trim()),
   );
 
 // selectedLabels is the persisted form of the label filter; it is
@@ -71,16 +85,9 @@ const preferencesSchema = v.object({
     v.optional(v.picklist(INBOX_CHECK_STATUS_FILTER_VALUES)),
     undefined,
   ),
-  // author and baseBranch are free text rather than enumerated, so they are
-  // trimmed and length-capped here to the same bounds the route enforces
-  // (`parseInboxAuthorQuery` and `parseInboxBaseBranchQuery` in
-  // dashboard-routes.ts), so a stored value cannot outgrow them.
-  author: v.fallback(
-    v.optional(trimmed(MAX_INBOX_FILTER_AUTHOR_LENGTH)),
-    undefined,
-  ),
+  author: v.fallback(v.optional(filterText(parseInboxAuthorFilter)), undefined),
   baseBranch: v.fallback(
-    v.optional(trimmed(MAX_INBOX_FILTER_BASE_BRANCH_LENGTH)),
+    v.optional(filterText(parseInboxBaseBranchFilter)),
     undefined,
   ),
   inspectorOpen: v.fallback(v.boolean(), true),
@@ -146,19 +153,11 @@ const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   inspectorOpen: true,
 };
 
-// v5 dropped the queue rail (`view`, `queueRailOpen`) and the in-page search
-// box — every filter now reaches GitHub as a structured, server-side
-// qualifier instead of filtering the loaded page — see ADR 0031. v6 renames
-// the stored `scope` field to `state`, the one spelling the domain, the
-// route, and the renderer all use for the same value. v7 adds the `author`
-// and `baseBranch` filters, the first stored filters holding free text rather
-// than an enumerated value; a v6 blob predates their bounds, so it is
-// discarded rather than read as if those bounds had always applied.
-// Bumping VERSION (rather than migrating the previous key) resets every field
-// to default on an old-version read, matching how v1 -> v2 -> v3 -> v4
-// already worked: only the v1 key is still recognized, so any other stale
-// version falls straight through to `DEFAULT_INBOX_VIEW_PREFERENCES`.
-const VERSION = 7;
+// Bumping VERSION resets every field to default on an old-version read,
+// because only this key and the v1 key are still recognized — v5 dropped the
+// queue rail and the in-page search box (ADR 0031), and v6 renamed the stored
+// `scope` field to `state`.
+const VERSION = 6;
 
 const storedSchema = v.pipe(
   v.object({

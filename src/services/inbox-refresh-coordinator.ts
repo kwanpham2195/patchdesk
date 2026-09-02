@@ -43,8 +43,8 @@ export class InboxRefreshCoordinator {
     const awaitingMyReview = page.filter.awaitingMyReview === true ? "1" : "0";
     const reviewState = page.filter.reviewState ?? "any";
     const checkStatus = page.filter.checkStatus ?? "any";
-    const author = page.filter.author ?? "any";
-    const baseBranch = page.filter.baseBranch ?? "any";
+    const author = filterTextSegment(page.filter.author);
+    const baseBranch = filterTextSegment(page.filter.baseBranch);
     const key = `${profile.id}:${repository.host}/${repository.owner}/${repository.repo}:${page.filter.state}:${labels}:${awaitingMyReview}:${reviewState}:${checkStatus}:${author}:${baseBranch}:${page.pageSize}:${page.pageToken ?? "first"}`;
     const existing = this.inFlight.get(key);
     if (existing !== undefined) return existing;
@@ -54,4 +54,9 @@ export class InboxRefreshCoordinator {
     this.inFlight.set(key, request);
     return request;
   }
+}
+
+/** Encodes presence rather than substituting a placeholder word, so a search for the author literally named `any` cannot share a key with a search for any author. */
+function filterTextSegment(value: string | undefined): string {
+  return value === undefined ? "" : `=${value}`;
 }

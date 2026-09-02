@@ -29,6 +29,7 @@ import type { InboxFreshnessLabel } from "../inbox-freshness";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxCheckStatusFilter,
+  type InboxFilterTextFailure,
   type InboxPageSize,
   type InboxReviewStateFilter,
   type InboxStateFilter,
@@ -124,9 +125,13 @@ export function InboxFlow({
     value: InboxCheckStatusFilter | undefined,
   ) => void;
   readonly author?: string;
-  readonly onInboxAuthorChange?: (value: string | undefined) => void;
+  readonly onInboxAuthorChange?: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly baseBranch?: string;
-  readonly onInboxBaseBranchChange?: (value: string | undefined) => void;
+  readonly onInboxBaseBranchChange?: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly onClearInboxMoreFilters?: () => void;
   /** The screen's root state (ADR 0031); only App owns its request
    * transition. Absent only before the active profile's watchlist is known. */
@@ -306,9 +311,13 @@ function InboxScreen({
     value: InboxCheckStatusFilter | undefined,
   ) => void;
   readonly author?: string;
-  readonly onInboxAuthorChange: (value: string | undefined) => void;
+  readonly onInboxAuthorChange: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly baseBranch?: string;
-  readonly onInboxBaseBranchChange: (value: string | undefined) => void;
+  readonly onInboxBaseBranchChange: (
+    value: string | undefined,
+  ) => InboxFilterTextFailure | undefined;
   readonly onClearInboxMoreFilters: () => void;
   readonly labelActions?: InboxLabelActions;
   readonly selectedRepository?: RepositoryIdentity;
