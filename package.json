@@ -27,6 +27,7 @@
     "dev": "pnpm --dir runtime/insight build && electron-vite dev",
     "build": "electron-vite build",
     "stage:insight-runtime": "node scripts/stage-insight-runtime.mjs",
+    "pi:catalog-delta": "node scripts/pi-catalog-delta.mjs",
     "build:icon": "node scripts/build-app-icon.mjs",
     "verify:icon": "node scripts/verify-app-icon.mjs",
     "package:mac": "pnpm build && pnpm stage:insight-runtime && pnpm verify:icon && node scripts/package-mac.mjs",
