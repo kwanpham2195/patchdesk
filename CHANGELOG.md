@@ -2,32 +2,22 @@
 
 ## Unreleased
 
+## 0.0.1 - 2026-09-02
+
 - Added More filters to Pull requests so you can filter by Review state or Check status; active selections remain visible as chips, persist with the profile, and can be cleared individually or together.
 - Made hunk citation chips in Brief open a preview of the cited hunk as a rendered diff; a hunk too large to preview keeps a plain chip, and so does a Brief retained before this change.
 - Added a **Flow** block to Brief: up to three diff-styled views, one per kind — call_tree, control_flow, component — with each step marked added, removed, or unchanged and drawn with tree guides, hunk citations on changed steps where the patch shows them, and a per-view Copy as diff action; a Brief retained before this change has no Flow.
 - Removed the Goal, Assumptions, and Description vs diff blocks from Brief, and the Shape block's contract hunk; Brief now shows Flow, Shape, Start here, and Reach, and Briefs retained by earlier releases still open without those blocks.
 - Fixed Reach reporting a changed file as untested when its test file uses a different separator or sits beside it, made the surface flags recognise Go-style paths (pkg/…/v1, internal/adapter, repo, cmd), and stopped counting a mention in a Markdown, text, or docs/ file as a caller.
 - Fixed Copy as diff in Brief and the diff copy button, which the desktop app's permission policy had silently blocked.
-
-## 0.1.3 - 2026-09-01
-
 - Fixed release installs when the machine's pnpm peer setting differs from the locked Flue runtime.
-
-## 0.1.2 - 2026-09-01
-
 - Reduced the macOS download and installed app size, and added release checks to prevent package-size regressions.
-
-## 0.1.1 - 2026-09-01
-
 - Moved the review navigator toggle into the diff header, keeping the file path aligned when the navigator opens or closes.
 - Improved motion across dialogs, popovers, drawers, disclosures, busy progress, Insight completions, and Walkthrough focus transitions, while keeping the command palette, tooltips, and trigger-aligned selects instant.
 - Protected Settings profile edits when creating a new profile, showed field-specific validation before saving, and kept the Repository picker in sync after a profile switch.
 - Improved workspace discovery by grouping repositories at directory boundaries and preserving usable ready and watched repositories when one workspace root fails.
 - Made Pull requests and Review actions more reliable with separate Open Review and merge-readiness actions, profile-scoped opening errors, text-editor shortcut protection, and clear Resolve permission guidance.
 - Clarified reading surfaces with Analysis and Review activity empty states, Walkthrough section counts and boundary controls, and visible Diff file, hunk, and thread targets and boundaries.
-
-## 0.1.0 - 2026-08-30
-
 - Patchdesk opened from the Dock or Finder now finds the provider keys you exported in your shell profile and the `codex` you installed with Homebrew or npm; it reads your login shell's PATH and provider keys once at startup, so `launchctl setenv` and launching from a terminal are no longer needed.
 - Renamed the Maintainer inbox to **Pull requests** everywhere it is shown: the navigation, the page heading, the window title, and the Navigate palette.
 - Patchdesk draws its own window header on macOS: the native title bar is gone and the traffic lights sit inside the app header, as in other desktop apps. In full screen, where macOS hides the lights, the header drops the gap it keeps for them and the Patchdesk name starts at the left edge again.
@@ -45,7 +35,6 @@
 - Fixed **Add to review** duplicating a Finding into general review feedback before Finish.
 - Fixed long file paths overflowing their cards in the Threads navigator.
 - Fixed merge context, warning acknowledgement, and controls overflowing the narrow PR overview drawer.
-
 - Fixed the Analysis merge policy having no effect on the merge itself; an open P0 or P1 Finding now blocks or asks for acknowledgement, as the profile's policy says, instead of being ignored at the merge.
 - Fixed a dismissed Finding still counting against merge; the merge badge and the merge itself now count only open Findings, so what the badge offers is what the merge allows.
 - Fixed Patchdesk refusing to merge a pull request in a repository with no required-review rule; when GitHub reports no review requirement, that is no longer read as a missing approval.
