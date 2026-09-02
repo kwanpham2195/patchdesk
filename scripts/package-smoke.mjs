@@ -458,7 +458,7 @@ async function validatePackagedRuntime(executable, runtime) {
   const lockDigest = createHash("sha256").update(lock).digest("hex");
   if (
     manifest.flueVersion !== "2.0.3" ||
-    manifest.piVersion !== "0.84.1" ||
+    manifest.piVersion !== "0.84.4" ||
     manifest.nodeFloor !== ">=22.19.0" ||
     manifest.lockDigest !== lockDigest
   ) {
@@ -468,7 +468,7 @@ async function validatePackagedRuntime(executable, runtime) {
   }
   if (
     runtimePackage.dependencies?.["@flue/runtime"] !== "2.0.3" ||
-    runtimePackage.dependencies?.["@earendil-works/pi-ai"] !== "0.84.1"
+    runtimePackage.dependencies?.["@earendil-works/pi-ai"] !== "0.84.4"
   ) {
     throw new Error(
       "Packaged Flue runtime package does not contain the expected exact versions.",

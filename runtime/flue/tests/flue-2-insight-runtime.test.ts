@@ -65,7 +65,7 @@ describe("generated Pi catalog", () => {
   it("imports and projects all 32 current allowlisted provider catalogs deterministically", () => {
     const first = generateModelCatalog();
     expect(first).toEqual(generateModelCatalog());
-    expect(first.piVersion).toBe("0.84.1");
+    expect(first.piVersion).toBe("0.84.4");
     expect(first.catalog).toHaveLength(32);
     expect(
       first.catalog

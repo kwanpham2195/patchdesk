@@ -7,7 +7,7 @@ import * as v from "valibot";
 import { generatedPiAiCatalog } from "../adapters/pi/pi-ai-catalog.generated";
 
 const FLUE_VERSION = "2.0.3";
-const PI_VERSION = "0.84.1";
+const PI_VERSION = "0.84.4";
 const NODE_FLOOR = ">=22.19.0";
 
 /** The staged runtime's own manifest, as it is read back off disk. */

@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 const FLUE_VERSION = "2.0.3";
-const PI_VERSION = "0.84.1";
+const PI_VERSION = "0.84.4";
 const NODE_FLOOR = ">=22.19.0";
 
 /** Stages the exact self-contained Flue 2 one-shot runtime for Electron resources. */

@@ -10,13 +10,13 @@
   },
   "pnpm": {
     "overrides": {
-      "@earendil-works/pi-agent-core": "0.84.1",
-      "@earendil-works/pi-ai": "0.84.1",
+      "@earendil-works/pi-agent-core": "0.84.4",
+      "@earendil-works/pi-ai": "0.84.4",
       "valibot": "1.4.2"
     }
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.84.1",
+    "@earendil-works/pi-ai": "0.84.4",
     "@flue/runtime": "2.0.3",
     "valibot": "1.4.2"
   },
