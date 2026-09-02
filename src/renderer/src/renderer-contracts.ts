@@ -167,7 +167,21 @@ export function parseInboxResponse(input: unknown): InboxResponse | undefined {
 
 /** Stable renderer key for selection, preferences, and list navigation. */
 export function inboxIdentityKey(row: InboxRow): string {
-  return `${row.identity.host}/${row.identity.owner}/${row.identity.repo}#${row.identity.number}`;
+  return pullRequestIdentityKey(row.identity);
+}
+
+/**
+ * The one key a pull request is named by in renderer state. Openings are keyed
+ * by it too, so a pull request reached without a listed row — a pasted link —
+ * lands on the same key as the row that names it.
+ */
+export function pullRequestIdentityKey(identity: {
+  readonly host: string;
+  readonly owner: string;
+  readonly repo: string;
+  readonly number: number;
+}): string {
+  return `${identity.host}/${identity.owner}/${identity.repo}#${identity.number}`;
 }
 // `GET /v1/environment` carries app metadata (productName, version, ...)
 // this parser does not care about, so it stays a plain `v.object` — the same

@@ -9,6 +9,7 @@
 - Some providers renamed their model ids: Cloudflare AI Gateway's Anthropic models now separate the version with a dot (`claude-sonnet-4.5` rather than `claude-sonnet-4-5`), and Vercel AI Gateway moved its xAI models from `xai/` to `spacexai/`. A **Default model** saved under an old id no longer matches and needs picking again in Settings.
 - Insight runs now talk to the model through Pi directly instead of through a framework layered over it, so Patchdesk bundles a smaller runtime with the app, and Analysis, Walkthrough, and Brief no longer offer the model two framework tools none of them used. A transient provider error, such as a rate limit or a server hiccup, is still retried before a run is reported as failed.
 - Renamed the Insight provider formerly labelled **Pi** to **API key**, because Patchdesk bundles the model client and all you supply is a provider key; the models on offer and a saved **Default model** are unchanged.
+- Added opening a pull request by pasting its GitHub link on **Pull requests**: paste anywhere outside a text field and Patchdesk opens that pull request, whether or not it is in the current listing. A link to a repository you do not watch is refused with a message instead, and pasted text that is not a pull request link is left alone.
 
 ## 0.0.1 - 2026-09-02
 
