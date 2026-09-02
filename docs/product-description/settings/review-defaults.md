@@ -2,11 +2,11 @@
 
 ## Summary
 
-Review preferences are profile-scoped defaults in Settings > Review for the next Analysis run. The section chooses a Pi model and reasoning level; it does not start an Insight, configure GitHub, or replace the per-Insight provider choices in an active run dialog. The active profile supplies the preference scope.
+Review preferences are profile-scoped defaults in Settings > Review for the next Analysis run. The section chooses an API-key model and reasoning level; it does not start an Insight, configure GitHub, or replace the per-Insight provider choices in an active run dialog. The active profile supplies the preference scope.
 
 ## The simple case
 
-The maintainer opens Settings > Review. Patchdesk reads the available Pi model catalog, selects the saved Analysis model when it is still available, and otherwise chooses the first available model. The maintainer chooses a reasoning level from Minimal, Low, Medium, High, or Extra high. The choice is saved for that profile and seeds the next Analysis dialog.
+The maintainer opens Settings > Review. Patchdesk reads the available API-key model catalog, selects the saved Analysis model when it is still available, and otherwise chooses the first available model. The maintainer chooses a reasoning level from Minimal, Low, Medium, High, or Extra high. The choice is saved for that profile and seeds the next Analysis dialog.
 
 The section also reports whether the Codex CLI account is available, but it does not edit a Codex preference. Provider, model, and reasoning can still be chosen separately in an Analysis, Brief, or Walkthrough run dialog.
 
@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The Review section labels the controls Default model and Default reasoning. It loads the provider catalog and lists only Pi models in the Settings model selector. The saved Analysis preference is profile-scoped and defaults to Pi with the ordinary fallback model and Medium reasoning until the catalog supplies a usable choice.
+The Review section labels the controls Default model and Default reasoning. It loads the provider catalog and lists only API-key models in the Settings model selector. The saved Analysis preference is profile-scoped and defaults to the API key provider with the ordinary fallback model and Medium reasoning until the catalog supplies a usable choice.
 
 The section separately checks whether the Codex CLI account provider is available. If no eligible model can be shown, it explains that provider credentials or local configuration must be made available and that the saved preference is kept.
 
@@ -34,15 +34,15 @@ Opening Review settings, reading the provider status, or switching Settings sect
 
 ### Begin an action
 
-Choosing a Pi model or reasoning level updates the visible default and saves the complete Analysis preference for the active profile. The selected reasoning value can be Minimal, Low, Medium, High, or Extra high.
+Choosing an API-key model or reasoning level updates the visible default and saves the complete Analysis preference for the active profile. The selected reasoning value can be Minimal, Low, Medium, High, or Extra high.
 
 Changing profiles reloads the new profile's preference and provider catalog. A preference is not copied between profiles. The run dialog later saves the provider, model, and reasoning used for its own Insight type when a run starts.
 
 ### While the action runs
 
-The provider catalog loads independently from the local preference already shown. While the catalog is unavailable, the model selector is disabled and the saved value is kept. A stale saved Pi model is replaced by an available Pi model when the catalog succeeds.
+The provider catalog loads independently from the local preference already shown. While the catalog is unavailable, the model selector is disabled and the saved value is kept. A stale saved model is replaced by an available API-key model when the catalog succeeds.
 
-Settings does not activate Codex merely by opening this section. If the stored Analysis preference names Codex, Settings displays a Pi fallback without overwriting the stored Codex choice. An explicit model or reasoning change in Settings writes a Pi Analysis preference.
+Settings does not activate Codex merely by opening this section. If the stored Analysis preference names Codex, Settings displays an API-key fallback without overwriting the stored Codex choice. An explicit model or reasoning change in Settings writes an API-key Analysis preference.
 
 ### Settle
 
@@ -78,11 +78,11 @@ If the provider catalog fails, Settings shows the no-eligible-model guidance and
 
 **Review revision and freshness.** Defaults do not represent a revision; each later Insight run binds its own chosen values to the current Review.
 
-**Local persistence and recovery.** The preference is local profile state. A stored Codex Analysis choice is preserved even when Settings can display only its Pi fallback.
+**Local persistence and recovery.** The preference is local profile state. A stored Codex Analysis choice is preserved even when Settings can display only its API-key fallback.
 
 **GitHub permissions and write authority.** Choosing a model or reasoning level performs no GitHub write and does not authorize one.
 
-**Network, local tools, and Insight providers.** Pi model discovery and Codex availability depend on configured provider state. Settings does not log in, install a provider, or run an Insight.
+**Network, local tools, and Insight providers.** API-key model discovery and Codex availability depend on configured provider state. Settings does not log in, install a provider, or run an Insight.
 
 **Concurrent operations and locking.** Catalog generations keep a late response from an earlier profile or load from replacing newer controls.
 
@@ -94,10 +94,10 @@ If the provider catalog fails, Settings shows the no-eligible-model guidance and
 
 ## Edge cases
 
-- Review Settings lists Pi models even when Codex CLI account is available.
+- Review Settings lists API-key models even when Codex CLI account is available.
 - A stored Codex Analysis preference is not overwritten merely by opening Settings.
-- A stale saved Pi model falls back to the first available Pi model.
-- A catalog with no Pi model can still report Codex availability and explains how to use Codex from an Insight run dialog.
+- A stale saved model falls back to the first available API-key model.
+- A catalog with no API-key model can still report Codex availability and explains how to use Codex from an Insight run dialog.
 - A catalog failure disables the model selector and preserves the stored preference.
 - The reasoning selector offers the full five-value Settings range even when the currently selected model's catalog advertises a narrower range for a run dialog.
 - Model labels can be searched by canonical model ID in the combobox.
@@ -106,7 +106,7 @@ If the provider catalog fails, Settings shows the no-eligible-model guidance and
 ## Open questions and verification
 
 - Live desktop verification is pending; no CDP pass was run for this document.
-- Confirm the visible fallback when a saved Pi model disappears from the provider catalog.
+- Confirm the visible fallback when a saved API-key model disappears from the provider catalog.
 - Confirm whether a failed preference write has visible feedback outside the current tests.
 - Confirm the exact handoff from Settings defaults to the Analysis run dialog.
 - Confirm the Codex availability wording for each external login and app-launch PATH state.

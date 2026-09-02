@@ -63,7 +63,7 @@ An optional model execution that adds findings to a review session.
 _Avoid_: Review run, model review
 
 **Insight provider**:
-A selectable source for Analysis runs and Walkthroughs. Initially, the choices are Pi and the Codex CLI account provider.
+A selectable source for Analysis runs and Walkthroughs. Initially, the choices are the API key provider — the `pi` id internally — and the Codex CLI account provider.
 _Avoid_: Model, login
 
 **Codex CLI account provider**:

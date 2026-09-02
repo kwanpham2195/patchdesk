@@ -116,7 +116,7 @@ function InsightAvailabilityErrors({
         <InlineError className="py-2">
           {catalogError || !hasAvailableProvider
             ? "No eligible model configured. Set an API key or ambient provider credentials in the Electron process, then reload."
-            : "No Pi model is configured. Open a run and select Codex CLI account to load its models."}
+            : "No API-key model is configured. Open a run and select Codex CLI account to load its models."}
         </InlineError>
       ) : null}
       {requestFailureMessage === undefined ? null : (

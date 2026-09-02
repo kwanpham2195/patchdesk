@@ -92,7 +92,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Insight.** A revision-bound aid that helps a maintainer understand or evaluate a pull-request change. Brief, Analysis, and Walkthrough are Insight types; none can publish to GitHub on completion.
 
-**Insight provider.** The configured execution source for an Insight run. Patchdesk offers Pi and the Codex CLI account provider when their required local credentials or executable are available.
+**Insight provider.** The configured execution source for an Insight run. Patchdesk offers the API key provider — the `pi` id internally — and the Codex CLI account provider when their required local credentials or executable are available.
 
 **Insight run.** One queued, running, completed, failed, cancelled, or superseded attempt to produce an Insight for a represented revision.
 

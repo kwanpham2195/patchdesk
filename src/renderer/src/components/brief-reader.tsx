@@ -122,7 +122,7 @@ const generatedAtFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 const PROVIDER_LABELS = {
-  pi: "Pi",
+  pi: "API key",
   "codex-cli-account": "Codex CLI account",
 } as const;
 

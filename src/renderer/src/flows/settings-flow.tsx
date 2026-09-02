@@ -795,7 +795,7 @@ function ReviewPreferences({
           </Alert>
         ) : models.length === 0 ? (
           <Alert>
-            <AlertTitle>No Pi model configured</AlertTitle>
+            <AlertTitle>No API-key model configured</AlertTitle>
             <AlertDescription>
               Codex CLI account is available. Start an Insight and select Codex
               CLI account to load its models.

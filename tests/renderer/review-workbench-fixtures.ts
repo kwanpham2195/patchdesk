@@ -230,7 +230,7 @@ export const providerCatalog = {
   providers: [
     {
       id: "pi",
-      label: "Pi",
+      label: "API key",
       available: true,
       guidance: "Available for local review.",
     },
