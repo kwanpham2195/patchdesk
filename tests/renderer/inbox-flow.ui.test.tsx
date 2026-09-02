@@ -217,7 +217,7 @@ function openErrorAlert(): HTMLElement | undefined {
 
 /** A row click only selects; the title inside it is what opens the Review. */
 function openRowTitle(option: HTMLElement = screen.getByRole("option")): void {
-  fireEvent.click(within(option).getByRole("button", { name: /^#\d/ }));
+  fireEvent.click(within(option).getByTitle(/^Open #/));
 }
 
 /** Rows carry `aria-disabled` while opening; they are not `<button>` elements. */

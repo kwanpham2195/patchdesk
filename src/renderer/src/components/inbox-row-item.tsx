@@ -33,9 +33,11 @@ export function InboxRowItem({
   const key = inboxIdentityKey(row);
   const opening = openingState?.status === "opening";
   return (
-    // A plain element, not a `<button>`: the title below is its own button,
-    // and a button inside a button is invalid HTML. `aria-disabled` stands in
-    // for the `disabled` attribute a div cannot carry.
+    // A plain element, not a `<button>`: an `option`'s descendants are
+    // presentational under ARIA, so the row cannot hold a nested control and
+    // the title below is styled text the row's own click handler reads.
+    // `aria-disabled` stands in for the `disabled` attribute a div cannot
+    // carry.
     <div
       id={`inbox-row-${key}`}
       role="option"
@@ -46,7 +48,10 @@ export function InboxRowItem({
       // selection and real DOM focus (see `onListKeyDown` in
       // `use-inbox-view.ts`); Tab never has to step through every row.
       tabIndex={selected ? 0 : -1}
-      onClick={() => onSelect()}
+      onClick={(event) => {
+        onSelect();
+        if (!opening && clickedTitle(event.target)) onAction();
+      }}
       onDoubleClick={() => {
         if (!opening) onAction();
       }}
@@ -63,23 +68,13 @@ export function InboxRowItem({
           />
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <button
-                type="button"
+              <span
                 data-slot="pull-request-title"
-                disabled={opening}
-                // The row itself only selects, so the title carries opening:
-                // it selects and opens, and keeps its click off the row so
-                // the select does not run twice.
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelect();
-                  onAction();
-                }}
-                className="min-w-0 line-clamp-2 text-left text-[13px] leading-5 font-medium hover:text-primary hover:underline focus-visible:text-primary focus-visible:underline focus-visible:outline-none"
+                className="min-w-0 line-clamp-2 cursor-pointer text-[13px] leading-5 font-medium hover:text-primary hover:underline"
                 title={`Open #${row.identity.number}`}
               >
                 #{row.identity.number} {row.title}
-              </button>
+              </span>
               {row.isDraft ? (
                 <Badge variant="outline" className="h-4 px-1 text-[10px]">
                   Draft
@@ -141,6 +136,14 @@ export function InboxRowItem({
         />
       </div>
     </div>
+  );
+}
+
+/** Whether a row click landed on the title, the one part of the row that opens. */
+function clickedTitle(target: EventTarget): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('[data-slot="pull-request-title"]') !== null
   );
 }
 
