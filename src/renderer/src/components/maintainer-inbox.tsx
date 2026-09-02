@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ListFilter } from "lucide-react";
 
 import {
   inboxIdentityKey,
@@ -477,6 +477,7 @@ function LabelFilterPopover({
             className="min-w-28 max-w-40 justify-start text-xs"
             aria-label="Filter by label"
           >
+            <ListFilter aria-hidden="true" />
             <span className="truncate">
               {labelFilterTriggerText(selectedLabels)}
             </span>
@@ -569,6 +570,7 @@ function LabelFilterList({
                     )
                   }
                 />
+                <LabelColorDot color={label.color} />
                 {label.name}
               </label>
             </li>
@@ -582,6 +584,24 @@ function LabelFilterList({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/** A label's real GitHub colour as a dot, so the filter list reads like the
+ * rows: the same `#RRGGBB` fill and hairline border `LabelChip` gives the
+ * chip, shrunk to a dot because the name sits beside it in plain text.
+ * `aria-hidden`: the name is the label's accessible text. */
+function LabelColorDot({
+  color,
+}: {
+  readonly color: string;
+}): React.JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      className="size-2.5 shrink-0 rounded-full border"
+      style={{ backgroundColor: `#${color}`, borderColor: "rgba(0,0,0,0.15)" }}
+    />
   );
 }
 
