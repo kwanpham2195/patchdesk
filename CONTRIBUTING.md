@@ -346,6 +346,17 @@ The gate builds once. `pnpm test:bundle` and `pnpm test:e2e` each run
 in CI, so CI runs `pnpm build` as its own step and then the two check-only
 commands underneath it.
 
+The browser suite carries two timing budgets, both stated in
+`tests/browser/timing-budget.ts`. A local run holds the performance proof to
+a 200 ms worst interaction, a 300 ms main-thread gap during filtering and
+selection, a 100 ms gap during scrolling, and Playwright's default 5 s expect
+timeout for visibility waits. When `CI` is set to anything non-empty, the same
+proof allows 400 ms, 600 ms, 200 ms, and a 15 s expect timeout. The two sets
+differ because on 2026-09-02 the `macos-14` runner measured 205 to 302 ms
+against the 200 ms ceiling with code that passed at 70 to 121 ms locally; about
+double the local numbers still fails a regression of the size that matters
+while leaving the local budget where it is.
+
 `pnpm lint:changed` also checks formatting, which is why it stays beside the
 repo-wide `pnpm lint`: one covers the shape of the changed files, the other
 covers every finding in the tree. CI does not run package smoke or release
