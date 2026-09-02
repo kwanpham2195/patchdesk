@@ -135,12 +135,10 @@ type SubmittedInsightResult =
 /** The one submission each invocation is allowed to make, and what it carried. */
 type SubmissionState = {
   submitted: boolean;
-  duplicate: boolean;
   value?: SubmittedInsightResult;
 };
 
 type AgentExecutionState = {
-  readonly duplicateSubmissionAttempted: () => boolean;
   /** The one submitted result, or undefined while nothing has been submitted. */
   readonly submittedResult: () => SubmittedInsightResult | undefined;
 };
@@ -251,7 +249,6 @@ function createResultTool(
     executionMode: "sequential",
     async execute(_toolCallId, args) {
       if (state.submitted) {
-        state.duplicate = true;
         return {
           content: [textContent("Result already recorded.")],
           details: undefined,
@@ -377,10 +374,7 @@ export type CreatedInsightAgent = {
 };
 
 function executionState(state: SubmissionState): AgentExecutionState {
-  return {
-    duplicateSubmissionAttempted: () => state.duplicate,
-    submittedResult: () => state.value,
-  };
+  return { submittedResult: () => state.value };
 }
 
 /**
@@ -398,7 +392,7 @@ export function createAnalysisAgent(
   operations: InspectorOperations,
   skill: PatchdeskReviewSkill,
 ): CreatedInsightAgent {
-  const state: SubmissionState = { submitted: false, duplicate: false };
+  const state: SubmissionState = { submitted: false };
   return {
     spec: {
       systemPrompt: `${input.prompt}\n\n${skillSection(skill)}\n\nFollow the Patchdesk review skill above. Use only the supplied inspection tools. Submit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
@@ -430,7 +424,7 @@ export function createAnalysisAgent(
 export function createWalkthroughAgent(
   input: WalkthroughInvocation,
 ): CreatedInsightAgent {
-  const state: SubmissionState = { submitted: false, duplicate: false };
+  const state: SubmissionState = { submitted: false };
   return {
     spec: {
       systemPrompt: `${input.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
@@ -455,7 +449,7 @@ export function createWalkthroughAgent(
  * inspector can only see the changed-file snapshots the prompt is built from.
  */
 export function createBriefAgent(input: BriefInvocation): CreatedInsightAgent {
-  const state: SubmissionState = { submitted: false, duplicate: false };
+  const state: SubmissionState = { submitted: false };
   return {
     spec: {
       systemPrompt: `${input.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
