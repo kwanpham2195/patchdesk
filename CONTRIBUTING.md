@@ -58,6 +58,12 @@ pnpm test -- --run
 
 Use `pnpm test -- --run <file>` for focused root-suite development. The complete pre-push test gate is `pnpm test:all`; it runs the root suite and the separate `runtime/flue` suite.
 
+The inner loop is that focused test file, not the whole project. `pnpm typecheck`
+builds a program over `src` and `tests` every time it runs, so run it when a
+slice is done rather than after each edit; a syntax error in the file you are
+editing is quicker to find by reading the file than by compiling the
+repository. `pnpm check` is the one command to run before handing work over.
+
 ## Where a test belongs
 
 `AGENTS.md` ("Testing") holds the rules for which layer a test goes in, and
@@ -72,6 +78,10 @@ journeys and for what only a real browser shows, never for a behaviour an RTL
 or hook test already proves. There is no assistive-technology lane (ADR 0034):
 no axe scans, no screen-reader narration checks, no forced-colors or
 reduced-motion checks. Use the shared doubles rather than hand-rolling one.
+
+`tests/browser/` has no accepted-failure list, and it is not getting one: the
+pull request gates run the suite on every change to `main`. A browser spec that
+fails on `main` is fixed or deleted in the same change that finds it.
 
 ## Making changes
 
@@ -89,7 +99,33 @@ Commits run `pnpm precommit`:
 1. `pnpm lint:staged` checks every staged JavaScript and TypeScript file with
    Oxfmt, then Oxlint with denied warnings, and applies the file-size ratchet
    to them.
-2. React Doctor scans staged files and remains blocking.
+2. React Doctor scans staged files and remains blocking, unless it cannot read
+   the tree it would scan (below).
+
+Meet that gate when a slice is done, not when you go to commit.
+`pnpm gate:preflight <paths>` runs the same three checks — the Oxfmt check,
+Oxlint with denied warnings, and the size ratchet — over the paths you name,
+reading them from the working tree instead of from the index, so nothing has
+to be staged first. Ten slices each fixing their own two files is ten small
+corrections; one commit of seventy files is a single large one. It also keeps
+what the gate judges close to what you wrote: `lint:staged` judges a staged
+file absolutely, not by what your change added, so a slice that touches a file
+already carrying findings inherits every one of them at commit time.
+
+React Doctor reads `package.json`, and several sessions share this checkout, so
+another session staging that file leaves it different between the index and the
+working tree. React Doctor aborts on that, which says nothing about your
+change, so `pnpm precommit` decides instead of letting the abort through. When
+`package.json` differs and no `src/renderer/` file is staged, the scan is
+skipped and says so — nothing was scanned, and that is not a pass. When
+`package.json` differs and renderer files are staged, the commit fails: the one
+scan that mattered is the one that could not run, so restore or stage
+`package.json` and retry. Otherwise React Doctor runs as before.
+
+Invoke repo tools through `pnpm exec`. A global `oxfmt` or `oxlint` on `PATH`
+may be a different version, and a different version disagrees with the gate:
+it rejects files this repository formats correctly, and reformatting to satisfy
+it breaks the repository check instead.
 
 The repo-wide Oxlint count ratchet does not run here. It runs once, inside
 `pnpm lint:changed` (see "The count ratchet" and "Verifying before
@@ -284,6 +320,10 @@ Beyond `pnpm check`:
   you need to see which entries make it up.
 - For desktop or renderer changes: `pnpm build`, then the focused browser
   suite (`pnpm test:e2e` or `pnpm test:performance`).
+- `pnpm cdp:ready` says whether the dev app is reachable over CDP, on
+  `REMOTE_DEBUGGING_PORT` or on 9233 when that is unset. Live verification of
+  the running app starts there; it prints how to start the app when the port
+  is down.
 
 Pull requests targeting `main` run the `Pull request gates` workflow on
 `macos-14`. It runs these named checks in order:
@@ -399,6 +439,11 @@ used to sit in `package.json` — that setting disabled signing for every build,
 including one that had a certificate.
 
 ### Building a package by hand
+
+Package only when asked, when the change is packaging-specific, or when
+distribution proof is required. It takes minutes, and a packaged app is
+evidence only for the commit it was built from — a build from yesterday says
+nothing about the tree in front of you.
 
 Build a macOS package, then smoke-test it:
 
