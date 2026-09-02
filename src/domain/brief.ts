@@ -5,7 +5,6 @@ import {
   type BriefCitation,
   type BriefManifest,
 } from "./brief-citation";
-import { resolveBriefCitations } from "./brief-citation-resolution";
 import {
   briefFlowOutputSchema,
   flowCitations,
@@ -46,13 +45,6 @@ export type BriefSnapshot = NarrativeSnapshot;
  * `./brief` needs no change.
  */
 export { BRIEF_ALIAS_SYNTAX, type BriefCitation, type BriefManifest };
-
-/**
- * `resolveBriefCitations` lives in `brief-citation-resolution.ts` for the
- * same cycle-breaking reason. Re-exported here so an existing importer of it
- * from `./brief` needs no change.
- */
-export { resolveBriefCitations };
 
 /**
  * A normalized, snapshot-bound Brief ready for storage and renderer
@@ -123,7 +115,7 @@ const MAX_REACH_SYMBOLS = 24;
 const MAX_REACH_SYMBOL_LENGTH = 200;
 const MAX_LABEL_LENGTH = 200;
 /** A hunk larger than this is not something a popover can show; the chip then has no preview. */
-export const MAX_CITED_HUNK_RAW_LENGTH = 16_000;
+const MAX_CITED_HUNK_RAW_LENGTH = 16_000;
 /**
  * The whole `citedHunks` map stays under this many characters, no matter how
  * many hunks a Brief cites: the workbench projection response the desktop
