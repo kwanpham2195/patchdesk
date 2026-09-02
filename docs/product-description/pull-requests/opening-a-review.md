@@ -6,7 +6,7 @@ Opening a Review turns one Pull requests row into a readable Review workbench. T
 
 ## The simple case
 
-The maintainer opens a row from its title, a double-click on the row, Enter on the focused row, the inspector's Open button, or the command palette. A single row click only selects. Patchdesk shows Opening… and a shared Opening Review… busy indicator. It reads the pull request and prepares or resumes the Review session for the exact revision.
+The maintainer opens a row from its title, a double-click on the row, Enter on the focused row, the inspector's Open button, or the command palette. A pull request can also be opened without finding its row, by pasting its GitHub link anywhere on the Pull requests screen outside a text field. A single row click only selects. Patchdesk shows Opening… and a shared Opening Review… busy indicator. It reads the pull request and prepares or resumes the Review session for the exact revision.
 
 When preparation succeeds, the app navigates to the keyed Review workbench. The workbench receives the pull-request context, represented revision, diff, checks, comments, and any retained Insights. If a saved Review cannot be loaded, Patchdesk retries by Pull request identity so a missing local record can be healed.
 
@@ -25,6 +25,8 @@ stateDiagram-v2
 ### Arrive
 
 The row supplies profile, host, owner, repository, and pull-request number, and one Open action serves every row state. An unreviewed row opens as a new Review. A row with a saved Review loads that saved Review ID first. A merged row uses the terminal-only opening path. The app retains the row identity while the request runs.
+
+A pasted link supplies the same identity without a row. Patchdesk reads the pasted text, keeps it only if it names one pull request, and checks that identity against the active profile's watched repositories before anything is opened. An accepted paste opens as a new Review under the same operation owner the row uses, so a pull request already opening is not opened a second time.
 
 ### Leave unchanged
 
@@ -58,7 +60,7 @@ A failed opening clears the row's busy state and shows `Could not open review` w
 | Pull request and Review state | Unreviewed, saved-review, updated-review, and merged rows choose different opening routes. | New preparation pins one exact revision. Merged opening requires the pull request to remain non-open through final checks. |
 | GitHub permissions and merge readiness | Opening is read-only and does not require merge readiness. | GitHub authentication, read, or permission failures stop preparation; no write is attempted. |
 | Network, local tool, and Insight provider availability | A local checkout enables worktree mode; otherwise a snapshot mode may be used. Insights are retained if available but are not required to open. | GitHub reads, local Git preparation, storage, and context generation can fail independently; the opening settles with a named failure. |
-| Input path: mouse, keyboard, or desktop menu | The row title, a double-click, Enter, the inspector's Open button, and the command palette use the same operation owner; a single row click only selects. | The row-local busy state and its feedback apply across entry points. |
+| Input path: mouse, keyboard, or desktop menu | The row title, a double-click, Enter, the inspector's Open button, the command palette, and a pasted pull-request link use the same operation owner; a single row click only selects, and a paste into a text field stays an ordinary paste. | The row-local busy state and its feedback apply across entry points, including for a pull request opened from a pasted link that a listed row also names. |
 
 The chosen opening route is fixed at admission. A remote change discovered during preparation does not silently switch a normal opening into a merged opening or adopt a different head.
 
@@ -98,6 +100,8 @@ After failure, no partially prepared session is presented as current. Recovery r
 
 ## Edge cases
 
+- A pasted link to a repository outside the active profile's watchlist is refused, in the same place a failed opening is reported, with `Not opened: owner/repo is not a watched repository.` No request is sent and no offer to add the repository is made.
+- Pasted text that does not name a pull request is left alone: nothing is opened, no message is shown, and the paste behaves as it always did.
 - A saved Review load failure can fall back to opening by Pull request identity.
 - A merged row uses a terminal-only route and refuses adoption if any final state read says it is open.
 - A saved session at the exact current revision resumes; a new revision creates a different session rather than mutating the old one.

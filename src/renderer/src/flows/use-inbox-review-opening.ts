@@ -3,11 +3,12 @@ import { PatchdeskApiError, requestJson } from "../api-client";
 import { useBusy } from "../hooks/use-busy";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
 import {
-  inboxIdentityKey,
   parseWorkbenchResponse,
+  pullRequestIdentityKey,
 } from "../renderer-contracts";
 import type { InboxResponse } from "../renderer-contracts";
 import type { Dashboard, WorkbenchPayload } from "../renderer-models";
+import type { PullRequestRef } from "../../../domain/pull-request";
 
 type PrRef = {
   readonly host?: string;
@@ -16,16 +17,25 @@ type PrRef = {
   readonly number: number;
 };
 
+/** A pull request named completely enough to key an opening operation. */
+type IdentifiedPrRef = PrRef & { readonly host: string };
+
 export type InboxReviewOpeningControls = {
   readonly openedPr: string | undefined;
   readonly openError: string | undefined;
   readonly openingOperations: ReadonlyMap<string, ReviewOpeningRowOperation>;
   readonly openInboxRow: (row: InboxResponse["inbox"]["rows"][number]) => void;
+  /** Opens a pull request named directly — by a pasted link — rather than by
+   * a listed row, under the same operation owner the row entry points use. */
+  readonly openPullRequestByRef: (ref: PullRequestRef) => void;
   readonly openStoredReviewById: (
     profileId: string,
     reviewId: string,
     isActive: () => boolean,
   ) => Promise<void>;
+  /** Raises the screen's "Could not open review" alert for a refusal decided
+   * in the renderer, so it clears with the same profile and open rules. */
+  readonly reportOpenError: (message: string) => void;
 };
 
 type ReviewOpeningOperation = {
@@ -199,12 +209,26 @@ export function useInboxReviewOpening({
     ],
   );
 
-  const openInboxRow = useCallback(
-    (row: InboxResponse["inbox"]["rows"][number]): void => {
+  /**
+   * Admits one opening operation for `identity` under the active profile and
+   * runs `request` inside it. Every entry point — the row title, a
+   * double-click, Enter, the inspector, the palette, and a pasted
+   * pull-request link — comes through here, so two of them naming the same
+   * pull request in one event turn still send one request.
+   */
+  const openByIdentity = useCallback(
+    (
+      identity: IdentifiedPrRef,
+      request: (
+        profileId: string,
+        githubHost: string,
+        isActive: () => boolean,
+      ) => Promise<void>,
+    ): void => {
       const profileId = dashboard?.profile.id;
       const githubHost = dashboard?.profile.githubHost ?? "github.com";
       if (profileId === undefined) return;
-      const rowKey = inboxIdentityKey(row);
+      const rowKey = pullRequestIdentityKey(identity);
       const operationKey = `row:${profileId}:${rowKey}`;
       if (operationsRef.current.get(operationKey)?.status === "opening") return;
 
@@ -230,29 +254,10 @@ export function useInboxReviewOpening({
       const isOperationActive = () =>
         dashboardProfileIdRef.current === profileId;
 
-      const request = async (): Promise<void> => {
-        if (row.recommendedAction.kind === "open_saved_review") {
-          await loadStoredReview(
-            profileId,
-            githubHost,
-            row.recommendedAction.reviewId,
-            row.identity,
-            isOperationActive,
-          );
-          return;
-        }
-        await loadPullRequest(
-          row.identity,
-          profileId,
-          githubHost,
-          row.recommendedAction.kind === "open_merged_review"
-            ? "/v1/reviews/open-merged"
-            : "/v1/reviews/open",
-          isOperationActive,
-        );
-      };
-
-      void runBusy(request, "Opening Review…")
+      void runBusy(
+        () => request(profileId, githubHost, isOperationActive),
+        "Opening Review…",
+      )
         .catch((cause: unknown) => {
           if (
             !isOperationActive() ||
@@ -270,7 +275,7 @@ export function useInboxReviewOpening({
             profileId,
             rowKey,
             status: "error",
-            error: `Could not prepare ${row.identity.owner}/${row.identity.repo}#${row.identity.number}. ${detail}`,
+            error: `Could not prepare ${identity.owner}/${identity.repo}#${identity.number}. ${detail}`,
           });
           operationsRef.current = failed;
           setOperations(failed);
@@ -287,10 +292,63 @@ export function useInboxReviewOpening({
       dashboard?.profile.githubHost,
       dashboard?.profile.id,
       dashboardProfileIdRef,
-      loadPullRequest,
-      loadStoredReview,
       runBusy,
     ],
+  );
+
+  const openInboxRow = useCallback(
+    (row: InboxResponse["inbox"]["rows"][number]): void => {
+      openByIdentity(row.identity, (profileId, githubHost, isActive) => {
+        if (row.recommendedAction.kind === "open_saved_review")
+          return loadStoredReview(
+            profileId,
+            githubHost,
+            row.recommendedAction.reviewId,
+            row.identity,
+            isActive,
+          );
+        return loadPullRequest(
+          row.identity,
+          profileId,
+          githubHost,
+          row.recommendedAction.kind === "open_merged_review"
+            ? "/v1/reviews/open-merged"
+            : "/v1/reviews/open",
+          isActive,
+        );
+      });
+    },
+    [loadPullRequest, loadStoredReview, openByIdentity],
+  );
+
+  const openPullRequestByRef = useCallback(
+    (ref: PullRequestRef): void => {
+      // A ref names no saved review, so this always reads the pull request
+      // fresh; a saved review for it is resumed by the row entry points.
+      openByIdentity(ref, (profileId, githubHost, isActive) =>
+        loadPullRequest(
+          ref,
+          profileId,
+          githubHost,
+          "/v1/reviews/open",
+          isActive,
+        ),
+      );
+    },
+    [loadPullRequest, openByIdentity],
+  );
+
+  const reportOpenError = useCallback(
+    (message: string): void => {
+      const profileId = dashboard?.profile.id;
+      if (profileId === undefined) return;
+      setOpenErrorByProfile((openErrors) => {
+        const next = new Map(openErrors);
+        next.set(profileId, message);
+        return next;
+      });
+    },
+    [dashboard?.profile.id],
   );
 
   return {
@@ -307,7 +365,9 @@ export function useInboxReviewOpening({
       dashboardProfileId,
     ),
     openInboxRow,
+    openPullRequestByRef,
     openStoredReviewById,
+    reportOpenError,
   };
 }
 

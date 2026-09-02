@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
+import { isTextEntryTarget } from "../text-entry-target";
 const icons = {
   dashboard: GitPullRequest,
   settings: Settings,
@@ -59,18 +60,6 @@ type ProfileEntry = {
   readonly id: string;
   readonly label: string;
 };
-
-function isNavigateShortcutTextEntryTarget(
-  target: EventTarget | null,
-): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.isContentEditable ||
-    target.closest('[contenteditable]:not([contenteditable="false"])') !== null
-  );
-}
 
 export function AppShell({
   destination,
@@ -113,7 +102,7 @@ export function AppShell({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        if (isNavigateShortcutTextEntryTarget(event.target)) return;
+        if (isTextEntryTarget(event.target)) return;
         event.preventDefault();
         if (navigationBlocked) return;
         setCommandOpen((open) => !open);
