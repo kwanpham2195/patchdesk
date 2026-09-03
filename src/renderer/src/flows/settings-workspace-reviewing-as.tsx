@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type SetStateAction } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type {
   EnvironmentCheckResponse,
@@ -15,12 +15,7 @@ import {
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
 import { Button } from "../components/ui/button";
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "../components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import {
   Select,
@@ -30,10 +25,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import type {
-  ProfileDraft,
-  ProfileScalarErrors,
-} from "./settings-workspace-profile-draft";
+import { useLatestCommitted } from "../hooks/use-latest-committed";
+import { FieldSaveStatus } from "./settings-workspace-field-status";
+import type { FieldStatus } from "./settings-workspace-profile-editor";
+
+/** The account half of the Workspace editor, as this panel's controls need it. */
+export type AccountEditor = {
+  readonly ghAccount: string;
+  readonly githubHost: string;
+  readonly accountStatus: FieldStatus;
+  readonly hostStatus: FieldStatus;
+  /** Local typing; nothing is sent until the field commits. */
+  readonly onEdit: (field: AccountField, value: string) => void;
+  /** Commits one manual field — on blur and on Enter. */
+  readonly onCommit: (field: AccountField) => void;
+  /** Commits the account and its host together, from the Select. */
+  readonly onSelectAccount: (login: string, host: string) => void;
+};
+
+type AccountField = "ghAccount" | "githubHost";
 
 type ReviewingAsProbeHook = {
   readonly reviewingAs: ApiProbeState<EnvironmentCheckResponse>;
@@ -48,18 +58,20 @@ type ReviewingAsProbeHook = {
 // oxlint-disable-next-line react/only-export-components -- The Reviewing-as probe hook shares this module with the panel that consumes it.
 export function useReviewingAsProbe(
   ghAccount: string,
-  updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void,
+  onAdopt: (login: string, host: string) => void,
 ): ReviewingAsProbeHook {
   const [reviewingAsAttempt, setReviewingAsAttempt] = useState(0);
   const reviewingAsDefaultApplied = useRef(false);
   const reviewingAs = useEnvironmentCheck(reviewingAsAttempt);
+  const onAdoptRef = useLatestCommitted(onAdopt);
 
   // Defaults the account selection the first time authenticated accounts
-  // load, but only when the draft has no account yet — a one-time
+  // load, but only when the profile has no account yet — a one-time
   // derivation, guarded so it never overwrites a value the user typed or a
   // loaded profile already carried. With exactly one authenticated account,
   // that account is the adoption target; with several, it's the one `gh`
-  // marks `active`.
+  // marks `active`. The adoption saves like any other account choice: there
+  // is no Save button left that could persist it afterwards.
   useEffect(() => {
     if (reviewingAsDefaultApplied.current) return;
     if (reviewingAs.kind !== "loaded") return;
@@ -75,16 +87,8 @@ export function useReviewingAsProbe(
       target = accounts.find((account) => account.active);
     }
     if (target === undefined) return;
-    updateProfileDraft((current) => ({
-      ...current,
-      ghAccount: target.login,
-      githubHost: target.host,
-    }));
-    // `updateProfileDraft` is a `useCallback` in `useWorkspaceProfileDraft`,
-    // so listing it here doesn't make this effect re-run on every render;
-    // the `reviewingAsDefaultApplied` ref guard above additionally makes the
-    // body a no-op after its first application regardless.
-  }, [reviewingAs, ghAccount, updateProfileDraft]);
+    onAdoptRef.current(target.login, target.host);
+  }, [reviewingAs, ghAccount, onAdoptRef]);
 
   return {
     reviewingAs,
@@ -135,13 +139,13 @@ function accountKey(account: GithubAuthAccount): string {
  */
 function isConfiguredAccountUnauthenticated(
   accounts: ReadonlyArray<GithubAuthAccount>,
-  profileDraft: ProfileDraft,
+  account: AccountEditor,
 ): boolean {
-  if (profileDraft.ghAccount === "") return false;
+  if (account.ghAccount === "") return false;
   return !accounts.some(
-    (account) =>
-      account.login === profileDraft.ghAccount &&
-      account.host === profileDraft.githubHost,
+    (candidate) =>
+      candidate.login === account.ghAccount &&
+      candidate.host === account.githubHost,
   );
 }
 
@@ -156,15 +160,11 @@ function isConfiguredAccountUnauthenticated(
  */
 export function ReviewingAsPanel({
   state,
-  profileDraft,
-  updateProfileDraft,
-  fieldErrors,
+  account,
   onRecheck,
 }: {
   readonly state: ApiProbeState<EnvironmentCheckResponse>;
-  readonly profileDraft: ProfileDraft;
-  readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
-  readonly fieldErrors: ProfileScalarErrors;
+  readonly account: AccountEditor;
   readonly onRecheck: () => void;
 }): React.JSX.Element {
   const view = reviewingAsView(state);
@@ -176,7 +176,7 @@ export function ReviewingAsPanel({
         : [];
   const configuredAccountUnauthenticated =
     (view.kind === "single" || view.kind === "multiple") &&
-    isConfiguredAccountUnauthenticated(configuredAccounts, profileDraft);
+    isConfiguredAccountUnauthenticated(configuredAccounts, account);
   return (
     <div className="flex flex-col gap-4">
       {view.kind === "checking" ? (
@@ -210,24 +210,12 @@ export function ReviewingAsPanel({
             Reviewing as <strong>{view.account.login}</strong> on{" "}
             <em>{view.account.host}</em>, from the GitHub CLI.
           </p>
-          <AccountDisclosure
-            profileDraft={profileDraft}
-            updateProfileDraft={updateProfileDraft}
-            fieldErrors={fieldErrors}
-          />
+          <AccountDisclosure account={account} />
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <AccountSelect
-            accounts={view.accounts}
-            profileDraft={profileDraft}
-            updateProfileDraft={updateProfileDraft}
-          />
-          <AccountDisclosure
-            profileDraft={profileDraft}
-            updateProfileDraft={updateProfileDraft}
-            fieldErrors={fieldErrors}
-          />
+          <AccountSelect accounts={view.accounts} account={account} />
+          <AccountDisclosure account={account} />
         </div>
       )}
       {configuredAccountUnauthenticated ? (
@@ -235,22 +223,17 @@ export function ReviewingAsPanel({
           <AlertTitle>Configured account not authenticated</AlertTitle>
           <AlertDescription>
             This profile is set to review as{" "}
-            <strong>{profileDraft.ghAccount}</strong> on{" "}
-            <em>{profileDraft.githubHost}</em>, but the GitHub CLI does not
-            report that account as authenticated. Choose one of the
-            authenticated accounts above, or authenticate that account and
-            re-check.
+            <strong>{account.ghAccount}</strong> on{" "}
+            <em>{account.githubHost}</em>, but the GitHub CLI does not report
+            that account as authenticated. Choose one of the authenticated
+            accounts above, or authenticate that account and re-check.
           </AlertDescription>
         </Alert>
       ) : null}
       {view.kind === "checking" ||
       view.kind === "error" ||
       view.kind === "failed" ? (
-        <ManualAccountFields
-          profileDraft={profileDraft}
-          updateProfileDraft={updateProfileDraft}
-          fieldErrors={fieldErrors}
-        />
+        <ManualAccountFields account={account} />
       ) : null}
       <Button
         type="button"
@@ -267,37 +250,31 @@ export function ReviewingAsPanel({
 
 function AccountSelect({
   accounts,
-  profileDraft,
-  updateProfileDraft,
+  account,
 }: {
   readonly accounts: ReadonlyArray<GithubAuthAccount>;
-  readonly profileDraft: ProfileDraft;
-  readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
+  readonly account: AccountEditor;
 }): React.JSX.Element {
   const selected = accounts.find(
-    (account) =>
-      account.login === profileDraft.ghAccount &&
-      account.host === profileDraft.githubHost,
+    (candidate) =>
+      candidate.login === account.ghAccount &&
+      candidate.host === account.githubHost,
   );
   return (
     <Field>
       <FieldLabel htmlFor="reviewing-as-account">Account</FieldLabel>
       <Select
         value={selected === undefined ? null : accountKey(selected)}
-        items={accounts.map((account) => ({
-          label: `${account.login} · ${account.host}`,
-          value: accountKey(account),
+        items={accounts.map((candidate) => ({
+          label: `${candidate.login} · ${candidate.host}`,
+          value: accountKey(candidate),
         }))}
         onValueChange={(value) => {
           const chosen = accounts.find(
-            (account) => accountKey(account) === value,
+            (candidate) => accountKey(candidate) === value,
           );
           if (chosen === undefined) return;
-          updateProfileDraft((current) => ({
-            ...current,
-            ghAccount: chosen.login,
-            githubHost: chosen.host,
-          }));
+          account.onSelectAccount(chosen.login, chosen.host);
         }}
       >
         <SelectTrigger
@@ -308,38 +285,34 @@ function AccountSelect({
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            {accounts.map((account) => (
-              <SelectItem key={accountKey(account)} value={accountKey(account)}>
-                {`${account.login} · ${account.host}`}
+            {accounts.map((candidate) => (
+              <SelectItem
+                key={accountKey(candidate)}
+                value={accountKey(candidate)}
+              >
+                {`${candidate.login} · ${candidate.host}`}
               </SelectItem>
             ))}
           </SelectGroup>
         </SelectContent>
       </Select>
+      <FieldSaveStatus status={account.accountStatus} />
     </Field>
   );
 }
 
 function AccountDisclosure({
-  profileDraft,
-  updateProfileDraft,
-  fieldErrors,
+  account,
 }: {
-  readonly profileDraft: ProfileDraft;
-  readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
-  readonly fieldErrors: ProfileScalarErrors;
+  readonly account: AccountEditor;
 }): React.JSX.Element {
+  // A rejected manual value stays on screen with its reason, so the
+  // disclosure cannot hide the field the user still has to fix.
   if (
-    fieldErrors.ghAccount !== undefined ||
-    fieldErrors.githubHost !== undefined
+    account.accountStatus.state === "failed" ||
+    account.hostStatus.state === "failed"
   )
-    return (
-      <ManualAccountFields
-        profileDraft={profileDraft}
-        updateProfileDraft={updateProfileDraft}
-        fieldErrors={fieldErrors}
-      />
-    );
+    return <ManualAccountFields account={account} />;
   return (
     <Collapsible>
       <CollapsibleTrigger render={<Button variant="outline" size="sm" />}>
@@ -347,77 +320,73 @@ function AccountDisclosure({
         <ChevronDown data-icon="inline-end" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent motion="disclosure" className="pt-3">
-        <ManualAccountFields
-          profileDraft={profileDraft}
-          updateProfileDraft={updateProfileDraft}
-          fieldErrors={fieldErrors}
-        />
+        <ManualAccountFields account={account} />
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
 function ManualAccountFields({
-  profileDraft,
-  updateProfileDraft,
-  fieldErrors,
+  account,
 }: {
-  readonly profileDraft: ProfileDraft;
-  readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
-  readonly fieldErrors: ProfileScalarErrors;
+  readonly account: AccountEditor;
 }): React.JSX.Element {
   return (
     <FieldGroup className="grid gap-4 sm:grid-cols-2">
-      <Field
-        data-invalid={fieldErrors.ghAccount === undefined ? undefined : true}
-      >
-        <FieldLabel htmlFor="profile-gh-account">GitHub account</FieldLabel>
-        <Input
-          id="profile-gh-account"
-          aria-label="GitHub account"
-          value={profileDraft.ghAccount}
-          aria-invalid={fieldErrors.ghAccount === undefined ? undefined : true}
-          aria-describedby={
-            fieldErrors.ghAccount === undefined
-              ? undefined
-              : "profile-gh-account-error"
-          }
-          onChange={(event) =>
-            updateProfileDraft((current) => ({
-              ...current,
-              ghAccount: event.target.value,
-            }))
-          }
-        />
-        <FieldError id="profile-gh-account-error">
-          {fieldErrors.ghAccount}
-        </FieldError>
-      </Field>
-      <Field
-        data-invalid={fieldErrors.githubHost === undefined ? undefined : true}
-      >
-        <FieldLabel htmlFor="profile-github-host">GitHub host</FieldLabel>
-        <Input
-          id="profile-github-host"
-          aria-label="GitHub host"
-          value={profileDraft.githubHost}
-          aria-invalid={fieldErrors.githubHost === undefined ? undefined : true}
-          aria-describedby={
-            fieldErrors.githubHost === undefined
-              ? undefined
-              : "profile-github-host-error"
-          }
-          onChange={(event) =>
-            updateProfileDraft((current) => ({
-              ...current,
-              githubHost: event.target.value,
-            }))
-          }
-        />
-        <FieldError id="profile-github-host-error">
-          {fieldErrors.githubHost}
-        </FieldError>
-      </Field>
+      <ManualAccountField
+        id="profile-gh-account"
+        label="GitHub account"
+        field="ghAccount"
+        value={account.ghAccount}
+        status={account.accountStatus}
+        account={account}
+      />
+      <ManualAccountField
+        id="profile-github-host"
+        label="GitHub host"
+        field="githubHost"
+        value={account.githubHost}
+        status={account.hostStatus}
+        account={account}
+      />
     </FieldGroup>
+  );
+}
+
+function ManualAccountField({
+  id,
+  label,
+  field,
+  value,
+  status,
+  account,
+}: {
+  readonly id: string;
+  readonly label: string;
+  readonly field: AccountField;
+  readonly value: string;
+  readonly status: FieldStatus;
+  readonly account: AccountEditor;
+}): React.JSX.Element {
+  const failed = status.state === "failed";
+  return (
+    <Field data-invalid={failed ? true : undefined}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input
+        id={id}
+        aria-label={label}
+        value={value}
+        aria-invalid={failed ? true : undefined}
+        aria-describedby={failed ? `${id}-status` : undefined}
+        onChange={(event) => account.onEdit(field, event.target.value)}
+        onBlur={() => account.onCommit(field)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") account.onCommit(field);
+        }}
+      />
+      <div id={`${id}-status`}>
+        <FieldSaveStatus status={status} />
+      </div>
+    </Field>
   );
 }

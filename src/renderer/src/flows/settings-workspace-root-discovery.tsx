@@ -9,7 +9,6 @@ import type { WatchlistEntry } from "./settings-workspace-repositories";
 
 /** What a single workspace-root row shows for its discovery result. */
 export type RootDiscoveryStatus =
-  | { readonly kind: "unsaved" }
   | { readonly kind: "loading" }
   | { readonly kind: "error" }
   | {
@@ -28,8 +27,8 @@ export const EMPTY_ENTRIES: ReadonlyArray<WatchlistEntry> = [];
  * `DashboardController.discoverWorkspaceRepos` performs against the *saved*
  * profile's workspace roots (see `WatchlistPanel`, whose request/parse path
  * this mirrors). Re-runs whenever the saved profile's id, workspace roots,
- * or watched repos change — which covers both switching profiles and a
- * successful profile save bringing a newly-typed root into scope, since
+ * or watched repos change — which covers both switching profiles and a root
+ * row's own save bringing a newly-entered root into scope, since
  * `onWorkspaceReload` refreshes `dashboard.profile` after either.
  */
 // oxlint-disable-next-line react/only-export-components -- The workspace-root discovery probe, its status resolver, and the empty-collection constants share this module with the status component that consumes them.
@@ -38,8 +37,7 @@ export function useWorkspaceRootDiscovery(
 ): ApiProbeState<ReadonlyArray<WorkspaceRootDiscovery>> {
   // A JSON key rather than the profile object itself: the dashboard is
   // refetched (and reallocated) on every reload even when nothing this scan
-  // cares about changed, and `profileDirty`'s dependency check above uses
-  // the same `JSON.stringify` comparison for the same reason.
+  // cares about changed.
   const savedKey = JSON.stringify({
     id: savedProfile?.id,
     workspaceRoots: savedProfile?.workspaceRoots,
@@ -53,14 +51,14 @@ export function useWorkspaceRootDiscovery(
 }
 
 /**
- * Resolves one workspace-root row's discovery status. A root that isn't
- * part of the *saved* profile has never been scanned — discovery runs
- * server-side against the saved profile, not the unsaved draft — so it
- * reports "unsaved" rather than a count of 0, which would be a false
- * negative in exactly the case this panel exists to surface. The "found"
- * count is read off `byRoot`, the single grouping computed once per render
- * in `WorkspaceProfileSection` (via `groupWatchlistEntries`) rather than a
- * second, parallel grouping algorithm.
+ * Resolves one workspace-root row's discovery status. A root the saved
+ * profile doesn't carry has never been scanned — discovery runs server-side
+ * against the saved profile — so it reports the loading state rather than a
+ * count of 0, which would be a false negative in exactly the case this panel
+ * exists to surface; every non-blank row reaches the saved profile as soon as
+ * it commits. The "found" count is read off `byRoot`, the single grouping
+ * computed once per render in `WorkspaceProfileSection` (via
+ * `groupWatchlistEntries`) rather than a second, parallel grouping algorithm.
  */
 // oxlint-disable-next-line react/only-export-components -- The workspace-root discovery probe, its status resolver, and the empty-collection constants share this module with the status component that consumes them.
 export function workspaceRootDiscoveryStatus(
@@ -72,7 +70,7 @@ export function workspaceRootDiscoveryStatus(
 ): RootDiscoveryStatus {
   const trimmedRoot = root.trim();
   const savedRoots = savedProfile?.workspaceRoots ?? EMPTY_ROOTS;
-  if (!savedRoots.includes(trimmedRoot)) return { kind: "unsaved" };
+  if (!savedRoots.includes(trimmedRoot)) return { kind: "loading" };
   if (discovery.kind === "checking") return { kind: "loading" };
   if (discovery.kind === "error") return { kind: "error" };
   const outcome = discovery.value.find(
@@ -85,19 +83,12 @@ export function workspaceRootDiscoveryStatus(
   return { kind: "found", total: rootEntries.length, watched: watchedCount };
 }
 
-/** Renders one workspace-root row's discovery result: a count, the explicit zero-found state, a loading state, a failure state, or the unsaved-root affordance. */
+/** Renders one workspace-root row's discovery result: a count, the explicit zero-found state, a loading state, or a failure state. */
 export function WorkspaceRootDiscoveryStatus({
   status,
 }: {
   readonly status: RootDiscoveryStatus;
 }): React.JSX.Element | null {
-  if (status.kind === "unsaved") {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Save the profile to scan this folder for repositories.
-      </p>
-    );
-  }
   if (status.kind === "loading") {
     return (
       <p className="text-xs text-muted-foreground" role="status">

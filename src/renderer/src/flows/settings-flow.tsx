@@ -117,14 +117,7 @@ type SettingsFlowProps = {
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly section?: SettingsSection;
-  readonly onProfileDirtyChange?: (dirty: boolean) => void;
-  readonly onProfileSwitchRequest?: (
-    profileId: string,
-    proceed: () => void,
-  ) => void;
   readonly onCleanupSuccess?: (action: "cache" | "local") => void;
-  readonly onSaveProfileReady?: (save: () => Promise<boolean>) => void;
-  readonly onDiscardProfileReady?: (discard: () => void) => void;
   readonly profileSwitchState?: ProfileSwitchState;
   readonly onProfileSwitch?: (
     profileId: string,
@@ -141,79 +134,47 @@ export function SettingsFlow({
   profiles,
   onWorkspaceReload,
   section = "general",
-  onProfileDirtyChange,
-  onProfileSwitchRequest,
   onCleanupSuccess,
-  onSaveProfileReady,
-  onDiscardProfileReady,
   profileSwitchState,
   onProfileSwitch,
 }: SettingsFlowProps): React.JSX.Element {
-  // `WorkspaceProfileSection` is always mounted — not just while the
-  // Workspace tab is showing — so its profile draft, baseline/generation
-  // refs, and `onSaveProfileReady`/`onDiscardProfileReady` wiring survive
-  // switching to another Settings tab and back. `visible` only controls
-  // whether it currently renders its cards.
-  const workspaceSection = (
-    <WorkspaceProfileSection
-      dashboard={dashboard}
-      profiles={profiles}
-      onWorkspaceReload={onWorkspaceReload}
-      visible={section === "workspace"}
-      onProfileDirtyChange={onProfileDirtyChange}
-      onProfileSwitchRequest={onProfileSwitchRequest}
-      onSaveProfileReady={onSaveProfileReady}
-      onDiscardProfileReady={onDiscardProfileReady}
-      profileSwitchState={profileSwitchState}
-      onProfileSwitch={onProfileSwitch}
-    />
-  );
-
-  if (section === "review") {
-    return (
-      <>
-        {workspaceSection}
-        <ReviewPreferences profileId={dashboard?.profile.id} />
-      </>
-    );
-  }
-
-  if (section === "logs") {
-    return (
-      <>
-        {workspaceSection}
-        <LogsPanel />
-      </>
-    );
-  }
-
+  // The Workspace section is rendered only while its tab is showing: every
+  // control there saves itself on blur, on Enter, or on pick, so leaving the
+  // tab leaves no draft behind for a mounted-but-hidden section to hold.
   if (section === "workspace") {
-    return <>{workspaceSection}</>;
+    return (
+      <WorkspaceProfileSection
+        dashboard={dashboard}
+        profiles={profiles}
+        onWorkspaceReload={onWorkspaceReload}
+        profileSwitchState={profileSwitchState}
+        onProfileSwitch={onProfileSwitch}
+      />
+    );
   }
+
+  if (section === "review")
+    return <ReviewPreferences profileId={dashboard?.profile.id} />;
+
+  if (section === "logs") return <LogsPanel />;
 
   if (section === "data") {
     return (
-      <>
-        {workspaceSection}
-        <DataSection
-          dashboard={dashboard}
-          onWorkspaceReload={onWorkspaceReload}
-          onCleanupSuccess={onCleanupSuccess}
-        />
-      </>
+      <DataSection
+        dashboard={dashboard}
+        onWorkspaceReload={onWorkspaceReload}
+        onCleanupSuccess={onCleanupSuccess}
+      />
     );
   }
 
   return (
-    <>
-      {workspaceSection}
-      <GeneralSection
-        appearance={appearance}
-        onAppearanceChange={onAppearanceChange}
-        diffThemePreferences={diffThemePreferences}
-        onDiffThemeChange={onDiffThemeChange}
-      />
-    </>
+    <GeneralSection
+      appearance={appearance}
+      onAppearanceChange={onAppearanceChange}
+      diffThemePreferences={diffThemePreferences}
+      onDiffThemeChange={onDiffThemeChange}
+    />
   );
 }
 

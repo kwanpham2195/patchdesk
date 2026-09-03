@@ -4,7 +4,6 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsModal } from "../../src/renderer/src/components/settings-modal";
 import type { RawJsonValue } from "../../src/domain/json";
 import { SettingsFlow } from "../../src/renderer/src/flows/settings-flow";
 import type { Profile } from "../../src/renderer/src/renderer-models";
@@ -39,27 +38,7 @@ afterEach(() => {
 });
 
 describe("workspace profile settings", () => {
-  it("guards a dirty profile draft before selecting another profile", async () => {
-    installDesktopApi();
-    const user = userEvent.setup();
-    const otherProfile: Profile = { ...profile, id: "other", label: "Other" };
-
-    renderSettingsModal([profile, otherProfile]);
-    await user.clear(screen.getByLabelText("Label"));
-    await user.type(screen.getByLabelText("Label"), "Draft CFW");
-
-    await user.click(screen.getByRole("combobox", { name: "Active profile" }));
-    await user.click(await screen.findByRole("option", { name: "Other" }));
-    expect(
-      screen.getByRole("alertdialog", { name: "Discard profile changes?" }),
-    ).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
-      "Draft CFW",
-    );
-  });
-
-  it("saves every editable profile list", async () => {
+  it("saves each workspace list on the edit that changed it", async () => {
     const desktopApi = installDesktopApi();
     const user = userEvent.setup();
     const reload = vi.fn(async () => undefined);
@@ -79,6 +58,17 @@ describe("workspace profile settings", () => {
     if (secondChooseFolder === undefined)
       throw new Error("Expected a second workspace root picker.");
     await user.click(secondChooseFolder);
+
+    await vi.waitFor(() =>
+      expect(desktopApi.request).toHaveBeenCalledWith({
+        path: "/v1/profiles",
+        method: "PUT",
+        body: expect.objectContaining({
+          workspaceRoots: ["/workspace/cfw", "/picked/enterprise"],
+        }),
+      }),
+    );
+
     await user.click(
       screen.getByRole("button", { name: "Remove workspace root 1" }),
     );
@@ -87,7 +77,7 @@ describe("workspace profile settings", () => {
       screen.getByLabelText("rule path 2"),
       "/workspace/cfw/CONTRIBUTING.md",
     );
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.tab();
 
     await vi.waitFor(() =>
       expect(desktopApi.request).toHaveBeenCalledWith({
@@ -109,81 +99,58 @@ describe("workspace profile settings", () => {
     expect(reload).toHaveBeenCalled();
   });
 
-  it("keeps edits made while a profile save is pending", async () => {
-    let releaseSave!: () => void;
-    const pendingSave = new Promise<ReturnType<typeof success>>((resolve) => {
-      releaseSave = () => resolve(success({}));
-    });
-    installDesktopApi({ pendingProfileSave: pendingSave });
-    const user = userEvent.setup();
-
-    renderSettings();
-    const label = screen.getByLabelText("Label");
-    await user.clear(label);
-    await user.type(label, "Saved");
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
-    await user.clear(label);
-    await user.type(label, "Newer");
-
-    releaseSave();
-    await vi.waitFor(() =>
-      expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
-        "Newer",
-      ),
-    );
-  });
-
-  it("shows inline validation for a blank list entry without saving", async () => {
+  it("keeps a blank list row local until it carries a value", async () => {
     const desktopApi = installDesktopApi();
     const user = userEvent.setup();
 
     renderSettings();
     await user.click(screen.getByRole("button", { name: "Add rule path" }));
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.click(screen.getByLabelText("rule path 2"));
+    await user.tab();
 
-    expect(
-      screen.getByText("Rule paths cannot contain blank entries."),
-    ).toBeTruthy();
-    expect(
-      desktopApi.request.mock.calls.some(
-        ([input]) => "path" in input && input.path === "/v1/profiles",
-      ),
-    ).toBe(false);
+    expect(profileSaveRequests(desktopApi)).toHaveLength(0);
+    expect(screen.getByLabelText("rule path 2")).toBeTruthy();
   });
 
-  it("associates every invalid profile scalar with its field before saving", async () => {
+  it("reports every invalid scalar beside its own field without sending it", async () => {
     const desktopApi = installDesktopApi();
     const user = userEvent.setup();
 
     renderSettings();
     await user.clear(screen.getByLabelText("Label"));
     await user.type(screen.getByLabelText("Label"), "   ");
+    await user.tab();
     await user.clear(screen.getByLabelText("GitHub host"));
     await user.type(
       screen.getByLabelText("GitHub host"),
       "https://github.example.test/path",
     );
+    await user.tab();
     await user.clear(screen.getByLabelText("GitHub account"));
     await user.type(screen.getByLabelText("GitHub account"), "x".repeat(40));
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.tab();
 
-    for (const [label, errorId] of [
-      ["Label", "profile-label-error"],
-      ["GitHub host", "profile-github-host-error"],
-      ["GitHub account", "profile-gh-account-error"],
+    for (const [label, statusId] of [
+      ["Label", "profile-label-status"],
+      ["GitHub host", "profile-github-host-status"],
+      ["GitHub account", "profile-gh-account-status"],
     ] as const) {
       const field = screen.getByLabelText(label);
       expect(field.getAttribute("aria-invalid")).toBe("true");
-      expect(field.getAttribute("aria-describedby")).toBe(errorId);
-      expect(document.getElementById(errorId)?.textContent).not.toBe("");
+      expect(field.getAttribute("aria-describedby")).toBe(statusId);
+      expect(document.getElementById(statusId)?.textContent).not.toBe("");
     }
     expect(profileSaveRequests(desktopApi)).toHaveLength(0);
 
+    await user.clear(screen.getByLabelText("Label"));
     await user.type(screen.getByLabelText("Label"), "Named");
+    await user.tab();
 
-    expect(
-      screen.getByLabelText("Label").getAttribute("aria-invalid"),
-    ).toBeNull();
+    await vi.waitFor(() =>
+      expect(
+        screen.getByLabelText("Label").getAttribute("aria-invalid"),
+      ).toBeNull(),
+    );
     for (const field of [
       screen.getByLabelText("GitHub host"),
       screen.getByLabelText("GitHub account"),
@@ -191,7 +158,7 @@ describe("workspace profile settings", () => {
       expect(field.getAttribute("aria-invalid")).toBe("true");
   });
 
-  it("exposes invalid manual account fields after a disclosure closes", async () => {
+  it("keeps rejected manual account fields on screen with their reason", async () => {
     installDesktopApi({
       environment: {
         git: "ready",
@@ -210,32 +177,32 @@ describe("workspace profile settings", () => {
     );
     await user.clear(screen.getByLabelText("GitHub host"));
     await user.type(screen.getByLabelText("GitHub host"), "https://bad.test");
-    await user.clear(screen.getByLabelText("GitHub account"));
-    await user.type(screen.getByLabelText("GitHub account"), "x".repeat(40));
-    await user.click(
-      screen.getByRole("button", { name: "Use a different account" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.tab();
 
-    const host = screen.getByLabelText("GitHub host");
-    const account = screen.getByLabelText("GitHub account");
-    expect(host.getAttribute("aria-describedby")).toBe(
-      "profile-github-host-error",
-    );
-    expect(account.getAttribute("aria-describedby")).toBe(
-      "profile-gh-account-error",
-    );
+    // A rejected value keeps its field on screen: the disclosure that would
+    // have hidden it is replaced by the fields themselves.
     expect(
-      document.getElementById("profile-github-host-error")?.textContent,
+      screen.queryByRole("button", { name: "Use a different account" }),
+    ).toBeNull();
+    expect(
+      screen.getByLabelText("GitHub host").getAttribute("aria-describedby"),
+    ).toBe("profile-github-host-status");
+    expect(
+      document.getElementById("profile-github-host-status")?.textContent,
     ).not.toBe("");
     expect(
-      document.getElementById("profile-gh-account-error")?.textContent,
-    ).not.toBe("");
+      screen.getByLabelText("GitHub account").getAttribute("aria-invalid"),
+    ).toBeNull();
 
-    await user.clear(host);
-    await user.type(host, "github.com");
-    expect(host.getAttribute("aria-invalid")).toBeNull();
-    expect(account.getAttribute("aria-invalid")).toBe("true");
+    await user.clear(screen.getByLabelText("GitHub host"));
+    await user.type(screen.getByLabelText("GitHub host"), "github.com");
+    await user.tab();
+
+    // Restoring a value the profile can hold puts the fields back behind the
+    // disclosure they came from.
+    expect(
+      await screen.findByRole("button", { name: "Use a different account" }),
+    ).toBeTruthy();
   });
 
   it("renders manual account fields when GitHub authentication fails", async () => {
@@ -254,21 +221,23 @@ describe("workspace profile settings", () => {
     expect(screen.getByLabelText("GitHub account")).toBeTruthy();
   });
 
-  it("trims valid profile scalars before requesting a save", async () => {
+  it("trims a scalar on commit before sending it", async () => {
     const desktopApi = installDesktopApi();
     const user = userEvent.setup();
 
     renderSettings();
     await user.clear(screen.getByLabelText("Label"));
     await user.type(screen.getByLabelText("Label"), "  Spaced label  ");
+    await user.tab();
     await user.clear(screen.getByLabelText("GitHub host"));
     await user.type(
       screen.getByLabelText("GitHub host"),
       " github.example.test ",
     );
+    await user.tab();
     await user.clear(screen.getByLabelText("GitHub account"));
     await user.type(screen.getByLabelText("GitHub account"), " spaced-user ");
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.tab();
 
     await vi.waitFor(() =>
       expect(profileSaveRequests(desktopApi)).toContainEqual({
@@ -282,26 +251,29 @@ describe("workspace profile settings", () => {
         }),
       }),
     );
+    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+      "Spaced label",
+    );
   });
 
-  it("shows a save error inline when the profile API rejects the request", async () => {
+  it("shows a rejected save beside the control that caused it", async () => {
     const desktopApi = installDesktopApi({ rejectProfileSave: true });
     const user = userEvent.setup();
 
     renderSettings();
     await user.type(screen.getByLabelText("Label"), " changed");
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await user.tab();
 
     expect(
       await screen.findByText(
         "Patchdesk could not save the local review state.",
       ),
     ).toBeTruthy();
-    expect(
-      desktopApi.request.mock.calls.some(
-        ([input]) => "path" in input && input.path === "/v1/profiles",
-      ),
-    ).toBe(true);
+    expect(profileSaveRequests(desktopApi)).toHaveLength(1);
+    // The typed value stays, so the edit can be retried where it was made.
+    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+      "CFW changed",
+    );
   });
   it("uses the control-linked field error for a Settings-owned profile switch failure", () => {
     installDesktopApi();
@@ -321,7 +293,7 @@ describe("workspace profile settings", () => {
     ).toBeTruthy();
   });
 
-  it("preserves every profile draft field when profile switching fails", async () => {
+  it("keeps every profile field on screen when profile switching fails", async () => {
     installDesktopApi();
     const user = userEvent.setup();
     const otherProfile: Profile = {
@@ -543,7 +515,6 @@ function renderSettings(
       onDiffThemeChange={() => undefined}
       profiles={options.profiles ?? [activeProfile]}
       onWorkspaceReload={onWorkspaceReload}
-      onProfileSwitchRequest={(_profileId, proceed) => proceed()}
       {...(options.profileSwitchState === undefined
         ? {}
         : { profileSwitchState: options.profileSwitchState })}
@@ -555,31 +526,10 @@ function renderSettings(
   );
 }
 
-function renderSettingsModal(
-  profiles: ReadonlyArray<Profile> = [profile],
-): void {
-  render(
-    <SettingsModal
-      open
-      onOpenChange={() => undefined}
-      dashboard={{ profile, dashboard: { repos: [] } }}
-      appearance="system"
-      onAppearanceChange={() => undefined}
-      diffThemePreferences={{ light: "pierre-light", dark: "github-dark" }}
-      onDiffThemeChange={() => undefined}
-      profiles={profiles}
-      onWorkspaceReload={async () => undefined}
-      onProfileSwitch={async () => "applied"}
-      initialSection="workspace"
-    />,
-  );
-}
-
 function installDesktopApi(
   options: {
     readonly rejectProfileSave?: boolean;
     readonly rejectWatchlist?: boolean;
-    readonly pendingProfileSave?: Promise<ReturnType<typeof success>>;
     readonly environment?: RawJsonValue;
     readonly suggestions?: "reject" | ReadonlyArray<WorkspaceRootDiscovery>;
   } = {},
@@ -599,8 +549,6 @@ function installDesktopApi(
               options.suggestions ?? readyDiscovery("/workspace/cfw", []),
             ),
       "/v1/profiles": () => {
-        if (options.pendingProfileSave !== undefined)
-          return options.pendingProfileSave;
         if (options.rejectProfileSave === true)
           return failure({ error: "storage" });
         return success({});
