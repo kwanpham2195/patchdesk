@@ -11,7 +11,6 @@ const profile = {
   label: "Fixture",
   githubHost: "github.com",
   ghAccount: "fixture",
-  ownerFilters: [],
   workspaceRoots: [],
   rulePaths: [],
   repos: [],
@@ -47,5 +46,17 @@ describe("GitHub login bounds", () => {
       _tag: "err",
       error: { _tag: "InvalidWorkspaceProfileConfig" },
     });
+  });
+});
+
+describe("retired profile settings", () => {
+  it("still loads a profile stored with the removed owner-filter key, dropping it", () => {
+    const parsed = parseWorkspaceProfileConfig({
+      ...profile,
+      ownerFilters: ["centraldigital"],
+    });
+
+    expect(parsed).toMatchObject({ _tag: "ok", value: { id: "fixture" } });
+    expect(parsed._tag === "ok" && "ownerFilters" in parsed.value).toBe(false);
   });
 });

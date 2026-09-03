@@ -16,7 +16,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 ## Workspace and identity
 
-**Workspace profile.** The saved local configuration that selects a GitHub host and account, workspace roots, owner filters, rule paths, and watched repositories. Switching profiles returns the app to the Pull requests screen and reloads that profile's state.
+**Workspace profile.** The saved local configuration that selects a GitHub host and account, workspace roots, rule paths, and watched repositories. Switching profiles returns the app to the Pull requests screen and reloads that profile's state.
 
 **Active profile.** The workspace profile currently applied to the app. A profile draft shown in Settings is not active until its save and any required selection succeed.
 
@@ -25,8 +25,6 @@ The vocabulary used across these documents. When a document uses one of these wo
 **GitHub account.** The authenticated `gh` identity Patchdesk resolves for a workspace profile. Patchdesk obtains a token when needed and does not store it.
 
 **Workspace root.** An absolute local folder Patchdesk scans for Git repositories with GitHub remotes. A root must be saved before repository discovery treats it as part of the active profile.
-
-**Owner filter.** A GitHub owner name that limits which discovered repositories belong to a workspace profile. A profile can have no owner filters.
 
 **Rule path.** An absolute path to an instruction file that Patchdesk includes when it prepares represented Review context. A profile can have no rule paths.
 

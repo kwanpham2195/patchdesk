@@ -25,7 +25,6 @@ const profile = {
   githubHost: "github.com",
   ghAccount: "patchdesk",
   workspaceRoots: ["/workspace/cfw"],
-  ownerFilters: ["centraldigital"],
   rulePaths: ["/workspace/cfw/AGENTS.md"],
 };
 

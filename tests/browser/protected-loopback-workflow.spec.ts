@@ -80,9 +80,6 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page
     .getByRole("textbox", { name: "workspace root 1", exact: true })
     .fill("/workspace/enterprise");
-  await page
-    .getByRole("textbox", { name: "owner filter 1", exact: true })
-    .fill("enterprise");
   await page.getByRole("button", { name: "Save profile" }).click();
   await page.getByRole("combobox", { name: "Active profile" }).last().click();
   const enterpriseOption = page.getByRole("option", { name: "Enterprise" });

@@ -81,7 +81,6 @@ const saveProfileInputSchema = v.object({
   label: v.unknown(),
   githubHost: v.unknown(),
   ghAccount: v.unknown(),
-  ownerFilters: v.unknown(),
   workspaceRoots: v.unknown(),
   rulePaths: v.unknown(),
 });
@@ -217,7 +216,6 @@ export class DashboardController {
       label: fields.label,
       githubHost: fields.githubHost,
       ghAccount: fields.ghAccount,
-      ownerFilters: fields.ownerFilters,
       workspaceRoots: fields.workspaceRoots,
       rulePaths: fields.rulePaths,
       repos: current?.repos ?? [],

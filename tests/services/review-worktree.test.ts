@@ -93,7 +93,6 @@ const profile: WorkspaceProfileConfig = {
   label: "CFW",
   githubHost: ids.host,
   ghAccount: "profile-account",
-  ownerFilters: [],
   workspaceRoots: [],
   rulePaths: [],
   repos: [],

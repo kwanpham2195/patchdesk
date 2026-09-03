@@ -21,7 +21,6 @@ export type ProfileDraft = {
   readonly githubHost: string;
   readonly ghAccount: string;
   readonly workspaceRoots: ReadonlyArray<ProfileListEntry>;
-  readonly ownerFilters: ReadonlyArray<ProfileListEntry>;
   readonly rulePaths: ReadonlyArray<ProfileListEntry>;
 };
 
@@ -349,7 +348,7 @@ export function useWorkspaceProfileDraft({
   };
 }
 
-export type ProfileListField = "workspaceRoots" | "ownerFilters" | "rulePaths";
+export type ProfileListField = "workspaceRoots" | "rulePaths";
 
 function profileListEntry(value: string): ProfileListEntry {
   return { id: crypto.randomUUID(), value };
@@ -370,9 +369,6 @@ function profileDraftFor(profile: Profile | undefined): ProfileDraft {
     workspaceRoots: profileListEntries(
       profile === undefined ? [""] : (profile.workspaceRoots ?? []),
     ),
-    ownerFilters: profileListEntries(
-      profile === undefined ? [""] : (profile.ownerFilters ?? []),
-    ),
     rulePaths: profileListEntries(profile?.rulePaths ?? []),
   };
 }
@@ -385,7 +381,6 @@ type NormalizedProfile = {
   readonly githubHost: string;
   readonly ghAccount: string;
   readonly workspaceRoots: ReadonlyArray<string>;
-  readonly ownerFilters: ReadonlyArray<string>;
   readonly rulePaths: ReadonlyArray<string>;
 };
 
@@ -402,7 +397,6 @@ function profileDraftFromNormalized(profile: NormalizedProfile): ProfileDraft {
   return {
     ...profile,
     workspaceRoots: profileListEntries(profile.workspaceRoots),
-    ownerFilters: profileListEntries(profile.ownerFilters),
     rulePaths: profileListEntries(profile.rulePaths),
   };
 }
@@ -432,11 +426,6 @@ function normalizeProfileDraft(draft: ProfileDraft): NormalizeProfileResult {
     "Workspace roots",
   );
   if (!workspaceRoots.ok) return workspaceRoots;
-  const ownerFilters = trimEntries(
-    draft.ownerFilters.map((entry) => entry.value),
-    "Owner filters",
-  );
-  if (!ownerFilters.ok) return ownerFilters;
   const rulePaths = trimEntries(
     draft.rulePaths.map((entry) => entry.value),
     "Rule paths",
@@ -450,7 +439,6 @@ function normalizeProfileDraft(draft: ProfileDraft): NormalizeProfileResult {
       githubHost: draft.githubHost.trim(),
       ghAccount: draft.ghAccount.trim(),
       workspaceRoots: workspaceRoots.values,
-      ownerFilters: ownerFilters.values,
       rulePaths: rulePaths.values,
     },
   };

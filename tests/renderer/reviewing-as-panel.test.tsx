@@ -25,7 +25,6 @@ function makeProfile(
     githubHost: overrides.githubHost ?? "github.com",
     ghAccount: overrides.ghAccount ?? "",
     workspaceRoots: ["/workspace/cfw"],
-    ownerFilters: [],
     rulePaths: [],
   } satisfies Profile;
 }

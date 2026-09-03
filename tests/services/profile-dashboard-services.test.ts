@@ -65,7 +65,6 @@ const profile = mustParse(
     label: "CFW",
     githubHost: "github.com",
     ghAccount: "pmquan2cfw",
-    ownerFilters: ["centraldigital"],
     workspaceRoots: ["/workspace"],
     rulePaths: [],
     repos: [
@@ -85,7 +84,7 @@ const ids = {
 };
 
 describe("profile settings and dashboard services", () => {
-  it("persists editable owner filters and rule paths while preserving watched repositories", async () => {
+  it("persists editable workspace roots and rule paths while preserving watched repositories", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-profile-editor-`);
     try {
       const paths = PatchdeskPaths.forTest(root);
@@ -103,7 +102,6 @@ describe("profile settings and dashboard services", () => {
         label: "CFW updated",
         githubHost: "github.com",
         ghAccount: "patchdesk",
-        ownerFilters: ["centraldigital", "platform"],
         workspaceRoots: ["/workspace/cfw", "/workspace/platform"],
         rulePaths: ["/workspace/cfw/AGENTS.md"],
       });
@@ -111,7 +109,6 @@ describe("profile settings and dashboard services", () => {
       expect(saved).toMatchObject({
         _tag: "ok",
         value: {
-          ownerFilters: ["centraldigital", "platform"],
           workspaceRoots: ["/workspace/cfw", "/workspace/platform"],
           rulePaths: ["/workspace/cfw/AGENTS.md"],
           repos: [{ repo: "patchdesk" }],
@@ -120,7 +117,6 @@ describe("profile settings and dashboard services", () => {
       expect(await store.load(profile.id)).toMatchObject({
         _tag: "ok",
         value: {
-          ownerFilters: ["centraldigital", "platform"],
           rulePaths: ["/workspace/cfw/AGENTS.md"],
           repos: [{ repo: "patchdesk" }],
         },
@@ -147,7 +143,6 @@ describe("profile settings and dashboard services", () => {
         label: "Default",
         githubHost: "github.com",
         ghAccount: "octocat",
-        ownerFilters: [],
         workspaceRoots: expectedHomeWorkspaceRoot,
         repos: [],
       },
@@ -166,7 +161,6 @@ describe("profile settings and dashboard services", () => {
         label: "Default",
         githubHost: "github.com",
         ghAccount: "",
-        ownerFilters: [],
         repos: [],
       },
     });
@@ -231,7 +225,7 @@ describe("profile settings and dashboard services", () => {
       const listed = await controller.listProfiles();
       expect(listed).toMatchObject({
         _tag: "ok",
-        value: [{ id: "default", ghAccount: "", ownerFilters: [] }],
+        value: [{ id: "default", ghAccount: "" }],
       });
 
       // The profile schema requires a non-empty ghAccount (workspace-profile.ts),
