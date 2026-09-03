@@ -97,6 +97,52 @@ describe("useWorkspaceProfileEditor", () => {
     expect(result.current.persisted.label).toBe("Renamed");
   });
 
+  it("lets a profile switch win over a save still in flight for the profile it leaves", async () => {
+    let release: (() => void) | undefined;
+    installDesktopApi({
+      profileSave: () =>
+        new Promise<DesktopResponse>((resolve) => {
+          release = () => resolve(success({}));
+        }),
+    });
+    const other: Profile = {
+      id: "other",
+      label: "Other",
+      githubHost: "github.com",
+      ghAccount: "patchdesk",
+      workspaceRoots: ["/workspace/other"],
+      rulePaths: [],
+    };
+    const { result } = renderHook(() =>
+      useWorkspaceProfileEditor({
+        dashboard,
+        profiles: [profile, other],
+        onWorkspaceReload: async () => undefined,
+        onProfileSwitch: async () => "applied",
+      }),
+    );
+
+    act(() => result.current.editScalar("label", "Renamed"));
+    act(() => result.current.commitScalar("label"));
+    await waitFor(() =>
+      expect(result.current.status.label.state).toBe("saving"),
+    );
+    act(() => result.current.selectProfile("other"));
+    await waitFor(() => expect(result.current.persisted.id).toBe("other"));
+
+    // The save for the profile just left answers now: its body belongs to
+    // that profile, so it must not land on the one now loaded.
+    await act(async () => {
+      release?.();
+      await Promise.resolve();
+    });
+    expect(result.current.persisted.label).toBe("Other");
+    expect(result.current.persisted.workspaceRoots).toEqual([
+      "/workspace/other",
+    ]);
+    expect(result.current.scalars.label).toBe("Other");
+  });
+
   it("keeps the persisted value and reports a failed status when the save is rejected", async () => {
     installDesktopApi({ profileSave: () => failure({ error: "storage" }) });
     const { result } = renderEditor();
