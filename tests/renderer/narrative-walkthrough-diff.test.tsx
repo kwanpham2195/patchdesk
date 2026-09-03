@@ -124,22 +124,19 @@ describe("narrative walkthrough diff block", () => {
         allHunks={[hunk]}
       />,
     );
-    const buttons = container.querySelectorAll("button");
-    const splitButton = Array.from(buttons).find((b) =>
-      b.textContent?.includes("Split"),
-    );
-    const wrapButton = Array.from(buttons).find((b) =>
-      b.textContent?.includes("Wrap"),
-    );
-    if (!splitButton || !wrapButton) throw new Error("Missing buttons");
-    await user.click(splitButton);
+    await user.click(screen.getByRole("button", { name: "View options" }));
+    await user.click(await screen.findByRole("switch", { name: "Split view" }));
     expect(
       container
         .querySelector('[aria-label="Review diff"]')
         ?.getAttribute("data-diff-style"),
     ).toBe("split");
-    await user.click(wrapButton);
-    expect(screen.getByRole("button", { name: "Scroll" })).toBeTruthy();
+    await user.click(screen.getByRole("switch", { name: "Wrap lines" }));
+    expect(
+      screen
+        .getByRole("switch", { name: "Wrap lines" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("honors appearance and diff-theme events", () => {

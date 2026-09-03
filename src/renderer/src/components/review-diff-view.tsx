@@ -22,15 +22,7 @@ import {
   PatchDiff,
   type CodeViewHandle,
 } from "@pierre/diffs/react";
-import {
-  ChevronsUpDown,
-  Columns2,
-  FileCode2,
-  Files,
-  MoveHorizontal,
-  Rows3,
-  WrapText,
-} from "lucide-react";
+import { ChevronsUpDown, FileCode2, Files } from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import type {
@@ -42,6 +34,7 @@ import { definedProps } from "../../../domain/defined-props";
 import { tokenizeUnifiedPatch } from "../../../domain/unified-patch";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
 import { renderReviewDiffAnnotation } from "./review-diff-finding-card";
+import { ReviewDiffOptionsPopover } from "./review-diff-options-popover";
 import type {
   ConversationThreadCardData,
   ReviewConversationActions,
@@ -267,7 +260,7 @@ function ReviewDiffToolbar({
   readonly virtualized: boolean;
   readonly preferences: Pick<
     ReviewViewPreferences,
-    "fileMode" | "diffStyle" | "overflow"
+    "fileMode" | "diffStyle" | "overflow" | "lineNumbers" | "backgrounds"
   >;
   readonly selectedPath: string | undefined;
   readonly onPreferencesChange: (
@@ -308,38 +301,10 @@ function ReviewDiffToolbar({
         </Button>
       </ButtonGroup>
       <div className="flex flex-wrap items-center justify-end gap-1">
-        <ButtonGroup>
-          <Button
-            variant={
-              preferences.diffStyle === "unified" ? "secondary" : "ghost"
-            }
-            size="xs"
-            aria-pressed={preferences.diffStyle === "unified"}
-            onClick={() => onPreferencesChange({ diffStyle: "unified" })}
-          >
-            <Rows3 /> Unified
-          </Button>
-          <Button
-            variant={preferences.diffStyle === "split" ? "secondary" : "ghost"}
-            size="xs"
-            aria-pressed={preferences.diffStyle === "split"}
-            onClick={() => onPreferencesChange({ diffStyle: "split" })}
-          >
-            <Columns2 /> Split
-          </Button>
-        </ButtonGroup>
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={() =>
-            onPreferencesChange({
-              overflow: preferences.overflow === "wrap" ? "scroll" : "wrap",
-            })
-          }
-        >
-          {preferences.overflow === "wrap" ? <MoveHorizontal /> : <WrapText />}
-          {preferences.overflow === "wrap" ? "Scroll" : "Wrap"}
-        </Button>
+        <ReviewDiffOptionsPopover
+          preferences={preferences}
+          onPreferencesChange={onPreferencesChange}
+        />
         <Button
           variant={expandUnchanged ? "secondary" : "ghost"}
           size="xs"
@@ -662,7 +627,8 @@ function ReviewDiffRenderSite({
     () => ({
       theme: diffThemeFor(themePreferences),
       themeType: appearance,
-      disableBackground: false,
+      disableBackground: !preferences.backgrounds,
+      disableLineNumbers: !preferences.lineNumbers,
       diffStyle: preferences.diffStyle,
       overflow: preferences.overflow,
       hunkSeparators: "line-info" as const,
@@ -679,7 +645,9 @@ function ReviewDiffRenderSite({
       expandSelectedRange,
       expandUnchanged,
       localCommentAuthoring?.enabled,
+      preferences.backgrounds,
       preferences.diffStyle,
+      preferences.lineNumbers,
       preferences.overflow,
       themePreferences,
     ],
@@ -973,7 +941,8 @@ function NonVirtualizedReviewDiff({
     theme: diffThemeFor(themePreferences),
     themeType: appearance,
     unsafeCSS: WALKTHROUGH_DIFF_COLORS_CSS,
-    disableBackground: false,
+    disableBackground: !preferences.backgrounds,
+    disableLineNumbers: !preferences.lineNumbers,
     diffStyle: preferences.diffStyle,
     overflow: preferences.overflow,
     hunkSeparators: "line-info" as const,

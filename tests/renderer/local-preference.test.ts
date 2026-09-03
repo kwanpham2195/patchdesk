@@ -170,11 +170,19 @@ const preferences = [
     }),
     load: () => loadReviewViewPreferences("profile"),
     save: () => saveReviewViewPreferences("profile", { diffStyle: "split" }),
-    fallback: { diffStyle: "unified", fileMode: "all", overflow: "scroll" },
+    fallback: {
+      diffStyle: "unified",
+      fileMode: "all",
+      overflow: "scroll",
+      lineNumbers: true,
+      backgrounds: true,
+    },
     acceptedValue: {
       diffStyle: "split",
       fileMode: "all",
       overflow: "scroll",
+      lineNumbers: true,
+      backgrounds: true,
     },
   },
 ] as const;
