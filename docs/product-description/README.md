@@ -86,7 +86,7 @@ A tester runs the checklists in the default macOS desktop app and records `pass`
 
 ### Order of work
 
-1. **Pilot: the workspace profile editor.** It is a bounded form with validation, a save operation, a dirty-draft guard, and a failure path.
+1. **Pilot: Workspace settings.** It is a bounded set of controls with validation, a save per control, a status beside each one, and a failure path.
 2. **Foundations.** Task lifecycle and interruption, navigation, workspace identity, Reviews and sessions, and persistence own the facts every later document links to.
 3. **The Review workbench.** This is the hardest area. Its navigation, diff, conversations, pending review, and merge states hand off to each other.
 4. **Everything else.** First run, the Pull requests screen, Insights, Settings, and cross-cutting behavior follow after the exemplars. The final passes check consistency, hand verification, and bug triage.
@@ -131,7 +131,7 @@ foundations/
   persistence-and-recovery.md        saved local state, cache, journals, locks, and recovery
 
 first-run/
-  setup-checklist.md                 GitHub access, required tools, and first repository
+  setup-checklist.md                 workspace setup in place on the Pull requests screen
   repository-discovery.md            workspace-root scanning and watchlist selection
 
 pull-requests/
@@ -151,7 +151,7 @@ review-workbench/
   merge.md                            readiness, warnings, method selection, and reconciliation
 
 settings/
-  workspace-profile-editor.md         pilot: create, edit, validate, save, discard, and switch
+  workspace-profile-editor.md         pilot: the Workspace settings cards, per-control saving, and switching
   appearance-and-diff-theme.md         app appearance and embedded diff themes
   review-defaults.md                   default Insight model and reasoning preferences
   data-and-recovery.md                 cache and local-review-data cleanup

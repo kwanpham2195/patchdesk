@@ -50,15 +50,19 @@ copy right away; the existing window comes to the front instead.
 
 ## First run
 
-The Pull requests screen starts with a checklist:
+The Pull requests screen starts with **Set up your workspace**, and you finish
+setup there — no trip to Settings:
 
-1. Confirm GitHub access — choose the account Patchdesk should use.
-2. Check local tools — Patchdesk checks for `git` and `gh`, and that `gh` is
-   logged in. Fix anything missing in a terminal, then press Re-check.
-3. Add your first repository — a local checkout Patchdesk can work in.
+1. **Reviewing as** — confirm the GitHub account, taken from `gh`. If several
+   are logged in, pick one. If none are, run `gh auth login` in a terminal and
+   press Re-check.
+2. **Folders and repositories** — press Choose folder and pick the folder that
+   holds your checkouts. Patchdesk scans it and lists the repositories it
+   found with GitHub remotes; tick the ones you want to review.
 
-After that, go to Settings → Workspace to point Patchdesk at a workspace
-root. It finds repositories under that root for you to add.
+Everything saves as you go, and each control says whether it saved. Ticking
+the first repository is the last step: the pull request list replaces setup on
+its own. Later, the same two cards live in Settings → Workspace.
 
 ## Reviewing pull requests
 
