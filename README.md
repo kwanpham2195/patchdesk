@@ -32,14 +32,10 @@ ships inside the app and runs on Electron's own Node.
    [Releases page](https://github.com/kwanpham2195/patchdesk/releases).
 2. Open the `.dmg` and drag Patchdesk into Applications.
 
-The first time you open Patchdesk, macOS shows "Apple could not verify
-Patchdesk.app". This is expected: the build is not signed with an Apple Developer ID
-or notarized. Open it anyway, using either of these:
-
-- System Settings → Privacy & Security → Open Anyway, or
-- right-click `Patchdesk.app` → Open.
-
-If neither works, clear the quarantine flag macOS adds to downloads:
+The build is not signed with an Apple Developer ID or notarized. The first
+time you open Patchdesk, macOS reports Patchdesk.app as damaged and offers
+only Move to Trash. Clear the quarantine flag macOS adds to downloads, once,
+from a terminal, then open it normally:
 
 ```bash
 xattr -cr /Applications/Patchdesk.app

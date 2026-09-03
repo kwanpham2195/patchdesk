@@ -21,16 +21,15 @@ import { resolveMacSigningEnvironment } from "./package-mac-lib.mjs";
  * the bundle it sits in, so `codesign --verify --deep --strict` reports "code
  * has no resources but signature indicates they must be present". macOS reads
  * that same broken seal on a downloaded copy as tampering and shows
- * "Patchdesk.app is damaged and can't be opened" -- a dead end with no "Open
- * Anyway" button, leaving `xattr -cr` as the only way in.
+ * "Patchdesk.app is damaged and can't be opened". The broken seal makes
+ * macOS refuse the app even after the quarantine flag is cleared.
  *
- * Signing the whole bundle ad-hoc replaces that with a seal that is intact but
- * anonymous: the identifier becomes the app's own, every resource is hashed,
- * and `--verify --deep --strict` passes. Gatekeeper then shows "cannot verify
- * the developer", which a person passes with right-click then Open, or with
- * Privacy & Security then Open Anyway. An ad-hoc signature is not a
- * certificate and proves nothing about who built the app; it only lets macOS
- * confirm the download arrived whole.
+ * Signing the whole bundle ad-hoc replaces that with a seal that is intact
+ * but anonymous: the identifier becomes the app's own, every resource is
+ * hashed, `--verify --deep --strict` passes, and the app runs once
+ * `xattr -cr` has cleared the flag. Gatekeeper still reports the download as
+ * damaged before that, because an ad-hoc signature is not a certificate and
+ * proves nothing about who built the app.
  *
  * The hook stands down on the Developer ID path. electron-builder signs and
  * notarizes that build itself, after this hook runs, and an ad-hoc signature

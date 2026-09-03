@@ -326,8 +326,10 @@ Beyond `pnpm check`:
   the running app starts there; it prints how to start the app when the port
   is down.
 
-Pull requests targeting `main` run the `Pull request gates` workflow on
-`macos-14`. It runs these named checks in order:
+The `Pull request gates` workflow, which used to run these checks on
+`macos-14` for every pull request targeting `main`, has been paused since
+2026-09-03. Its steps are now run by hand on the maintainer's machine before
+a merge, in this order:
 
 - `pnpm lint:changed -- <base> <head>` for changed JavaScript and TypeScript
   files only, plus the Oxlint count ratchet;
@@ -341,10 +343,26 @@ Pull requests targeting `main` run the `Pull request gates` workflow on
 - `pnpm check:bundle` against that build; and
 - `pnpm exec playwright test` against that same build.
 
+The local equivalent, in this order:
+
+```bash
+git fetch origin
+pnpm lint:changed -- origin/main HEAD
+pnpm knip:ratchet -- origin/main HEAD
+pnpm typecheck:scripts -- origin/main HEAD
+pnpm check:error-ui
+pnpm lint
+pnpm typecheck
+pnpm test:all
+pnpm build
+pnpm check:bundle
+CI=1 pnpm exec playwright test
+```
+
 The gate builds once. `pnpm test:bundle` and `pnpm test:e2e` each run
 `pnpm build` first, which is what you want locally and a wasted second build
-in CI, so CI runs `pnpm build` as its own step and then the two check-only
-commands underneath it.
+when repeated, so the merge gate runs `pnpm build` as its own step and then
+the two check-only commands underneath it.
 
 The browser suite carries two timing budgets, both stated in
 `tests/browser/timing-budget.ts`. A local run holds the performance proof to
@@ -355,18 +373,22 @@ proof allows 400 ms, 600 ms, 200 ms, and a 15 s expect timeout. The two sets
 differ because on 2026-09-02 the `macos-14` runner measured 205 to 302 ms
 against the 200 ms ceiling with code that passed at 70 to 121 ms locally; about
 double the local numbers still fails a regression of the size that matters
-while leaving the local budget where it is.
+while leaving the local budget where it is. Set `CI=1` when running the
+browser suite as the merge gate so the wider budget applies, as the `CI=1`
+line above does.
 
 `pnpm lint:changed` also checks formatting, which is why it stays beside the
 repo-wide `pnpm lint`: one covers the shape of the changed files, the other
-covers every finding in the tree. CI does not run package smoke or release
-operations.
+covers every finding in the tree. The pull request workflow, when it ran,
+did not run package smoke or release operations either.
 
 ## Release
 
-A release is one tag. You prepare the version locally, push the tag, and CI
-builds the download and leaves a draft release for you to read before anyone
-can install it. Nothing is published without a person publishing it.
+A release is one tag. You prepare the version locally, push the tag, and,
+since the `Release` workflow is paused as of 2026-09-03, run the same build
+and checks locally, ending with a draft GitHub release for you to read
+before anyone can install it. Nothing is published without a person
+publishing it.
 
 1. Start on `main` with a clean working tree, up to date with `origin`.
 
@@ -392,22 +414,32 @@ can install it. Nothing is published without a person publishing it.
    git push origin main v0.2.0
    ```
 
-4. Pushing the tag runs the `Release` workflow
-   (`.github/workflows/release.yml`) on `macos-14`. It checks the tag against
-   `package.json` and reads the release notes out of `CHANGELOG.md`, so a
-   mismatched version or a missing changelog entry stops it before the long
-   build. It then runs `pnpm lint`, `pnpm typecheck`, and `pnpm test:all` —
-   a tag can land on a commit that never went through the pull request gates,
-   so the release repeats the fast checks against the exact tree it is about
-   to ship — runs `pnpm package:mac`, runs `pnpm test:package-smoke` against
-   the app it just built, and opens a **draft** GitHub release with the
-   `.dmg` and the `.zip` attached.
+4. The `Release` workflow (`.github/workflows/release.yml`) would normally
+   run on `macos-14` when the tag is pushed; while it is paused, the
+   maintainer runs the same steps locally instead, in this order:
 
-5. Open the draft release, read the notes, and publish. The notes are the
-   `## <version>` section of `CHANGELOG.md`, extracted by
-   `pnpm release:notes <version>`, so what the release page says is the entry
-   you reviewed in step 3 rather than a generated list of commit subjects.
-   Run that command locally if you want to read the notes before tagging.
+   ```bash
+   pnpm release:notes 0.2.0 > release-notes.md
+   pnpm lint
+   pnpm typecheck
+   pnpm test:all
+   pnpm package:mac
+   pnpm test:package-smoke
+   gh release create v0.2.0 --draft --title v0.2.0 --notes-file release-notes.md release/*.dmg release/*.zip
+   ```
+
+   `pnpm release:notes` extracts the `## <version>` section of
+   `CHANGELOG.md`, so what the release page says is the entry reviewed in
+   step 3 rather than a generated list of commit subjects. `pnpm lint`,
+   `pnpm typecheck`, and `pnpm test:all` repeat here because a tag can land
+   on a commit that never went through the gates, so the release checks the
+   exact tree it is about to ship before `pnpm package:mac` builds it and
+   `pnpm test:package-smoke` checks the built app. `gh release create` then
+   opens a **draft** GitHub release with the `.dmg` and the `.zip` attached.
+   `release-notes.md` is a scratch file, not tracked by `.gitignore`; delete
+   it after the draft is created rather than adding an ignore rule for it.
+
+5. Open the draft release, read the notes, and publish.
 
 Bumping the bundled Pi client follows `docs/upgrading-pi.md`.
 
@@ -425,8 +457,8 @@ repository secrets are set, and builds unsigned when they are not:
 `APPLE_` secrets, the download opens on any Mac with a double-click. With
 `CSC_LINK` but no `APPLE_` secrets, the app is signed but not notarized. With
 none of them the build still succeeds and produces the unsigned app this
-project has always shipped, which needs one confirmation before first launch
-(see `README.md`, "Install") — say so when you hand it to someone.
+project has always shipped, which needs one terminal command before first
+launch (see `README.md`, "Install") — say so when you hand it to someone.
 
 The unsigned build is still signed, just anonymously: the `afterPack` hook in
 `scripts/sign-mac-adhoc.mjs` runs `codesign --force --deep --sign -` over the
@@ -434,11 +466,12 @@ finished bundle before the `.dmg` and `.zip` are built. Without it the app
 keeps the signature Electron's binary was linker-signed with, which covers the
 executable alone and seals no resources, so `codesign --verify --deep --strict`
 fails and macOS rejects a downloaded copy as "Patchdesk.app is damaged and
-can't be opened" — a dialog with no way past it. An ad-hoc seal proves nothing
-about who built the app, but it does let macOS confirm the download arrived
-whole, which turns that dead end into the ordinary "cannot verify the
-developer" dialog people pass with right-click → Open or Privacy & Security →
-Open Anyway. The hook stands down whenever `CSC_LINK` is set: electron-builder
+can't be opened" — a dialog with no way past it. An ad-hoc seal proves
+nothing about who built the app and does not get past Gatekeeper, which
+still reports the download as damaged; what it does is keep the seal intact
+so the app runs once the person clears the quarantine flag with `xattr -cr`,
+which `README.md` documents as the install step. The hook stands down
+whenever `CSC_LINK` is set: electron-builder
 signs and notarizes that build itself, and an anonymous signature has nothing
 to add to a real one. `pnpm test:package-smoke` checks the seal and prints
 which kind it is.
