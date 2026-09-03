@@ -195,24 +195,6 @@ describe("InboxFlow unreadable repo outcome", () => {
 });
 
 describe("InboxFlow settings targeting", () => {
-  it("opens the Workspace section from the first-run setup card", () => {
-    const onSettings = vi.fn();
-    renderInboxFlow(
-      <InboxFlow
-        destination="dashboard"
-        state="empty"
-        refreshStatus="Current"
-        onRefresh={vi.fn()}
-        onSettings={onSettings}
-        onOpenWorkbench={vi.fn()}
-      />,
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open Settings to finish setup" }),
-    );
-    expect(onSettings).toHaveBeenCalledWith("workspace");
-  });
-
   it("opens the Workspace section from the github_auth error banner", () => {
     const onSettings = vi.fn();
     const authDashboard: Dashboard = {
@@ -246,7 +228,7 @@ describe("InboxFlow settings targeting", () => {
   });
 });
 
-describe("InboxFlow setup checklist", () => {
+describe("InboxFlow first run", () => {
   function stubPatchdesk(
     handlers: Readonly<Record<string, RawJsonValue>>,
   ): void {
@@ -261,21 +243,26 @@ describe("InboxFlow setup checklist", () => {
     });
   }
 
-  it("shows both checks passing when GitHub access is available and local tools are ready", async () => {
+  const READY_ENVIRONMENT: RawJsonValue = {
+    git: "ready",
+    gh: "ready",
+    githubAuth: "ready",
+    // The same account the `dashboard` fixture's profile carries, so the
+    // panel reports the resolved account instead of an unauthenticated one.
+    githubAccounts: [{ host: "github.com", login: "fixture", active: true }],
+  };
+
+  it("finishes setup in place: the account step, then the folders and repositories step", async () => {
     stubPatchdesk({
-      "/v1/github/access": { state: "available" },
-      "/v1/environment": {
-        git: "ready",
-        gh: "ready",
-        githubAuth: "ready",
-        githubAccounts: [
-          { host: "github.com", login: "patchdesk", active: true },
-        ],
-      },
+      "/v1/environment": READY_ENVIRONMENT,
+      "/v1/watchlist/suggestions": [],
     });
     renderInboxFlow(
       <InboxFlow
         destination="dashboard"
+        dashboard={dashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+        inbox={{ ...inbox, inbox: { ...inbox.inbox, rows: [] } } as never}
         state="empty"
         refreshStatus="Current"
         onRefresh={vi.fn()}
@@ -283,29 +270,28 @@ describe("InboxFlow setup checklist", () => {
         onOpenWorkbench={vi.fn()}
       />,
     );
-    expect(await screen.findByText("GitHub access confirmed.")).toBeTruthy();
-    expect(await screen.findByText("Git is installed.")).toBeTruthy();
-    expect(
-      await screen.findByText("GitHub CLI (gh) is installed."),
-    ).toBeTruthy();
-    expect(
-      await screen.findByText("GitHub CLI is authenticated."),
-    ).toBeTruthy();
+    const flow = screen.getByRole("region", { name: "Set up your workspace" });
+    expect(within(flow).getByText("1. Reviewing as")).toBeTruthy();
+    // The fixture profile already carries an account, so the folders step is
+    // open rather than waiting behind it.
+    expect(within(flow).getByText("2. Folders and repositories")).toBeTruthy();
+    expect(await within(flow).findByLabelText("Folder 1")).toBeTruthy();
+    expect(screen.queryByText("Choose an account first.")).toBeNull();
   });
 
-  it("says the GitHub CLI needs installing when gh is missing, not that authentication is required", async () => {
+  it("reports a missing Git only when the environment probe says so", async () => {
+    const missingGit =
+      "Git is not installed. Install Git for this platform, then re-check.";
     stubPatchdesk({
-      "/v1/github/access": { state: "available" },
-      "/v1/environment": {
-        git: "ready",
-        gh: "missing",
-        githubAuth: "unavailable",
-        githubAccounts: [],
-      },
+      "/v1/environment": READY_ENVIRONMENT,
+      "/v1/watchlist/suggestions": [],
     });
     renderInboxFlow(
       <InboxFlow
         destination="dashboard"
+        dashboard={dashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+        inbox={{ ...inbox, inbox: { ...inbox.inbox, rows: [] } } as never}
         state="empty"
         refreshStatus="Current"
         onRefresh={vi.fn()}
@@ -314,26 +300,23 @@ describe("InboxFlow setup checklist", () => {
       />,
     );
     expect(
-      await screen.findByText(
-        "GitHub CLI (gh) is not installed. Install the GitHub CLI, then re-check.",
-      ),
+      await screen.findByRole("region", { name: "Set up your workspace" }),
     ).toBeTruthy();
-    expect(screen.queryByText(/Not authenticated/)).toBeNull();
-  });
+    expect(await screen.findByText("fixture")).toBeTruthy();
+    expect(screen.queryByText(missingGit)).toBeNull();
 
-  it("tells the user to run gh auth login for the Settings account when authentication is required", async () => {
+    cleanup();
+    desktop?.restore();
     stubPatchdesk({
-      "/v1/github/access": { state: "github_auth" },
-      "/v1/environment": {
-        git: "ready",
-        gh: "ready",
-        githubAuth: "authentication_required",
-        githubAccounts: [],
-      },
+      "/v1/environment": { ...READY_ENVIRONMENT, git: "missing" },
+      "/v1/watchlist/suggestions": [],
     });
     renderInboxFlow(
       <InboxFlow
         destination="dashboard"
+        dashboard={dashboard}
+        // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
+        inbox={{ ...inbox, inbox: { ...inbox.inbox, rows: [] } } as never}
         state="empty"
         refreshStatus="Current"
         onRefresh={vi.fn()}
@@ -341,14 +324,7 @@ describe("InboxFlow setup checklist", () => {
         onOpenWorkbench={vi.fn()}
       />,
     );
-    const guidance = await screen.findAllByText(
-      (_, element) =>
-        element?.textContent ===
-        "Not authenticated. Run gh auth login for the GitHub account entered in Settings, under Workspace, then re-check.",
-    );
-    // One from the "Confirm GitHub access" check, one from "Check local tools" —
-    // each fetches its own state from a different endpoint.
-    expect(guidance.length).toBe(2);
+    expect(await screen.findByText(missingGit)).toBeTruthy();
   });
 });
 

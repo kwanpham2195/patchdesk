@@ -440,6 +440,7 @@ export function App({
         onPreviousInboxPage={previousInboxPage}
         onNextInboxPage={nextInboxPage}
         onSettings={(section) => openSettings(undefined, section)}
+        onWorkspaceReload={loadWorkspace}
         onOpenWorkbench={(next) => {
           setWorkbench(next);
           navigate({

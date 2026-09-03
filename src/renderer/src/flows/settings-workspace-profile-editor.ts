@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import * as v from "valibot";
 import { requestJson, selectDirectory } from "../api-client";
 import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
 import type { Dashboard, Profile } from "../renderer-models";
@@ -41,7 +42,7 @@ export type FieldStatus =
   | { readonly state: "saved" }
   | { readonly state: "failed"; readonly message: string };
 
-type WorkspaceProfileEditorHook = {
+export type WorkspaceProfileEditorHook = {
   readonly persisted: ProfileValues;
   readonly scalars: ProfileScalars;
   readonly rows: ProfileRows;
@@ -159,16 +160,31 @@ export function useWorkspaceProfileEditor({
 
   const patch = useCallback(
     async (fields: ProfilePatch, field: ProfileEditorField): Promise<void> => {
-      const body: ProfileValues = { ...requested.current, ...fields };
-      requested.current = body;
+      const merged: ProfileValues = { ...requested.current, ...fields };
+      // An empty id is the ephemeral profile `listProfiles` hands back when
+      // nothing has ever been saved (`DashboardController.listProfiles`). It
+      // has no label either, and the domain parser refuses both, so the first
+      // save creates the workspace instead of updating one.
+      const creating = merged.id === "";
+      const requestBody: ProfileValues = creating
+        ? { ...merged, label: merged.label === "" ? "Default" : merged.label }
+        : merged;
+      requested.current = requestBody;
       const sent = ++generation.current;
       pending.current += 1;
       putStatus(field, SAVING);
       try {
-        await requestJson("/v1/profiles", {
-          method: "PUT",
-          body: profileRequestBody(body),
-        });
+        // The created workspace's id is derived server-side, so it is adopted
+        // here rather than waiting for the reload: the next save must be an
+        // update, not a second creation.
+        const createdId = creating
+          ? await createProfile(requestBody)
+          : await updateProfile(requestBody);
+        const body: ProfileValues =
+          createdId === undefined
+            ? requestBody
+            : { ...requestBody, id: createdId };
+        requested.current = body;
         // Only the latest request may claim the persisted value; an older
         // response landing late would otherwise undo a newer edit.
         if (generation.current === sent) {
@@ -315,6 +331,41 @@ export function useWorkspaceProfileEditor({
     chooseWorkspaceRoot,
     selectProfile,
   };
+}
+
+const createdProfileSchema = v.object({
+  id: v.pipe(v.string(), v.minLength(1)),
+});
+
+/**
+ * Creates this workspace and makes it the active one, for the first save of a
+ * profile that was never persisted. The id is derived from the label by the
+ * service (`POST /v1/profiles` without an id) and returned so the editor can
+ * adopt it.
+ */
+async function createProfile(values: ProfileValues): Promise<string> {
+  const { id: _unused, ...withoutId } = profileRequestBody(values);
+  const created = await requestJson("/v1/profiles", {
+    method: "POST",
+    body: withoutId,
+  });
+  const parsed = v.safeParse(createdProfileSchema, created);
+  if (!parsed.success)
+    throw new Error("Patchdesk could not read the created workspace.");
+  await requestJson("/v1/profiles/select", {
+    method: "POST",
+    body: { id: parsed.output.id },
+  });
+  return parsed.output.id;
+}
+
+/** Saves an existing workspace, which already owns its id. */
+async function updateProfile(values: ProfileValues): Promise<undefined> {
+  await requestJson("/v1/profiles", {
+    method: "PUT",
+    body: profileRequestBody(values),
+  });
+  return undefined;
 }
 
 const IDLE: FieldStatus = { state: "idle" };

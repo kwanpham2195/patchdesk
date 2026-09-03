@@ -82,13 +82,15 @@ export function useApiProbe<Value>(
 }
 
 /**
- * The `GET /v1/environment` probe, shared by the inbox setup checklist and
- * the Reviewing-as panel in Settings.
+ * The `GET /v1/environment` probe behind the Reviewing-as panel, in Settings
+ * and in the Pull requests first-run flow, and behind the New workspace
+ * dialog.
  *
- * The two run independently — separate components, separate Re-check buttons,
- * never mounted together — and each words its own copy from a different slice
- * of the response, so this shares the request and the state machine, not a
- * cache or a result.
+ * Each caller runs its own instance — separate mounts, separate Re-check
+ * buttons — so this shares the request and the state machine, not a cache or
+ * a result. Within one screen the state is passed down instead: the first-run
+ * flow hands `useReviewingAsProbe`'s result to its account card and reads
+ * `git` off the same response.
  */
 export function useEnvironmentCheck(
   restartKey: number,

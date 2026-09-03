@@ -1,5 +1,4 @@
-import { CheckCircle2, CircleAlert, LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import {
   MaintainerInbox,
   type InboxLabelActions,
@@ -8,24 +7,9 @@ import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton
 import type { InspectorInsightRequests } from "../components/review-details-inspector";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { requestJson } from "../api-client";
-import {
-  useApiProbe,
-  useEnvironmentCheck,
-  type ApiProbeState,
-} from "../hooks/use-api-probe";
-import {
-  parseGitHubAccessCheckResponse,
-  parseRepositoryLabelListResponse,
-} from "../renderer-contracts";
+import { parseRepositoryLabelListResponse } from "../renderer-contracts";
 import type { InboxFreshnessLabel } from "../inbox-freshness";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
@@ -43,8 +27,6 @@ import type {
   WorkbenchPayload,
 } from "../renderer-models";
 import type {
-  EnvironmentCheckResponse,
-  GitHubAccessCheckResponse,
   InboxResponse,
   RepositoryLabelListResponse,
 } from "../renderer-contracts";
@@ -55,6 +37,7 @@ import {
 import { parseGitHubHost } from "../../../domain/ids";
 import { parsePullRequestInput } from "../../../domain/pull-request";
 import { isTextEntryTarget } from "../text-entry-target";
+import { WorkspaceFirstRun } from "./inbox-first-run";
 import { useInboxInsightRequests } from "./use-inbox-insight-requests";
 import { useInboxReviewOpening } from "./use-inbox-review-opening";
 
@@ -91,6 +74,7 @@ export function InboxFlow({
   onPreviousInboxPage = () => undefined,
   onNextInboxPage = () => undefined,
   onSettings,
+  onWorkspaceReload = async () => undefined,
   onOpenWorkbench,
 }: {
   readonly destination: "dashboard" | "workbench";
@@ -148,6 +132,10 @@ export function InboxFlow({
   readonly onPreviousInboxPage?: () => void;
   readonly onNextInboxPage?: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
+  /** Re-reads profiles and the inbox after the first-run flow persists
+   * something. Defaults to a no-op for the callers that never reach the
+   * empty state, in the same way every other optional callback here does. */
+  readonly onWorkspaceReload?: () => Promise<void>;
   readonly onOpenWorkbench: (workbench: WorkbenchPayload) => void;
 }): React.JSX.Element {
   const {
@@ -250,6 +238,7 @@ export function InboxFlow({
         state={state}
         onRefresh={onRefresh}
         onSettings={onSettings}
+        onWorkspaceReload={onWorkspaceReload}
       />
     );
 
@@ -294,6 +283,7 @@ export function InboxFlow({
         onRequest: requestInsight,
       }}
       onSettings={onSettings}
+      onWorkspaceReload={onWorkspaceReload}
       onOpenReview={openInboxRow}
       onOpenReviewId={(savedReviewId) => {
         const row = inbox.inbox.rows.find(
@@ -341,6 +331,7 @@ function InboxScreen({
   insightRequests,
   refreshStatus,
   onSettings,
+  onWorkspaceReload,
   onOpenReview,
   onOpenReviewId,
   openedPr,
@@ -392,6 +383,7 @@ function InboxScreen({
   readonly insightRequests: InspectorInsightRequests;
   readonly refreshStatus: InboxFreshnessLabel;
   readonly onSettings: (section?: SettingsSection) => void;
+  readonly onWorkspaceReload: () => Promise<void>;
   readonly onOpenReview: (row: InboxResponse["inbox"]["rows"][number]) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
   readonly openedPr?: string;
@@ -414,8 +406,11 @@ function InboxScreen({
       <Outcome
         state={state}
         repos={dashboard.dashboard.repos}
+        watchedCount={dashboard.profile.repos?.length ?? 0}
+        dashboard={dashboard}
         onRetry={onRefresh}
         onSettings={onSettings}
+        onWorkspaceReload={onWorkspaceReload}
       />
       <div className="min-h-0 flex-1">
         <MaintainerInbox
@@ -489,10 +484,12 @@ function BootstrapOutcome({
   state,
   onRefresh,
   onSettings,
+  onWorkspaceReload,
 }: {
   readonly state: DashboardScreenState;
   readonly onRefresh: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
+  readonly onWorkspaceReload: () => Promise<void>;
 }): React.JSX.Element {
   return (
     <div className="mx-auto max-w-[112rem]">
@@ -517,192 +514,35 @@ function BootstrapOutcome({
       </header>
       <Outcome
         state={state}
-        repos={[]}
+        repos={EMPTY_REPO_OUTCOMES}
+        watchedCount={0}
         onRetry={onRefresh}
         onSettings={onSettings}
+        onWorkspaceReload={onWorkspaceReload}
       />
     </div>
   );
 }
-/**
- * Renders the first two setup-checklist items against their real, current
- * state (`POST /v1/github/access`, `GET /v1/environment`) instead of static
- * prose. Both fetch on mount and again whenever "Re-check" is pressed, so a
- * user who fixes something in a terminal (installs `gh`, runs
- * `gh auth login`) can confirm it without restarting the app.
- */
-function SetupChecklist(): React.JSX.Element {
-  const [attempt, setAttempt] = useState(0);
-  // Two independent requests behind one Re-check button. The environment
-  // probe is the same one the Reviewing-as panel in Settings runs, but the
-  // two never share a result: the copy below points at Settings, which that
-  // panel cannot.
-  const access = useApiProbe(
-    { path: "/v1/github/access", method: "POST", restartKey: attempt },
-    parseGitHubAccessCheckResponse,
-  );
-  const tools = useEnvironmentCheck(attempt);
 
-  return (
-    <>
-      <ol className="space-y-3 text-sm">
-        <li>
-          <span className="font-medium">1. Confirm GitHub access</span>
-          <p className="text-muted-foreground">
-            Choose the GitHub account Patchdesk should use for read-only
-            discovery.
-          </p>
-          <AccessCheckLine state={access} />
-        </li>
-        <li>
-          <span className="font-medium">2. Check local tools</span>
-          <p className="text-muted-foreground">
-            Verify Git and GitHub access without exposing credentials.
-          </p>
-          <ToolsCheckLines state={tools} />
-        </li>
-        <li>
-          <span className="font-medium">3. Add your first repository</span>
-          <p className="text-muted-foreground">
-            Select a local checkout so reviews can use repository context.
-          </p>
-        </li>
-      </ol>
-      <Button
-        variant="outline"
-        size="sm"
-        className="mt-4"
-        onClick={() => setAttempt((value) => value + 1)}
-      >
-        Re-check
-      </Button>
-    </>
-  );
-}
-
-function AccessCheckLine({
-  state,
-}: {
-  readonly state: ApiProbeState<GitHubAccessCheckResponse>;
-}): React.JSX.Element {
-  if (state.kind === "checking")
-    return (
-      <StatusLine tone="muted" icon={<LoaderCircle className="animate-spin" />}>
-        Checking GitHub access…
-      </StatusLine>
-    );
-  if (state.kind === "error")
-    return (
-      <StatusLine tone="fail" icon={<CircleAlert />}>
-        Could not check GitHub access.
-      </StatusLine>
-    );
-  if (state.value.state === "available")
-    return (
-      <StatusLine tone="pass" icon={<CheckCircle2 />}>
-        GitHub access confirmed.
-      </StatusLine>
-    );
-  return (
-    <StatusLine tone="fail" icon={<CircleAlert />}>
-      Not authenticated. Run <code>gh auth login</code> for the GitHub account
-      entered in Settings, under Workspace, then re-check.
-    </StatusLine>
-  );
-}
-
-function ToolsCheckLines({
-  state,
-}: {
-  readonly state: ApiProbeState<EnvironmentCheckResponse>;
-}): React.JSX.Element {
-  if (state.kind === "checking")
-    return (
-      <StatusLine tone="muted" icon={<LoaderCircle className="animate-spin" />}>
-        Checking git and gh…
-      </StatusLine>
-    );
-  if (state.kind === "error")
-    return (
-      <StatusLine tone="fail" icon={<CircleAlert />}>
-        Could not check local tools.
-      </StatusLine>
-    );
-  const env = state.value;
-  return (
-    <div className="mt-1 space-y-1">
-      {env.git === "ready" ? (
-        <StatusLine tone="pass" icon={<CheckCircle2 />}>
-          Git is installed.
-        </StatusLine>
-      ) : (
-        <StatusLine tone="fail" icon={<CircleAlert />}>
-          Git is not installed. Install Git for this platform, then re-check.
-        </StatusLine>
-      )}
-      {env.gh === "ready" ? (
-        <StatusLine tone="pass" icon={<CheckCircle2 />}>
-          GitHub CLI (gh) is installed.
-        </StatusLine>
-      ) : (
-        <StatusLine tone="fail" icon={<CircleAlert />}>
-          GitHub CLI (gh) is not installed. Install the GitHub CLI, then
-          re-check.
-        </StatusLine>
-      )}
-      {env.gh !== "ready" ? null : env.githubAuth === "ready" ? (
-        <StatusLine tone="pass" icon={<CheckCircle2 />}>
-          GitHub CLI is authenticated.
-        </StatusLine>
-      ) : env.githubAuth === "authentication_required" ? (
-        <StatusLine tone="fail" icon={<CircleAlert />}>
-          Not authenticated. Run <code>gh auth login</code> for the GitHub
-          account entered in Settings, under Workspace, then re-check.
-        </StatusLine>
-      ) : (
-        <StatusLine tone="fail" icon={<CircleAlert />}>
-          GitHub CLI authentication status could not be determined.
-        </StatusLine>
-      )}
-    </div>
-  );
-}
-
-function StatusLine({
-  tone,
-  icon,
-  children,
-}: {
-  readonly tone: "muted" | "pass" | "fail";
-  readonly icon: React.ReactNode;
-  readonly children: React.ReactNode;
-}): React.JSX.Element {
-  const toneClass =
-    tone === "pass"
-      ? "text-emerald-700 dark:text-emerald-400"
-      : tone === "fail"
-        ? "text-rose-700 dark:text-rose-400"
-        : "text-muted-foreground";
-  return (
-    <p className={`mt-1 flex items-center gap-1.5 text-xs ${toneClass}`}>
-      <span className="inline-flex size-3.5 shrink-0 items-center justify-center [&>svg]:size-3.5">
-        {icon}
-      </span>
-      {children}
-    </p>
-  );
-}
-
+const EMPTY_REPO_OUTCOMES: ReadonlyArray<RepoOutcome> = [];
 function Outcome({
   state,
   repos,
+  watchedCount,
+  dashboard,
   onRetry,
   onSettings,
+  onWorkspaceReload,
 }: {
   readonly state: DashboardScreenState;
   readonly repos: ReadonlyArray<RepoOutcome>;
+  /** How many repositories the active profile watches; 0 is what first run
+   * means, and it is what makes the setup flow give way once one is ticked. */
+  readonly watchedCount: number;
+  readonly dashboard?: Dashboard;
   readonly onRetry: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
+  readonly onWorkspaceReload: () => Promise<void>;
 }): React.JSX.Element | null {
   if (state === "loading")
     return (
@@ -712,25 +552,15 @@ function Outcome({
         <Skeleton className="h-10 w-3/4" />
       </div>
     );
+  // An empty screen with nothing watched is first run; an empty screen for a
+  // workspace that already watches something is just a listing with no rows,
+  // which the inbox below renders itself.
   if (state === "empty")
-    return (
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>
-            <h2>Set up Patchdesk</h2>
-          </CardTitle>
-          <CardDescription>
-            Complete these local checks once, then Patchdesk can load pending
-            pull requests.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SetupChecklist />
-          <Button className="mt-5" onClick={() => onSettings("workspace")}>
-            Open Settings to finish setup
-          </Button>
-        </CardContent>
-      </Card>
+    return watchedCount > 0 ? null : (
+      <WorkspaceFirstRun
+        dashboard={dashboard}
+        onWorkspaceReload={onWorkspaceReload}
+      />
     );
   if (state === "error" && repos.length === 0)
     return (
