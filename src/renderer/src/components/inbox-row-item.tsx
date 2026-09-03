@@ -83,7 +83,7 @@ export function InboxRowItem({
                   Merged
                 </Badge>
               ) : null}
-              {row.briefReady === true ? (
+              {row.insights?.brief === "ready" ? (
                 <Badge variant="outline" className="h-4 px-1 text-[10px]">
                   Brief
                 </Badge>

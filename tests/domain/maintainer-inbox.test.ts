@@ -123,6 +123,28 @@ describe("maintainer inbox", () => {
     });
   });
 
+  it("carries Insight readiness onto an open row and a merged one alike", () => {
+    const insights = {
+      brief: "ready" as const,
+      analysis: "outdated" as const,
+    };
+    expect(projectMaintainerInboxRow({ ...input, insights }).insights).toEqual(
+      insights,
+    );
+    expect(
+      projectMaintainerInboxRow({
+        ...input,
+        summary: { ...input.summary, isOpen: false },
+        insights,
+      }).insights,
+    ).toEqual(insights);
+  });
+
+  it("leaves Insight readiness off a row the caller reports nothing for", () => {
+    expect(projectMaintainerInboxRow(input).insights).toBeUndefined();
+    expect("insights" in projectMaintainerInboxRow(input)).toBe(false);
+  });
+
   it("projects a merged pull request outside active-work queues", () => {
     const row = projectMaintainerInboxRow({
       ...input,

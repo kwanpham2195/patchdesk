@@ -119,6 +119,66 @@ describe("parseInboxResponse", () => {
     });
     expect(parsed?.profile.repos?.[0]?.localPath).toBeUndefined();
   });
+
+  const insightRow = {
+    remoteState: "open" as const,
+    identity: {
+      host: "github.com",
+      owner: "centraldigital",
+      repo: "patchdesk",
+      number: 42,
+    },
+    title: "Guard duplicate input",
+    author: "author",
+    baseBranch: "sit",
+    headBranch: "feature/duplicate-guard",
+    currentHeadSha: "2222222222222222222222222222222222222222",
+    isDraft: false,
+    updatedAt: "2026-07-18T00:00:00.000Z",
+    changeStats: {},
+    checks: { overall: "passing" as const, checks: [] },
+    reviewState: "none" as const,
+    mergeability: "unknown" as const,
+    labels: [],
+    categories: [],
+    recommendedAction: { kind: "run_review" as const },
+    dataFreshness: "fresh" as const,
+  };
+
+  it("carries every Insight kind's readiness across the IPC boundary", () => {
+    const parsed = parseInboxResponse({
+      ...response,
+      inbox: {
+        ...response.inbox,
+        rows: [
+          {
+            ...insightRow,
+            insights: {
+              brief: "ready",
+              analysis: "outdated",
+              walkthrough: "ready",
+            },
+          },
+        ],
+      },
+    });
+    expect(parsed?.inbox.rows[0]?.insights).toEqual({
+      brief: "ready",
+      analysis: "outdated",
+      walkthrough: "ready",
+    });
+  });
+
+  it("refuses a row whose Insight readiness names a state Patchdesk does not have", () => {
+    const parsed = parseInboxResponse({
+      ...response,
+      inbox: {
+        ...response.inbox,
+        rows: [{ ...insightRow, insights: { brief: "running" } }],
+      },
+    });
+    expect(parsed).toBeUndefined();
+  });
 });
 
 describe("parseRepositoryLabelListResponse", () => {
