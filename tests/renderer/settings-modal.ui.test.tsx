@@ -108,7 +108,6 @@ describe("SettingsModal", () => {
     expect(
       screen.getByRole("button", { name: "Clear local review data" }),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Discard/ })).toBeNull();
     expect(screen.queryByText(/quarantine/i)).toBeNull();
 
     await user.click(
@@ -353,79 +352,6 @@ describe("SettingsModal", () => {
     );
 
     await waitFor(() => expect(document.activeElement).toBe(opener));
-  });
-
-  it("offers Save in the dirty-draft guard and closes only after saving", async () => {
-    const desktopApi = installDesktopApi();
-    const user = userEvent.setup();
-    const onOpenChange = vi.fn();
-
-    renderModal(onOpenChange);
-    await user.click(screen.getByRole("tab", { name: "Workspace" }));
-    await user.type(screen.getByLabelText("Label"), " changed");
-    await user.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(desktopApi.request).toHaveBeenCalledWith(
-        expect.objectContaining({ path: "/v1/profiles", method: "PUT" }),
-      ),
-    );
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  it("keeps a failed profile save retryable before a later save closes", async () => {
-    const desktopApi = installDesktopApi({ profileSaveFailures: 1 });
-    const user = userEvent.setup();
-    const onOpenChange = vi.fn();
-
-    renderModal(onOpenChange);
-    await user.click(screen.getByRole("tab", { name: "Workspace" }));
-    await user.type(screen.getByLabelText("Label"), " changed");
-    await user.click(screen.getByRole("button", { name: "Close" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(desktopApi.request).toHaveBeenCalledWith(
-        expect.objectContaining({ path: "/v1/profiles", method: "PUT" }),
-      ),
-    );
-    // SAFETY: "Save" here is `AlertDialogAction`
-    // (src/renderer/src/components/ui/alert-dialog.tsx), which renders
-    // `<Button>` and so, like the other `<Button>` casts in this file, is a
-    // native `<button>` element.
-    expect(
-      (screen.getByRole("button", { name: "Save" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-    expect(screen.queryByText("Saving…")).toBeNull();
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
-
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-  });
-
-  it("requires an explicit dirty-draft choice before closing", async () => {
-    installDesktopApi();
-    const user = userEvent.setup();
-
-    renderModal();
-    await user.click(screen.getByRole("tab", { name: "Workspace" }));
-    await user.type(screen.getByLabelText("Label"), " changed");
-    await user.click(screen.getByRole("button", { name: "Close" }));
-
-    expect(
-      screen.getByRole("heading", { name: "Discard profile changes?" }),
-    ).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Close" }));
-    await user.click(screen.getByRole("button", { name: "Discard changes" }));
-    await waitFor(() =>
-      expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy(),
-    );
-    expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
   });
 
   it("selects an enabled default review model and saves it for this profile", async () => {
@@ -699,10 +625,8 @@ function installDesktopApi(
     readonly activityFails?: boolean;
     readonly clearLocalDataFails?: boolean;
     readonly models?: RawJsonValue;
-    readonly profileSaveFailures?: number;
   } = {},
 ): DesktopDouble {
-  let profileSaveFailures = options.profileSaveFailures ?? 0;
   desktop = installDesktopDouble({
     "/v1/environment": () => success({}),
     // The modal's Logs tab polls, and `lib/logger.ts` flushes the renderer
@@ -716,13 +640,7 @@ function installDesktopApi(
       options.activityFails === true
         ? failure({ error: "diagnostics_unavailable" })
         : success(options.activity ?? { events: [] }),
-    "/v1/profiles": (input) => {
-      if (input.method === "PUT" && profileSaveFailures > 0) {
-        profileSaveFailures -= 1;
-        return failure({ error: "profile_save_failed" });
-      }
-      return success({});
-    },
+    "/v1/profiles": () => success({}),
     "/v1/storage/clear-local-data": () =>
       options.clearLocalDataFails === true
         ? failure({ error: "storage_unavailable" })

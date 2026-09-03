@@ -86,29 +86,6 @@ describe("workspace root discovery", () => {
     ).toBeTruthy();
   });
 
-  it("shows a save affordance instead of a count for a root that hasn't been saved yet", async () => {
-    installDesktopApi({ suggestions: readyDiscovery("/workspace/cfw", []) });
-    const user = userEvent.setup();
-
-    renderSettings();
-    await screen.findByText(
-      "No git repositories with GitHub remotes found in this folder.",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Add workspace root" }),
-    );
-    await user.type(
-      screen.getByLabelText("workspace root 2"),
-      "/workspace/unsaved",
-    );
-
-    expect(
-      screen.getByText(
-        "Save the profile to scan this folder for repositories.",
-      ),
-    ).toBeTruthy();
-  });
-
   it("keeps a ready root usable when another saved root scan fails", async () => {
     const desktopApi = installDesktopApi({
       environment: readyEnvironment,

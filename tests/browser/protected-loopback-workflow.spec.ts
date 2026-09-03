@@ -89,12 +89,14 @@ test("renderer uses the protected loopback API for profile and watchlist control
     page.getByRole("combobox", { name: "Active profile" }).last(),
   ).toContainText("Enterprise");
   await page.getByRole("button", { name: "Add workspace root" }).click();
+  // Every Workspace control saves on its own: the root row commits when it
+  // loses focus, and the name field commits the same way.
   await page
     .getByRole("textbox", { name: "workspace root 1", exact: true })
     .fill("/workspace/enterprise");
-  await page.getByRole("button", { name: "Save profile" }).click();
+  await page.getByLabel("Label").click();
   await page.getByLabel("Label").fill("Enterprise updated");
-  await page.getByRole("button", { name: "Save profile" }).click();
+  await page.getByLabel("Profile ID").click();
   await expect(
     page.getByRole("combobox", { name: "Active profile" }).last(),
   ).toContainText("Enterprise updated");
@@ -104,22 +106,12 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByLabel("Appearance").click();
   await page.getByRole("option", { name: "Dark" }).click();
   await expect(page).toHaveURL(settingsRoute);
-  await page.getByRole("tab", { name: "Workspace" }).click();
-  await page.getByLabel("Label").fill("Enterprise dirty");
   await page.getByRole("button", { name: "Close" }).click();
-  const dirtyDialog = page.getByRole("alertdialog", {
-    name: "Discard profile changes?",
-  });
-  await expect(dirtyDialog).toBeVisible();
-  await dirtyDialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(dirtyDialog).toBeHidden();
-  await page.getByRole("button", { name: "Close" }).click();
-  await page.getByRole("button", { name: "Discard changes" }).click();
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("tab", { name: "Workspace" }).click();
-  // Workspace-root discovery is automatic: saving the profile above scans
-  // its workspace roots via `GET /v1/watchlist/suggestions` from a
+  // Workspace-root discovery is automatic: the root's own save above scans
+  // the profile's workspace roots via `GET /v1/watchlist/suggestions` from a
   // `useEffect` (see `useWorkspaceRootDiscovery`), with no button to drive
   // it. Wait directly for that scan's result to appear.
   await expect(page.getByText("acme/discovered")).toBeVisible();

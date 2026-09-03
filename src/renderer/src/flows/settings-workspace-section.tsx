@@ -1,10 +1,9 @@
 import { Plus, FolderOpen, X } from "lucide-react";
-import { useState, type SetStateAction } from "react";
+import { useState } from "react";
 import {
   flattenDiscoveredRepositories,
   type WorkspaceRootDiscovery,
 } from "../workspace-root-discovery-contract";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -56,12 +55,14 @@ import {
   type WatchlistEntry,
 } from "./settings-workspace-repositories";
 import {
-  useWorkspaceProfileDraft,
-  type ProfileDraft,
-  type ProfileListEntry,
-  type ProfileListField,
-  type ProfileScalarErrors,
-} from "./settings-workspace-profile-draft";
+  useWorkspaceProfileEditor,
+  type FieldStatus,
+} from "./settings-workspace-profile-editor";
+import type {
+  ProfileListEntry,
+  ProfileListField,
+} from "./settings-workspace-profile-values";
+import { FieldSaveStatus } from "./settings-workspace-field-status";
 import {
   ReviewingAsPanel,
   useReviewingAsProbe,
@@ -80,16 +81,6 @@ type WorkspaceProfileSectionProps = {
   readonly dashboard: Dashboard | undefined;
   readonly profiles: ReadonlyArray<Profile>;
   readonly onWorkspaceReload: () => Promise<void>;
-  /** Whether the Workspace tab is the currently displayed Settings section. The section's hooks and outstanding-save wiring keep running regardless, so switching tabs never loses a draft or drops the Save/Discard callbacks. */
-  readonly visible: boolean;
-  readonly onProfileDirtyChange: ((dirty: boolean) => void) | undefined;
-  readonly onProfileSwitchRequest:
-    | ((profileId: string, proceed: () => void) => void)
-    | undefined;
-  readonly onSaveProfileReady:
-    | ((save: () => Promise<boolean>) => void)
-    | undefined;
-  readonly onDiscardProfileReady: ((discard: () => void) => void) | undefined;
   readonly profileSwitchState: ProfileSwitchState | undefined;
   readonly onProfileSwitch:
     | ((profileId: string) => Promise<ProfileSwitchResult>)
@@ -98,45 +89,21 @@ type WorkspaceProfileSectionProps = {
 
 /**
  * The Workspace settings section: the Reviewing-as probe, the Profile card,
- * and Workspace-scope editing. Kept mounted for the lifetime of the Settings
- * overlay (not just while the Workspace tab is active) so its profile draft,
- * baseline/generation refs, and `onSaveProfileReady`/`onDiscardProfileReady`
- * wiring survive switching to another tab and back; `visible` only decides
- * whether it currently renders its cards.
+ * and Workspace-scope editing. Mounted only while the Workspace tab is
+ * showing: every control here commits on its own — on blur, on Enter, or on
+ * pick — so there is no draft left for an unmounted section to carry.
  */
 export function WorkspaceProfileSection({
   dashboard,
   profiles,
   onWorkspaceReload,
-  visible,
-  onProfileDirtyChange,
-  onProfileSwitchRequest,
-  onSaveProfileReady,
-  onDiscardProfileReady,
   profileSwitchState,
   onProfileSwitch,
-}: WorkspaceProfileSectionProps): React.JSX.Element | null {
-  const {
-    profileDraft,
-    updateProfileDraft,
-    profileError,
-    profileScalarErrors,
-    savingProfile,
-    profileDirty,
-    saveProfile,
-    selectProfile,
-    updateProfileList,
-    addProfileListEntry,
-    removeProfileListEntry,
-    chooseWorkspaceRoot,
-  } = useWorkspaceProfileDraft({
+}: WorkspaceProfileSectionProps): React.JSX.Element {
+  const editor = useWorkspaceProfileEditor({
     dashboard,
     profiles,
     onWorkspaceReload,
-    onProfileDirtyChange,
-    onProfileSwitchRequest,
-    onSaveProfileReady,
-    onDiscardProfileReady,
     onProfileSwitch,
   });
 
@@ -145,8 +112,8 @@ export function WorkspaceProfileSection({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { reviewingAs, recheck } = useReviewingAsProbe(
-    profileDraft.ghAccount,
-    updateProfileDraft,
+    editor.scalars.ghAccount,
+    editor.selectAccount,
   );
 
   const rootDiscovery = useWorkspaceRootDiscovery(dashboard?.profile);
@@ -179,8 +146,6 @@ export function WorkspaceProfileSection({
       isWatched,
     );
 
-  if (!visible) return null;
-
   return (
     <div className="flex flex-col gap-6">
       <Card>
@@ -194,9 +159,15 @@ export function WorkspaceProfileSection({
         <CardContent>
           <ReviewingAsPanel
             state={reviewingAs}
-            profileDraft={profileDraft}
-            updateProfileDraft={updateProfileDraft}
-            fieldErrors={profileScalarErrors}
+            account={{
+              ghAccount: editor.scalars.ghAccount,
+              githubHost: editor.scalars.githubHost,
+              accountStatus: editor.status.ghAccount,
+              hostStatus: editor.status.githubHost,
+              onEdit: editor.editScalar,
+              onCommit: editor.commitScalar,
+              onSelectAccount: editor.selectAccount,
+            }}
             onRecheck={recheck}
           />
         </CardContent>
@@ -213,18 +184,18 @@ export function WorkspaceProfileSection({
             <Field>
               <FieldLabel htmlFor="active-profile">Active profile</FieldLabel>
               <Select
-                value={dashboard?.profile.id ?? profileDraft.id}
+                value={dashboard?.profile.id ?? editor.persisted.id}
                 items={profiles.map((profile) => ({
                   label: profile.label,
                   value: profile.id,
                 }))}
                 onValueChange={(value) => {
-                  if (value !== null) selectProfile(value);
+                  if (value !== null) editor.selectProfile(value);
                 }}
               >
                 <SelectTrigger id="active-profile" aria-label="Active profile">
                   <SelectValue placeholder="Select a profile">
-                    {profileDraft.label}
+                    {editor.persisted.label}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -264,30 +235,15 @@ export function WorkspaceProfileSection({
                 <Plus data-icon="inline-start" />
                 New workspace
               </Button>
-              {profileDirty ? (
-                <Button
-                  size="sm"
-                  disabled={savingProfile}
-                  onClick={() => {
-                    void saveProfile();
-                  }}
-                >
-                  {savingProfile ? "Saving profile…" : "Save profile"}
-                </Button>
-              ) : null}
             </div>
             <ProfileIdentityFields
-              draft={profileDraft}
-              updateProfileDraft={updateProfileDraft}
-              fieldErrors={profileScalarErrors}
+              id={editor.persisted.id}
+              label={editor.scalars.label}
+              status={editor.status.label}
+              onEdit={(value) => editor.editScalar("label", value)}
+              onCommit={() => editor.commitScalar("label")}
             />
           </FieldGroup>
-          {profileError === undefined ? null : (
-            <Alert variant="destructive">
-              <AlertTitle>Profile update failed</AlertTitle>
-              <AlertDescription>{profileError}</AlertDescription>
-            </Alert>
-          )}
         </CardContent>
       </Card>
       {createDialogOpen ? (
@@ -313,13 +269,15 @@ export function WorkspaceProfileSection({
             <ProfileListEditor
               label="Workspace roots"
               field="workspaceRoots"
-              entries={profileDraft.workspaceRoots}
+              entries={editor.rows.workspaceRoots}
               placeholder="/absolute/workspace/path"
-              onChange={updateProfileList}
-              onAdd={addProfileListEntry}
-              onRemove={removeProfileListEntry}
+              status={editor.status.workspaceRoots}
+              onChange={editor.editListEntry}
+              onCommit={editor.commitList}
+              onAdd={editor.addListEntry}
+              onRemove={editor.removeListEntry}
               onChoose={(entryId) => {
-                void chooseWorkspaceRoot(entryId);
+                void editor.chooseWorkspaceRoot(entryId);
               }}
               renderStatus={(value) => {
                 const status = rootDiscoveryStatus(value);
@@ -363,11 +321,13 @@ export function WorkspaceProfileSection({
             <ProfileListEditor
               label="Rule paths"
               field="rulePaths"
-              entries={profileDraft.rulePaths}
+              entries={editor.rows.rulePaths}
               placeholder="/absolute/path/to/AGENTS.md"
-              onChange={updateProfileList}
-              onAdd={addProfileListEntry}
-              onRemove={removeProfileListEntry}
+              status={editor.status.rulePaths}
+              onChange={editor.editListEntry}
+              onCommit={editor.commitList}
+              onAdd={editor.addListEntry}
+              onRemove={editor.removeListEntry}
             />
           </CardContent>
         </Card>
@@ -377,60 +337,44 @@ export function WorkspaceProfileSection({
 }
 
 type ProfileIdentityFieldsProps = {
-  readonly draft: ProfileDraft;
-  readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
-  readonly fieldErrors: ProfileScalarErrors;
+  readonly id: string;
+  readonly label: string;
+  readonly status: FieldStatus;
+  readonly onEdit: (value: string) => void;
+  readonly onCommit: () => void;
 };
 
 function ProfileIdentityFields({
-  draft,
-  updateProfileDraft,
-  fieldErrors,
+  id,
+  label,
+  status,
+  onEdit,
+  onCommit,
 }: ProfileIdentityFieldsProps): React.JSX.Element {
+  const failed = status.state === "failed";
   return (
     <FieldGroup className="grid gap-4 sm:grid-cols-2">
-      <Field
-        className="sm:col-span-2"
-        data-disabled
-        data-invalid={fieldErrors.id === undefined ? undefined : true}
-      >
+      <Field className="sm:col-span-2" data-disabled>
         <FieldLabel htmlFor="profile-id">Profile ID</FieldLabel>
-        <Input
-          id="profile-id"
-          aria-label="Profile ID"
-          value={draft.id}
-          disabled
-          aria-invalid={fieldErrors.id === undefined ? undefined : true}
-          aria-describedby={
-            fieldErrors.id === undefined ? undefined : "profile-id-error"
-          }
-          onChange={(event) =>
-            updateProfileDraft((current) => ({
-              ...current,
-              id: event.target.value,
-            }))
-          }
-        />
-        <FieldError id="profile-id-error">{fieldErrors.id}</FieldError>
+        <Input id="profile-id" aria-label="Profile ID" value={id} disabled />
       </Field>
-      <Field data-invalid={fieldErrors.label === undefined ? undefined : true}>
+      <Field data-invalid={failed ? true : undefined}>
         <FieldLabel htmlFor="profile-label">Label</FieldLabel>
         <Input
           id="profile-label"
           aria-label="Label"
-          value={draft.label}
-          aria-invalid={fieldErrors.label === undefined ? undefined : true}
-          aria-describedby={
-            fieldErrors.label === undefined ? undefined : "profile-label-error"
-          }
-          onChange={(event) =>
-            updateProfileDraft((current) => ({
-              ...current,
-              label: event.target.value,
-            }))
-          }
+          value={label}
+          aria-invalid={failed ? true : undefined}
+          aria-describedby={failed ? "profile-label-status" : undefined}
+          onChange={(event) => onEdit(event.target.value)}
+          onBlur={onCommit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onCommit();
+          }}
         />
-        <FieldError id="profile-label-error">{fieldErrors.label}</FieldError>
+        <div id="profile-label-status">
+          <FieldSaveStatus status={status} />
+        </div>
       </Field>
     </FieldGroup>
   );
@@ -444,7 +388,9 @@ function ProfileListEditor({
   field,
   entries,
   placeholder,
+  status,
   onChange,
+  onCommit,
   onAdd,
   onRemove,
   onChoose,
@@ -454,11 +400,13 @@ function ProfileListEditor({
   readonly field: ProfileListField;
   readonly entries: ReadonlyArray<ProfileListEntry>;
   readonly placeholder: string;
+  readonly status: FieldStatus;
   readonly onChange: (
     field: ProfileListField,
     entryId: string,
     value: string,
   ) => void;
+  readonly onCommit: (field: ProfileListField) => void;
   readonly onAdd: (field: ProfileListField) => void;
   readonly onRemove: (field: ProfileListField, entryId: string) => void;
   readonly onChoose?: (entryId: string) => void;
@@ -479,6 +427,10 @@ function ProfileListEditor({
                 onChange={(event) =>
                   onChange(field, entry.id, event.target.value)
                 }
+                onBlur={() => onCommit(field)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") onCommit(field);
+                }}
               />
               {onChoose === undefined ? null : (
                 <Button
@@ -514,6 +466,7 @@ function ProfileListEditor({
           </div>
         ))}
       </div>
+      <FieldSaveStatus status={status} />
       <Button
         type="button"
         size="sm"

@@ -358,6 +358,10 @@ function installDesktopApi(
 ): void {
   desktop = installDesktopDouble({
     "/v1/environment": () => success(environment()),
+    // Adopting the account `gh` reports saves the profile like any other
+    // account choice, so the tests that start with an empty account send a
+    // `PUT /v1/profiles` before anything else happens.
+    "/v1/profiles": () => success({}),
     // The panel loads suggestions alongside the environment check; every test
     // here is about the environment, so this supplies the saved root's empty,
     // successful outcome rather than an unrelated missing-root scan failure.
