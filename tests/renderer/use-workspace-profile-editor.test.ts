@@ -89,12 +89,76 @@ describe("useWorkspaceProfileEditor", () => {
     await waitFor(() =>
       expect(result.current.persisted.ghAccount).toBe("other-user"),
     );
-    act(() => first?.());
-    await waitFor(() =>
-      expect(result.current.status.label.state).toBe("saved"),
-    );
+    await act(async () => {
+      first?.();
+      await Promise.resolve();
+    });
     expect(result.current.persisted.ghAccount).toBe("other-user");
     expect(result.current.persisted.label).toBe("Renamed");
+  });
+
+  it("keeps the newest body as the merge base when an older save answers last", async () => {
+    const releases: Array<() => void> = [];
+    const desktopApi = installDesktopApi({
+      profileSave: () =>
+        new Promise<DesktopResponse>((resolve) => {
+          releases.push(() => resolve(success({})));
+        }),
+    });
+    const { result } = renderEditor();
+
+    act(() => result.current.editScalar("label", "Renamed"));
+    act(() => result.current.commitScalar("label"));
+    act(() => result.current.editScalar("ghAccount", "other-user"));
+    act(() => result.current.commitScalar("ghAccount"));
+    await waitFor(() => expect(releases).toHaveLength(2));
+
+    // The older save answers last, so its body is the last one this hook
+    // sees — it must not become the base the next patch merges into.
+    const [first, second] = releases;
+    act(() => second?.());
+    await waitFor(() =>
+      expect(result.current.persisted.ghAccount).toBe("other-user"),
+    );
+    await act(async () => {
+      first?.();
+      await Promise.resolve();
+    });
+
+    act(() => result.current.editScalar("label", "Renamed again"));
+    act(() => result.current.commitScalar("label"));
+    await waitFor(() => expect(profileSaveBodies(desktopApi)).toHaveLength(3));
+    expect(profileSaveBodies(desktopApi)[2]).toEqual(
+      expect.objectContaining({
+        label: "Renamed again",
+        ghAccount: "other-user",
+      }),
+    );
+  });
+
+  it("leaves a field that is still saving alone when an older save for it answers", async () => {
+    const releases: Array<() => void> = [];
+    installDesktopApi({
+      profileSave: () =>
+        new Promise<DesktopResponse>((resolve) => {
+          releases.push(() => resolve(success({})));
+        }),
+    });
+    const { result } = renderEditor();
+
+    act(() => result.current.editScalar("label", "First"));
+    act(() => result.current.commitScalar("label"));
+    act(() => result.current.editScalar("label", "Second"));
+    act(() => result.current.commitScalar("label"));
+    await waitFor(() => expect(releases).toHaveLength(2));
+
+    // The first save for this field answers while the second is still in
+    // flight: the field is still saving, so it must not claim to be saved.
+    await act(async () => {
+      releases[0]?.();
+      await Promise.resolve();
+    });
+    expect(result.current.status.label.state).toBe("saving");
   });
 
   it("lets a profile switch win over a save still in flight for the profile it leaves", async () => {

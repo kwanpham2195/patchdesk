@@ -184,16 +184,23 @@ export function useWorkspaceProfileEditor({
           createdId === undefined
             ? requestBody
             : { ...requestBody, id: createdId };
-        requested.current = body;
-        // Only the latest request may claim the persisted value; an older
-        // response landing late would otherwise undo a newer edit.
+        // Only the latest request may claim the merge base, the persisted
+        // value, or the status; an older response landing late would
+        // otherwise undo a newer edit.
         if (generation.current === sent) {
+          requested.current = body;
           persistedRef.current = body;
           setPersisted(body);
           setScalars((current) => ({ ...current, ...scalarPatch(fields) }));
           setRows((current) => reconcileRows(current, body, fields));
+          putStatus(field, SAVED);
+        } else if (createdId !== undefined) {
+          // A stale creation still owns the id it derived, and only it knows
+          // that id: without carrying it forward the next save would create a
+          // second workspace instead of updating this one.
+          requested.current = { ...requested.current, id: createdId };
+          persistedRef.current = { ...persistedRef.current, id: createdId };
         }
-        putStatus(field, SAVED);
         await onWorkspaceReload();
       } catch (cause: unknown) {
         requested.current = {
