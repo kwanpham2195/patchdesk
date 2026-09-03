@@ -23,6 +23,10 @@ import {
 import type { Result } from "../../src/domain/result";
 import { InsightsSlot } from "../../src/renderer/src/components/review-insights-slot";
 import {
+  ReviewWorkbenchFindingNavigationContext,
+  type FindingFocusRequest,
+} from "../../src/renderer/src/components/review-workbench-finding-navigation";
+import {
   failure,
   installDesktopDouble,
   success,
@@ -176,6 +180,46 @@ describe("InsightsSlot overview", () => {
       expect(time?.getAttribute("datetime")).toBe("2026-08-01T00:00:00.000Z");
       expect(time?.getAttribute("title")).toBeTruthy();
     }
+  });
+});
+
+describe("InsightsSlot finding focus", () => {
+  function renderWithFindingFocus(request: FindingFocusRequest | undefined) {
+    return (
+      <ReviewWorkbenchFindingNavigationContext.Provider
+        value={{
+          openFindingInDiff: () => undefined,
+          findingFocusRequest: request,
+        }}
+      >
+        <InsightsSlot
+          workbench={withAnalysis("actionable")}
+          initialDetail="walkthrough"
+          onWorkbenchReplace={() => undefined}
+          onWorkbenchPatch={() => undefined}
+        />
+      </ReviewWorkbenchFindingNavigationContext.Provider>
+    );
+  }
+  function selectedRailItem(): string | undefined {
+    return screen
+      .getAllByRole("button")
+      .find((button) => button.getAttribute("aria-current") === "page")
+      ?.textContent;
+  }
+
+  it("honours a focus request once so the sub-nav can leave Analysis", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      renderWithFindingFocus({ findingId: "finding-1", token: 1 }),
+    );
+    expect(selectedRailItem()).toMatch(/^Analysis/);
+
+    await user.click(screen.getByRole("button", { name: /^Brief/ }));
+    expect(selectedRailItem()).toMatch(/^Brief/);
+
+    rerender(renderWithFindingFocus({ findingId: "finding-1", token: 2 }));
+    expect(selectedRailItem()).toMatch(/^Analysis/);
   });
 });
 
