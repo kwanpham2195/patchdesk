@@ -1,5 +1,5 @@
 import { Plus, FolderOpen, X } from "lucide-react";
-import type { SetStateAction } from "react";
+import { useState, type SetStateAction } from "react";
 import {
   flattenDiscoveredRepositories,
   type WorkspaceRootDiscovery,
@@ -66,6 +66,7 @@ import {
   ReviewingAsPanel,
   useReviewingAsProbe,
 } from "./settings-workspace-reviewing-as";
+import { CreateWorkspaceDialog } from "./settings-workspace-create-dialog";
 import {
   EMPTY_ENTRIES,
   EMPTY_ROOTS,
@@ -118,7 +119,6 @@ export function WorkspaceProfileSection({
   const {
     profileDraft,
     updateProfileDraft,
-    creatingProfile,
     profileError,
     profileScalarErrors,
     savingProfile,
@@ -129,7 +129,6 @@ export function WorkspaceProfileSection({
     addProfileListEntry,
     removeProfileListEntry,
     chooseWorkspaceRoot,
-    startNewProfile,
   } = useWorkspaceProfileDraft({
     dashboard,
     profiles,
@@ -140,6 +139,10 @@ export function WorkspaceProfileSection({
     onDiscardProfileReady,
     onProfileSwitch,
   });
+
+  // The dialog is mounted only while open: that discards a cancelled draft,
+  // and keeps its `GET /v1/environment` probe off until the user asks for it.
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { reviewingAs, recheck } = useReviewingAsProbe(
     profileDraft.ghAccount,
@@ -253,11 +256,15 @@ export function WorkspaceProfileSection({
               ) : null}
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={startNewProfile}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreateDialogOpen(true)}
+              >
                 <Plus data-icon="inline-start" />
-                New profile
+                New workspace
               </Button>
-              {profileDirty || creatingProfile ? (
+              {profileDirty ? (
                 <Button
                   size="sm"
                   disabled={savingProfile}
@@ -270,7 +277,6 @@ export function WorkspaceProfileSection({
               ) : null}
             </div>
             <ProfileIdentityFields
-              creatingProfile={creatingProfile}
               draft={profileDraft}
               updateProfileDraft={updateProfileDraft}
               fieldErrors={profileScalarErrors}
@@ -284,6 +290,13 @@ export function WorkspaceProfileSection({
           )}
         </CardContent>
       </Card>
+      {createDialogOpen ? (
+        <CreateWorkspaceDialog
+          open
+          onOpenChange={setCreateDialogOpen}
+          onCreated={onWorkspaceReload}
+        />
+      ) : null}
       <section
         aria-labelledby="workspace-scope-title"
         data-testid="workspace-scope"
@@ -364,14 +377,12 @@ export function WorkspaceProfileSection({
 }
 
 type ProfileIdentityFieldsProps = {
-  readonly creatingProfile: boolean;
   readonly draft: ProfileDraft;
   readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
   readonly fieldErrors: ProfileScalarErrors;
 };
 
 function ProfileIdentityFields({
-  creatingProfile,
   draft,
   updateProfileDraft,
   fieldErrors,
@@ -380,7 +391,7 @@ function ProfileIdentityFields({
     <FieldGroup className="grid gap-4 sm:grid-cols-2">
       <Field
         className="sm:col-span-2"
-        data-disabled={!creatingProfile || undefined}
+        data-disabled
         data-invalid={fieldErrors.id === undefined ? undefined : true}
       >
         <FieldLabel htmlFor="profile-id">Profile ID</FieldLabel>
@@ -388,7 +399,7 @@ function ProfileIdentityFields({
           id="profile-id"
           aria-label="Profile ID"
           value={draft.id}
-          disabled={!creatingProfile}
+          disabled
           aria-invalid={fieldErrors.id === undefined ? undefined : true}
           aria-describedby={
             fieldErrors.id === undefined ? undefined : "profile-id-error"

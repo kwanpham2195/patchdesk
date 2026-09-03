@@ -9,11 +9,13 @@ import { MaintainerInboxCacheStore } from "../adapters/storage/maintainer-inbox-
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
+  deriveWorkspaceProfileId,
   parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseWorkspaceProfileId,
+  type WorkspaceProfileId,
 } from "../domain/ids";
 import {
   parsePatchdeskSettingsPatch,
@@ -77,7 +79,9 @@ const localPathInputSchema = v.object({
 });
 const nonEmptyStringSchema = v.pipe(v.string(), v.minLength(1));
 const saveProfileInputSchema = v.object({
-  id: v.unknown(),
+  // Absent on a create from the New workspace dialog, which sends a name and
+  // lets `resolveSaveProfileId` derive the id.
+  id: v.optional(v.unknown()),
   label: v.unknown(),
   githubHost: v.unknown(),
   ghAccount: v.unknown(),
@@ -205,14 +209,14 @@ export class DashboardController {
     const parsedInput = v.safeParse(saveProfileInputSchema, input);
     if (!parsedInput.success) return failure("invalid_input");
     const fields = parsedInput.output;
-    const id = parseWorkspaceProfileId(fields.id);
-    if (id._tag === "err") return failure("invalid_input");
+    const id = await this.resolveSaveProfileId(fields.id, fields.label);
+    if (id._tag === "err") return id;
     const existing = await this.profiles.load(id.value);
     if (existing._tag === "err" && existing.error.reason !== "not_found")
       return failure("storage");
     const current = existing._tag === "ok" ? existing.value : undefined;
     const profile = parseWorkspaceProfileConfig({
-      id: fields.id,
+      id: id.value,
       label: fields.label,
       githubHost: fields.githubHost,
       ghAccount: fields.ghAccount,
@@ -223,6 +227,30 @@ export class DashboardController {
     if (profile._tag === "err") return failure("invalid_input");
     const saved = await this.settings.saveProfile(profile.value);
     return saved._tag === "ok" ? ok(profile.value) : failure("storage");
+  }
+
+  /**
+   * A creating request may omit `id`: the New workspace dialog asks for a
+   * name only, and the id is derived here, the one place that knows which
+   * ids are already stored.
+   */
+  private async resolveSaveProfileId(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- both values come straight from the `POST /PUT /v1/profiles` body, which `saveProfile` keeps unparsed.
+    rawId: unknown,
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- see above.
+    rawLabel: unknown,
+  ): Promise<Result<WorkspaceProfileId, DashboardControllerFailure>> {
+    if (rawId !== undefined) {
+      const parsed = parseWorkspaceProfileId(rawId);
+      return parsed._tag === "ok" ? ok(parsed.value) : failure("invalid_input");
+    }
+    const existing = await this.profiles.list();
+    if (existing._tag === "err") return failure("storage");
+    const derived = deriveWorkspaceProfileId(
+      rawLabel,
+      new Set(existing.value.map((profile) => profile.id)),
+    );
+    return derived._tag === "ok" ? ok(derived.value) : failure("invalid_input");
   }
 
   /**

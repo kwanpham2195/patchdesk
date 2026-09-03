@@ -59,6 +59,33 @@ export function parseWorkspaceProfileId(
   return parseSafeSlug<"WorkspaceProfileId">(input, "workspaceProfileId");
 }
 
+/**
+ * Derive a path-safe workspace profile identifier from a workspace name, so
+ * the New workspace dialog can ask for a name and nothing else. `taken`
+ * carries the ids already stored; a collision takes the first free `-2`,
+ * `-3`, … suffix.
+ */
+export function deriveWorkspaceProfileId(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the id-less `POST /v1/profiles` boundary parser; the label arrives as raw JSON.
+  label: unknown,
+  taken: ReadonlySet<string>,
+): Result<WorkspaceProfileId, InvalidDomainValue> {
+  const slug =
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw boundary input before slugging it.
+    typeof label === "string"
+      ? label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+      : "";
+  if (slug === "")
+    return err({ _tag: "InvalidDomainValue", field: "workspaceProfileId" });
+  let candidate = slug;
+  for (let suffix = 2; taken.has(candidate); suffix += 1)
+    candidate = `${slug}-${suffix}`;
+  return parseWorkspaceProfileId(candidate);
+}
+
 /** Parse a GitHub host without URL paths, credentials, or separators. */
 export function parseGitHubHost(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the GitHub-host JSON boundary parser; it validates the raw value immediately below.
