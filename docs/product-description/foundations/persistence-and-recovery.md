@@ -93,7 +93,7 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 
 ## Interactions with other systems
 
-**Workspace profile and identity.** Profile IDs namespace config, Review data, cache, diagnostics, and recovery. Stored profiles contain expected account names but no tokens.
+**Workspace profile and identity.** Workspace profile identifiers namespace config, Review data, cache, diagnostics, and recovery. Stored profiles contain expected account names but no tokens.
 
 **Review revision and freshness.** Sessions, Insights, patches, worktrees, and write intents carry Review and revision identity. Recovery cannot move evidence to another revision.
 
