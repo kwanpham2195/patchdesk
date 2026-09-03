@@ -675,7 +675,7 @@ function readinessBlockerLabel(blocker: string): string {
     case "github_review":
       return "Approval required by GitHub.";
     case "analysis_finding":
-      return "A high-severity Analysis finding blocks merge under this profile's policy.";
+      return "A high-severity Analysis finding blocks merge under this workspace's policy.";
     default:
       return "GitHub merge requirements are not satisfied.";
   }

@@ -500,6 +500,18 @@ function BootstrapOutcome({
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onWorkspaceReload: () => Promise<void>;
 }): React.JSX.Element {
+  // First run is the same standalone flow the loaded path renders: the
+  // "Pull requests" header and its Refresh button describe a listing this
+  // screen has nothing to show yet, and read as a second thing to do.
+  if (state === "empty")
+    return (
+      <div className="mx-auto max-w-[112rem]">
+        <WorkspaceFirstRun
+          dashboard={undefined}
+          onWorkspaceReload={onWorkspaceReload}
+        />
+      </div>
+    );
   return (
     <div className="mx-auto max-w-[112rem]">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -521,19 +533,12 @@ function BootstrapOutcome({
           Refresh
         </Button>
       </header>
-      {state === "empty" ? (
-        <WorkspaceFirstRun
-          dashboard={undefined}
-          onWorkspaceReload={onWorkspaceReload}
-        />
-      ) : (
-        <Outcome
-          state={state}
-          repos={EMPTY_REPO_OUTCOMES}
-          onRetry={onRefresh}
-          onSettings={onSettings}
-        />
-      )}
+      <Outcome
+        state={state}
+        repos={EMPTY_REPO_OUTCOMES}
+        onRetry={onRefresh}
+        onSettings={onSettings}
+      />
     </div>
   );
 }
@@ -567,8 +572,8 @@ function Outcome({
       <Alert variant="destructive" className="mt-6">
         <AlertTitle>Dashboard could not be loaded</AlertTitle>
         <AlertDescription>
-          Patchdesk could not read the active profile or GitHub dashboard. Local
-          drafts and history remain on this Mac.
+          Patchdesk could not read the active workspace or GitHub dashboard.
+          Local drafts and history remain on this Mac.
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="outline" onClick={onRetry}>
               Retry dashboard

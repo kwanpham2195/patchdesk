@@ -72,9 +72,18 @@ test("renderer uses the protected loopback API for profile and watchlist control
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("tab", { name: "Workspace" }).click();
+  // The Workspace card is a disclosure, collapsed by default: its
+  // "New workspace" button, name field, and switcher exist only while it is
+  // open. Its trigger is a button, distinct from the tab of the same name.
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
   await page.getByRole("button", { name: "New workspace" }).click();
   const createDialog = page.getByRole("dialog", { name: "New workspace" });
   await createDialog.getByLabel("Name").fill("Enterprise");
+  // The dialog offers no account control until its `GET /v1/environment`
+  // probe answers, and refuses to create until then.
+  await expect(
+    createDialog.getByText("Checking GitHub authentication…"),
+  ).toBeHidden();
   // `GET /v1/environment` runs the real `gh` on the machine running this
   // suite, so whether the dialog offers an account Select or the manual
   // fields is not fixed here; fill the manual pair only when it is showing.
@@ -91,12 +100,15 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await page.getByRole("button", { name: "Add folder" }).click();
   // Every Workspace control saves on its own: the root row commits when it
   // loses focus, and the name field commits the same way.
-  await page
-    .getByRole("textbox", { name: "Folder 1", exact: true })
-    .fill("/workspace/enterprise");
-  await page.getByLabel("Label").click();
-  await page.getByLabel("Label").fill("Enterprise updated");
-  await page.getByLabel("Profile ID").click();
+  const folder = page.getByRole("textbox", { name: "Folder 1", exact: true });
+  await folder.fill("/workspace/enterprise");
+  await folder.press("Tab");
+  const workspaceName = page.getByRole("textbox", {
+    name: "Name",
+    exact: true,
+  });
+  await workspaceName.fill("Enterprise updated");
+  await workspaceName.press("Tab");
   await expect(
     page.getByRole("combobox", { name: "Active workspace" }).last(),
   ).toContainText("Enterprise updated");
@@ -113,10 +125,13 @@ test("renderer uses the protected loopback API for profile and watchlist control
   // Workspace-root discovery is automatic: the root's own save above scans
   // the profile's workspace roots via `GET /v1/watchlist/suggestions` from a
   // `useEffect` (see `useWorkspaceRootDiscovery`), with no button to drive
-  // it. Wait directly for that scan's result to appear.
-  await expect(page.getByText("acme/discovered")).toBeVisible();
+  // it. Wait directly for that scan's result to appear. Scoped to the
+  // Workspace section: the first-run flow behind the modal watches the same
+  // folder and lists the same repository.
+  const workspaceSection = page.getByTestId("settings-section-workspace");
+  await expect(workspaceSection.getByText("acme/discovered")).toBeVisible();
   await expect(
-    page.getByRole("checkbox", {
+    workspaceSection.getByRole("checkbox", {
       name: "acme/discovered /workspace/enterprise/discovered",
     }),
   ).not.toBeChecked();
