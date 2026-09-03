@@ -112,7 +112,7 @@ describe("maintainer inbox cache store", () => {
     });
   });
 
-  it("round-trips the Brief tag, so a tagged row does not invalidate the cache", async () => {
+  it("round-trips Insight readiness, so a tagged row does not invalidate the cache", async () => {
     const { store, profileId } = await fixtureStore();
     const cache = {
       schemaVersion: 2 as const,
@@ -137,7 +137,11 @@ describe("maintainer inbox cache store", () => {
           checks: { overall: "passing" as const, checks: [] },
           reviewState: "none" as const,
           mergeability: "unknown" as const,
-          briefReady: true as const,
+          insights: {
+            brief: "ready" as const,
+            analysis: "outdated" as const,
+            walkthrough: "ready" as const,
+          },
           labels: [],
           categories: [],
           recommendedAction: {
@@ -160,6 +164,93 @@ describe("maintainer inbox cache store", () => {
       _tag: "ok",
       value: cache,
     });
+  });
+
+  it("still reads a version 2 row that names no Insight readiness at all", () => {
+    const row = {
+      remoteState: "open",
+      identity: {
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      },
+      title: "Guard duplicate input",
+      author: "author",
+      baseBranch: "sit",
+      headBranch: "feature/duplicate-guard",
+      currentHeadSha: sha,
+      isDraft: false,
+      updatedAt,
+      changeStats: {},
+      checks: { overall: "passing", checks: [] },
+      reviewState: "none",
+      mergeability: "unknown",
+      labels: [],
+      categories: [],
+      recommendedAction: { kind: "run_review" },
+      dataFreshness: "fresh",
+    };
+    const parsed = parseMaintainerInboxCache({
+      schemaVersion: 2,
+      refreshedAt: updatedAt,
+      rows: [row],
+      repository: {
+        identity: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+        state: "ready",
+        complete: true,
+      },
+    });
+    if (parsed._tag === "err") throw new Error("expected a parsed cache");
+    expect(parsed.value.rows[0]?.insights).toBeUndefined();
+  });
+
+  it("rejects a cache row whose Insight readiness names a state Patchdesk does not have", () => {
+    const parsed = parseMaintainerInboxCache({
+      schemaVersion: 2,
+      refreshedAt: updatedAt,
+      rows: [
+        {
+          remoteState: "open",
+          identity: {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "patchdesk",
+            number: 42,
+          },
+          title: "Guard duplicate input",
+          author: "author",
+          baseBranch: "sit",
+          headBranch: "feature/duplicate-guard",
+          currentHeadSha: sha,
+          isDraft: false,
+          updatedAt,
+          changeStats: {},
+          checks: { overall: "passing", checks: [] },
+          reviewState: "none",
+          mergeability: "unknown",
+          insights: { brief: "running" },
+          labels: [],
+          categories: [],
+          recommendedAction: { kind: "run_review" },
+          dataFreshness: "fresh",
+        },
+      ],
+      repository: {
+        identity: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+        },
+        state: "ready",
+        complete: true,
+      },
+    });
+    expect(parsed._tag).toBe("err");
   });
 
   it("round-trips a github_forbidden repository state (plan 009 picklist lockstep regression)", async () => {

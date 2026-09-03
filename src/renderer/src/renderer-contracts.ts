@@ -9,6 +9,7 @@ import {
 import { briefInsightSchema } from "./brief-contracts";
 import { insightFields, retainedInsightFields } from "./insight-contracts";
 import { inboxRecommendedActionSchema } from "./inbox-action-contract";
+import { inboxInsightReadinessSchema } from "./inbox-insight-contract";
 import { changeScopeSchema } from "../../domain/change-scope";
 import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
@@ -86,8 +87,8 @@ const inboxRowSchema = v.strictObject({
   mergeability: v.picklist(["mergeable", "conflicting", "blocked", "unknown"]),
   /** Present only for a row whose retained Review session still matches the current head; see `MaintainerInboxRow.scope`. */
   scope: v.optional(changeScopeSchema),
-  /** Present only when a Brief is retained for this row's current head; see `MaintainerInboxRow.briefReady`. */
-  briefReady: v.optional(v.literal(true)),
+  /** Present only when the row's Review retains at least one Insight; see `MaintainerInboxRow.insights`. */
+  insights: v.optional(inboxInsightReadinessSchema),
   latestReview: v.optional(
     v.strictObject({
       reviewId: v.pipe(v.string(), v.minLength(1)),

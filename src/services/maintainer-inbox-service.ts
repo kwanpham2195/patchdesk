@@ -10,11 +10,12 @@ import type {
   MaintainerInboxCacheStore,
 } from "../adapters/storage/maintainer-inbox-cache-store";
 import type { InsightStore } from "../adapters/storage/insight-store";
+import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
 import { definedProps } from "../domain/defined-props";
-import { parseStoredBrief } from "../domain/stored-brief";
 import type { PullRequestSummary } from "../domain/github-context";
+import type { InsightRecord, InsightRevision } from "../domain/insight-record";
 import {
   createReviewId,
   parseIsoTimestamp,
@@ -34,6 +35,8 @@ import {
   type InboxReviewStateFilter,
   type InboxStateFilter,
   projectMaintainerInboxRow,
+  type InboxInsightReadiness,
+  type InboxInsightState,
   type InboxReviewSummary,
   type MaintainerInboxRow,
   type InboxDataFreshness,
@@ -41,6 +44,7 @@ import {
 } from "../domain/maintainer-inbox";
 import type { PullRequestRef } from "../domain/pull-request";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
+import { parseStoredBrief } from "../domain/stored-brief";
 import type { ReviewSession } from "../domain/review-session";
 import { ok, type Result } from "../domain/result";
 import type {
@@ -147,8 +151,11 @@ export type InboxPageRequestFailure = "invalid_page";
 
 type SessionReader = Pick<ReviewSessionStore, "listSessions">;
 type CacheReader = Pick<MaintainerInboxCacheStore, "read" | "save">;
-/** The one Insight read the inbox makes: is there a Brief retained for this row? */
-type BriefInsightReader = Pick<InsightStore, "loadTyped">;
+/**
+ * The Insight reads the inbox makes: which kinds are retained for this row.
+ * `loadTyped` is here for the Brief alone -- see `readInsightReadiness`.
+ */
+type InboxInsightReader = Pick<InsightStore, "load" | "loadTyped">;
 type RepositoryRead = {
   readonly entries: ReadonlyArray<{
     readonly cursor: string;
@@ -171,10 +178,10 @@ export class MaintainerInboxService {
     private readonly clock: InboxClock,
     /**
      * Optional, like the coordinator's `remotes`: without it a row simply
-     * carries no `briefReady`, and every existing caller keeps its four
+     * carries no `insights`, and every existing caller keeps its four
      * collaborators.
      */
-    private readonly insights?: BriefInsightReader,
+    private readonly insights?: InboxInsightReader,
   ) {}
 
   /**
@@ -382,7 +389,7 @@ export class MaintainerInboxService {
             pullRequest.summary,
             sessions,
           );
-          const briefReady = await readCurrentHeadBrief(
+          const insights = await readInsightReadiness(
             pullRequest.summary,
             sessions,
             this.insights,
@@ -394,7 +401,7 @@ export class MaintainerInboxService {
             activeAccount: profile.ghAccount,
             dataFreshness: "fresh" as const,
             ...scopeField,
-            ...definedProps({ briefReady }),
+            ...definedProps({ insights }),
           };
           const row =
             latestReview === undefined
@@ -662,39 +669,83 @@ function encodeInboxPageToken(token: InboxPageToken): string {
   return Buffer.from(JSON.stringify(token)).toString("base64url");
 }
 /**
- * Whether Patchdesk holds a Brief to read for this row's current head.
+ * Which Insight kinds Patchdesk holds for this row, and whether each is bound
+ * to the head the row now shows.
  *
- * The session lookup is `readCurrentHeadScope`'s: a session at this exact head
- * is what names the review whose Insight records to read. The retained Brief is
- * then checked against the row's head as well, because a Brief bound to an
- * earlier revision is readable in the workbench but is not a Brief of what the
- * row now shows.
+ * Insight records are keyed by review, not by session, so any session for this
+ * pull request names the records to read — unlike `readCurrentHeadScope`,
+ * which needs the current head's own retained patch. Each retained result is
+ * then compared against the row's head, because a result bound to an earlier
+ * revision is still readable in the workbench but no longer describes what the
+ * row shows.
+ *
+ * The Brief is read through its own parser rather than the envelope, because
+ * the tag it drives promises a Brief the workbench can open: a retained value
+ * that no longer parses is one the reader would refuse, and the envelope alone
+ * cannot see that. Analysis and Walkthrough have no such tag yet, so the
+ * envelope's revision is all their readiness needs.
  */
-async function readCurrentHeadBrief(
+async function readInsightReadiness(
   summary: PullRequestSummary,
   sessions: ReadonlyArray<ReviewSession>,
-  insights: BriefInsightReader | undefined,
-): Promise<true | undefined> {
+  insights: InboxInsightReader | undefined,
+): Promise<InboxInsightReadiness | undefined> {
   if (insights === undefined) return undefined;
-  const session = sessionAtCurrentHead(summary, sessions);
+  const session = sessionForRow(summary, sessions);
   if (session === undefined) return undefined;
-  const record = await insights.loadTyped(
-    session.key.profileId,
-    createReviewId({
-      profileId: session.key.profileId,
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
-      prNumber: session.key.prNumber,
-    }),
-    "brief",
-    parseStoredBrief,
-  );
+  const reviewId = createReviewId({
+    profileId: session.key.profileId,
+    host: session.key.host,
+    owner: session.key.owner,
+    repo: session.key.repo,
+    prNumber: session.key.prNumber,
+  });
+  // Each kind is its own stored record, so reading them independently keeps
+  // one corrupt or missing record from hiding the kinds beside it.
+  const profileId = session.key.profileId;
+  const [brief, analysis, walkthrough] = await Promise.all([
+    insights.loadTyped(profileId, reviewId, "brief", parseStoredBrief),
+    insights.load(profileId, reviewId, "analysis"),
+    insights.load(profileId, reviewId, "walkthrough"),
+  ]);
+  const readiness = definedProps({
+    brief: retainedInsightState(summary, brief),
+    analysis: retainedInsightState(summary, analysis),
+    walkthrough: retainedInsightState(summary, walkthrough),
+  });
+  return Object.keys(readiness).length === 0 ? undefined : readiness;
+}
+
+/**
+ * One kind's readiness, or absent when nothing readable is retained for it.
+ * Takes whatever record its kind's loader returned: both `load` and
+ * `loadTyped` prove the same revision envelope, and only that is read here.
+ */
+function retainedInsightState(
+  summary: PullRequestSummary,
+  record: Result<
+    InsightRecord<{ readonly revision: InsightRevision }>,
+    StorageFailure
+  >,
+): InboxInsightState | undefined {
   if (record._tag === "err") return undefined;
   const retained = record.value.retained;
-  return retained !== undefined && retained.revision.headSha === summary.headSha
-    ? true
-    : undefined;
+  if (retained === undefined) return undefined;
+  return retained.revision.headSha === summary.headSha ? "ready" : "outdated";
+}
+
+/** Any Review session Patchdesk holds for this row's pull request, at any head. */
+function sessionForRow(
+  summary: PullRequestSummary,
+  sessions: ReadonlyArray<ReviewSession>,
+): ReviewSession | undefined {
+  return sessions.find(
+    (candidate) =>
+      candidate.key.host === summary.ref.host &&
+      candidate.key.owner === summary.ref.owner &&
+      candidate.key.repo === summary.ref.repo &&
+      candidate.key.prNumber === summary.ref.number,
+  );
 }
 
 /** The Review session Patchdesk holds for exactly this row's current head. */

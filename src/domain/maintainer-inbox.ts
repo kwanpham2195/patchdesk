@@ -190,6 +190,20 @@ export type InboxReviewSummary = {
   readonly matchesCurrentHead: boolean;
 };
 
+/**
+ * The Insight kinds an inbox row reports on, in the order their tags read.
+ * Kept module-local: every caller names the kind it wants, so only the type
+ * this list derives has to leave the domain.
+ */
+const INBOX_INSIGHT_KINDS = ["brief", "analysis", "walkthrough"] as const;
+export type InboxInsightKind = (typeof INBOX_INSIGHT_KINDS)[number];
+/** `ready` is bound to the row's current head; `outdated` is bound to an earlier one. */
+export const INBOX_INSIGHT_STATES = ["ready", "outdated"] as const;
+export type InboxInsightState = (typeof INBOX_INSIGHT_STATES)[number];
+export type InboxInsightReadiness = Partial<
+  Record<InboxInsightKind, InboxInsightState>
+>;
+
 export type MaintainerInboxRow = {
   /** Confirmed remote scope for this row; merged rows never enter active-work queues. */
   readonly remoteState: InboxStateFilter;
@@ -217,12 +231,13 @@ export type MaintainerInboxRow = {
    */
   readonly scope?: ChangeScope;
   /**
-   * Present only when Patchdesk holds a Brief retained for this row's current
-   * head. Absent, rather than `false`, for every other row: the tag says a
-   * Brief is there to read, and a row that has never been reviewed has no
-   * claim to make either way.
+   * The Insight kinds Patchdesk holds for this row's Review, each said to be
+   * bound to the current head or to an earlier one. A kind with nothing
+   * retained is absent rather than `false`, and the whole field is absent when
+   * no kind has a state: a row that has never been reviewed has no claim to
+   * make either way.
    */
-  readonly briefReady?: true;
+  readonly insights?: InboxInsightReadiness;
   readonly latestReview?: InboxReviewSummary;
   readonly labels: ReadonlyArray<GitHubLabel>;
   readonly labelCount?: number;
@@ -238,7 +253,7 @@ export function projectMaintainerInboxRow(input: {
   readonly activeAccount: string;
   readonly latestReview?: InboxReviewSummary;
   readonly scope?: ChangeScope;
-  readonly briefReady?: true;
+  readonly insights?: InboxInsightReadiness;
   readonly dataFreshness: InboxDataFreshness;
 }): MaintainerInboxRow {
   if (!input.summary.isOpen) return projectMergedMaintainerInboxRow(input);
@@ -297,7 +312,7 @@ export function projectMaintainerInboxRow(input: {
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
     ...scopeField,
-    ...definedProps({ briefReady: input.briefReady }),
+    ...definedProps({ insights: input.insights }),
     ...latestReviewField,
     labels: input.summary.labels,
     ...labelCountField,
@@ -311,7 +326,7 @@ function projectMergedMaintainerInboxRow(input: {
   readonly summary: PullRequestSummary;
   readonly checks: CheckSummary;
   readonly scope?: ChangeScope;
-  readonly briefReady?: true;
+  readonly insights?: InboxInsightReadiness;
   readonly dataFreshness: InboxDataFreshness;
 }): MaintainerInboxRow {
   const additionsField =
@@ -346,7 +361,7 @@ function projectMergedMaintainerInboxRow(input: {
     reviewState: input.summary.reviewState,
     mergeability: input.summary.mergeability,
     ...scopeField,
-    ...definedProps({ briefReady: input.briefReady }),
+    ...definedProps({ insights: input.insights }),
     labels: input.summary.labels,
     ...labelCountField,
     categories: [],

@@ -16,6 +16,7 @@ import {
 } from "../../domain/ids";
 import {
   INBOX_DATA_FRESHNESS,
+  INBOX_INSIGHT_STATES,
   INBOX_REPOSITORY_OUTCOMES,
   INBOX_STATE_FILTER_VALUES,
   type InboxRepositoryOutcome,
@@ -47,6 +48,13 @@ export type MaintainerInboxCache = {
   readonly rows: ReadonlyArray<MaintainerInboxRow>;
   readonly repository: InboxCacheRepository;
 };
+
+/** One optional state per Insight kind; an empty object is never written, because `insights` is absent when no kind has a state. */
+const inboxInsightReadinessSchema = v.strictObject({
+  brief: v.optional(v.picklist(INBOX_INSIGHT_STATES)),
+  analysis: v.optional(v.picklist(INBOX_INSIGHT_STATES)),
+  walkthrough: v.optional(v.picklist(INBOX_INSIGHT_STATES)),
+});
 
 const actionSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("run_review") }),
@@ -89,7 +97,7 @@ const rowSchema = v.strictObject({
   /** Written whenever the fresh row carried one; the cache is strict, so a row field it does not name invalidates the whole file. */
   scope: v.optional(changeScopeSchema),
   /** Named here for the same reason `scope` is: the cache is strict, so an unnamed row field invalidates the whole file. */
-  briefReady: v.optional(v.literal(true)),
+  insights: v.optional(inboxInsightReadinessSchema),
   latestReview: v.optional(
     v.strictObject({
       reviewId: v.string(),
@@ -238,6 +246,11 @@ function parseRow(
   const labels = input.labels ?? [];
   const labelCountField =
     input.labelCount === undefined ? {} : { labelCount: input.labelCount };
+  // The schema makes each kind optional, so a cached readiness object arrives
+  // with `undefined`-valued keys the domain row refuses to hold; an object
+  // left with no kind at all is the same as never having been written.
+  const insights =
+    input.insights === undefined ? undefined : definedProps(input.insights);
   return ok({
     remoteState: input.remoteState,
     identity: identity.value,
@@ -253,7 +266,12 @@ function parseRow(
     reviewState: summaryState,
     mergeability: input.mergeability,
     ...scopeField,
-    ...definedProps({ briefReady: input.briefReady }),
+    ...definedProps({
+      insights:
+        insights === undefined || Object.keys(insights).length === 0
+          ? undefined
+          : insights,
+    }),
     ...latestReviewField,
     labels,
     ...labelCountField,

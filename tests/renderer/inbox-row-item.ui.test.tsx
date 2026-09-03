@@ -47,7 +47,7 @@ function renderRow(value: InboxRow): void {
 
 describe("InboxRowItem", () => {
   it("tags a row whose current head already has a Brief", () => {
-    renderRow({ ...row, briefReady: true });
+    renderRow({ ...row, insights: { brief: "ready" } });
     expect(screen.getByText("Brief")).toBeTruthy();
   });
 
