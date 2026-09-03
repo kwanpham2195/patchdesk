@@ -1,5 +1,10 @@
 import { expect, test, type Locator, type Page } from "playwright/test";
-import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
+import {
+  chooseDiffOptions,
+  closeServer,
+  serveRenderer,
+  serverOrigin,
+} from "./renderer-server";
 
 test("production walkthrough stays manual, supports review actions, and keeps the reader chrome quiet", async ({
   page,
@@ -143,10 +148,7 @@ test("Pierre controls persist and navigator collapses", async ({ page }) => {
     const diff = page.getByRole("region", { name: "Review diff" });
     const hideNavigatorButton = '[aria-label="Hide review navigator"]';
 
-    await page.getByRole("button", { name: "View options" }).click();
-    await page.getByRole("switch", { name: "Split view" }).click();
-    await page.getByRole("switch", { name: "Wrap lines" }).click();
-    await page.keyboard.press("Escape");
+    await chooseDiffOptions(page, { split: true, wrap: true });
     await page.getByRole("button", { name: "Selected", exact: true }).click();
     await page.locator(`header ${hideNavigatorButton}`).click();
 
@@ -1143,9 +1145,7 @@ test("Pierre headers retain per-file totals while the navigator stays compact", 
     await expect(headerStats).toHaveAttribute("data-additions", "48");
     await expect(headerStats).toHaveAttribute("data-deletions", "48");
 
-    await page.getByRole("button", { name: "View options" }).click();
-    await page.getByRole("switch", { name: "Split view" }).click();
-    await page.keyboard.press("Escape");
+    await chooseDiffOptions(page, { split: true });
     await expect(headerStats).toHaveAttribute("data-additions", "48");
     await expect(headerStats).toHaveAttribute("data-deletions", "48");
 
@@ -1171,9 +1171,7 @@ test("Review diff region reflects unified/split toggle via data-diff-style", asy
 
     await expect(diff).toHaveAttribute("data-diff-style", "unified");
 
-    await page.getByRole("button", { name: "View options" }).click();
-    await page.getByRole("switch", { name: "Split view" }).click();
-    await page.keyboard.press("Escape");
+    await chooseDiffOptions(page, { split: true });
     await expect(diff).toHaveAttribute("data-diff-style", "split");
   } finally {
     await closeServer(server);
