@@ -272,7 +272,7 @@ export function RepositoryChecklist({
   );
 }
 
-/** The "watched outside current workspace roots" block: repos in `profile.repos` (or discovered) whose local path matches none of the saved workspace roots. Rendered only when non-empty by the caller. */
+/** The "watched outside these folders" block: repos in `profile.repos` (or discovered) whose local path matches none of the saved workspace roots. Rendered only when non-empty by the caller. */
 export function WatchedOutsideRootsSection({
   entries,
   isWatched,
@@ -291,7 +291,7 @@ export function WatchedOutsideRootsSection({
   return (
     <div className="flex flex-col gap-2">
       <Label className="text-xs font-semibold uppercase text-muted-foreground">
-        Watched outside current workspace roots
+        Watched outside these folders
       </Label>
       <RepositoryChecklist
         entries={entries}
@@ -300,7 +300,7 @@ export function WatchedOutsideRootsSection({
         errorsByKey={errorsByKey}
         draftWatchedByKey={draftWatchedByKey}
         onToggle={onToggle}
-        ariaLabel="Repositories watched outside current workspace roots"
+        ariaLabel="Repositories watched outside these folders"
       />
     </div>
   );

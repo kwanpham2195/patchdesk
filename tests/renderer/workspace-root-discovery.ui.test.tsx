@@ -176,7 +176,7 @@ describe("workspace root discovery", () => {
 
     renderSettings(profileWithMissingOutcome);
 
-    await screen.findByLabelText("workspace root 2");
+    await screen.findByLabelText("Folder 2");
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });

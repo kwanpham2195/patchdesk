@@ -45,12 +45,7 @@ describe("workspace profile settings", () => {
 
     renderSettings(reload);
 
-    expect(screen.getByLabelText("Profile ID").hasAttribute("disabled")).toBe(
-      true,
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Add workspace root" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Add folder" }));
     const chooseFolders = screen.getAllByRole("button", {
       name: "Choose folder",
     });
@@ -69,12 +64,10 @@ describe("workspace profile settings", () => {
       }),
     );
 
-    await user.click(
-      screen.getByRole("button", { name: "Remove workspace root 1" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Remove folder 1" }));
     await user.click(screen.getByRole("button", { name: "Add rule path" }));
     await user.type(
-      screen.getByLabelText("rule path 2"),
+      screen.getByLabelText("Rule path 2"),
       "/workspace/cfw/CONTRIBUTING.md",
     );
     await user.tab();
@@ -105,11 +98,11 @@ describe("workspace profile settings", () => {
 
     renderSettings();
     await user.click(screen.getByRole("button", { name: "Add rule path" }));
-    await user.click(screen.getByLabelText("rule path 2"));
+    await user.click(screen.getByLabelText("Rule path 2"));
     await user.tab();
 
     expect(profileSaveRequests(desktopApi)).toHaveLength(0);
-    expect(screen.getByLabelText("rule path 2")).toBeTruthy();
+    expect(screen.getByLabelText("Rule path 2")).toBeTruthy();
   });
 
   it("reports every invalid scalar beside its own field without sending it", async () => {
@@ -117,8 +110,9 @@ describe("workspace profile settings", () => {
     const user = userEvent.setup();
 
     renderSettings();
-    await user.clear(screen.getByLabelText("Label"));
-    await user.type(screen.getByLabelText("Label"), "   ");
+    await openWorkspaceCard(user);
+    await user.clear(screen.getByLabelText("Name"));
+    await user.type(screen.getByLabelText("Name"), "   ");
     await user.tab();
     await user.clear(screen.getByLabelText("GitHub host"));
     await user.type(
@@ -131,7 +125,7 @@ describe("workspace profile settings", () => {
     await user.tab();
 
     for (const [label, statusId] of [
-      ["Label", "profile-label-status"],
+      ["Name", "profile-label-status"],
       ["GitHub host", "profile-github-host-status"],
       ["GitHub account", "profile-gh-account-status"],
     ] as const) {
@@ -142,13 +136,13 @@ describe("workspace profile settings", () => {
     }
     expect(profileSaveRequests(desktopApi)).toHaveLength(0);
 
-    await user.clear(screen.getByLabelText("Label"));
-    await user.type(screen.getByLabelText("Label"), "Named");
+    await user.clear(screen.getByLabelText("Name"));
+    await user.type(screen.getByLabelText("Name"), "Named");
     await user.tab();
 
     await vi.waitFor(() =>
       expect(
-        screen.getByLabelText("Label").getAttribute("aria-invalid"),
+        screen.getByLabelText("Name").getAttribute("aria-invalid"),
       ).toBeNull(),
     );
     for (const field of [
@@ -226,8 +220,9 @@ describe("workspace profile settings", () => {
     const user = userEvent.setup();
 
     renderSettings();
-    await user.clear(screen.getByLabelText("Label"));
-    await user.type(screen.getByLabelText("Label"), "  Spaced label  ");
+    await openWorkspaceCard(user);
+    await user.clear(screen.getByLabelText("Name"));
+    await user.type(screen.getByLabelText("Name"), "  Spaced label  ");
     await user.tab();
     await user.clear(screen.getByLabelText("GitHub host"));
     await user.type(
@@ -251,7 +246,7 @@ describe("workspace profile settings", () => {
         }),
       }),
     );
-    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+    expect(screen.getByLabelText<HTMLInputElement>("Name").value).toBe(
       "Spaced label",
     );
   });
@@ -261,7 +256,8 @@ describe("workspace profile settings", () => {
     const user = userEvent.setup();
 
     renderSettings();
-    await user.type(screen.getByLabelText("Label"), " changed");
+    await openWorkspaceCard(user);
+    await user.type(screen.getByLabelText("Name"), " changed");
     await user.tab();
 
     expect(
@@ -271,10 +267,37 @@ describe("workspace profile settings", () => {
     ).toBeTruthy();
     expect(profileSaveRequests(desktopApi)).toHaveLength(1);
     // The typed value stays, so the edit can be retried where it was made.
-    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+    expect(screen.getByLabelText<HTMLInputElement>("Name").value).toBe(
       "CFW changed",
     );
   });
+  it("opens Advanced only when the workspace already carries a rule path", async () => {
+    installDesktopApi();
+
+    renderSettings();
+    expect(screen.getByLabelText("Rule path 1")).toBeTruthy();
+    cleanup();
+
+    renderSettings(undefined, { ...profile, rulePaths: [] });
+    expect(screen.queryByLabelText("Rule path 1")).toBeNull();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Advanced" }));
+    expect(screen.getByRole("button", { name: "Add rule path" })).toBeTruthy();
+  });
+
+  it("keeps the Workspace card closed until it is opened", async () => {
+    installDesktopApi();
+    const user = userEvent.setup();
+
+    renderSettings();
+    expect(screen.queryByLabelText("Name")).toBeNull();
+
+    await openWorkspaceCard(user);
+
+    expect(screen.getByLabelText<HTMLInputElement>("Name").value).toBe("CFW");
+  });
+
   it("uses the control-linked field error for a Settings-owned profile switch failure", () => {
     installDesktopApi();
 
@@ -307,23 +330,23 @@ describe("workspace profile settings", () => {
       profiles: [profile, otherProfile],
       onProfileSwitch: async () => "failed",
     });
-    await user.clear(screen.getByLabelText("Label"));
-    await user.type(screen.getByLabelText("Label"), "Draft label");
-    await user.clear(screen.getByLabelText("workspace root 1"));
-    await user.type(
-      screen.getByLabelText("workspace root 1"),
-      "/workspace/draft",
-    );
+    await openWorkspaceCard(user);
+    await user.clear(screen.getByLabelText("Name"));
+    await user.type(screen.getByLabelText("Name"), "Draft label");
+    await user.clear(screen.getByLabelText("Folder 1"));
+    await user.type(screen.getByLabelText("Folder 1"), "/workspace/draft");
 
-    await user.click(screen.getByRole("combobox", { name: "Active profile" }));
+    await user.click(
+      screen.getByRole("combobox", { name: "Active workspace" }),
+    );
     await user.click(await screen.findByRole("option", { name: "Other" }));
 
-    expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe(
+    expect(screen.getByLabelText<HTMLInputElement>("Name").value).toBe(
       "Draft label",
     );
-    expect(
-      screen.getByLabelText<HTMLInputElement>("workspace root 1").value,
-    ).toBe("/workspace/draft");
+    expect(screen.getByLabelText<HTMLInputElement>("Folder 1").value).toBe(
+      "/workspace/draft",
+    );
     expect(
       screen.getByLabelText<HTMLInputElement>("GitHub account").value,
     ).toBe(profile.ghAccount);
@@ -467,10 +490,10 @@ describe("watchlist toggling", () => {
     renderSettings(undefined, watchedProfile);
 
     expect(
-      await screen.findByText("Watched outside current workspace roots"),
+      await screen.findByText("Watched outside these folders"),
     ).toBeTruthy();
     const outsideGroup = screen.getByLabelText(
-      "Repositories watched outside current workspace roots",
+      "Repositories watched outside these folders",
     );
     const checkbox = within(outsideGroup).getByRole("checkbox");
     expect(
@@ -479,6 +502,13 @@ describe("watchlist toggling", () => {
     expect(checkbox.getAttribute("aria-checked")).toBe("true");
   });
 });
+
+/** Opens the Workspace disclosure card, which is collapsed until the user asks for it. */
+async function openWorkspaceCard(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await user.click(screen.getByRole("button", { name: "Workspace" }));
+}
 
 /** Finds the repository checklist row for `ownerSlashRepo` (rendered by `RepositoryChecklist`) and returns its checkbox. */
 async function repositoryCheckbox(

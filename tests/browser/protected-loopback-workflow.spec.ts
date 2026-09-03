@@ -86,19 +86,19 @@ test("renderer uses the protected loopback API for profile and watchlist control
   await createDialog.getByRole("button", { name: "Create workspace" }).click();
   await expect(createDialog).toBeHidden();
   await expect(
-    page.getByRole("combobox", { name: "Active profile" }).last(),
+    page.getByRole("combobox", { name: "Active workspace" }).last(),
   ).toContainText("Enterprise");
-  await page.getByRole("button", { name: "Add workspace root" }).click();
+  await page.getByRole("button", { name: "Add folder" }).click();
   // Every Workspace control saves on its own: the root row commits when it
   // loses focus, and the name field commits the same way.
   await page
-    .getByRole("textbox", { name: "workspace root 1", exact: true })
+    .getByRole("textbox", { name: "Folder 1", exact: true })
     .fill("/workspace/enterprise");
   await page.getByLabel("Label").click();
   await page.getByLabel("Label").fill("Enterprise updated");
   await page.getByLabel("Profile ID").click();
   await expect(
-    page.getByRole("combobox", { name: "Active profile" }).last(),
+    page.getByRole("combobox", { name: "Active workspace" }).last(),
   ).toContainText("Enterprise updated");
 
   const settingsRoute = page.url();
