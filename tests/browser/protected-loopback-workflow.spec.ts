@@ -72,19 +72,27 @@ test("renderer uses the protected loopback API for profile and watchlist control
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("tab", { name: "Workspace" }).click();
-  await page.getByRole("button", { name: "New profile" }).click();
-  await page.getByLabel("Profile ID").fill("enterprise");
-  await page.getByLabel("Label").fill("Enterprise");
-  await page.getByLabel("GitHub host").fill("github.example.test");
-  await page.getByLabel("GitHub account").fill("enterprise-user");
+  await page.getByRole("button", { name: "New workspace" }).click();
+  const createDialog = page.getByRole("dialog", { name: "New workspace" });
+  await createDialog.getByLabel("Name").fill("Enterprise");
+  // `GET /v1/environment` runs the real `gh` on the machine running this
+  // suite, so whether the dialog offers an account Select or the manual
+  // fields is not fixed here; fill the manual pair only when it is showing.
+  const manualAccount = createDialog.getByLabel("GitHub account");
+  if (await manualAccount.isVisible()) {
+    await manualAccount.fill("enterprise-user");
+    await createDialog.getByLabel("GitHub host").fill("github.example.test");
+  }
+  await createDialog.getByRole("button", { name: "Create workspace" }).click();
+  await expect(createDialog).toBeHidden();
+  await expect(
+    page.getByRole("combobox", { name: "Active profile" }).last(),
+  ).toContainText("Enterprise");
+  await page.getByRole("button", { name: "Add workspace root" }).click();
   await page
     .getByRole("textbox", { name: "workspace root 1", exact: true })
     .fill("/workspace/enterprise");
   await page.getByRole("button", { name: "Save profile" }).click();
-  await page.getByRole("combobox", { name: "Active profile" }).last().click();
-  const enterpriseOption = page.getByRole("option", { name: "Enterprise" });
-  await expect(enterpriseOption).toBeVisible();
-  await enterpriseOption.click();
   await page.getByLabel("Label").fill("Enterprise updated");
   await page.getByRole("button", { name: "Save profile" }).click();
   await expect(

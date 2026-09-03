@@ -126,6 +126,67 @@ describe("profile settings and dashboard services", () => {
     }
   });
 
+  it("derives the profile id from the name when a create omits it", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-profile-create-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      await store.save(profile);
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        undefined,
+        paths,
+      );
+
+      const created = await controller.saveProfile({
+        label: "CFW",
+        githubHost: "github.com",
+        ghAccount: "patchdesk",
+        workspaceRoots: [],
+        rulePaths: [],
+      });
+
+      // "CFW" slugs to the stored profile's own id, so the collision suffix
+      // is what keeps the create from overwriting it.
+      expect(created).toMatchObject({ _tag: "ok", value: { id: "cfw-2" } });
+      expect(await store.load(profile.id)).toMatchObject({
+        _tag: "ok",
+        value: { label: "CFW", repos: [{ repo: "patchdesk" }] },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a create whose name has no slug and no id", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-profile-unslug-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const controller = new DashboardController(
+        new ProfileStore(paths),
+        new FakeGitHubAdapter({}),
+        undefined,
+        paths,
+      );
+
+      const created = await controller.saveProfile({
+        label: "···",
+        githubHost: "github.com",
+        ghAccount: "patchdesk",
+        workspaceRoots: [],
+        rulePaths: [],
+      });
+
+      expect(created).toMatchObject({
+        _tag: "err",
+        error: { reason: "invalid_input" },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("derives the first-run default profile from the machine's active gh account and home directory", async () => {
     const commands = new CommandRunner(
       new FakeCommandExecutor({

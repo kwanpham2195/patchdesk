@@ -12,7 +12,6 @@ import {
   parseWorkspaceProfileId,
 } from "../../../domain/ids";
 import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
-import { useLatestCommitted } from "../hooks/use-latest-committed";
 import type { Dashboard, Profile } from "../renderer-models";
 
 export type ProfileDraft = {
@@ -40,7 +39,6 @@ export type ProfileListEntry = {
 type WorkspaceProfileDraftHook = {
   readonly profileDraft: ProfileDraft;
   readonly updateProfileDraft: (update: SetStateAction<ProfileDraft>) => void;
-  readonly creatingProfile: boolean;
   readonly profileError: string | undefined;
   readonly profileScalarErrors: ProfileScalarErrors;
   readonly savingProfile: boolean;
@@ -58,7 +56,6 @@ type WorkspaceProfileDraftHook = {
     entryId: string,
   ) => void;
   readonly chooseWorkspaceRoot: (entryId: string) => Promise<void>;
-  readonly startNewProfile: () => void;
 };
 
 /**
@@ -95,14 +92,12 @@ export function useWorkspaceProfileDraft({
   const [profileDraft, setProfileDraft] = useState(() =>
     profileDraftFor(dashboard?.profile),
   );
-  const [creatingProfile, setCreatingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string>();
   const [savingProfile, setSavingProfile] = useState(false);
   const [
     profileScalarValidationAttempted,
     setProfileScalarValidationAttempted,
   ] = useState(false);
-  const profileDraftRef = useLatestCommitted(profileDraft);
   const profileBaseline = useRef(profileDraft);
   const pendingSavedProfile = useRef<
     { readonly id: string; readonly label: string } | undefined
@@ -124,7 +119,6 @@ export function useWorkspaceProfileDraft({
     ? validateProfileScalars(profileDraft)
     : EMPTY_PROFILE_SCALAR_ERRORS;
   const profileDirty =
-    creatingProfile ||
     JSON.stringify(profileDraft) !== JSON.stringify(profileBaseline.current);
 
   useEffect(() => {
@@ -138,16 +132,11 @@ export function useWorkspaceProfileDraft({
         return;
       pendingSavedProfile.current = undefined;
     }
-    if (
-      creatingProfile ||
-      dashboard.profile.id === profileDraft.id ||
-      profileDirty
-    )
-      return;
+    if (dashboard.profile.id === profileDraft.id || profileDirty) return;
     const next = profileDraftFor(dashboard.profile);
     profileBaseline.current = next;
     setProfileDraft(next);
-  }, [creatingProfile, dashboard, profileDirty, profileDraft.id]);
+  }, [dashboard, profileDirty, profileDraft.id]);
 
   const saveProfile = (): Promise<boolean> => {
     const pending = pendingProfileSave.current;
@@ -165,48 +154,24 @@ export function useWorkspaceProfileDraft({
         setProfileError(normalized.error);
         return false;
       }
-      if (
-        creatingProfile &&
-        profiles.some((profile) => profile.id === normalized.value.id)
-      ) {
-        setProfileError("A profile with this ID already exists.");
-        return false;
-      }
       setSavingProfile(true);
       const draftGeneration = profileDraftGeneration.current;
-      const savingNewProfile = creatingProfile;
       try {
         await requestJson("/v1/profiles", {
-          method: creatingProfile ? "POST" : "PUT",
+          method: "PUT",
           body: normalized.value,
         });
-        if (creatingProfile) {
-          await requestJson("/v1/profiles/select", {
-            method: "POST",
-            body: { id: normalized.value.id },
-          });
-        }
         const next = profileDraftFromNormalized(normalized.value);
         pendingSavedProfile.current = {
           id: normalized.value.id,
           label: normalized.value.label,
         };
+        profileBaseline.current = next;
         if (profileDraftGeneration.current === draftGeneration) {
-          profileBaseline.current = next;
           setProfileDraft(next);
-          setCreatingProfile(false);
           setProfileScalarValidationAttempted(false);
           onProfileDirtyChange?.(false);
-        } else if (
-          savingNewProfile &&
-          profileDraftRef.current.id.trim() !== normalized.value.id
-        ) {
-          profileBaseline.current = profileDraftFor(undefined);
-          setCreatingProfile(true);
-          onProfileDirtyChange?.(true);
         } else {
-          profileBaseline.current = next;
-          setCreatingProfile(false);
           onProfileDirtyChange?.(true);
         }
         await onWorkspaceReload();
@@ -239,7 +204,6 @@ export function useWorkspaceProfileDraft({
   const discardProfileDraft = (): void => {
     const baseline = profileBaseline.current;
     setProfileDraft(baseline);
-    setCreatingProfile(false);
     setProfileError(undefined);
     setProfileScalarValidationAttempted(false);
     onProfileDirtyChange?.(false);
@@ -257,7 +221,6 @@ export function useWorkspaceProfileDraft({
     setProfileScalarValidationAttempted(false);
     const result = await onProfileSwitch(id);
     if (result !== "applied") return;
-    setCreatingProfile(false);
     setProfileError(undefined);
     if (profileDraftGeneration.current !== draftGeneration) return;
     profileBaseline.current = next;
@@ -313,27 +276,9 @@ export function useWorkspaceProfileDraft({
     updateProfileList("workspaceRoots", entryId, selected);
   };
 
-  const beginNewProfile = (): void => {
-    setCreatingProfile(true);
-    setProfileError(undefined);
-    setProfileScalarValidationAttempted(false);
-    const next = profileDraftFor(undefined);
-    profileBaseline.current = next;
-    updateProfileDraft(next);
-  };
-
-  const startNewProfile = (): void => {
-    if (profileDirty) {
-      onProfileSwitchRequest?.(profileDraft.id, beginNewProfile);
-      return;
-    }
-    beginNewProfile();
-  };
-
   return {
     profileDraft,
     updateProfileDraft,
-    creatingProfile,
     profileError,
     profileScalarErrors,
     savingProfile,
@@ -344,7 +289,6 @@ export function useWorkspaceProfileDraft({
     addProfileListEntry,
     removeProfileListEntry,
     chooseWorkspaceRoot,
-    startNewProfile,
   };
 }
 
