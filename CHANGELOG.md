@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.2 - 2026-09-04
+
 - Reworked **Settings → Workspace**: every control now saves on its own — text fields when you leave them or press Enter, the account picker, **Choose folder**, and Remove as soon as you use them — and says **Saving…**, **Saved**, or why it failed right beside itself, so the **Save profile** button, the unsaved state, and the discard question when you close Settings are all gone. The cards are ordered by what setup needs first — **Reviewing as**, **Repositories**, then collapsed **Advanced** (rule paths) and **Workspace** (name, active workspace) — and **New workspace** opens a dialog that asks for a name and an account. The profile ID is no longer shown or typed anywhere: it is derived from the name.
 - Replaced the first-run checklist on **Pull requests** with the setup itself: **Set up your workspace** shows the same **Reviewing as** and **Folders and repositories** cards Settings does, so you confirm the account, choose a folder, and tick the first repository without opening Settings. Ticking that repository is the last step — the pull request list replaces setup on its own.
 - Removed owner filters from the workspace settings and from the stored profile. Nothing read them, and a value saved by an earlier release is ignored and dropped the next time the workspace is saved.
