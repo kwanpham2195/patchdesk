@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +29,7 @@ import {
   type DesktopDouble,
 } from "./fake-desktop-response";
 import {
+  briefInsight,
   projection,
   providerCatalog,
   withAnalysis,
@@ -138,6 +140,44 @@ function walkthroughProjection() {
     },
   });
 }
+
+describe("InsightsSlot overview", () => {
+  it("headlines each card from its retained document", async () => {
+    const user = userEvent.setup();
+    const analysis = withAnalysis("actionable");
+    renderInsights(
+      projection({
+        ...analysis,
+        insights: {
+          ...analysis.insights,
+          brief: briefInsight(),
+          walkthrough: walkthroughProjection().insights.walkthrough,
+        },
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Overview/ }));
+    const overview = within(
+      screen.getByRole("article", { name: "Insight overview" }),
+    );
+    expect(overview.queryByText(/Choose one retained document/)).toBeNull();
+    const [brief, analysisCard, walkthrough] = overview.getAllByRole("button");
+    expect(brief?.textContent).toMatch(
+      /^BriefInsight runCurrent · retained \d+ d ago$/,
+    );
+    expect(analysisCard?.textContent).toMatch(
+      /^AnalysisComment recommended · 1 needs attention · CI passingCurrent · retained \d+ d ago$/,
+    );
+    expect(walkthrough?.textContent).toMatch(
+      /^Walkthrough1 chapter · 1 sectionCurrent · retained \d+ d ago$/,
+    );
+    for (const card of [brief, analysisCard, walkthrough]) {
+      const time = card?.querySelector("time");
+      expect(time?.getAttribute("datetime")).toBe("2026-08-01T00:00:00.000Z");
+      expect(time?.getAttribute("title")).toBeTruthy();
+    }
+  });
+});
 
 describe("InsightsSlot run requests", () => {
   it("marks retained readers as insight results", () => {

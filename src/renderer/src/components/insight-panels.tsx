@@ -6,6 +6,12 @@ import type { InsightFailureCategory } from "../../../domain/insight-record";
 import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import {
+  analysisHeadline,
+  type AnalysisFindingStatus,
+  type CheckStatus,
+} from "../analysis-headline";
+import { RelativeTime } from "./relative-time";
 
 export type InsightSelection = "overview" | InsightRunDialogType;
 export type InsightProjection =
@@ -58,9 +64,6 @@ export function InsightNavRail({
           onClick={() => setSelectedInsight(type)}
           title={INSIGHT_NOUNS[type]}
           status={insightStatusLabel(projection.status)}
-          {...(projection.retained === undefined
-            ? {}
-            : { revision: projection.retained.headSha })}
         />
       ))}
     </nav>
@@ -72,13 +75,11 @@ function InsightRailButton({
   onClick,
   title,
   status,
-  revision,
 }: {
   readonly selected: boolean;
   readonly onClick: () => void;
   readonly title: string;
   readonly status: string;
-  readonly revision?: string;
 }): React.JSX.Element {
   return (
     <button
@@ -88,10 +89,7 @@ function InsightRailButton({
       onClick={onClick}
     >
       <span className="font-medium">{title}</span>
-      <span className="text-xs text-muted-foreground">
-        {status}
-        {revision === undefined ? "" : ` · ${revision.slice(0, 8)}`}
-      </span>
+      <span className="text-xs text-muted-foreground">{status}</span>
     </button>
   );
 }
@@ -101,38 +99,60 @@ export function InsightOverview({
   analysis,
   walkthrough,
   scope,
+  checkStatus,
+  findingStatuses,
   onSelect,
 }: {
-  readonly brief: InsightProjection;
-  readonly analysis: InsightProjection;
-  readonly walkthrough: InsightProjection;
+  readonly brief: BriefInsight;
+  readonly analysis: WorkbenchResponse["insights"]["analysis"];
+  readonly walkthrough: WorkbenchResponse["insights"]["walkthrough"];
   /** Absent when the represented patch bytes were unreadable; see `ReviewWorkbenchProjection.scope`. */
   readonly scope: WorkbenchResponse["scope"];
+  readonly checkStatus: CheckStatus;
+  readonly findingStatuses:
+    | Readonly<Record<string, AnalysisFindingStatus>>
+    | undefined;
   readonly onSelect: (value: "brief" | "analysis" | "walkthrough") => void;
 }): React.JSX.Element {
+  const briefValue = brief.retained?.value;
+  const walkthroughValue = walkthrough.retained?.value;
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-semibold">Insights overview</h2>
-        <p className="text-sm text-muted-foreground">
-          Choose one retained document. Each Insight runs independently.
-        </p>
-      </div>
+      <h2 className="text-lg font-semibold">Insights overview</h2>
       {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <InsightOverviewCard
           name="Brief"
           projection={brief}
+          // A Brief carries structure, not prose (ADR 0040), so its headline
+          // is the Start here lead or, failing that, the first Flow tree.
+          headline={
+            briefValue?.startHere?.lead ?? briefValue?.flow?.trees[0]?.title
+          }
           onSelect={() => onSelect("brief")}
         />
         <InsightOverviewCard
           name="Analysis"
           projection={analysis}
+          headline={
+            analysis.retained === undefined
+              ? undefined
+              : analysisHeadline({
+                  result: analysis.retained.value,
+                  findingStatuses,
+                  checkStatus,
+                })
+          }
           onSelect={() => onSelect("analysis")}
         />
         <InsightOverviewCard
           name="Walkthrough"
           projection={walkthrough}
+          headline={
+            walkthroughValue === undefined
+              ? undefined
+              : walkthroughHeadline(walkthroughValue.chapters)
+          }
           onSelect={() => onSelect("walkthrough")}
         />
       </div>
@@ -140,13 +160,27 @@ export function InsightOverview({
   );
 }
 
+function walkthroughHeadline(
+  chapters: ReadonlyArray<{
+    readonly sections: ReadonlyArray<unknown>;
+  }>,
+): string {
+  const sections = chapters.reduce(
+    (count, chapter) => count + chapter.sections.length,
+    0,
+  );
+  return `${chapters.length} ${chapters.length === 1 ? "chapter" : "chapters"} · ${sections} ${sections === 1 ? "section" : "sections"}`;
+}
+
 function InsightOverviewCard({
   name,
   projection,
+  headline,
   onSelect,
 }: {
   readonly name: string;
   readonly projection: InsightProjection;
+  readonly headline: string | undefined;
   readonly onSelect: () => void;
 }): React.JSX.Element {
   return (
@@ -156,11 +190,19 @@ function InsightOverviewCard({
       onClick={onSelect}
     >
       <p className="font-medium">{name}</p>
-      <p className="mt-1 text-sm text-muted-foreground">
+      {headline === undefined ? null : (
+        <p className="mt-1 line-clamp-2 text-sm">{headline}</p>
+      )}
+      <p className="mt-1 text-xs text-muted-foreground">
         {insightStatusLabel(projection.status)} ·{" "}
-        {projection.retained === undefined
-          ? "No retained result"
-          : "Retained result available"}
+        {projection.retained === undefined ? (
+          "No retained result"
+        ) : (
+          <RelativeTime
+            iso={projection.retained.generatedAt}
+            prefix="retained "
+          />
+        )}
       </p>
     </button>
   );

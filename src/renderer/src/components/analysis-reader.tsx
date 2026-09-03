@@ -1,12 +1,21 @@
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
-import { isAnalysisFindingHandled } from "../../../domain/analysis-merge-findings";
 import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
-import type { WorkbenchResponse } from "../renderer-contracts";
+import {
+  analysisVerdictLabel,
+  checkStatusLabel,
+  unhandledAnalysisFindings,
+  type AnalysisFindingStatus as FindingStatus,
+  type AnalysisResult,
+  type CheckStatus,
+} from "../analysis-headline";
 import { FindingEvidenceHunk } from "./finding-evidence-hunk";
-import { analysisFindingRowId } from "./review-workbench-finding-navigation";
+import {
+  analysisFindingRowId,
+  ReviewWorkbenchFindingNavigationContext,
+} from "./review-workbench-finding-navigation";
 import { GeneratedMarkdown } from "./generated-markdown";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -37,12 +46,7 @@ import {
   PopoverTrigger,
 } from "./ui/popover";
 
-type AnalysisResult = NonNullable<
-  WorkbenchResponse["insights"]["analysis"]["retained"]
->["value"];
 type AnalysisFinding = AnalysisResult["findings"][number];
-type FindingStatus = "actionable" | "pending_review" | "published" | "locked";
-type CheckStatus = WorkbenchResponse["checks"]["overall"];
 type FindingActionState = "adding" | "dismissing";
 
 type SupportingDetail = {
@@ -96,19 +100,22 @@ export function AnalysisReader({
   const [verifiedSteps, setVerifiedSteps] = useState<ReadonlySet<number>>(
     new Set(),
   );
-  // Same handled rule as merge readiness, so the banner and the readiness
-  // card never disagree on how many findings are still open.
-  const unhandledFindings = result.findings.filter((finding) => {
-    const status = findingStatuses?.[finding.id];
-    return !isAnalysisFindingHandled({
-      disposition: finding.disposition === "dismissed" ? "dismissed" : "open",
-      // The contract's "added" disposition names the same state as a receipt.
-      addedToReview:
-        finding.disposition === "added" ||
-        status === "pending_review" ||
-        status === "published",
-    });
-  });
+  const unhandledFindings = unhandledAnalysisFindings(result, findingStatuses);
+  const highSeverityFindings = result.findings.filter(isHighSeverity);
+  const lowerSeverityFindings = result.findings.filter(
+    (finding) => !isHighSeverity(finding),
+  );
+  const [lowerSeverityOpen, setLowerSeverityOpen] = useState(false);
+  // A Diff card pointing at a P2 or P3 finding must find its row mounted, so
+  // the disclosure opens in the same render the focus request arrives.
+  const findingFocusRequest = useContext(
+    ReviewWorkbenchFindingNavigationContext,
+  )?.findingFocusRequest;
+  const lowerSeverityFocused =
+    findingFocusRequest !== undefined &&
+    lowerSeverityFindings.some(
+      (finding) => finding.id === findingFocusRequest.findingId,
+    );
   const hasNoGeneratedFindings = result.findings.length === 0;
   const supportingDetailGroups = supportingDetailsFor(result);
   const supportingDetailCount = supportingDetailGroups.reduce(
@@ -163,6 +170,41 @@ export function AnalysisReader({
       return next;
     });
   };
+  const renderFindingRow = (finding: AnalysisFinding): React.JSX.Element => (
+    <AnalysisFindingRow
+      key={finding.id}
+      finding={finding}
+      status={findingStatuses?.[finding.id]}
+      actionState={findingActions.get(finding.id)}
+      actionError={findingErrors.get(finding.id)}
+      {...(evidencePatch === undefined ? {} : { evidencePatch })}
+      {...(onOpenFindingInDiff === undefined ? {} : { onOpenFindingInDiff })}
+      {...(onAddFinding === undefined
+        ? {}
+        : {
+            onAddFinding: async (value: AnalysisFinding) => {
+              await runFindingAction(value.id, "adding", () =>
+                onAddFinding(value),
+              );
+            },
+          })}
+      {...(onDismissFinding === undefined
+        ? {}
+        : {
+            onDismissFinding: async (
+              value: AnalysisFinding,
+              reason: string,
+            ) => {
+              const succeeded = await runFindingAction(
+                value.id,
+                "dismissing",
+                () => onDismissFinding(value, reason),
+              );
+              if (!succeeded) throw new Error("Finding dismissal failed");
+            },
+          })}
+    />
+  );
 
   return (
     <section
@@ -173,7 +215,7 @@ export function AnalysisReader({
         <CardHeader>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Badge variant={recommendation.variant}>
-              {recommendation.label}
+              {analysisVerdictLabel(result.verdict)}
             </Badge>
             <Badge variant="outline">
               {unhandledFindings.length === 0
@@ -225,44 +267,33 @@ export function AnalysisReader({
             </p>
           </CardContent>
         ) : (
-          <CardContent>
+          <CardContent className="flex flex-col gap-2">
             <ul className="flex flex-col gap-2">
-              {result.findings.map((finding) => (
-                <AnalysisFindingRow
-                  key={finding.id}
-                  finding={finding}
-                  status={findingStatuses?.[finding.id]}
-                  actionState={findingActions.get(finding.id)}
-                  actionError={findingErrors.get(finding.id)}
-                  {...(evidencePatch === undefined ? {} : { evidencePatch })}
-                  {...(onOpenFindingInDiff === undefined
-                    ? {}
-                    : { onOpenFindingInDiff })}
-                  {...(onAddFinding === undefined
-                    ? {}
-                    : {
-                        onAddFinding: async (value) => {
-                          await runFindingAction(value.id, "adding", () =>
-                            onAddFinding(value),
-                          );
-                        },
-                      })}
-                  {...(onDismissFinding === undefined
-                    ? {}
-                    : {
-                        onDismissFinding: async (value, reason) => {
-                          const succeeded = await runFindingAction(
-                            value.id,
-                            "dismissing",
-                            () => onDismissFinding(value, reason),
-                          );
-                          if (!succeeded)
-                            throw new Error("Finding dismissal failed");
-                        },
-                      })}
-                />
-              ))}
+              {(lowerSeverityFindings.length === 0 ||
+              highSeverityFindings.length === 0
+                ? result.findings
+                : highSeverityFindings
+              ).map(renderFindingRow)}
             </ul>
+            {lowerSeverityFindings.length === 0 ||
+            highSeverityFindings.length === 0 ? null : (
+              <Collapsible
+                open={lowerSeverityOpen || lowerSeverityFocused}
+                onOpenChange={setLowerSeverityOpen}
+              >
+                <CollapsibleTrigger
+                  render={<Button size="xs" variant="ghost" />}
+                >
+                  Lower severity ({lowerSeverityFindings.length})
+                  <ChevronDownIcon data-icon="inline-end" />
+                </CollapsibleTrigger>
+                <CollapsibleContent motion="disclosure">
+                  <ul className="flex flex-col gap-2 pt-2">
+                    {lowerSeverityFindings.map(renderFindingRow)}
+                  </ul>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
           </CardContent>
         )}
       </Card>
@@ -445,6 +476,13 @@ function AnalysisFindingRow({
               reviewStatus === "published" || reviewStatus === "pending_review"
                 ? "secondary"
                 : "outline"
+            }
+            // A state, not an action: no border, so it cannot pass for a
+            // button beside Add to review and Dismiss.
+            className={
+              reviewStatus === "actionable"
+                ? "border-transparent bg-muted text-muted-foreground"
+                : undefined
             }
           >
             {reviewStatus.replaceAll("_", " ")}
@@ -695,8 +733,11 @@ function significantTokens(value: string): ReadonlySet<string> {
   );
 }
 
+function isHighSeverity(finding: AnalysisFinding): boolean {
+  return finding.severity === "P0" || finding.severity === "P1";
+}
+
 type VerdictPresentation = {
-  readonly label: string;
   readonly heading: string;
   readonly variant: "secondary" | "default" | "destructive";
 };
@@ -707,36 +748,18 @@ function recommendationFor(
   switch (verdict) {
     case "approve":
       return {
-        label: "Ready to approve",
         heading: "The change is ready for your final review.",
         variant: "secondary",
       };
     case "request_changes":
       return {
-        label: "Changes requested",
         heading: "Resolve the blocking findings before approval.",
         variant: "destructive",
       };
     case "comment":
       return {
-        label: "Comment recommended",
         heading: "Review the highlighted concern before you finish.",
         variant: "default",
       };
-  }
-}
-
-function checkStatusLabel(status: CheckStatus): string {
-  switch (status) {
-    case "passing":
-      return "Passing";
-    case "failing":
-      return "Failing";
-    case "pending":
-      return "Pending";
-    case "skipped":
-      return "Skipped";
-    case "unknown":
-      return "Unknown";
   }
 }

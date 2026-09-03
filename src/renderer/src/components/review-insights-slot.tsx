@@ -30,17 +30,9 @@ import { useInsightRunControls } from "../hooks/use-insight-run-controls";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { AnalysisFinding } from "../flows/use-analysis-review-actions";
 import type { ReviewWorkbenchPatch } from "../flows/use-review-observation";
-
-const insightTimestampFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-function formatInsightTimestamp(value: string): string {
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  return insightTimestampFormatter.format(timestamp);
-}
+import { analysisFindingStatuses } from "../analysis-headline";
+import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
+import { RelativeTime } from "./relative-time";
 
 function insightRequestFailureMessage(
   insightName: string,
@@ -58,20 +50,25 @@ function InsightDocumentIdentity({
   retained,
   selectedInsight,
   selectedIsOutdated,
-  currentRevision,
   walkthroughTitle,
 }: {
   readonly retained:
     | Readonly<{
-        headSha: string;
         generatedAt: string;
+        provenance?:
+          | Readonly<{ provider: "pi" | "codex-cli-account"; model: string }>
+          | undefined;
       }>
     | undefined;
   readonly selectedInsight: InsightSelection;
   readonly selectedIsOutdated: boolean;
-  readonly currentRevision: string;
   readonly walkthroughTitle: string | undefined;
 }): React.JSX.Element {
+  // The Brief draws its own Provenance card, so only the other readers state
+  // the provider and model here; the revision itself is named once, in the
+  // workbench header.
+  const provenance =
+    selectedInsight === "brief" ? undefined : retained?.provenance;
   return (
     <div className="min-w-0">
       {selectedInsight === "analysis" ? null : (
@@ -87,11 +84,17 @@ function InsightDocumentIdentity({
         </>
       )}
       <p className="truncate text-sm text-muted-foreground">
-        {retained === undefined
-          ? "No retained result for this revision."
-          : selectedIsOutdated
-            ? `Retained revision ${retained.headSha.slice(0, 8)} · current revision ${currentRevision.slice(0, 8)} · ${formatInsightTimestamp(retained.generatedAt)}`
-            : `Retained from ${retained.headSha.slice(0, 8)} · ${formatInsightTimestamp(retained.generatedAt)}`}
+        {retained === undefined ? (
+          "No retained result for this revision."
+        ) : (
+          <>
+            {selectedIsOutdated ? "Outdated" : "Current"} ·{" "}
+            <RelativeTime iso={retained.generatedAt} prefix="retained " />
+            {provenance === undefined
+              ? null
+              : ` · ${INSIGHT_PROVIDER_LABELS[provenance.provider]} · ${provenance.model}`}
+          </>
+        )}
       </p>
     </div>
   );
@@ -307,6 +310,10 @@ export function InsightsSlot({
               analysis={workbench.insights.analysis}
               walkthrough={workbench.insights.walkthrough}
               scope={workbench.scope}
+              checkStatus={workbench.checks.overall}
+              findingStatuses={analysisFindingStatuses(
+                workbench.analysisReviewActions,
+              )}
               onSelect={setSelectedInsight}
             />
           ) : (
@@ -317,7 +324,6 @@ export function InsightsSlot({
                     retained={selectedRetained}
                     selectedInsight={selectedInsight}
                     selectedIsOutdated={selectedIsOutdated}
-                    currentRevision={currentRevision}
                     walkthroughTitle={
                       workbench.insights.walkthrough.retained?.value.title
                     }

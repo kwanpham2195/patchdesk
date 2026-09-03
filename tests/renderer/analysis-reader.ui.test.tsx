@@ -96,6 +96,46 @@ describe("AnalysisReader", () => {
     ).toBeTruthy();
   });
 
+  it("collapses P2 and P3 findings under a disclosure the keyboard can open", async () => {
+    const user = userEvent.setup();
+    const lower = {
+      ...findingFixture,
+      id: "finding-p2",
+      severity: "P2" as const,
+      title: "Minor naming nit",
+    };
+    render(
+      <AnalysisReader
+        result={{ ...result, findings: [findingFixture, lower] }}
+      />,
+    );
+
+    expect(screen.getByText(findingFixture.title)).toBeTruthy();
+    expect(screen.queryByText(lower.title)).toBeNull();
+    const disclosure = screen.getByRole("button", {
+      name: "Lower severity (1)",
+    });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+
+    disclosure.focus();
+    await user.keyboard("{Enter}");
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText(lower.title)).toBeTruthy();
+  });
+
+  it("keeps a list of only lower severities expanded", () => {
+    render(
+      <AnalysisReader
+        result={{
+          ...result,
+          findings: [{ ...findingFixture, severity: "P3" }],
+        }}
+      />,
+    );
+    expect(screen.getByText(findingFixture.title)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Lower severity/ })).toBeNull();
+  });
+
   it("offers Open in diff only for a mapped Finding and hands back that Finding", async () => {
     const user = userEvent.setup();
     const onOpenFindingInDiff = vi.fn();

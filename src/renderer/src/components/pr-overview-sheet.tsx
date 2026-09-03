@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ExternalLink,
+  FileText,
   GitMerge,
   Info,
   Sparkles,
@@ -27,6 +28,7 @@ import {
   type MergeCommandResult,
   type MergeMethod,
 } from "./compact-merge-command";
+import { RelativeTime } from "./relative-time";
 import { ReviewChecks, presentOverallCheckResult } from "./review-checks";
 import { Button } from "@/components/ui/button";
 import {
@@ -100,6 +102,7 @@ export type CanonicalReviewOverview = {
     readonly fileCount?: number;
   };
   readonly insights: {
+    readonly brief: ReviewInsightState;
     readonly analysis: ReviewInsightState;
     readonly walkthrough: ReviewInsightState;
   };
@@ -207,6 +210,12 @@ export function CanonicalReviewOverviewSheet({
           </OverviewRow>
           <Separator />
           <OverviewRow title="Review status" defaultOpen>
+            <StatusRow
+              icon={<FileText className="size-3.5" />}
+              title="Brief"
+              text={insightStatusLabel(overview.insights.brief.status)}
+              tone={insightTone(overview.insights.brief.status)}
+            />
             <StatusRow
               icon={<Sparkles className="size-3.5" />}
               title="Analysis"
@@ -326,23 +335,27 @@ function RevisionDetails({
           {revision.headBranch ?? "unknown"}
         </p>
       )}
-      <p>
-        Reviewed{" "}
-        <code className="break-all">
-          {revision.reviewedHeadSha.slice(0, 8)}
-        </code>
-      </p>
       {revision.currentHeadSha === undefined ||
       revision.currentHeadSha === revision.reviewedHeadSha ? null : (
-        <p>
-          Current{" "}
-          <code className="break-all">
-            {revision.currentHeadSha.slice(0, 8)}
-          </code>
-        </p>
+        // The workbench header already names the reviewed revision; the pair
+        // is only worth repeating once a newer head exists to compare it to.
+        <>
+          <p>
+            Reviewed{" "}
+            <code className="break-all">
+              {revision.reviewedHeadSha.slice(0, 8)}
+            </code>
+          </p>
+          <p>
+            Current{" "}
+            <code className="break-all">
+              {revision.currentHeadSha.slice(0, 8)}
+            </code>
+          </p>
+        </>
       )}
       <p className="text-xs text-muted-foreground">
-        Refreshed {revision.refreshedAt}
+        Refreshed <RelativeTime iso={revision.refreshedAt} />
       </p>
       {counts.length === 0 ? null : (
         <p className="text-xs text-muted-foreground">{counts.join(" · ")}</p>
@@ -405,9 +418,19 @@ function MergeReadinessDetail({
           reason.openOnGitHub &&
           index === firstOpenOnGitHubIndex &&
           pullRequest !== undefined;
+        // GitHub only says a review is outstanding; whether an approval
+        // already exists is not readable here, so the card says so in one
+        // sentence instead of a message plus a "could not confirm" caption.
+        const unconfirmedApproval =
+          !isConfirmed && reason.code === "review_required";
+        const message = unconfirmedApproval
+          ? "GitHub requires an approval. Patchdesk cannot see whether one exists; check on GitHub."
+          : reason.message;
         const caption = isConfirmed
           ? reasonSourceLabel(reason.source)
-          : `Patchdesk could not confirm this rule · ${reasonSourceLabel(reason.source)}`;
+          : unconfirmedApproval
+            ? undefined
+            : `Patchdesk could not confirm this rule · ${reasonSourceLabel(reason.source)}`;
         return (
           <div
             key={`${reason.code}-${reason.source}-${reason.message}`}
@@ -419,9 +442,11 @@ function MergeReadinessDetail({
           >
             <div className="flex items-start gap-2">
               <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span className="min-w-0">{reason.message}</span>
+              <span className="min-w-0">{message}</span>
             </div>
-            <p className="pl-6 text-xs opacity-80">{caption}</p>
+            {caption === undefined ? null : (
+              <p className="pl-6 text-xs opacity-80">{caption}</p>
+            )}
             {showOpenOnGitHub ? (
               <div className="pl-6">
                 <Button

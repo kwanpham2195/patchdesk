@@ -15,6 +15,7 @@ import {
 import type { WorkbenchResponse } from "../renderer-contracts";
 import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
+import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -154,8 +155,8 @@ export function ReviewWorkbenchHeader({
         >
           {repository} · {model.pullRequest?.baseBranch ?? "unknown"} ←{" "}
           {model.pullRequest?.headBranch ?? "unknown"} ·{" "}
-          {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·
-          refreshed {model.revision.refreshedAt}
+          {model.revision.reviewedHeadSha.slice(0, 8)} · {freshnessLabel} ·{" "}
+          <RelativeTime iso={model.revision.refreshedAt} prefix="refreshed " />
           {hasUpdates ? (
             <span
               className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-status-warning/50 bg-status-warning/10 px-2 py-0.5 font-medium text-status-warning"
