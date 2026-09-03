@@ -143,8 +143,10 @@ test("Pierre controls persist and navigator collapses", async ({ page }) => {
     const diff = page.getByRole("region", { name: "Review diff" });
     const hideNavigatorButton = '[aria-label="Hide review navigator"]';
 
-    await page.getByRole("button", { name: "Split", exact: true }).click();
-    await page.getByRole("button", { name: "Wrap", exact: true }).click();
+    await page.getByRole("button", { name: "View options" }).click();
+    await page.getByRole("switch", { name: "Split view" }).click();
+    await page.getByRole("switch", { name: "Wrap lines" }).click();
+    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Selected", exact: true }).click();
     await page.locator(`header ${hideNavigatorButton}`).click();
 
@@ -1141,7 +1143,9 @@ test("Pierre headers retain per-file totals while the navigator stays compact", 
     await expect(headerStats).toHaveAttribute("data-additions", "48");
     await expect(headerStats).toHaveAttribute("data-deletions", "48");
 
-    await page.getByRole("button", { name: "Split", exact: true }).click();
+    await page.getByRole("button", { name: "View options" }).click();
+    await page.getByRole("switch", { name: "Split view" }).click();
+    await page.keyboard.press("Escape");
     await expect(headerStats).toHaveAttribute("data-additions", "48");
     await expect(headerStats).toHaveAttribute("data-deletions", "48");
 
@@ -1167,7 +1171,9 @@ test("Review diff region reflects unified/split toggle via data-diff-style", asy
 
     await expect(diff).toHaveAttribute("data-diff-style", "unified");
 
-    await page.getByRole("button", { name: "Split", exact: true }).click();
+    await page.getByRole("button", { name: "View options" }).click();
+    await page.getByRole("switch", { name: "Split view" }).click();
+    await page.keyboard.press("Escape");
     await expect(diff).toHaveAttribute("data-diff-style", "split");
   } finally {
     await closeServer(server);
