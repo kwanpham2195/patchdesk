@@ -45,7 +45,7 @@ export type AccountEditor = {
 
 type AccountField = "ghAccount" | "githubHost";
 
-type ReviewingAsProbeHook = {
+export type ReviewingAsProbeHook = {
   readonly reviewingAs: ApiProbeState<EnvironmentCheckResponse>;
   readonly recheck: () => void;
 };

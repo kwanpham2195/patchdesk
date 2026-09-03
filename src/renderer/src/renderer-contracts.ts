@@ -211,28 +211,12 @@ export type EnvironmentCheckResponse = v.InferOutput<
 export type GithubAuthAccount =
   EnvironmentCheckResponse["githubAccounts"][number];
 
-/** Parses the local API's local-tool/auth environment check for the setup checklist. */
+/** Parses the local API's local-tool/auth environment check. */
 export function parseEnvironmentCheckResponse(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
   input: unknown,
 ): EnvironmentCheckResponse | undefined {
   const parsed = v.safeParse(environmentCheckResponseSchema, input);
-  return parsed.success ? parsed.output : undefined;
-}
-const githubAccessCheckResponseSchema = v.strictObject({
-  state: v.picklist(["available", "github_auth"]),
-});
-
-export type GitHubAccessCheckResponse = v.InferOutput<
-  typeof githubAccessCheckResponseSchema
->;
-
-/** Parses the local API's GitHub access check for the setup checklist. */
-export function parseGitHubAccessCheckResponse(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
-  input: unknown,
-): GitHubAccessCheckResponse | undefined {
-  const parsed = v.safeParse(githubAccessCheckResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
 // `GET /v1/reviews/labels` is a local-API payload Patchdesk owns on both

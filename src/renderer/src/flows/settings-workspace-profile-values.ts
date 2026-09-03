@@ -73,8 +73,12 @@ export function scalarsFor(values: ProfileValues): ProfileScalars {
 }
 
 export function rowsFor(values: ProfileValues): ProfileRows {
+  const roots = values.workspaceRoots.map(profileListEntry);
   return {
-    workspaceRoots: values.workspaceRoots.map(profileListEntry),
+    // A workspace with no folder still needs the row that carries "Choose
+    // folder" — otherwise its only affordance is "Add folder", and the
+    // first-root prompt this blank row exists for could never render.
+    workspaceRoots: roots.length === 0 ? [profileListEntry("")] : roots,
     rulePaths: values.rulePaths.map(profileListEntry),
   };
 }

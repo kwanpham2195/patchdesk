@@ -1,25 +1,12 @@
-import { Plus, FolderOpen, X, ChevronDown } from "lucide-react";
+import { Plus, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import {
-  flattenDiscoveredRepositories,
-  type WorkspaceRootDiscovery,
-} from "../workspace-root-discovery-contract";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import {
   Field,
-  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "../components/ui/field";
 import {
   Collapsible,
@@ -33,11 +20,6 @@ import type {
   ProfileSwitchState,
 } from "../hooks/use-profile-switch";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
-import {
   Select,
   SelectContent,
   SelectGroup,
@@ -45,43 +27,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import {
-  repositoryKey,
-  type Dashboard,
-  type Profile,
-  type Repo,
-} from "../renderer-models";
-import {
-  groupWatchlistEntries,
-  mergeWatchlistEntries,
-  RepositoryChecklist,
-  useWatchlistToggle,
-  WatchedOutsideRootsSection,
-  WatchlistToggleStatus,
-  type WatchlistEntry,
-} from "./settings-workspace-repositories";
+import type { Dashboard, Profile } from "../renderer-models";
 import {
   useWorkspaceProfileEditor,
   type FieldStatus,
 } from "./settings-workspace-profile-editor";
-import type {
-  ProfileListEntry,
-  ProfileListField,
-} from "./settings-workspace-profile-values";
 import { FieldSaveStatus } from "./settings-workspace-field-status";
-import {
-  ReviewingAsPanel,
-  useReviewingAsProbe,
-} from "./settings-workspace-reviewing-as";
+import { useReviewingAsProbe } from "./settings-workspace-reviewing-as";
+import { ReviewingAsCard, RepositoriesCard } from "./settings-workspace-cards";
+import { ProfileListEditor } from "./settings-workspace-list-editor";
 import { CreateWorkspaceDialog } from "./settings-workspace-create-dialog";
-import {
-  EMPTY_ENTRIES,
-  EMPTY_ROOTS,
-  useWorkspaceRootDiscovery,
-  WorkspaceRootDiscoveryStatus,
-  workspaceRootDiscoveryStatus,
-  type RootDiscoveryStatus,
-} from "./settings-workspace-root-discovery";
 
 type WorkspaceProfileSectionProps = {
   readonly dashboard: Dashboard | undefined;
@@ -119,159 +74,25 @@ export function WorkspaceProfileSection({
   // and keeps its `GET /v1/environment` probe off until the user asks for it.
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const { reviewingAs, recheck } = useReviewingAsProbe(
+  const probe = useReviewingAsProbe(
     editor.scalars.ghAccount,
     editor.selectAccount,
   );
 
-  const rootDiscovery = useWorkspaceRootDiscovery(dashboard?.profile);
-  const savedRepos = dashboard?.profile.repos ?? EMPTY_REPOS;
-  const savedRoots = dashboard?.profile.workspaceRoots ?? EMPTY_ROOTS;
-  const discoveries =
-    rootDiscovery.kind === "loaded" ? rootDiscovery.value : EMPTY_DISCOVERED;
-  const discoveredRepos = flattenDiscoveredRepositories(discoveries);
-  // The single merge and the single grouping of discovered + watched
-  // repositories for this render — replaces what used to be two independent
-  // fetch/group pipelines (this hook's own and `WatchlistPanel`'s).
-  const watchlistEntries = mergeWatchlistEntries(discoveredRepos, savedRepos);
-  const { byRoot, other } = groupWatchlistEntries(watchlistEntries, savedRoots);
-  const watchedKeys = new Set(savedRepos.map((repo) => repositoryKey(repo)));
-  const isWatched = (entry: WatchlistEntry): boolean =>
-    watchedKeys.has(repositoryKey(entry));
-  const watchlistToggle = useWatchlistToggle(onWorkspaceReload);
-  const handleToggle = (
-    entry: WatchlistEntry,
-    currentlyWatched: boolean,
-  ): void => {
-    void watchlistToggle.toggleRepo(entry, currentlyWatched);
-  };
-  // The one-line folder prompt belongs to a workspace that has never had a
-  // root: any persisted root, or anything typed into the row, answers it.
-  const rootRows = editor.rows.workspaceRoots;
-  const firstRootRow = rootRows[0];
-  const needsFirstRoot =
-    editor.persisted.workspaceRoots.length === 0 &&
-    rootRows.length === 1 &&
-    firstRootRow !== undefined &&
-    firstRootRow.value.trim() === "";
   // A switch the user is waiting on, or one that failed, reports itself
   // inside the Workspace card — which must therefore be open to be read.
   const workspaceSwitchVisible =
     profileSwitchState?.pendingOwner === "settings" ||
     profileSwitchState?.error?.owner === "settings";
-  const rootDiscoveryStatus = (root: string): RootDiscoveryStatus =>
-    workspaceRootDiscoveryStatus(
-      root,
-      dashboard?.profile,
-      rootDiscovery,
-      byRoot,
-      isWatched,
-    );
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Reviewing as</CardTitle>
-          <CardDescription>
-            The GitHub account Patchdesk uses to find and review pull requests,
-            resolved from the GitHub CLI.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ReviewingAsPanel
-            state={reviewingAs}
-            account={{
-              ghAccount: editor.scalars.ghAccount,
-              githubHost: editor.scalars.githubHost,
-              accountStatus: editor.status.ghAccount,
-              hostStatus: editor.status.githubHost,
-              onEdit: editor.editScalar,
-              onCommit: editor.commitScalar,
-              onSelectAccount: editor.selectAccount,
-            }}
-            onRecheck={recheck}
-          />
-        </CardContent>
-      </Card>
-      <section
-        aria-labelledby="workspace-repositories-title"
-        data-testid="workspace-repositories"
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle id="workspace-repositories-title">
-              Repositories
-            </CardTitle>
-            <CardDescription>
-              Folders Patchdesk scans for git checkouts with GitHub remotes.
-              Tick the repositories to review.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-5">
-            <WatchlistToggleStatus feedback={watchlistToggle.feedback} />
-            <ProfileListEditor
-              label="Folders"
-              itemLabel="Folder"
-              field="workspaceRoots"
-              {...(needsFirstRoot
-                ? {
-                    description:
-                      "Choose a folder that holds your git checkouts.",
-                  }
-                : {})}
-              entries={editor.rows.workspaceRoots}
-              placeholder="/absolute/workspace/path"
-              status={editor.status.workspaceRoots}
-              onChange={editor.editListEntry}
-              onCommit={editor.commitList}
-              onAdd={editor.addListEntry}
-              onRemove={editor.removeListEntry}
-              onChoose={(entryId) => {
-                void editor.chooseWorkspaceRoot(entryId);
-              }}
-              renderStatus={(value) => {
-                const status = rootDiscoveryStatus(value);
-                const trimmedRoot = value.trim();
-                const rootEntries = byRoot.get(trimmedRoot) ?? EMPTY_ENTRIES;
-                const visibleEntries =
-                  status.kind === "error"
-                    ? rootEntries.filter(isWatched)
-                    : rootEntries;
-                const showsChecklist =
-                  status.kind === "found" ||
-                  (status.kind === "error" && visibleEntries.length > 0);
-                return (
-                  <div className="flex flex-col gap-2">
-                    <WorkspaceRootDiscoveryStatus status={status} />
-                    {showsChecklist ? (
-                      <RepositoryChecklist
-                        entries={visibleEntries}
-                        isWatched={isWatched}
-                        pendingKeys={watchlistToggle.pendingKeys}
-                        errorsByKey={watchlistToggle.errorsByKey}
-                        draftWatchedByKey={watchlistToggle.draftWatchedByKey}
-                        onToggle={handleToggle}
-                        ariaLabel={`Repositories under ${trimmedRoot}`}
-                      />
-                    ) : null}
-                  </div>
-                );
-              }}
-            />
-            {other.length === 0 ? null : (
-              <WatchedOutsideRootsSection
-                entries={other}
-                isWatched={isWatched}
-                pendingKeys={watchlistToggle.pendingKeys}
-                errorsByKey={watchlistToggle.errorsByKey}
-                draftWatchedByKey={watchlistToggle.draftWatchedByKey}
-                onToggle={handleToggle}
-              />
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      <ReviewingAsCard editor={editor} probe={probe} />
+      <RepositoriesCard
+        editor={editor}
+        dashboard={dashboard}
+        onWorkspaceReload={onWorkspaceReload}
+      />
       <DisclosureCard
         title="Advanced"
         openWhen={editor.persisted.rulePaths.length > 0}
@@ -459,114 +280,5 @@ function WorkspaceNameField({
         <FieldSaveStatus status={status} />
       </div>
     </Field>
-  );
-}
-
-const EMPTY_REPOS: ReadonlyArray<Repo> = [];
-const EMPTY_DISCOVERED: ReadonlyArray<WorkspaceRootDiscovery> = [];
-
-function ProfileListEditor({
-  label,
-  itemLabel,
-  description,
-  field,
-  entries,
-  placeholder,
-  status,
-  onChange,
-  onCommit,
-  onAdd,
-  onRemove,
-  onChoose,
-  renderStatus,
-}: {
-  readonly label: string;
-  /** What one row is called, capitalised: names each row and its buttons. */
-  readonly itemLabel: string;
-  readonly description?: string;
-  readonly field: ProfileListField;
-  readonly entries: ReadonlyArray<ProfileListEntry>;
-  readonly placeholder: string;
-  readonly status: FieldStatus;
-  readonly onChange: (
-    field: ProfileListField,
-    entryId: string,
-    value: string,
-  ) => void;
-  readonly onCommit: (field: ProfileListField) => void;
-  readonly onAdd: (field: ProfileListField) => void;
-  readonly onRemove: (field: ProfileListField, entryId: string) => void;
-  readonly onChoose?: (entryId: string) => void;
-  readonly renderStatus?: (value: string) => React.ReactNode;
-}): React.JSX.Element {
-  const singular = itemLabel.toLowerCase();
-  return (
-    <FieldSet className="gap-2">
-      <FieldLegend variant="label">{label}</FieldLegend>
-      {description === undefined ? null : (
-        <FieldDescription>{description}</FieldDescription>
-      )}
-      <div className="flex flex-col gap-2 rounded-lg border p-2">
-        {entries.map((entry, index) => (
-          <div key={entry.id} className="flex flex-col gap-1.5">
-            <div className="flex min-w-0 items-center gap-2">
-              <Input
-                aria-label={`${itemLabel} ${index + 1}`}
-                value={entry.value}
-                placeholder={placeholder}
-                onChange={(event) =>
-                  onChange(field, entry.id, event.target.value)
-                }
-                onBlur={() => onCommit(field)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") onCommit(field);
-                }}
-              />
-              {onChoose === undefined ? null : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onChoose(entry.id)}
-                >
-                  <FolderOpen data-icon="inline-start" />
-                  Choose folder
-                </Button>
-              )}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="outline"
-                      aria-label={`Remove ${singular} ${index + 1}`}
-                      onClick={() => onRemove(field, entry.id)}
-                    />
-                  }
-                >
-                  <X />
-                </TooltipTrigger>
-                <TooltipContent>{`Remove ${singular}`}</TooltipContent>
-              </Tooltip>
-            </div>
-            {renderStatus === undefined || entry.value.trim() === ""
-              ? null
-              : renderStatus(entry.value)}
-          </div>
-        ))}
-      </div>
-      <FieldSaveStatus status={status} />
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={() => onAdd(field)}
-        className="w-fit"
-      >
-        <Plus data-icon="inline-start" />
-        {`Add ${singular}`}
-      </Button>
-    </FieldSet>
   );
 }
