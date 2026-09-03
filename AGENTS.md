@@ -42,7 +42,14 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, never kills a process it did not start, and asks before restarting 9233. `pnpm cdp:ready` checks the port: run it before claiming anything about the running app, before reporting, and before delegating a live-verification slice.
 - Package only when asked, when the change is packaging-specific, or when distribution proof is required. A packaged app is evidence only for the commit it was built from.
 - Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use a low-cost model such as `gpt-5.6-luna` on the Codex CLI account provider, not `gpt-5.6-sol`; pick it in the run dialog rather than changing the maintainer's stored preference.
-- Subagent models: exploration and research on `sonnet` (Claude Code) or `gpt-5.6-luna` (Pi); implementation on Fable at low reasoning effort, which on Claude Code is the `implementer` agent definition (`model: fable`, low effort, in `~/.claude/agents/`; when a session does not list it, pass `model: fable` to the Agent tool instead) and on Pi `gpt-5.6-terra`; reviews on `fable` at default effort. Never `gpt-5.6-sol`. Names drift; the split is the rule.
+- Subagent models by role, for Claude Code. Names drift; the split is the rule.
+
+  | Role | Model |
+  | --- | --- |
+  | Exploration and research | `sonnet` |
+  | Implementation | `implementer` agent (Opus, low effort, in `~/.claude/agents/`; pass `model: opus` to the Agent tool when a session does not list it) |
+  | Review | `fable`, default effort |
+
 - An audit or inventory ships with a disposition per finding: fix now, a named follow-up, or an evidence-backed rejection.
 - A remediation program pins its metric to one exact command in its plan file; every progress report reruns it.
 
@@ -128,6 +135,7 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 - `agent-browser`: live browser or Electron verification over CDP.
 - `herdr`: dev servers, log tails, watchers, and named panes.
 - `github`: GitHub issues, pull requests, reviews, CI, or releases. Use its more specific leaf skill when applicable.
+- `issue`: every bug, request, decision, or idea worth tracking becomes an issue through this skill, and triage runs through it too, unless the user says not to.
 - `librarian`: caching or consulting an upstream repository or dependency source.
 - `update-changelog`: before editing a changelog.
 
