@@ -136,6 +136,7 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 - `herdr`: dev servers, log tails, watchers, and named panes.
 - `github`: GitHub issues, pull requests, reviews, CI, or releases. Use its more specific leaf skill when applicable.
 - `issue`: every bug, request, decision, or idea worth tracking becomes an issue through this skill, and triage runs through it too, unless the user says not to.
+- `product-description`: a user-visible behaviour change updates its page under `docs/product-description/`; a new page, checklist, or triage entry follows the skill's "Resuming and extending an existing repo" steps. Read that folder's README.md and goal.md before writing.
 - `librarian`: caching or consulting an upstream repository or dependency source.
 - `update-changelog`: before editing a changelog.
 
