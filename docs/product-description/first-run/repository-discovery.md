@@ -2,11 +2,11 @@
 
 ## Summary
 
-Repository discovery scans the saved workspace roots for local Git checkouts with a supported remote, then shows the resulting candidates in Settings → Workspace. It helps the maintainer build a watchlist without typing repository identity by hand. Discovery is read-only; a candidate becomes watched only when the maintainer checks its row.
+Repository discovery scans the saved workspace roots for local Git checkouts with a supported remote, then shows the resulting candidates in the Repositories card, which Settings → Workspace and the Pull requests setup flow both render. It helps the maintainer build a watchlist without typing repository identity by hand. Discovery is read-only; a candidate becomes watched only when the maintainer checks its row.
 
 ## The simple case
 
-The maintainer opens Settings → Workspace and enters or chooses a folder under Workspace roots. A saved root shows a scan status. Patchdesk finds repositories below that root and lists each repository's owner/name and local checkout path. The root summary reports how many repositories were found and how many are already watched.
+The maintainer opens Settings → Workspace and enters or chooses a folder under `Folders`. The folder is saved as soon as it has a value, and a saved root shows a scan status. Patchdesk finds repositories below that root and lists each repository's owner/name and local checkout path. The root summary reports how many repositories were found and how many are already watched.
 
 The maintainer checks an unwatched row. Patchdesk saves the repository identity and local path to the active profile, shows row-local pending feedback, and reloads the workspace. The repository remains selected in the watchlist on the next scan. Unchecking a watched row removes it without changing the profile's other fields.
 
@@ -14,9 +14,8 @@ The maintainer checks an unwatched row. Patchdesk saves the repository identity 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> unsaved : type or choose a new root
-    unsaved --> saved : save profile and reload
-    saved --> scanning : saved root is loaded
+    [*] --> saved : type or choose a root (commits on its own)
+    saved --> scanning : the reloaded workspace carries the root
     scanning --> candidates : scan settles
     candidates --> updating : check or uncheck repository
     updating --> candidates : watchlist mutation settles
@@ -26,19 +25,19 @@ stateDiagram-v2
 
 ### Arrive
 
-The Workspace settings section is reached from the titlebar, Navigate, the native Settings menu, or the first-run card. It shows the current profile's Reviewing as identity, profile fields, and Workspace scope. Workspace roots and rule paths are editable list fields; root rows also have a Choose folder control.
+The Workspace settings section is reached from the titlebar, Navigate, or the native Settings menu; the same cards also render on Pull requests while the workspace watches nothing. Reviewing as names the account, and the Repositories card holds the folder rows under `Folders`, each with a Choose folder control. Rule paths live in the Advanced disclosure.
 
-Discovery starts from the saved profile, not directly from unsaved text. For each saved root, a checking line says `Scanning for repositories…`. A root that is currently typed but not saved says `Save the profile to scan this folder for repositories.` It does not claim that zero repositories were found.
+Discovery starts from the saved workspace, not from text that has not committed. For each saved root, a checking line says `Scanning for repositories…`. A row whose value has not reached the saved workspace yet shows the same scanning line rather than claiming that zero repositories were found.
 
 ### Leave unchanged
 
-Reading a root's count or opening the repository checklist does not edit the profile. A scan does not add candidates to the watchlist or change the local path of a watched repository. Closing Settings with no dirty profile draft leaves all saved values unchanged.
+Reading a root's count or opening the repository checklist does not edit the profile. A scan does not add candidates to the watchlist or change the local path of a watched repository. Closing Settings leaves every saved value unchanged and asks nothing.
 
-A watched repository that is not returned by the current scan remains visible. It is grouped under `Watched outside current workspace roots` when its recorded local path matches no saved root, including when it has no local path.
+A watched repository that is not returned by the current scan remains visible. It is grouped under `Watched outside these folders` when its recorded local path matches no saved root, including when it has no local path.
 
 ### Begin an action
 
-Saving a new or edited root first validates and writes the complete profile. After the workspace reload returns the saved profile, discovery requests its suggestions. Choosing a folder uses the native macOS folder picker; cancelling it leaves the typed root unchanged.
+A root row commits on blur and on Enter, and a folder chosen through the picker commits at once. The commit validates and writes the whole profile; after the workspace reload returns the saved profile, discovery requests its suggestions. Cancelling the picker leaves the typed root unchanged.
 
 Checking a candidate begins a watchlist add with its host, owner, repository name, and discovered local path. Unchecking a watched row begins a watchlist removal. The checkbox state changes optimistically for that row and its control becomes unavailable while its request is pending.
 
@@ -56,7 +55,7 @@ After a successful scan, every saved root has either a candidate count, an expli
 
 After a successful watchlist add, the row is watched and the Pull requests screen can use that repository. After a successful removal, the row is no longer watched unless it is still returned as an unwatched discovery candidate. Other profile fields and other watched repositories remain intact.
 
-If a saved-profile write fails, the profile draft remains dirty and the error appears as `Profile update failed`; discovery does not run against the unsaved root. If a root scan fails, that saved root says `Repository scan failed` and retains its watched rows with their inspect and remove controls. It shows no unverified discovered candidates. Other ready roots remain usable. A later reload or re-entry can try again.
+If the write fails, the previously saved roots are kept and the reason appears beneath the folder rows; discovery does not run against a root that never reached the workspace. If a root scan fails, that saved root says `Repository scan failed` and retains its watched rows with their inspect and remove controls. It shows no unverified discovered candidates. Other ready roots remain usable. A later reload or re-entry can try again.
 
 ## Variants
 
@@ -66,23 +65,23 @@ If a saved-profile write fails, the profile draft remains dirty and the error ap
 | Pull request and Review state                          | Candidates have no Pull request or Review state yet. A watched row supplies repository scope for later listing.                                        | Adding a repository creates no Review session; removing one does not delete durable Review history.                                              |
 | GitHub permissions and merge readiness                 | Discovery reads local Git metadata and does not require merge permission.                                                                              | Permission and merge readiness have no effect on the local scan or checkbox mutation; later GitHub reads can still fail.                         |
 | Network, local tool, and Insight provider availability | The scan needs the local `find` and `git` commands through Patchdesk. Insight providers are unrelated.                                                 | A command timeout or route failure produces a scan error; an Insight run never starts, and a successful local scan does not prove GitHub access. |
-| Input path: mouse, keyboard, or desktop menu           | Roots can be typed, chosen with the folder picker, or reached through Settings navigation.                                                             | Checkbox and Save actions have the same result regardless of mouse or keyboard input.                                                            |
+| Input path: mouse, keyboard, or desktop menu           | Roots can be typed, chosen with the folder picker, or reached through Settings navigation.                                                             | Checkbox and commit actions have the same result regardless of mouse or keyboard input.                                                          |
 
-Changing a root while its previous scan is visible makes that root unsaved until the profile is saved. The scan does not silently follow the unsaved draft.
+Changing a root replaces its saved value as soon as the row commits, and the previous scan result is replaced by the new root's. The scan never follows text that has not committed.
 
 ## Cancel and interrupt
 
 | Event                                                                                                 | Before the action runs                                                                                                                         | While the action runs                                                                                                                                             |
 | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cancel, Stop, or Escape                                                                               | Cancelling the folder picker makes no profile change. Removing an unsaved root row discards only that draft entry.                             | Discovery has no Stop control. A pending checkbox mutation has no Cancel control; it settles or fails on its own.                                                 |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Clean navigation proceeds. A dirty root or profile draft invokes the normal Save, Discard, or Stay guard.                                      | Changing Settings sections keeps the mounted draft. A profile switch waits for or resolves its own dirty guard and can clear the discovery view after success.    |
-| Start another action or request a refresh                                                             | Adding another root, editing a value, or opening a picker changes only the draft until Save.                                                   | A second scan can supersede the visible result through reload. Different repository rows can mutate concurrently; the same row cannot be submitted twice at once. |
+| Cancel, Stop, or Escape                                                                               | Cancelling the folder picker makes no profile change. Removing a blank row saves nothing, because a blank row was never persisted.             | Discovery has no Stop control. A pending checkbox mutation has no Cancel control; it settles or fails on its own.                                                 |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Navigation proceeds; there is no draft to guard. Text typed into a row and never committed is simply dropped.                                  | Changing Settings sections unmounts the cards. A profile switch takes ownership from a save still in flight and replaces the discovery view after success.        |
+| Start another action or request a refresh                                                             | Adding a row changes nothing until that row has a value; editing a value changes nothing until the row commits.                                | A second scan can supersede the visible result through reload. Different repository rows can mutate concurrently; the same row cannot be submitted twice at once. |
 | GitHub, the network, a local tool, or an Insight provider fails or times out                          | No remote GitHub call is needed to discover a local origin. A missing or unusable local command can make the scan return no usable candidates. | A route/parser failure shows `Could not scan this folder for repositories.` A row mutation failure stays inline and does not roll back other rows.                |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | A clean close keeps saved roots and watchlist. A dirty draft requires a leave decision.                                                        | Scan status and optimistic row state are disposable. A saved mutation may finish before close only if the normal navigation/close guard permits it.               |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Closing keeps the saved roots and watchlist and asks nothing.                                                                                   | Scan status and optimistic row state are disposable. A saved mutation may finish before close only if the normal navigation/close guard permits it.               |
 | The pull request, represented revision, pending review, permission, or other target changes elsewhere | Local discovery does not inspect a pull request or represented revision. Existing Review records are not targets of the scan.                  | A watchlist change can affect the next Pull requests request, but never rewrites a Review's represented revision or pending review.                               |
 | macOS focus, a file or folder picker, or another input path takes control                             | The folder picker returns one selected absolute path or no change. Focus returns to the root row after a normal return.                        | Focus loss does not cancel scanning or a watchlist mutation. The picker cannot select a repository directly; it only changes the root draft.                      |
 
-After a failed scan, the saved root and prior watchlist remain. After a failed row mutation, only that row shows the error and can be tried again. Unsaved roots remain unsaved across the current Settings session until the maintainer saves or discards them.
+After a failed scan, the saved root and prior watchlist remain. After a failed row mutation, only that row shows the error and can be tried again. A root whose save was rejected keeps the previously saved list and reports the reason beneath the rows.
 
 ## Interactions with other systems
 
@@ -98,7 +97,7 @@ After a failed scan, the saved root and prior watchlist remain. After a failed r
 
 **Concurrent operations and locking.** Root scans are bounded concurrently. Repository mutations use per-repository pending guards, while profile/config writes use their own serialization. A slow row does not block a different row.
 
-**Feedback, errors, and diagnostics.** Root rows distinguish unsaved, scanning, found, zero-found, and scan-failed states. Repository mutations show a spinner, success feedback, or an inline error; raw command output is not shown.
+**Feedback, errors, and diagnostics.** Root rows distinguish scanning, found, zero-found, and scan-failed states, and the folder list reports its own `Saving…`, `Saved`, or rejection message. Repository mutations show a spinner, success feedback, or an inline error; raw command output is not shown.
 
 **Preferences, keyboard commands, and desktop integration.** The section is reachable through the shared Settings overlay and supports the native folder picker. The saved profile drives subsequent Pull requests requests after workspace reload.
 
@@ -106,7 +105,7 @@ After a failed scan, the saved root and prior watchlist remain. After a failed r
 
 ## Edge cases
 
-- A new root is not scanned until its profile is saved; an unsaved root explicitly reports that requirement.
+- A new root is scanned as soon as the row commits; there is no state in which a root waits for a separate save.
 - A saved root with no matching candidates reports zero found rather than showing an empty unlabeled checklist.
 - Discovery skips watched repositories from its suggestion response, then merges watched entries back into the UI so they remain visible and checked.
 - A watched repository with no recorded local path appears outside the current roots.
@@ -122,9 +121,9 @@ After a failed scan, the saved root and prior watchlist remain. After a failed r
 ## Open questions and verification
 
 - Live desktop verification is pending; no dev app or CDP pass was run for this document.
-- Confirm the exact folder-picker focus return and whether Save remains focused after a root selection.
+- Confirm the exact folder-picker focus return and where focus lands after a root is saved.
 - Confirm the live desktop presentation and recovery timing when one of several roots fails.
 - Confirm the intended behavior when a watched repository's checkout is moved or its remote origin changes after it was saved.
 - Confirm that an in-flight watchlist mutation is allowed to settle during a Settings close and how the close guard presents that state.
 
-Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`.
+Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`; per-control saving described from `883fad2`.

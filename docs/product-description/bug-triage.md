@@ -28,21 +28,21 @@ Eight distinct defects are fixed after deduplication: one former high-severity w
 - **Severity:** `high`. The action can discard maintainer work with no recovery choice.
 - **Decision needed:** `fix`. Route New profile through the same Dirty-draft guard used by close and profile switching, or make the replacement behavior an explicit product decision with a recoverable confirmation.
 - **Affected documents/checklists:** [`Workspace profile editor`](settings/workspace-profile-editor.md#cancel-and-interrupt), [`SETUP-04`](verification/foundations-and-settings.md#settingsworkspace-profile-editormd).
-- **Status:** fixed by `31284f3`; canonical regression: `tests/renderer/profile-settings.test.tsx`. Post-fix live pass: `SETUP-04` guard offers Cancel and Discard changes, with evidence in `/private/tmp/patchdesk-followup-verification-evidence/followup-b01-guard.png` and `/private/tmp/patchdesk-followup-verification-evidence/followup-b01-discard-new.png`.
+- **Status:** fixed by `31284f3`; canonical regression: `tests/renderer/profile-settings.test.tsx`. Post-fix live pass: `SETUP-04` guard offers Cancel and Discard changes, with evidence in `/private/tmp/patchdesk-followup-verification-evidence/followup-b01-guard.png` and `/private/tmp/patchdesk-followup-verification-evidence/followup-b01-discard-new.png`. Superseded 2026-09-03: Workspace settings has no draft to replace. Every control saves itself, creating a workspace moved into the New workspace dialog, and the guard this defect asked for no longer exists.
 - **Issue:** —
 
 ## Medium
 
 ### B-02: Scalar profile validation falls through to a generic request error
 
-- **Where the user meets it:** Settings > Workspace, after entering an empty or malformed scalar such as GitHub host, account, profile ID, or label and pressing Save.
+- **Where the user meets it:** Settings > Workspace, after entering an empty or malformed value such as GitHub host, GitHub account, or the workspace Name and committing it.
 - **What happens / what was expected:** List fields have inline blank-entry validation, but scalar values are trimmed and sent to the main process. A malformed or empty scalar can return the generic Profile update failed request error rather than field-specific guidance. The expected product behavior is an actionable field-level validation message before the request.
 - **Reproduce:** In a disposable profile, clear or malform one scalar field; press Save; record whether the request is rejected locally with field guidance or reaches the generic error alert.
 - **Why (from the code):** `src/renderer/src/flows/settings-workspace-profile-draft.ts:342-369` trims scalar fields and validates only the list helpers; `:372-379` contains the explicit blank-entry error. A request rejection is caught generically at `src/renderer/src/flows/settings-workspace-profile-draft.ts:170-175`, while `src/renderer/src/flows/settings-workspace-section.tsx:298-302` renders the generic Profile update failed alert. The main-process JSON boundary accepts unknown field values before domain parsing at `src/services/dashboard-controller.ts:76-84,198-224`.
 - **Severity:** `medium`. The user can recover by correcting the field, but the error does not identify the invalid input and may require trial and error.
 - **Decision needed:** `fix`. Validate scalar fields in the editor or map typed invalid-input failures to the affected field before sending the request.
 - **Affected documents/checklists:** [`Workspace profile editor`](settings/workspace-profile-editor.md#open-questions-and-verification), [`SETUP-03`](verification/foundations-and-settings.md#settingsworkspace-profile-editormd).
-- **Status:** fixed by `8dce9e7`; canonical regression: `tests/renderer/profile-settings.test.tsx`. Post-fix live pass: `SETUP-03` reports field-associated validation before a request; evidence: `/private/tmp/patchdesk-followup-verification-evidence/followup-b02-invalid.png` and `/private/tmp/patchdesk-followup-verification-evidence/followup-b02-one-field-corrected.png`.
+- **Status:** fixed by `8dce9e7`; canonical regression: `tests/renderer/profile-settings.test.tsx`. Post-fix live pass: `SETUP-03` reports field-associated validation before a request; evidence: `/private/tmp/patchdesk-followup-verification-evidence/followup-b02-invalid.png` and `/private/tmp/patchdesk-followup-verification-evidence/followup-b02-one-field-corrected.png`. Superseded 2026-09-03: there is no Save button. A value is checked when its own control commits, and a rejection is reported beside that control while the previously saved value is kept.
 - **Issue:** —
 
 ### B-03: Open Review recommendation preempts ready-to-merge action

@@ -16,15 +16,15 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 ## Workspace and identity
 
-**Workspace profile.** The saved local configuration that selects a GitHub host and account, workspace roots, rule paths, and watched repositories. Switching profiles returns the app to the Pull requests screen and reloads that profile's state.
+**Workspace profile.** The saved local configuration that selects a GitHub host and account, workspace roots, rule paths, and watched repositories. Switching profiles returns the app to the Pull requests screen and reloads that profile's state. This is the internal name; the app calls it a *Workspace*.
 
-**Active profile.** The workspace profile currently applied to the app. A profile draft shown in Settings is not active until its save and any required selection succeed.
+**Workspace.** What the app calls a *workspace profile* everywhere the maintainer can see it: the Settings section, its Name and Active workspace controls, and the New workspace dialog. A workspace's stored identifier is derived from its name and is never shown.
 
-**Profile draft.** The editable copy of one workspace profile in Settings. Patchdesk compares it with the last saved baseline to decide whether it is *Dirty*.
+**Active profile.** The workspace profile currently applied to the app. A workspace created in Settings is not active until its creation and selection both succeed.
 
 **GitHub account.** The authenticated `gh` identity Patchdesk resolves for a workspace profile. Patchdesk obtains a token when needed and does not store it.
 
-**Workspace root.** An absolute local folder Patchdesk scans for Git repositories with GitHub remotes. A root must be saved before repository discovery treats it as part of the active profile.
+**Workspace root.** An absolute local folder Patchdesk scans for Git repositories with GitHub remotes. The app calls one a folder. A root is saved as soon as its row commits, and discovery scans it from there.
 
 **Rule path.** An absolute path to an instruction file that Patchdesk includes when it prepares represented Review context. A profile can have no rule paths.
 
@@ -114,9 +114,9 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Arrived.** The state after the maintainer reaches a screen, dialog, or form and Patchdesk has shown the initial content available for that task.
 
-**Dirty.** A local form draft differs from its last saved baseline. A dirty workspace-profile draft survives switching Settings sections and requires an explicit Save or Discard choice before Settings closes or the active profile changes.
+**Dirty.** A local form draft differs from its last saved baseline. Workspace settings has no dirty state: every control saves itself and reports its own result, so closing Settings or switching workspace asks nothing.
 
-**Saved.** A local edit has completed its required write and reload, and the displayed baseline reflects the accepted value. Text typed after a save request began remains dirty even if the earlier request succeeds.
+**Saved.** A local edit has completed its required write and reload, and the displayed value reflects the accepted result. In Workspace settings each control says so beside itself for about two seconds.
 
 **Pending.** Patchdesk has accepted an action and has not yet reached a confirmed success or failure. Controls that could duplicate or conflict with the action can be disabled or blocked during this state.
 
