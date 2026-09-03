@@ -5,6 +5,7 @@ import {
   type InboxLabelActions,
 } from "../components/maintainer-inbox";
 import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
+import type { InspectorInsightRequests } from "../components/review-details-inspector";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import {
@@ -54,6 +55,7 @@ import {
 import { parseGitHubHost } from "../../../domain/ids";
 import { parsePullRequestInput } from "../../../domain/pull-request";
 import { isTextEntryTarget } from "../text-entry-target";
+import { useInboxInsightRequests } from "./use-inbox-insight-requests";
 import { useInboxReviewOpening } from "./use-inbox-review-opening";
 
 export function InboxFlow({
@@ -157,6 +159,10 @@ export function InboxFlow({
     openStoredReviewById,
     reportOpenError,
   } = useInboxReviewOpening({ dashboard, onOpenWorkbench });
+  // A completed run re-reads the listing through the screen's one refresh
+  // path, so the inspector's chip and the row's tag update together.
+  const { insightRequests, insightRequestAvailability, requestInsight } =
+    useInboxInsightRequests({ dashboard, onRowRefresh: onRefresh });
   const fetchInboxLabels = useCallback(async (): Promise<
     RepositoryLabelListResponse | undefined
   > => {
@@ -282,6 +288,11 @@ export function InboxFlow({
       onPreviousInboxPage={onPreviousInboxPage}
       onNextInboxPage={onNextInboxPage}
       openingOperations={openingOperations}
+      insightRequests={{
+        requests: insightRequests,
+        availability: insightRequestAvailability,
+        onRequest: requestInsight,
+      }}
       onSettings={onSettings}
       onOpenReview={openInboxRow}
       onOpenReviewId={(savedReviewId) => {
@@ -327,6 +338,7 @@ function InboxScreen({
   onPreviousInboxPage,
   onNextInboxPage,
   openingOperations,
+  insightRequests,
   refreshStatus,
   onSettings,
   onOpenReview,
@@ -377,6 +389,7 @@ function InboxScreen({
     string,
     { readonly status: "opening" | "error"; readonly error?: string }
   >;
+  readonly insightRequests: InspectorInsightRequests;
   readonly refreshStatus: InboxFreshnessLabel;
   readonly onSettings: (section?: SettingsSection) => void;
   readonly onOpenReview: (row: InboxResponse["inbox"]["rows"][number]) => void;
@@ -454,6 +467,7 @@ function InboxScreen({
           onPreviousPage={onPreviousInboxPage}
           onNextPage={onNextInboxPage}
           openingOperations={openingOperations}
+          insightRequests={insightRequests}
           onOpenReview={onOpenReview}
           onOpenReviewId={onOpenReviewId}
         />

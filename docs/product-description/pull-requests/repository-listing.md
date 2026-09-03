@@ -2,11 +2,13 @@
 
 ## Summary
 
-The repository listing is the Pull requests screen's GitHub-ordered page of pull-request rows for the Selected repository. Each row shows the pull request's identity, title, labels, author, branch direction, change size, CI state, update time, and Review indicators; the Review details inspector adds one Open action. Patchdesk adds local Review context but does not reorder or re-count GitHub's result.
+The repository listing is the Pull requests screen's GitHub-ordered page of pull-request rows for the Selected repository. Each row shows the pull request's identity, title, labels, author, branch direction, change size, CI state, update time, and Review indicators; the Review details inspector adds an Insights line and one Open action. Patchdesk adds local Review context but does not reorder or re-count GitHub's result.
 
 ## The simple case
 
-The maintainer scans the rows from GitHub. A row names its pull request number and title, shows Draft or Merged when applicable, and provides labels, author, changed files, additions, deletions, checks, and relative update time. Selecting a row shows it in the Review details inspector, which leads with the row's Review status and then gives its facts, scope, labels, and one Open action.
+The maintainer scans the rows from GitHub. A row names its pull request number and title, shows Draft or Merged when applicable, and provides labels, author, changed files, additions, deletions, checks, and relative update time. Selecting a row shows it in the Review details inspector, which leads with the row's Review status and then gives its facts, scope, labels, Insights, and one Open action.
+
+The Insights line shows one chip per Insight, Brief, Analysis, and Walkthrough, reading Ready when Patchdesk retains that Insight for the row's current head, Outdated when it is retained for an earlier head, and Not run otherwise. Beside each chip, Request Brief, Request Analysis, or Request Walkthrough starts that Insight with the profile's saved Review defaults in one click and stays on the list. A row that has never been opened first has its Review prepared in the background, which reads GitHub and writes nothing there; the button reads Preparing…, then Requesting…, then Running… until the run settles, and the listing is re-read so the chip updates. A kind whose defaults are not saved keeps its button disabled with a pointer to Settings > Review.
 
 Every row opens through the same single Open action. What opening does depends on the row's state: a row that has never been reviewed has a new Review prepared for its current head, a row with a saved Review resumes that Review, and a merged row opens read-only. Ready to merge remains a category derived from fresh, passing, mergeable evidence, but it is not an action. The inspector shows that evidence among the row's facts, and merge readiness itself is reached from PR overview inside the Review workbench.
 
@@ -26,7 +28,7 @@ stateDiagram-v2
 
 The listing receives one page already filtered and ordered by GitHub. The header and filter bar identify the Selected repository and current query. The row list is a keyboard-operable listbox; the selected row is highlighted and the Review details inspector is open by default when the viewport allows it.
 
-Rows show the title and number, author, labels, Draft or Merged badge, Brief badge when a retained Brief exists for the current head, change statistics, CI icon, and relative update age. Missing change statistics show an em dash rather than a fabricated zero. The inspector adds branch direction, current head, checks, labels, last-review head, and local Review status.
+Rows show the title and number, author, labels, Draft or Merged badge, Brief badge when a retained Brief exists for the current head, change statistics, CI icon, and relative update age. Missing change statistics show an em dash rather than a fabricated zero. The inspector adds branch direction, current head, checks, labels, Insight readiness chips with their Request buttons, last-review head, and local Review status.
 
 ### Leave unchanged
 
@@ -106,6 +108,8 @@ After a row-open failure, the row remains inspectable and can be activated again
 - A ready row shows its Ready to merge evidence among the inspector's facts and opens like any other row. A cached row shows the cached-data notice instead, because a cache cannot make a current merge-shaped claim.
 - The pull-request icon at the start of a row is coloured by state: green for an open pull request, muted for a draft, and the primary colour for a merged one.
 - The inspector's Scope row appears only when a retained Review supplies scope. It shows the gauge above a legend naming each bucket and its file count.
+- A second click on a Request button while that kind is in flight for that row does nothing; the other kinds and other rows stay requestable. A failed or cancelled run reports beside its chip and the button becomes live again.
+- Requesting an Insight for a row with a saved Review runs it against that Review; a row whose head moved since then reads Outdated until the Review is opened and refreshed.
 - A selected row disappears after a filter or refresh; the inspector then falls back to the next available row or its empty prompt.
 - Opening one row leaves unrelated rows interactive.
 - A saved Review may be missing or obsolete; opening can recover by Pull request identity.

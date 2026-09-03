@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added an **Insights** line to **Review details** on Pull requests: a chip per Insight — Brief, Analysis, Walkthrough — reading Ready, Outdated, or Not run, each with a **Request** button that starts that Insight in one click with the profile's saved Review defaults and stays on the list while it runs; a never-opened pull request is prepared in the background first, without writing to GitHub.
 - Replaced the diff toolbar's Unified/Split buttons and the wrapping button with one **View options** control that holds four switches — **Split view**, **Wrap lines**, **Line numbers**, and **Backgrounds**. Each change applies at once and is saved with the profile, so the next Review opens the way you left the last one.
 - Linked the Review workbench together: each file a current Analysis cites shows a finding count in the Browse tree and its header, a finding's file and line opens the Diff at those lines, the diff card opens the finding in Analysis, merge readiness shows one findings card with a **Review findings** action instead of two warnings, and a finding you dismissed or added to the review counts as handled for merge readiness and the Analysis banner alike.
 - Added **Author** and **Base branch** to More filters on Pull requests. Both are text fields: type a GitHub login (or `@me`) or a branch name and apply it with Enter or by leaving the field. Each active value shows as a chip you can clear on its own, **Clear all filters** now clears all four More filters fields at once, and both choices persist with the profile.
