@@ -280,7 +280,9 @@ export function useWorkspaceProfileEditor({
   const selectProfile = (id: string): void => {
     const selected = profiles.find((profile) => profile.id === id);
     if (selected === undefined || onProfileSwitch === undefined) return;
-    const sent = generation.current;
+    // Switching takes the generation, so a save still in flight for the
+    // profile being left cannot apply its body on top of the one arriving.
+    const sent = ++generation.current;
     void onProfileSwitch(id).then((result) => {
       // A patch that started during the switch owns the profile state now.
       if (result !== "applied" || generation.current !== sent) return;
