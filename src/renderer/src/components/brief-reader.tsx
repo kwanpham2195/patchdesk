@@ -26,6 +26,7 @@ import {
   type BriefStartHere,
 } from "../brief-contracts";
 import type { ChangeScope } from "../../../domain/change-scope";
+import { INSIGHT_PROVIDER_LABELS } from "../insight-contracts";
 import { ReachBlock } from "./brief-reach-block";
 import { GeneratedMarkdownInline } from "./generated-markdown";
 import { ReviewDiffView } from "./review-diff-view";
@@ -121,11 +122,6 @@ const generatedAtFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
-const PROVIDER_LABELS = {
-  pi: "API key",
-  "codex-cli-account": "Codex CLI account",
-} as const;
-
 /**
  * The read side of one retained Brief: the change's structure -- Flow, Shape,
  * Start here, and Reach -- rather than prose about it (ADR 0040). It states
@@ -192,7 +188,7 @@ export function BriefReader({
             </ProvenanceRow>
             {retained.provenance === undefined ? null : (
               <ProvenanceRow label="Provider">
-                {PROVIDER_LABELS[retained.provenance.provider]} ·{" "}
+                {INSIGHT_PROVIDER_LABELS[retained.provenance.provider]} ·{" "}
                 {retained.provenance.model}
               </ProvenanceRow>
             )}

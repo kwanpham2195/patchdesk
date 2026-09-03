@@ -1,5 +1,13 @@
 import * as v from "valibot";
 
+import type { InsightProvider } from "../../domain/insight-provider";
+
+/** What each provider is called wherever a retained Insight states its provenance. */
+export const INSIGHT_PROVIDER_LABELS = {
+  pi: "API key",
+  "codex-cli-account": "Codex CLI account",
+} as const satisfies Record<InsightProvider, string>;
+
 /**
  * The parts of an Insight projection that are the same for every Insight type,
  * so a new type (Brief, in `brief-contracts.ts`) reuses the envelope instead of

@@ -7,9 +7,6 @@ import {
   useState,
 } from "react";
 
-const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
-  numeric: "auto",
-});
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
@@ -82,6 +79,7 @@ import {
   loadNavigatorWidthPreferences,
   saveNavigatorWidthPreferences,
 } from "../navigator-width-preferences";
+import { formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
@@ -943,23 +941,6 @@ export function ReviewWorkbench({
       </section>
     </PublishedFeedbackNavigationContext.Provider>
   );
-}
-
-function formatRelativeTime(value: string): string {
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return value;
-  const seconds = Math.round((timestamp - Date.now()) / 1_000);
-  const units: ReadonlyArray<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 31_536_000],
-    ["month", 2_592_000],
-    ["day", 86_400],
-    ["hour", 3_600],
-    ["minute", 60],
-  ];
-  for (const [unit, divisor] of units)
-    if (Math.abs(seconds) >= divisor)
-      return relativeTimeFormatter.format(Math.round(seconds / divisor), unit);
-  return relativeTimeFormatter.format(seconds, "second");
 }
 
 function TabButton({

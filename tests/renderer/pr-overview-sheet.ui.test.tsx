@@ -39,6 +39,7 @@ function baseOverview(
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
     mergeReasons: [],
     insights: {
+      brief: { status: "not_generated" },
       analysis: { status: "not_generated" },
       walkthrough: { status: "not_generated" },
     },
@@ -217,7 +218,11 @@ describe("pr overview sheet merge readiness", () => {
         ],
       }),
     );
-    expect(screen.getByText("Approval required by GitHub.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "GitHub requires an approval. Patchdesk cannot see whether one exists; check on GitHub.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText("Required checks have not passed.")).toBeTruthy();
     expect(document.querySelectorAll("[data-reason-availability]").length).toBe(
       2,
@@ -309,6 +314,30 @@ describe("pr overview sheet merge readiness", () => {
     expect(row.getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("keeps Open on GitHub on the unconfirmed approval card", () => {
+    renderOverview(
+      baseOverview({
+        mergeReadiness: { _tag: "Blocked", blockers: [], warnings: [] },
+        mergeReasons: [
+          reason({
+            code: "review_required",
+            message: "Approval required by GitHub.",
+            source: "github_pr_state",
+            availability: "partial",
+            openOnGitHub: true,
+          }),
+        ],
+        pullRequest: fixturePullRequest(),
+      }),
+    );
+    const card = document.querySelector('[data-reason-availability="partial"]');
+    expect(card?.textContent).toContain(
+      "GitHub requires an approval. Patchdesk cannot see whether one exists; check on GitHub.",
+    );
+    expect(card?.textContent).not.toContain("could not confirm");
+    expect(screen.getByRole("button", { name: "Open on GitHub" })).toBeTruthy();
+  });
+
   it("shows Open on GitHub only once when several reasons request it", () => {
     renderOverview(
       baseOverview({
@@ -336,5 +365,29 @@ describe("pr overview sheet merge readiness", () => {
     expect(
       screen.getAllByRole("button", { name: "Open on GitHub" }),
     ).toHaveLength(1);
+  });
+});
+
+describe("pr overview sheet review status", () => {
+  it("lists Brief beside Analysis and Walkthrough with its own state", () => {
+    renderOverview(
+      baseOverview({
+        insights: {
+          brief: { status: "current" },
+          analysis: { status: "outdated" },
+          walkthrough: { status: "not_generated" },
+        },
+      }),
+    );
+    const rows = ["Brief", "Analysis", "Walkthrough"].map((title) => {
+      const row = screen.getByText(title).closest("div");
+      if (row === null) throw new Error(`missing ${title} row`);
+      return row.textContent;
+    });
+    expect(rows).toEqual([
+      "BriefCurrent",
+      "AnalysisOutdated",
+      "WalkthroughNot generated",
+    ]);
   });
 });

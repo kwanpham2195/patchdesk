@@ -60,6 +60,7 @@ export function buildOverview({
     mergeReasons: model.mergeReasons ?? [],
     revision: overviewRevision,
     insights: {
+      brief: { status: model.insights.brief?.status ?? "not_generated" },
       analysis: { status: model.insights.analysis.status },
       walkthrough: { status: model.insights.walkthrough.status },
     },
