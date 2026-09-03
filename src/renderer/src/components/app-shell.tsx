@@ -194,13 +194,13 @@ export function AppShell({
                 }}
               >
                 <SelectTrigger
-                  aria-label="Active profile"
+                  aria-label="Active workspace"
                   className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted"
                 >
                   <User className="size-3" />
-                  <SelectValue placeholder="Select profile">
+                  <SelectValue placeholder="Select workspace">
                     {profiles.find((p) => p.id === activeProfileId)?.label ??
-                      "Profile"}
+                      "Workspace"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -223,7 +223,7 @@ export function AppShell({
                   {profiles.find(
                     (profile) =>
                       profile.id === profileSwitchState.pendingTarget,
-                  )?.label ?? "profile"}
+                  )?.label ?? "workspace"}
                   …
                 </span>
               ) : null}

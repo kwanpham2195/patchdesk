@@ -224,7 +224,7 @@ try {
   const workspaceTab = settings.getByRole("tab", { name: "Workspace" });
   await workspaceTab.click();
   await settings.getByTestId("settings-section-workspace").waitFor();
-  await settings.getByTestId("workspace-scope").waitFor();
+  await settings.getByTestId("workspace-repositories").waitFor();
   const dataTab = settings.getByRole("tab", { name: "Data & recovery" });
   await dataTab.click();
   await settings.getByTestId("settings-section-data").waitFor();

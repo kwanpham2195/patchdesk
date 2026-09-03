@@ -93,14 +93,10 @@ describe("SettingsModal", () => {
       screen.getByRole("region", { name: "Settings content" }),
     ).toBeTruthy();
     expect(screen.queryByText("Saved reviews")).toBeNull();
-    expect(
-      screen.queryByRole("region", { name: "Workspace scope" }),
-    ).toBeNull();
+    expect(screen.queryByRole("region", { name: "Repositories" })).toBeNull();
 
     await user.click(screen.getByRole("tab", { name: "Workspace" }));
-    expect(
-      screen.getByRole("region", { name: "Workspace scope" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Repositories" })).toBeTruthy();
 
     await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
     expect(screen.getByText("Local review data")).toBeTruthy();

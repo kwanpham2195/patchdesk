@@ -222,7 +222,7 @@ export function ReviewingAsPanel({
         <Alert variant="destructive">
           <AlertTitle>Configured account not authenticated</AlertTitle>
           <AlertDescription>
-            This profile is set to review as{" "}
+            This workspace is set to review as{" "}
             <strong>{account.ghAccount}</strong> on{" "}
             <em>{account.githubHost}</em>, but the GitHub CLI does not report
             that account as authenticated. Choose one of the authenticated
