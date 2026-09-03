@@ -26,7 +26,6 @@ const profile: Profile = {
   githubHost: "github.com",
   ghAccount: "patchdesk",
   workspaceRoots: ["/workspace/cfw"],
-  ownerFilters: ["centraldigital"],
   rulePaths: ["/workspace/cfw/AGENTS.md"],
 };
 
@@ -98,7 +97,6 @@ describe("workspace profile settings", () => {
           githubHost: profile.githubHost,
           ghAccount: profile.ghAccount,
           workspaceRoots: profile.workspaceRoots,
-          ownerFilters: profile.ownerFilters,
           rulePaths: profile.rulePaths,
         },
       }),
@@ -193,7 +191,6 @@ describe("workspace profile settings", () => {
       screen.getByLabelText("workspace root 1"),
       "/workspace/first",
     );
-    await user.type(screen.getByLabelText("owner filter 1"), "first-owner");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
     await user.clear(screen.getByLabelText("Profile ID"));
     await user.type(screen.getByLabelText("Profile ID"), "first ");
@@ -231,7 +228,6 @@ describe("workspace profile settings", () => {
       screen.getByLabelText("workspace root 1"),
       "/workspace/first",
     );
-    await user.type(screen.getByLabelText("owner filter 1"), "first-owner");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
     await vi.waitFor(() =>
       expect(desktopApi.request).toHaveBeenCalledWith(
@@ -309,7 +305,6 @@ describe("workspace profile settings", () => {
     await user.click(
       screen.getByRole("button", { name: "Remove workspace root 1" }),
     );
-    await user.type(screen.getByLabelText("owner filter 1"), "enterprise");
     await user.click(screen.getByRole("button", { name: "Add rule path" }));
     await user.type(
       screen.getByLabelText("rule path 1"),
@@ -327,7 +322,6 @@ describe("workspace profile settings", () => {
           githubHost: "github.example.test",
           ghAccount: "enterprise-user",
           workspaceRoots: ["/picked/enterprise"],
-          ownerFilters: ["enterprise"],
           rulePaths: ["/workspace/enterprise/AGENTS.md"],
         },
       }),
@@ -369,11 +363,11 @@ describe("workspace profile settings", () => {
     const user = userEvent.setup();
 
     renderSettings();
-    await user.click(screen.getByRole("button", { name: "Add owner filter" }));
+    await user.click(screen.getByRole("button", { name: "Add rule path" }));
     await user.click(screen.getByRole("button", { name: "Save profile" }));
 
     expect(
-      screen.getByText("Owner filters cannot contain blank entries."),
+      screen.getByText("Rule paths cannot contain blank entries."),
     ).toBeTruthy();
     expect(
       desktopApi.request.mock.calls.some(
@@ -508,7 +502,6 @@ describe("workspace profile settings", () => {
       screen.getByLabelText("workspace root 1"),
       "/workspace/spaced",
     );
-    await user.type(screen.getByLabelText("owner filter 1"), "spaced-owner");
     await user.click(screen.getByRole("button", { name: "Save profile" }));
 
     await vi.waitFor(() =>

@@ -44,7 +44,6 @@ const profile = must(
     label: "CFW",
     githubHost: "github.com",
     ghAccount: "fixture",
-    ownerFilters: [],
     workspaceRoots: [],
     rulePaths: [],
     repos: [],

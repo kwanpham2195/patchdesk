@@ -26,13 +26,13 @@ stateDiagram-v2
 
 ### Arrive
 
-The Workspace settings section is reached from the titlebar, Navigate, the native Settings menu, or the first-run card. It shows the current profile's Reviewing as identity, profile fields, and Workspace scope. Workspace roots, owner filters, and rule paths are editable list fields; root rows also have a Choose folder control.
+The Workspace settings section is reached from the titlebar, Navigate, the native Settings menu, or the first-run card. It shows the current profile's Reviewing as identity, profile fields, and Workspace scope. Workspace roots and rule paths are editable list fields; root rows also have a Choose folder control.
 
 Discovery starts from the saved profile, not directly from unsaved text. For each saved root, a checking line says `Scanning for repositories…`. A root that is currently typed but not saved says `Save the profile to scan this folder for repositories.` It does not claim that zero repositories were found.
 
 ### Leave unchanged
 
-Reading a root's count or opening the repository checklist does not edit the profile. A scan does not add candidates to the watchlist, alter owner filters, or change the local path of a watched repository. Closing Settings with no dirty profile draft leaves all saved values unchanged.
+Reading a root's count or opening the repository checklist does not edit the profile. A scan does not add candidates to the watchlist or change the local path of a watched repository. Closing Settings with no dirty profile draft leaves all saved values unchanged.
 
 A watched repository that is not returned by the current scan remains visible. It is grouped under `Watched outside current workspace roots` when its recorded local path matches no saved root, including when it has no local path.
 

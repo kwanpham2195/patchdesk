@@ -189,7 +189,6 @@ async function seedRepresentedReview(
         label: "CFW",
         githubHost: "github.com",
         ghAccount: "fixture",
-        ownerFilters: [],
         workspaceRoots: [],
         rulePaths: [],
         repos: [],

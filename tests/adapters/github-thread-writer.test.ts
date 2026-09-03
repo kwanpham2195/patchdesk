@@ -37,7 +37,6 @@ const profile = mustParse(
     label: "CFW",
     githubHost: "github.com",
     ghAccount: "pmquan2cfw",
-    ownerFilters: ["centraldigital"],
     workspaceRoots: [],
     rulePaths: [],
     repos: [],

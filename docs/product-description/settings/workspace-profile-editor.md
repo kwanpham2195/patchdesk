@@ -2,11 +2,11 @@
 
 ## Summary
 
-The workspace profile editor creates and updates the local configuration that tells Patchdesk which GitHub identity, folders, repository owners, and instruction files belong together. The maintainer reaches it through Settings → Workspace. Existing profile IDs are fixed; choosing New profile opens a blank draft whose ID can be entered. The editor is available without an open Review, but Patchdesk cannot save a usable profile unless its values pass local and main-process validation.
+The workspace profile editor creates and updates the local configuration that tells Patchdesk which GitHub identity, folders, and instruction files belong together. The maintainer reaches it through Settings → Workspace. Existing profile IDs are fixed; choosing New profile opens a blank draft whose ID can be entered. The editor is available without an open Review, but Patchdesk cannot save a usable profile unless its values pass local and main-process validation.
 
 ## The simple case
 
-The maintainer opens Settings, chooses Workspace, and edits the active profile's label, GitHub host, GitHub account, workspace roots, owner filters, or rule paths. The Save profile button appears after the first change.
+The maintainer opens Settings, chooses Workspace, and edits the active profile's label, GitHub host, GitHub account, workspace roots, or rule paths. The Save profile button appears after the first change.
 
 Patchdesk trims the values when Save profile is pressed. It rejects any list that still contains a blank entry. If validation succeeds, Patchdesk saves the profile, reloads the active workspace, and removes the dirty state.
 
@@ -31,7 +31,7 @@ stateDiagram-v2
 
 Settings opens on the requested section, or on General when no section was requested. Choosing Workspace shows Reviewing as, Profile, and Workspace scope cards. The active profile selector and all saved values come from the latest loaded workspace state.
 
-The Profile ID field is disabled for an existing profile. Workspace roots, owner filters, and rule paths appear as repeatable rows. Each root row also has Choose folder. Saved roots can show repository-discovery status and watched repositories beneath the row.
+The Profile ID field is disabled for an existing profile. Workspace roots and rule paths appear as repeatable rows. Each root row also has Choose folder. Saved roots can show repository-discovery status and watched repositories beneath the row.
 
 Reviewing as checks the GitHub CLI while the section is open. One authenticated account appears as a resolved statement. Several accounts appear in a selector. If the CLI is missing, unauthenticated, or cannot be checked, the panel explains the failure and keeps manual account fields available.
 
@@ -47,11 +47,11 @@ Switching Settings sections, opening and cancelling a folder picker, or selectin
 
 ### Begin an action
 
-The first field edit makes the profile draft dirty and reveals Save profile. Adding or removing a workspace-root, owner-filter, or rule-path row is also an edit. Choosing a folder replaces the value in that root row.
+The first field edit makes the profile draft dirty and reveals Save profile. Adding or removing a workspace-root or rule-path row is also an edit. Choosing a folder replaces the value in that root row.
 
-When the draft is clean, New profile replaces the editor with a creation draft: blank ID, blank label, `github.com` as the host, blank GitHub account, one blank workspace-root row, one blank owner-filter row, and no rule-path rows. When it is dirty, the existing Save, Discard, or Cancel guard runs first. The Profile ID field becomes editable only after the transition. Save profile remains available because the editor is in creation mode.
+When the draft is clean, New profile replaces the editor with a creation draft: blank ID, blank label, `github.com` as the host, blank GitHub account, one blank workspace-root row, and no rule-path rows. When it is dirty, the existing Save, Discard, or Cancel guard runs first. The Profile ID field becomes editable only after the transition. Save profile remains available because the editor is in creation mode.
 
-Save profile first clears the previous error and trims every scalar and list value. Before a request, it rejects a blank Label, malformed Profile ID, GitHub host, or GitHub account, and associates the exact guidance with the failing field. It also rejects a workspace-root, owner-filter, or rule-path list that contains a blank row. A new profile is rejected if its trimmed ID matches a profile already loaded in Settings.
+Save profile first clears the previous error and trims every scalar and list value. Before a request, it rejects a blank Label, malformed Profile ID, GitHub host, or GitHub account, and associates the exact guidance with the failing field. It also rejects a workspace-root or rule-path list that contains a blank row. A new profile is rejected if its trimmed ID matches a profile already loaded in Settings.
 
 If local checks pass, Save profile changes to Saving profile… and becomes disabled. Patchdesk sends a create request for a new profile or an update request for an existing profile.
 

@@ -348,15 +348,6 @@ export function WorkspaceProfileSection({
               />
             )}
             <ProfileListEditor
-              label="Owner filters"
-              field="ownerFilters"
-              entries={profileDraft.ownerFilters}
-              placeholder="github-owner"
-              onChange={updateProfileList}
-              onAdd={addProfileListEntry}
-              onRemove={removeProfileListEntry}
-            />
-            <ProfileListEditor
               label="Rule paths"
               field="rulePaths"
               entries={profileDraft.rulePaths}

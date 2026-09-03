@@ -33,7 +33,6 @@ export type WorkspaceProfileConfig = {
   readonly label: string;
   readonly githubHost: GitHubHost;
   readonly ghAccount: string;
-  readonly ownerFilters: ReadonlyArray<GitHubOwner>;
   readonly workspaceRoots: ReadonlyArray<AbsolutePath>;
   readonly rulePaths: ReadonlyArray<AbsolutePath>;
   readonly repos: ReadonlyArray<WatchedRepoConfig>;
@@ -51,13 +50,16 @@ const rawWatchedRepoSchema = v.strictObject({
   localPath: v.optional(v.string()),
 });
 
-/** Valibot boundary schema for a persisted workspace-profile JSON record. */
-const workspaceProfileConfigSchema = v.strictObject({
+/**
+ * Valibot boundary schema for a persisted workspace-profile JSON record.
+ * Non-strict so a profile written before a setting was retired still loads,
+ * with the removed key dropped.
+ */
+const workspaceProfileConfigSchema = v.object({
   id: v.string(),
   label: v.pipe(v.string(), v.minLength(1)),
   githubHost: v.string(),
   ghAccount: v.pipe(v.string(), v.minLength(1)),
-  ownerFilters: v.array(v.string()),
   workspaceRoots: v.array(v.string()),
   rulePaths: v.array(v.string()),
   repos: v.array(rawWatchedRepoSchema),
@@ -79,7 +81,6 @@ export function parseWorkspaceProfileConfig(
   const id = parseWorkspaceProfileId(parsed.output.id);
   const githubHost = parseGitHubHost(parsed.output.githubHost);
   const ghAccount = parseGitHubLogin(parsed.output.ghAccount);
-  const ownerFilters = parseAll(parsed.output.ownerFilters, parseGitHubOwner);
   const workspaceRoots = parseAll(
     parsed.output.workspaceRoots,
     parseAbsolutePath,
@@ -90,7 +91,6 @@ export function parseWorkspaceProfileConfig(
     id._tag === "err" ||
     githubHost._tag === "err" ||
     ghAccount._tag === "err" ||
-    ownerFilters._tag === "err" ||
     workspaceRoots._tag === "err" ||
     rulePaths._tag === "err" ||
     repos._tag === "err"
@@ -103,7 +103,6 @@ export function parseWorkspaceProfileConfig(
     label: parsed.output.label,
     githubHost: githubHost.value,
     ghAccount: ghAccount.value,
-    ownerFilters: ownerFilters.value,
     workspaceRoots: workspaceRoots.value,
     rulePaths: rulePaths.value,
     repos: repos.value,

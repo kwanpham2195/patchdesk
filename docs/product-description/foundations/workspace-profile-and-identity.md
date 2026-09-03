@@ -2,7 +2,7 @@
 
 ## Summary
 
-A workspace profile is Patchdesk's local boundary around one maintainer identity and one set of repositories. It names the GitHub host and account, local workspace roots, repository-owner filters, instruction-file paths, watched repositories, and the active-profile choice. A profile never stores a GitHub token or model credential.
+A workspace profile is Patchdesk's local boundary around one maintainer identity and one set of repositories. It names the GitHub host and account, local workspace roots, instruction-file paths, watched repositories, and the active-profile choice. A profile never stores a GitHub token or model credential.
 
 ## The simple case
 
@@ -31,7 +31,7 @@ stateDiagram-v2
 
 Patchdesk lists saved profiles. If none exist, it probes `gh` for the current authenticated login with a five-second bound and derives the home directory as the initial workspace root when that path is valid.
 
-The detected profile uses ID `default`, label Default, host `github.com`, no owner filters, no rule paths, no watched repositories, and the normal merge-warning acknowledgement policy. A failed account probe leaves the account empty and the profile unpersisted.
+The detected profile uses ID `default`, label Default, host `github.com`, no rule paths, no watched repositories, and the normal merge-warning acknowledgement policy. A failed account probe leaves the account empty and the profile unpersisted.
 
 ### Leave unchanged
 

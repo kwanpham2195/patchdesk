@@ -142,9 +142,8 @@ function detectHomeWorkspaceRoot(): AbsolutePath | undefined {
  * Derives the first-run profile from the actual machine instead of a
  * fabricated identity: the GitHub CLI's currently active account, if `gh` is
  * installed, authenticated, and answers within the bound; and the caller's
- * home directory, if it validates as an absolute path. `ownerFilters` is
- * always left empty — nobody's org is guessed. Detection is best-effort and
- * never fabricates a value: a field that cannot be derived stays empty so
+ * home directory, if it validates as an absolute path. Detection is
+ * best-effort and never fabricates a value: a field that cannot be derived stays empty so
  * the UI can prompt for it instead of silently inheriting someone else's
  * identity. The profile still never conveys a credential (no token is ever
  * read, logged, or persisted here).
@@ -167,7 +166,6 @@ export async function detectDefaultWorkspaceProfile(
     label: "Default",
     githubHost: host.value,
     ghAccount: ghAccount ?? "",
-    ownerFilters: [],
     workspaceRoots: workspaceRoot === undefined ? [] : [workspaceRoot],
     rulePaths: [],
     repos: [],

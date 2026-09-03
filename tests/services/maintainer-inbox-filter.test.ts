@@ -38,7 +38,6 @@ const profile = requireFixture(
     label: "Fixture",
     githubHost: parsedRepository.host,
     ghAccount: "fixture",
-    ownerFilters: [],
     workspaceRoots: ["/tmp"],
     rulePaths: [],
     repos: [

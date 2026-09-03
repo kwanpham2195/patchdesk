@@ -216,7 +216,6 @@ async function setup(
       label: "CFW",
       githubHost: "github.com",
       ghAccount: "fixture",
-      ownerFilters: [],
       workspaceRoots: [],
       rulePaths: [],
       repos:

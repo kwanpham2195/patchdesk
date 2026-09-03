@@ -91,7 +91,6 @@ export function isProfile(value: unknown): value is Profile {
     // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
     typeof value.ghAccount === "string" &&
     (value.workspaceRoots === undefined || stringArray(value.workspaceRoots)) &&
-    (value.ownerFilters === undefined || stringArray(value.ownerFilters)) &&
     (value.rulePaths === undefined || stringArray(value.rulePaths))
   );
 }
@@ -100,10 +99,6 @@ export function dashboardFromInbox(inbox: InboxResponse): Dashboard {
     inbox.profile.workspaceRoots === undefined
       ? {}
       : { workspaceRoots: inbox.profile.workspaceRoots };
-  const ownerFiltersField =
-    inbox.profile.ownerFilters === undefined
-      ? {}
-      : { ownerFilters: inbox.profile.ownerFilters };
   const rulePathsField =
     inbox.profile.rulePaths === undefined
       ? {}
@@ -117,7 +112,6 @@ export function dashboardFromInbox(inbox: InboxResponse): Dashboard {
       githubHost: inbox.profile.githubHost,
       ghAccount: inbox.profile.ghAccount,
       ...workspaceRootsField,
-      ...ownerFiltersField,
       ...rulePathsField,
       ...reposField,
     },
