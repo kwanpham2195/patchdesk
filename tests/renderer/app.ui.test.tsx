@@ -136,7 +136,7 @@ describe("App Review route loading", () => {
         "/v1/profiles": () => success([profileFixture]),
         "/v1/inbox": (input) => {
           paths.push(input.path);
-          return success(inbox());
+          return success(inbox([openRow()]));
         },
       },
       { operations: APP_BOOT_OPERATIONS },
@@ -145,7 +145,9 @@ describe("App Review route loading", () => {
     await screen.findByRole("heading", { name: "Pull requests" });
     expect(paths).toEqual(["/v1/inbox?state=open&pageSize=25"]);
 
-    const select = screen.getByRole("combobox", { name: "Rows per page" });
+    const select = await screen.findByRole("combobox", {
+      name: "Rows per page",
+    });
     await user.click(select);
     await user.click(await screen.findByRole("option", { name: "10" }));
     await waitFor(() =>
@@ -691,7 +693,7 @@ function installDesktop(
             await options.inboxRefreshGate;
           throw new Error("refresh failed");
         }
-        return success(inbox());
+        return success(inbox([openRow()]));
       },
     },
     { operations: APP_BOOT_OPERATIONS },
@@ -699,7 +701,14 @@ function installDesktop(
   return installed;
 }
 
-function inbox() {
+/**
+ * An inbox response for the fixture profile. `rows` decides which screen the
+ * response produces: a row makes it the loaded inbox, with the filter
+ * toolbar, rows-per-page control and freshness label that the tests below
+ * assert on. Left empty, the profile watches nothing and has no rows, which
+ * is first run — the setup flow, and none of that chrome.
+ */
+function inbox(rows: ReadonlyArray<ReturnType<typeof openRow>> = []) {
   return {
     profile: {
       id: "profile",
@@ -710,10 +719,33 @@ function inbox() {
     inbox: {
       state: "open",
       pageSize: 25,
-      rows: [],
+      rows,
       repositories: [],
       dataFreshness: "fresh",
     },
+  };
+}
+
+/** One open pull request, enough to put the inbox chrome on screen. */
+function openRow() {
+  return {
+    remoteState: "open",
+    identity: { ...repoA, number: 1 },
+    title: `${repoA.owner}/${repoA.repo} PR`,
+    author: "author",
+    baseBranch: "main",
+    headBranch: "change",
+    currentHeadSha: "a".repeat(40),
+    isDraft: false,
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    changeStats: {},
+    checks: { overall: "unknown", checks: [] },
+    reviewState: "none",
+    mergeability: "unknown",
+    labels: [],
+    categories: ["updated_since_review"],
+    recommendedAction: { kind: "run_review" },
+    dataFreshness: "fresh",
   };
 }
 

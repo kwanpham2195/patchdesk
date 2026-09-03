@@ -242,6 +242,21 @@ export function InboxFlow({
       />
     );
 
+  // First run replaces the screen rather than sitting above it: a filter
+  // toolbar, an empty table and a "select a pull request" inspector are all
+  // noise for a workspace that has nothing to list yet, and read as a second
+  // thing to do. Lifted here rather than into `Outcome`, which the bootstrap
+  // path shares and which renders inside the inbox chrome, not instead of it.
+  if (state === "empty" && (dashboard.profile.repos?.length ?? 0) === 0)
+    return (
+      <div className="mx-auto max-w-[112rem]">
+        <WorkspaceFirstRun
+          dashboard={dashboard}
+          onWorkspaceReload={onWorkspaceReload}
+        />
+      </div>
+    );
+
   return (
     <InboxScreen
       state={state}
@@ -283,7 +298,6 @@ export function InboxFlow({
         onRequest: requestInsight,
       }}
       onSettings={onSettings}
-      onWorkspaceReload={onWorkspaceReload}
       onOpenReview={openInboxRow}
       onOpenReviewId={(savedReviewId) => {
         const row = inbox.inbox.rows.find(
@@ -331,7 +345,6 @@ function InboxScreen({
   insightRequests,
   refreshStatus,
   onSettings,
-  onWorkspaceReload,
   onOpenReview,
   onOpenReviewId,
   openedPr,
@@ -383,7 +396,6 @@ function InboxScreen({
   readonly insightRequests: InspectorInsightRequests;
   readonly refreshStatus: InboxFreshnessLabel;
   readonly onSettings: (section?: SettingsSection) => void;
-  readonly onWorkspaceReload: () => Promise<void>;
   readonly onOpenReview: (row: InboxResponse["inbox"]["rows"][number]) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
   readonly openedPr?: string;
@@ -406,11 +418,8 @@ function InboxScreen({
       <Outcome
         state={state}
         repos={dashboard.dashboard.repos}
-        watchedCount={dashboard.profile.repos?.length ?? 0}
-        dashboard={dashboard}
         onRetry={onRefresh}
         onSettings={onSettings}
-        onWorkspaceReload={onWorkspaceReload}
       />
       <div className="min-h-0 flex-1">
         <MaintainerInbox
@@ -512,14 +521,19 @@ function BootstrapOutcome({
           Refresh
         </Button>
       </header>
-      <Outcome
-        state={state}
-        repos={EMPTY_REPO_OUTCOMES}
-        watchedCount={0}
-        onRetry={onRefresh}
-        onSettings={onSettings}
-        onWorkspaceReload={onWorkspaceReload}
-      />
+      {state === "empty" ? (
+        <WorkspaceFirstRun
+          dashboard={undefined}
+          onWorkspaceReload={onWorkspaceReload}
+        />
+      ) : (
+        <Outcome
+          state={state}
+          repos={EMPTY_REPO_OUTCOMES}
+          onRetry={onRefresh}
+          onSettings={onSettings}
+        />
+      )}
     </div>
   );
 }
@@ -528,21 +542,13 @@ const EMPTY_REPO_OUTCOMES: ReadonlyArray<RepoOutcome> = [];
 function Outcome({
   state,
   repos,
-  watchedCount,
-  dashboard,
   onRetry,
   onSettings,
-  onWorkspaceReload,
 }: {
   readonly state: DashboardScreenState;
   readonly repos: ReadonlyArray<RepoOutcome>;
-  /** How many repositories the active profile watches; 0 is what first run
-   * means, and it is what makes the setup flow give way once one is ticked. */
-  readonly watchedCount: number;
-  readonly dashboard?: Dashboard;
   readonly onRetry: () => void;
   readonly onSettings: (section?: SettingsSection) => void;
-  readonly onWorkspaceReload: () => Promise<void>;
 }): React.JSX.Element | null {
   if (state === "loading")
     return (
@@ -552,16 +558,10 @@ function Outcome({
         <Skeleton className="h-10 w-3/4" />
       </div>
     );
-  // An empty screen with nothing watched is first run; an empty screen for a
-  // workspace that already watches something is just a listing with no rows,
-  // which the inbox below renders itself.
-  if (state === "empty")
-    return watchedCount > 0 ? null : (
-      <WorkspaceFirstRun
-        dashboard={dashboard}
-        onWorkspaceReload={onWorkspaceReload}
-      />
-    );
+  // First run is handled by the callers, which render it instead of the
+  // screen. What is left here is a workspace that already watches something
+  // and has no rows for the current filter, which the listing itself says.
+  if (state === "empty") return null;
   if (state === "error" && repos.length === 0)
     return (
       <Alert variant="destructive" className="mt-6">

@@ -74,6 +74,13 @@ describe("InboxFlow saved-review recovery", () => {
         onOpenWorkbench={onOpenWorkbench}
       />,
     );
+    // The inbox chrome the first-run flow replaces; see "finishes setup in
+    // place" below, which asserts its absence during setup.
+    expect(screen.getByRole("button", { name: "More filters" })).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Pull request state" }),
+    ).toBeTruthy();
+
     openRowTitle();
     await waitFor(() => expect(onOpenWorkbench).toHaveBeenCalled());
     expect(reviewRequestPaths(desktop)).toEqual([
@@ -277,6 +284,15 @@ describe("InboxFlow first run", () => {
     expect(within(flow).getByText("2. Folders and repositories")).toBeTruthy();
     expect(await within(flow).findByLabelText("Folder 1")).toBeTruthy();
     expect(screen.queryByText("Choose an account first.")).toBeNull();
+    // The flow replaces the screen rather than sitting above it: none of the
+    // inbox chrome is on screen for a workspace with nothing to list yet.
+    // The counterpart assertion — that this toolbar IS there once the inbox
+    // loads — is in "falls back to opening by PR identity" above.
+    expect(screen.queryByRole("button", { name: "More filters" })).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "Pull request state" }),
+    ).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Pull requests" })).toBeNull();
   });
 
   it("reports a missing Git only when the environment probe says so", async () => {
