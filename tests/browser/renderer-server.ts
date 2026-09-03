@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { extname, join, normalize } from "node:path";
+import type { Page } from "playwright/test";
 
 /**
  * Serves the built renderer (`out/renderer`) over loopback on an ephemeral
@@ -79,4 +80,17 @@ export function closeServer(server: Server): Promise<void> {
  */
 function isAddressInfo(address: string | AddressInfo): address is AddressInfo {
   return Object.prototype.hasOwnProperty.call(address, "port");
+}
+
+/** Flips diff view options through the toolbar popover, the way a reviewer does. */
+export async function chooseDiffOptions(
+  page: Page,
+  options: { readonly split?: boolean; readonly wrap?: boolean },
+): Promise<void> {
+  await page.getByRole("button", { name: "View options" }).click();
+  if (options.split)
+    await page.getByRole("switch", { name: "Split view" }).click();
+  if (options.wrap)
+    await page.getByRole("switch", { name: "Wrap lines" }).click();
+  await page.keyboard.press("Escape");
 }
