@@ -53,30 +53,32 @@ export function ReviewingAsCard({
   readonly title?: string;
 }): React.JSX.Element {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>
-          The GitHub account Patchdesk uses to find and review pull requests,
-          resolved from the GitHub CLI.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ReviewingAsPanel
-          state={probe.reviewingAs}
-          account={{
-            ghAccount: editor.scalars.ghAccount,
-            githubHost: editor.scalars.githubHost,
-            accountStatus: editor.status.ghAccount,
-            hostStatus: editor.status.githubHost,
-            onEdit: editor.editScalar,
-            onCommit: editor.commitScalar,
-            onSelectAccount: editor.selectAccount,
-          }}
-          onRecheck={probe.recheck}
-        />
-      </CardContent>
-    </Card>
+    <section aria-labelledby="workspace-reviewing-as-title">
+      <Card>
+        <CardHeader>
+          <CardTitle id="workspace-reviewing-as-title">{title}</CardTitle>
+          <CardDescription>
+            The GitHub account Patchdesk uses to find and review pull requests,
+            resolved from the GitHub CLI.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ReviewingAsPanel
+            state={probe.reviewingAs}
+            account={{
+              ghAccount: editor.scalars.ghAccount,
+              githubHost: editor.scalars.githubHost,
+              accountStatus: editor.status.ghAccount,
+              hostStatus: editor.status.githubHost,
+              onEdit: editor.editScalar,
+              onCommit: editor.commitScalar,
+              onSelectAccount: editor.selectAccount,
+            }}
+            onRecheck={probe.recheck}
+          />
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 
@@ -104,8 +106,7 @@ export function RepositoriesCard({
     rootDiscovery.kind === "loaded" ? rootDiscovery.value : EMPTY_DISCOVERED;
   const discoveredRepos = flattenDiscoveredRepositories(discoveries);
   // The single merge and the single grouping of discovered + watched
-  // repositories for this render — replaces what used to be two independent
-  // fetch/group pipelines (this hook's own and `WatchlistPanel`'s).
+  // repositories for this render.
   const watchlistEntries = mergeWatchlistEntries(discoveredRepos, savedRepos);
   const { byRoot, other } = groupWatchlistEntries(watchlistEntries, savedRoots);
   const watchedKeys = new Set(savedRepos.map((repo) => repositoryKey(repo)));

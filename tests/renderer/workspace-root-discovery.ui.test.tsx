@@ -86,6 +86,21 @@ describe("workspace root discovery", () => {
     ).toBeTruthy();
   });
 
+  it("says nothing about a folder row the saved profile does not carry", async () => {
+    installDesktopApi({ suggestions: readyDiscovery("/workspace/cfw", []) });
+    const user = userEvent.setup();
+
+    renderSettings();
+
+    const savedRootStatus = await screen.findByRole("status");
+    await user.click(screen.getByRole("button", { name: "Add folder" }));
+    await user.type(await screen.findByLabelText("Folder 2"), "/not-saved-yet");
+
+    // Discovery runs server-side against the saved profile, so an unsaved row
+    // reports nothing rather than scanning forever.
+    expect(screen.getAllByRole("status")).toEqual([savedRootStatus]);
+  });
+
   it("keeps a ready root usable when another saved root scan fails", async () => {
     const desktopApi = installDesktopApi({
       environment: readyEnvironment,

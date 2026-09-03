@@ -45,6 +45,7 @@ export type AccountEditor = {
 
 type AccountField = "ghAccount" | "githubHost";
 
+/** The Reviewing-as environment probe and the re-check that restarts it. */
 export type ReviewingAsProbeHook = {
   readonly reviewingAs: ApiProbeState<EnvironmentCheckResponse>;
   readonly recheck: () => void;
@@ -126,8 +127,27 @@ function reviewingAsView(
   return { kind: "multiple", accounts };
 }
 
-function accountKey(account: GithubAuthAccount): string {
+/** The key one authenticated account is selected by, and the label it is offered under. */
+// oxlint-disable-next-line react/only-export-components -- The account Select and its key helper share this module with the panel that consumes them.
+export function accountKey(account: GithubAuthAccount): string {
   return `${account.host}/${account.login}`;
+}
+
+function accountName(account: GithubAuthAccount): string {
+  return `${account.login} · ${account.host}`;
+}
+
+/** The offered account this workspace is configured as, or null when it is none of them. */
+function selectedAccountKey(
+  accounts: ReadonlyArray<GithubAuthAccount>,
+  account: AccountEditor,
+): string | null {
+  const selected = accounts.find(
+    (candidate) =>
+      candidate.login === account.ghAccount &&
+      candidate.host === account.githubHost,
+  );
+  return selected === undefined ? null : accountKey(selected);
 }
 
 /**
@@ -221,7 +241,14 @@ export function ReviewingAsPanel({
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <AccountSelect accounts={view.accounts} account={account} />
+          <AccountSelect
+            accounts={view.accounts}
+            selectedKey={selectedAccountKey(view.accounts, account)}
+            status={account.accountStatus}
+            onSelect={(chosen) =>
+              account.onSelectAccount(chosen.login, chosen.host)
+            }
+          />
           <AccountDisclosure account={account} />
         </div>
       )}
@@ -255,25 +282,34 @@ export function ReviewingAsPanel({
   );
 }
 
-function AccountSelect({
+/**
+ * The account picker over what `gh auth status` reports, shared by this panel
+ * and the New workspace dialog, which differ only in the control's name and in
+ * whether a save status hangs under it.
+ */
+// oxlint-disable-next-line react/only-export-components -- The account Select and its key helper share this module with the panel that consumes them.
+export function AccountSelect({
+  id = "reviewing-as-account",
+  name = "Reviewing as account",
   accounts,
-  account,
+  selectedKey,
+  status,
+  onSelect,
 }: {
+  readonly id?: string;
+  readonly name?: string;
   readonly accounts: ReadonlyArray<GithubAuthAccount>;
-  readonly account: AccountEditor;
+  readonly selectedKey: string | null;
+  readonly status?: FieldStatus;
+  readonly onSelect: (account: GithubAuthAccount) => void;
 }): React.JSX.Element {
-  const selected = accounts.find(
-    (candidate) =>
-      candidate.login === account.ghAccount &&
-      candidate.host === account.githubHost,
-  );
   return (
     <Field>
-      <FieldLabel htmlFor="reviewing-as-account">Account</FieldLabel>
+      <FieldLabel htmlFor={id}>Account</FieldLabel>
       <Select
-        value={selected === undefined ? null : accountKey(selected)}
+        value={selectedKey}
         items={accounts.map((candidate) => ({
-          label: `${candidate.login} · ${candidate.host}`,
+          label: accountName(candidate),
           value: accountKey(candidate),
         }))}
         onValueChange={(value) => {
@@ -281,13 +317,10 @@ function AccountSelect({
             (candidate) => accountKey(candidate) === value,
           );
           if (chosen === undefined) return;
-          account.onSelectAccount(chosen.login, chosen.host);
+          onSelect(chosen);
         }}
       >
-        <SelectTrigger
-          id="reviewing-as-account"
-          aria-label="Reviewing as account"
-        >
+        <SelectTrigger id={id} aria-label={name}>
           <SelectValue placeholder="Select an account" />
         </SelectTrigger>
         <SelectContent>
@@ -297,13 +330,13 @@ function AccountSelect({
                 key={accountKey(candidate)}
                 value={accountKey(candidate)}
               >
-                {`${candidate.login} · ${candidate.host}`}
+                {accountName(candidate)}
               </SelectItem>
             ))}
           </SelectGroup>
         </SelectContent>
       </Select>
-      <FieldSaveStatus status={account.accountStatus} />
+      {status === undefined ? null : <FieldSaveStatus status={status} />}
     </Field>
   );
 }

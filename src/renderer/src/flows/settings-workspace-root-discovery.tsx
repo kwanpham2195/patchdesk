@@ -9,6 +9,8 @@ import type { WatchlistEntry } from "./settings-workspace-repositories";
 
 /** What a single workspace-root row shows for its discovery result. */
 export type RootDiscoveryStatus =
+  /** The row is not persisted yet, so nothing has scanned it. */
+  | { readonly kind: "unscanned" }
   | { readonly kind: "loading" }
   | { readonly kind: "error" }
   | {
@@ -53,10 +55,10 @@ export function useWorkspaceRootDiscovery(
 /**
  * Resolves one workspace-root row's discovery status. A root the saved
  * profile doesn't carry has never been scanned — discovery runs server-side
- * against the saved profile — so it reports the loading state rather than a
- * count of 0, which would be a false negative in exactly the case this panel
- * exists to surface; every non-blank row reaches the saved profile as soon as
- * it commits. The "found" count is read off `byRoot`, the single grouping
+ * against the saved profile — and reports nothing at all: a row that failed
+ * validation, or one still being typed, never reaches a scan, so saying it is
+ * scanning would be a promise the row cannot keep. The "found" count is read
+ * off `byRoot`, the single grouping
  * computed once per render in `WorkspaceProfileSection` (via
  * `groupWatchlistEntries`) rather than a second, parallel grouping algorithm.
  */
@@ -70,7 +72,7 @@ export function workspaceRootDiscoveryStatus(
 ): RootDiscoveryStatus {
   const trimmedRoot = root.trim();
   const savedRoots = savedProfile?.workspaceRoots ?? EMPTY_ROOTS;
-  if (!savedRoots.includes(trimmedRoot)) return { kind: "loading" };
+  if (!savedRoots.includes(trimmedRoot)) return { kind: "unscanned" };
   if (discovery.kind === "checking") return { kind: "loading" };
   if (discovery.kind === "error") return { kind: "error" };
   const outcome = discovery.value.find(
@@ -89,6 +91,7 @@ export function WorkspaceRootDiscoveryStatus({
 }: {
   readonly status: RootDiscoveryStatus;
 }): React.JSX.Element | null {
+  if (status.kind === "unscanned") return null;
   if (status.kind === "loading") {
     return (
       <p className="text-xs text-muted-foreground" role="status">

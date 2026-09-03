@@ -66,18 +66,13 @@ export function parseWorkspaceProfileId(
  * `-3`, … suffix.
  */
 export function deriveWorkspaceProfileId(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the id-less `POST /v1/profiles` boundary parser; the label arrives as raw JSON.
-  label: unknown,
+  label: string,
   taken: ReadonlySet<string>,
 ): Result<WorkspaceProfileId, InvalidDomainValue> {
-  const slug =
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw boundary input before slugging it.
-    typeof label === "string"
-      ? label
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-      : "";
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   if (slug === "")
     return err({ _tag: "InvalidDomainValue", field: "workspaceProfileId" });
   let candidate = slug;

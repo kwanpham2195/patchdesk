@@ -63,7 +63,7 @@ export function SettingsModal({
   const openerRef = useRef<HTMLElement | null>(null);
   const lastOpen = useRef(false);
 
-  // react-doctor-disable-next-line react-doctor/no-reset-all-state-on-prop-change -- the section is the only state left after the profile draft moved into the Workspace editor, and reopening must land on the section the caller asked for. Remounting on a `key` instead would drop the opener the close path focuses.
+  // react-doctor-disable-next-line react-doctor/no-reset-all-state-on-prop-change -- reopening must land on the section the caller asked for, and remounting on a `key` instead would drop the opener the close path focuses.
   useEffect(() => {
     if (open && !lastOpen.current) {
       setSection(initialSection ?? "general");

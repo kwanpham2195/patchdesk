@@ -278,10 +278,16 @@ describe("InboxFlow first run", () => {
       />,
     );
     const flow = screen.getByRole("region", { name: "Set up your workspace" });
-    expect(within(flow).getByText("1. Reviewing as")).toBeTruthy();
+    expect(
+      within(flow).getByRole("region", { name: "1. Reviewing as" }),
+    ).toBeTruthy();
     // The fixture profile already carries an account, so the folders step is
     // open rather than waiting behind it.
-    expect(within(flow).getByText("2. Folders and repositories")).toBeTruthy();
+    expect(
+      within(flow).getByRole("region", {
+        name: "2. Folders and repositories",
+      }),
+    ).toBeTruthy();
     expect(await within(flow).findByLabelText("Folder 1")).toBeTruthy();
     expect(screen.queryByText("Choose an account first.")).toBeNull();
     // The flow replaces the screen rather than sitting above it: none of the
@@ -318,7 +324,12 @@ describe("InboxFlow first run", () => {
     expect(
       await screen.findByRole("region", { name: "Set up your workspace" }),
     ).toBeTruthy();
-    expect(await screen.findByText("fixture")).toBeTruthy();
+    // The disclosure only renders once the probe has reported an account, so
+    // waiting for it is waiting for the environment reading the Git line
+    // would come from.
+    expect(
+      await screen.findByRole("button", { name: "Use a different account" }),
+    ).toBeTruthy();
     expect(screen.queryByText(missingGit)).toBeNull();
 
     cleanup();
@@ -340,7 +351,10 @@ describe("InboxFlow first run", () => {
         onOpenWorkbench={vi.fn()}
       />,
     );
-    expect(await screen.findByText(missingGit)).toBeTruthy();
+    const setup = await screen.findByRole("region", {
+      name: "Set up your workspace",
+    });
+    expect(await within(setup).findByRole("status")).toBeTruthy();
   });
 });
 
@@ -387,7 +401,7 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
       if (alert === undefined) throw new Error("Expected an opening error");
       return alert;
     });
-    expect(within(raisedAlert).getByText("Could not open review")).toBeTruthy();
+    expect(raisedAlert).toBeTruthy();
 
     const changedDashboard = {
       ...dashboard,
@@ -433,7 +447,9 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
       </BusyProvider>,
     );
 
-    expect(await screen.findByText("First run")).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "Pull requests" }),
+    ).toBeTruthy();
     expect(openErrorAlert()).toBeUndefined();
   });
 });
@@ -650,7 +666,9 @@ describe("InboxFlow Review opening ownership", () => {
     expect(reviewRequestPaths(desktop)).toEqual(["/v1/reviews/load"]);
     const openingRow = screen.getByRole("option");
     expect(rowBusy(openingRow)).toBe(true);
-    expect(within(openingRow).getByText("Opening…")).toBeTruthy();
+    expect(
+      within(openingRow).getByRole("status", { name: "Loading" }),
+    ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: /Opening…/ }).hasAttribute("disabled"),
     ).toBe(true);

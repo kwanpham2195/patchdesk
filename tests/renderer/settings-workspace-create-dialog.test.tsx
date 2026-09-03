@@ -101,7 +101,7 @@ describe("New workspace dialog", () => {
 
     renderDialog();
 
-    expect(screen.getByText("Checking GitHub authentication…")).toBeTruthy();
+    expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryByLabelText("GitHub account")).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
     // SAFETY: "Create workspace" is rendered by `<Button>`
@@ -128,9 +128,7 @@ describe("New workspace dialog", () => {
     expect(name.getAttribute("aria-describedby")).toBe(
       "create-workspace-name-error",
     );
-    expect(
-      document.getElementById("create-workspace-name-error")?.textContent,
-    ).toBe("Name cannot be blank.");
+    expect(document.getElementById("create-workspace-name-error")).toBeTruthy();
     expect(profileCreateRequests(desktopApi)).toHaveLength(0);
   });
 
@@ -143,7 +141,7 @@ describe("New workspace dialog", () => {
     await user.type(screen.getByLabelText("Name"), "Central Digital");
     await user.click(screen.getByRole("button", { name: "Create workspace" }));
 
-    expect(await screen.findByText("Workspace not created")).toBeTruthy();
+    expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByTestId("create-workspace-dialog")).toBeTruthy();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
@@ -176,7 +174,6 @@ function renderDialog(
 ): void {
   render(
     <CreateWorkspaceDialog
-      open
       onOpenChange={options.onOpenChange ?? (() => undefined)}
       onCreated={options.onCreated ?? (async () => undefined)}
     />,

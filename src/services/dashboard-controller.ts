@@ -82,7 +82,9 @@ const saveProfileInputSchema = v.object({
   // Absent on a create from the New workspace dialog, which sends a name and
   // lets `resolveSaveProfileId` derive the id.
   id: v.optional(v.unknown()),
-  label: v.unknown(),
+  // The one field this schema refines itself: the id is derived from the
+  // label, which cannot be left to a later domain parser.
+  label: v.string(),
   githubHost: v.unknown(),
   ghAccount: v.unknown(),
   workspaceRoots: v.unknown(),
@@ -235,10 +237,9 @@ export class DashboardController {
    * ids are already stored.
    */
   private async resolveSaveProfileId(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- both values come straight from the `POST /PUT /v1/profiles` body, which `saveProfile` keeps unparsed.
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the id comes straight from the `POST /PUT /v1/profiles` body, which `saveProfile` keeps unparsed for `parseWorkspaceProfileId` below.
     rawId: unknown,
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- see above.
-    rawLabel: unknown,
+    label: string,
   ): Promise<Result<WorkspaceProfileId, DashboardControllerFailure>> {
     if (rawId !== undefined) {
       const parsed = parseWorkspaceProfileId(rawId);
@@ -247,7 +248,7 @@ export class DashboardController {
     const existing = await this.profiles.list();
     if (existing._tag === "err") return failure("storage");
     const derived = deriveWorkspaceProfileId(
-      rawLabel,
+      label,
       new Set(existing.value.map((profile) => profile.id)),
     );
     return derived._tag === "ok" ? ok(derived.value) : failure("invalid_input");

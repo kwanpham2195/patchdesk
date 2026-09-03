@@ -181,7 +181,6 @@ export function WorkspaceProfileSection({
       </DisclosureCard>
       {createDialogOpen ? (
         <CreateWorkspaceDialog
-          open
           onOpenChange={setCreateDialogOpen}
           onCreated={onWorkspaceReload}
         />

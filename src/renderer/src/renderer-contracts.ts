@@ -219,6 +219,21 @@ export function parseEnvironmentCheckResponse(
   const parsed = v.safeParse(environmentCheckResponseSchema, input);
   return parsed.success ? parsed.output : undefined;
 }
+// `POST /v1/profiles` answers with the whole stored profile, of which the
+// renderer needs only the id the service derived, so this stays a plain
+// `v.object` rather than a `v.strictObject` over every profile field.
+const createdProfileSchema = v.object({
+  id: v.pipe(v.string(), v.minLength(1)),
+});
+
+/** Parses the id `POST /v1/profiles` reports for the workspace it created. */
+export function parseCreatedProfileId(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+  input: unknown,
+): string | undefined {
+  const parsed = v.safeParse(createdProfileSchema, input);
+  return parsed.success ? parsed.output.id : undefined;
+}
 // `GET /v1/reviews/labels` is a local-API payload Patchdesk owns on both
 // sides (ADR "Choose a validation style by data boundary"), so it gets a
 // `v.strictObject` schema parsed with `v.safeParse` — the same style
