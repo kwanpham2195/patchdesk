@@ -6,12 +6,16 @@ export type ReviewViewPreferences = {
   readonly diffStyle: "unified" | "split";
   readonly fileMode: "all" | "selected";
   readonly overflow: "scroll" | "wrap";
+  readonly lineNumbers: boolean;
+  readonly backgrounds: boolean;
 };
 
 export const DEFAULT_REVIEW_VIEW_PREFERENCES: ReviewViewPreferences = {
   diffStyle: "unified",
   fileMode: "all",
   overflow: "scroll",
+  lineNumbers: true,
+  backgrounds: true,
 };
 
 const STORAGE_VERSION = 1;
@@ -23,6 +27,10 @@ const preferencesSchema = v.object({
   diffStyle: v.fallback(v.picklist(["unified", "split"]), "unified"),
   fileMode: v.fallback(v.picklist(["all", "selected"]), "all"),
   overflow: v.fallback(v.picklist(["scroll", "wrap"]), "scroll"),
+  // Version 1 records predate these two fields, and each falls back on its own,
+  // so an older stored record reads as both on without a version bump.
+  lineNumbers: v.fallback(v.boolean(), true),
+  backgrounds: v.fallback(v.boolean(), true),
 });
 
 const storedSchema = v.pipe(

@@ -29,7 +29,9 @@ The first resolvable file becomes active when no saved active file is valid. Res
 
 ### Leave unchanged
 
-Scrolling, selecting a file, changing navigator sections, resizing the navigator, changing unified or split layout, toggling wrapping, or selecting a commit changes local view state only. It does not write GitHub or change the Review revision.
+Scrolling, selecting a file, changing navigator sections, resizing the navigator, changing any View option, or selecting a commit changes local view state only. It does not write GitHub or change the Review revision.
+
+One View options control on the diff toolbar holds every way the diff is drawn: split view, wrapped lines, line numbers, and backgrounds. Each is a switch that states whether the option is on. A change applies to the diff at once and is saved per profile, so the next Review opens the way the last one was left.
 
 ### Begin an action
 
@@ -87,7 +89,7 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 
 **Feedback, errors, and diagnostics.** Metadata-only state, commit-load failure, refresh failure, and plain-text fallback are distinct messages. The latest keyboard navigation target or boundary is visible feedback, not a diagnostic mode. Scroll diagnostics are implementation evidence, not a maintainer-facing mode.
 
-**Preferences, keyboard commands, and desktop integration.** Unified or split layout, wrapping, theme, navigator width, active file, and position shape the restored view. Desktop menus can open screens but do not choose a diff target.
+**Preferences, keyboard commands, and desktop integration.** The four View options (split view, wrapped lines, line numbers, backgrounds), theme, navigator width, active file, and position shape the restored view. Desktop menus can open screens but do not choose a diff target.
 
 **Supported input and accessibility limits.** Mouse and keyboard are supported. The plain-text fallback preserves readable content when the enhanced diff cannot mount. Patchdesk does not claim assistive-technology support.
 
