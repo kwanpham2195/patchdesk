@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as v from "valibot";
 import { requestJson, selectDirectory } from "../api-client";
 import type { ProfileSwitchResult } from "../hooks/use-profile-switch";
 import type { Dashboard, Profile } from "../renderer-models";
+import { createWorkspaceProfile } from "./settings-workspace-create-profile";
 import {
   listError,
   persistedForFields,
@@ -42,6 +42,7 @@ export type FieldStatus =
   | { readonly state: "saved" }
   | { readonly state: "failed"; readonly message: string };
 
+/** The whole Workspace editor as its cards consume it: values, per-field status, and one command per control. */
 export type WorkspaceProfileEditorHook = {
   readonly persisted: ProfileValues;
   readonly scalars: ProfileScalars;
@@ -178,7 +179,7 @@ export function useWorkspaceProfileEditor({
         // here rather than waiting for the reload: the next save must be an
         // update, not a second creation.
         const createdId = creating
-          ? await createProfile(requestBody)
+          ? await createWorkspaceProfile(requestBody)
           : await updateProfile(requestBody);
         const body: ProfileValues =
           createdId === undefined
@@ -338,32 +339,6 @@ export function useWorkspaceProfileEditor({
     chooseWorkspaceRoot,
     selectProfile,
   };
-}
-
-const createdProfileSchema = v.object({
-  id: v.pipe(v.string(), v.minLength(1)),
-});
-
-/**
- * Creates this workspace and makes it the active one, for the first save of a
- * profile that was never persisted. The id is derived from the label by the
- * service (`POST /v1/profiles` without an id) and returned so the editor can
- * adopt it.
- */
-async function createProfile(values: ProfileValues): Promise<string> {
-  const { id: _unused, ...withoutId } = profileRequestBody(values);
-  const created = await requestJson("/v1/profiles", {
-    method: "POST",
-    body: withoutId,
-  });
-  const parsed = v.safeParse(createdProfileSchema, created);
-  if (!parsed.success)
-    throw new Error("Patchdesk could not read the created workspace.");
-  await requestJson("/v1/profiles/select", {
-    method: "POST",
-    body: { id: parsed.output.id },
-  });
-  return parsed.output.id;
 }
 
 /** Saves an existing workspace, which already owns its id. */

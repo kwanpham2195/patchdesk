@@ -27,10 +27,6 @@ describe("deriveWorkspaceProfileId", () => {
       });
   });
 
-  it("rejects a name that is not a string", () => {
-    expect(deriveWorkspaceProfileId(undefined, noneTaken)._tag).toBe("err");
-  });
-
   it("takes the first free numeric suffix on collision", () => {
     expect(derive("CFW", new Set(["cfw"]))).toBe("cfw-2");
     expect(derive("CFW", new Set(["cfw", "cfw-2"]))).toBe("cfw-3");

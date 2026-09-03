@@ -1,8 +1,5 @@
 import { useState } from "react";
-import * as v from "valibot";
 
-import { requestJson } from "../api-client";
-import { parseGitHubHost, parseGitHubLogin } from "../../../domain/ids";
 import { useEnvironmentCheck } from "../hooks/use-api-probe";
 import type { GithubAuthAccount } from "../renderer-contracts";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
@@ -17,23 +14,12 @@ import {
 } from "../components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+import { createWorkspaceProfile } from "./settings-workspace-create-profile";
+import { AccountSelect, accountKey } from "./settings-workspace-reviewing-as";
+import { scalarError } from "./settings-workspace-profile-values";
 
-const createdProfileSchema = v.object({
-  id: v.pipe(v.string(), v.minLength(1)),
-});
 const EMPTY_ACCOUNTS: ReadonlyArray<GithubAuthAccount> = [];
-
-function accountKey(account: GithubAuthAccount): string {
-  return `${account.host}/${account.login}`;
-}
+const EMPTY_PATHS: ReadonlyArray<string> = [];
 
 /**
  * Creates one workspace from a name and an account. The id is derived by the
@@ -42,11 +28,9 @@ function accountKey(account: GithubAuthAccount): string {
  * draft survives.
  */
 export function CreateWorkspaceDialog({
-  open,
   onOpenChange,
   onCreated,
 }: {
-  readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onCreated: () => Promise<void>;
 }): React.JSX.Element {
@@ -80,24 +64,13 @@ export function CreateWorkspaceDialog({
     setError(undefined);
     setPending(true);
     try {
-      const created = await requestJson("/v1/profiles", {
-        method: "POST",
-        body: {
-          label,
-          githubHost: account.host,
-          ghAccount: account.login,
-          workspaceRoots: [],
-          rulePaths: [],
-        },
-      });
-      const parsed = v.safeParse(createdProfileSchema, created);
-      if (!parsed.success) {
-        setError("Patchdesk could not read the created workspace.");
-        return;
-      }
-      await requestJson("/v1/profiles/select", {
-        method: "POST",
-        body: { id: parsed.output.id },
+      await createWorkspaceProfile({
+        id: "",
+        label,
+        githubHost: account.host,
+        ghAccount: account.login,
+        workspaceRoots: EMPTY_PATHS,
+        rulePaths: EMPTY_PATHS,
       });
       await onCreated();
       onOpenChange(false);
@@ -114,7 +87,7 @@ export function CreateWorkspaceDialog({
 
   return (
     <Dialog
-      open={open}
+      open
       onOpenChange={(nextOpen) => {
         if (!pending) onOpenChange(nextOpen);
       }}
@@ -148,7 +121,7 @@ export function CreateWorkspaceDialog({
             // The probe decides which account control this dialog shows, so
             // it says it is still asking rather than rendering the manual
             // fields and swapping them for the Select a moment later.
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground" role="status">
               Checking GitHub authentication…
             </p>
           ) : chosen === undefined ? (
@@ -169,38 +142,13 @@ export function CreateWorkspaceDialog({
               />
             </div>
           ) : (
-            <Field>
-              <FieldLabel htmlFor="create-workspace-account">
-                Account
-              </FieldLabel>
-              <Select
-                value={accountKey(chosen)}
-                items={accounts.map((account) => ({
-                  label: accountName(account),
-                  value: accountKey(account),
-                }))}
-                onValueChange={setSelectedKey}
-              >
-                <SelectTrigger
-                  id="create-workspace-account"
-                  aria-label="Account"
-                >
-                  <SelectValue placeholder="Select an account" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {accounts.map((account) => (
-                      <SelectItem
-                        key={accountKey(account)}
-                        value={accountKey(account)}
-                      >
-                        {accountName(account)}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
+            <AccountSelect
+              id="create-workspace-account"
+              name="Account"
+              accounts={accounts}
+              selectedKey={accountKey(chosen)}
+              onSelect={(account) => setSelectedKey(accountKey(account))}
+            />
           )}
         </div>
         <DialogFooter>
@@ -229,10 +177,8 @@ type CreateWorkspaceFieldErrors = Readonly<
   Partial<Record<"name" | "ghAccount" | "githubHost", string>>
 >;
 
-function accountName(account: GithubAuthAccount): string {
-  return `${account.login} · ${account.host}`;
-}
-
+// The same client-side reasons the Workspace editor reports beside its own
+// account, host, and name fields.
 function validateCreateWorkspace(
   label: string,
   account: { readonly login: string; readonly host: string },
@@ -240,13 +186,12 @@ function validateCreateWorkspace(
   const found: {
     -readonly [Name in keyof CreateWorkspaceFieldErrors]?: string;
   } = {};
-  if (label === "") found.name = "Name cannot be blank.";
-  if (parseGitHubLogin(account.login)._tag !== "ok")
-    found.ghAccount =
-      "GitHub account must be a valid login of at most 39 characters.";
-  if (parseGitHubHost(account.host)._tag !== "ok")
-    found.githubHost =
-      "GitHub host must be a hostname without a scheme or path.";
+  const name = scalarError("label", label);
+  if (name !== undefined) found.name = name;
+  const ghAccount = scalarError("ghAccount", account.login);
+  if (ghAccount !== undefined) found.ghAccount = ghAccount;
+  const githubHost = scalarError("githubHost", account.host);
+  if (githubHost !== undefined) found.githubHost = githubHost;
   return found;
 }
 

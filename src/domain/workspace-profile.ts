@@ -52,10 +52,10 @@ const rawWatchedRepoSchema = v.strictObject({
 
 /**
  * Valibot boundary schema for a persisted workspace-profile JSON record.
- * Non-strict so a profile written before a setting was retired still loads,
- * with the removed key dropped.
+ * Strict, so an unrecognised key fails the record closed; every key Patchdesk
+ * has retired is listed here instead.
  */
-const workspaceProfileConfigSchema = v.object({
+const workspaceProfileConfigSchema = v.strictObject({
   id: v.string(),
   label: v.pipe(v.string(), v.minLength(1)),
   githubHost: v.string(),
@@ -63,6 +63,8 @@ const workspaceProfileConfigSchema = v.object({
   workspaceRoots: v.array(v.string()),
   rulePaths: v.array(v.string()),
   repos: v.array(rawWatchedRepoSchema),
+  // Retired 2026-09-03; accepted so a profile saved before then still loads, never read.
+  ownerFilters: v.optional(v.unknown()),
   analysisMergePolicy: v.optional(
     v.picklist(["advisory", "require_acknowledgement", "block"]),
   ),

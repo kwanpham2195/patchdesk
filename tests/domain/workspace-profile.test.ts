@@ -59,4 +59,13 @@ describe("retired profile settings", () => {
     expect(parsed).toMatchObject({ _tag: "ok", value: { id: "fixture" } });
     expect(parsed._tag === "ok" && "ownerFilters" in parsed.value).toBe(false);
   });
+
+  it("rejects a stored profile carrying any other unknown key", () => {
+    expect(
+      parseWorkspaceProfileConfig({ ...profile, unexpected: "value" }),
+    ).toEqual({
+      _tag: "err",
+      error: { _tag: "InvalidWorkspaceProfileConfig" },
+    });
+  });
 });

@@ -15,8 +15,11 @@ export type ProfileValues = {
   readonly rulePaths: ReadonlyArray<string>;
 };
 
+/** Which of the two list-valued profile fields a row editor is editing. */
 export type ProfileListField = "workspaceRoots" | "rulePaths";
+/** Which of the three single-value profile fields a control is editing. */
 export type ProfileScalarField = "label" | "githubHost" | "ghAccount";
+/** Any field the Workspace editor tracks a save status for. */
 export type ProfileEditorField = ProfileScalarField | ProfileListField;
 
 /** One editable list row. The id is local, so typing into a row never re-keys it. */
@@ -25,6 +28,7 @@ export type ProfileListEntry = {
   readonly value: string;
 };
 
+/** The row-editor state of both list-valued fields. */
 export type ProfileRows = {
   readonly workspaceRoots: ReadonlyArray<ProfileListEntry>;
   readonly rulePaths: ReadonlyArray<ProfileListEntry>;
@@ -49,10 +53,12 @@ const LIST_FIELDS: ReadonlyArray<ProfileListField> = [
 
 const EMPTY_VALUES: ReadonlyArray<string> = [];
 
+/** One list row, with the local id that keeps it stable while it is typed into. */
 export function profileListEntry(value: string): ProfileListEntry {
   return { id: crypto.randomUUID(), value };
 }
 
+/** The editable values of one loaded profile, with the defaults an unpersisted one starts from. */
 export function profileValuesFor(profile: Profile | undefined): ProfileValues {
   return {
     id: profile?.id ?? "",
@@ -64,6 +70,7 @@ export function profileValuesFor(profile: Profile | undefined): ProfileValues {
   };
 }
 
+/** The single-value half of a profile, as the editor holds it locally. */
 export function scalarsFor(values: ProfileValues): ProfileScalars {
   return {
     label: values.label,
@@ -72,6 +79,7 @@ export function scalarsFor(values: ProfileValues): ProfileScalars {
   };
 }
 
+/** The row-editor state for one profile's two lists. */
 export function rowsFor(values: ProfileValues): ProfileRows {
   const roots = values.workspaceRoots.map(profileListEntry);
   return {
@@ -188,6 +196,7 @@ export function listError(
   return `${label} must be absolute paths starting with "/".`;
 }
 
+/** Whether two list values are the same values in the same order. */
 export function sameValueList(
   left: ReadonlyArray<string>,
   right: ReadonlyArray<string>,
@@ -198,6 +207,7 @@ export function sameValueList(
   );
 }
 
+/** Whether two profiles carry the same editable values. */
 export function sameProfileValues(
   left: ProfileValues,
   right: ProfileValues,
