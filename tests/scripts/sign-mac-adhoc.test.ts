@@ -51,8 +51,8 @@ describe("adhocSignPackagedApp", () => {
       {
         command: "codesign",
         // "-" is the ad-hoc identity: it seals the bundle without a
-        // certificate, which is what turns Gatekeeper's "damaged" dead end
-        // into the "cannot verify the developer" dialog.
+        // certificate so the app runs once the quarantine flag is cleared;
+        // it does not get past Gatekeeper.
         args: [
           "--force",
           "--deep",

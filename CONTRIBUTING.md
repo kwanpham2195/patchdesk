@@ -436,8 +436,9 @@ publishing it.
    exact tree it is about to ship before `pnpm package:mac` builds it and
    `pnpm test:package-smoke` checks the built app. `gh release create` then
    opens a **draft** GitHub release with the `.dmg` and the `.zip` attached.
-   `release-notes.md` is a scratch file, not tracked by `.gitignore`; delete
-   it after the draft is created rather than adding an ignore rule for it.
+   `release-notes.md` is a scratch file that `.gitignore` does not list;
+   delete it after the draft is created rather than adding an ignore rule
+   for it.
 
 5. Open the draft release, read the notes, and publish.
 
