@@ -39,7 +39,7 @@ Arrival can include a read. The Pull requests screen loads a repository listing,
 
 Leaving an untouched screen, closing a clean dialog, cancelling a picker before selection, or closing an unconfirmed run dialog records nothing. Patchdesk can still preserve view preferences such as destination, selected Settings section for reload restoration, navigator width, or theme. Those preferences are not the task's domain result.
 
-If the surface is dirty or owns a write whose final result has not arrived, leaving is no longer the unchanged path. The navigation guard handles it as an interrupt.
+If the surface holds an unsaved draft or owns a write whose final result has not arrived, leaving is no longer the unchanged path. The navigation guard handles it as an interrupt.
 
 ### Begin an action
 
@@ -83,15 +83,15 @@ Variant values are read at the boundary that needs them. A run configuration is 
 
 | Event | Before the action runs | While the action runs |
 | --- | --- | --- |
-| Cancel, Stop, or Escape | Cancelling a clean dialog records nothing. Cancelling a dirty guard returns to the draft. | Stop requests cancellation only for features that expose it. The task remains pending until cancellation settles. Escape cannot bypass a dirty-draft or write-pending guard. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Clean navigation proceeds. Dirty state parks the requested destination behind a choice. | A pending GitHub write blocks navigation. Feature-local reads or Insights can define narrower behavior, but a stale response cannot update a different Review. |
+| Cancel, Stop, or Escape | Cancelling a clean dialog records nothing. Cancelling a leave guard returns to the draft it protects. | Stop requests cancellation only for features that expose it. The task remains pending until cancellation settles. Escape cannot bypass a draft or write-pending guard. |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Clean navigation proceeds. An unsaved Review draft parks the requested destination behind a choice. | A pending GitHub write blocks navigation. Feature-local reads or Insights can define narrower behavior, but a stale response cannot update a different Review. |
 | Start another action or request a refresh | Independent reads can overlap. Conflicting actions can be disabled or refused before request. | Tracked loading actions share the titlebar bar. Review and lifecycle coordinators serialize conflicting durable mutations. |
 | GitHub, the network, a local tool, or an Insight provider fails or times out | A prerequisite failure prevents start and presents a corrective message where possible. | A confirmed failure becomes retryable or terminal according to the feature. An uncertain GitHub outcome locks writes instead. |
 | Close Settings, reload the renderer, close the window, or quit Patchdesk | Clean overlays close normally. Unsaved renderer-only drafts can be lost on reload or quit unless their feature documents name persistence. | Durable operations recover from journals or stored state where implemented. Insight children receive cancellation on app shutdown. Renderer-only pending UI state is not itself proof of operation outcome. |
 | The pull request, represented revision, pending review, permission, or other target changes elsewhere | The next current read can disable or redirect the action. | Revision changes can supersede Insights and block writes. GitHub pending-review reconciliation adopts GitHub rather than merging two drafts. |
 | macOS focus, a file or folder picker, or another input path takes control | Focus change alone does not begin or cancel a task. Native pickers can return a chosen value or nothing. | Focus loss does not prove cancellation. Feature documents record whether focus return, keyboard state, or window closure has special behavior. |
 
-After an interrupt, Patchdesk stays on the current surface unless navigation was explicitly allowed. The feature must state what was kept: confirmed projection, dirty draft, retained Insight, pending identity, write lock, or recovery journal.
+After an interrupt, Patchdesk stays on the current surface unless navigation was explicitly allowed. The feature must state what was kept: confirmed projection, unsaved draft, retained Insight, pending identity, write lock, or recovery journal.
 
 ## Interactions with other systems
 
@@ -128,8 +128,8 @@ After an interrupt, Patchdesk stays on the current surface unless navigation was
 
 - Live desktop verification is pending because this task did not run with the required herdr dev and log panes.
 - Confirm which tracked operations expose the titlebar bar and whether the first action's label remains understandable when a second action outlives it.
-- Confirm the visible and focus behavior of navigation commands while `dirty_draft` and `write_pending` guards are active.
+- Confirm the visible and focus behavior of navigation commands while the `write_pending` guard is active. In the current source the Review workbench is the only surface that reports navigation state, and it reports only `write_pending` or `clear`; confirm whether any surface still reports `dirty_draft`.
 - Feature documents must verify their own Escape behavior. This foundation defines the required categories but does not assume every Base UI dialog routes Escape through the same owner.
 - Confirm app shutdown messaging while an Insight cancellation is in progress; the durable cancellation path is documented in code, but the visible shutdown timing is not.
 
-Verified against Patchdesk application source commit `3100615`.
+Verified against Patchdesk application source commit `3100615`; the removal of the workspace draft guard described from `883fad2`.

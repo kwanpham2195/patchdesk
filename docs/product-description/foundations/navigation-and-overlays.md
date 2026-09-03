@@ -2,7 +2,7 @@
 
 ## Summary
 
-Patchdesk has two primary destinations: the Pull requests screen and a Review workbench identified by its Review. Settings opens above either destination and does not replace it. Navigation preserves safe screen position, moves focus when the destination changes, and refuses to discard a dirty draft or abandon a GitHub write whose result is still pending.
+Patchdesk has two primary destinations: the Pull requests screen and a Review workbench identified by its Review. Settings opens above either destination and does not replace it. Navigation preserves safe screen position, moves focus when the destination changes, and refuses to discard an unsaved Review draft or abandon a GitHub write whose result is still pending.
 
 ## The simple case
 
@@ -23,9 +23,9 @@ stateDiagram-v2
     workbench --> settings : open Settings
     settings --> pullRequests : close over Pull requests
     settings --> workbench : close over Review
-    workbench --> blocked : dirty draft or write pending
+    workbench --> blocked : unsaved Review draft or write pending
     blocked --> workbench : stay or wait
-    blocked --> pullRequests : save or discard allows navigation
+    blocked --> pullRequests : discarding the draft allows navigation
 ```
 
 ### Arrive
@@ -46,7 +46,7 @@ Closing Navigate without choosing a command records no destination change. Openi
 
 Opening a Review stores its validated workbench projection and changes the destination to that Review's workbench key. The Review code loads only after Patchdesk has a canonical Review projection.
 
-Back, Navigate, Pull request presets, profile switching, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench.
+Back, Navigate, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench.
 
 Opening Settings is refused when navigation state is not clear. ⌘K and the titlebar Settings control are also disabled or ignored. The native close path reads the same navigation state from the renderer.
 
@@ -56,7 +56,7 @@ While Review preparation or route code is loading, Patchdesk shows a loading sta
 
 Workbench position updates save the active tab, navigator section, and selected path under the Review ID. Selected paths are limited to 2,000 characters. Settings section changes write a session-only restore marker while the overlay remains open.
 
-If navigation is dirty, Patchdesk parks the requested destination behind the leave dialog. If a GitHub write is pending, the dialog offers only Wait for completion. If a local review draft is dirty, it offers Stay or Discard changes and leave; the feature that owns the draft can provide a Save path in its own guard.
+When the renderer reports anything other than a clear navigation state, Patchdesk parks the requested destination behind the leave dialog. A pending GitHub write offers only Wait for completion. An unsaved local Review draft offers Stay on this review or Discard changes and leave. Settings never parks a destination: its sections save their own values as they are changed.
 
 ### Settle
 
@@ -64,13 +64,13 @@ A successful destination change updates the screen, stored destination key, titl
 
 Closing Settings normally clears its reload marker and restores opener focus. If the renderer reloads while Settings is open, the overlay reopens on the saved section. A fresh app launch does not reopen Settings because the marker uses session storage.
 
-Closing the desktop window or quitting while state is clear proceeds. Dirty draft state opens a native warning that can keep the app open or discard the latest unsaved edit. GitHub write pending state prevents close and tells the maintainer to wait for the final result.
+Closing the desktop window or quitting while state is clear proceeds. An unsaved Review draft opens a native warning that can keep the app open or discard the latest unsaved edit. A pending GitHub write prevents close and tells the maintainer to wait for the final result.
 
 ## Variants
 
 | Variant | Before the action runs | While the action runs |
 | --- | --- | --- |
-| Workspace profile and GitHub account | The active profile appears in the titlebar and scopes destinations that load data. | Applying another profile clears the loaded workbench, resets the Pull requests request, and returns to Pull requests. |
+| Workspace profile and GitHub account | The active profile appears in the titlebar and scopes destinations that load data. | Applying another workspace clears the loaded workbench, resets the Pull requests request, and returns to Pull requests. |
 | Pull request and Review state | A workbench destination needs a Review ID and a loadable local projection. | Revision and remote-state changes update the workbench without changing its destination key unless the Review itself changes. |
 | GitHub permissions and merge readiness | Navigation and Settings do not require GitHub write permission. | Permission changes affect controls in the destination, not navigation itself. A pending write still blocks leaving until settlement. |
 | Network, local tool, and Insight provider availability | Previously stored destinations and view positions are local. Loading their content can still fail. | A route or data-load failure shows local Retry where provided. Settings remains an overlay over the last rendered destination. |
@@ -82,11 +82,11 @@ Changing input path does not bypass navigation state. A native window close uses
 
 | Event | Before the action runs | While the action runs |
 | --- | --- | --- |
-| Cancel, Stop, or Escape | Closing Navigate or a clean Settings overlay keeps the current destination. Dirty guards return to the current task when cancelled. | Cancel cannot override write pending. A dirty guard can stay, save where offered, or discard before continuing. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Same-destination requests do nothing. Clean destination and section changes proceed. | A parked destination waits behind dirty state. Profile switching has its own latest-request guard and returns to Pull requests only after success. |
-| Start another action or request a refresh | Refresh acts inside Pull requests and does not create a destination. Opening Settings overlays the destination. | Refresh or route loading can show the shared busy bar. Navigation guards remain owned by draft or write state. |
+| Cancel, Stop, or Escape | Closing Navigate or a clean Settings overlay keeps the current destination. A leave guard returns to the current task when cancelled. | Cancel cannot override write pending. A draft guard can stay or discard before continuing. |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Same-destination requests do nothing. Clean destination and section changes proceed. | A parked destination waits behind the Review that owns the guard. Switching workspace has its own latest-request guard and returns to Pull requests only after success. |
+| Start another action or request a refresh | Refresh acts inside Pull requests and does not create a destination. Opening Settings overlays the destination. | Refresh or route loading can show the shared busy bar. Navigation guards remain owned by the Review's draft or write state. |
 | GitHub, the network, a local tool, or an Insight provider fails or times out | Stored route and position reads do not need them. Destination content can show a read failure after arrival. | Review route import failure offers Retry. Data failures remain within the active destination unless a profile switch succeeds. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk | Clean Settings closes and clears restore state. Reload restores the last destination and valid position. | Dirty close requires confirmation. Write pending prevents close. Renderer reload can restore destination and Settings section but not arbitrary unsaved drafts. |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk | Settings closes and clears restore state without a question. Reload restores the last destination and valid position. | Closing with an unsaved Review draft requires confirmation. Write pending prevents close. Renderer reload can restore destination and Settings section but not arbitrary unsaved text. |
 | The pull request, represented revision, pending review, permission, or other target changes elsewhere | The workbench can open with readonly or changed state when its Review still exists. | Remote changes alter feature controls and freshness. They do not apply another Review's saved position. |
 | macOS focus, a file or folder picker, or another input path takes control | Normal Settings close returns focus to the opener. Destination changes focus the new screen heading. | Native dialogs and pickers temporarily own focus. Hand verification must confirm focus after every native return path. |
 
@@ -104,7 +104,7 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 
 **Network, local tools, and Insight providers.** They affect content inside a destination. Navigation shell, saved position, and Settings overlay state are local.
 
-**Concurrent operations and locking.** Dirty and write-pending states are one renderer navigation state. Profile and Review owners still use their own request generations and main-process locks.
+**Concurrent operations and locking.** Draft and write-pending states are one renderer navigation state, reported by the Review workbench. Workspace and Review owners still use their own request generations and main-process locks.
 
 **Feedback, errors, and diagnostics.** Loading statuses and route errors appear in main content. Native close warnings explain whether unsaved local text or a GitHub result is at risk.
 
@@ -126,9 +126,10 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 ## Open questions and verification
 
 - Live desktop verification is pending because this task did not run with the required herdr dev and log panes.
-- Confirm focus after every destination change, normal Settings close, dirty-guard cancellation, and native close cancellation.
-- Confirm that Escape and clicking outside Settings clear the restore marker on a clean close and cannot bypass the dirty guard.
+- Confirm focus after every destination change, normal Settings close, leave-guard cancellation, and native close cancellation.
+- Confirm that Escape and clicking outside Settings clear the restore marker on a clean close.
+- In the current source only the Review workbench reports navigation state, and only as write-pending or clear. Confirm which surface, if any, still reports an unsaved draft to this guard.
 - Confirm the exact visible restore after a renderer reload from each workbench tab, navigator section, and selected file.
 - Confirm behavior when the saved workbench destination refers to a Review that local cleanup removed; source inspection for the load fallback belongs in `pull-requests/opening-a-review.md`.
 
-Verified against Patchdesk application source commit `3100615`.
+Verified against Patchdesk application source commit `3100615`; the removal of the workspace draft guard described from `883fad2`.
