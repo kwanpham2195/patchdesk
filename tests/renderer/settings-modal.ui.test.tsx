@@ -301,9 +301,7 @@ describe("SettingsModal", () => {
 
     await user.click(screen.getByRole("tab", { name: "Data & recovery" }));
     expect(
-      screen.getByText(
-        "Choose a workspace profile before clearing its local data.",
-      ),
+      screen.getByText("Choose a workspace before clearing its local data."),
     ).toBeTruthy();
     // SAFETY: "Clear cache" is rendered by `<Button>`
     // (src/renderer/src/components/ui/button.tsx), which wraps base-ui's

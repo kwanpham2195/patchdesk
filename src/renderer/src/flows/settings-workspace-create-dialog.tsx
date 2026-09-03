@@ -51,6 +51,7 @@ export function CreateWorkspaceDialog({
   readonly onCreated: () => Promise<void>;
 }): React.JSX.Element {
   const probe = useEnvironmentCheck(0);
+  const checking = probe.kind === "checking";
   const accounts =
     probe.kind === "loaded" ? probe.value.githubAccounts : EMPTY_ACCOUNTS;
   const [name, setName] = useState("");
@@ -143,7 +144,14 @@ export function CreateWorkspaceDialog({
             error={errors.name}
             onChange={setName}
           />
-          {chosen === undefined ? (
+          {checking ? (
+            // The probe decides which account control this dialog shows, so
+            // it says it is still asking rather than rendering the manual
+            // fields and swapping them for the Select a moment later.
+            <p className="text-sm text-muted-foreground">
+              Checking GitHub authentication…
+            </p>
+          ) : chosen === undefined ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <CreateWorkspaceField
                 id="create-workspace-gh-account"
@@ -204,7 +212,7 @@ export function CreateWorkspaceDialog({
             Cancel
           </Button>
           <Button
-            disabled={pending}
+            disabled={pending || checking}
             onClick={() => {
               void create();
             }}

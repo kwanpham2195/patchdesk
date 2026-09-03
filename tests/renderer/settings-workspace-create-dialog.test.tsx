@@ -96,6 +96,26 @@ describe("New workspace dialog", () => {
     );
   });
 
+  it("says it is still checking instead of offering the manual fields", async () => {
+    installDesktopApi({ environment: "never" });
+
+    renderDialog();
+
+    expect(screen.getByText("Checking GitHub authentication…")).toBeTruthy();
+    expect(screen.queryByLabelText("GitHub account")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
+    // SAFETY: "Create workspace" is rendered by `<Button>`
+    // (src/renderer/src/components/ui/button.tsx), which wraps base-ui's
+    // `Button` with `nativeButton` left at its default `true`.
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Create workspace",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
   it("reports a blank name beside the field without posting", async () => {
     const desktopApi = installDesktopApi();
     const user = userEvent.setup();
@@ -166,21 +186,24 @@ function renderDialog(
 function installDesktopApi(
   options: {
     readonly rejectProfileSave?: boolean;
-    readonly environment?: Parameters<typeof success>[0];
+    /** "never" leaves the probe unanswered, which is the checking state. */
+    readonly environment?: Parameters<typeof success>[0] | "never";
   } = {},
 ): DesktopDouble {
   desktop = installDesktopDouble({
     "/v1/environment": () =>
-      success(
-        options.environment ?? {
-          git: "ready",
-          gh: "ready",
-          githubAuth: "ready",
-          githubAccounts: [
-            { host: "github.com", login: "patchdesk", active: true },
-          ],
-        },
-      ),
+      options.environment === "never"
+        ? new Promise<never>(() => undefined)
+        : success(
+            options.environment ?? {
+              git: "ready",
+              gh: "ready",
+              githubAuth: "ready",
+              githubAccounts: [
+                { host: "github.com", login: "patchdesk", active: true },
+              ],
+            },
+          ),
     "/v1/profiles": () =>
       options.rejectProfileSave === true
         ? failure({ error: "storage" })

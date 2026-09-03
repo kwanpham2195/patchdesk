@@ -165,7 +165,7 @@ export function scalarError(
   value: string,
 ): string | undefined {
   if (field === "label")
-    return value === "" ? "Label cannot be blank." : undefined;
+    return value === "" ? "Name cannot be blank." : undefined;
   if (field === "githubHost")
     return parseGitHubHost(value)._tag === "ok"
       ? undefined
@@ -184,7 +184,7 @@ export function listError(
     (value) => parseAbsolutePath(value)._tag !== "ok",
   );
   if (!invalid) return undefined;
-  const label = field === "workspaceRoots" ? "Workspace roots" : "Rule paths";
+  const label = field === "workspaceRoots" ? "Folders" : "Rule paths";
   return `${label} must be absolute paths starting with "/".`;
 }
 

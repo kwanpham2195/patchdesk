@@ -205,7 +205,7 @@ function DataSection({
     if (dashboard?.profile.id === undefined) {
       setCleanup((current) => ({
         ...current,
-        error: "Choose a workspace profile before clearing its local data.",
+        error: "Choose a workspace before clearing its local data.",
       }));
       return;
     }
@@ -288,7 +288,7 @@ function DataSection({
             <Alert>
               <AlertTitle>No active workspace</AlertTitle>
               <AlertDescription>
-                Choose a workspace profile before clearing its local data.
+                Choose a workspace before clearing its local data.
               </AlertDescription>
             </Alert>
           )}

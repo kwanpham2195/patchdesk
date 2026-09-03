@@ -233,7 +233,7 @@ try {
   // unavailable: assert the real disabled state and its explanatory copy
   // instead of an activity load that can never become clickable here.
   await settings
-    .getByText("Choose a workspace profile before clearing its local data.", {
+    .getByText("Choose a workspace before clearing its local data.", {
       exact: true,
     })
     .waitFor();

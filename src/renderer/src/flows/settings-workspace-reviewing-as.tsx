@@ -210,6 +210,13 @@ export function ReviewingAsPanel({
             Reviewing as <strong>{view.account.login}</strong> on{" "}
             <em>{view.account.host}</em>, from the GitHub CLI.
           </p>
+          {/* Adopting this account saves the workspace like any other choice,
+              so the statement carries the same status the Select does. A
+              failure is left to the manual fields, which the disclosure below
+              reveals with the rejected value and this same message. */}
+          {account.accountStatus.state === "failed" ? null : (
+            <FieldSaveStatus status={account.accountStatus} />
+          )}
           <AccountDisclosure account={account} />
         </div>
       ) : (
