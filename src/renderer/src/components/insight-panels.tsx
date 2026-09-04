@@ -1,4 +1,10 @@
-import { FileText, History, Route, SearchIcon } from "lucide-react";
+import {
+  ChevronRight,
+  FileText,
+  History,
+  Route,
+  SearchIcon,
+} from "lucide-react";
 
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
@@ -144,7 +150,7 @@ export function InsightOverview({
       {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <InsightOverviewCard
-          name="Brief"
+          type="brief"
           projection={brief}
           // A Brief carries structure, not prose (ADR 0040), so its headline
           // is the Start here lead or, failing that, the first Flow tree.
@@ -154,7 +160,7 @@ export function InsightOverview({
           onSelect={() => onSelect("brief")}
         />
         <InsightOverviewCard
-          name="Walkthrough"
+          type="walkthrough"
           projection={walkthrough}
           headline={
             walkthroughValue === undefined
@@ -164,7 +170,7 @@ export function InsightOverview({
           onSelect={() => onSelect("walkthrough")}
         />
         <InsightOverviewCard
-          name="Analysis"
+          type="analysis"
           projection={analysis}
           headline={
             analysis.retained === undefined
@@ -195,37 +201,50 @@ function walkthroughHeadline(
 }
 
 function InsightOverviewCard({
-  name,
+  type,
   projection,
   headline,
   onSelect,
 }: {
-  readonly name: string;
+  readonly type: InsightRunDialogType;
   readonly projection: InsightProjection;
   readonly headline: string | undefined;
   readonly onSelect: () => void;
 }): React.JSX.Element {
+  const Icon = INSIGHT_ICONS[type];
   return (
     <button
       type="button"
-      className="rounded-md border p-4 text-left hover:bg-accent"
+      className="group/card flex h-full flex-col gap-2 rounded-md border p-4 text-left ui-state-transition outline-none hover:border-primary/40 hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       onClick={onSelect}
     >
-      <p className="font-medium">{name}</p>
-      {headline === undefined ? null : (
-        <p className="mt-1 line-clamp-2 text-sm">{headline}</p>
+      <span className="flex items-center gap-2">
+        <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
+        <span className="font-medium">{INSIGHT_NOUNS[type]}</span>
+        <ChevronRight
+          aria-hidden="true"
+          className="ml-auto size-4 text-muted-foreground ui-state-transition group-hover/card:text-foreground"
+        />
+      </span>
+      {headline === undefined ? (
+        <span className="line-clamp-2 min-h-10 text-sm text-muted-foreground">
+          Not generated for this revision
+        </span>
+      ) : (
+        <span className="line-clamp-2 min-h-10 text-sm">{headline}</span>
       )}
-      <p className="mt-1 text-xs text-muted-foreground">
-        {insightStatusLabel(projection.status)} ·{" "}
-        {projection.retained === undefined ? (
-          "No retained result"
-        ) : (
-          <RelativeTime
-            iso={projection.retained.generatedAt}
-            prefix="retained "
-          />
+      <span className="mt-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+        <InsightStatusBadge status={projection.status} />
+        {projection.retained === undefined ? null : (
+          <>
+            {" · "}
+            <RelativeTime
+              iso={projection.retained.generatedAt}
+              prefix="retained "
+            />
+          </>
         )}
-      </p>
+      </span>
     </button>
   );
 }
