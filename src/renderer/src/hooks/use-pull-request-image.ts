@@ -29,6 +29,13 @@ const imageResponseSchema = v.object({
 const resolutions = new Map<string, Promise<string>>();
 
 /**
+ * Each entry holds a whole image as a `data:` URI, so the map is capped rather
+ * than kept for the life of the module: enough to cover the images on screen
+ * and the ones just scrolled past, and no more.
+ */
+const MAX_RESOLUTIONS = 32;
+
+/**
  * Resolves one image referenced by a pull request body into a `data:` URI.
  * The bytes have to come back through the main process: the renderer's
  * `img-src 'self' data:` CSP blocks an `<img>` pointing at GitHub directly.
@@ -84,7 +91,17 @@ function resolveImage(
     throw cause;
   });
   resolutions.set(key, resolution);
+  evictOldest();
   return resolution;
+}
+
+/** Drops entries in insertion order, which `Map` preserves, until the cap holds. */
+function evictOldest(): void {
+  while (resolutions.size > MAX_RESOLUTIONS) {
+    const oldest = resolutions.keys().next();
+    if (oldest.done === true) return;
+    resolutions.delete(oldest.value);
+  }
 }
 
 async function requestImage(
