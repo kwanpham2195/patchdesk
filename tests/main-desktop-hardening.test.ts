@@ -8,8 +8,10 @@ import {
   contentSecurityPolicy,
   installWebContentsSecurity,
   isAllowedExternalUrl,
+  isUserActivatedExternalUrl,
   normalizeExternalHosts,
   openAllowedExternalUrl,
+  openUserActivatedExternalUrl,
 } from "../src/main/external-navigation";
 import {
   workbenchTitlebarHeight,
@@ -66,6 +68,28 @@ describe("desktop hardening", () => {
       "file:///tmp/review.html",
     ]) {
       expect(isAllowedExternalUrl(url, allowed)).toBe(false);
+    }
+  });
+
+  it("opens a clicked link on any HTTPS host, still refusing unsafe URLs", async () => {
+    const openExternal = vi.fn(async () => undefined);
+
+    await expect(
+      openUserActivatedExternalUrl(
+        "https://docs.github.com/copilot/request-a-code-review",
+        openExternal,
+      ),
+    ).resolves.toBe(true);
+    expect(openExternal).toHaveBeenCalledOnce();
+
+    for (const url of [
+      "http://github.com/centraldigital/patchdesk",
+      "https://user:password@github.com/centraldigital/patchdesk",
+      "https://github.com:8443/centraldigital/patchdesk",
+      "javascript:alert(1)",
+      "file:///tmp/review.html",
+    ]) {
+      expect(isUserActivatedExternalUrl(url)).toBe(false);
     }
   });
 
@@ -165,7 +189,11 @@ describe("desktop hardening", () => {
     expect(setPermissionCheckHandler).toHaveBeenCalledOnce();
     expect(setPermissionRequestHandler).toHaveBeenCalledOnce();
 
+    // A clicked link may go to any HTTPS host, but navigation the page starts
+    // by itself stays on the allowlist, so the popup to evil.example above
+    // opened nothing.
     await vi.waitFor(() => expect(openExternal).toHaveBeenCalledTimes(2));
+    expect(openExternal).not.toHaveBeenCalledWith("https://evil.example");
   });
 
   it("allows only the app's own origin to write the clipboard, and denies every other permission", () => {

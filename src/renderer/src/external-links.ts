@@ -9,13 +9,35 @@ export function pullRequestPageUrl(pr: PullRequestRef): URL {
 }
 
 /**
- * Resolves an untrusted Markdown/check URL only when it remains on the saved
- * pull request host. The main process repeats HTTPS host validation on open.
+ * Resolves an untrusted Markdown/check URL the user has to click before
+ * anything happens. A comment body routinely links off GitHub -- the docs, a
+ * CI provider, an advisory -- and GitHub itself renders those as links, so
+ * pinning them to the pull request's own host only turned them into dead
+ * text. Every other guard stays: HTTPS only, no port, no embedded
+ * credentials, no control characters, and a relative URL still resolves
+ * against the pull request's page.
+ *
+ * The main process re-validates on open, and keeps its own host allowlist for
+ * navigation the page starts by itself.
+ *
+ * An image is not resolved here at all. It is fetched with no click, so an
+ * arbitrary host in an `<img src>` would report back that the maintainer
+ * opened this pull request, where a link cannot: it needs the user to
+ * activate it. `PullRequestImageService` in the main process is the single
+ * authority on which image URL is fetched, and keeps that host restriction.
  */
 export function resolvePullRequestExternalUrl(
   value: string,
   pr: PullRequestRef | undefined,
 ): string | undefined {
+  return resolveAgainstPullRequest(value, pr)?.toString();
+}
+
+/** Applies every guard that does not depend on the URL's host. */
+function resolveAgainstPullRequest(
+  value: string,
+  pr: PullRequestRef | undefined,
+): URL | undefined {
   if (pr === undefined) return undefined;
   if (
     value.trim() !== value ||
@@ -27,18 +49,16 @@ export function resolvePullRequestExternalUrl(
     return undefined;
   }
   try {
-    const base = pullRequestPageUrl(pr);
-    const url = new URL(value, base);
+    const url = new URL(value, pullRequestPageUrl(pr));
     if (
       url.protocol !== "https:" ||
-      url.hostname !== base.hostname ||
       url.port !== "" ||
       url.username !== "" ||
       url.password !== ""
     ) {
       return undefined;
     }
-    return url.toString();
+    return url;
   } catch {
     return undefined;
   }

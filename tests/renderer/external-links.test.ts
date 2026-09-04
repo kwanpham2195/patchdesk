@@ -25,12 +25,21 @@ describe("review external links", () => {
     ).toBe("https://github.com/centraldigital/patchdesk/actions/runs/1");
   });
 
-  it("makes unsafe schemes, credentialed URLs, ports, and cross-host URLs inert", () => {
+  it("follows a link off the pull request's host, the way GitHub renders it", () => {
+    for (const url of [
+      "https://docs.github.com/copilot/how-tos/request-a-code-review",
+      "https://circleci.com/pipelines/github/centraldigital/patchdesk/1",
+      "https://github.com.evil.example/centraldigital/patchdesk",
+    ]) {
+      expect(resolvePullRequestExternalUrl(url, pullRequest)).toBe(url);
+    }
+  });
+
+  it("makes unsafe schemes, credentialed URLs, and ports inert", () => {
     for (const url of [
       "http://github.com/centraldigital/patchdesk",
       "mailto:reviewer@example.com",
       "javascript:alert(1)",
-      "https://github.com.evil.example/centraldigital/patchdesk",
       "https://user:password@github.com/centraldigital/patchdesk",
       "https://github.com:8443/centraldigital/patchdesk",
       "not a valid url://",

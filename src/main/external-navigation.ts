@@ -104,6 +104,42 @@ export async function openAllowedExternalUrl(
   return true;
 }
 
+/**
+ * Rejects the same unsafe URLs as `isAllowedExternalUrl` but allows any host,
+ * for a link the user activated by clicking it in a rendered body.
+ *
+ * The two are deliberately not the same predicate. A comment body links off
+ * GitHub all the time -- the docs, a CI provider, an advisory -- and refusing
+ * those made the link dead on click, which is the whole reason this exists.
+ * `isAllowedExternalUrl` still guards `will-navigate` and `setWindowOpenHandler`,
+ * where the page starts the navigation with no user intent behind it; a
+ * hostile body must not reach an arbitrary host without a click.
+ */
+export function isUserActivatedExternalUrl(rawUrl: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === "https:" &&
+    url.username.length === 0 &&
+    url.password.length === 0 &&
+    (url.port.length === 0 || url.port === "443")
+  );
+}
+
+/** Opens one user-activated link and reports whether an external open was attempted. */
+export async function openUserActivatedExternalUrl(
+  rawUrl: string,
+  openExternal: ExternalUrlOpener,
+): Promise<boolean> {
+  if (!isUserActivatedExternalUrl(rawUrl)) return false;
+  await openExternal(rawUrl);
+  return true;
+}
+
 /** Origin of a URL, or `undefined` when the URL is missing or unparseable. */
 function originOf(url: string | undefined): string | undefined {
   if (url === undefined || !URL.canParse(url)) return undefined;

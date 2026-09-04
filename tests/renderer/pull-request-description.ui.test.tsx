@@ -63,7 +63,7 @@ function restoreDialogMethod(
 }
 
 describe("PullRequestDescription", () => {
-  it("renders safe GitHub-flavored Markdown and opens only an explicit same-host link", async () => {
+  it("renders safe GitHub-flavored Markdown and opens every explicit HTTPS link", async () => {
     const user = userEvent.setup();
     const openExternalHttps = vi.fn(async () => true);
     desktop = installDesktopDouble({}, { openExternalHttps });
@@ -83,12 +83,14 @@ describe("PullRequestDescription", () => {
     expect(screen.queryByRole("link")).toBeNull();
     expect(document.querySelector("script")).toBeNull();
     expect(screen.queryByRole("link", { name: "javascript" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Other" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Docs" }));
     expect(openExternalHttps).toHaveBeenCalledWith(
       "https://github.com/centraldigital/patchdesk/wiki",
     );
+
+    await user.click(screen.getByRole("button", { name: "Other" }));
+    expect(openExternalHttps).toHaveBeenCalledWith("https://example.com/docs");
   });
 
   it("gives a raw HTML anchor its own words and no empty control beside them", async () => {

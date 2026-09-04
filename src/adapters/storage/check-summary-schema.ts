@@ -33,11 +33,16 @@ import type {
  * The security boundary sits elsewhere and is applied twice, and neither half
  * ever trusted this schema. In the renderer,
  * `resolvePullRequestExternalUrl` (`src/renderer/src/external-links.ts`) is the
- * only route by which a check URL is followed, and it demands `https:`, the
- * pull request's own host, and no port or credentials. The main process then
- * re-checks the same URL independently in `isAllowedExternalUrl`
- * (`src/main/external-navigation.ts`) against a host allowlist before anything
- * opens.
+ * only route by which a check URL is followed, and it demands `https:` and no
+ * port or credentials. The main process then re-checks the same URL
+ * independently in `isUserActivatedExternalUrl`
+ * (`src/main/external-navigation.ts`) before anything opens.
+ *
+ * Both halves allow any HTTPS host, because a check's details page routinely
+ * lives on the CI provider rather than on GitHub, and following it takes a
+ * click. The host allowlist still exists, in `isAllowedExternalUrl`, and still
+ * guards `will-navigate` and `setWindowOpenHandler` — navigation the page
+ * starts by itself, with no user intent behind it.
  *
  * Not yet carried end to end: `checkRunSchema` in `renderer-contracts.ts` keeps
  * its own `minLength(1)` on both fields at the IPC boundary, so an empty `url`
