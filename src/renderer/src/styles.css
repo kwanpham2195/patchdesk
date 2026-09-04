@@ -472,3 +472,13 @@ body {
     flex-basis: 4rem;
   }
 }
+
+/* Readers who ask the OS for less motion get every transition and animation collapsed to an instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

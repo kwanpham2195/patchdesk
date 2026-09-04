@@ -205,7 +205,7 @@ function InsightOverviewCard({
   return (
     <button
       type="button"
-      className="group/card flex h-full flex-col gap-2 rounded-md border p-4 text-left ui-state-transition outline-none hover:border-primary/40 hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="group/card flex h-full flex-col gap-2 rounded-md border p-4 text-left ui-state-transition outline-none hover:-translate-y-px hover:border-primary/40 hover:bg-accent hover:shadow-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       onClick={onSelect}
     >
       <span className="flex items-center gap-2">
