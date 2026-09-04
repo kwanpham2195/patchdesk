@@ -211,8 +211,17 @@ describe("insightOutputGuidance", () => {
       "short semantic walkthrough",
     );
     expect(insightOutputGuidance("walkthrough")).toContain(
-      "Never invent motivation, intent, trade-offs, or product impact. Mark missing evidence as an assumption or an unresolved item.",
+      "State what the patch does, never why it was made: never invent motivation, intent, trade-offs, or product impact, and never copy them from the pull request description.",
     );
+  });
+
+  it("tells the Walkthrough to write plain text, because its reader renders none", () => {
+    const guidance = insightOutputGuidance("walkthrough");
+    expect(guidance).toContain(
+      "Use no Markdown: no bullet or heading markers, no emphasis markers, and no backticks.",
+    );
+    expect(guidance).not.toContain("Markdown form");
+    expect(guidance).not.toContain("renderer preserves it");
   });
 
   it("gives the Brief its own Flow rules and still forbids prose numbers", () => {

@@ -102,8 +102,6 @@ export function parseWalkthroughOutput(
 
 /** Reads fixed bounded artifacts and composes the only model-visible walkthrough prompt. */
 export async function prepareWalkthroughPrompt(input: {
-  readonly profileId: string;
-  readonly sessionId: string;
   readonly contextPath: string;
   readonly patchPath: string;
 }): Promise<string> {
@@ -114,8 +112,8 @@ export async function prepareWalkthroughPrompt(input: {
   const manifest = narrativeHunkManifest(patch);
   if (manifest._tag === "err")
     throw new Error("Walkthrough patch could not be indexed");
-  const targetSections = Math.min(
-    12,
+  const targetChapters = Math.min(
+    MAX_CHAPTERS,
     Math.max(
       1,
       Math.ceil(Math.max(1, (patch.match(/^@@ /gm) ?? []).length) / 3),
@@ -124,12 +122,12 @@ export async function prepareWalkthroughPrompt(input: {
   return [
     "Generate a read-only walkthrough for the supplied immutable patch.",
     insightOutputGuidance("walkthrough"),
-    "The persistent reader uses an ordered chapter rail and continuous reading surface; do not return a linear picker or wizard state.",
+    "The persistent reader shows the chapters in order on a rail and their sections on one continuous reading surface.",
     "Write the top-level focus as one or two concise sentences summarizing what the patch does; keep hunk aliases and paths out of it.",
     "Explain behavior before consequences and validation; use aliases exactly, and route only mechanical or low-signal changes to Support.",
-    `Create at most ${targetSections} primary sections. Each chapter should cite the coherent cluster of hunks that establishes its behavior; an isolated one-hunk change is the only exception.`,
-    "Set citationVersion to 2. Write each section's prose as one concise sentence, or at most two very short sentences, at most around 300 characters total: state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
-    `Profile ${input.profileId} and session ${input.sessionId} are provenance only; do not repeat them in prose.`,
+    `Create at most ${targetChapters} chapters. Each chapter cites the coherent cluster of hunks that establishes its behavior; an isolated one-hunk change is the only exception.`,
+    "Set citationVersion to 2. Write each section's prose as one concise sentence, or at most two very short sentences: state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
+    `Use at most ${MAX_CHAPTERS} chapters and at most ${MAX_TOTAL_SECTIONS} sections in total. Keep the title within ${MAX_TITLE_LENGTH} characters, the focus within ${MAX_FOCUS_LENGTH}, each chapter title within ${MAX_CHAPTER_TITLE_LENGTH}, each section title within ${MAX_SECTION_TITLE_LENGTH}, and each section's prose within ${MAX_PROSE_LENGTH}.`,
     "HUNK ALIAS MANIFEST:",
     manifest.value
       .map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`)

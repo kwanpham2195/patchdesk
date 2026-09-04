@@ -401,6 +401,18 @@ describe("buildCodexWalkthroughPrompt", () => {
     );
   });
 
+  it("leaves the chapter, section, and character limits to the shared walkthrough prompt", () => {
+    const result = buildCodexWalkthroughPrompt({
+      walkthroughPrompt,
+      policy: "Read only the represented review revision.",
+    });
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value).toContain("Use no other keys.");
+    expect(result.value).not.toContain("320");
+    expect(result.value).not.toContain("at most 12 chapters");
+  });
+
   it("still rejects an unsafe policy", () => {
     expect(
       buildCodexWalkthroughPrompt({

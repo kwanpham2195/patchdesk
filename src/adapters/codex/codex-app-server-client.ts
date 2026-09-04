@@ -285,7 +285,8 @@ export function buildCodexWalkthroughPrompt(input: {
     "The represented review worktree is immutable and read-only. Do not modify files, access credentials, use network, or request permission escalation.",
     "Return exactly one JSON object. Do not wrap it in a Markdown code fence, and do not add any prose before or after it.",
     '{"citationVersion":2,"title":string,"focus":string,"chapters":[{"title":string,"sections":[{"title":string,"prose":string,"hunkIds":[string]}]}]}',
-    "Use no other keys. Use at most 12 chapters and at most 32 sections in total. Keep title within 200 characters, focus within 320, each chapter title within 80, each section title within 160, and each section prose within 320.",
+    // The chapter, section, and character limits are stated once, by the shared walkthrough prompt.
+    "Use no other keys.",
     "Every entry in hunkIds must be an alias from the supplied HUNK ALIAS MANIFEST, and each section's prose must contain the exact repo-relative path of every hunk it cites. A section whose citations fail this rule is discarded.",
     input.walkthroughPrompt,
     `Patchdesk policy:\n${input.policy}`,

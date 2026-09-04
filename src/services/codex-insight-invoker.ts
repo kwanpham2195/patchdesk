@@ -104,8 +104,6 @@ export class CodexInsightInvoker implements InsightInvoker {
       let walkthroughPrompt: string;
       try {
         walkthroughPrompt = await prepareWalkthroughPrompt({
-          profileId: input.profileId,
-          sessionId: input.sessionId,
           contextPath,
           patchPath,
         });
