@@ -1,5 +1,10 @@
 import { expect, test } from "playwright/test";
-import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
+import {
+  closeServer,
+  openDiff,
+  serveRenderer,
+  serverOrigin,
+} from "./renderer-server";
 
 test("long Threads path stays contained at the minimum navigator width", async ({
   page,
@@ -7,7 +12,7 @@ test("long Threads path stays contained at the minimum navigator width", async (
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
 
     const handle = page.getByRole("separator", {
       name: "Resize review navigator",

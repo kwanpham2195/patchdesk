@@ -2,6 +2,8 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import {
   chooseDiffOptions,
   closeServer,
+  openDiff,
+  reloadOnDiff,
   serveRenderer,
   serverOrigin,
 } from "./renderer-server";
@@ -126,7 +128,7 @@ test("review navigator presents the Pierre file tree", async ({ page }) => {
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
 
     const navigation = page.getByRole("complementary", {
       name: "Review navigation",
@@ -144,7 +146,7 @@ test("Pierre controls persist and navigator collapses", async ({ page }) => {
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
     const hideNavigatorButton = '[aria-label="Hide review navigator"]';
 
@@ -157,7 +159,7 @@ test("Pierre controls persist and navigator collapses", async ({ page }) => {
     await expect(
       page.getByRole("complementary", { name: "Review navigation" }),
     ).toHaveCount(0);
-    await page.reload();
+    await reloadOnDiff(page);
     await expect(
       page.getByRole("region", { name: "Review diff" }),
     ).toHaveAttribute("data-diff-style", "split");
@@ -175,7 +177,7 @@ test("review navigator resize handle keyboard-resizes the pane, resets on double
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
 
     const navigation = page.getByRole("complementary", {
       name: "Review navigation",
@@ -218,7 +220,7 @@ test("review navigator resize handle keyboard-resizes the pane, resets on double
     for (let i = 0; i < 3; i += 1) await page.keyboard.press("ArrowRight");
     await expect(handle).toHaveAttribute("aria-valuenow", "21");
 
-    await page.reload();
+    await reloadOnDiff(page);
     const reloadedHandle = page.getByRole("separator", {
       name: "Resize review navigator",
     });
@@ -244,7 +246,7 @@ test("Patchdesk has no application sidebar and keeps the desktop width", async (
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     await expect(
       page.getByRole("region", { name: "Review diff" }),
     ).toBeVisible();
@@ -281,7 +283,7 @@ test("native diff scrolling passively follows the active file without changing f
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
     await page.getByRole("treeitem", { name: "b.ts" }).click();
     await expect(
       page.getByRole("region", { name: "Review diff" }),
@@ -340,7 +342,7 @@ test("the file tree does not remount when the active file changes via passive sc
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
     await expect(
       page.locator('file-tree-container[data-active-path="src/a.ts"]'),
     ).toBeVisible();
@@ -408,7 +410,7 @@ test("the active-file highlight replaces stale click selection instead of leavin
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
 
     const rowBackgrounds = () =>
       page.evaluate(() => {
@@ -487,7 +489,7 @@ test("explicit tree keyboard navigation remains selection and diff navigation", 
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
     const treeItem = page.getByRole("treeitem", { name: "b.ts" });
     await treeItem.click();
     await expect(
@@ -508,7 +510,7 @@ test("viewed toggles replace the collapse icon without changing file selection",
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
 
     const viewed = page.getByRole("checkbox", {
       name: "Mark file src/a.ts as viewed",
@@ -552,7 +554,7 @@ test("file-tree selection scrolls the all-files viewer to the chosen file", asyn
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
     const diffViewport = page.locator(".review-diff-viewport");
 
@@ -573,7 +575,7 @@ test("Threads section selection on the new side scrolls the diff and marks the a
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
     const diffViewport = page.locator(".review-diff-viewport");
 
@@ -611,7 +613,7 @@ test("Threads section selection on the old side scrolls the diff and marks the a
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
     const diffViewport = page.locator(".review-diff-viewport");
 
@@ -641,7 +643,7 @@ test("Threads section selection on a multi-line thread marks the whole anchored 
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
     const diffViewport = page.locator(".review-diff-viewport");
 
@@ -676,7 +678,7 @@ test("Threads section selection on a file below the fold scrolls the diff and ma
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
     const diffViewport = page.locator(".review-diff-viewport");
     const path = "src/c.ts";
@@ -1137,7 +1139,7 @@ test("Pierre headers retain per-file totals while the navigator stays compact", 
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_280, height: 800 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
 
     await expect(page.getByRole("treeitem", { name: "a.ts" })).toBeVisible();
 
@@ -1166,7 +1168,7 @@ test("Review diff region reflects unified/split toggle via data-diff-style", asy
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diff = page.getByRole("region", { name: "Review diff" });
 
     await expect(diff).toHaveAttribute("data-diff-style", "unified");
@@ -1189,7 +1191,7 @@ test("completed-review workbench keeps PR actions in the overview drawer", async
       .grantPermissions(["clipboard-read", "clipboard-write"], {
         origin: rendererOrigin,
       });
-    await page.goto(`${rendererOrigin}/#workbench-fixture`);
+    await openDiff(page, `${rendererOrigin}/#workbench-fixture`);
     await expect(
       page.getByRole("region", { name: "Review workbench" }),
     ).toBeVisible();
@@ -1219,7 +1221,7 @@ test("PR overview overlays without viewport overflow and scrolls independently",
   try {
     for (const width of [960, 1_280, 1_440]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(`${serverOrigin(server)}/#long-workbench-fixture`);
+      await openDiff(page, `${serverOrigin(server)}/#long-workbench-fixture`);
       const diff = reviewDiffBehindTheDrawer(page);
       const diffWidthBefore = (await diff.boundingBox())?.width;
       await prOverviewTrigger(page).click();
@@ -1310,7 +1312,7 @@ test("constrained completed review keeps navigation and actions reachable", asyn
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 960, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
 
     await expect(
       page.getByRole("complementary", { name: "Review navigation" }),
@@ -1335,7 +1337,7 @@ test("completed review preserves three-pane geometry at 1280 and 1440", async ({
   try {
     for (const width of [1_280, 1_440]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+      await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
       const navigation = page.getByRole("complementary", {
         name: "Review navigation",
       });
@@ -1375,7 +1377,7 @@ test("long workbench content keeps full values accessible without viewport overf
       "Protect the authoritative review write boundary when a pull request title contains localized text, identifiers, and enough detail to exceed the available header width";
     for (const width of [960, 320]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(`${serverOrigin(server)}/#long-workbench-fixture`);
+      await openDiff(page, `${serverOrigin(server)}/#long-workbench-fixture`);
 
       const heading = page.getByRole("heading", { name: title });
       await expect(heading).toBeVisible();

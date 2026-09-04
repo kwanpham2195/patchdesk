@@ -70,8 +70,9 @@ test("desktop bridge opens the canonical represented workbench without removed R
     await expect(
       page.getByRole("heading", { name: "Represented review" }),
     ).toBeVisible();
+    // A Review with no saved position lands on Conversation.
     await expect(
-      page.getByRole("button", { name: "Diff", exact: true }),
+      page.getByRole("button", { name: "Conversation", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
   } finally {
     if (api !== undefined) await api.stop();
