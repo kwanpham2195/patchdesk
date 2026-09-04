@@ -39,6 +39,8 @@ import type {
   ReviewConversationActions,
 } from "./conversation-thread-card";
 import { InlineCommentComposer } from "./review-diff-authoring";
+import { renderReviewDiffGutterUtility } from "./review-diff-gutter-utility";
+import type { PullRequestBodyContext } from "./pull-request-description";
 import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
@@ -239,9 +241,15 @@ type ReviewDiffViewProps = {
   readonly pendingReviewComposer?: PendingReviewComposerActions;
   /** Direct GitHub conversation actions; the surface wraps them to apply published mutations locally. */
   readonly conversationActions?: ReviewConversationActions;
+  /** What an inline card's Markdown resolves its images and links against.
+   * Absent on the surfaces that render no GitHub-authored body -- the
+   * walkthrough, the brief's hunk preview, and finding evidence. */
+  readonly bodyContext?: PullRequestBodyContext;
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
+/** Resolves nothing, for a surface rendered with no pull request in hand. */
+const EMPTY_BODY_CONTEXT: PullRequestBodyContext = {};
 
 function ReviewDiffToolbar({
   virtualized,
@@ -357,6 +365,7 @@ function ReviewDiffSurface({
   localCommentAuthoring,
   pendingReviewComposer,
   conversationActions,
+  bodyContext = EMPTY_BODY_CONTEXT,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() =>
@@ -514,6 +523,7 @@ function ReviewDiffSurface({
       findingCountsByPath={findingCountsByPath}
       onCollapsedPathsChange={onCollapsedPathsChange}
       decorateConversationThread={decorateConversationThread}
+      bodyContext={bodyContext}
       onOpenFindingInAnalysis={onOpenFindingInAnalysis}
       virtualized={virtualized}
       browserSupportsPierre={browserSupportsPierre}
@@ -560,6 +570,7 @@ type ReviewDiffRenderSiteProps = {
   readonly decorateConversationThread: (
     thread: ConversationThreadCardData,
   ) => ConversationThreadCardData;
+  readonly bodyContext: PullRequestBodyContext;
   readonly onOpenFindingInAnalysis: ((findingId: string) => void) | undefined;
   readonly virtualized: boolean;
   readonly browserSupportsPierre: boolean;
@@ -604,6 +615,7 @@ function ReviewDiffRenderSite({
   findingCountsByPath,
   onCollapsedPathsChange,
   decorateConversationThread,
+  bodyContext,
   onOpenFindingInAnalysis,
   virtualized,
   browserSupportsPierre,
@@ -706,8 +718,9 @@ function ReviewDiffRenderSite({
         annotation,
         decorateConversationThread,
         onOpenFindingInAnalysis,
+        bodyContext,
       ),
-    [decorateConversationThread, onOpenFindingInAnalysis],
+    [bodyContext, decorateConversationThread, onOpenFindingInAnalysis],
   );
   const renderGutterUtility = useCallback(
     (
@@ -780,6 +793,7 @@ function ReviewDiffRenderSite({
           fileStatsByPath={fileStatsByPath}
           findingCountsByPath={findingCountsByPath}
           decorateConversationThread={decorateConversationThread}
+          bodyContext={bodyContext}
           onOpenFindingInAnalysis={onOpenFindingInAnalysis}
           beginAuthoring={beginAuthoring}
         />
@@ -826,6 +840,7 @@ type NonVirtualizedReviewDiffProps = Pick<
   | "fileStatsByPath"
   | "findingCountsByPath"
   | "decorateConversationThread"
+  | "bodyContext"
   | "onOpenFindingInAnalysis"
   | "beginAuthoring"
 >;
@@ -849,6 +864,7 @@ function NonVirtualizedReviewDiff({
   fileStatsByPath,
   findingCountsByPath,
   decorateConversationThread,
+  bodyContext,
   onOpenFindingInAnalysis,
   beginAuthoring,
 }: NonVirtualizedReviewDiffProps): React.JSX.Element {
@@ -858,8 +874,9 @@ function NonVirtualizedReviewDiff({
         annotation,
         decorateConversationThread,
         onOpenFindingInAnalysis,
+        bodyContext,
       ),
-    [decorateConversationThread, onOpenFindingInAnalysis],
+    [bodyContext, decorateConversationThread, onOpenFindingInAnalysis],
   );
   const renderPatchHeader = useCallback(
     (file: FileDiffMetadata) => {
@@ -992,68 +1009,6 @@ function NonVirtualizedReviewDiff({
         })
       }
     />
-  );
-}
-
-function renderReviewDiffGutterUtility(
-  getHoveredLine: () =>
-    | {
-        readonly lineNumber: number;
-        readonly side: "additions" | "deletions";
-      }
-    | undefined,
-  item: { readonly id: string; readonly type: "diff" | "file" },
-  localCommentAuthoring: LocalCommentAuthoring | undefined,
-  beginAuthoring: (selection: CodeViewLineSelection | null) => void,
-): React.JSX.Element | null {
-  if (localCommentAuthoring?.enabled !== true || item.type !== "diff")
-    return null;
-  const baseTitle = `Add comment on ${item.id}`;
-  return (
-    <button
-      type="button"
-      className="inline-flex size-5 items-center justify-center rounded border border-border/60 bg-card text-sm font-medium leading-none text-muted-foreground shadow-sm transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={baseTitle}
-      title={baseTitle}
-      onPointerEnter={(event) => {
-        const hovered = getHoveredLine();
-        if (hovered === undefined) return;
-        event.currentTarget.dataset.lineNumber = String(hovered.lineNumber);
-        event.currentTarget.dataset.lineSide = hovered.side;
-        event.currentTarget.title = `${baseTitle} line ${hovered.lineNumber}`;
-        event.currentTarget.setAttribute(
-          "aria-label",
-          `${baseTitle} line ${hovered.lineNumber}`,
-        );
-      }}
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => {
-        const lineNumber = Number(event.currentTarget.dataset.lineNumber);
-        const side = event.currentTarget.dataset.lineSide;
-        if (
-          !Number.isInteger(lineNumber) ||
-          lineNumber < 1 ||
-          (side !== "additions" && side !== "deletions")
-        )
-          return;
-        const locationSide = side === "additions" ? "new" : "old";
-        if (
-          localCommentAuthoring.canAuthor?.({
-            path: item.id,
-            startLine: lineNumber,
-            line: lineNumber,
-            side: locationSide,
-          }) === false
-        )
-          return;
-        beginAuthoring({
-          id: item.id,
-          range: { start: lineNumber, end: lineNumber, side },
-        });
-      }}
-    >
-      +
-    </button>
   );
 }
 

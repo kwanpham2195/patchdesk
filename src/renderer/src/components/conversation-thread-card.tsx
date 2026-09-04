@@ -13,6 +13,9 @@ import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
+/** Resolves nothing, for a card rendered with no pull request in hand. */
+const EMPTY_BODY_CONTEXT: PullRequestBodyContext = {};
+
 /**
  * The write capability of a conversation card: a canonical GitHub thread may
  * receive replies and state changes; a freshly created comment has only a
@@ -21,9 +24,6 @@ import { Textarea } from "@/components/ui/textarea";
  * accept Edit/Delete (which key on each comment's own id), but never Reply/
  * Resolve, which require the branded thread id itself.
  */
-/** Resolves nothing, for a card rendered with no pull request in hand. */
-const EMPTY_BODY_CONTEXT: PullRequestBodyContext = {};
-
 export type ConversationThreadTarget =
   | { readonly _tag: "thread"; readonly id: GitHubThreadId }
   | { readonly _tag: "comment_only"; readonly commentId: string }

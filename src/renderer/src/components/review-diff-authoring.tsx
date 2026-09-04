@@ -6,7 +6,10 @@ import type {
   ReviewInlineAnnotation,
 } from "./review-diff-view";
 import { composerErrorMessage } from "./review-diff-authoring-errors";
-import { PullRequestDescriptionPreview } from "./pull-request-description";
+import {
+  PullRequestDescriptionPreview,
+  type PullRequestBodyContext,
+} from "./pull-request-description";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
 import { InlineError } from "@/components/ui/inline-error";
@@ -18,9 +21,11 @@ export function PendingConversationCard({
   status,
   body,
   onDismiss,
-}: NonNullable<
-  ReviewInlineAnnotation["pendingConversation"]
->): React.JSX.Element {
+  bodyContext,
+}: NonNullable<ReviewInlineAnnotation["pendingConversation"]> & {
+  /** What this card's Markdown resolves its images and links against. */
+  readonly bodyContext: PullRequestBodyContext;
+}): React.JSX.Element {
   return (
     <article
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
@@ -35,7 +40,7 @@ export function PendingConversationCard({
       </div>
       <div className="mt-2">
         <p className="font-semibold">You</p>
-        <PullRequestDescriptionPreview markdown={body} />
+        <PullRequestDescriptionPreview markdown={body} {...bodyContext} />
       </div>
       {status === "failed" ? (
         <div className="mt-2">
@@ -70,9 +75,11 @@ export function PendingReviewWriteCard({
   body,
   message,
   onDismiss,
-}: NonNullable<
-  ReviewInlineAnnotation["pendingReviewWrite"]
->): React.JSX.Element {
+  bodyContext,
+}: NonNullable<ReviewInlineAnnotation["pendingReviewWrite"]> & {
+  /** What this card's Markdown resolves its images and links against. */
+  readonly bodyContext: PullRequestBodyContext;
+}): React.JSX.Element {
   const label =
     action === "start" ? "Starting review…" : "Adding to pending review…";
   return (
@@ -89,7 +96,7 @@ export function PendingReviewWriteCard({
       </div>
       <div className="mt-2">
         <p className="font-semibold">You</p>
-        <PullRequestDescriptionPreview markdown={body} />
+        <PullRequestDescriptionPreview markdown={body} {...bodyContext} />
       </div>
       {status === "failed" ? (
         <div className="mt-2">
@@ -117,9 +124,11 @@ export function PendingReviewWriteCard({
 export function PendingReviewThreadCard({
   threadId,
   body,
-}: NonNullable<
-  ReviewInlineAnnotation["pendingReviewThread"]
->): React.JSX.Element {
+  bodyContext,
+}: NonNullable<ReviewInlineAnnotation["pendingReviewThread"]> & {
+  /** What this card's Markdown resolves its images and links against. */
+  readonly bodyContext: PullRequestBodyContext;
+}): React.JSX.Element {
   return (
     <article
       className="mx-2 my-2 box-border w-[calc(100%-1rem)] min-w-0 max-w-[min(42rem,calc(100%-1rem))] overflow-hidden rounded-md border bg-card p-3 font-sans text-sm shadow-sm"
@@ -134,7 +143,7 @@ export function PendingReviewThreadCard({
       </div>
       <div className="mt-2">
         <p className="font-semibold">You</p>
-        <PullRequestDescriptionPreview markdown={body} />
+        <PullRequestDescriptionPreview markdown={body} {...bodyContext} />
       </div>
     </article>
   );
