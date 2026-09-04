@@ -14,6 +14,7 @@ import {
 } from "@/github-read-failure-copy";
 import { InboxFiltersBar } from "./inbox-filters-bar";
 import { InboxRowItem } from "./inbox-row-item";
+import { LabelColorDot } from "./label-chip";
 import {
   ReviewDetailsInspector,
   type InspectorInsightRequests,
@@ -596,24 +597,6 @@ function LabelFilterList({
         </p>
       ) : null}
     </div>
-  );
-}
-
-/** A label's real GitHub colour as a dot, so the filter list reads like the
- * rows: the same `#RRGGBB` fill and hairline border `LabelChip` gives the
- * chip, shrunk to a dot because the name sits beside it in plain text.
- * `aria-hidden`: the name is the label's accessible text. */
-function LabelColorDot({
-  color,
-}: {
-  readonly color: string;
-}): React.JSX.Element {
-  return (
-    <span
-      aria-hidden="true"
-      className="size-2.5 shrink-0 rounded-full border"
-      style={{ backgroundColor: `#${color}`, borderColor: "rgba(0,0,0,0.15)" }}
-    />
   );
 }
 
