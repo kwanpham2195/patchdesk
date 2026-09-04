@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Insights** now reads in the order you review a pull request: Brief, then Walkthrough, then Analysis, and it opens on Brief rather than Analysis, so you meet the shape of the change before the judgment of it; an Insight you were last reading still opens where you left it.
+
 ## 0.0.3 - 2026-09-04
 
 - Fixed a pull request whose head commit has no CI checks failing to open, with "The requested service is currently unavailable" and nothing else to go on.

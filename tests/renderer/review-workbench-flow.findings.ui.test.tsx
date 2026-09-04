@@ -131,6 +131,9 @@ describe("ReviewWorkbenchFlow finding navigation", () => {
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: "Insights" }));
       await user.click(
+        await screen.findByRole("button", { name: /^Analysis/ }),
+      );
+      await user.click(
         await screen.findByRole("button", { name: "Open in diff: src/a.ts:1" }),
       );
 
@@ -168,5 +171,29 @@ describe("ReviewWorkbenchFlow finding navigation", () => {
         delete styleSheet.value.prototype.replaceSync;
       }
     }
+  });
+});
+
+describe("ReviewWorkbenchFlow finding actions", () => {
+  it("hides Add to review for a Finding whose location is not on the diff", async () => {
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/insight-providers") return providerCatalog;
+      throw new Error(input.path);
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={withAnalysis("actionable", "invalid_line")}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await screen.findByText("Missing boundary check");
+    expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 });
