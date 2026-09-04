@@ -98,14 +98,15 @@ export function patchTouchesUiComponents(
   });
 }
 
+// Exported so `insightOutputGuidance("brief")` states each Flow limit once, in the schema's own number.
 /** Kept trees per Brief, at most one per kind -- past this, Flow starts reading as the whole diff again. */
-const MAX_FLOW_TREES = 3;
+export const MAX_FLOW_TREES = 3;
 /** Kept node depth; a root node is depth 1. Enforced by the schema itself (see `flowNodeSchema`), so the matching check in `walkFlowNodes` is belt-and-braces. */
-const MAX_FLOW_DEPTH = 3;
+export const MAX_FLOW_DEPTH = 3;
 /** Pre-order nodes visited per tree before the rest of that tree is dropped. */
-const MAX_FLOW_NODES_PER_TREE = 15;
+export const MAX_FLOW_NODES_PER_TREE = 15;
 /** Kept label length, after collapsing the raw label to one line -- call-tree labels are signatures like `validateManualDays(command, suggestion)`, longer than prose. */
-const MAX_FLOW_LABEL_LENGTH = 120;
+export const MAX_FLOW_LABEL_LENGTH = 120;
 /** Raw label length the schema accepts, before normalization truncates the long ones. */
 const MAX_FLOW_LABEL_INPUT_LENGTH = 200;
 /** Raw tree title length the schema accepts. */
