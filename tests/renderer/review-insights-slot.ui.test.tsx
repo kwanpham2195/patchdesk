@@ -165,21 +165,46 @@ describe("InsightsSlot overview", () => {
       screen.getByRole("article", { name: "Insight overview" }),
     );
     expect(overview.queryByText(/Choose one retained document/)).toBeNull();
-    const [brief, analysisCard, walkthrough] = overview.getAllByRole("button");
+    // Cards follow the reading order: Brief, Walkthrough, Analysis.
+    const [brief, walkthrough, analysisCard] = overview.getAllByRole("button");
     expect(brief?.textContent).toMatch(
       /^BriefInsight runCurrent · retained \d+ d ago$/,
     );
-    expect(analysisCard?.textContent).toMatch(
-      /^AnalysisComment recommended · 1 needs attention · CI passingCurrent · retained \d+ d ago$/,
-    );
     expect(walkthrough?.textContent).toMatch(
       /^Walkthrough1 chapter · 1 sectionCurrent · retained \d+ d ago$/,
+    );
+    expect(analysisCard?.textContent).toMatch(
+      /^AnalysisComment recommended · 1 needs attention · CI passingCurrent · retained \d+ d ago$/,
     );
     for (const card of [brief, analysisCard, walkthrough]) {
       const time = card?.querySelector("time");
       expect(time?.getAttribute("datetime")).toBe("2026-08-01T00:00:00.000Z");
       expect(time?.getAttribute("title")).toBeTruthy();
     }
+  });
+});
+
+describe("InsightsSlot reading order", () => {
+  it("orders the sub-nav Overview, Brief, Walkthrough, Analysis and lands on Brief", () => {
+    renderInsights();
+
+    const rail = within(
+      screen.getByRole("navigation", { name: "Insight navigation" }),
+    );
+    expect(
+      rail.getAllByRole("button").map((button) => button.textContent),
+    ).toEqual([
+      "OverviewCurrent",
+      "BriefNot generated",
+      "WalkthroughNot generated",
+      "AnalysisNot generated",
+    ]);
+    expect(
+      rail
+        .getAllByRole("button")
+        .find((button) => button.getAttribute("aria-current") === "page")
+        ?.textContent,
+    ).toBe("BriefNot generated");
   });
 });
 
@@ -225,7 +250,7 @@ describe("InsightsSlot finding focus", () => {
 
 describe("InsightsSlot run requests", () => {
   it("marks retained readers as insight results", () => {
-    renderInsights(withAnalysis("actionable"));
+    renderInsights(withAnalysis("actionable"), "analysis");
 
     expect(document.querySelector("[data-insight-result]")).toBeTruthy();
   });
@@ -313,7 +338,7 @@ describe("InsightsSlot run requests", () => {
       "/v1/reviews/insights/analysis/run": () => start.promise,
     });
     const user = userEvent.setup();
-    renderInsights();
+    renderInsights(projection(), "analysis");
 
     await user.click(
       await screen.findByRole("button", { name: "Generate analysis" }),
@@ -349,6 +374,7 @@ describe("InsightsSlot run requests", () => {
           walkthrough: { status: "not_generated" },
         },
       }),
+      "analysis",
     );
 
     await waitFor(() =>
@@ -398,6 +424,7 @@ describe("InsightsSlot run requests", () => {
           walkthrough: { status: "not_generated" },
         },
       }),
+      "analysis",
     );
 
     const cancel = await screen.findByRole("button", {

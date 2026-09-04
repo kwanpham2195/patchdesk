@@ -10,8 +10,12 @@ import {
 export function useInsightSelection(
   initialDetail: InsightSelection | undefined,
 ) {
+  // Insights with no saved detail land on Brief: the shape of the change comes
+  // before the judgment of it. A saved detail wins, so this only decides the
+  // very first open. Brief lands even when none has been generated, showing its
+  // Generate control rather than falling through to a ready Insight.
   const [selectedInsight, setSelectedInsight] = useState<InsightSelection>(
-    initialDetail ?? "analysis",
+    initialDetail ?? "brief",
   );
   const findingNavigation = useContext(ReviewWorkbenchFindingNavigationContext);
   const findingFocusRequest = findingNavigation?.findingFocusRequest;

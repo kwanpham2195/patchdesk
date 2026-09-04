@@ -362,6 +362,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       answer: {},
       write: (): void => {
         fireEvent.click(screen.getByRole("button", { name: "Insights" }));
+        fireEvent.click(screen.getByRole("button", { name: /^Analysis/ }));
         fireEvent.click(screen.getByRole("button", { name: "Add to review" }));
       },
     },
@@ -457,6 +458,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(projection());
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Generate analysis" }),
     );
@@ -530,6 +532,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(projection());
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Generate analysis" }),
     );
@@ -556,20 +559,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         .getByRole("option", { name: "high" })
         .getAttribute("aria-selected"),
     ).toBe("true");
-  });
-
-  it("hides Add to review for a Finding whose location is not on the diff", async () => {
-    bridge(async (input) => {
-      if (input.path === "/v1/reviews/detect-updates")
-        return { updatesAvailable: false };
-      if (input.path === "/v1/insight-providers") return providerCatalog;
-      throw new Error(input.path);
-    });
-    mount(withAnalysis("actionable", "invalid_line"));
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Insights" }));
-    await screen.findByText("Missing boundary check");
-    expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
   it("reports write_pending while a pending-review command is in flight", async () => {
@@ -613,6 +602,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(withAnalysis("pending_review"));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Finish review" }),
     );

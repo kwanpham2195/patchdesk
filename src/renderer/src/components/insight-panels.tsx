@@ -36,13 +36,12 @@ export function InsightNavRail({
     React.SetStateAction<InsightSelection>
   >;
 }): React.JSX.Element {
-  // Brief first: it is the shortest read and the one that says what the pull
-  // request is for, so it comes before the two documents that judge or explain
-  // it. Overview stays leftmost as the landing selection.
+  // Reading order: Brief says what changed structurally, Walkthrough how it
+  // behaves now, Analysis whether it should merge. The judgment comes last.
   const documents = [
     ["brief", workbench.insights.brief ?? NOT_GENERATED_BRIEF],
-    ["analysis", workbench.insights.analysis],
     ["walkthrough", workbench.insights.walkthrough],
+    ["analysis", workbench.insights.analysis],
   ] as const satisfies ReadonlyArray<
     readonly [InsightRunDialogType, InsightProjection]
   >;
@@ -132,6 +131,16 @@ export function InsightOverview({
           onSelect={() => onSelect("brief")}
         />
         <InsightOverviewCard
+          name="Walkthrough"
+          projection={walkthrough}
+          headline={
+            walkthroughValue === undefined
+              ? undefined
+              : walkthroughHeadline(walkthroughValue.chapters)
+          }
+          onSelect={() => onSelect("walkthrough")}
+        />
+        <InsightOverviewCard
           name="Analysis"
           projection={analysis}
           headline={
@@ -144,16 +153,6 @@ export function InsightOverview({
                 })
           }
           onSelect={() => onSelect("analysis")}
-        />
-        <InsightOverviewCard
-          name="Walkthrough"
-          projection={walkthrough}
-          headline={
-            walkthroughValue === undefined
-              ? undefined
-              : walkthroughHeadline(walkthroughValue.chapters)
-          }
-          onSelect={() => onSelect("walkthrough")}
         />
       </div>
     </div>
