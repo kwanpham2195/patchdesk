@@ -12,7 +12,7 @@ The maintainer chooses a file, reads its hunks, moves through files or changes w
 
 ```mermaid
 stateDiagram-v2
-    [*] --> fullDiff : open Review or choose Diff
+    [*] --> fullDiff : choose Diff
     fullDiff --> loadingFile : choose a file
     loadingFile --> fileReady : content and highlighting ready
     loadingFile --> fallback : content or highlighting unavailable
