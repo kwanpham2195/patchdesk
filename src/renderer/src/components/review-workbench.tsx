@@ -669,16 +669,10 @@ export function ReviewWorkbench({
               );
             }}
           >
-            <TabsList>
-              <TabsTrigger value="conversation" className="text-xs">
-                Conversation
-              </TabsTrigger>
-              <TabsTrigger value="diff" className="text-xs">
-                Diff
-              </TabsTrigger>
-              <TabsTrigger value="insights" className="text-xs">
-                Insights
-              </TabsTrigger>
+            <TabsList variant="ghost">
+              <TabsTrigger value="conversation">Conversation</TabsTrigger>
+              <TabsTrigger value="diff">Diff</TabsTrigger>
+              <TabsTrigger value="insights">Insights</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
