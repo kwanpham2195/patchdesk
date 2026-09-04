@@ -87,7 +87,7 @@ describe("model review preparation", () => {
 
       expect(prepared.prompt).toContain("centraldigital/patchdesk#42");
       expect(prepared.prompt).toContain(
-        "Review the complete represented pull request.",
+        "Review the complete represented pull request and decide whether it should merge.",
       );
       expect(prepared.prompt).toContain("export const review");
       await expect(

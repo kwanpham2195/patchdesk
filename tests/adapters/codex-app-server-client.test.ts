@@ -20,6 +20,7 @@ import {
 } from "../../src/adapters/codex/codex-app-server-client";
 import type { Result } from "../../src/domain/result";
 import type { RepresentedReviewWorktree } from "../../src/domain/represented-review-worktree";
+import { composeReviewPrompt } from "../../src/services/review-rubric";
 
 class FakeCodexProcess extends EventEmitter {
   readonly stdin = new PassThrough();
@@ -348,9 +349,39 @@ describe("buildCodexAnalysisPrompt", () => {
       '"verdict":"approve"|"comment"|"request_changes"',
     );
     expect(result.value).toContain('"findings":[{"id":string');
+  });
+
+  it("carries the shared Analysis prompt and adds no second severity or verdict rule", () => {
+    const shared = composeReviewPrompt({
+      reviewInput: "# PR review input",
+      context: '{"projectReviewCriteria":[]}',
+      fullPatch: "diff --git a/src/a.ts b/src/a.ts",
+    });
+    const result = buildCodexAnalysisPrompt({
+      analysisPrompt: shared,
+      policy: "Read only the represented review revision.",
+    });
+    expect(result._tag).toBe("ok");
+    if (result._tag !== "ok") return;
+    expect(result.value).toContain(shared);
+    expect(result.value).toContain("ASD-STE100 / Simplified Technical English");
+    expect(result.value).toContain("Never invent the why.");
     expect(result.value).toContain(
-      "The verdict must match the findings: use request_changes when any finding is P0 or P1",
+      "P0 is a defect that loses data, breaks security, or blocks the release.",
     );
+    expect(result.value).toContain(
+      "P1 is a correctness defect a user will hit.",
+    );
+    expect(result.value).toContain(
+      "P2 is a defect with a workaround, or a real maintainability risk.",
+    );
+    expect(result.value).toContain("P3 is a nit.");
+    expect(result.value).toContain("REVIEW INPUT:");
+    expect(result.value).toContain("REVIEW CONTEXT DOCUMENT:");
+    expect(result.value).toContain("PATCH ARTIFACT:");
+    expect(
+      result.value.split("The verdict must match the findings").length - 1,
+    ).toBe(1);
   });
 
   it("still rejects an unsafe policy", () => {

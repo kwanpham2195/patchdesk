@@ -8,11 +8,12 @@ const SIMPLIFIED_TECHNICAL_ENGLISH = [
   "Do not use idioms, promotional language, ornamental prose, or rhetorical questions.",
 ].join(" ");
 
-const REVIEWER_FRAMING = [
-  "Write for a reviewer who must understand the net change and decide where to inspect.",
-  "Use an inverted pyramid: state the evidenced goal and reason first, then the behavior change, reviewer impact, decisions, and fine detail.",
-  "Never invent motivation, intent, trade-offs, or product impact. Mark missing evidence as an assumption or an unresolved item.",
-  "Do not narrate the patch file by file or restate code that the diff already shows.",
+const ANALYSIS_REVIEWER_FRAMING = [
+  "Write for a reviewer who knows this codebase but has not read the diff. Their time is the scarce resource: give them the framing the code cannot give them, then stop.",
+  "Default to short, and order every text coarse to granular, so a reader who stops early still leaves with a correct understanding.",
+  "Omit anything that has nothing to say. Most changes have no validation plan, no assumptions, no unresolved items, and no callouts; an empty list is the normal answer, not a failure.",
+  "Never invent the why. Motivation, intent, and trade-offs must come from the pull request description, the commits, or a review thread. When you do not know why a change was made, record an unresolved item; never guess.",
+  "Do not narrate the patch file by file or restate code that the diff already shows. The Brief Insight owns the structure of the change, so point at it rather than drawing your own call tree, component tree, file tree, or compact diff.",
   "Derive public API and compatibility impact from the evidence when it applies.",
   "Do not repeat one topic across the summary, findings, callouts, unresolved items, and assumptions unless each occurrence adds a different fact.",
 ].join(" ");
@@ -22,10 +23,9 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
   if (type === "analysis") {
     return [
       SIMPLIFIED_TECHNICAL_ENGLISH,
-      REVIEWER_FRAMING,
+      ANALYSIS_REVIEWER_FRAMING,
       "Keep the change summary short and reviewer-focused.",
       "Choose the smallest Markdown form that makes each point clear. Use a short paragraph for one connected idea. Use a bullet outline when the reader must scan several facts, steps, effects, conditions, or findings. Do not put several independent ideas in one large paragraph.",
-      "When a relationship is easier to see than to describe, use one focused sketch: pseudocode for logic, a call tree for control flow, a component tree for UI structure, a shallow file tree for responsibility, or a compact diff for a change in shape. Include only the calls, files, states, and boundaries needed for the point.",
       "Return the intended Markdown structure directly. The renderer preserves it and does not rewrite paragraphs into outlines.",
       "Keep facts, assumptions, and unresolved questions separate.",
     ].join(" ");

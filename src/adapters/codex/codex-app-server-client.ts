@@ -256,7 +256,7 @@ export function buildCodexAnalysisPrompt(input: {
     "The represented review worktree is immutable and read-only. Do not modify files, access credentials, use network, or request permission escalation.",
     "Return exactly one JSON object satisfying the result contract below. Do not wrap it in a Markdown code fence, and do not add any prose before or after it. Use no keys beyond those listed.",
     ANALYSIS_RESULT_CONTRACT,
-    "The verdict must match the findings: use request_changes when any finding is P0 or P1, comment when there are findings but none are P0 or P1, and approve only when findings is empty. A mismatch fails the whole run.",
+    // The severity and verdict rules are stated once, by the shared Analysis prompt both providers send.
     "Give each finding an id that matches ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ and is unique among the findings.",
     "Give each finding's file a repo-relative path taken from the patch. Never use an absolute path or a path that contains '..'.",
     "Use at most 50 findings. Use at most 20 validationPlan entries and at most 20 assumptions, each within 500 characters. Use at most 10 unresolvedItems, each within 280 characters. Use at most 12 callouts; each callouts entry is an object, never a string, with title within 120 characters and detail within 500 characters.",
