@@ -94,3 +94,24 @@ export async function chooseDiffOptions(
     await page.getByRole("switch", { name: "Wrap lines" }).click();
   await page.keyboard.press("Escape");
 }
+
+/**
+ * Opens a workbench fixture on its Diff tab.
+ *
+ * A Review with no saved position opens on Conversation, so a test that
+ * asserts on the diff, the navigator or the file tree selects Diff first.
+ */
+export async function openDiff(page: Page, url: string): Promise<void> {
+  await page.goto(url);
+  await selectDiffTab(page);
+}
+
+/** Reloads a workbench fixture, which lands on Conversation, back onto Diff. */
+export async function reloadOnDiff(page: Page): Promise<void> {
+  await page.reload();
+  await selectDiffTab(page);
+}
+
+function selectDiffTab(page: Page): Promise<void> {
+  return page.getByRole("button", { name: "Diff", exact: true }).click();
+}

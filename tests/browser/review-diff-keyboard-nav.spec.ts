@@ -1,5 +1,10 @@
 import { expect, test, type Locator, type Page } from "playwright/test";
-import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
+import {
+  closeServer,
+  openDiff,
+  serveRenderer,
+  serverOrigin,
+} from "./renderer-server";
 
 // This suite proves the focus discipline behind `,`/`.` file navigation and
 // `[`/`]` hunk navigation -- the actual point of these slices, per
@@ -17,7 +22,7 @@ test("`.` and `,` jump between files, stopping (not wrapping) at either end", as
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -70,7 +75,7 @@ test("the fixed panel header follows `.` keyboard file navigation, not just the 
     // (an unrelated, pre-existing quirk out of scope for this fix), so this
     // regression needs a fixture with real scroll distance between files to
     // prove the header genuinely settles on the jumped-to file.
-    await page.goto(`${serverOrigin(server)}/#active-follow-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -110,7 +115,7 @@ test("`.` reaches a file living in the final viewport-height of content, which t
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -132,7 +137,7 @@ test("typing `.` in the comment composer inserts the character instead of naviga
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     // Pierre's CodeView finishes wiring its own hover tracking a moment
@@ -186,7 +191,7 @@ test("`]` and `[` jump between hunks, stopping (not wrapping) at either end, inc
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -248,7 +253,7 @@ test("typing `[` in the comment composer inserts the character instead of naviga
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     // Pierre's CodeView finishes wiring its own hover tracking a moment
@@ -312,7 +317,7 @@ test("`}` announces there are no unresolved comments, without moving the viewpor
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     await diffViewport.focus();
@@ -345,7 +350,7 @@ test("typing `{` in the comment composer inserts the character instead of naviga
   const server = await serveRenderer();
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
+    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
     const diffViewport = page.locator(".review-diff-viewport");
     await expect(diffViewport).toBeVisible();
     // Pierre's CodeView finishes wiring its own hover tracking a moment
