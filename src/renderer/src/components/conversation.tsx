@@ -6,6 +6,7 @@ import type {
 } from "../../../domain/github-context";
 import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
+import type { PullRequestRef } from "../../../domain/pull-request";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
@@ -45,13 +46,27 @@ type GeneralThreadOverrides = {
   ) => Promise<void>;
 };
 
+/**
+ * What every rendered Markdown body on this tab needs beyond its own text:
+ * the pull request its links and images are relative to, and the profile the
+ * main process fetches those images as.
+ */
+type ConversationBodyContext = {
+  readonly pullRequest?: PullRequestRef;
+  readonly profileId?: string;
+};
+
 export function Conversation({
   conversation,
   conversationActions,
+  pullRequest,
+  profileId,
   rail,
 }: {
   readonly conversation: WorkbenchResponse["conversation"];
   readonly conversationActions?: ReviewConversationActions;
+  readonly pullRequest?: PullRequestRef;
+  readonly profileId?: string;
   /** The pull-request metadata rail (Labels, and later Assignees/Reviewers),
    * built by `ReviewWorkbench` since it holds the model. `Conversation` only
    * owns the layout here — rendering `rail` beside (or, below the
@@ -120,6 +135,10 @@ export function Conversation({
             new Set(current).add(publishedReviewId),
           );
         };
+  const body: ConversationBodyContext = definedProps({
+    pullRequest,
+    profileId,
+  });
   const generalThreadOverrides: GeneralThreadOverrides = {
     resolvedThreads,
     editedBodies,
@@ -149,6 +168,7 @@ export function Conversation({
               </p>
               <PullRequestDescriptionPreview
                 markdown={conversation.prDescription}
+                {...body}
               />
             </div>
           )}
@@ -166,6 +186,7 @@ export function Conversation({
                   key={conversationEntryKey(entry)}
                   entry={entry}
                   generalThreadOverrides={generalThreadOverrides}
+                  body={body}
                 />
               ))
             )}
@@ -242,9 +263,11 @@ function parseGeneralThreadComment(
 function ConversationTimelineEntry({
   entry,
   generalThreadOverrides,
+  body,
 }: {
   readonly entry: WorkbenchResponse["conversation"]["entries"][number];
   readonly generalThreadOverrides: GeneralThreadOverrides;
+  readonly body: ConversationBodyContext;
 }): React.JSX.Element | null {
   switch (entry._tag) {
     case "PrDescription":
@@ -256,13 +279,19 @@ function ConversationTimelineEntry({
       // SAFETY: the wire comment schema validates `createdAt`/`updatedAt`
       // as ISO timestamps and otherwise matches `GitHubComment` field for
       // field, plus optional wire-only fields `GitHubComment` doesn't need.
-      return <IssueCommentEntry comment={entry.comment as GitHubComment} />;
+      return (
+        <IssueCommentEntry
+          comment={entry.comment as GitHubComment}
+          body={body}
+        />
+      );
     case "ReviewSummary":
       // SAFETY: the wire review schema validates `submittedAt` as an ISO
       // timestamp and otherwise matches `PublishedReview` field for field.
       return (
         <ReviewSummaryEntry
           review={entry.review as PublishedReview}
+          body={body}
           dismissed={generalThreadOverrides.dismissedReviewIds.has(
             entry.review.id,
           )}
@@ -283,8 +312,10 @@ function ConversationTimelineEntry({
 
 function IssueCommentEntry({
   comment,
+  body,
 }: {
   readonly comment: GitHubComment;
+  readonly body: ConversationBodyContext;
 }): React.JSX.Element {
   return (
     <div className="flex gap-3 border-b py-3">
@@ -297,7 +328,7 @@ function IssueCommentEntry({
           </span>
         </div>
         <div className="mt-1 text-sm leading-6">
-          <PullRequestDescriptionPreview markdown={comment.body} />
+          <PullRequestDescriptionPreview markdown={comment.body} {...body} />
         </div>
       </div>
     </div>
@@ -306,10 +337,12 @@ function IssueCommentEntry({
 
 function ReviewSummaryEntry({
   review,
+  body,
   dismissed,
   onDismiss,
 }: {
   readonly review: PublishedReview;
+  readonly body: ConversationBodyContext;
   readonly dismissed: boolean;
   readonly onDismiss?: (
     publishedReviewId: string,
@@ -347,7 +380,7 @@ function ReviewSummaryEntry({
         </div>
         {review.body.length > 0 && (
           <div className="mt-1 text-sm leading-6">
-            <PullRequestDescriptionPreview markdown={review.body} />
+            <PullRequestDescriptionPreview markdown={review.body} {...body} />
           </div>
         )}
         {onDismiss !== undefined &&

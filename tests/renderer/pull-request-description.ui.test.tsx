@@ -8,7 +8,7 @@ import {
   PullRequestDescription,
   PullRequestDescriptionPreview,
 } from "../../src/renderer/src/components/pull-request-description";
-import { installDesktopDouble } from "./fake-desktop-response";
+import { installDesktopDouble, success } from "./fake-desktop-response";
 
 const pullRequest = (() => {
   const parsed = parsePullRequestInput(
@@ -139,23 +139,41 @@ describe("PullRequestDescription", () => {
     ).toBeTruthy();
   });
 
-  it("preserves safe GitHub HTML and image content without executing arbitrary markup", () => {
+  it("preserves safe GitHub HTML and image content without executing arbitrary markup", async () => {
+    const dataUri = "data:image/png;base64,AAAA";
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () => success({ dataUri }),
+    });
     render(
       <PullRequestDescriptionPreview
         markdown={
           "<details open><summary>Context</summary><p>Details</p></details>\n\n![Architecture diagram](/centraldigital/patchdesk/raw/main/diagram.png)\n\n<script>window.bad = true</script>"
         }
         pullRequest={pullRequest}
+        profileId="centraldigital"
       />,
     );
 
     expect(screen.getByText("Context")).toBeTruthy();
     expect(screen.getByText("Details")).toBeTruthy();
-    expect(
-      screen.getByRole("img", { name: "Architecture diagram" }),
-    ).toBeTruthy();
+    const image = await screen.findByRole("img", {
+      name: "Architecture diagram",
+    });
+    expect(image.getAttribute("src")).toBe(dataUri);
     expect(document.querySelector("script")).toBeNull();
     expect("bad" in window).toBe(false);
+  });
+
+  it("keeps the placeholder for an image no profile can be fetched as", () => {
+    render(
+      <PullRequestDescriptionPreview
+        markdown="![Architecture diagram](/centraldigital/patchdesk/raw/main/diagram.png)"
+        pullRequest={pullRequest}
+      />,
+    );
+
+    expect(screen.getByText(/Architecture diagram/)).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("keeps rendered Mermaid source and lightbox controls independent", async () => {
