@@ -111,6 +111,32 @@ describe("usePullRequestImage", () => {
     expect(desktop.request).toHaveBeenCalledTimes(1);
   });
 
+  it("evicts the oldest resolution once 32 images are memoized", async () => {
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () => success({ dataUri }),
+    });
+    const first = imageUrl();
+    const newest = [first, ...Array.from({ length: 32 }, imageUrl)];
+
+    // The first resolution plus 32 later ones, so the cap of 32 pushes the
+    // first out while the newest one stays memoized.
+    const show = async (src: string): Promise<void> => {
+      const { result } = renderHook(() =>
+        usePullRequestImage({ source, src, visible: true }),
+      );
+      await waitFor(() => {
+        expect(result.current).toEqual({ _tag: "Ready", dataUri });
+      });
+    };
+    for (const src of newest) await show(src);
+
+    const resolved = desktop.request.mock.calls.length;
+    await show(newest.at(-1) ?? first);
+    expect(desktop.request.mock.calls.length).toBe(resolved);
+    await show(first);
+    expect(desktop.request.mock.calls.length).toBe(resolved + 1);
+  });
+
   it("fails without a source, since the main process needs a profile to fetch as", async () => {
     const src = imageUrl();
     const { result } = renderHook(() =>
