@@ -46,6 +46,7 @@ import {
 } from "./pull-request-description";
 import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
+import { pierreDiffColorsCss } from "@/diff-colors";
 import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
 import {
   diffThemeFor,
@@ -94,22 +95,6 @@ const DIFF_CODE_METRICS = {
   fontFamily: "var(--font-mono)",
   "--diffs-font-family": "var(--font-mono)",
 } as CSSProperties;
-// Pierre derives diff chrome colors from the selected Shiki theme. Some themes
-// use saturated terminal red/green values that produce poor contrast in the
-// dark line gutters, so walkthrough diffs use a small, GitHub-like semantic
-// palette while retaining the selected theme for syntax tokens.
-const WALKTHROUGH_DIFF_COLORS_CSS = `
-:host {
-  --diffs-deletion-color-override: light-dark(#cf222e, #f85149);
-  --diffs-addition-color-override: light-dark(#1a7f37, #3fb950);
-  --diffs-fg-number-deletion-override: light-dark(#cf222e, #ff7b72);
-  --diffs-fg-number-addition-override: light-dark(#1a7f37, #7ee787);
-  --diffs-bg-deletion-override: light-dark(#ffebe9, #3d1d1d);
-  --diffs-bg-addition-override: light-dark(#dafbe1, #1f3a26);
-  --diffs-bg-deletion-emphasis-override: light-dark(rgb(255 129 130 / 0.28), rgb(248 81 73 / 0.22));
-  --diffs-bg-addition-emphasis-override: light-dark(rgb(46 160 67 / 0.28), rgb(46 160 67 / 0.22));
-}
-`;
 // Matches @pierre/diffs' own default (DiffHunksRenderer destructures
 // `lineDiffType = "word-alt"`). Named explicitly so the three render call
 // sites below share one value instead of three hand-copied literals.
@@ -957,7 +942,7 @@ function NonVirtualizedReviewDiff({
   const options = {
     theme: diffThemeFor(themePreferences),
     themeType: appearance,
-    unsafeCSS: WALKTHROUGH_DIFF_COLORS_CSS,
+    unsafeCSS: pierreDiffColorsCss,
     disableBackground: !preferences.backgrounds,
     disableLineNumbers: !preferences.lineNumbers,
     diffStyle: preferences.diffStyle,
