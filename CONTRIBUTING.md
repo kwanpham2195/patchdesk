@@ -444,6 +444,23 @@ publishing it.
 
 5. Open the draft release, read the notes, and publish.
 
+6. Once the release is published, update the Homebrew tap. Homebrew fetches
+   the `.dmg` from the published release URL, so a draft release cannot be
+   installed. Take the checksum of the `.dmg` you attached:
+
+   ```bash
+   shasum -a 256 release/Patchdesk-0.2.0-arm64.dmg
+   ```
+
+   Then, in a checkout of
+   [`kwanpham2195/homebrew-patchdesk`](https://github.com/kwanpham2195/homebrew-patchdesk),
+   set `version` and `sha256` in `Casks/patchdesk.rb`, commit, and push.
+   Check the result from a machine with the tap trusted:
+
+   ```bash
+   brew update && brew audit --cask kwanpham2195/patchdesk/patchdesk && brew upgrade --cask patchdesk
+   ```
+
 Bumping the bundled Pi client follows `docs/upgrading-pi.md`.
 
 ### Signing and notarization

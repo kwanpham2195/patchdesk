@@ -28,6 +28,10 @@ ships inside the app and runs on Electron's own Node.
 
 ## Install
 
+Either download the `.dmg` by hand or install through Homebrew.
+
+**From the `.dmg`:**
+
 1. Download the `.dmg` from the
    [Releases page](https://github.com/kwanpham2195/patchdesk/releases).
 2. Open the `.dmg` and drag Patchdesk into Applications.
@@ -40,6 +44,19 @@ from a terminal, then open it normally:
 ```bash
 xattr -cr /Applications/Patchdesk.app
 ```
+
+**With Homebrew:**
+
+```bash
+brew trust --tap kwanpham2195/patchdesk
+brew install --cask kwanpham2195/patchdesk/patchdesk
+xattr -dr com.apple.quarantine /Applications/Patchdesk.app
+```
+
+Homebrew loads casks from a tap that is not its own only after you trust it,
+which is what `brew trust` does. The `xattr` line clears the same quarantine
+flag as above, because the app is not notarized. Later versions install with
+`brew upgrade --cask patchdesk`.
 
 Opening Patchdesk a second time while it is already running quits the new
 copy right away; the existing window comes to the front instead.
