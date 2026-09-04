@@ -23,7 +23,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Diff is the default outer tab. The header names the pull request and represented revision, shows Checks and Merge status controls, and offers Refresh GitHub state. The left navigator can show Files, Commits, and Conversation threads. The main pane shows the full patch unless a commit is selected.
+Conversation is the default outer tab: a Review with no saved position opens there, and Diff is one click away. A Review that carries a saved position reopens on the tab it was left on. The header names the pull request and represented revision, shows Checks and Merge status controls, and offers Refresh GitHub state. The left navigator can show Files, Commits, and Conversation threads. The main pane shows the full patch unless a commit is selected.
 
 The first resolvable file becomes active when no saved active file is valid. Restored position can select an outer tab, navigator section, commit, file, and scroll target only when those values still exist in the current projection.
 
