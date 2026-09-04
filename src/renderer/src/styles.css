@@ -17,6 +17,7 @@
 :root {
   color-scheme: light dark;
   --radius: 0.625rem;
+  --shell: oklch(0.955 0 0);
   --background: oklch(0.985 0 0);
   --foreground: oklch(0.16 0 0);
   --card: oklch(1 0 0);
@@ -59,6 +60,7 @@
 }
 
 .dark {
+  --shell: oklch(0.11 0 0);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.18 0 0);
@@ -112,6 +114,7 @@
   --font-mono:
     "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo,
     monospace;
+  --color-shell: var(--shell);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -368,7 +371,7 @@ body {
   justify-content: space-between;
   gap: 0.75rem;
   border-bottom: 1px solid var(--border);
-  background: var(--background);
+  background: var(--shell);
   padding: 0 0.875rem 0 6rem;
   -webkit-app-region: drag;
 }
@@ -410,6 +413,7 @@ body {
 
 .app-frame {
   display: flex;
+  padding: 0 0.5rem;
   --sidebar-width: 14.5rem;
   --sidebar-width-icon: 3rem;
   min-height: calc(100vh - 3rem);

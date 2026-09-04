@@ -151,7 +151,7 @@ export function AppShell({
     );
   };
   return (
-    <div className="compact-surface flex h-screen min-h-screen w-full flex-col bg-background text-foreground">
+    <div className="compact-surface flex h-screen min-h-screen w-full flex-col bg-shell text-foreground">
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
@@ -283,7 +283,7 @@ export function AppShell({
           ref={mainRef}
           id="main-content"
           tabIndex={-1}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-t-lg border border-b-0 bg-background"
         >
           {children}
         </main>
