@@ -193,10 +193,12 @@ export class MaintainerInboxService {
   ) {}
 
   /**
-   * Attaches each row's cached author avatar as a `data:` URI, warming the
-   * shared per-profile avatar cache first so the next read of the same page
-   * finds the bytes on disk (`warmAvatarUrls` skips URLs already there, so a
-   * repeat listing costs nothing).
+   * Attaches each row's cached author avatar as a `data:` URI: warms the
+   * shared per-profile avatar cache and then resolves, in the same request,
+   * so the rows returned already carry every avatar the warm pass fetched.
+   * `warmAvatarUrls` skips URLs already on disk, so a repeat listing costs
+   * nothing; anything past its per-sync cap stays initials until a later
+   * read.
    *
    * Wrapped whole in a try/catch for the same reason
    * `AssigneeService.withResolvedAvatars` is: an avatar is decorative, so a
