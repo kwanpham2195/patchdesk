@@ -101,7 +101,8 @@ export function useInsightConfiguration(input: {
       if (stored !== undefined) loadedPreferences[type] = stored;
     }
     preferencesRef.current = loadedPreferences;
-    const initialPreference = loadedPreferences[initialDetail ?? "analysis"];
+    // Without a deep link the panel lands on Brief, so seed from that preference.
+    const initialPreference = loadedPreferences[initialDetail ?? "brief"];
     if (initialPreference !== undefined) {
       setConfiguration({
         provider: initialPreference.provider,
