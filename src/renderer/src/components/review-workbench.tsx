@@ -690,6 +690,8 @@ export function ReviewWorkbench({
           {activeTab === "conversation" ? (
             <Conversation
               conversation={model.conversation}
+              profileId={model.session.key.profileId}
+              {...definedProps({ pullRequest: externalPullRequest })}
               {...conversationTabProps}
               {...(conversationRail === undefined
                 ? {}

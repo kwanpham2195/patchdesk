@@ -5,7 +5,12 @@ import * as v from "valibot";
 import type { Tokens } from "marked";
 
 import { useLightbox } from "../use-lightbox";
+import {
+  usePullRequestImage,
+  type PullRequestImageSource,
+} from "../hooks/use-pull-request-image";
 
+import { definedProps } from "../../../domain/defined-props";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   openPullRequestExternalUrl,
@@ -45,10 +50,13 @@ let mermaidPromise: Promise<Mermaid> | undefined;
 export function PullRequestDescription({
   markdown,
   pullRequest,
+  profileId,
   truncated = false,
 }: {
   readonly markdown?: string;
   readonly pullRequest?: PullRequestRef;
+  /** Enables images: the main process needs a profile to fetch and cache their bytes. */
+  readonly profileId?: string;
   readonly truncated?: boolean;
 }): React.JSX.Element {
   const [open, setOpen] = useState(true);
@@ -110,7 +118,7 @@ export function PullRequestDescription({
                 >
                   <PullRequestDescriptionPreview
                     markdown={markdown}
-                    {...(pullRequest === undefined ? {} : { pullRequest })}
+                    {...definedProps({ pullRequest, profileId })}
                   />
                 </div>
               </ScrollArea>
@@ -138,20 +146,29 @@ export function PullRequestDescription({
 export function PullRequestDescriptionPreview({
   markdown,
   pullRequest,
+  profileId,
 }: {
   readonly markdown: string;
   readonly pullRequest?: PullRequestRef;
+  /** Enables images: the main process needs a profile to fetch and cache their bytes. */
+  readonly profileId?: string;
 }): React.JSX.Element {
   return (
     <MarkdownContent
       markdown={markdown}
-      policy={githubMarkdownPolicy(pullRequest)}
+      policy={githubMarkdownPolicy(
+        pullRequest,
+        pullRequest === undefined || profileId === undefined
+          ? undefined
+          : { profileId, pullRequest },
+      )}
     />
   );
 }
 
 function githubMarkdownPolicy(
   pullRequest: PullRequestRef | undefined,
+  imageSource: PullRequestImageSource | undefined,
 ): MarkdownContentPolicy {
   return {
     renderLink: ({ href, children, key }) => {
@@ -169,9 +186,14 @@ function githubMarkdownPolicy(
       );
     },
     renderImage: ({ token, key }) =>
-      renderMarkdownImage(token, pullRequest, key),
+      renderMarkdownImage(token, imageSource, key),
     renderHtml: ({ html, key }) => (
-      <HtmlContent key={key} html={html} pullRequest={pullRequest} />
+      <HtmlContent
+        key={key}
+        html={html}
+        pullRequest={pullRequest}
+        imageSource={imageSource}
+      />
     ),
     renderMermaid: ({ source, key }) => (
       <MermaidDiagram key={key} source={source} />
@@ -186,23 +208,25 @@ const markdownImageTokenSchema = v.object({
 
 function renderMarkdownImage(
   token: Tokens.Image | Tokens.Generic,
-  pullRequest: PullRequestRef | undefined,
+  imageSource: PullRequestImageSource | undefined,
   key: string,
 ): React.ReactNode {
   const parsed = v.safeParse(markdownImageTokenSchema, token);
   if (!parsed.success) return null;
   const { href, text } = parsed.output;
-  const src = resolvePullRequestExternalUrl(href, pullRequest);
-  if (src === undefined) return <span key={key}>[Image: {text}]</span>;
-  return <ClickableImage key={key} src={src} alt={text} />;
+  return (
+    <ClickableImage key={key} src={href} alt={text} source={imageSource} />
+  );
 }
 
 function HtmlContent({
   html,
   pullRequest,
+  imageSource,
 }: {
   readonly html: string;
   readonly pullRequest: PullRequestRef | undefined;
+  readonly imageSource: PullRequestImageSource | undefined;
 }): React.JSX.Element {
   if (globalThis.DOMParser === undefined) return <span>{html}</span>;
   const documentFragment = new DOMParser().parseFromString(html, "text/html");
@@ -211,6 +235,7 @@ function HtmlContent({
       {renderHtmlNodes(
         Array.from(documentFragment.body.childNodes),
         pullRequest,
+        imageSource,
         "html",
       )}
     </>
@@ -220,16 +245,18 @@ function HtmlContent({
 function renderHtmlNodes(
   nodes: ReadonlyArray<Node>,
   pullRequest: PullRequestRef | undefined,
+  imageSource: PullRequestImageSource | undefined,
   keyPrefix: string,
 ): ReadonlyArray<React.ReactNode> {
   return nodes.map((node, index) =>
-    renderHtmlNode(node, pullRequest, `${keyPrefix}-${index}`),
+    renderHtmlNode(node, pullRequest, imageSource, `${keyPrefix}-${index}`),
   );
 }
 
 function renderHtmlNode(
   node: Node,
   pullRequest: PullRequestRef | undefined,
+  imageSource: PullRequestImageSource | undefined,
   key: string,
 ): React.ReactNode {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent;
@@ -239,6 +266,7 @@ function renderHtmlNode(
   const children = renderHtmlNodes(
     Array.from(node.childNodes),
     pullRequest,
+    imageSource,
     key,
   );
   switch (tag) {
@@ -351,12 +379,10 @@ function renderHtmlNode(
     case "img": {
       const src = node.getAttribute("src");
       const alt = node.getAttribute("alt") ?? "";
-      const resolved =
-        src === null
-          ? undefined
-          : resolvePullRequestExternalUrl(src, pullRequest);
-      if (resolved === undefined) return <span key={key}>[Image: {alt}]</span>;
-      return <ClickableImage key={key} src={resolved} alt={alt} />;
+      if (src === null) return <span key={key}>[Image: {alt}]</span>;
+      return (
+        <ClickableImage key={key} src={src} alt={alt} source={imageSource} />
+      );
     }
     case "table":
       return (
@@ -451,14 +477,57 @@ function MermaidDiagram({
   );
 }
 
+/**
+ * Renders one image from a pull request body. `src` is the raw reference the
+ * author wrote; the main process is the only thing that decides whether it may
+ * be fetched, and answers with a `data:` URI the renderer's
+ * `img-src 'self' data:` CSP allows. Anything it refuses — a foreign host, a
+ * missing profile, a failed download — keeps the `[Image: alt]` placeholder
+ * this view has always shown, never a broken-image icon.
+ */
 function ClickableImage({
   src,
   alt,
+  source,
 }: {
   readonly src: string;
   readonly alt: string;
+  readonly source: PullRequestImageSource | undefined;
 }): React.JSX.Element {
+  const placeholder = useRef<HTMLSpanElement>(null);
+  // Standing in for `loading="lazy"`, which cannot help a `data:` URI the
+  // renderer fetches itself: nothing is requested until the image scrolls
+  // near the viewport, so a body full of screenshots costs one call per
+  // image actually looked at. Without an observer (jsdom) everything loads.
+  const [visible, setVisible] = useState(
+    globalThis.IntersectionObserver === undefined,
+  );
+  const image = usePullRequestImage({ source, src, visible });
   const { lightbox, open } = useLightbox();
+
+  useEffect(() => {
+    const element = placeholder.current;
+    if (visible || element === null) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  if (image._tag === "Failed") return <span>[Image: {alt}]</span>;
+  if (image._tag === "Pending") {
+    return (
+      <span
+        ref={placeholder}
+        aria-hidden="true"
+        className="block h-24 w-40 rounded-md bg-muted"
+      />
+    );
+  }
   return (
     <>
       <button
@@ -467,7 +536,7 @@ function ClickableImage({
         onClick={() =>
           open(
             <img
-              src={src}
+              src={image.dataUri}
               alt={alt}
               className="max-h-[85vh] max-w-[85vw] object-contain"
             />,
@@ -475,7 +544,7 @@ function ClickableImage({
         }
       >
         <img
-          src={src}
+          src={image.dataUri}
           alt={alt}
           loading="lazy"
           className="max-w-full rounded-md"
