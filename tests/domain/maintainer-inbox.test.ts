@@ -145,6 +145,26 @@ describe("maintainer inbox", () => {
     expect("insights" in projectMaintainerInboxRow(input)).toBe(false);
   });
 
+  it("carries the author's avatar URL onto an open row and a merged one alike", () => {
+    const summary = {
+      ...input.summary,
+      authorAvatarUrl: "https://avatars.example/other.png",
+    };
+    expect(
+      projectMaintainerInboxRow({ ...input, summary }).authorAvatarUrl,
+    ).toBe("https://avatars.example/other.png");
+    expect(
+      projectMaintainerInboxRow({
+        ...input,
+        summary: { ...summary, isOpen: false },
+      }).authorAvatarUrl,
+    ).toBe("https://avatars.example/other.png");
+  });
+
+  it("leaves the author's avatar URL off a row whose summary has none", () => {
+    expect("authorAvatarUrl" in projectMaintainerInboxRow(input)).toBe(false);
+  });
+
   it("projects a merged pull request outside active-work queues", () => {
     const row = projectMaintainerInboxRow({
       ...input,

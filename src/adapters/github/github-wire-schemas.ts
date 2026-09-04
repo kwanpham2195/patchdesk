@@ -426,7 +426,9 @@ const maintainerInboxNodeSchema = v.looseObject({
   headRefOid: v.string(),
   baseRefName: v.string(),
   baseRefOid: v.optional(v.string()),
-  author: v.nullish(v.looseObject({ login: v.string() })),
+  author: v.nullish(
+    v.looseObject({ login: v.string(), avatarUrl: v.optional(v.string()) }),
+  ),
   updatedAt: v.string(),
   mergeable: v.string(),
   reviewDecision: v.nullish(v.string()),

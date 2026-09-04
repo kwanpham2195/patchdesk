@@ -37,6 +37,7 @@ import {
   type InboxRepositoryRef,
   type MaintainerInbox,
 } from "./maintainer-inbox-service";
+import type { AvatarRailDependencies } from "./avatar-sync-service";
 import { InboxRefreshCoordinator } from "./inbox-refresh-coordinator";
 import {
   addWatchedRepo,
@@ -115,6 +116,8 @@ export class DashboardController {
     origins?: OriginFinder,
     paths: PatchdeskPaths = PatchdeskPaths.default(),
     private readonly commands: CommandRunner = new CommandRunner(),
+    /** Optional: without it inbox rows carry no author avatar and fall back to initials. */
+    avatars?: AvatarRailDependencies,
   ) {
     this.settings = new ProfileSettingsService(profiles);
     this.dashboard = new DashboardService(origins);
@@ -126,6 +129,7 @@ export class DashboardController {
         now: systemNow,
       },
       new InsightStore(paths),
+      avatars,
     );
     this.inboxRefresh = new InboxRefreshCoordinator(this.inbox);
   }

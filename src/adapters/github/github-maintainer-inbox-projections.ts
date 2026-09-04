@@ -113,6 +113,8 @@ function parseMaintainerPullRequest(
     deletions: input.deletions,
     changedFileCount: input.changedFiles,
   };
+  const authorAvatarUrl = input.author?.avatarUrl ?? undefined;
+  if (authorAvatarUrl !== undefined) summary = { ...summary, authorAvatarUrl };
   if (baseSha !== undefined) summary = { ...summary, baseSha: baseSha.value };
   const rollup = input.commits.nodes[0]?.commit.statusCheckRollup?.state;
   return ok({ summary, checks: rollupCheckSummary(rollup) });
