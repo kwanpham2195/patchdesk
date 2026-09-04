@@ -3,6 +3,7 @@ import { Circle, CircleCheck } from "lucide-react";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 
 import { cn } from "../lib/utils";
+import { MarkdownCodeFence } from "./markdown-code-fence";
 import {
   groupMarkdownHtml,
   isMarkdownHtmlElement,
@@ -190,12 +191,7 @@ function renderBlocks(
           policy.renderMermaid !== undefined ? (
           policy.renderMermaid({ source: token.text, key })
         ) : (
-          <pre
-            key={key}
-            className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono text-xs leading-5"
-          >
-            <code>{token.text}</code>
-          </pre>
+          <MarkdownCodeFence key={key} lang={token.lang} code={token.text} />
         );
       case "list": {
         const List = token.ordered ? "ol" : "ul";
