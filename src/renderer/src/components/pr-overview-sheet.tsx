@@ -1,14 +1,11 @@
 import { useId, useRef, useState } from "react";
 import {
   AlertTriangle,
-  BookOpen,
   CheckCircle2,
   ChevronDown,
   ExternalLink,
-  FileText,
   GitMerge,
   Info,
-  Sparkles,
   XCircle,
 } from "lucide-react";
 
@@ -45,6 +42,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { INSIGHT_ICONS } from "../insight-icons";
+import type { InsightRunDialogType } from "./insight-run-dialog";
 
 export type PullRequestOverviewMerge = {
   readonly readiness: MergeReadiness;
@@ -211,19 +210,19 @@ export function CanonicalReviewOverviewSheet({
           <Separator />
           <OverviewRow title="Review status" defaultOpen>
             <StatusRow
-              icon={<FileText className="size-3.5" />}
+              icon={<InsightIcon type="brief" />}
               title="Brief"
               text={insightStatusLabel(overview.insights.brief.status)}
               tone={insightTone(overview.insights.brief.status)}
             />
             <StatusRow
-              icon={<Sparkles className="size-3.5" />}
+              icon={<InsightIcon type="analysis" />}
               title="Analysis"
               text={insightStatusLabel(overview.insights.analysis.status)}
               tone={insightTone(overview.insights.analysis.status)}
             />
             <StatusRow
-              icon={<BookOpen className="size-3.5" />}
+              icon={<InsightIcon type="walkthrough" />}
               title="Walkthrough"
               text={insightStatusLabel(overview.insights.walkthrough.status)}
               tone={insightTone(overview.insights.walkthrough.status)}
@@ -362,6 +361,15 @@ function RevisionDetails({
       )}
     </div>
   );
+}
+
+function InsightIcon({
+  type,
+}: {
+  readonly type: InsightRunDialogType;
+}): React.JSX.Element {
+  const Icon = INSIGHT_ICONS[type];
+  return <Icon className="size-3.5" />;
 }
 
 function StatusRow({

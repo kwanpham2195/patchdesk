@@ -1,10 +1,4 @@
-import {
-  ChevronRight,
-  FileText,
-  History,
-  Route,
-  SearchIcon,
-} from "lucide-react";
+import { ChevronRight, History } from "lucide-react";
 
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
@@ -31,6 +25,7 @@ import {
 } from "../analysis-headline";
 import { RelativeTime } from "./relative-time";
 import { insightStatusTone } from "../insight-status-tone";
+import { INSIGHT_ICONS } from "../insight-icons";
 
 export type InsightSelection = "overview" | InsightRunDialogType;
 export type InsightProjection =
@@ -52,11 +47,6 @@ const INSIGHT_PURPOSES = {
   brief:
     "Maps what changed structurally and where to start, so you can orient before reading the diff.",
 } as const satisfies Record<InsightRunDialogType, string>;
-const INSIGHT_ICONS = {
-  analysis: SearchIcon,
-  walkthrough: Route,
-  brief: FileText,
-} as const satisfies Record<InsightRunDialogType, React.ElementType>;
 const INSIGHT_STATE_CLASS = "mx-auto max-w-2xl border py-10";
 
 export function InsightNavRail({
