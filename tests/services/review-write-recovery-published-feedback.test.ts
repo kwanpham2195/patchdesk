@@ -160,6 +160,7 @@ describe("published-feedback recovery evidence", () => {
         canDismiss: false,
       },
     ],
+    issueComments: [],
     complete: true,
   };
 

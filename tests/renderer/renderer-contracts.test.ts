@@ -605,13 +605,17 @@ describe("parseWorkbenchResponse", () => {
           prDescription: "",
           entries: [
             {
-              _tag: "IssueComment",
+              _tag: "ReviewComment",
               comment: {
                 ...legalComment,
                 reviewId: "review-1",
                 canEdit: true,
                 canDelete: false,
               },
+            },
+            {
+              _tag: "IssueComment",
+              comment: { ...legalComment, canEdit: true, canDelete: false },
             },
           ],
         },

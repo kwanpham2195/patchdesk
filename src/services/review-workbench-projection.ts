@@ -265,7 +265,7 @@ export class ReviewWorkbenchProjectionService {
   /**
    * Resolves each comment's `authorAvatarUrl` to a cached `data:` URI the
    * renderer's `img-src 'self' data:` CSP can actually load. Only
-   * `conversation.entries` (`IssueComment`/`GeneralThread`) and
+   * `conversation.entries` (`IssueComment`/`ReviewComment`/`GeneralThread`) and
    * `conversation.inline` reach the renderer via `ConversationThreadCard`;
    * `ReviewSummary`/`PrDescription` entries carry no comment and pass
    * through untouched. A per-call cache avoids re-reading the same avatar
@@ -302,6 +302,8 @@ export class ReviewWorkbenchProjectionService {
     const entries = await Promise.all(
       conversation.entries.map(async (entry): Promise<ConversationEntry> => {
         if (entry._tag === "IssueComment")
+          return { ...entry, comment: await resolveComment(entry.comment) };
+        if (entry._tag === "ReviewComment")
           return { ...entry, comment: await resolveComment(entry.comment) };
         if (entry._tag === "GeneralThread")
           return {

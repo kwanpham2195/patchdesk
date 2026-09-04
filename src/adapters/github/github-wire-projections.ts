@@ -915,8 +915,8 @@ export function parseDirectSummaryReceipt(
 
 /**
  * Orders one Conversation timeline: every published review summary, every
- * published issue comment, and the review threads GitHub returned with no
- * code anchor. Threads that DO carry a `location` are deliberately absent —
+ * published review comment, every plain issue comment, and the review threads
+ * GitHub returned with no code anchor. Threads that DO carry a `location` are deliberately absent —
  * they belong to `Conversation.inline` and are placed against the diff
  * instead (ADR 0028, "Show only conversation threads the diff can place"), so
  * the caller owns that split and this function owns the timeline.
@@ -934,6 +934,10 @@ export function assembleConversationEntries(
       review,
     })),
     ...feedback.comments.map((comment) => ({
+      _tag: "ReviewComment" as const,
+      comment,
+    })),
+    ...feedback.issueComments.map((comment) => ({
       _tag: "IssueComment" as const,
       comment,
     })),
@@ -956,6 +960,7 @@ function conversationEntryOrder(entry: ConversationEntry): string {
     case "ReviewSummary":
       return entry.review.submittedAt;
     case "IssueComment":
+    case "ReviewComment":
       return entry.comment.createdAt;
     case "GeneralThread":
       return entry.thread.comments[0]?.createdAt ?? "";

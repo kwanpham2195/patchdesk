@@ -212,6 +212,7 @@ function conversationEntryKey(
     case "PrDescription":
       throw new Error("Pull request descriptions are not timeline entries");
     case "IssueComment":
+    case "ReviewComment":
       return `${entry._tag}-${entry.comment.id}`;
     case "ReviewSummary":
       return `${entry._tag}-${entry.review.id}`;
@@ -276,11 +277,12 @@ function ConversationTimelineEntry({
       // actually appears inside `conversation.entries`.
       return null;
     case "IssueComment":
+    case "ReviewComment":
       // SAFETY: the wire comment schema validates `createdAt`/`updatedAt`
       // as ISO timestamps and otherwise matches `GitHubComment` field for
       // field, plus optional wire-only fields `GitHubComment` doesn't need.
       return (
-        <IssueCommentEntry
+        <TimelineCommentEntry
           comment={entry.comment as GitHubComment}
           body={body}
         />
@@ -310,7 +312,9 @@ function ConversationTimelineEntry({
   }
 }
 
-function IssueCommentEntry({
+/** One timeline comment, issue or review: both render their Markdown through
+ * the description preview so images and relative links resolve identically. */
+function TimelineCommentEntry({
   comment,
   body,
 }: {

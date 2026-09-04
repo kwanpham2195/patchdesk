@@ -359,7 +359,12 @@ function fakeGitHub(input: { readonly terminal: boolean }) {
       return ok({ _tag: "None" as const });
     },
     async getPullRequestPublishedFeedback() {
-      return ok({ reviews: [], comments: [], complete: true });
+      return ok({
+        reviews: [],
+        comments: [],
+        issueComments: [],
+        complete: true,
+      });
     },
     async getMergeOutcome() {
       return ok(

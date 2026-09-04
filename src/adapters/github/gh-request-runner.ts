@@ -49,6 +49,7 @@ export type GitHubReadOperation =
   | "get_merge_policy"
   | "get_merge_policy_evidence"
   | "get_comments"
+  | "get_issue_comments"
   | "get_reviews"
   | "get_pending_review"
   | "get_direct_summary_reviews"
