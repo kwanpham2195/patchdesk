@@ -11,6 +11,12 @@ import {
   type NormalizedBrief,
 } from "../../src/domain/brief";
 import {
+  MAX_FLOW_DEPTH,
+  MAX_FLOW_LABEL_LENGTH,
+  MAX_FLOW_NODES_PER_TREE,
+  MAX_FLOW_TREES,
+} from "../../src/domain/brief-flow";
+import {
   parseContentHash,
   parseGitSha,
   parseReviewSessionId,
@@ -230,7 +236,7 @@ describe("insightOutputGuidance", () => {
       "In flow, give at most one tree of each kind that the patch changes: call_tree, control_flow, and component.",
     );
     expect(guidance).toContain(
-      "each step is the real function or method name with its parameter names as written in the patch, such as validateManualDays(command, suggestion)",
+      "Each step is the real function or method name with its parameter names as written in the patch, such as validateManualDays(command, suggestion)",
     );
     expect(guidance).toContain(
       "Give an added or removed step the h alias of the hunk that shows it when the patch shows it, and leave citations empty when it does not -- never omit a step for lack of a citation, and never cite a description or commit alias in flow.",
@@ -239,19 +245,60 @@ describe("insightOutputGuidance", () => {
       "Mark a step added only when it did not exist before the patch",
     );
     expect(guidance).toContain(
-      "never mark a step added because a test for it is new",
+      "Never mark a step added because a test for it is new",
     );
     expect(guidance).toContain("Never list a test function as a step");
-    expect(guidance).toContain("a condition or a return is never a root");
+    expect(guidance).toContain("A condition or a return is never a root");
     expect(guidance).toContain(
       "Before you write a tree, list every entry point whose behavior this patch changes -- each command, request path, and error path -- and give each one a root.",
     );
     expect(guidance).toContain(
-      "omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",
+      "Omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",
     );
     expect(guidance).toContain(
       "Write no numbers and no counts in prose; a flow label copies the identifier from the patch as written, digits included.",
     );
+  });
+
+  it("groups the Brief rules under headings, one rule to a line", () => {
+    const guidance = insightOutputGuidance("brief");
+    for (const heading of [
+      "WHAT A BRIEF IS",
+      "OWNERSHIP NOTES",
+      "START HERE",
+      "WHEN TO GIVE A FLOW TREE",
+      "CALL_TREE",
+      "CONTROL_FLOW",
+      "COMPONENT",
+      "MARKING ADDED, REMOVED, AND UNCHANGED",
+      "CITATIONS",
+      "LIMITS",
+    ])
+      expect(guidance.split("\n")).toContain(heading);
+  });
+
+  it("anchors each tree kind with the diff example that shows its shape", () => {
+    const guidance = insightOutputGuidance("brief");
+    expect(guidance).toContain("+    expandSkillMention");
+    expect(guidance).toContain("+  if content is unchanged");
+    expect(guidance).toContain("+    <RunSkillButton>");
+    expect(guidance).toContain("|-- sessions/       # owns session state");
+    // The step that gained a child stays a context line; only the child is added.
+    expect(guidance).not.toContain("-  navigateToSession");
+  });
+
+  it("states each Flow limit once, in the number the schema enforces", () => {
+    const guidance = insightOutputGuidance("brief");
+    expect(guidance).toContain(
+      `Give at most ${MAX_FLOW_TREES} flow trees, one for each kind.`,
+    );
+    expect(guidance).toContain(
+      `Keep each tree at most ${MAX_FLOW_DEPTH} levels deep and at most ${MAX_FLOW_NODES_PER_TREE} steps.`,
+    );
+    expect(guidance).toContain(
+      `Keep each label within ${MAX_FLOW_LABEL_LENGTH} characters.`,
+    );
+    expect(guidance).not.toContain("three levels deep and fifteen steps");
   });
 });
 

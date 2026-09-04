@@ -140,11 +140,7 @@ export class CodexInsightInvoker implements InsightInvoker {
         return err({ reason: "runtime_unavailable" as const });
       let briefPrompt: string;
       try {
-        briefPrompt = await prepareBriefPrompt({
-          profileId: input.profileId,
-          sessionId: input.sessionId,
-          patchPath: briefPatchPath,
-        });
+        briefPrompt = await prepareBriefPrompt({ patchPath: briefPatchPath });
       } catch {
         return err({ reason: "execution_failed" as const });
       }

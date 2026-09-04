@@ -2,6 +2,7 @@ import {
   briefManifest,
   renderBriefManifest,
   BRIEF_RESULT_CONTRACT,
+  MAX_REACH_SYMBOLS,
 } from "../domain/brief";
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
 import { readBoundedArtifact } from "./walkthrough-artifact-reader";
@@ -25,8 +26,6 @@ export type BriefInput = {
  * model anymore.
  */
 export async function prepareBriefPrompt(input: {
-  readonly profileId: string;
-  readonly sessionId: string;
   readonly patchPath: string;
 }): Promise<string> {
   const patch = await readBoundedArtifact(
@@ -45,8 +44,7 @@ export async function prepareBriefPrompt(input: {
     insightOutputGuidance("brief"),
     `Return exactly one JSON object shaped ${BRIEF_RESULT_CONTRACT}. Use no other keys, no Markdown code fence, and no prose before or after it.`,
     "Every citation in flow must be an h alias from the supplied BRIEF CITATION MANIFEST; a citation that does not resolve is discarded.",
-    "List in reachSymbols up to 12 exported functions, types, or constants whose signature or meaning this patch changes. Write the exact identifier names, as spelled in the patch, and nothing else: no counts, no paths, no prose. Prefer names that callers outside the changed files use -- a helper whose behavior changed and that other files call matters more than a new constant only the patch references. Patchdesk counts their callers itself.",
-    `Profile ${input.profileId} and session ${input.sessionId} are provenance only; do not repeat them in prose.`,
+    `List in reachSymbols up to ${MAX_REACH_SYMBOLS} exported functions, types, or constants whose signature or meaning this patch changes. Write the exact identifier names, as spelled in the patch, and nothing else: no counts, no paths, no prose. Prefer names that callers outside the changed files use -- a helper whose behavior changed and that other files call matters more than a new constant only the patch references. Patchdesk counts their callers itself.`,
     "BRIEF CITATION MANIFEST:",
     renderBriefManifest(manifest),
     "PATCH ARTIFACT:",

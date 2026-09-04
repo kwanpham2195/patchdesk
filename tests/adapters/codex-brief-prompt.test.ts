@@ -19,7 +19,7 @@ describe("buildCodexBriefPrompt", () => {
     "+ */",
   ].join("\n");
 
-  it("does not apply the unsafe-content guard to the brief prompt, and includes the shape block and the flow limits", () => {
+  it("does not apply the unsafe-content guard to the brief prompt, and leaves the flow limits to the shared guidance", () => {
     const result = buildCodexBriefPrompt({
       briefPrompt,
       policy: "Read only the represented review revision.",
@@ -31,9 +31,9 @@ describe("buildCodexBriefPrompt", () => {
     expect(result.value).toContain(
       '"flow":[{"kind":"call_tree"|"control_flow"|"component","title":string',
     );
-    expect(result.value).toContain(
-      "Use at most 3 flow trees, one per kind, at most 15 steps per tree, at most 3 levels deep, and labels within 120 characters.",
-    );
+    expect(result.value).toContain("Use no other keys.");
+    expect(result.value).not.toContain("flow trees");
+    expect(result.value).not.toContain("steps per tree");
   });
 
   it("still rejects an unsafe policy", () => {

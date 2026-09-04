@@ -111,7 +111,8 @@ export type BriefError = {
   readonly reason: "malformed";
 };
 
-const MAX_REACH_SYMBOLS = 24;
+/** Reach candidates the schema accepts; exported so the Brief prompt asks for this same number. */
+export const MAX_REACH_SYMBOLS = 24;
 const MAX_REACH_SYMBOL_LENGTH = 200;
 const MAX_LABEL_LENGTH = 200;
 /** A hunk larger than this is not something a popover can show; the chip then has no preview. */
