@@ -1,7 +1,9 @@
 import { Alert, AlertDescription } from "./ui/alert";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ScopeGauge } from "./scope-gauge";
 import { Spinner } from "./ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import type { InsightFailureCategory } from "../../../domain/insight-record";
 import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
@@ -12,6 +14,7 @@ import {
   type CheckStatus,
 } from "../analysis-headline";
 import { RelativeTime } from "./relative-time";
+import { insightStatusTone } from "../insight-status-tone";
 
 export type InsightSelection = "overview" | InsightRunDialogType;
 export type InsightProjection =
@@ -48,48 +51,43 @@ export function InsightNavRail({
   return (
     <nav
       aria-label="Insight navigation"
-      className="flex shrink-0 items-center gap-2 overflow-x-auto border-b pb-2"
+      className="shrink-0 overflow-x-auto border-b"
     >
-      <InsightRailButton
-        selected={selectedInsight === "overview"}
-        onClick={() => setSelectedInsight("overview")}
-        title="Overview"
-        status="Current"
-      />
-      {documents.map(([type, projection]) => (
-        <InsightRailButton
-          key={type}
-          selected={selectedInsight === type}
-          onClick={() => setSelectedInsight(type)}
-          title={INSIGHT_NOUNS[type]}
-          status={insightStatusLabel(projection.status)}
-        />
-      ))}
+      <Tabs
+        value={selectedInsight}
+        onValueChange={(value) =>
+          // SAFETY: every TabsTrigger below is keyed by an InsightSelection
+          // literal, so Base UI's reported value can only ever be one of those.
+          setSelectedInsight(value as InsightSelection)
+        }
+      >
+        <TabsList variant="line" className="pb-1">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          {documents.map(([type, projection]) => (
+            <TabsTrigger key={type} value={type}>
+              {INSIGHT_NOUNS[type]}
+              <InsightStatusBadge status={projection.status} />
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
     </nav>
   );
 }
 
-function InsightRailButton({
-  selected,
-  onClick,
-  title,
+function InsightStatusBadge({
   status,
 }: {
-  readonly selected: boolean;
-  readonly onClick: () => void;
-  readonly title: string;
-  readonly status: string;
+  readonly status: InsightProjection["status"];
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
-      aria-current={selected ? "page" : undefined}
-      className={`inline-flex shrink-0 items-baseline gap-1.5 rounded-md border px-3 py-1.5 text-left text-sm ${selected ? "border-primary bg-accent" : "hover:bg-accent"}`}
-      onClick={onClick}
+    <Badge
+      variant={insightStatusTone(status)}
+      className="h-4 px-1.5 text-[10px] font-normal"
     >
-      <span className="font-medium">{title}</span>
-      <span className="text-xs text-muted-foreground">{status}</span>
-    </button>
+      {status === "running" ? <Spinner /> : null}
+      {insightStatusLabel(status)}
+    </Badge>
   );
 }
 

@@ -130,9 +130,7 @@ describe("ReviewWorkbenchFlow finding navigation", () => {
       );
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: "Insights" }));
-      await user.click(
-        await screen.findByRole("button", { name: /^Analysis/ }),
-      );
+      await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
       await user.click(
         await screen.findByRole("button", { name: "Open in diff: src/a.ts:1" }),
       );
@@ -192,7 +190,7 @@ describe("ReviewWorkbenchFlow finding actions", () => {
     );
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await screen.findByText("Missing boundary check");
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });

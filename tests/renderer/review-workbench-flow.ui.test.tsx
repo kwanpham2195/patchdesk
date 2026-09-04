@@ -362,7 +362,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       answer: {},
       write: (): void => {
         fireEvent.click(screen.getByRole("button", { name: "Insights" }));
-        fireEvent.click(screen.getByRole("button", { name: /^Analysis/ }));
+        fireEvent.click(screen.getByRole("tab", { name: /^Analysis/ }));
         fireEvent.click(screen.getByRole("button", { name: "Add to review" }));
       },
     },
@@ -458,7 +458,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(projection());
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Generate analysis" }),
     );
@@ -532,7 +532,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(projection());
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Generate analysis" }),
     );
@@ -602,7 +602,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     mount(withAnalysis("pending_review"));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Finish review" }),
     );

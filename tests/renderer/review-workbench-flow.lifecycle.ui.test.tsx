@@ -83,7 +83,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     const { replace } = mount(initial);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Add to review" }),
     );
@@ -123,7 +123,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     cleanup();
     mount(projected);
     await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     expect(await screen.findByText("pending review")).toBeTruthy();
 
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
@@ -144,7 +144,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     const { patch } = mount(withAnalysis("actionable"));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(await screen.findByRole("button", { name: "Dismiss" }));
     await user.type(
       screen.getByLabelText("Dismiss reason for Missing boundary check"),
@@ -292,7 +292,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
       expect(screen.queryByRole("button", { name })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Insights" }));
-    await user.click(await screen.findByRole("button", { name: /^Analysis/ }));
+    await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     expect(await screen.findByText("Missing boundary check")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });

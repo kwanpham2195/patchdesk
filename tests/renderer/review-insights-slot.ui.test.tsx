@@ -160,7 +160,7 @@ describe("InsightsSlot overview", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /^Overview/ }));
+    await user.click(screen.getByRole("tab", { name: /^Overview/ }));
     const overview = within(
       screen.getByRole("article", { name: "Insight overview" }),
     );
@@ -191,20 +191,15 @@ describe("InsightsSlot reading order", () => {
     const rail = within(
       screen.getByRole("navigation", { name: "Insight navigation" }),
     );
-    expect(
-      rail.getAllByRole("button").map((button) => button.textContent),
-    ).toEqual([
-      "OverviewCurrent",
+    expect(rail.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
       "BriefNot generated",
       "WalkthroughNot generated",
       "AnalysisNot generated",
     ]);
-    expect(
-      rail
-        .getAllByRole("button")
-        .find((button) => button.getAttribute("aria-current") === "page")
-        ?.textContent,
-    ).toBe("BriefNot generated");
+    expect(rail.getByRole("tab", { selected: true }).textContent).toBe(
+      "BriefNot generated",
+    );
   });
 });
 
@@ -227,10 +222,7 @@ describe("InsightsSlot finding focus", () => {
     );
   }
   function selectedRailItem(): string | undefined {
-    return screen
-      .getAllByRole("button")
-      .find((button) => button.getAttribute("aria-current") === "page")
-      ?.textContent;
+    return screen.getByRole("tab", { selected: true }).textContent;
   }
 
   it("honours a focus request once so the sub-nav can leave Analysis", async () => {
@@ -240,7 +232,7 @@ describe("InsightsSlot finding focus", () => {
     );
     expect(selectedRailItem()).toMatch(/^Analysis/);
 
-    await user.click(screen.getByRole("button", { name: /^Brief/ }));
+    await user.click(screen.getByRole("tab", { name: /^Brief/ }));
     expect(selectedRailItem()).toMatch(/^Brief/);
 
     rerender(renderWithFindingFocus({ findingId: "finding-1", token: 2 }));
