@@ -14,11 +14,24 @@ import {
 } from "../../src/renderer/src/components/conversation-thread-card";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { parsePullRequestInput } from "../../src/domain/pull-request";
+import { installDesktopDouble, success } from "./fake-desktop-response";
 
+let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  desktop?.restore();
+  desktop = undefined;
 });
+
+const pullRequest = (() => {
+  const parsed = parsePullRequestInput(
+    "https://github.com/centraldigital/patchdesk/pull/42",
+  );
+  if (parsed._tag === "err") throw new Error("Fixture pull request is invalid");
+  return parsed.value;
+})();
 
 function deferred<T>() {
   let resolve: (value: T | PromiseLike<T>) => void = () => {
@@ -580,5 +593,50 @@ describe("ConversationThreadCard", () => {
     rerender(renderCard(avatarComment));
     const retriedImage = container.querySelector('img[data-slot="avatar"]');
     expect(retriedImage?.getAttribute("src")).toBe(dataUri);
+  });
+
+  it("resolves an image in a comment body against the body context it is given", async () => {
+    const dataUri = "data:image/png;base64,AAAA";
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () => success({ dataUri }),
+    });
+    render(
+      <ConversationThreadCard
+        thread={thread({
+          comments: [
+            {
+              id: "c-1",
+              author: "reviewer",
+              body: "![Screenshot](/centraldigital/patchdesk/raw/main/shot.png)",
+              createdAt: "2026-08-01T00:00:00.000Z",
+            },
+          ],
+        })}
+        bodyContext={{ pullRequest, profileId: "centraldigital" }}
+      />,
+    );
+
+    const image = await screen.findByRole("img", { name: "Screenshot" });
+    expect(image.getAttribute("src")).toBe(dataUri);
+  });
+
+  it("keeps the placeholder for a comment image when no body context is given", () => {
+    render(
+      <ConversationThreadCard
+        thread={thread({
+          comments: [
+            {
+              id: "c-1",
+              author: "reviewer",
+              body: "![Screenshot](/centraldigital/patchdesk/raw/main/shot.png)",
+              createdAt: "2026-08-01T00:00:00.000Z",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/Screenshot/)).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 });

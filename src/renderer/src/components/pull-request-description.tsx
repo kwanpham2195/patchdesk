@@ -143,15 +143,24 @@ export function PullRequestDescription({
   );
 }
 
+/**
+ * What a rendered Markdown body needs beyond its own text: the pull request its
+ * links and images are relative to, and the profile the main process fetches
+ * those images as. Carried as one object so a surface that only forwards it
+ * does not have to name both values.
+ */
+export type PullRequestBodyContext = {
+  readonly pullRequest?: PullRequestRef;
+  /** Enables images: the main process needs a profile to fetch and cache their bytes. */
+  readonly profileId?: string;
+};
+
 export function PullRequestDescriptionPreview({
   markdown,
   pullRequest,
   profileId,
-}: {
+}: PullRequestBodyContext & {
   readonly markdown: string;
-  readonly pullRequest?: PullRequestRef;
-  /** Enables images: the main process needs a profile to fetch and cache their bytes. */
-  readonly profileId?: string;
 }): React.JSX.Element {
   return (
     <MarkdownContent

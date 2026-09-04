@@ -2,7 +2,10 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { GitHubThreadId } from "../../../domain/ids";
 import { PatchdeskApiError } from "../api-client";
-import { PullRequestDescriptionPreview } from "./pull-request-description";
+import {
+  PullRequestDescriptionPreview,
+  type PullRequestBodyContext,
+} from "./pull-request-description";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
@@ -18,6 +21,9 @@ import { Textarea } from "@/components/ui/textarea";
  * accept Edit/Delete (which key on each comment's own id), but never Reply/
  * Resolve, which require the branded thread id itself.
  */
+/** Resolves nothing, for a card rendered with no pull request in hand. */
+const EMPTY_BODY_CONTEXT: PullRequestBodyContext = {};
+
 export type ConversationThreadTarget =
   | { readonly _tag: "thread"; readonly id: GitHubThreadId }
   | { readonly _tag: "comment_only"; readonly commentId: string }
@@ -90,10 +96,12 @@ function threadStateFailure(cause: unknown): ThreadStateFailure {
  */
 function ConversationCommentRow({
   comment,
+  bodyContext,
   onEdit,
   onDelete,
 }: {
   readonly comment: ConversationComment;
+  readonly bodyContext: PullRequestBodyContext;
   readonly onEdit?: (commentId: string, body: string) => Promise<void>;
   readonly onDelete?: (commentId: string) => Promise<void>;
 }): React.JSX.Element {
@@ -174,7 +182,10 @@ function ConversationCommentRow({
             </div>
           </div>
         ) : (
-          <PullRequestDescriptionPreview markdown={comment.body} />
+          <PullRequestDescriptionPreview
+            markdown={comment.body}
+            {...bodyContext}
+          />
         )}
         {error !== undefined && !editing ? (
           <InlineError className="mt-1">{error}</InlineError>
@@ -237,8 +248,11 @@ function ConversationCommentRow({
 export function ConversationThreadCard({
   thread,
   navAnchorId,
+  bodyContext = EMPTY_BODY_CONTEXT,
 }: {
   readonly thread: ConversationThreadCardData;
+  /** What each comment's Markdown resolves its images and links against. */
+  readonly bodyContext?: PullRequestBodyContext;
   /** Stable id (the owning `ReviewInlineAnnotation.id`) that `{`/`}` comment
    * navigation in `review-diff-view.tsx` uses to find and focus this exact
    * card after a jump lands on it. Absent for render paths outside that
@@ -328,6 +342,7 @@ export function ConversationThreadCard({
       <div className="mt-2">
         <ConversationCommentRow
           comment={opening}
+          bodyContext={bodyContext}
           {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
           {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
         />
@@ -340,6 +355,7 @@ export function ConversationThreadCard({
             >
               <ConversationCommentRow
                 comment={comment}
+                bodyContext={bodyContext}
                 {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
                 {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
               />
@@ -350,6 +366,7 @@ export function ConversationThreadCard({
         <div className="mt-4 border-l-2 border-border/70 pl-4">
           <ConversationCommentRow
             comment={latest}
+            bodyContext={bodyContext}
             {...(rowEdit === undefined ? {} : { onEdit: rowEdit })}
             {...(rowDelete === undefined ? {} : { onDelete: rowDelete })}
           />
@@ -359,6 +376,7 @@ export function ConversationThreadCard({
         <div key={reply.id} className="mt-4 border-l-2 border-border/70 pl-4">
           <ConversationCommentRow
             comment={{ ...reply, author: "You", viewerDidAuthor: true }}
+            bodyContext={bodyContext}
             {...(rowEdit === undefined
               ? {}
               : {
