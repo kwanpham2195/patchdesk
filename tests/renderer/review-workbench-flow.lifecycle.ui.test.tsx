@@ -82,7 +82,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     });
     const { replace } = mount(initial);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Add to review" }),
@@ -122,7 +122,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
 
     cleanup();
     mount(projected);
-    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     expect(await screen.findByText("pending review")).toBeTruthy();
 
@@ -143,7 +143,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     });
     const { patch } = mount(withAnalysis("actionable"));
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(await screen.findByRole("button", { name: "Dismiss" }));
     await user.type(
@@ -207,7 +207,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
       }),
     );
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Conversation" }));
+    await user.click(screen.getByRole("tab", { name: "Conversation" }));
     await user.click(screen.getByRole("button", { name: "Dismiss review" }));
     await user.type(
       screen.getByRole("textbox", { name: "Dismissal reason" }),
@@ -279,7 +279,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     ).toBeNull();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Conversation" }));
+    await user.click(screen.getByRole("tab", { name: "Conversation" }));
     for (const name of [
       "Manage labels",
       "Manage assignees",
@@ -291,7 +291,7 @@ describe("ReviewWorkbenchFlow mutation lifecycle", () => {
     ])
       expect(screen.queryByRole("button", { name })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     expect(await screen.findByText("Missing boundary check")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();

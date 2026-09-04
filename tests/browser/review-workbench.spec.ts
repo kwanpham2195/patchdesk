@@ -535,7 +535,7 @@ test("inline finding text remains inside the diff viewport", async ({
   try {
     await page.setViewportSize({ width: 1_440, height: 900 });
     await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    await page.getByRole("button", { name: "Insights", exact: true }).click();
+    await page.getByRole("tab", { name: "Insights", exact: true }).click();
     const insights = page.getByRole("region", { name: "Review insights" });
     await expect(insights).toContainText("Insight fixture content.");
     const bounds = await insights.evaluate((element) => ({

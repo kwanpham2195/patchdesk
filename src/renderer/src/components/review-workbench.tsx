@@ -83,6 +83,7 @@ import { formatRelativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import type { GitHubReviewEvent } from "../../../domain/pending-review";
 import type {
@@ -651,36 +652,35 @@ export function ReviewWorkbench({
         />
 
         <div
-          className="flex shrink-0 items-center gap-1 border-b px-4 py-1"
+          className="flex shrink-0 items-center border-b px-4 py-1"
           data-review-workbench-tabs
         >
-          <TabButton
-            active={activeTab === "conversation"}
-            onClick={() =>
-              commitWorkbenchPosition({ activeTab: "conversation", section })
-            }
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              // SAFETY: every TabsTrigger below is keyed by a WorkbenchActiveTab
+              // literal, so Base UI's reported value can only ever be one of those.
+              const nextTab = value as WorkbenchActiveTab;
+              // Insights always opens on files; the other tabs keep the section.
+              commitWorkbenchPosition(
+                nextTab === "insights"
+                  ? { activeTab: nextTab, section: "files" }
+                  : { activeTab: nextTab, section },
+              );
+            }}
           >
-            Conversation
-          </TabButton>
-          <TabButton
-            active={activeTab === "diff"}
-            onClick={() =>
-              commitWorkbenchPosition({ activeTab: "diff", section })
-            }
-          >
-            Diff
-          </TabButton>
-          <TabButton
-            active={activeTab === "insights"}
-            onClick={() =>
-              commitWorkbenchPosition({
-                activeTab: "insights",
-                section: "files",
-              })
-            }
-          >
-            Insights
-          </TabButton>
+            <TabsList>
+              <TabsTrigger value="conversation" className="text-xs">
+                Conversation
+              </TabsTrigger>
+              <TabsTrigger value="diff" className="text-xs">
+                Diff
+              </TabsTrigger>
+              <TabsTrigger value="insights" className="text-xs">
+                Insights
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
         <div
@@ -946,31 +946,5 @@ export function ReviewWorkbench({
         />
       </section>
     </PublishedFeedbackNavigationContext.Provider>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  readonly active: boolean;
-  readonly onClick: () => void;
-  readonly children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-        active
-          ? "bg-card text-foreground"
-          : "text-muted-foreground hover:bg-card/50 hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
   );
 }

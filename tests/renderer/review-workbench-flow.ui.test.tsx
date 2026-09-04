@@ -88,7 +88,7 @@ async function typePastPierreScrollSuspend(
 async function openAddedLineComposer(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<HTMLElement> {
-  await user.click(screen.getByRole("button", { name: "Diff" }));
+  await user.click(screen.getByRole("tab", { name: "Diff" }));
   const add = (
     await screen.findAllByRole("button", { name: "Add comment on src/a.ts" })
   ).at(-1);
@@ -118,15 +118,15 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     expect(
       screen.getByRole("heading", { name: "Canonical workbench" }),
     ).toBeTruthy();
-    const conversation = screen.getByRole("button", { name: "Conversation" });
-    const diff = screen.getByRole("button", { name: "Diff" });
-    const insights = screen.getByRole("button", { name: "Insights" });
+    const conversation = screen.getByRole("tab", { name: "Conversation" });
+    const diff = screen.getByRole("tab", { name: "Diff" });
+    const insights = screen.getByRole("tab", { name: "Insights" });
     // A Review with no saved position opens on Conversation.
-    expect(conversation.getAttribute("aria-pressed")).toBe("true");
+    expect(conversation.getAttribute("aria-selected")).toBe("true");
     await userEvent.setup().click(diff);
-    expect(diff.getAttribute("aria-pressed")).toBe("true");
-    expect(conversation.getAttribute("aria-pressed")).toBe("false");
-    expect(insights.getAttribute("aria-pressed")).toBe("false");
+    expect(diff.getAttribute("aria-selected")).toBe("true");
+    expect(conversation.getAttribute("aria-selected")).toBe("false");
+    expect(insights.getAttribute("aria-selected")).toBe("false");
   });
   it("opens PR overview from either colored status button", async () => {
     bridge(async (input) =>
@@ -208,7 +208,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     // never rendered on Diff, the tab this flow defaults to).
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "Conversation" }));
+      .click(screen.getByRole("tab", { name: "Conversation" }));
     expect(
       screen.getByRole("complementary", { name: "Pull request metadata" }),
     ).toBeTruthy();
@@ -361,7 +361,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       path: "/v1/reviews/pending-review/command",
       answer: {},
       write: (): void => {
-        fireEvent.click(screen.getByRole("button", { name: "Insights" }));
+        fireEvent.click(screen.getByRole("tab", { name: "Insights" }));
         fireEvent.click(screen.getByRole("tab", { name: /^Analysis/ }));
         fireEvent.click(screen.getByRole("button", { name: "Add to review" }));
       },
@@ -372,7 +372,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       path: "/v1/reviews/inline-conversations/command",
       answer: { _tag: "CommentCreated", commentId: "comment-1" },
       write: (): void => {
-        fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+        fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
         const add = screen
           .getAllByRole("button", { name: "Add comment on src/a.ts" })
           .at(-1);
@@ -457,7 +457,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     });
     mount(projection());
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Generate analysis" }),
@@ -531,7 +531,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     });
     mount(projection());
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Generate analysis" }),
@@ -601,7 +601,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     });
     mount(withAnalysis("pending_review"));
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await user.click(
       await screen.findByRole("button", { name: "Finish review" }),
@@ -641,7 +641,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       });
       mount(projection());
       await vi.advanceTimersByTimeAsync(0);
-      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
       const add = screen
         .getAllByRole("button", { name: "Add comment on src/a.ts" })
         .at(-1);
@@ -707,7 +707,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       });
       const user = userEvent.setup();
       mount(projection());
-      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
       const authorButtons = await screen.findAllByRole("button", {
         name: "Add comment on src/a.ts",
       });
@@ -768,7 +768,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       });
       const user = userEvent.setup();
       mount(projection());
-      fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
       const authorButtons = await screen.findAllByRole("button", {
         name: "Add comment on src/a.ts",
       });
@@ -844,7 +844,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       );
       await vi.advanceTimersByTimeAsync(0);
       // The Conversation tab is not the default tab; select it explicitly.
-      fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Conversation" }));
       fireEvent.change(screen.getByRole("textbox", { name: "Reply" }), {
         target: { value: "A general reply" },
       });

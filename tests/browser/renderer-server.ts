@@ -113,5 +113,5 @@ export async function reloadOnDiff(page: Page): Promise<void> {
 }
 
 function selectDiffTab(page: Page): Promise<void> {
-  return page.getByRole("button", { name: "Diff", exact: true }).click();
+  return page.getByRole("tab", { name: "Diff", exact: true }).click();
 }

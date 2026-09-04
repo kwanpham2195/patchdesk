@@ -313,7 +313,7 @@ async function expectReachableByTab(
 
 /** Show the pull request metadata rail, which lives on the Conversation tab. */
 async function openConversationRail(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await page.getByRole("tab", { name: "Conversation", exact: true }).click();
   await expect(
     page.getByRole("complementary", { name: "Pull request metadata" }),
   ).toBeVisible();

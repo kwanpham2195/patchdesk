@@ -20,9 +20,7 @@ test.describe("pull request metadata rail", () => {
     page,
   }) => {
     await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    await page
-      .getByRole("button", { name: "Conversation", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click();
     const rail = page.getByRole("complementary", {
       name: "Pull request metadata",
     });
@@ -41,9 +39,7 @@ test.describe("pull request metadata rail", () => {
   }) => {
     await page.setViewportSize({ width: 960, height: 900 });
     await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    await page
-      .getByRole("button", { name: "Conversation", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click();
     const column = page.locator("[data-conversation-reading-column]");
     const rail = page.getByRole("complementary", {
       name: "Pull request metadata",
@@ -80,9 +76,7 @@ test.describe("pull request metadata rail", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${serverOrigin(server)}/#conversation-rail-fixture`);
-    await page
-      .getByRole("button", { name: "Conversation", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click();
     const rail = page.getByRole("complementary", {
       name: "Pull request metadata",
     });
@@ -129,9 +123,7 @@ test.describe("pull request metadata rail", () => {
     page,
   }) => {
     await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    await page
-      .getByRole("button", { name: "Conversation", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click();
     const rail = page.getByRole("complementary", {
       name: "Pull request metadata",
     });
@@ -188,9 +180,7 @@ test.describe("pull request metadata rail", () => {
     page,
   }) => {
     await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    await page
-      .getByRole("button", { name: "Conversation", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click();
     const rail = page.getByRole("complementary", {
       name: "Pull request metadata",
     });
@@ -232,9 +222,7 @@ test.describe("pull request metadata rail", () => {
     await page.goto(
       `${serverOrigin(server)}/#workbench-empty-assignees-fixture`,
     );
-    await page
-      .getByRole("button", { name: "Conversation", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click();
     const rail = page.getByRole("complementary", {
       name: "Pull request metadata",
     });
@@ -250,9 +238,7 @@ test.describe("pull request metadata rail", () => {
     page,
   }) => {
     await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    await page
-      .getByRole("button", { name: "Conversation", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "Conversation", exact: true }).click();
     const rail = page.getByRole("complementary", {
       name: "Pull request metadata",
     });

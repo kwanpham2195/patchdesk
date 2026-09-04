@@ -90,8 +90,8 @@ describe("ReviewWorkbenchFlow finding navigation", () => {
     );
     expect(
       screen
-        .getByRole("button", { name: "Insights" })
-        .getAttribute("aria-pressed"),
+        .getByRole("tab", { name: "Insights" })
+        .getAttribute("aria-selected"),
     ).toBe("true");
     const row = await screen.findByText("Missing boundary check");
     await waitFor(() => expect(document.activeElement).toBe(row.closest("li")));
@@ -129,16 +129,14 @@ describe("ReviewWorkbenchFlow finding navigation", () => {
         />,
       );
       const user = userEvent.setup();
-      await user.click(screen.getByRole("button", { name: "Insights" }));
+      await user.click(screen.getByRole("tab", { name: "Insights" }));
       await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
       await user.click(
         await screen.findByRole("button", { name: "Open in diff: src/a.ts:1" }),
       );
 
       expect(
-        screen
-          .getByRole("button", { name: "Diff" })
-          .getAttribute("aria-pressed"),
+        screen.getByRole("tab", { name: "Diff" }).getAttribute("aria-selected"),
       ).toBe("true");
       const diff = screen.getByRole("region", { name: "Review diff" });
       expect(diff.getAttribute("data-selected-path")).toBe("src/a.ts");
@@ -157,8 +155,8 @@ describe("ReviewWorkbenchFlow finding navigation", () => {
       );
       expect(
         screen
-          .getByRole("button", { name: "Insights" })
-          .getAttribute("aria-pressed"),
+          .getByRole("tab", { name: "Insights" })
+          .getAttribute("aria-selected"),
       ).toBe("true");
       const row = await screen.findByText("Missing boundary check");
       await waitFor(() =>
@@ -189,7 +187,7 @@ describe("ReviewWorkbenchFlow finding actions", () => {
       />,
     );
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
     await user.click(await screen.findByRole("tab", { name: /^Analysis/ }));
     await screen.findByText("Missing boundary check");
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
