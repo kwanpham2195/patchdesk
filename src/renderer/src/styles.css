@@ -370,7 +370,6 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  border-bottom: 1px solid var(--border);
   background: var(--shell);
   padding: 0 0.875rem 0 6rem;
   -webkit-app-region: drag;
@@ -413,7 +412,7 @@ body {
 
 .app-frame {
   display: flex;
-  padding: 0 0.5rem;
+  padding: 0.25rem 0.5rem 0;
   --sidebar-width: 14.5rem;
   --sidebar-width-icon: 3rem;
   min-height: calc(100vh - 3rem);
