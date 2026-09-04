@@ -12,6 +12,7 @@ import type {
   Conversation,
   GitHubComments,
   GitHubPublishedFeedback,
+  PublishedIssueComment,
   PublishedReview,
   PublishedReviewComment,
   PullRequestSummary,
@@ -31,6 +32,7 @@ import type { GitHubWriteFailure } from "../../domain/github-write";
 import {
   directSummaryReceiptSchema,
   publishedCommentSchema,
+  publishedIssueCommentSchema,
   publishedReviewSchema,
 } from "./github-wire-schemas";
 import {
@@ -132,36 +134,51 @@ export class GitHubConversationReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
-    const [reviews, comments, account, pullRequest] = await Promise.all([
-      this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "--hostname",
-          input.profile.githubHost,
-          `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
-        ],
-        timeoutMs: commandTimeoutMs,
-      }),
-      this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "--hostname",
-          input.profile.githubHost,
-          `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments?per_page=100&page=1`,
-        ],
-        timeoutMs: commandTimeoutMs,
-      }),
-      this.resolveAuthenticatedAccount(input.profile),
-      // The base branch this read needs for branch protection. It was already
-      // fetched unconditionally, so joining the batch costs nothing and drops
-      // one sequential round trip from every Conversation load. The gh call
-      // order is now reviews, comments, `auth status`, pull request, then the
-      // sequential permission and branch-protection reads — the positional
-      // fixtures in `tests/adapters/github-adapter.test.ts` are in that order.
-      this.getPullRequest({ profile: input.profile, pr: input.pr }),
-    ]);
+    const [reviews, comments, issueComments, account, pullRequest] =
+      await Promise.all([
+        this.ghJson(input.profile, {
+          argv: [
+            "gh",
+            "api",
+            "--hostname",
+            input.profile.githubHost,
+            `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
+          ],
+          timeoutMs: commandTimeoutMs,
+        }),
+        this.ghJson(input.profile, {
+          argv: [
+            "gh",
+            "api",
+            "--hostname",
+            input.profile.githubHost,
+            `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments?per_page=100&page=1`,
+          ],
+          timeoutMs: commandTimeoutMs,
+        }),
+        // The plain conversation comments. `pulls/{n}/comments` above returns
+        // only diff-anchored review comments, so without this read a top-level
+        // comment never reaches the timeline at all.
+        this.ghJson(input.profile, {
+          argv: [
+            "gh",
+            "api",
+            "--hostname",
+            input.profile.githubHost,
+            `repos/${input.pr.owner}/${input.pr.repo}/issues/${input.pr.number}/comments?per_page=100&page=1`,
+          ],
+          timeoutMs: commandTimeoutMs,
+        }),
+        this.resolveAuthenticatedAccount(input.profile),
+        // The base branch this read needs for branch protection. It was already
+        // fetched unconditionally, so joining the batch costs nothing and drops
+        // one sequential round trip from every Conversation load. The gh call
+        // order is now reviews, review comments, issue comments, `auth status`,
+        // pull request, then the sequential permission and branch-protection
+        // reads — the positional fixtures in
+        // `tests/adapters/github-published-feedback.test.ts` are in that order.
+        this.getPullRequest({ profile: input.profile, pr: input.pr }),
+      ]);
     if (reviews._tag === "err")
       return this.commandFailure(
         "get_reviews",
@@ -172,6 +189,12 @@ export class GitHubConversationReader {
       return this.commandFailure(
         "get_comments",
         comments.error,
+        input.profile.githubHost,
+      );
+    if (issueComments._tag === "err")
+      return this.commandFailure(
+        "get_issue_comments",
+        issueComments.error,
         input.profile.githubHost,
       );
     const permission =
@@ -204,10 +227,21 @@ export class GitHubConversationReader {
             protection.value.allowedDismissers.includes(
               input.profile.ghAccount,
             ))));
+    // One authorship rule for both comment endpoints: only the profile's own
+    // authenticated account may edit or delete what it wrote.
+    const ownedBy = (author: string): boolean =>
+      account._tag === "ok" &&
+      account.value.account === input.profile.ghAccount &&
+      author === account.value.account;
     const parsedReviews = v.safeParse(publishedReviewSchema, reviews.value);
     const parsedComments = v.safeParse(publishedCommentSchema, comments.value);
     if (!parsedReviews.success || !parsedComments.success)
       return invalid("get_reviews");
+    const parsedIssueComments = v.safeParse(
+      publishedIssueCommentSchema,
+      issueComments.value,
+    );
+    if (!parsedIssueComments.success) return invalid("get_issue_comments");
     const publishedReviews: PublishedReview[] = [];
     for (const review of parsedReviews.output) {
       // PENDING reviews are started but not submitted; they carry no
@@ -260,10 +294,7 @@ export class GitHubConversationReader {
       );
       const author = comment.user?.login ?? "ghost";
       const authorAvatarUrl = comment.user?.avatar_url ?? undefined;
-      const owned =
-        account._tag === "ok" &&
-        account.value.account === input.profile.ghAccount &&
-        author === account.value.account;
+      const owned = ownedBy(author);
       let published: PublishedReviewComment = {
         id: String(comment.id),
         author,
@@ -291,11 +322,49 @@ export class GitHubConversationReader {
         };
       publishedComments.push(published);
     }
+    const publishedIssueComments: PublishedIssueComment[] = [];
+    for (const comment of parsedIssueComments.output) {
+      const createdAt = parseGitHubTimestamp(comment.created_at);
+      const updatedAt =
+        comment.updated_at === undefined || comment.updated_at === null
+          ? undefined
+          : parseGitHubTimestamp(comment.updated_at);
+      if (
+        createdAt._tag === "err" ||
+        (updatedAt !== undefined && updatedAt._tag === "err")
+      )
+        return invalid("get_issue_comments");
+      const author = comment.user?.login ?? "ghost";
+      const owned = ownedBy(author);
+      let published: PublishedIssueComment = {
+        id: String(comment.id),
+        author,
+        body: comment.body,
+        createdAt: createdAt.value,
+        canEdit: owned && canWrite === true,
+        canDelete: owned && canWrite === true,
+      };
+      const authorAvatarUrl = comment.user?.avatar_url ?? undefined;
+      if (authorAvatarUrl !== undefined)
+        published = { ...published, authorAvatarUrl };
+      if (comment.node_id !== undefined)
+        published = { ...published, nodeId: comment.node_id };
+      if (updatedAt !== undefined)
+        published = { ...published, updatedAt: updatedAt.value };
+      if (comment.html_url !== undefined)
+        published = { ...published, url: comment.html_url };
+      publishedIssueComments.push(published);
+    }
+    // Every page is asked for 100 records, so a full page means GitHub has
+    // more to give and this read cannot claim the whole conversation.
     const complete =
-      parsedReviews.output.length < 100 && parsedComments.output.length < 100;
+      parsedReviews.output.length < 100 &&
+      parsedComments.output.length < 100 &&
+      parsedIssueComments.output.length < 100;
     const feedback = {
       reviews: publishedReviews,
       comments: publishedComments,
+      issueComments: publishedIssueComments,
       complete,
     };
     return ok(
@@ -420,7 +489,7 @@ export class GitHubConversationReader {
       this.getPullRequest(input),
       this.getPullRequestComments(input),
       this.getPullRequestPublishedFeedback?.(input) ??
-        Promise.resolve(ok({ reviews: [], comments: [] })),
+        Promise.resolve(ok({ reviews: [], comments: [], issueComments: [] })),
     ]);
     if (commentsResult._tag === "err") return commentsResult;
     if (feedbackResult._tag === "err") return feedbackResult;

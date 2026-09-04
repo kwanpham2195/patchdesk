@@ -461,8 +461,8 @@ const githubCommentSchema = v.strictObject({
   viewerDidAuthor: v.optional(v.boolean()),
 });
 
-/** Timeline issue comments may be review-attached, so they carry the same optional review and editability fields the published-feedback boundary exposes. */
-const conversationIssueCommentSchema = v.strictObject({
+/** Both timeline comment kinds parse through this one schema: the entry `_tag`, not a comment field, says which endpoint it came from, and the renderer reads none of the extras. The storage boundary is where the two shapes are told apart strictly. */
+const conversationCommentSchema = v.strictObject({
   ...githubCommentSchema.entries,
   reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
   canEdit: v.optional(v.boolean()),
@@ -667,7 +667,11 @@ const conversationEntrySchema = v.variant("_tag", [
   v.strictObject({ _tag: v.literal("PrDescription"), body: v.string() }),
   v.strictObject({
     _tag: v.literal("IssueComment"),
-    comment: conversationIssueCommentSchema,
+    comment: conversationCommentSchema,
+  }),
+  v.strictObject({
+    _tag: v.literal("ReviewComment"),
+    comment: conversationCommentSchema,
   }),
   v.strictObject({
     _tag: v.literal("ReviewSummary"),

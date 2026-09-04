@@ -199,14 +199,17 @@ function collectAvatarUrls(
   };
   for (const thread of snapshot.comments.threads) addFrom(thread.comments);
   for (const entry of snapshot.conversation.entries) {
-    if (entry._tag === "IssueComment") addFrom([entry.comment]);
+    if (entry._tag === "IssueComment" || entry._tag === "ReviewComment")
+      addFrom([entry.comment]);
     if (entry._tag === "GeneralThread") addFrom(entry.thread.comments);
   }
   if (snapshot.conversation.inline !== undefined) {
     for (const thread of snapshot.conversation.inline.threads)
       addFrom(thread.comments);
   }
-  if (snapshot.publishedFeedback !== undefined)
+  if (snapshot.publishedFeedback !== undefined) {
     addFrom(snapshot.publishedFeedback.comments);
+    addFrom(snapshot.publishedFeedback.issueComments);
+  }
   return [...urls];
 }

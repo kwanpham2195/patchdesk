@@ -12,6 +12,7 @@ import type {
   GitHubMergeEvidence,
   GitHubPublishedFeedback,
   MergePolicySnapshot,
+  PublishedIssueComment,
   PullRequestCommit,
   PullRequestSummary,
 } from "../../domain/github-context";
@@ -78,6 +79,20 @@ const commentSchema = v.strictObject({
       diffSide: v.optional(v.picklist(["new", "old"])),
     }),
   ),
+});
+/** A plain conversation comment: never diff-anchored and never review-attached, so it accepts neither `location` nor `reviewId`. */
+const issueCommentSchema = v.strictObject({
+  id: v.string(),
+  author: v.string(),
+  authorAvatarUrl: v.optional(v.string()),
+  body: v.string(),
+  createdAt: v.string(),
+  updatedAt: v.optional(v.string()),
+  url: v.optional(v.string()),
+  viewerDidAuthor: v.optional(v.boolean()),
+  nodeId: v.optional(v.string()),
+  canEdit: v.boolean(),
+  canDelete: v.boolean(),
 });
 const conversationThreadSchema = v.strictObject({
   id: v.string(),
@@ -280,10 +295,11 @@ const publishedFeedbackSchema = v.strictObject({
       canDelete: v.boolean(),
     }),
   ),
+  issueComments: v.array(issueCommentSchema),
   complete: v.optional(v.boolean()),
   incompleteReason: v.optional(v.picklist(["pagination", "unavailable"])),
 });
-const conversationIssueCommentSchema = v.strictObject({
+const conversationReviewCommentSchema = v.strictObject({
   ...commentSchema.entries,
   reviewId: v.optional(v.string()),
   nodeId: v.optional(v.string()),
@@ -311,7 +327,11 @@ const conversationSchema = v.strictObject({
       v.strictObject({ _tag: v.literal("PrDescription"), body: v.string() }),
       v.strictObject({
         _tag: v.literal("IssueComment"),
-        comment: conversationIssueCommentSchema,
+        comment: issueCommentSchema,
+      }),
+      v.strictObject({
+        _tag: v.literal("ReviewComment"),
+        comment: conversationReviewCommentSchema,
       }),
       v.strictObject({
         _tag: v.literal("ReviewSummary"),
@@ -606,49 +626,25 @@ function parsePublishedFeedback(
   }
   const comments: Array<GitHubPublishedFeedback["comments"][number]> = [];
   for (const comment of input.comments) {
-    const createdAt = parseIsoTimestamp(comment.createdAt);
-    const updatedAt =
-      comment.updatedAt === undefined
-        ? undefined
-        : parseIsoTimestamp(comment.updatedAt);
+    const base = parseTimelineComment(comment);
     const location =
       comment.location === undefined
         ? undefined
         : parseLocation(comment.location);
-    if (
-      createdAt._tag === "err" ||
-      (updatedAt !== undefined && updatedAt._tag === "err") ||
-      (location !== undefined && location._tag === "err")
-    )
-      return invalidRead();
-    const nodeIdField =
-      comment.nodeId === undefined ? {} : { nodeId: comment.nodeId };
-    const updatedAtField =
-      updatedAt === undefined ? {} : { updatedAt: updatedAt.value };
-    const urlField = comment.url === undefined ? {} : { url: comment.url };
-    const locationField =
-      location === undefined ? {} : { location: location.value };
-    const reviewIdField =
-      comment.reviewId === undefined ? {} : { reviewId: comment.reviewId };
-    const authorAvatarUrlField =
-      comment.authorAvatarUrl === undefined
-        ? {}
-        : { authorAvatarUrl: comment.authorAvatarUrl };
+    if (base._tag === "err" || location?._tag === "err") return invalidRead();
     comments.push({
-      id: comment.id,
-      ...nodeIdField,
-      author: comment.author,
-      ...authorAvatarUrlField,
-      body: comment.body,
-      createdAt: createdAt.value,
-      ...updatedAtField,
-      ...urlField,
-      ...locationField,
-      ...reviewIdField,
+      ...base.value,
+      ...definedProps({
+        nodeId: comment.nodeId,
+        location: location?.value,
+        reviewId: comment.reviewId,
+      }),
       canEdit: comment.canEdit,
       canDelete: comment.canDelete,
     });
   }
+  const issueComments = parseIssueComments(input.issueComments);
+  if (issueComments._tag === "err") return invalidRead();
   const completeField =
     input.complete === undefined ? {} : { complete: input.complete };
   const incompleteReasonField =
@@ -658,9 +654,56 @@ function parsePublishedFeedback(
   return ok({
     reviews,
     comments,
+    issueComments: issueComments.value,
     ...completeField,
     ...incompleteReasonField,
   });
+}
+
+/**
+ * The `GitHubComment` fields shared by every stored comment. The diff-anchored
+ * extras (`location`, `reviewId`) stay with their own callers: an issue
+ * comment has neither.
+ */
+function parseTimelineComment(
+  input: v.InferOutput<typeof commentSchema>,
+): Result<Omit<GitHubComment, "location">, StorageFailure> {
+  const createdAt = parseIsoTimestamp(input.createdAt);
+  const updatedAt =
+    input.updatedAt === undefined
+      ? undefined
+      : parseIsoTimestamp(input.updatedAt);
+  if (createdAt._tag === "err" || updatedAt?._tag === "err")
+    return invalidRead();
+  return ok({
+    id: input.id,
+    author: input.author,
+    body: input.body,
+    createdAt: createdAt.value,
+    ...definedProps({
+      authorAvatarUrl: input.authorAvatarUrl,
+      updatedAt: updatedAt?.value,
+      url: input.url,
+      viewerDidAuthor: input.viewerDidAuthor,
+    }),
+  });
+}
+
+function parseIssueComments(
+  input: ReadonlyArray<v.InferOutput<typeof issueCommentSchema>>,
+): Result<ReadonlyArray<PublishedIssueComment>, StorageFailure> {
+  const comments: PublishedIssueComment[] = [];
+  for (const comment of input) {
+    const base = parseTimelineComment(comment);
+    if (base._tag === "err") return invalidRead();
+    comments.push({
+      ...base.value,
+      ...definedProps({ nodeId: comment.nodeId }),
+      canEdit: comment.canEdit,
+      canDelete: comment.canDelete,
+    });
+  }
+  return ok(comments);
 }
 
 function parseConversation(
@@ -676,6 +719,7 @@ function parseConversation(
       const review = parsePublishedFeedback({
         reviews: [entry.review],
         comments: [],
+        issueComments: [],
       });
       const parsedReview =
         review._tag === "ok" ? review.value.reviews[0] : undefined;
@@ -691,67 +735,31 @@ function parseConversation(
       entries.push({ _tag: "GeneralThread", thread: parsedThread });
       continue;
     }
-    const createdAt = parseIsoTimestamp(entry.comment.createdAt);
-    const updatedAt =
-      entry.comment.updatedAt === undefined
-        ? undefined
-        : parseIsoTimestamp(entry.comment.updatedAt);
+    if (entry._tag === "IssueComment") {
+      const comment = parseIssueComments([entry.comment]);
+      const parsedComment =
+        comment._tag === "ok" ? comment.value[0] : undefined;
+      if (parsedComment === undefined) return invalidRead();
+      entries.push({ _tag: "IssueComment", comment: parsedComment });
+      continue;
+    }
+    const base = parseTimelineComment(entry.comment);
     const location =
       entry.comment.location === undefined
         ? undefined
         : parseLocation(entry.comment.location);
-    if (
-      createdAt._tag === "err" ||
-      (updatedAt !== undefined && updatedAt._tag === "err") ||
-      (location !== undefined && location._tag === "err")
-    )
-      return invalidRead();
-    const updatedAtField =
-      updatedAt === undefined ? {} : { updatedAt: updatedAt.value };
-    const urlField =
-      entry.comment.url === undefined ? {} : { url: entry.comment.url };
-    const viewerDidAuthorField =
-      entry.comment.viewerDidAuthor === undefined
-        ? {}
-        : { viewerDidAuthor: entry.comment.viewerDidAuthor };
-    const locationField =
-      location === undefined ? {} : { location: location.value };
-    const reviewIdField =
-      entry.comment.reviewId === undefined
-        ? {}
-        : { reviewId: entry.comment.reviewId };
-    const nodeIdField =
-      entry.comment.nodeId === undefined
-        ? {}
-        : { nodeId: entry.comment.nodeId };
-    const canEditField =
-      entry.comment.canEdit === undefined
-        ? {}
-        : { canEdit: entry.comment.canEdit };
-    const canDeleteField =
-      entry.comment.canDelete === undefined
-        ? {}
-        : { canDelete: entry.comment.canDelete };
-    const authorAvatarUrlField =
-      entry.comment.authorAvatarUrl === undefined
-        ? {}
-        : { authorAvatarUrl: entry.comment.authorAvatarUrl };
+    if (base._tag === "err" || location?._tag === "err") return invalidRead();
     entries.push({
-      _tag: "IssueComment",
+      _tag: "ReviewComment",
       comment: {
-        id: entry.comment.id,
-        author: entry.comment.author,
-        ...authorAvatarUrlField,
-        body: entry.comment.body,
-        createdAt: createdAt.value,
-        ...updatedAtField,
-        ...urlField,
-        ...viewerDidAuthorField,
-        ...locationField,
-        ...reviewIdField,
-        ...nodeIdField,
-        ...canEditField,
-        ...canDeleteField,
+        ...base.value,
+        ...definedProps({
+          location: location?.value,
+          reviewId: entry.comment.reviewId,
+          nodeId: entry.comment.nodeId,
+          canEdit: entry.comment.canEdit,
+          canDelete: entry.comment.canDelete,
+        }),
       },
     });
   }
@@ -784,44 +792,15 @@ function parseComments(
     if (id._tag === "err") return invalidRead();
     const comments: GitHubComment[] = [];
     for (const comment of thread.comments) {
-      const createdAt = parseIsoTimestamp(comment.createdAt);
-      const updatedAt =
-        comment.updatedAt === undefined
-          ? undefined
-          : parseIsoTimestamp(comment.updatedAt);
+      const base = parseTimelineComment(comment);
       const location =
         comment.location === undefined
           ? undefined
           : parseLocation(comment.location);
-      if (
-        createdAt._tag === "err" ||
-        (updatedAt !== undefined && updatedAt._tag === "err") ||
-        (location !== undefined && location._tag === "err")
-      )
-        return invalidRead();
-      const updatedAtField =
-        updatedAt === undefined ? {} : { updatedAt: updatedAt.value };
-      const urlField = comment.url === undefined ? {} : { url: comment.url };
-      const viewerDidAuthorField =
-        comment.viewerDidAuthor === undefined
-          ? {}
-          : { viewerDidAuthor: comment.viewerDidAuthor };
-      const locationField =
-        location === undefined ? {} : { location: location.value };
-      const authorAvatarUrlField =
-        comment.authorAvatarUrl === undefined
-          ? {}
-          : { authorAvatarUrl: comment.authorAvatarUrl };
+      if (base._tag === "err" || location?._tag === "err") return invalidRead();
       comments.push({
-        id: comment.id,
-        author: comment.author,
-        ...authorAvatarUrlField,
-        body: comment.body,
-        createdAt: createdAt.value,
-        ...updatedAtField,
-        ...urlField,
-        ...viewerDidAuthorField,
-        ...locationField,
+        ...base.value,
+        ...definedProps({ location: location?.value }),
       });
     }
     const location =

@@ -44,6 +44,28 @@ export const publishedCommentSchema = v.array(
   }),
 );
 
+/**
+ * `issues/{number}/comments`: the plain conversation comments. GitHub gives
+ * them no diff anchor, so no `path`/`line`/`side` fields are read here. The
+ * body cap matches `pullRequestSchema`'s: GitHub's own limit for a comment.
+ */
+export const publishedIssueCommentSchema = v.array(
+  v.looseObject({
+    id: v.union([v.string(), v.number()]),
+    node_id: v.optional(v.string()),
+    user: v.nullish(
+      v.looseObject({
+        login: v.string(),
+        avatar_url: v.optional(v.nullable(v.string())),
+      }),
+    ),
+    body: v.pipe(v.string(), v.maxLength(65_536)),
+    created_at: v.string(),
+    updated_at: v.optional(v.nullable(v.string())),
+    html_url: v.optional(v.string()),
+  }),
+);
+
 /** The pull-request identity a thread or comment node carries. */
 export const pullRequestIdentitySchema = v.looseObject({
   number: v.number(),

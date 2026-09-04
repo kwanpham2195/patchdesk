@@ -249,7 +249,7 @@ describe("ReviewRemoteStore", () => {
     ).resolves.toEqual({ _tag: "ok", value: withAvatar });
   });
 
-  it("accepts conversation IssueComment entries with review-attached nodeId", async () => {
+  it("accepts conversation ReviewComment entries with review-attached nodeId", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
     roots.push(root);
     const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
@@ -259,7 +259,7 @@ describe("ReviewRemoteStore", () => {
         prDescription: "",
         entries: [
           {
-            _tag: "IssueComment" as const,
+            _tag: "ReviewComment" as const,
             comment: {
               id: "3783272017",
               nodeId: "PRRC_kwDOOxMYd87hgCZR",
@@ -300,6 +300,60 @@ describe("ReviewRemoteStore", () => {
         snapshotHash: saved.value.snapshotHash,
       }),
     ).resolves.toEqual({ _tag: "ok", value: withNodeId });
+  });
+
+  it("round-trips a conversation IssueComment entry and rejects a diff-anchored one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const comment = {
+      id: "3783272018",
+      nodeId: "IC_kwDOOxMYd87hgCZR",
+      author: "kwanpham2195",
+      body: "plain conversation comment",
+      // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
+      createdAt: "2026-08-14T11:26:55.000Z" as never,
+      canEdit: true,
+      canDelete: true,
+    };
+    const withIssueComment: ReviewRemoteSnapshot = {
+      ...snapshot,
+      conversation: {
+        prDescription: "",
+        entries: [{ _tag: "IssueComment" as const, comment }],
+        complete: true,
+      },
+    };
+    const saved = await store.saveCandidate({
+      profileId,
+      reviewId,
+      snapshot: withIssueComment,
+    });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(
+      store.load({
+        profileId,
+        reviewId,
+        snapshotHash: saved.value.snapshotHash,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: withIssueComment });
+    // A stale snapshot that stamped a diff-anchored comment as an issue
+    // comment fails closed rather than being re-read under the new meaning.
+    expect(
+      parseReviewRemoteSnapshot({
+        ...withIssueComment,
+        conversation: {
+          ...withIssueComment.conversation,
+          entries: [
+            {
+              _tag: "IssueComment",
+              comment: { ...comment, location: { path: "src/a.ts", line: 4 } },
+            },
+          ],
+        },
+      })._tag,
+    ).toBe("err");
   });
 
   it("writes and loads a strict content-addressed snapshot", async () => {

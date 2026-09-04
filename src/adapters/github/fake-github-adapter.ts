@@ -8,6 +8,7 @@ import type {
   MergePolicySnapshot,
   MaintainerPullRequestPage,
   MaintainerPullRequestSearchPage,
+  PublishedIssueComment,
   PullRequestCommit,
   PullRequestReviewerListing,
   PullRequestSummary,
@@ -239,9 +240,24 @@ export class FakeGitHubAdapter
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     void input;
-    return this.values.publishedFeedback === undefined
-      ? ok({ reviews: [], comments: [], complete: true })
-      : ok(this.values.publishedFeedback);
+    return ok(this.publishedFeedback());
+  }
+
+  /**
+   * The published feedback fixture, with `issueComments` taken from its own
+   * fixture slot so a test supplies plain conversation comments directly
+   * rather than smuggling them through the review-comment list.
+   */
+  private publishedFeedback(): GitHubPublishedFeedback {
+    const feedback = this.values.publishedFeedback ?? {
+      reviews: [],
+      comments: [],
+      issueComments: [],
+      complete: true,
+    };
+    return this.values.issueComments === undefined
+      ? feedback
+      : { ...feedback, issueComments: this.values.issueComments };
   }
 
   async getRepositoryPermission(input: {
@@ -637,10 +653,7 @@ export class FakeGitHubAdapter
     const pr = this.values.pullRequest;
     const prDescription = pr?.description ?? "";
     const threads = this.values.comments ?? { threads: [], complete: true };
-    const feedback: GitHubPublishedFeedback = this.values.publishedFeedback ?? {
-      reviews: [],
-      comments: [],
-    };
+    const feedback = this.publishedFeedback();
     return ok({
       prDescription,
       entries: assembleConversationEntries(feedback, threads),
@@ -664,6 +677,8 @@ export type FakeGitHubAdapterValues = {
   readonly mergeOutcome: MergeOutcome;
   readonly comments: GitHubComments;
   readonly publishedFeedback: GitHubPublishedFeedback;
+  /** Plain conversation comments; overrides `publishedFeedback.issueComments` when set. */
+  readonly issueComments: ReadonlyArray<PublishedIssueComment>;
   readonly repositoryPermission: RepositoryPermissionEvidence;
   readonly branchProtection: BranchProtectionEvidence;
   readonly commits: ReadonlyArray<PullRequestCommit>;

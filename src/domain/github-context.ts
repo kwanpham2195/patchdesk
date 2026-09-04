@@ -221,7 +221,11 @@ export type ConversationEntry =
   | { readonly _tag: "PrDescription"; readonly body: string }
   | {
       readonly _tag: "IssueComment";
-      readonly comment: ConversationIssueComment;
+      readonly comment: PublishedIssueComment;
+    }
+  | {
+      readonly _tag: "ReviewComment";
+      readonly comment: ConversationReviewComment;
     }
   | { readonly _tag: "ReviewSummary"; readonly review: PublishedReview }
   | {
@@ -229,12 +233,23 @@ export type ConversationEntry =
       readonly thread: GitHubConversationThread;
     };
 
-/** Timeline issue comment; review-attached comments also expose their review, node, and editability. */
-type ConversationIssueComment = GitHubComment & {
+/** Timeline entry for a comment read from `pulls/{number}/comments`, which also exposes its review, node, and editability. */
+type ConversationReviewComment = GitHubComment & {
   readonly reviewId?: string;
   readonly nodeId?: string;
   readonly canEdit?: boolean;
   readonly canDelete?: boolean;
+};
+
+/**
+ * A plain conversation comment read from `issues/{number}/comments`. GitHub
+ * never anchors one to a diff line, so `location` is omitted rather than
+ * optional: there is no coordinate to fabricate.
+ */
+export type PublishedIssueComment = Omit<GitHubComment, "location"> & {
+  readonly nodeId?: string;
+  readonly canEdit: boolean;
+  readonly canDelete: boolean;
 };
 
 /** Unified Conversation payload replacing separate review-feedback and thread queries. */
@@ -261,7 +276,10 @@ export type PublishedReviewComment = GitHubComment & {
 
 export type GitHubPublishedFeedback = {
   readonly reviews: ReadonlyArray<PublishedReview>;
+  /** Review comments (`pulls/{number}/comments`): the ones GitHub attaches to a diff line. */
   readonly comments: ReadonlyArray<PublishedReviewComment>;
+  /** Plain conversation comments (`issues/{number}/comments`), which no review owns. */
+  readonly issueComments: ReadonlyArray<PublishedIssueComment>;
   readonly complete?: boolean;
   readonly incompleteReason?: "pagination" | "unavailable";
 };

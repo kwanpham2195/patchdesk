@@ -70,6 +70,7 @@ const feedback = {
       canDelete: true,
     },
   ],
+  issueComments: [],
   complete: true,
 };
 const unavailable = {
