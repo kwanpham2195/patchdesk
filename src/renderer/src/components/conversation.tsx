@@ -1,5 +1,8 @@
 import { useRef, useState } from "react";
-import { PullRequestDescriptionPreview } from "./pull-request-description";
+import {
+  PullRequestDescriptionPreview,
+  type PullRequestBodyContext,
+} from "./pull-request-description";
 import type {
   GitHubComment,
   PublishedReview,
@@ -44,16 +47,6 @@ type GeneralThreadOverrides = {
     publishedReviewId: string,
     message: string,
   ) => Promise<void>;
-};
-
-/**
- * What every rendered Markdown body on this tab needs beyond its own text:
- * the pull request its links and images are relative to, and the profile the
- * main process fetches those images as.
- */
-type ConversationBodyContext = {
-  readonly pullRequest?: PullRequestRef;
-  readonly profileId?: string;
 };
 
 export function Conversation({
@@ -135,7 +128,7 @@ export function Conversation({
             new Set(current).add(publishedReviewId),
           );
         };
-  const body: ConversationBodyContext = definedProps({
+  const body: PullRequestBodyContext = definedProps({
     pullRequest,
     profileId,
   });
@@ -268,7 +261,7 @@ function ConversationTimelineEntry({
 }: {
   readonly entry: WorkbenchResponse["conversation"]["entries"][number];
   readonly generalThreadOverrides: GeneralThreadOverrides;
-  readonly body: ConversationBodyContext;
+  readonly body: PullRequestBodyContext;
 }): React.JSX.Element | null {
   switch (entry._tag) {
     case "PrDescription":
@@ -307,6 +300,7 @@ function ConversationTimelineEntry({
         <GeneralThreadEntry
           wire={entry.thread}
           overrides={generalThreadOverrides}
+          body={body}
         />
       );
   }
@@ -319,7 +313,7 @@ function TimelineCommentEntry({
   body,
 }: {
   readonly comment: GitHubComment;
-  readonly body: ConversationBodyContext;
+  readonly body: PullRequestBodyContext;
 }): React.JSX.Element {
   return (
     <div className="flex gap-3 border-b py-3">
@@ -346,7 +340,7 @@ function ReviewSummaryEntry({
   onDismiss,
 }: {
   readonly review: PublishedReview;
-  readonly body: ConversationBodyContext;
+  readonly body: PullRequestBodyContext;
   readonly dismissed: boolean;
   readonly onDismiss?: (
     publishedReviewId: string,
@@ -476,9 +470,11 @@ function ReviewSummaryEntry({
 function GeneralThreadEntry({
   wire,
   overrides,
+  body,
 }: {
   readonly wire: WireGeneralThread;
   readonly overrides: GeneralThreadOverrides;
+  readonly body: PullRequestBodyContext;
 }): React.JSX.Element {
   const parsedThreadId = parseGitHubThreadId(wire.id);
   const parsedComments = wire.comments.flatMap((comment) => {
@@ -520,5 +516,5 @@ function GeneralThreadEntry({
       onDeleteComment: overrides.onDeleteComment,
     }),
   };
-  return <ConversationThreadCard thread={cardData} />;
+  return <ConversationThreadCard thread={cardData} bodyContext={body} />;
 }
