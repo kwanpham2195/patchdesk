@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.3 - 2026-09-04
+
 - Fixed a pull request whose head commit has no CI checks failing to open, with "The requested service is currently unavailable" and nothing else to go on.
 - Added plain conversation comments to the **Conversation** tab. A comment written in the pull request's conversation, rather than on a line of the diff, never appeared at all: a pull request whose only discussion was such a comment read as having none.
 - Fixed every image in a pull request description or a comment body showing as `[Image: alt]` instead of the picture. Screenshots in a description, a conversation comment, a review summary, and a comment inside a thread card now display, and a click opens one full size. An image is fetched only when you scroll to it, and one that cannot be fetched keeps the old placeholder rather than a broken-image icon.
