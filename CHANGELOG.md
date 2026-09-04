@@ -3,6 +3,11 @@
 ## Unreleased
 
 - **Insights** now reads in the order you review a pull request: Brief, then Walkthrough, then Analysis, and it opens on Brief rather than Analysis, so you meet the shape of the change before the judgment of it; an Insight you were last reading still opens where you left it.
+- The window now reads as three layers: a darker shell behind everything, the working area on a rounded, bordered panel, and the side columns (**Review details** on Pull requests, the metadata column on **Conversation**) one step lighter than the panel, so where you are working stands out from the frame around it.
+- Reworked the **Insights** tab: the Overview / Brief / Walkthrough / Analysis rail is now a line of tabs, each carrying a coloured status pill (Current green, Outdated amber, Running with a spinner, Failed red, Not generated outlined); the Overview cards show the Insight's icon, that pill, and when the result was retained, and lift as you hover; and a Brief, Walkthrough, or Analysis you have not generated yet shows one centred card with the icon, one line on what that Insight gives you, and the generate button, in place of the repeated "Brief" heading and "No retained result" line.
+- The **Conversation** / **Diff** / **Insights** strip and the Insights rail now use one tab control, so arrow keys move between tabs and Enter selects on both, and focus looks the same on each.
+- Each Insight type now has one icon, the same on the Overview cards, the empty state, and the PR overview sheet.
+- Animations now follow the system reduced-motion setting: when your OS asks for less motion, hover lifts, tab changes, and dialog transitions happen at once instead of easing.
 
 ## 0.0.3 - 2026-09-04
 
