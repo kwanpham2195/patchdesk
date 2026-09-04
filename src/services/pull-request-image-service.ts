@@ -58,7 +58,7 @@ export type PullRequestImageDependencies = {
  * belong in the stored workbench snapshot.
  *
  * The renderer is never trusted with which URL is safe to fetch. Every URL is
- * re-validated here against the pull request's own host, every redirect hop
+ * re-validated here against the stored profile's GitHub host, every redirect hop
  * is validated again, and the profile's GitHub token is attached only to the
  * first request and only when it goes to that profile's GitHub host.
  */
@@ -70,9 +70,15 @@ export class PullRequestImageService {
     readonly pullRequest: PullRequestRef;
     readonly imageUrl: string;
   }): Promise<Result<{ readonly dataUri: string }, PullRequestImageFailure>> {
+    // The profile is loaded before the URL is judged, so the allowlist is built
+    // from the stored GitHub host rather than the host the renderer named.
+    const profile = await this.dependencies.profiles.load(input.profileId);
+    if (profile._tag === "err") return err({ reason: "not_found" });
+
     const target = resolvePullRequestImageUrl(
       input.imageUrl,
       input.pullRequest,
+      profile.value.githubHost,
     );
     if (target === undefined) return err({ reason: "invalid_input" });
 
@@ -83,9 +89,6 @@ export class PullRequestImageService {
       imageHash,
     );
     if (cached._tag === "ok") return ok({ dataUri: cached.value });
-
-    const profile = await this.dependencies.profiles.load(input.profileId);
-    if (profile._tag === "err") return err({ reason: "not_found" });
 
     const downloaded = await this.download(target, profile.value);
     if (downloaded._tag === "err") return downloaded;
@@ -163,9 +166,9 @@ export class PullRequestImageService {
     const environment =
       await this.dependencies.credentials.environmentFor(profile);
     if (environment._tag === "err") return undefined;
-    // `environmentFor` answers with exactly one entry: GH_TOKEN, or
-    // GH_ENTERPRISE_TOKEN for a GitHub Enterprise Server host.
-    return Object.values(environment.value)[0];
+    // `environmentFor` answers with GH_TOKEN, or GH_ENTERPRISE_TOKEN for a
+    // GitHub Enterprise Server host.
+    return environment.value.GH_TOKEN ?? environment.value.GH_ENTERPRISE_TOKEN;
   }
 }
 
@@ -173,14 +176,19 @@ export class PullRequestImageService {
  * Absolutizes an image reference against the pull request's own page and
  * accepts it only on a host GitHub serves pull-request images from. Relative
  * references resolve here rather than in the renderer, so the main process
- * stays the only authority on which URL is fetched.
+ * stays the only authority on which URL is fetched. The pull request itself
+ * must sit on the profile's own GitHub host, so a renderer naming a foreign
+ * host cannot widen the allowlist.
  */
 function resolvePullRequestImageUrl(
   imageUrl: string,
   pullRequest: PullRequestRef,
+  githubHost: GitHubHost,
 ): string | undefined {
+  if (normalizeHost(pullRequest.host) !== normalizeHost(githubHost))
+    return undefined;
   const base = `https://${pullRequest.host}/${pullRequest.owner}/${pullRequest.repo}/pull/${pullRequest.number}`;
-  return resolveImageUrl(imageUrl, base, pullRequest.host);
+  return resolveImageUrl(imageUrl, base, githubHost);
 }
 
 function resolveImageUrl(
