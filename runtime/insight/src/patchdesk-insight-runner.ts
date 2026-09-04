@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { Agent } from "@earendil-works/pi-agent-core";
@@ -17,7 +18,10 @@ import * as v from "valibot";
 import { CommandRunner } from "../../../src/adapters/github/command-runner";
 import { PatchdeskPaths } from "../../../src/adapters/storage/patchdesk-paths";
 import { definedProps } from "../../../src/domain/defined-props";
-import type { RawJsonValue } from "../../../src/domain/json";
+import {
+  rawJsonValueSchema,
+  type RawJsonValue,
+} from "../../../src/domain/json";
 import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
@@ -151,6 +155,8 @@ export async function runPatchdeskChild(
     readonly onAbortRequested?: () => void;
     /** The transient-retry backoff base, so a test need not wait it out. */
     readonly retryBaseDelayMs?: number;
+    /** Where a submission the result schema rejected is kept for diagnosis. */
+    readonly rejectedResultPath?: string;
   } = {},
 ): Promise<PatchdeskChildResult> {
   try {
@@ -199,9 +205,17 @@ export async function runPatchdeskChild(
       const value = created.state.submittedResult();
       if (value !== undefined) {
         const parsed = v.safeParse(resultSchemaFor(invocation.type), value);
-        return parsed.success
-          ? { ok: true, value: parsed.output }
-          : { ok: false, reason: "invalid_result" };
+        if (parsed.success) return { ok: true, value: parsed.output };
+        // The submission arrived as JSON over a tool call, so naming it as such
+        // here is what lets the diagnostic write it back out unchanged.
+        const raw = v.safeParse(rawJsonValueSchema, value);
+        if (raw.success)
+          await writeRejectedResult(
+            options.rejectedResultPath,
+            raw.output,
+            parsed.issues,
+          );
+        return { ok: false, reason: "invalid_result" };
       }
       const failure = runFailureMessage(agent);
       if (failure !== undefined)
@@ -237,6 +251,40 @@ export async function runPatchdeskChild(
   } catch (cause: unknown) {
     void cause;
     return { ok: false, reason: "runtime_unavailable" };
+  }
+}
+
+/**
+ * Keeps the raw submission the result schema rejected, with the constraints it
+ * broke, beside the prepared debug file. The child otherwise drops the value
+ * and an "invalid result" failure cannot be diagnosed after the fact. The write
+ * is best-effort: a diagnostic must never turn a failed run into a crash.
+ */
+export async function writeRejectedResult(
+  path: string | undefined,
+  value: RawJsonValue,
+  issues: ReadonlyArray<v.BaseIssue<unknown>>,
+): Promise<void> {
+  if (path === undefined) return;
+  try {
+    const record = JSON.stringify(
+      {
+        rejectedAt: new Date().toISOString(),
+        value,
+        issues: issues.map((issue) => ({
+          path: v.getDotPath(issue) ?? "",
+          message: issue.message,
+          expected: issue.expected,
+          received: issue.received,
+        })),
+      },
+      undefined,
+      2,
+    );
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, record, "utf8");
+  } catch {
+    return;
   }
 }
 
@@ -463,6 +511,7 @@ export async function runProductionChild(
   const childOptions = {
     signal,
     onHandle: options.onHandle,
+    rejectedResultPath: canonical.rejectedResultPath,
     ...definedProps({ providers: options.providers }),
   };
   if (canonical.type === "walkthrough") {
@@ -538,7 +587,12 @@ export { resolvePatchdeskReviewSkillPath };
 export function canonicalizeProductionInvocation(
   invocation: ProductionChildInvocation,
   paths: PatchdeskPaths = PatchdeskPaths.default(),
-): (ProductionChildInvocation & { readonly debugPath?: string }) | undefined {
+):
+  | (ProductionChildInvocation & {
+      readonly debugPath?: string;
+      readonly rejectedResultPath: string;
+    })
+  | undefined {
   const profile = parseWorkspaceProfileId(invocation.input.profileId);
   const session = parseReviewSessionId(invocation.input.sessionId);
   if (profile._tag === "err" || session._tag === "err") return undefined;
@@ -546,15 +600,22 @@ export function canonicalizeProductionInvocation(
     invocation.input.patchPath !== paths.patchFile(profile.value, session.value)
   )
     return undefined;
+  // Every insight shares one rejected-submission file, so a Walkthrough or
+  // Brief the schema rejected is as diagnosable as an Analysis.
+  const rejectedResultPath = paths.rejectedResultFile(
+    profile.value,
+    session.value,
+  );
   // A Brief is built from the patch alone, so it has no prepared context
   // artifact to bind.
-  if (invocation.type === "brief") return invocation;
+  if (invocation.type === "brief") return { ...invocation, rejectedResultPath };
   if (
     invocation.input.contextPath !==
     paths.preparedContextFile(profile.value, session.value)
   )
     return undefined;
-  if (invocation.type === "walkthrough") return invocation;
+  if (invocation.type === "walkthrough")
+    return { ...invocation, rejectedResultPath };
   if (
     invocation.input.reviewInputPath !==
       paths.preparedReviewInputFile(profile.value, session.value) ||
@@ -565,6 +626,7 @@ export function canonicalizeProductionInvocation(
   return {
     ...invocation,
     debugPath: paths.preparedDebugFile(profile.value, session.value),
+    rejectedResultPath,
   };
 }
 

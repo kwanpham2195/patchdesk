@@ -209,6 +209,21 @@ export class PatchdeskPaths {
     return join(this.preparedDirectory(profileId, sessionId), "debug.json");
   }
 
+  /**
+   * The last raw Insight submission the result schema rejected. A rejected
+   * submission is otherwise dropped in the child, which leaves an "invalid
+   * result" failure with nothing to diagnose.
+   */
+  rejectedResultFile(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+  ): string {
+    return join(
+      this.preparedDirectory(profileId, sessionId),
+      "rejected-result.json",
+    );
+  }
+
   inboxCacheFile(profileId: WorkspaceProfileId): string {
     return join(this.cacheDirectory(), "profiles", profileId, "inbox-v1.json");
   }
