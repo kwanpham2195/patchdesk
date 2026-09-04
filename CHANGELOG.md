@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed a pull request whose head commit has no CI checks failing to open, with "The requested service is currently unavailable" and nothing else to go on.
+- Added plain conversation comments to the **Conversation** tab. A comment written in the pull request's conversation, rather than on a line of the diff, never appeared at all: a pull request whose only discussion was such a comment read as having none.
+- Fixed every image in a pull request description or a comment body showing as `[Image: alt]` instead of the picture. Screenshots in a description, a conversation comment, a review summary, and a comment inside a thread card now display, and a click opens one full size. An image is fetched only when you scroll to it, and one that cannot be fetched keeps the old placeholder rather than a broken-image icon.
+- A review saved by an earlier release is read again from GitHub once when you first open it, because conversations stored before this change no longer parse.
+
 ## 0.0.2 - 2026-09-04
 
 - Reworked **Settings → Workspace**: every control now saves on its own — text fields when you leave them or press Enter, the account picker, **Choose folder**, and Remove as soon as you use them — and says **Saving…**, **Saved**, or why it failed right beside itself, so the **Save profile** button, the unsaved state, and the discard question when you close Settings are all gone. The cards are ordered by what setup needs first — **Reviewing as**, **Repositories**, then collapsed **Advanced** (rule paths) and **Workspace** (name, active workspace) — and **New workspace** opens a dialog that asks for a name and an account. The profile ID is no longer shown or typed anywhere: it is derived from the name.
