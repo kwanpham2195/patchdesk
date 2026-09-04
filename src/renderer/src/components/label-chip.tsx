@@ -22,7 +22,8 @@ export function LabelChip({
 }
 
 /** A label's real GitHub colour as a dot. `aria-hidden`: the label's name is
- * its accessible text, here and in the filter list. */
+ * its accessible text, here and in the filter list. The inset ring keeps a
+ * white or near-black label visible against the pill's own background. */
 export function LabelColorDot({
   color,
 }: {
@@ -31,7 +32,7 @@ export function LabelColorDot({
   return (
     <span
       aria-hidden="true"
-      className="size-2 shrink-0 rounded-full"
+      className="size-2 shrink-0 rounded-full ring-1 ring-inset ring-foreground/15"
       style={{ backgroundColor: `#${color}` }}
     />
   );
