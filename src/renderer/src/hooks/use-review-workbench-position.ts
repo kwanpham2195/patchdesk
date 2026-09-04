@@ -42,9 +42,13 @@ export function useReviewWorkbenchPosition({
       ? "files"
       : (initialState?.section ?? "files"),
   );
+  // A Review with no saved position opens on Conversation: the description and
+  // the discussion are what a reviewer reads before any code. A Review that
+  // carries a position reopens exactly where it was left, so this fallback
+  // only decides the very first visit.
   const [activeTab, setActiveTab] = useState<WorkbenchActiveTab>(
     initialState?.activeTab ??
-      (initialState?.section === "insights" ? "insights" : "diff"),
+      (initialState?.section === "insights" ? "insights" : "conversation"),
   );
   const [selectedPath, setSelectedPath] = useState<string | undefined>(
     initialState?.selectedPath,

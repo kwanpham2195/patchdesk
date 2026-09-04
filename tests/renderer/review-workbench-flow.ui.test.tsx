@@ -121,10 +121,11 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     const conversation = screen.getByRole("button", { name: "Conversation" });
     const diff = screen.getByRole("button", { name: "Diff" });
     const insights = screen.getByRole("button", { name: "Insights" });
-    expect(diff.getAttribute("aria-pressed")).toBe("true");
-    await userEvent.setup().click(conversation);
+    // A Review with no saved position opens on Conversation.
     expect(conversation.getAttribute("aria-pressed")).toBe("true");
-    expect(diff.getAttribute("aria-pressed")).toBe("false");
+    await userEvent.setup().click(diff);
+    expect(diff.getAttribute("aria-pressed")).toBe("true");
+    expect(conversation.getAttribute("aria-pressed")).toBe("false");
     expect(insights.getAttribute("aria-pressed")).toBe("false");
   });
   it("opens PR overview from either colored status button", async () => {
