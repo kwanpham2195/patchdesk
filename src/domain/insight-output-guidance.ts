@@ -34,10 +34,13 @@ export function insightOutputGuidance(type: GuidedInsightType): string {
   if (type === "walkthrough") {
     return [
       SIMPLIFIED_TECHNICAL_ENGLISH,
-      REVIEWER_FRAMING,
+      "Write for a reviewer who must understand how the change behaves and decide where to inspect.",
+      "State what the patch does, never why it was made: never invent motivation, intent, trade-offs, or product impact, and never copy them from the pull request description.",
+      "Do not narrate the patch file by file or restate code that the diff already shows.",
+      "Do not repeat one topic across chapters and sections unless each occurrence adds a different fact.",
       "Explain the change as a short semantic walkthrough, not as a file inventory.",
-      "Choose the smallest Markdown form that makes each point clear. Use a short paragraph for one connected idea and a bullet outline for several facts or steps. Do not put several independent ideas in one large paragraph.",
-      "Return the intended Markdown structure directly. The renderer preserves it.",
+      // The Walkthrough reader shows every title and prose string literally, so Markdown arrives as visible punctuation.
+      "Write every chapter title, section title, and prose string as plain text. Use no Markdown: no bullet or heading markers, no emphasis markers, and no backticks. Write an identifier or a path as itself, with no quoting around it.",
       "Group related hunks by behavior. State the behavior before consequences and validation.",
     ].join(" ");
   }

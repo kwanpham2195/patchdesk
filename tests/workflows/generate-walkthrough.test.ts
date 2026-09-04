@@ -154,7 +154,7 @@ describe("walkthrough raw output boundary", () => {
 });
 
 describe("walkthrough prompt preparation", () => {
-  it("uses fixed bounded artifacts, explicit provenance, and no write instructions", async () => {
+  it("uses fixed bounded artifacts, plain-text section rules, and no write instructions", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "patchdesk-walkthrough-prompt-"),
     );
@@ -167,23 +167,21 @@ describe("walkthrough prompt preparation", () => {
     );
     try {
       const prompt = await prepareWalkthroughPrompt({
-        profileId: "profile-1",
-        sessionId: "session-1",
         contextPath,
         patchPath,
       });
-      expect(prompt).toContain("ordered chapter rail");
-      expect(prompt).toContain("continuous reading surface");
       expect(prompt).toContain("behavior before consequences and validation");
       expect(prompt).toContain("ASD-STE100 / Simplified Technical English");
       expect(prompt).toContain(
         "Use short, direct sentences in the active voice",
       );
-      expect(prompt).toContain("Use an inverted pyramid");
       expect(prompt).toContain("Do not narrate the patch file by file");
-      expect(prompt).toContain("Choose the smallest Markdown form");
-      expect(prompt).toContain("Use a short paragraph for one connected idea");
-      expect(prompt).toContain("renderer preserves it");
+      expect(prompt).toContain(
+        "Write every chapter title, section title, and prose string as plain text. Use no Markdown: no bullet or heading markers, no emphasis markers, and no backticks.",
+      );
+      expect(prompt).toContain(
+        "State what the patch does, never why it was made",
+      );
       expect(prompt).toContain("HUNK ALIAS MANIFEST");
       expect(prompt).toContain("h1 | src/recovery.ts | @@ -1,1 +1,1 @@");
       expect(prompt).toContain("citationVersion to 2");
@@ -191,6 +189,16 @@ describe("walkthrough prompt preparation", () => {
       expect(prompt).toContain("context artifact");
       expect(prompt).not.toMatch(
         /review completion|review failure|workflow:review-pr|commenting|persist(?:ence|ed|ing)/i,
+      );
+      expect(prompt).not.toContain("primary section");
+      expect(prompt).not.toContain("linear picker");
+      expect(prompt).not.toContain("Markdown form");
+      expect(prompt).not.toContain("profile-1");
+      expect(prompt).not.toContain("session-1");
+      expect(prompt).not.toContain("300 characters");
+      expect(prompt).toContain("Create at most 1 chapters.");
+      expect(prompt.split("each section's prose within 320").length - 1).toBe(
+        1,
       );
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -208,8 +216,6 @@ describe("walkthrough prompt preparation", () => {
     try {
       await expect(
         prepareWalkthroughPrompt({
-          profileId: "profile-1",
-          sessionId: "session-1",
           contextPath,
           patchPath,
         }),
