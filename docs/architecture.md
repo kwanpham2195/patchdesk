@@ -98,7 +98,7 @@ It is the only place that knows about Electron.
 - `preload.ts` exposes the minimal `window.patchdesk` bridge to the sandboxed renderer: `request`, `openExternalHttps`, `onMenuAction` for the native menu, and `onWindowFullScreen` with the `windowFullScreenAtLoad` value it reads as the renderer loads — the renderer cannot see native full screen for itself.
 - `renderer-origin.ts` parses and verifies the renderer origin.
 - `desktop-close-guard.ts` protects an unsaved review draft and an in-flight GitHub write during close.
-- `external-navigation.ts` lets only user clicks open external HTTPS links, and only on allowlisted hosts.
+- `external-navigation.ts` opens external links only over HTTPS, with no credentials and no custom port. A link the user clicked in a rendered body may go to any host (`isUserActivatedExternalUrl`), because comment bodies link off GitHub constantly; a navigation the page starts on its own is still confined to the allowlisted hosts (`isAllowedExternalUrl`).
 - `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, `window-chrome.ts`, and `desktop-menu.ts` hold small desktop concerns. `desktop-menu-channel.ts` and `desktop-full-screen-channel.ts` each keep both halves of a main-to-renderer channel in one module, so the channel name is written once.
 
 **Architecture Invariant:** the renderer is sandboxed and has no Node.js access.

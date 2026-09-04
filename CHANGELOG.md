@@ -6,6 +6,7 @@
 - Added plain conversation comments to the **Conversation** tab. A comment written in the pull request's conversation, rather than on a line of the diff, never appeared at all: a pull request whose only discussion was such a comment read as having none.
 - Fixed every image in a pull request description or a comment body showing as `[Image: alt]` instead of the picture. Screenshots in a description, a conversation comment, a review summary, and a comment inside a thread card now display, and a click opens one full size. An image is fetched only when you scroll to it, and one that cannot be fetched keeps the old placeholder rather than a broken-image icon.
 - A review saved by an earlier release is read again from GitHub once when you first open it, because conversations stored before this change no longer parse.
+- Fixed Markdown bodies in a pull request description or a comment: a link written as raw HTML now shows its own text instead of an empty link followed by loose words, a link that leaves the pull request's host now opens in your browser when you click it rather than doing nothing, and inline code and code fences are styled the same way as the diff — added and removed lines tinted, with a Copy control on a fence.
 
 ## 0.0.2 - 2026-09-04
 
