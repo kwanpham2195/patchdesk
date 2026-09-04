@@ -65,33 +65,34 @@ function InsightDocumentIdentity({
   // workbench header.
   const provenance =
     selectedInsight === "brief" ? undefined : retained?.provenance;
+  const heading =
+    selectedInsight === "brief"
+      ? "Brief"
+      : (walkthroughTitle ?? "Walkthrough document");
+  // The eyebrow names the Insight type over a document title; when the
+  // heading already is that name, the eyebrow would only repeat it.
+  const showEyebrow = heading.toLowerCase() !== selectedInsight;
   return (
     <div className="min-w-0">
       {selectedInsight === "analysis" ? null : (
         <>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {selectedInsight}
-          </p>
-          <h2 className="truncate text-lg font-semibold">
-            {selectedInsight === "brief"
-              ? "Brief"
-              : (walkthroughTitle ?? "Walkthrough document")}
-          </h2>
+          {showEyebrow ? (
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {selectedInsight}
+            </p>
+          ) : null}
+          <h2 className="truncate text-lg font-semibold">{heading}</h2>
         </>
       )}
-      <p className="truncate text-sm text-muted-foreground">
-        {retained === undefined ? (
-          "No retained result for this revision."
-        ) : (
-          <>
-            {selectedIsOutdated ? "Outdated" : "Current"} ·{" "}
-            <RelativeTime iso={retained.generatedAt} prefix="retained " />
-            {provenance === undefined
-              ? null
-              : ` · ${INSIGHT_PROVIDER_LABELS[provenance.provider]} · ${provenance.model}`}
-          </>
-        )}
-      </p>
+      {retained === undefined ? null : (
+        <p className="truncate text-sm text-muted-foreground">
+          {selectedIsOutdated ? "Outdated" : "Current"} ·{" "}
+          <RelativeTime iso={retained.generatedAt} prefix="retained " />
+          {provenance === undefined
+            ? null
+            : ` · ${INSIGHT_PROVIDER_LABELS[provenance.provider]} · ${provenance.model}`}
+        </p>
+      )}
     </div>
   );
 }
