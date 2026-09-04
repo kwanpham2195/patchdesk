@@ -52,6 +52,19 @@ export type MarkdownContentPolicy = {
   readonly renderMermaid?: (input: MarkdownMermaidRenderInput) => ReactNode;
 };
 
+/**
+ * One treatment for inline code, whether it was written as Markdown backticks
+ * or as a raw HTML `<code>` element, since the same body can carry both.
+ *
+ * It sets no colour of its own so a chip inside a link keeps the link's
+ * colour and still reads as part of the link, the way GitHub shows it; the
+ * muted background and monospace face are what mark it as code. `break-words`
+ * lets a long file path wrap instead of pushing the chip onto its own line in
+ * a narrow column.
+ */
+export const inlineCodeClassName =
+  "rounded bg-muted px-1 py-0.5 font-mono text-xs break-words text-current";
+
 /** Renders Markdown structure with shared visual hierarchy and source-specific rich-content policy. */
 export function MarkdownContent({
   markdown,
@@ -280,13 +293,7 @@ function renderInline(
         return token.text;
       case "codespan":
         return (
-          <code
-            key={key}
-            // A model writes file paths as inline code; without a break the
-            // chip cannot wrap and pushes itself onto a line of its own in a
-            // narrow column.
-            className="rounded bg-muted px-1 py-0.5 font-mono text-xs break-words text-foreground"
-          >
+          <code key={key} className={inlineCodeClassName}>
             {token.text}
           </code>
         );
