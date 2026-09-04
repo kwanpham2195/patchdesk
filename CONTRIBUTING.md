@@ -25,6 +25,7 @@ used across the codebase.
   Insight run (ADR 0041).
 - `tests/` mirrors those boundaries; browser coverage in `tests/browser/`.
 - Architecture: `docs/architecture.md`; decisions: `docs/adr/`.
+- UI conventions: `docs/ui-guide.md`.
 
 ## Building and running
 
