@@ -850,7 +850,7 @@ function ReviewDetailsPanel({
     <>
       <aside
         className={cn(
-          "hidden min-w-0 overflow-hidden border-l min-[1280px]:block",
+          "hidden min-w-0 overflow-hidden border-l bg-card min-[1280px]:block",
           !inspectorOpen && "min-[1280px]:hidden",
         )}
         aria-label="Review details"

@@ -163,7 +163,7 @@ function InspectorStatusCard({
       aria-label={status.label}
       size="sm"
       className={cn(
-        "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-0.5 px-2.5 py-2.5",
+        "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-0.5 bg-muted px-2.5 py-2.5",
         status.kind === "updates_available" &&
           "border-primary/30 bg-primary/5 ring-primary/30",
       )}

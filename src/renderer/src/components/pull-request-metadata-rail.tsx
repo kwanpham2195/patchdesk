@@ -562,7 +562,7 @@ export function PullRequestMetadataRail({
   return (
     <aside
       aria-label="Pull request metadata"
-      className="w-full min-[1100px]:sticky min-[1100px]:top-0 min-[1100px]:w-[272px] min-[1100px]:shrink-0"
+      className="w-full rounded-lg border bg-card p-3 min-[1100px]:sticky min-[1100px]:top-0 min-[1100px]:w-[272px] min-[1100px]:shrink-0"
     >
       <ReviewersSection
         requestedReviewers={requestedReviewers}
