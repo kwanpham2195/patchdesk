@@ -240,16 +240,15 @@ export function parseMergePolicyPage(
   const pullRequest = raw.data.repository.pullRequest;
   const headSha = parseGitSha(pullRequest.headRefOid);
   const baseSha = parseGitSha(pullRequest.baseRefOid);
-  const rollup = pullRequest.commits.nodes[0]?.commit.statusCheckRollup;
-  if (
-    headSha._tag === "err" ||
-    baseSha._tag === "err" ||
-    rollup === null ||
-    rollup === undefined
-  )
-    return undefined;
+  if (headSha._tag === "err" || baseSha._tag === "err") return undefined;
+  // GitHub reports a null rollup for a head commit no check run or status ever
+  // touched. That is a complete answer -- the commit has no contexts -- not
+  // malformed data, so it reads as an empty final page instead of failing the
+  // whole merge-policy read.
+  const rollup =
+    pullRequest.commits.nodes[0]?.commit.statusCheckRollup ?? undefined;
   const contexts: Array<CheckRunSummary> = [];
-  for (const context of rollup.contexts.nodes) {
+  for (const context of rollup?.contexts.nodes ?? []) {
     const summary = parsePolicyContext(context);
     if (summary === undefined) return undefined;
     contexts.push(summary);
@@ -264,9 +263,9 @@ export function parseMergePolicyPage(
     mergeStateStatus: mapMergeStateStatus(pullRequest.mergeStateStatus),
     reviewDecision: mapMergePolicyReviewDecision(pullRequest.reviewDecision),
     contexts,
-    hasNextPage: rollup.contexts.pageInfo.hasNextPage,
+    hasNextPage: rollup?.contexts.pageInfo.hasNextPage ?? false,
   };
-  const endCursor = rollup.contexts.pageInfo.endCursor ?? undefined;
+  const endCursor = rollup?.contexts.pageInfo.endCursor ?? undefined;
   return endCursor === undefined ? page : { ...page, endCursor };
 }
 
