@@ -14,6 +14,10 @@ function lex(markdown: string): ReadonlyArray<Token> {
   return marked.Lexer.lexInline(markdown);
 }
 
+function lexBlock(markdown: string): ReadonlyArray<Token> {
+  return marked.Lexer.lex(markdown);
+}
+
 /** Flattens a node back to the source text a renderer would show for it. */
 function textOf(node: MarkdownNode): string {
   if (isMarkdownHtmlElement(node))
@@ -114,6 +118,23 @@ describe("reassembling inline raw HTML", () => {
       "text",
       "htmlElement",
     ]);
+  });
+
+  it("leaves a block token that already holds its own inner HTML alone", () => {
+    const tokens = lexBlock(
+      "<details open>\n<summary>Title</summary>\n\ncontent\n\n</details>",
+    );
+    const grouped = groupMarkdownHtml(tokens);
+
+    // Pairing the run would drop the summary, which lives only in the raw text.
+    expect(grouped.map((node) => node.type)).toEqual([
+      "html",
+      "space",
+      "paragraph",
+      "space",
+      "html",
+    ]);
+    expect(grouped.map(textOf).join("")).toContain("<summary>Title</summary>");
   });
 
   it("is idempotent, so a caller may group an already-grouped list", () => {

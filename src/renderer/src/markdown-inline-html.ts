@@ -47,7 +47,9 @@ const voidTags = new Set([
   "wbr",
 ]);
 
-const openTagPattern = /^<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^]*?)?>$/;
+// Attributes stop at `<`, `>`, or a newline, so a block-level token holding a
+// whole opener/content run is not mistaken for a bare opening tag.
+const openTagPattern = /^<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>\n]*)?>$/;
 const closeTagPattern = /^<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>$/;
 
 /**
