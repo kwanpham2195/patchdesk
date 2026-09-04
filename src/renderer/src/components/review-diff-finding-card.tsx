@@ -13,6 +13,7 @@ import {
 } from "./review-diff-authoring";
 import type { PullRequestBodyContext } from "./pull-request-description";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 /** Renders one diff annotation: composer, pending, conversation, local comment, or a finding card. */
@@ -79,9 +80,12 @@ export function renderReviewDiffAnnotation(
       aria-label={`${finding.severity} finding: ${finding.title}`}
     >
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="text-xs font-semibold text-primary">
+        <Badge
+          variant="outline"
+          className="h-4 border-primary/30 px-1.5 text-[10px] font-semibold text-primary"
+        >
           {finding.severity}
-        </span>
+        </Badge>
         {/* Not a document heading: this is a label on a floating
         annotation card, not a section of the page's outline, and the
         enclosing article already carries the same text in its
