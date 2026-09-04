@@ -155,6 +155,13 @@ export type PullRequestBodyContext = {
   readonly profileId?: string;
 };
 
+/**
+ * Resolves nothing, for a surface rendered with no pull request in hand. One
+ * shared instance so a defaulted `bodyContext` prop keeps a stable identity.
+ */
+// oxlint-disable-next-line react/only-export-components -- an object literal is not a constant export the fast-refresh rule can allow, and this value belongs beside the type it is the empty case of.
+export const EMPTY_BODY_CONTEXT: PullRequestBodyContext = {};
+
 export function PullRequestDescriptionPreview({
   markdown,
   pullRequest,

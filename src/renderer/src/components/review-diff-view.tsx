@@ -40,7 +40,10 @@ import type {
 } from "./conversation-thread-card";
 import { InlineCommentComposer } from "./review-diff-authoring";
 import { renderReviewDiffGutterUtility } from "./review-diff-gutter-utility";
-import type { PullRequestBodyContext } from "./pull-request-description";
+import {
+  EMPTY_BODY_CONTEXT,
+  type PullRequestBodyContext,
+} from "./pull-request-description";
 import type { ReviewAnchorFingerprint } from "../../../domain/diff-anchor";
 import type { ResolvedAppearance } from "@/appearance-preferences";
 import { ReviewDiffNavigationFeedback } from "./review-diff-navigation-feedback";
@@ -248,8 +251,6 @@ type ReviewDiffViewProps = {
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
-/** Resolves nothing, for a surface rendered with no pull request in hand. */
-const EMPTY_BODY_CONTEXT: PullRequestBodyContext = {};
 
 function ReviewDiffToolbar({
   virtualized,
