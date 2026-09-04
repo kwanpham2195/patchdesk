@@ -39,6 +39,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import {
+  inlineCodeClassName,
   MarkdownContent,
   type MarkdownContentPolicy,
 } from "./markdown-content";
@@ -323,7 +324,7 @@ function renderHtmlNode(
       return <del key={key}>{children}</del>;
     case "code":
       return (
-        <code key={key} className="rounded bg-muted px-1 py-0.5 text-xs">
+        <code key={key} className={inlineCodeClassName}>
           {children}
         </code>
       );
