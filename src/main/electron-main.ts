@@ -25,7 +25,7 @@ import { rendererOrigin as parseRendererOrigin } from "./renderer-origin";
 import {
   installWebContentsSecurity,
   normalizeExternalHosts,
-  openAllowedExternalUrl,
+  openUserActivatedExternalUrl,
 } from "./external-navigation";
 import { createAppCapability } from "./app-capability";
 import { sendMenuAction } from "./desktop-menu-channel";
@@ -502,14 +502,13 @@ async function createWorkbenchWindow(
       setNavigationState(state) {
         rendererNavigationState = state;
       },
+      // The renderer only reaches this after the user clicked a link, so it
+      // allows any HTTPS host. `installWebContentsSecurity` below keeps the
+      // allowlist for navigation the page starts by itself.
       async openExternalHttps(url) {
-        return await openAllowedExternalUrl(
-          url,
-          allowedHosts,
-          async (candidate) => {
-            await shell.openExternal(candidate);
-          },
-        );
+        return await openUserActivatedExternalUrl(url, async (candidate) => {
+          await shell.openExternal(candidate);
+        });
       },
       async selectDirectory(input) {
         const defaultPathField =
