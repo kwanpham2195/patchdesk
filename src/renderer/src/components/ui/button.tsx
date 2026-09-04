@@ -17,7 +17,15 @@ const buttonVariants = cva(
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+        // The base box focus treatment (a painted border plus a 3px ring) is
+        // sized for a padded button; on bare inline text it closes right on the
+        // glyphs. Swap it for an offset outline so the indicator frames the
+        // text with a gap. `outline-solid` is required because the base sets
+        // `outline-none`, which pins `--tw-outline-style` to `none`. The border
+        // is dropped by width, not colour, because the unlayered
+        // `* { border-color: var(--border) }` in styles.css outranks every
+        // `border-*` utility and would keep painting a box around the text.
+        link: "border-0 text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid focus-visible:ring-0",
       },
       size: {
         default:
@@ -33,6 +41,11 @@ const buttonVariants = cva(
         "icon-lg": "size-9",
       },
     },
+    // A link renders as inline text, so it drops the size's button box. This
+    // has to be a compound variant rather than part of the `link` variant
+    // because cva emits size classes after variant ones, and `h-6 px-2` would
+    // otherwise win the merge.
+    compoundVariants: [{ variant: "link", class: "h-auto rounded-xs p-0" }],
     defaultVariants: {
       variant: "default",
       size: "default",

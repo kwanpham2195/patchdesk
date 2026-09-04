@@ -439,7 +439,7 @@ function ReviewSummaryEntry({
             <Button
               size="xs"
               variant="link"
-              className="h-auto p-0 text-xs text-destructive"
+              className="text-xs text-destructive"
               onClick={() => setEditingDismissal(true)}
             >
               Dismiss review
