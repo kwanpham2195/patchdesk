@@ -5,7 +5,7 @@ import {
   loadCodexModelCache,
   saveCodexModelCache,
 } from "../../src/renderer/src/codex-model-cache";
-import type { InsightProviderCatalogModel } from "../../src/renderer/src/renderer-contracts";
+import type { InsightProviderCatalogModel } from "../../src/renderer/src/insight-catalog-contracts";
 
 const storageKey = "patchdesk.codex-models.v1.profile";
 

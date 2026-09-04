@@ -4,7 +4,7 @@ import { definePreference } from "./lib/local-preference";
 import {
   insightProviderModelSchema,
   type InsightProviderCatalogModel,
-} from "./renderer-contracts";
+} from "./insight-catalog-contracts";
 
 const VERSION = 1;
 const MAX_MODELS = 512;

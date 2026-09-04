@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseInsightProviderCatalog,
+  parseModelCatalog,
+} from "../../src/renderer/src/insight-catalog-contracts";
+import {
   parseCommitDiffResponse,
   parseInboxResponse,
-  parseInsightProviderCatalog,
   parseMergeReceipt,
-  parseModelCatalog,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
 } from "../../src/renderer/src/renderer-contracts";

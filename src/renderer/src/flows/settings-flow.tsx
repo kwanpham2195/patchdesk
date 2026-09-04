@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 import { requestJson } from "../api-client";
-import { parseInsightProviderCatalog } from "../renderer-contracts";
+import { parseInsightProviderCatalog } from "../insight-catalog-contracts";
 import {
   DIFF_DARK_THEMES,
   DIFF_LIGHT_THEMES,
