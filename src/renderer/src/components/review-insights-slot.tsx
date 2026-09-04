@@ -65,24 +65,14 @@ function InsightDocumentIdentity({
   // workbench header.
   const provenance =
     selectedInsight === "brief" ? undefined : retained?.provenance;
+  // The selected tab already names the Insight, so the only heading worth
+  // drawing is a Walkthrough document's own title.
   const heading =
-    selectedInsight === "brief"
-      ? "Brief"
-      : (walkthroughTitle ?? "Walkthrough document");
-  // The eyebrow names the Insight type over a document title; when the
-  // heading already is that name, the eyebrow would only repeat it.
-  const showEyebrow = heading.toLowerCase() !== selectedInsight;
+    selectedInsight === "walkthrough" ? walkthroughTitle : undefined;
   return (
     <div className="min-w-0">
-      {selectedInsight === "analysis" ? null : (
-        <>
-          {showEyebrow ? (
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {selectedInsight}
-            </p>
-          ) : null}
-          <h2 className="truncate text-lg font-semibold">{heading}</h2>
-        </>
+      {heading === undefined ? null : (
+        <h2 className="truncate text-lg font-semibold">{heading}</h2>
       )}
       {retained === undefined ? null : (
         <p className="truncate text-sm text-muted-foreground">
@@ -298,7 +288,7 @@ export function InsightsSlot({
           ) : (
             <>
               {walkthroughFocusActive ? null : (
-                <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b pb-2">
+                <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
                   <InsightDocumentIdentity
                     retained={selectedRetained}
                     selectedInsight={selectedInsight}
