@@ -7,7 +7,10 @@ import * as v from "valibot";
 
 import { briefOutputSchema } from "../../../src/domain/brief";
 import { parseReviewSessionId } from "../../../src/domain/ids";
-import { modelReviewResultSchema } from "../../../src/domain/review-result";
+import {
+  modelReviewResultSchema,
+  requiredVerdictForFindings,
+} from "../../../src/domain/review-result";
 import { walkthroughOutputSchema } from "../../../src/services/walkthrough-operation";
 
 export const MAX_RUNTIME_STDIN_BYTES = 2 * 1024 * 1024;
@@ -256,6 +259,24 @@ function submissionIssueDetail(
     : rendered;
 }
 
+/**
+ * Names the verdict a submitted Analysis result's severities require, or
+ * undefined when the two agree. The projected JSON Schema cannot express the
+ * rule and the parser that owns it runs after the run has ended, so without
+ * this the model is never told what it got wrong.
+ */
+function verdictMismatchDetail(
+  output: SubmittedInsightResult,
+): string | undefined {
+  // Only an Analysis result carries a verdict; a Walkthrough or Brief result
+  // fails this strict schema and needs no check.
+  const review = v.safeParse(modelReviewResultSchema, output);
+  if (!review.success) return undefined;
+  const required = requiredVerdictForFindings(review.output.findings);
+  if (review.output.verdict === required) return undefined;
+  return `The submitted verdict "${review.output.verdict}" does not match the submitted findings, which require "${required}". Patchdesk requires request_changes when any finding is P0 or P1, comment when there are findings but none are P0 or P1, and approve only when there are no findings. Resubmit the result with the verdict the findings require, or with the severities you meant.`;
+}
+
 function createResultTool(
   schema: PatchdeskResultSchema,
   state: SubmissionState,
@@ -282,6 +303,8 @@ function createResultTool(
         throw new Error(
           `The submitted result does not match the Patchdesk result schema: ${submissionIssueDetail(parsed.issues)}`,
         );
+      const mismatch = verdictMismatchDetail(parsed.output);
+      if (mismatch !== undefined) throw new Error(mismatch);
       // The one submission is spent only once a result is recorded, so a
       // rejected one leaves the model its chance to correct and resubmit.
       state.submitted = true;

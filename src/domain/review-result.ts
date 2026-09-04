@@ -384,14 +384,24 @@ function projectFinding(
   });
 }
 
+/**
+ * The one verdict a set of severities allows. It names the required verdict
+ * rather than only judging the submitted one, so the Pi submit tool can tell a
+ * model which verdict to resubmit instead of failing the run after the fact.
+ */
+export function requiredVerdictForFindings(
+  findings: ReadonlyArray<{ readonly severity: FindingSeverity }>,
+): ReviewVerdict {
+  const hasBlocking = findings.some(
+    (finding) => finding.severity === "P0" || finding.severity === "P1",
+  );
+  if (hasBlocking) return "request_changes";
+  return findings.length > 0 ? "comment" : "approve";
+}
+
 function hasConsistentVerdict(
   verdict: ReviewVerdict,
   findings: ReadonlyArray<{ readonly severity: FindingSeverity }>,
 ): boolean {
-  const hasBlocking = findings.some(
-    (finding) => finding.severity === "P0" || finding.severity === "P1",
-  );
-  if (hasBlocking) return verdict === "request_changes";
-  if (findings.length > 0) return verdict === "comment";
-  return verdict === "approve";
+  return verdict === requiredVerdictForFindings(findings);
 }
