@@ -11,6 +11,7 @@ import type {
 } from "../adapters/storage/maintainer-inbox-cache-store";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { StorageFailure } from "../adapters/storage/json-file";
+import { resolveAvatarDataUris } from "../adapters/storage/avatar-cache-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
 import { definedProps } from "../domain/defined-props";
@@ -20,6 +21,7 @@ import {
   createReviewId,
   parseIsoTimestamp,
   type IsoTimestamp,
+  type WorkspaceProfileId,
 } from "../domain/ids";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
@@ -51,6 +53,7 @@ import type {
   WorkspaceProfileConfig,
   WatchedRepoConfig,
 } from "../domain/workspace-profile";
+import type { AvatarRailDependencies } from "./avatar-sync-service";
 import { isInboxCacheStale } from "../domain/inbox-freshness-policy";
 
 const MAX_PAGE_TOKEN_LENGTH = 16_384;
@@ -182,7 +185,55 @@ export class MaintainerInboxService {
      * collaborators.
      */
     private readonly insights?: InboxInsightReader,
+    /**
+     * Optional in the same way `insights` is: without it a row simply carries
+     * no `authorAvatarDataUri` and the renderer draws the initials badge.
+     */
+    private readonly avatars?: AvatarRailDependencies,
   ) {}
+
+  /**
+   * Attaches each row's cached author avatar as a `data:` URI, warming the
+   * shared per-profile avatar cache first so the next read of the same page
+   * finds the bytes on disk (`warmAvatarUrls` skips URLs already there, so a
+   * repeat listing costs nothing).
+   *
+   * Wrapped whole in a try/catch for the same reason
+   * `AssigneeService.withResolvedAvatars` is: an avatar is decorative, so a
+   * misbehaving avatar dependency must never fail an inbox read.
+   */
+  private async withResolvedAuthorAvatars(
+    profileId: WorkspaceProfileId,
+    rows: ReadonlyArray<MaintainerInboxRow>,
+  ): Promise<ReadonlyArray<MaintainerInboxRow>> {
+    const avatars = this.avatars;
+    if (avatars === undefined) return rows;
+    try {
+      const avatarUrls = [
+        ...new Set(
+          rows.flatMap((row) =>
+            row.authorAvatarUrl === undefined ? [] : [row.authorAvatarUrl],
+          ),
+        ),
+      ];
+      if (avatarUrls.length === 0) return rows;
+      await avatars.sync.warmAvatarUrls({ profileId, avatarUrls });
+      const resolved = await resolveAvatarDataUris(
+        avatars.paths,
+        profileId,
+        avatarUrls,
+      );
+      return rows.map((row) => {
+        if (row.authorAvatarUrl === undefined) return row;
+        const authorAvatarDataUri = resolved.get(row.authorAvatarUrl);
+        return authorAvatarDataUri === undefined
+          ? row
+          : { ...row, authorAvatarDataUri };
+      });
+    } catch {
+      return rows;
+    }
+  }
 
   /**
    * Reads one page of the Selected repository's inbox.
@@ -299,13 +350,18 @@ export class MaintainerInboxService {
       : undefined;
     const matchCountField =
       read.issueCount === undefined ? {} : { matchCount: read.issueCount };
+    // Only the returned rows carry the resolved `data:` URI; the cache below
+    // is written from `visible` so the file never holds base64 image bytes.
+    const rows = await this.withResolvedAuthorAvatars(
+      profile.id,
+      dataFreshness === "fresh"
+        ? visible.map((entry) => entry.row)
+        : visible.map((entry) => toCachedRow(entry.row)),
+    );
     const value: MaintainerInbox = {
       state,
       pageSize: request.pageSize,
-      rows:
-        dataFreshness === "fresh"
-          ? visible.map((entry) => entry.row)
-          : visible.map((entry) => toCachedRow(entry.row)),
+      rows,
       repositories: [read.repository],
       refreshedAt,
       dataFreshness,
@@ -448,10 +504,14 @@ export class MaintainerInboxService {
       )
         ? "stale_cached"
         : "failed_cached";
+      const rows = await this.withResolvedAuthorAvatars(
+        profile.id,
+        cached.value.rows.map(toCachedRow),
+      );
       return ok({
         state,
         pageSize,
-        rows: cached.value.rows.map(toCachedRow),
+        rows,
         repositories: [
           {
             repo: {

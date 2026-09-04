@@ -56,6 +56,26 @@ describe("InboxRowItem", () => {
     expect(screen.queryByText("Brief")).toBeNull();
   });
 
+  it("shows the author's cached avatar as an image once it resolves", () => {
+    renderRow({ ...row, authorAvatarDataUri: "data:image/png;base64,AAAA" });
+    const avatars = avatarSlots();
+    expect(avatars.length).toBeGreaterThan(0);
+    for (const avatar of avatars) {
+      expect(avatar.tagName).toBe("IMG");
+      expect(avatar.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+    }
+  });
+
+  it("falls back to the author's initials while the avatar cache is cold", () => {
+    renderRow(row);
+    const avatars = avatarSlots();
+    expect(avatars.length).toBeGreaterThan(0);
+    for (const avatar of avatars) {
+      expect(avatar.tagName).not.toBe("IMG");
+      expect(avatar.textContent).toBe("A");
+    }
+  });
+
   it("selects on a row click without opening the Review", () => {
     const { onSelect, onAction } = renderActionableRow();
     fireEvent.click(screen.getByRole("option"));
@@ -98,6 +118,13 @@ describe("InboxRowItem", () => {
     ).toHaveLength(0);
   });
 });
+
+/** Both the wide and the narrow author cells render one; each is decorative, so neither has a role. */
+function avatarSlots(): ReadonlyArray<HTMLElement> {
+  return [
+    ...screen.getByRole("option").querySelectorAll('[data-slot="avatar"]'),
+  ].filter((node): node is HTMLElement => node instanceof HTMLElement);
+}
 
 /** The title is styled text with no role, found by the slot it carries. */
 function rowTitle(): HTMLElement {

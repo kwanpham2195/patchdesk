@@ -72,6 +72,13 @@ const inboxRowSchema = v.strictObject({
   identity: pullRequestRefSchema,
   title: v.pipe(v.string(), v.minLength(1)),
   author: v.pipe(v.string(), v.minLength(1)),
+  // The author's GitHub avatar URL, kept only so the row can say which cached
+  // avatar it means; the renderer never points an `<img>` at it.
+  authorAvatarUrl: v.optional(v.pipe(v.string(), v.minLength(1))),
+  // `data:` URI resolved main-process-side from the avatar cache; the only
+  // form the renderer's `img-src 'self' data:` CSP allows an `<img>` to point
+  // at. See `MaintainerInboxRow.authorAvatarDataUri`.
+  authorAvatarDataUri: v.optional(v.pipe(v.string(), v.minLength(1))),
   baseBranch: v.pipe(v.string(), v.minLength(1)),
   headBranch: v.pipe(v.string(), v.minLength(1)),
   currentHeadSha: v.pipe(v.string(), v.minLength(7)),

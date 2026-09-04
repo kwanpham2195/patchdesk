@@ -138,12 +138,22 @@ export async function buildLocalApiContainer(
     operationCoordinator: reviewOperations,
     github,
   });
+  // Shared with `reviewRefresh` below: one `AvatarSyncService` per profile
+  // process, not one per consumer, so every caller warms and reads the same
+  // on-disk cache.
+  const avatarSync = new AvatarSyncService({
+    paths,
+    fetchAvatar: configuration.fetchAvatar ?? createAvatarFetcher(),
+    log: logs,
+  });
+  const avatarRailDependencies = { paths, sync: avatarSync };
   const dashboard = new DashboardController(
     profiles,
     github,
     configuration.origins ?? new WorkspaceOriginFinder(commands),
     paths,
     commands,
+    avatarRailDependencies,
   );
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
@@ -194,15 +204,6 @@ export async function buildLocalApiContainer(
     recentWriteJournals,
     reviewWriteOperations,
   );
-  // Shared with `reviewRefresh` below: one `AvatarSyncService` per profile
-  // process, not one per consumer, so every caller warms and reads the same
-  // on-disk cache.
-  const avatarSync = new AvatarSyncService({
-    paths,
-    fetchAvatar: configuration.fetchAvatar ?? createAvatarFetcher(),
-    log: logs,
-  });
-  const avatarRailDependencies = { paths, sync: avatarSync };
   const pullRequestImages = new PullRequestImageService({
     paths,
     profiles,

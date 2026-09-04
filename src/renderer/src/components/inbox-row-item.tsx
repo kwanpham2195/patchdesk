@@ -14,8 +14,12 @@ import {
   type ReviewOpeningState,
 } from "./review-opening-status";
 import { ScopeGauge } from "./scope-gauge";
+import { Avatar } from "./ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+/** The author's cached avatar at the row's text scale; initials until the cache warms. */
+const authorAvatarClassName = "size-4 border-0 text-[9px]";
 
 export function InboxRowItem({
   row,
@@ -102,10 +106,15 @@ export function InboxRowItem({
           slot="pull-request-label-column"
         />
         <span
-          className="hidden truncate text-[11px] text-muted-foreground min-[1280px]:block"
+          className="hidden min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground min-[1280px]:flex"
           title={row.author}
         >
-          {row.author}
+          <Avatar
+            name={row.author}
+            dataUri={row.authorAvatarDataUri}
+            className={authorAvatarClassName}
+          />
+          <span className="truncate">{row.author}</span>
         </span>
         <span className="hidden min-[1280px]:block">
           <ChangeSize stats={row.changeStats} />
@@ -121,7 +130,17 @@ export function InboxRowItem({
         </span>
         <div className="col-span-2 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground min-[1280px]:hidden">
           <CheckIcon overall={row.checks.overall} />
-          <span className="truncate">{row.author}</span>
+          <span
+            className="flex min-w-0 items-center gap-1.5"
+            title={row.author}
+          >
+            <Avatar
+              name={row.author}
+              dataUri={row.authorAvatarDataUri}
+              className={authorAvatarClassName}
+            />
+            <span className="truncate">{row.author}</span>
+          </span>
           <ChangeSize stats={row.changeStats} />
         </div>
         <ReviewOpeningNotice

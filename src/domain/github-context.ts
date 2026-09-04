@@ -447,6 +447,8 @@ export type PullRequestSummary = PullRequestSnapshot & {
   /** Markdown source from GitHub. Renderers must treat it as untrusted text. */
   readonly description?: string;
   readonly author: string;
+  /** Author's GitHub avatar URL when the read source reports one; the renderer never loads it directly (see `GitHubComment.authorAvatarUrl`). */
+  readonly authorAvatarUrl?: string;
   readonly headBranch: string;
   readonly baseBranch: string;
   readonly reviewState:

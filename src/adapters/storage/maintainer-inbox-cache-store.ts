@@ -75,6 +75,8 @@ const rowSchema = v.strictObject({
   }),
   title: v.pipe(v.string(), v.minLength(1)),
   author: v.pipe(v.string(), v.minLength(1)),
+  /** Only the URL is cached; the resolved `data:` URI is re-read from the avatar cache on each list so this file stays free of base64 image bytes. */
+  authorAvatarUrl: v.optional(v.string()),
   baseBranch: v.pipe(v.string(), v.minLength(1)),
   headBranch: v.pipe(v.string(), v.minLength(1)),
   currentHeadSha: v.string(),
@@ -256,6 +258,7 @@ function parseRow(
     identity: identity.value,
     title: input.title,
     author: input.author,
+    ...definedProps({ authorAvatarUrl: input.authorAvatarUrl }),
     baseBranch: input.baseBranch,
     headBranch: input.headBranch,
     currentHeadSha: currentHeadSha.value,

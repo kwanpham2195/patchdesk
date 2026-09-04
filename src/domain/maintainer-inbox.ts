@@ -210,6 +210,10 @@ export type MaintainerInboxRow = {
   readonly identity: PullRequestRef;
   readonly title: string;
   readonly author: string;
+  /** Author's GitHub avatar URL when the read reported one; never loaded by the renderer. */
+  readonly authorAvatarUrl?: string;
+  /** `data:` URI resolved by the inbox service from the on-disk avatar cache; absent when the avatar was never synced or the sync failed, and the only form an `<img>` may load under the renderer's `img-src 'self' data:` CSP. */
+  readonly authorAvatarDataUri?: string;
   readonly baseBranch: string;
   readonly headBranch: string;
   readonly currentHeadSha: GitSha;
@@ -298,6 +302,7 @@ export function projectMaintainerInboxRow(input: {
     identity: input.summary.ref,
     title: input.summary.title,
     author: input.summary.author,
+    ...definedProps({ authorAvatarUrl: input.summary.authorAvatarUrl }),
     baseBranch: input.summary.baseBranch,
     headBranch: input.summary.headBranch,
     currentHeadSha: input.summary.headSha,
@@ -351,6 +356,7 @@ function projectMergedMaintainerInboxRow(input: {
     identity: input.summary.ref,
     title: input.summary.title,
     author: input.summary.author,
+    ...definedProps({ authorAvatarUrl: input.summary.authorAvatarUrl }),
     baseBranch: input.summary.baseBranch,
     headBranch: input.summary.headBranch,
     currentHeadSha: input.summary.headSha,

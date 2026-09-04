@@ -28,7 +28,7 @@ stateDiagram-v2
 
 The listing receives one page already filtered and ordered by GitHub. The header and filter bar identify the Selected repository and current query. The row list is a keyboard-operable listbox; the selected row is highlighted and the Review details inspector is open by default when the viewport allows it.
 
-Rows show the title and number, author, labels, Draft or Merged badge, Brief badge when a retained Brief exists for the current head, change statistics, CI icon, and relative update age. Missing change statistics show an em dash rather than a fabricated zero. The inspector adds branch direction, current head, checks, labels, Insight readiness chips with their Request buttons, last-review head, and local Review status.
+Rows show the title and number, author, labels, Draft or Merged badge, Brief badge when a retained Brief exists for the current head, change statistics, CI icon, and relative update age. The author appears with their GitHub avatar when Patchdesk holds it in the local avatar cache, and with an initials circle otherwise. Missing change statistics show an em dash rather than a fabricated zero. The inspector adds branch direction, current head, checks, labels, Insight readiness chips with their Request buttons, last-review head, and local Review status.
 
 ### Leave unchanged
 
