@@ -164,6 +164,26 @@ describe("PullRequestImageService", () => {
     expect(fetch.calls).toHaveLength(0);
   });
 
+  it("refuses a pull request on a host the profile is not configured with", async () => {
+    const foreign = must(
+      parsePullRequestInput("https://evil.example/acme/widgets/pull/7"),
+    );
+    const fetch = stubFetch(() => new Response(png));
+    const images = await service(fetch);
+
+    const resolved = await images.resolve({
+      profileId,
+      pullRequest: foreign,
+      imageUrl: "https://evil.example/user-attachments/assets/abc",
+    });
+
+    expect(resolved).toEqual({
+      _tag: "err",
+      error: { reason: "invalid_input" },
+    });
+    expect(fetch.calls).toHaveLength(0);
+  });
+
   it("refuses a redirect that leaves the allowed hosts", async () => {
     const fetch = stubFetch(
       () =>
