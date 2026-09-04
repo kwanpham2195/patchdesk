@@ -446,6 +446,37 @@ describe("ReviewRefreshService", () => {
     ).toBe(commentAt);
   });
 
+  it("records a plain conversation comment's moment, which no review thread carries", async () => {
+    const issueCommentAt = must(parseIsoTimestamp("2026-08-01T00:07:00.000Z"));
+    const { service, calls } = createReviewRefreshFixture({
+      currentPullRequest: { ...snapshot.pullRequest, updatedAt: at },
+      publishedFeedbackResult: ok({
+        reviews: [],
+        comments: [],
+        issueComments: [
+          {
+            id: "ic-1",
+            author: "pmquan2",
+            body: "A plain conversation comment.",
+            createdAt: issueCommentAt,
+            updatedAt: issueCommentAt,
+            url: "https://github.com/centraldigital/patchdesk/pull/42#issuecomment-1",
+            canEdit: false,
+            canDelete: false,
+          },
+        ],
+        complete: true,
+      }),
+    });
+
+    await expect(
+      service.refresh({ profileId, reviewId: review.id }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    expect(
+      calls.savedReviews.at(-1)?.representedRemote?.pullRequestUpdatedAt,
+    ).toBe(issueCommentAt);
+  });
+
   it("still succeeds when the injected avatar sync fails (avatars are decorative, never fatal)", async () => {
     const { service } = createReviewRefreshFixture({ avatarSyncFailure: true });
     await expect(

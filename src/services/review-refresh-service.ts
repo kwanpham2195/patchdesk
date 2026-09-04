@@ -488,6 +488,12 @@ function latestRepresentedMoment(
   for (const comment of publishedFeedback?.comments ?? []) {
     latest = Math.max(latest, Date.parse(comment.createdAt));
   }
+  // A plain conversation comment appears nowhere else: `comments.threads` is
+  // review threads only, so without this a refresh whose only new content is
+  // an issue comment would vouch for an earlier moment than it holds.
+  for (const comment of publishedFeedback?.issueComments ?? []) {
+    latest = Math.max(latest, Date.parse(comment.createdAt));
+  }
   // SAFETY: Date.prototype.toISOString() always returns a valid ISO 8601 instant.
   return new Date(latest).toISOString() as IsoTimestamp;
 }
