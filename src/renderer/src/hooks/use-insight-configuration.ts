@@ -15,7 +15,7 @@ import { loadCodexModelCache, saveCodexModelCache } from "../codex-model-cache";
 import {
   parseInsightProviderCatalog,
   type InsightProviderCatalogModel,
-} from "../renderer-contracts";
+} from "../insight-catalog-contracts";
 import type { InsightRunDialogType } from "../components/insight-run-dialog";
 import type { InsightSelection } from "../components/insight-panels";
 
