@@ -3,6 +3,11 @@ import { Circle, CircleCheck } from "lucide-react";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 
 import { cn } from "../lib/utils";
+import {
+  groupMarkdownHtml,
+  isMarkdownHtmlElement,
+  type MarkdownNode,
+} from "../markdown-inline-html";
 
 const marked = new Marked({ gfm: true, breaks: false });
 
@@ -19,10 +24,18 @@ type MarkdownImageRenderInput = {
   readonly key: string;
 };
 
-/** A source-specific decision for one raw HTML token. */
+/**
+ * A source-specific decision for one raw HTML token.
+ *
+ * `marked` lexes inline HTML one tag at a time, so an element's own content
+ * arrives as sibling tokens. When those have been reassembled, `html` is the
+ * opening tag alone and the other two fields carry the rest of the element.
+ */
 type MarkdownHtmlRenderInput = {
   readonly html: string;
   readonly key: string;
+  readonly closeHtml?: string;
+  readonly children?: ReadonlyArray<ReactNode>;
 };
 
 /** A source-specific decision for one Mermaid code fence. */
@@ -111,11 +124,19 @@ function lexSafely(markdown: string): TokensList {
 }
 
 function renderBlocks(
-  tokens: ReadonlyArray<Token>,
+  tokens: ReadonlyArray<MarkdownNode>,
   policy: MarkdownContentPolicy,
 ): ReadonlyArray<ReactNode> {
-  return tokens.map((token, index) => {
+  return groupMarkdownHtml(tokens).map((token, index) => {
     const key = tokenKey(token, index);
+    if (isMarkdownHtmlElement(token)) {
+      return policy.renderHtml({
+        html: token.openTag,
+        closeHtml: token.closeTag,
+        children: renderBlocks(token.tokens, policy),
+        key,
+      });
+    }
     switch (token.type) {
       case "space":
         return null;
@@ -240,11 +261,19 @@ function renderBlocks(
 }
 
 function renderInline(
-  tokens: ReadonlyArray<Token>,
+  tokens: ReadonlyArray<MarkdownNode>,
   policy: MarkdownContentPolicy,
 ): ReadonlyArray<ReactNode> {
-  return tokens.map((token, index) => {
+  return groupMarkdownHtml(tokens).map((token, index) => {
     const key = tokenKey(token, index);
+    if (isMarkdownHtmlElement(token)) {
+      return policy.renderHtml({
+        html: token.openTag,
+        closeHtml: token.closeTag,
+        children: renderInline(token.tokens, policy),
+        key,
+      });
+    }
     switch (token.type) {
       case "text":
       case "escape":
@@ -348,11 +377,12 @@ function headingClassName(depth: number): string {
 }
 
 /** Provides React with a stable per-position key for a Markdown token. */
-function tokenKey(token: Token, index: number): string {
+function tokenKey(token: MarkdownNode, index: number): string {
   return `${index}-${token.type}`;
 }
 
-function tokensOf(token: Token): ReadonlyArray<Token> {
+function tokensOf(token: MarkdownNode): ReadonlyArray<MarkdownNode> {
+  if (isMarkdownHtmlElement(token)) return token.tokens;
   return "tokens" in token && Array.isArray(token.tokens)
     ? token.tokens
     : [token];

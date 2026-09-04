@@ -9,7 +9,15 @@ import { cn } from "../lib/utils";
 const generatedMarkdownPolicy: MarkdownContentPolicy = {
   renderLink: ({ children, key }) => <span key={key}>{children}</span>,
   renderImage: ({ key }) => <span key={key}>[Image omitted]</span>,
-  renderHtml: ({ html, key }) => <span key={key}>{html}</span>,
+  // Model prose shows raw HTML as its own source text, so a reassembled
+  // element has to print both tags around the content that sat between them.
+  renderHtml: ({ html, closeHtml, children, key }) => (
+    <span key={key}>
+      {html}
+      {children}
+      {closeHtml}
+    </span>
+  ),
 };
 
 /** Renders model prose with shared Markdown presentation and inert rich content. */

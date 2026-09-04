@@ -203,10 +203,11 @@ function githubMarkdownPolicy(
     },
     renderImage: ({ token, key }) =>
       renderMarkdownImage(token, imageSource, key),
-    renderHtml: ({ html, key }) => (
+    renderHtml: ({ html, closeHtml, children, key }) => (
       <HtmlContent
         key={key}
-        html={html}
+        html={closeHtml === undefined ? html : `${html}${closeHtml}`}
+        {...(children === undefined ? {} : { children })}
         pullRequest={pullRequest}
         imageSource={imageSource}
       />
@@ -237,25 +238,27 @@ function renderMarkdownImage(
 
 function HtmlContent({
   html,
+  children,
   pullRequest,
   imageSource,
 }: {
   readonly html: string;
+  readonly children?: ReadonlyArray<React.ReactNode>;
   readonly pullRequest: PullRequestRef | undefined;
   readonly imageSource: PullRequestImageSource | undefined;
 }): React.JSX.Element {
   if (globalThis.DOMParser === undefined) return <span>{html}</span>;
   const documentFragment = new DOMParser().parseFromString(html, "text/html");
-  return (
-    <>
-      {renderHtmlNodes(
-        Array.from(documentFragment.body.childNodes),
-        pullRequest,
-        imageSource,
-        "html",
-      )}
-    </>
-  );
+  const nodes = Array.from(documentFragment.body.childNodes);
+  const only = nodes.length === 1 ? nodes[0] : undefined;
+  // A reassembled element parses to an empty tag pair, so its content arrives
+  // already rendered from the Markdown tokens that sat between the two tags.
+  if (children !== undefined && only instanceof Element) {
+    return (
+      <>{renderHtmlNode(only, pullRequest, imageSource, "html", children)}</>
+    );
+  }
+  return <>{renderHtmlNodes(nodes, pullRequest, imageSource, "html")}</>;
 }
 
 function renderHtmlNodes(
@@ -274,17 +277,15 @@ function renderHtmlNode(
   pullRequest: PullRequestRef | undefined,
   imageSource: PullRequestImageSource | undefined,
   key: string,
+  substituteChildren?: ReadonlyArray<React.ReactNode>,
 ): React.ReactNode {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent;
   if (!(node instanceof Element)) return null;
 
   const tag = node.tagName.toLowerCase();
-  const children = renderHtmlNodes(
-    Array.from(node.childNodes),
-    pullRequest,
-    imageSource,
-    key,
-  );
+  const children =
+    substituteChildren ??
+    renderHtmlNodes(Array.from(node.childNodes), pullRequest, imageSource, key);
   switch (tag) {
     case "script":
     case "style":

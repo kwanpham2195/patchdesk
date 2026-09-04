@@ -91,6 +91,32 @@ describe("PullRequestDescription", () => {
     );
   });
 
+  it("gives a raw HTML anchor its own words and no empty control beside them", async () => {
+    const user = userEvent.setup();
+    const openExternalHttps = vi.fn(async () => true);
+    desktop = installDesktopDouble({}, { openExternalHttps });
+
+    const { container } = render(
+      <PullRequestDescriptionPreview
+        markdown={
+          '\u{1F4A1} <a href="/centraldigital/patchdesk/new/master?filename=x" class="Link--inTextBlock">Add a `code-review` agent skill</a> or configure MCP servers.'
+        }
+        pullRequest={pullRequest}
+      />,
+    );
+
+    const link = screen.getByRole("button", {
+      name: "Add a code-review agent skill",
+    });
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(container.textContent).toContain(" or configure MCP servers.");
+
+    await user.click(link);
+    expect(openExternalHttps).toHaveBeenCalledWith(
+      "https://github.com/centraldigital/patchdesk/new/master?filename=x",
+    );
+  });
+
   it("renders list-item text and inline Markdown", () => {
     render(
       <PullRequestDescriptionPreview
