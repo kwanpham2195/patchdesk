@@ -845,6 +845,10 @@ export function ReviewWorkbench({
                           {...(diffConversationActions === undefined
                             ? {}
                             : { conversationActions: diffConversationActions })}
+                          bodyContext={definedProps({
+                            pullRequest: externalPullRequest,
+                            profileId: model.session.key.profileId,
+                          })}
                           hideFileNavigation
                           leadingAction={
                             <Tooltip>

@@ -11,6 +11,7 @@ import {
   PendingReviewThreadCard,
   PendingReviewWriteCard,
 } from "./review-diff-authoring";
+import type { PullRequestBodyContext } from "./pull-request-description";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import { Button } from "@/components/ui/button";
 
@@ -21,6 +22,7 @@ export function renderReviewDiffAnnotation(
     thread: ConversationThreadCardData,
   ) => ConversationThreadCardData,
   onOpenFindingInAnalysis: ((findingId: string) => void) | undefined,
+  bodyContext: PullRequestBodyContext,
 ): React.JSX.Element | null {
   const finding = annotation.metadata;
   if (finding === undefined) return null;
@@ -28,19 +30,35 @@ export function renderReviewDiffAnnotation(
     return <InlineCommentComposer {...finding.localComposer} />;
   }
   if (finding.pendingConversation !== undefined) {
-    return <PendingConversationCard {...finding.pendingConversation} />;
+    return (
+      <PendingConversationCard
+        {...finding.pendingConversation}
+        bodyContext={bodyContext}
+      />
+    );
   }
   if (finding.pendingReviewWrite !== undefined) {
-    return <PendingReviewWriteCard {...finding.pendingReviewWrite} />;
+    return (
+      <PendingReviewWriteCard
+        {...finding.pendingReviewWrite}
+        bodyContext={bodyContext}
+      />
+    );
   }
   if (finding.pendingReviewThread !== undefined) {
-    return <PendingReviewThreadCard {...finding.pendingReviewThread} />;
+    return (
+      <PendingReviewThreadCard
+        {...finding.pendingReviewThread}
+        bodyContext={bodyContext}
+      />
+    );
   }
   if (finding.conversationThread !== undefined) {
     return (
       <ConversationThreadCard
         thread={decorateConversationThread(finding.conversationThread)}
         navAnchorId={finding.id}
+        bodyContext={bodyContext}
       />
     );
   }

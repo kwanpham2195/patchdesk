@@ -14,6 +14,7 @@ import {
   type ReviewInlineAnnotation,
   type SelectedDiffRange,
 } from "./review-diff-view";
+import type { PullRequestBodyContext } from "./pull-request-description";
 import { parseReviewDiff } from "@/review-diff-data";
 import type { FileFindingCount } from "@/review-finding-counts";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ export function DiffWorkbench({
   localCommentAuthoring,
   pendingReviewComposer,
   conversationActions,
+  bodyContext,
   controlledSelectedPath,
   onSelectedPathChange,
   onActiveFileChange,
@@ -67,6 +69,8 @@ export function DiffWorkbench({
   readonly localCommentAuthoring?: LocalCommentAuthoring;
   readonly pendingReviewComposer?: PendingReviewComposerActions;
   readonly conversationActions?: ReviewConversationActions;
+  /** What an inline conversation or pending card resolves its images and links against. */
+  readonly bodyContext?: PullRequestBodyContext;
   readonly controlledSelectedPath?: string;
   readonly onSelectedPathChange?: (path: string) => void;
   readonly onActiveFileChange?: (path: string) => void;
@@ -270,6 +274,7 @@ export function DiffWorkbench({
             {...(conversationActions === undefined
               ? {}
               : { conversationActions })}
+            {...(bodyContext === undefined ? {} : { bodyContext })}
             {...(annotations === undefined ? {} : { annotations })}
             {...(findingCountsByPath === undefined
               ? {}
