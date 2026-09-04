@@ -1,6 +1,16 @@
+import { FileText, History, Route, SearchIcon } from "lucide-react";
+
 import { Alert, AlertDescription } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "./ui/empty";
 import { ScopeGauge } from "./scope-gauge";
 import { Spinner } from "./ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
@@ -27,6 +37,21 @@ const GENERATE_LABELS = {
   walkthrough: "Generate Walkthrough",
   brief: "Generate brief",
 } as const satisfies Record<InsightRunDialogType, string>;
+/** What each Insight gives the reviewer, shown before one has been generated. */
+const INSIGHT_PURPOSES = {
+  analysis:
+    "Weighs the change and reports findings with evidence so you can decide whether it should merge.",
+  walkthrough:
+    "Explains how the changed code behaves now, chapter by chapter, so you can read it in order.",
+  brief:
+    "Maps what changed structurally and where to start, so you can orient before reading the diff.",
+} as const satisfies Record<InsightRunDialogType, string>;
+const INSIGHT_ICONS = {
+  analysis: SearchIcon,
+  walkthrough: Route,
+  brief: FileText,
+} as const satisfies Record<InsightRunDialogType, React.ElementType>;
+const INSIGHT_STATE_CLASS = "mx-auto max-w-2xl border py-10";
 
 export function InsightNavRail({
   workbench,
@@ -213,15 +238,19 @@ export function InsightRunning({
   readonly projection: InsightProjection | undefined;
 }): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-3 py-6">
-      <h3 className="font-medium">{INSIGHT_NOUNS[type]} is running</h3>
-      <p className="text-sm text-muted-foreground">
-        {projection?.activeRun === undefined
-          ? "Preparing a bounded run…"
-          : `Started ${projection.activeRun.startedAt}. Partial results are not shown.`}
-      </p>
-      <Spinner />
-    </div>
+    <Empty className={INSIGHT_STATE_CLASS}>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Spinner />
+        </EmptyMedia>
+        <EmptyTitle>{INSIGHT_NOUNS[type]} is running</EmptyTitle>
+        <EmptyDescription>
+          {projection?.activeRun === undefined
+            ? "Preparing a bounded run…"
+            : `Started ${projection.activeRun.startedAt}. Partial results are not shown.`}
+        </EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
@@ -297,18 +326,25 @@ export function InsightOutdated({
   readonly currentRevision: string;
 }): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-3 py-6">
-      <h3 className="font-medium">{INSIGHT_NOUNS[type]} is outdated</h3>
-      <p className="text-sm text-muted-foreground">
-        Retained revision {retainedRevision?.slice(0, 8) ?? "unknown"} differs
-        from current revision {currentRevision.slice(0, 8)}. This evidence
-        remains readable, but it cannot navigate current code or change the
-        Review draft.
-      </p>
-      <Button size="sm" onClick={onRetry}>
-        Run for latest revision
-      </Button>
-    </div>
+    <Empty className={INSIGHT_STATE_CLASS}>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <History />
+        </EmptyMedia>
+        <EmptyTitle>{INSIGHT_NOUNS[type]} is outdated</EmptyTitle>
+        <EmptyDescription>
+          Retained revision {retainedRevision?.slice(0, 8) ?? "unknown"} differs
+          from current revision {currentRevision.slice(0, 8)}. This evidence
+          remains readable, but it cannot navigate current code or change the
+          Review draft.
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button size="sm" onClick={onRetry}>
+          Run for latest revision
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
 
@@ -337,21 +373,22 @@ export function InsightEmpty({
   readonly onRun: () => void;
   readonly disabled: boolean;
 }): React.JSX.Element {
+  const Icon = INSIGHT_ICONS[type];
   return (
-    <div className="flex max-w-2xl flex-col items-start gap-3 py-6">
-      <h3 className="font-medium">No {type} has been generated</h3>
-      <p className="text-sm text-muted-foreground">
-        Run this optional Insight for the represented Review snapshot.
-      </p>
-      <Button
-        size="sm"
-        className="self-start"
-        onClick={onRun}
-        disabled={disabled}
-      >
-        {GENERATE_LABELS[type]}
-      </Button>
-    </div>
+    <Empty className={INSIGHT_STATE_CLASS}>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Icon />
+        </EmptyMedia>
+        <EmptyTitle>No {INSIGHT_NOUNS[type].toLowerCase()} yet</EmptyTitle>
+        <EmptyDescription>{INSIGHT_PURPOSES[type]}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button size="sm" onClick={onRun} disabled={disabled}>
+          {GENERATE_LABELS[type]}
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
 
