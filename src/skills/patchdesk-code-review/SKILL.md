@@ -5,8 +5,8 @@ description: Review a pull request only through explicitly approved Patchdesk ca
 
 # Patchdesk code review constraints
 
-- Treat this skill as analysis guidance, never as permission to execute shell commands.
-- Never ask a model to execute shell commands, access a sandbox, alter a checkout, or invoke GitHub.
-- Never create reviews, comments, merges, pushes, or any other GitHub write.
-- Keep tokens, credentials, capability values, and raw command output out of review findings.
-- Return only evidence-backed findings after a future Patchdesk capability has supplied the selected review data.
+- Do not execute shell commands, access a sandbox, alter a checkout, or use the network.
+- Do not create reviews, comments, merges, pushes, or any other GitHub write. Patchdesk owns every publication and merge decision.
+- Keep tokens, credentials, capability values, and raw command output out of the review findings.
+- Read the review data only through the supplied inspection tools and the prompt's own review input, context document, and patch.
+- Return only findings you can ground in that data.
