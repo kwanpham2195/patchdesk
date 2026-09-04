@@ -199,7 +199,7 @@ function ConversationCommentRow({
                 type="button"
                 variant="link"
                 size="xs"
-                className="h-auto p-0 text-xs text-destructive"
+                className="text-xs text-destructive"
                 disabled={deleting}
                 onClick={async () => {
                   if (deletingRef.current) return;

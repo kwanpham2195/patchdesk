@@ -457,7 +457,7 @@ function MergeReadinessDetail({
                   // read as a third colour inside a tinted card. Everything
                   // else is left to the variant: it underlines on hover, and
                   // `size="sm"` supplies the icon gap via `data-icon`.
-                  className="h-auto p-0 text-inherit"
+                  className="text-inherit"
                   onClick={() =>
                     void openPullRequestExternalUrl(
                       pullRequestPageUrl(pullRequest).toString(),
@@ -564,7 +564,7 @@ function FindingsAcknowledgementCard({
           <Button
             variant="link"
             size="sm"
-            className="h-auto p-0 text-inherit"
+            className="text-inherit"
             onClick={onReview}
           >
             Review findings

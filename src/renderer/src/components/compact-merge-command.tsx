@@ -215,7 +215,7 @@ export function CompactMergeCommand(props: {
                       <Button
                         variant="link"
                         size="sm"
-                        className="ml-1 h-auto p-0 align-baseline"
+                        className="ml-1 align-baseline"
                         onClick={() => {
                           if (props.pullRequest !== undefined)
                             void openPullRequestExternalUrl(
