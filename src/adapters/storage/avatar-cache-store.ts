@@ -84,7 +84,9 @@ export async function avatarDataUri(
 ): Promise<Result<string, AvatarCacheFailure>> {
   const read = await readAvatar(paths, profileId, avatarHash);
   if (read._tag === "err") return read;
-  const contentType = sniffImageContentType(read.value);
+  // An avatar whose bytes sniff as nothing recognized is still shown: GitHub's
+  // own identicon is a PNG, so that is the safest label for it.
+  const contentType = sniffImageContentType(read.value) ?? "image/png";
   const base64 = Buffer.from(
     read.value.buffer,
     read.value.byteOffset,
@@ -143,8 +145,12 @@ export function withAvatarDataUri<
   return dataUri === undefined ? item : { ...item, avatarDataUri: dataUri };
 }
 
-/** Falls back to image/png (GitHub's own identicon format) for unrecognized bytes. */
-function sniffImageContentType(bytes: Uint8Array): string {
+/**
+ * Image content type read from the bytes' magic number, or `undefined` when
+ * they are not a recognized image. Shared with the pull-request image cache,
+ * which rejects anything this cannot name rather than labelling it.
+ */
+export function sniffImageContentType(bytes: Uint8Array): string | undefined {
   if (
     bytes.length >= 8 &&
     bytes[0] === 0x89 &&
@@ -180,5 +186,5 @@ function sniffImageContentType(bytes: Uint8Array): string {
     bytes[11] === 0x50
   )
     return "image/webp";
-  return "image/png";
+  return undefined;
 }

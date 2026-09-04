@@ -287,4 +287,26 @@ export class PatchdeskPaths {
   avatarFile(profileId: WorkspaceProfileId, avatarHash: string): string {
     return join(this.avatarsDirectory(profileId), `${avatarHash}.bin`);
   }
+
+  /**
+   * Shared per-profile cache of the images embedded in pull request bodies
+   * and comments, keyed by a hash of the source image URL. Cached rather than
+   * stored for the same reason as `avatarsDirectory`: the bytes are always
+   * re-fetchable from GitHub, and one image can appear in several reviews.
+   */
+  pullRequestImagesDirectory(profileId: WorkspaceProfileId): string {
+    return join(
+      this.cacheDirectory(),
+      "profiles",
+      profileId,
+      "pull-request-images",
+    );
+  }
+
+  pullRequestImageFile(
+    profileId: WorkspaceProfileId,
+    imageHash: string,
+  ): string {
+    return join(this.pullRequestImagesDirectory(profileId), `${imageHash}.bin`);
+  }
 }
