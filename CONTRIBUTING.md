@@ -419,13 +419,13 @@ publishing it.
    maintainer runs the same steps locally instead, in this order:
 
    ```bash
-   pnpm release:notes 0.2.0 > release-notes.md
+   pnpm --silent release:notes 0.2.0 > release-notes.md
    pnpm lint
    pnpm typecheck
    pnpm test:all
    pnpm package:mac
    pnpm test:package-smoke
-   gh release create v0.2.0 --draft --title v0.2.0 --notes-file release-notes.md release/*.dmg release/*.zip
+   gh release create v0.2.0 --draft --title v0.2.0 --notes-file release-notes.md release/Patchdesk-0.2.0-arm64.dmg release/Patchdesk-0.2.0-arm64-mac.zip
    ```
 
    `pnpm release:notes` extracts the `## <version>` section of
@@ -438,7 +438,8 @@ publishing it.
    opens a **draft** GitHub release with the `.dmg` and the `.zip` attached.
    `release-notes.md` is a scratch file that `.gitignore` does not list;
    delete it after the draft is created rather than adding an ignore rule
-   for it.
+   for it. `release/` is not cleaned between builds, so older versions'
+   downloads sit beside the new ones and a glob would attach them all.
 
 5. Open the draft release, read the notes, and publish.
 
