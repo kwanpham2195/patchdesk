@@ -25,6 +25,7 @@ import { LabelService } from "../services/label-service";
 import { AssigneeService } from "../services/assignee-service";
 import { ReviewerService } from "../services/reviewer-service";
 import { PendingReviewService } from "../services/pending-review-service";
+import { PullRequestImageService } from "../services/pull-request-image-service";
 import { DirectSummaryReviewService } from "../services/direct-summary-review-service";
 import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
 import { AvatarSyncService } from "../services/avatar-sync-service";
@@ -71,6 +72,7 @@ export type LocalApiContainer = {
   readonly pendingReviews: PendingReviewService;
   readonly directSummaryReviews: DirectSummaryReviewService | undefined;
   readonly publishedFeedback: PublishedFeedbackService;
+  readonly pullRequestImages: PullRequestImageService;
 };
 
 /** Either the built container, or the startup refusal that stopped it. */
@@ -201,6 +203,13 @@ export async function buildLocalApiContainer(
     log: logs,
   });
   const avatarRailDependencies = { paths, sync: avatarSync };
+  const pullRequestImages = new PullRequestImageService({
+    paths,
+    profiles,
+    credentials,
+    fetch: (url, init) => fetch(url, init),
+    log: logs,
+  });
   const assigneeWrites = new AssigneeService(
     reviewWriteGate,
     github,
@@ -422,6 +431,7 @@ export async function buildLocalApiContainer(
       pendingReviews,
       directSummaryReviews,
       publishedFeedback,
+      pullRequestImages,
     },
   };
 }

@@ -11,6 +11,7 @@ import { registerDashboardRoutes } from "./routes/dashboard-routes";
 import { registerInsightRoutes } from "./routes/insight-routes";
 import { registerPendingReviewRoutes } from "./routes/pending-review-routes";
 import { registerPublishedFeedbackRoutes } from "./routes/published-feedback-routes";
+import { registerPullRequestImageRoutes } from "./routes/pull-request-image-routes";
 import { registerReviewLifecycleRoutes } from "./routes/review-lifecycle-routes";
 import { registerReviewWriteRoutes } from "./routes/review-write-routes";
 import { registerStorageDiagnosticsRoutes } from "./routes/storage-diagnostics-routes";
@@ -45,6 +46,7 @@ export async function startLocalApiServer(
   registerReviewWriteRoutes(app, container);
   registerPendingReviewRoutes(app, container);
   registerPublishedFeedbackRoutes(app, container);
+  registerPullRequestImageRoutes(app, container);
   registerReviewLifecycleRoutes(app, container);
   registerInsightRoutes(app, container);
   registerStorageDiagnosticsRoutes(app, container);
