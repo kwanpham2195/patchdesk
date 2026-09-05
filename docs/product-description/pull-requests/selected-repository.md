@@ -25,7 +25,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The active profile determines the watchlist. The picker lists each watched repository as `owner/repository`, including a profile with exactly one repository so the screen's scope remains visible. A saved choice is used only if its host, owner, and repository identity still appears in the current watchlist.
+The active profile determines the watchlist. The picker lists each watched repository as `owner/repository`, including a profile with exactly one repository so the screen's scope remains visible. Its trigger is wide enough for a typical full name; a longer name truncates in the trigger and reveals the complete `owner/repository` value on hover. A saved choice is used only if its host, owner, and repository identity still appears in the current watchlist.
 
 The initial request leaves the repository out until the renderer has learned the active profile's watchlist. The local service resolves the active profile and falls back to its first watched repository for that bootstrap request. Later requests send the Selected repository explicitly.
 

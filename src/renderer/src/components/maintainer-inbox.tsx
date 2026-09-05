@@ -50,6 +50,11 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { type ReviewOpeningState } from "./review-opening-status";
 import {
   Select,
@@ -373,6 +378,10 @@ function InboxHeader({
     readonly refreshedAt?: string | undefined;
   };
 }): React.JSX.Element {
+  const selectedRepositoryLabel =
+    selectedRepository === undefined
+      ? undefined
+      : `${selectedRepository.owner}/${selectedRepository.repo}`;
   return (
     <header className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2.5 min-[1280px]:px-3">
       <div className="min-w-0">
@@ -403,13 +412,22 @@ function InboxHeader({
               if (next !== undefined) onRepositoryChange(next);
             }}
           >
-            <SelectTrigger
-              size="sm"
-              className="max-w-48 text-xs"
-              aria-label="Repository"
-            >
-              <SelectValue placeholder="Select a repository" />
-            </SelectTrigger>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger
+                    size="sm"
+                    className="max-w-72 text-xs"
+                    aria-label="Repository"
+                  >
+                    <SelectValue placeholder="Select a repository" />
+                  </SelectTrigger>
+                }
+              />
+              {selectedRepositoryLabel === undefined ? null : (
+                <TooltipContent>{selectedRepositoryLabel}</TooltipContent>
+              )}
+            </Tooltip>
             <SelectContent>
               <SelectGroup>
                 <SelectLabel>Repository</SelectLabel>

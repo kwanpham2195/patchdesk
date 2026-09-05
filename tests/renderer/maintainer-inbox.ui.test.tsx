@@ -357,7 +357,7 @@ describe("MaintainerInbox", () => {
     expect(onPageSizeChange).toHaveBeenCalledWith(10);
   });
 
-  const repoA = { host: "github.com", owner: "acme", repo: "widgets" };
+  const repoA = { ...row.identity, repo: "repository-name-that-is-too-long" };
   const repoB = { host: "github.com", owner: "acme", repo: "gadgets" };
 
   it("does not render the repository picker without a watchlist", () => {
@@ -375,7 +375,7 @@ describe("MaintainerInbox", () => {
     expect(screen.queryByRole("combobox", { name: "Repository" })).toBeNull();
   });
 
-  it("still shows the labelled repository picker for exactly one watched repository", () => {
+  it("shows the full label and tooltip for exactly one watched repository", async () => {
     render(
       <MaintainerInbox
         profileId="one-repo"
@@ -391,7 +391,13 @@ describe("MaintainerInbox", () => {
     );
     const combo = screen.getByRole("combobox", { name: "Repository" });
     // Labelled so the current state is readable without opening it.
-    expect(combo.textContent).toContain("acme/widgets");
+    expect(combo.textContent).toContain(
+      "owner/repository-name-that-is-too-long",
+    );
+    await userEvent.hover(combo);
+    await vi.waitFor(() =>
+      expect(combo.hasAttribute("data-popup-open")).toBe(true),
+    );
   });
 
   it("selects a different watched repository by keyboard alone and calls back", async () => {

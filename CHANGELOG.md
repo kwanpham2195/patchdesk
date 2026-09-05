@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Analysis** gains a Copy as markdown prompt button that copies the open findings as a prompt you can paste into a local coding agent to fix them.
+- Widened the **Pull requests** repository picker so typical `owner/repository` names remain readable and longer names reveal their complete value on hover. #101
 
 ## 0.0.4 - 2026-09-04
 
