@@ -31,7 +31,7 @@ Evidence detail stays collapsed until requested. Expanding it reveals the comple
 
 ### Leave unchanged
 
-Reading, expanding evidence, switching Findings, or leaving Insights records nothing on GitHub. Generated prose and suggestions are not commands. Closing a Dismiss form before confirmation leaves the Finding actionable.
+Reading, expanding evidence, switching Findings, or leaving Insights records nothing on GitHub. Generated prose and suggestions are not commands. Copy as markdown prompt copies the open Findings, the change summary, and the verification steps as a Markdown prompt for a local coding agent, and records nothing on GitHub. Closing a Dismiss form before confirmation leaves the Finding actionable.
 
 ### Begin an action
 

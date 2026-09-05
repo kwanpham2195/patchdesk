@@ -1,7 +1,11 @@
-import { useContext, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
+import {
+  renderAnalysisFixPrompt,
+  type AnalysisFixPromptContext,
+} from "../analysis-fix-prompt";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import {
   analysisVerdictLabel,
@@ -76,6 +80,8 @@ export type AnalysisReaderProps = {
   readonly onFinishWithAnalysisSummary?: () => void;
   /** Opens the Diff tab at a mapped finding's lines. */
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
+  /** Names the repository and branches in the copied fix prompt. */
+  readonly fixPromptContext?: AnalysisFixPromptContext;
 };
 
 /** Decision-first read-side view of one retained Analysis result. */
@@ -89,6 +95,7 @@ export function AnalysisReader({
   canFinishWithAnalysisSummary = false,
   onFinishWithAnalysisSummary,
   onOpenFindingInDiff,
+  fixPromptContext,
 }: AnalysisReaderProps): React.JSX.Element {
   const admittedFindingIds = useRef<Set<string>>(new Set());
   const [findingActions, setFindingActions] = useState<
@@ -259,6 +266,18 @@ export function AnalysisReader({
                 ? "All findings are already handled."
                 : "Resolve or add each item before you finish the review."}
           </CardDescription>
+          <CardAction>
+            <CopyFixPromptButton
+              disabled={
+                !result.findings.some(
+                  (finding) => finding.disposition !== "dismissed",
+                )
+              }
+              buildPrompt={() =>
+                renderAnalysisFixPrompt({ context: fixPromptContext, result })
+              }
+            />
+          </CardAction>
         </CardHeader>
         {hasNoGeneratedFindings ? (
           <CardContent>
@@ -353,6 +372,50 @@ export function AnalysisReader({
         />
       )}
     </section>
+  );
+}
+
+/**
+ * Copies the open findings as a markdown prompt. The label only flips to
+ * "Copied" once the clipboard write resolves, so a rejection never claims
+ * success.
+ */
+function CopyFixPromptButton({
+  disabled,
+  buildPrompt,
+}: {
+  readonly disabled: boolean;
+  readonly buildPrompt: () => string;
+}): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  useEffect(
+    () => () => {
+      clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={disabled}
+      title="Copy the open findings as a prompt for a local coding agent"
+      onClick={() => {
+        navigator.clipboard
+          .writeText(buildPrompt())
+          .then(() => {
+            setCopied(true);
+            clearTimeout(copiedTimer.current);
+            copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+          })
+          .catch(() => undefined);
+      }}
+    >
+      {copied ? "Copied" : "Copy as markdown prompt"}
+    </Button>
   );
 }
 

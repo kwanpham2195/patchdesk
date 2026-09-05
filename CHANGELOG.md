@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Analysis** gains a Copy as markdown prompt button that copies the open findings as a prompt you can paste into a local coding agent to fix them.
+
 ## 0.0.4 - 2026-09-04
 
 - **Insights** now reads in the order you review a pull request: Brief, then Walkthrough, then Analysis, and it opens on Brief rather than Analysis, so you meet the shape of the change before the judgment of it; an Insight you were last reading still opens where you left it.

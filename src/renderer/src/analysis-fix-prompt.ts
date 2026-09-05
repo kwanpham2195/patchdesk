@@ -1,4 +1,4 @@
-import type { ReviewResult } from "../../domain/review-result";
+import type { AnalysisResult } from "./analysis-headline";
 
 export type AnalysisFixPromptContext = {
   readonly owner: string;
@@ -8,7 +8,17 @@ export type AnalysisFixPromptContext = {
   readonly baseBranch: string;
 };
 
-type ReviewFinding = ReviewResult["findings"][number];
+type ReviewFinding = AnalysisResult["findings"][number];
+
+/**
+ * Only the parts of a result this prompt reads, so the renderer's retained
+ * Analysis result feeds it without matching the whole retained shape.
+ */
+type FixPromptResult = {
+  readonly changeSummary: string;
+  readonly findings: ReadonlyArray<ReviewFinding>;
+  readonly validationPlan: ReadonlyArray<string>;
+};
 
 const SEVERITY_ORDER = ["P0", "P1", "P2", "P3"] as const;
 
@@ -21,7 +31,7 @@ const TASK_INSTRUCTIONS =
 /** Builds the markdown prompt a reviewer pastes into a local coding agent to fix open Analysis findings. */
 export function renderAnalysisFixPrompt(input: {
   readonly context?: AnalysisFixPromptContext | undefined;
-  readonly result: ReviewResult;
+  readonly result: FixPromptResult;
   readonly dismissedFindingIds?: ReadonlySet<string> | undefined;
 }): string {
   const sections: string[] = [
