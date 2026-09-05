@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 
 import {
+  changeScopeFilesFromPatch,
   changeScopePathsForBucket,
   type ChangeScopeBucket,
 } from "../../../domain/change-scope";
-import { parseUnifiedPatch } from "../../../domain/patch";
 import type { ReviewNavigatorSection } from "../components/review-navigator";
 import type { WorkbenchPosition } from "../lib/screen-restore";
 
@@ -45,11 +45,7 @@ export function useReviewScopeFilter({
         ? new Set()
         : new Set(
             changeScopePathsForBucket(
-              parseUnifiedPatch(fullPatch).map((file) => ({
-                path: file.newPath,
-                additions: file.additions,
-                deletions: file.deletions,
-              })),
+              changeScopeFilesFromPatch(fullPatch),
               bucket,
             ),
           ),

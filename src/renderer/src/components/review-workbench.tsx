@@ -48,7 +48,10 @@ import type {
   OverviewFocusSection,
   PullRequestOverviewMerge,
 } from "./pr-overview-sheet";
-import { ReviewNavigator } from "./review-navigator";
+import {
+  ReviewNavigator,
+  type ReviewNavigatorSection,
+} from "./review-navigator";
 import {
   buildAnnotations,
   buildConversationAnnotations,
@@ -457,6 +460,25 @@ export function ReviewWorkbench({
     selectSection,
     setActivePath,
   });
+  // A Scope bucket and a commit slice are mutually exclusive readings of the
+  // diff: choosing a bucket already drops the commit, so entering a commit
+  // drops the bucket rather than leaving a filtered tree beside a full slice.
+  // Both entry points land here because the Commits section auto-selects a
+  // commit when it opens with none.
+  const selectNavigatorSection = useCallback(
+    (next: ReviewNavigatorSection): void => {
+      if (next === "commits") clearScopeBucket();
+      selectSection(next);
+    },
+    [clearScopeBucket, selectSection],
+  );
+  const selectCommitSlice = useCallback(
+    (sha: string): void => {
+      clearScopeBucket();
+      selectCommit(sha);
+    },
+    [clearScopeBucket, selectCommit],
+  );
   const feedbackRegionRef = useRef<HTMLDivElement>(null);
   const retainedAnalysis = model.insights.analysis.retained;
   const analysisIsCurrent =
@@ -746,7 +768,7 @@ export function ReviewWorkbench({
                       {...(selectedThreadId === undefined
                         ? {}
                         : { selectedThreadId })}
-                      onSectionChange={selectSection}
+                      onSectionChange={selectNavigatorSection}
                       onFileSelect={(path) => {
                         commitWorkbenchPosition({
                           activeTab: "diff",
@@ -757,7 +779,7 @@ export function ReviewWorkbench({
                         setSelectedThreadId(undefined);
                         setSelectedRange(undefined);
                       }}
-                      onCommitSelect={selectCommit}
+                      onCommitSelect={selectCommitSlice}
                       onThreadSelect={(row: ConversationThreadRow) => {
                         setSelectedThreadId(row.id);
                         setSelectedRange({
@@ -840,8 +862,7 @@ export function ReviewWorkbench({
                             ? {}
                             : { selectedRange })}
                           {...(scopeFilteredPaths === undefined ||
-                          activeScopeBucket === undefined ||
-                          selectedCommitSha !== undefined
+                          activeScopeBucket === undefined
                             ? {}
                             : {
                                 visiblePaths: scopeFilteredPaths,

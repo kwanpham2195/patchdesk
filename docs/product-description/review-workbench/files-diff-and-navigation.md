@@ -39,7 +39,7 @@ One View options control on the diff toolbar holds every way the diff is drawn: 
 
 Selecting a file requests its hydrated diff data when needed. After complete verified head text loads for a non-deleted `.md` or `.markdown` file, its header offers Diff and Preview. Preview renders the complete head text as Markdown without diff highlighting or inline-comment controls; choosing Diff restores the ordinary diff and its inline-comment behavior. Selecting a commit requests a commit-specific projection and replaces the displayed patch after the response is valid. File, hunk, and unresolved-comment keyboard commands compute the next exact target and stop at the first or last item instead of wrapping.
 
-Choosing a bucket on the Insights Scope card filters the Diff to that bucket's files. Patchdesk switches to Diff on Browse, and both the file tree and the diff pane show only the bucket's files, in the order the patch lists them. The chosen bucket stays highlighted on the Scope card, and the diff toolbar shows a chip with the bucket's colour and name. Choosing the chip, or the highlighted bucket again, clears the filter and restores the full tree and pane. Commits and Threads stay complete throughout.
+Choosing a bucket on the Insights Scope card filters the Diff to that bucket's files. Patchdesk switches to Diff on Browse, and both the file tree and the diff pane show only the bucket's files, in the order the patch lists them. The chosen bucket stays highlighted on the Scope card, and the diff toolbar shows a chip with the bucket's colour and name. Choosing the chip, or the highlighted bucket again, clears the filter and restores the full tree and pane, as does selecting a commit. Commits and Threads stay complete throughout.
 
 Changing a diff preference updates the view and saves that preference. The navigator and active file update together so the current location can be restored after renderer reload.
 
@@ -104,7 +104,7 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 - Each eligible Markdown file owns its mode independently; switching one does not switch another.
 
 - A Scope filter never hides a commit or a Conversation thread; only Browse and the diff pane narrow.
-- A Scope filter applies to the full pull-request patch, not a single commit's diff; choosing a bucket clears any selected commit.
+- A Scope filter applies to the full pull-request patch, not a single commit's diff. A bucket and a commit slice are exclusive: choosing a bucket clears any selected commit, and opening Commits or selecting a commit clears the filter.
 - If the selected file is not in the chosen bucket, the bucket's first file becomes the selection; a bucket with no file leaves the selection alone.
 - A Scope filter is not saved. Reopening the Review shows the whole diff again.
 - An empty patch has no active file and keyboard navigation returns no target.

@@ -40,6 +40,37 @@ function browsedPaths(): ReadonlyArray<string> {
   return [...tree].map((row) => row.getAttribute("data-item-path") ?? "");
 }
 
+const scopedPatch = [
+  "diff --git a/src/a.ts b/src/a.ts",
+  "--- a/src/a.ts",
+  "+++ b/src/a.ts",
+  "@@ -1 +1 @@",
+  "-old",
+  "+new",
+  "diff --git a/docs/guide.md b/docs/guide.md",
+  "--- a/docs/guide.md",
+  "+++ b/docs/guide.md",
+  "@@ -1 +1 @@",
+  "-old",
+  "+new",
+  "",
+].join("\n");
+
+const commitSha = "c".repeat(40);
+
+/** The canonical projection carrying the two-bucket patch and its Scope card. */
+function scopedProjection(
+  overrides: Parameters<typeof projection>[0] = {},
+): ReturnType<typeof projection> {
+  const scope = changeScopeFromPatch(scopedPatch);
+  return projection({
+    fullPatch: scopedPatch,
+    // The wire type the projection carries is mutable; the domain's is not.
+    scope: { ...scope, buckets: [...scope.buckets] },
+    ...overrides,
+  });
+}
+
 describe("ReviewWorkbenchFlow Scope filter", () => {
   it("filters the Diff to a Scope bucket and restores it from the toolbar chip", async () => {
     bridge(async (input) =>
@@ -47,29 +78,9 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
         ? { updatesAvailable: false }
         : Promise.reject(new Error(input.path)),
     );
-    const scopedPatch = [
-      "diff --git a/src/a.ts b/src/a.ts",
-      "--- a/src/a.ts",
-      "+++ b/src/a.ts",
-      "@@ -1 +1 @@",
-      "-old",
-      "+new",
-      "diff --git a/docs/guide.md b/docs/guide.md",
-      "--- a/docs/guide.md",
-      "+++ b/docs/guide.md",
-      "@@ -1 +1 @@",
-      "-old",
-      "+new",
-      "",
-    ].join("\n");
-    const scope = changeScopeFromPatch(scopedPatch);
     render(
       <ReviewWorkbenchFlow
-        workbench={projection({
-          fullPatch: scopedPatch,
-          // The wire type the projection carries is mutable; the domain's is not.
-          scope: { ...scope, buckets: [...scope.buckets] },
-        })}
+        workbench={scopedProjection()}
         onWorkbenchReplace={vi.fn()}
         onWorkbenchPatch={vi.fn()}
         onNavigationStateChange={vi.fn()}
@@ -88,6 +99,62 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     await user.click(
       screen.getByRole("button", { name: "Clear Scope filter: Docs" }),
     );
+    expect(browsedPaths()).toEqual([
+      "docs/",
+      "docs/guide.md",
+      "src/",
+      "src/a.ts",
+    ]);
+  });
+
+  it("clears the Scope filter when a commit is selected", async () => {
+    const commitDiff = {
+      commit: {
+        sha: commitSha,
+        message: "Rewrite the guide",
+        author: "fixture",
+        authoredAt: "2026-08-01T00:00:00.000Z",
+        isHead: true,
+      },
+      position: 1,
+      total: 1,
+      patch: scopedPatch,
+      fileCount: 2,
+      additions: 2,
+      deletions: 2,
+    };
+    bridge(async (input) => {
+      if (input.path === "/v1/reviews/detect-updates")
+        return { updatesAvailable: false };
+      if (input.path === "/v1/reviews/commit-diff") return commitDiff;
+      throw new Error(input.path);
+    });
+    render(
+      <ReviewWorkbenchFlow
+        workbench={scopedProjection({ commits: [commitDiff.commit] })}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
+    await user.click(screen.getByRole("button", { name: /Docs/ }));
+    expect(browsedPaths()).toEqual(["docs/", "docs/guide.md"]);
+
+    // Opening Commits selects the first commit on its own, so the filter has
+    // to be gone by then, not only once a commit row is clicked.
+    await user.click(screen.getByRole("tab", { name: /^Commits/ }));
+    expect(
+      screen.queryByRole("button", { name: "Clear Scope filter: Docs" }),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: /Rewrite the guide/ }));
+
+    expect(
+      screen.queryByRole("button", { name: "Clear Scope filter: Docs" }),
+    ).toBeNull();
+    await user.click(screen.getByRole("tab", { name: /^Browse/ }));
     expect(browsedPaths()).toEqual([
       "docs/",
       "docs/guide.md",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  changeScopeFilesFromPatch,
   changeScopeFromPatch,
   changeScopePathsForBucket,
   changeScopeSegments,
@@ -243,5 +244,22 @@ describe("changeScopePathsForBucket", () => {
 
   it("returns nothing for a bucket no file lands in", () => {
     expect(changeScopePathsForBucket(files, "generated")).toEqual([]);
+  });
+
+  it("lists a deleted file under the path it had", () => {
+    // A `/dev/null` new path is the case the Scope filter used to drop: it
+    // read `newPath` alone instead of the shared mapping's fallback.
+    const patch = [
+      "diff --git a/src/domain/gone.ts b//dev/null",
+      "deleted file mode 100644",
+      "--- a/src/domain/gone.ts",
+      "+++ /dev/null",
+      "@@ -1,1 +0,0 @@",
+      "-gone",
+      "",
+    ].join("\n");
+    expect(
+      changeScopePathsForBucket(changeScopeFilesFromPatch(patch), "core"),
+    ).toEqual(["src/domain/gone.ts"]);
   });
 });

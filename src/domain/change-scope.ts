@@ -207,6 +207,24 @@ export function computeChangeScope(
 }
 
 /**
+ * One stored unified patch as changed files. A deleted file has no new path,
+ * so it keeps the path it had; the Scope card and the Scope filter share this
+ * rule so a bucket holds the same files on both surfaces.
+ */
+export function changeScopeFilesFromPatch(
+  patch: string,
+): ReadonlyArray<ChangeScopeFile> {
+  return parseUnifiedPatch(patch).map((file) => ({
+    path:
+      file.newPath.length === 0 || file.newPath === "/dev/null"
+        ? file.oldPath
+        : file.newPath,
+    additions: file.additions,
+    deletions: file.deletions,
+  }));
+}
+
+/**
  * The Scope gauge for one stored unified patch. A patch carries no file
  * contents, so the generated-banner rule never fires here and the path rules
  * decide on their own.
@@ -215,17 +233,7 @@ export function changeScopeFromPatch(
   patch: string,
   options: ChangeScopeOptions = {},
 ): ChangeScope {
-  return computeChangeScope(
-    parseUnifiedPatch(patch).map((file) => ({
-      path:
-        file.newPath.length === 0 || file.newPath === "/dev/null"
-          ? file.oldPath
-          : file.newPath,
-      additions: file.additions,
-      deletions: file.deletions,
-    })),
-    options,
-  );
+  return computeChangeScope(changeScopeFilesFromPatch(patch), options);
 }
 
 const totalsSchema = v.strictObject({
