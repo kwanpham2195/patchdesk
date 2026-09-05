@@ -28,6 +28,8 @@ type ReviewNavigatorProps = {
   /** Mapped Analysis findings per file, shown as a badge on Browse rows. */
   readonly findingCountsByPath?: ReadonlyMap<string, FileFindingCount>;
   readonly section: ReviewNavigatorSection;
+  /** The only files Browse lists; absent when no Scope filter is active. Commits and Threads stay complete. */
+  readonly visiblePaths?: ReadonlySet<string>;
   readonly selectedPath?: string;
   readonly activePath?: string;
   readonly selectedCommitSha?: string;
@@ -45,6 +47,7 @@ export function ReviewNavigator({
   conversationThreadEntries,
   findingCountsByPath,
   section,
+  visiblePaths,
   selectedPath,
   activePath,
   selectedCommitSha,
@@ -70,18 +73,27 @@ export function ReviewNavigator({
       const findings = findingCountsByPath?.get(file.newPath);
       return findings === undefined ? item : { ...item, findings };
     });
-    return { files: items, firstPath: items[0]?.path };
+    return items;
   }, [findingCountsByPath, patch]);
+  const browseFiles = useMemo(
+    () =>
+      visiblePaths === undefined
+        ? parsed
+        : parsed.filter((file) => visiblePaths.has(file.path)),
+    [parsed, visiblePaths],
+  );
+  // Threads are projected against every changed file, not the browsable
+  // subset, so a Scope filter never hides a thread from its own tab.
   const threadRows = useMemo(
     () =>
       projectConversationThreadRows(
         conversationThreadEntries,
-        parsed.files.map((file) => file.path),
+        parsed.map((file) => file.path),
       ),
-    [conversationThreadEntries, parsed.files],
+    [conversationThreadEntries, parsed],
   );
 
-  const fileTreeActivePath = activePath ?? selectedPath ?? parsed.firstPath;
+  const fileTreeActivePath = activePath ?? selectedPath ?? browseFiles[0]?.path;
   return (
     <aside
       aria-label="Review navigation"
@@ -129,13 +141,13 @@ export function ReviewNavigator({
           className="min-h-0 flex-1 overflow-hidden p-3"
           keepMounted
         >
-          {parsed.files.length === 0 ? (
+          {browseFiles.length === 0 ? (
             <p className="p-2 text-sm text-muted-foreground">
               No changed files.
             </p>
           ) : (
             <PierreFileTree
-              files={parsed.files}
+              files={browseFiles}
               {...(selectedPath === undefined ? {} : { selectedPath })}
               {...(fileTreeActivePath === undefined
                 ? {}

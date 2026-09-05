@@ -11,6 +11,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "./ui/empty";
+import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import { ScopeGauge } from "./scope-gauge";
 import { Spinner } from "./ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
@@ -113,11 +114,18 @@ function InsightStatusBadge({
   );
 }
 
+/** The Scope card's active bucket and the action that changes it, wired only where the Diff can be filtered. */
+export type InsightScopeFilter = {
+  readonly activeScopeBucket: ChangeScopeBucket | undefined;
+  readonly onSelectScopeBucket: (bucket: ChangeScopeBucket) => void;
+};
+
 export function InsightOverview({
   brief,
   analysis,
   walkthrough,
   scope,
+  scopeFilter,
   checkStatus,
   findingStatuses,
   onSelect,
@@ -127,6 +135,8 @@ export function InsightOverview({
   readonly walkthrough: WorkbenchResponse["insights"]["walkthrough"];
   /** Absent when the represented patch bytes were unreadable; see `ReviewWorkbenchProjection.scope`. */
   readonly scope: WorkbenchResponse["scope"];
+  /** Absent where the Scope card is read-only. */
+  readonly scopeFilter: InsightScopeFilter | undefined;
   readonly checkStatus: CheckStatus;
   readonly findingStatuses:
     | Readonly<Record<string, AnalysisFindingStatus>>
@@ -138,7 +148,14 @@ export function InsightOverview({
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">Insights overview</h2>
-      {scope === undefined ? null : <ScopeGauge scope={scope} size="card" />}
+      {scope === undefined ? null : (
+        <ScopeGauge
+          scope={scope}
+          size="card"
+          activeBucket={scopeFilter?.activeScopeBucket}
+          onBucketSelect={scopeFilter?.onSelectScopeBucket}
+        />
+      )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <InsightOverviewCard
           type="brief"

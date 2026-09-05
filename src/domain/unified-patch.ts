@@ -162,6 +162,33 @@ export function tokenizeUnifiedPatch(
 }
 
 /**
+ * The same patch carrying only the named files, in patch order. A filtered
+ * review pane renders from the patch text itself on browsers without Pierre's
+ * CodeView, so narrowing the metadata alone would still show every file there.
+ */
+export function filterUnifiedPatchFiles(
+  patch: string,
+  paths: ReadonlySet<string>,
+): string {
+  const lines = patch.split("\n");
+  const headers = tokenizeUnifiedPatchLines(lines).flatMap((token) =>
+    token.kind === "file_header" ? [token] : [],
+  );
+  return headers
+    .flatMap((header, order) =>
+      (header.newPath !== undefined && paths.has(header.newPath)) ||
+      (header.oldPath !== undefined && paths.has(header.oldPath))
+        ? [
+            lines
+              .slice(header.index, headers[order + 1]?.index ?? lines.length)
+              .join("\n"),
+          ]
+        : [],
+    )
+    .join("\n");
+}
+
+/**
  * Tokenize lines already split by the caller, so callers that slice the patch by
  * line index (walkthrough hunks) read token indices into their own array.
  */

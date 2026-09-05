@@ -8,6 +8,7 @@ import { narrativeHunkManifest } from "../../src/domain/narrative-walkthrough";
 import { mapFindingLocation, parseUnifiedPatch } from "../../src/domain/patch";
 import { ReviewPatchIndex } from "../../src/services/review-patch-index";
 import {
+  filterUnifiedPatchFiles,
   matchUnifiedFileHeader,
   tokenizeUnifiedPatch,
 } from "../../src/domain/unified-patch";
@@ -450,5 +451,50 @@ describe("UnifiedPatchTokenizer", () => {
       oldPath: "src/old name.ts",
       newPath: "src/new name.ts",
     });
+  });
+});
+
+describe("filterUnifiedPatchFiles", () => {
+  const threeFilePatch = [
+    "diff --git a/src/a.ts b/src/a.ts",
+    "--- a/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -1 +1 @@",
+    "-old",
+    "+new",
+    "diff --git a/docs/guide.md b/docs/guide.md",
+    "--- a/docs/guide.md",
+    "+++ b/docs/guide.md",
+    "@@ -1 +1 @@",
+    "-old",
+    "+new",
+    "diff --git a/src/b.ts b/src/b.ts",
+    "--- a/src/b.ts",
+    "+++ b/src/b.ts",
+    "@@ -1 +1 @@",
+    "-old",
+    "+new",
+    "",
+  ].join("\n");
+
+  it("keeps only the named files, in patch order", () => {
+    const filtered = filterUnifiedPatchFiles(
+      threeFilePatch,
+      new Set(["src/b.ts", "src/a.ts"]),
+    );
+    expect(parseUnifiedPatch(filtered).map((file) => file.newPath)).toEqual([
+      "src/a.ts",
+      "src/b.ts",
+    ]);
+    expect(parseUnifiedPatch(filtered)[0]).toMatchObject({
+      additions: 1,
+      deletions: 1,
+    });
+  });
+
+  it("returns an empty patch when no file is named", () => {
+    expect(
+      parseUnifiedPatch(filterUnifiedPatchFiles(threeFilePatch, new Set())),
+    ).toEqual([]);
   });
 });

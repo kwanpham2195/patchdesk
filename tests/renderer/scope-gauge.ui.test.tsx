@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import type { ChangeScope } from "../../src/domain/change-scope";
 import { ScopeGauge } from "../../src/renderer/src/components/scope-gauge";
@@ -47,5 +48,36 @@ describe("ScopeGauge", () => {
       />,
     );
     expect(screen.getByRole("img").childElementCount).toBe(0);
+  });
+
+  it("offers only the populated buckets as filter actions", async () => {
+    const onBucketSelect = vi.fn();
+    render(
+      <ScopeGauge
+        scope={scope}
+        size="card"
+        activeBucket="tests"
+        onBucketSelect={onBucketSelect}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: /Tests/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: /Core/ }).getAttribute("aria-pressed"),
+    ).toBe("false");
+    expect(screen.queryByRole("button", { name: /Docs/ })).toBeNull();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: /Core/ }));
+    expect(onBucketSelect).toHaveBeenCalledWith("core");
+  });
+
+  it("stays read-only without a bucket action", () => {
+    render(<ScopeGauge scope={scope} size="card" />);
+
+    expect(screen.queryAllByRole("button")).toEqual([]);
   });
 });

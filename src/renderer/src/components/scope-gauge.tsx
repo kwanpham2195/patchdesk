@@ -3,30 +3,8 @@ import {
   type ChangeScope,
   type ChangeScopeBucket,
 } from "../../../domain/change-scope";
+import { SCOPE_BUCKET_FILLS, SCOPE_BUCKET_LABELS } from "./scope-gauge-buckets";
 import { cn } from "@/lib/utils";
-
-const BUCKET_LABELS = {
-  core: "Core",
-  tests: "Tests",
-  generated: "Generated",
-  docs: "Docs",
-  config: "Config",
-} satisfies Record<ChangeScopeBucket, string>;
-
-/**
- * Each bucket's fill class, written out in full because Tailwind reads class
- * names as literal source text; a composed `bg-[var(--scope-${bucket})]`
- * would never be generated. `generated` is a diagonal hatch (see
- * `.scope-gauge-hatch` in `styles.css`) so its share reads as "not
- * hand-written" without spending a sixth hue on it.
- */
-const BUCKET_FILLS = {
-  core: "bg-[var(--scope-core)]",
-  tests: "bg-[var(--scope-tests)]",
-  generated: "scope-gauge-hatch",
-  docs: "bg-[var(--scope-docs)]",
-  config: "bg-[var(--scope-config)]",
-} satisfies Record<ChangeScopeBucket, string>;
 
 /**
  * The card legend's row order. `ChangeScope.buckets` omits a bucket with no
@@ -56,10 +34,16 @@ export function ScopeGauge({
   scope,
   size,
   className,
+  activeBucket,
+  onBucketSelect,
 }: {
   readonly scope: ChangeScope;
   readonly size: "bar" | "mini" | "card" | "legend";
   readonly className?: string;
+  /** The bucket the Diff is currently filtered by, highlighted on the card. */
+  readonly activeBucket?: ChangeScopeBucket | undefined;
+  /** Given only where a bucket can filter the Diff; without it the card stays read-only. */
+  readonly onBucketSelect?: ((bucket: ChangeScopeBucket) => void) | undefined;
 }): React.JSX.Element {
   const label = scopeGaugeLabel(scope);
   if (size === "bar")
@@ -99,10 +83,10 @@ export function ScopeGauge({
                   aria-hidden="true"
                   className={cn(
                     "size-2 shrink-0 rounded-[2px]",
-                    BUCKET_FILLS[totals.bucket],
+                    SCOPE_BUCKET_FILLS[totals.bucket],
                   )}
                 />
-                <span>{BUCKET_LABELS[totals.bucket]}</span>
+                <span>{SCOPE_BUCKET_LABELS[totals.bucket]}</span>
                 <span className="font-mono tabular-nums text-foreground">
                   {totals.files}
                 </span>
@@ -124,25 +108,17 @@ export function ScopeGauge({
       <ul className="flex flex-wrap gap-x-4 gap-y-1">
         {LEGEND_BUCKETS.map((bucket) => {
           const totals = counted.get(bucket);
-          return (
-            <li
-              key={bucket}
-              className={cn(
-                "flex items-center gap-1.5 text-xs",
-                totals === undefined
-                  ? "text-muted-foreground/60"
-                  : "text-muted-foreground",
-              )}
-            >
+          const row = (
+            <>
               <span
                 aria-hidden="true"
                 className={cn(
                   "size-2 shrink-0 rounded-[2px]",
-                  BUCKET_FILLS[bucket],
+                  SCOPE_BUCKET_FILLS[bucket],
                   totals === undefined ? "opacity-50" : undefined,
                 )}
               />
-              <span>{BUCKET_LABELS[bucket]}</span>
+              <span>{SCOPE_BUCKET_LABELS[bucket]}</span>
               {totals === undefined ? (
                 <span className="font-mono text-[11px] tabular-nums">—</span>
               ) : (
@@ -150,6 +126,32 @@ export function ScopeGauge({
                   additions={totals.additions}
                   deletions={totals.deletions}
                 />
+              )}
+            </>
+          );
+          const rowClassName = cn(
+            "flex items-center gap-1.5 text-xs",
+            totals === undefined
+              ? "text-muted-foreground/60"
+              : "text-muted-foreground",
+          );
+          // An empty bucket has no files to filter to, so it stays plain text.
+          return (
+            <li key={bucket}>
+              {onBucketSelect === undefined || totals === undefined ? (
+                <span className={rowClassName}>{row}</span>
+              ) : (
+                <button
+                  type="button"
+                  aria-pressed={activeBucket === bucket}
+                  onClick={() => onBucketSelect(bucket)}
+                  className={cn(
+                    rowClassName,
+                    "-mx-1 rounded px-1 py-0.5 hover:bg-accent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground",
+                  )}
+                >
+                  {row}
+                </button>
               )}
             </li>
           );
@@ -183,7 +185,7 @@ function ScopeBar({
       {changeScopeSegments(scope).map((segment) => (
         <span
           key={segment.bucket}
-          className={BUCKET_FILLS[segment.bucket]}
+          className={SCOPE_BUCKET_FILLS[segment.bucket]}
           style={{ flex: `0 0 ${segment.percent}%` }}
         />
       ))}
@@ -210,7 +212,7 @@ function scopeGaugeLabel(scope: ChangeScope): string {
   if (scope.buckets.length === 0) return "Scope: no changed files";
   const parts = scope.buckets.map(
     (bucket) =>
-      `${BUCKET_LABELS[bucket.bucket]} +${bucket.additions} −${bucket.deletions}`,
+      `${SCOPE_BUCKET_LABELS[bucket.bucket]} +${bucket.additions} −${bucket.deletions}`,
   );
   return `Scope: ${parts.join(", ")}`;
 }

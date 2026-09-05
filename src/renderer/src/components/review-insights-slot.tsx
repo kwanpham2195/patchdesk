@@ -14,9 +14,10 @@ import {
   InsightOutdated,
   InsightOverview,
   InsightRunning,
+  type InsightScopeFilter,
   type InsightSelection,
 } from "./insight-panels";
-import { NOT_GENERATED_BRIEF } from "../brief-contracts";
+import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { buildInsightReaders } from "./insight-readers";
 import { useInsightResultEntrance } from "../hooks/use-insight-result-entrance";
 import { useInsightSelection } from "../hooks/use-insight-selection";
@@ -120,6 +121,22 @@ function InsightAvailabilityErrors({
   );
 }
 
+/** The one line each reader shows under its heading, taken from the retained artifact it is reading. */
+function retainedInsightDescription(
+  workbench: WorkbenchResponse,
+  brief: BriefInsight,
+  selectedInsight: InsightSelection,
+): string | undefined {
+  if (selectedInsight === "analysis")
+    return workbench.insights.analysis.retained?.value.summary;
+  if (selectedInsight === "walkthrough")
+    return workbench.insights.walkthrough.retained?.value.focus;
+  return (
+    brief.retained?.value.flow?.trees[0]?.title ??
+    brief.retained?.value.startHere?.lead
+  );
+}
+
 export function InsightsSlot({
   workbench,
   initialDetail,
@@ -127,6 +144,7 @@ export function InsightsSlot({
   onWorkbenchPatch,
   onAddFinding,
   onFinishWithAnalysisSummary,
+  scopeFilter,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly initialDetail?: "analysis" | "walkthrough";
@@ -134,6 +152,7 @@ export function InsightsSlot({
   readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
   readonly onAddFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
+  readonly scopeFilter?: InsightScopeFilter | undefined;
 }): React.JSX.Element {
   const { selectedInsight, setSelectedInsight, openFindingInDiff } =
     useInsightSelection(initialDetail);
@@ -195,13 +214,11 @@ export function InsightsSlot({
   });
   const selectedRunning =
     selectedInsight === "overview" ? undefined : runs[selectedInsight];
-  const retainedDescription =
-    selectedInsight === "analysis"
-      ? workbench.insights.analysis.retained?.value.summary
-      : selectedInsight === "walkthrough"
-        ? workbench.insights.walkthrough.retained?.value.focus
-        : (brief.retained?.value.flow?.trees[0]?.title ??
-          brief.retained?.value.startHere?.lead);
+  const retainedDescription = retainedInsightDescription(
+    workbench,
+    brief,
+    selectedInsight,
+  );
   const currentRevision =
     workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
   const retainedReader = buildInsightReaders({
@@ -279,6 +296,7 @@ export function InsightsSlot({
               analysis={workbench.insights.analysis}
               walkthrough={workbench.insights.walkthrough}
               scope={workbench.scope}
+              scopeFilter={scopeFilter}
               checkStatus={workbench.checks.overall}
               findingStatuses={analysisFindingStatuses(
                 workbench.analysisReviewActions,

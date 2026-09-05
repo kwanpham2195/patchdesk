@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import {
   mapFindingLocation,
   parseUnifiedPatch,
   type FindingLocationInput,
 } from "../../../domain/patch";
+import { filterUnifiedPatchFiles } from "../../../domain/unified-patch";
 import { DiffWorkerPoolProvider } from "./diff-worker-pool";
 import { PierreFileTree } from "./pierre-file-tree";
 import {
@@ -58,6 +60,9 @@ export function DiffWorkbench({
   onOpenFindingInAnalysis,
   selectedRange,
   leadingAction,
+  visiblePaths,
+  activeScopeBucket,
+  onClearScopeBucket,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -88,9 +93,26 @@ export function DiffWorkbench({
   readonly onOpenFindingInAnalysis?: (findingId: string) => void;
   readonly selectedRange?: SelectedDiffRange;
   readonly leadingAction?: React.ReactNode;
+  /** The only files to browse and render; absent when no filter is active. */
+  readonly visiblePaths?: ReadonlySet<string>;
+  /** The Scope bucket `visiblePaths` came from, named on the toolbar's clear chip. */
+  readonly activeScopeBucket?: ChangeScopeBucket;
+  readonly onClearScopeBucket?: () => void;
 }): React.JSX.Element {
-  const files = useMemo(() => parseUnifiedPatch(patch), [patch]);
-  const parsedDiff = useMemo(() => parseReviewDiff(patch), [patch]);
+  // Narrowing the patch itself, not just its parsed metadata: the pane falls
+  // back to rendering the patch text where Pierre's CodeView is unavailable.
+  const visiblePatch = useMemo(
+    () =>
+      visiblePaths === undefined
+        ? patch
+        : filterUnifiedPatchFiles(patch, visiblePaths),
+    [patch, visiblePaths],
+  );
+  const files = useMemo(() => parseUnifiedPatch(visiblePatch), [visiblePatch]);
+  const parsedDiff = useMemo(
+    () => parseReviewDiff(visiblePatch),
+    [visiblePatch],
+  );
   const mapped =
     finding === undefined ? undefined : mapFindingLocation(files, finding);
   const mappedPath =
@@ -130,7 +152,7 @@ export function DiffWorkbench({
     () => new Set(),
   );
   const { paths: markdownPreviewPaths, setPreview: setMarkdownPreview } =
-    useMarkdownPreviewPaths(patch, sourceSession);
+    useMarkdownPreviewPaths(visiblePatch, sourceSession);
   const updatePreferences = useCallback(
     (update: Partial<ReviewViewPreferences>): void => {
       setInternalPreferences((current) => ({ ...current, ...update }));
@@ -167,7 +189,7 @@ export function DiffWorkbench({
     <DiffWorkerPoolProvider>
       <section
         aria-label="Diff workbench"
-        data-patch-bytes={patch.length}
+        data-patch-bytes={visiblePatch.length}
         className={cn(
           `grid min-w-0 overflow-hidden ${hideFileNavigation ? "grid-cols-1" : "min-[1100px]:grid-cols-[15rem_minmax(0,1fr)] max-[1099px]:grid-cols-1"}`,
           fillViewport
@@ -255,7 +277,9 @@ export function DiffWorkbench({
             </div>
           </header>
           <ReviewDiffView
-            patch={patch}
+            patch={visiblePatch}
+            activeScopeBucket={activeScopeBucket}
+            onClearScopeBucket={onClearScopeBucket}
             parsedFiles={parsedDiff.files}
             fileStatsByPath={parsedDiff.statsByPath}
             {...(selectedPath === undefined ? {} : { selectedPath })}

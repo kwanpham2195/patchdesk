@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   changeScopeFromPatch,
+  changeScopePathsForBucket,
   changeScopeSegments,
   classifyChangedPath,
   computeChangeScope,
@@ -223,5 +224,24 @@ describe("changeScopeFromPatch", () => {
     expect(changeScopeFromPatch(patch).buckets).toStrictEqual([
       { bucket: "core", files: 1, additions: 0, deletions: 1 },
     ]);
+  });
+});
+
+describe("changeScopePathsForBucket", () => {
+  const files = [
+    { path: "src/z.ts", additions: 1, deletions: 0 },
+    { path: "tests/a.test.ts", additions: 1, deletions: 0 },
+    { path: "src/a.ts", additions: 1, deletions: 0 },
+  ];
+
+  it("keeps the bucket's paths in the order they were given", () => {
+    expect(changeScopePathsForBucket(files, "core")).toEqual([
+      "src/z.ts",
+      "src/a.ts",
+    ]);
+  });
+
+  it("returns nothing for a bucket no file lands in", () => {
+    expect(changeScopePathsForBucket(files, "generated")).toEqual([]);
   });
 });

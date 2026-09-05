@@ -191,4 +191,40 @@ describe("diff workbench", () => {
       delete styleSheet.value.prototype.replaceSync;
     }
   });
+
+  it("renders only the files a Scope filter leaves visible", () => {
+    const scopedPatch = [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "diff --git a/docs/guide.md b/docs/guide.md",
+      "--- a/docs/guide.md",
+      "+++ b/docs/guide.md",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "diff --git a/src/b.ts b/src/b.ts",
+      "--- a/src/b.ts",
+      "+++ b/src/b.ts",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "",
+    ].join("\n");
+    render(
+      <DiffWorkbench
+        patch={scopedPatch}
+        visiblePaths={new Set(["src/b.ts", "src/a.ts"])}
+      />,
+    );
+
+    expect(
+      screen
+        .getAllByLabelText(/^Collapse file /)
+        .map((header) => header.getAttribute("aria-label")),
+    ).toEqual(["Collapse file src/a.ts", "Collapse file src/b.ts"]);
+  });
 });

@@ -68,7 +68,7 @@ export function CanonicalFixtureWorkbench({
       model={merged}
       actions={actions}
       slots={{
-        insights: (
+        insights: () => (
           <section aria-label="Review insights" className="p-6">
             <h2 className="text-lg font-semibold">Insights</h2>
             <p className="text-sm text-muted-foreground">

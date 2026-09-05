@@ -161,6 +161,19 @@ export function changeScopeSegments(scope: ChangeScope): ReadonlyArray<{
   }));
 }
 
+/**
+ * The paths one bucket holds, in the order they were given, so a Scope filter
+ * lists its files in the same order the patch does.
+ */
+export function changeScopePathsForBucket(
+  files: ReadonlyArray<ChangeScopeFile>,
+  bucket: ChangeScopeBucket,
+): ReadonlyArray<string> {
+  return files.flatMap((file) =>
+    classifyChangedPath(file) === bucket ? [file.path] : [],
+  );
+}
+
 /** Sums one changed file set into its buckets; the returned buckets keep `CHANGE_SCOPE_BUCKETS` order. */
 export function computeChangeScope(
   files: ReadonlyArray<ChangeScopeFile>,

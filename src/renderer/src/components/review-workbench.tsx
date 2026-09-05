@@ -9,6 +9,7 @@ import {
 
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
+import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import {
@@ -69,6 +70,7 @@ import {
 } from "./review-workbench-overview";
 import { ReviewNavigatorResizeHandle } from "./review-navigator-resize-handle";
 import { useCommitDiff } from "../hooks/use-commit-diff";
+import { useReviewScopeFilter } from "../hooks/use-review-scope-filter";
 import { useReviewWorkbenchPosition } from "../hooks/use-review-workbench-position";
 import {
   loadReviewViewPreferences,
@@ -309,7 +311,11 @@ export type ReviewWorkbenchActions = {
 };
 
 export type ReviewWorkbenchSlots = {
-  readonly insights: React.ReactNode;
+  /** Called with what the Insights slot needs to draw and drive the Scope card's filter. */
+  readonly insights: (context: {
+    readonly activeScopeBucket: ChangeScopeBucket | undefined;
+    readonly onSelectScopeBucket: (bucket: ChangeScopeBucket) => void;
+  }) => React.ReactNode;
   readonly conversation: React.ReactNode;
   readonly mergeAction: React.ReactNode;
 };
@@ -438,6 +444,18 @@ export function ReviewWorkbench({
   } = useReviewWorkbenchPosition({
     model,
     ...definedProps({ initialState, onPositionCommitted }),
+  });
+  const {
+    activeScopeBucket,
+    scopeFilteredPaths,
+    selectScopeBucket,
+    clearScopeBucket,
+  } = useReviewScopeFilter({
+    fullPatch: model.fullPatch,
+    selectedPath,
+    commitWorkbenchPosition,
+    selectSection,
+    setActivePath,
   });
   const feedbackRegionRef = useRef<HTMLDivElement>(null);
   const retainedAnalysis = model.insights.analysis.retained;
@@ -717,6 +735,9 @@ export function ReviewWorkbench({
                       conversationThreadEntries={conversationThreadEntries}
                       findingCountsByPath={findingCountsByPath}
                       section={section}
+                      {...(scopeFilteredPaths === undefined
+                        ? {}
+                        : { visiblePaths: scopeFilteredPaths })}
                       {...(selectedPath === undefined ? {} : { selectedPath })}
                       {...(activePath === undefined ? {} : { activePath })}
                       {...(selectedCommitSha === undefined
@@ -818,6 +839,15 @@ export function ReviewWorkbench({
                           {...(selectedRange === undefined
                             ? {}
                             : { selectedRange })}
+                          {...(scopeFilteredPaths === undefined ||
+                          activeScopeBucket === undefined ||
+                          selectedCommitSha !== undefined
+                            ? {}
+                            : {
+                                visiblePaths: scopeFilteredPaths,
+                                activeScopeBucket,
+                                onClearScopeBucket: clearScopeBucket,
+                              })}
                           {...(selectedCommitSha === undefined
                             ? actions.localCommentAuthoring === undefined
                               ? {}
@@ -907,7 +937,10 @@ export function ReviewWorkbench({
               <ReviewWorkbenchFindingNavigationContext.Provider
                 value={findingNavigation}
               >
-                {slots.insights}
+                {slots.insights({
+                  activeScopeBucket,
+                  onSelectScopeBucket: selectScopeBucket,
+                })}
               </ReviewWorkbenchFindingNavigationContext.Provider>
             </div>
           )}

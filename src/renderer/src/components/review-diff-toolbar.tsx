@@ -6,10 +6,13 @@ import type {
   ReviewContextControl,
   ReviewContextStatus,
 } from "@/review-context-control";
+import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 import { ReviewDiffOptionsPopover } from "./review-diff-options-popover";
+import { SCOPE_BUCKET_FILLS, SCOPE_BUCKET_LABELS } from "./scope-gauge-buckets";
 
 /** Renders shared file selection, display, context, and viewed controls above a review diff. */
 export function ReviewDiffToolbar({
@@ -24,6 +27,8 @@ export function ReviewDiffToolbar({
   collapsedPaths,
   files,
   onSetAllCollapsed,
+  activeScopeBucket,
+  onClearScopeBucket,
 }: {
   readonly virtualized: boolean;
   readonly preferences: Pick<
@@ -41,33 +46,58 @@ export function ReviewDiffToolbar({
   readonly collapsedPaths: ReadonlySet<string>;
   readonly files: ReadonlyArray<FileDiffMetadata>;
   readonly onSetAllCollapsed: (collapsed: boolean) => void;
+  /** The Scope bucket the diff is filtered by; absent when no filter is active. */
+  readonly activeScopeBucket?: ChangeScopeBucket | undefined;
+  readonly onClearScopeBucket?: (() => void) | undefined;
 }): React.JSX.Element {
   return (
     <div
       data-review-diff-toolbar
       className="z-20 flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-card/95 px-2 py-1 backdrop-blur"
     >
-      <ButtonGroup
-        className={`items-center ${virtualized ? "flex" : "hidden"}`}
-      >
-        <Button
-          variant={preferences.fileMode === "all" ? "secondary" : "ghost"}
-          size="xs"
-          aria-pressed={preferences.fileMode === "all"}
-          onClick={() => onPreferencesChange({ fileMode: "all" })}
+      <div className="flex flex-wrap items-center gap-1">
+        <ButtonGroup
+          className={`items-center ${virtualized ? "flex" : "hidden"}`}
         >
-          <Files /> All files
-        </Button>
-        <Button
-          variant={preferences.fileMode === "selected" ? "secondary" : "ghost"}
-          size="xs"
-          aria-pressed={preferences.fileMode === "selected"}
-          disabled={selectedPath === undefined}
-          onClick={() => onPreferencesChange({ fileMode: "selected" })}
-        >
-          <FileCode2 /> Selected
-        </Button>
-      </ButtonGroup>
+          <Button
+            variant={preferences.fileMode === "all" ? "secondary" : "ghost"}
+            size="xs"
+            aria-pressed={preferences.fileMode === "all"}
+            onClick={() => onPreferencesChange({ fileMode: "all" })}
+          >
+            <Files /> All files
+          </Button>
+          <Button
+            variant={
+              preferences.fileMode === "selected" ? "secondary" : "ghost"
+            }
+            size="xs"
+            aria-pressed={preferences.fileMode === "selected"}
+            disabled={selectedPath === undefined}
+            onClick={() => onPreferencesChange({ fileMode: "selected" })}
+          >
+            <FileCode2 /> Selected
+          </Button>
+        </ButtonGroup>
+        {activeScopeBucket === undefined ||
+        onClearScopeBucket === undefined ? null : (
+          <Button
+            variant="secondary"
+            size="xs"
+            aria-label={`Clear Scope filter: ${SCOPE_BUCKET_LABELS[activeScopeBucket]}`}
+            onClick={onClearScopeBucket}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-2 shrink-0 rounded-[2px]",
+                SCOPE_BUCKET_FILLS[activeScopeBucket],
+              )}
+            />
+            {SCOPE_BUCKET_LABELS[activeScopeBucket]}
+          </Button>
+        )}
+      </div>
       <div className="flex flex-wrap items-center justify-end gap-1">
         <ReviewDiffOptionsPopover
           preferences={preferences}
