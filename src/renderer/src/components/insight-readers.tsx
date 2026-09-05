@@ -85,6 +85,17 @@ export function buildInsightReaders({
         onOpenFindingInDiff !== undefined
           ? { onOpenFindingInDiff }
           : {})}
+        {...(workbench.pullRequest === undefined
+          ? {}
+          : {
+              fixPromptContext: {
+                owner: workbench.pullRequest.ref.owner,
+                repo: workbench.pullRequest.ref.repo,
+                number: workbench.pullRequest.ref.number,
+                headBranch: workbench.pullRequest.headBranch,
+                baseBranch: workbench.pullRequest.baseBranch,
+              },
+            })}
         canFinishWithAnalysisSummary={
           workbench.analysisReviewActions?.canFinishWithAnalysisSummary ?? false
         }

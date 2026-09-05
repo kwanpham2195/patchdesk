@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AnalysisReader } from "../../src/renderer/src/components/analysis-reader";
+import { renderAnalysisFixPrompt } from "../../src/renderer/src/analysis-fix-prompt";
 
 const result: Parameters<typeof AnalysisReader>[0]["result"] = {
   changeSummary: "Analysis of the `currentChange`",
@@ -505,6 +506,61 @@ it("deduplicates and groups supporting details by reviewer purpose", async () =>
   ).toBeTruthy();
   expect(screen.getByRole("heading", { name: /Assumptions 1/ })).toBeTruthy();
   expect(screen.getAllByRole("listitem")).toHaveLength(5);
+});
+
+describe("Copy as markdown prompt", () => {
+  const context = {
+    owner: "acme",
+    repo: "patchdesk",
+    number: 7,
+    headBranch: "feat/x",
+    baseBranch: "main",
+  };
+  const originalClipboard = Object.getOwnPropertyDescriptor(
+    navigator,
+    "clipboard",
+  );
+
+  afterEach(() => {
+    if (originalClipboard === undefined)
+      Reflect.deleteProperty(navigator, "clipboard");
+    else Object.defineProperty(navigator, "clipboard", originalClipboard);
+  });
+
+  it("copies the open findings as the markdown fix prompt", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    // userEvent.setup() installs its own clipboard stub, so the spy replaces it after.
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<AnalysisReader result={result} fixPromptContext={context} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Copy as markdown prompt" }),
+    );
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith(
+      renderAnalysisFixPrompt({ context, result }),
+    );
+  });
+
+  it("disables the copy when Analysis generated no findings", () => {
+    render(
+      <AnalysisReader
+        result={{ ...result, findings: [] }}
+        fixPromptContext={context}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Copy as markdown prompt" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
 });
 
 it("preserves the generated Markdown structure without rewriting prose", () => {
