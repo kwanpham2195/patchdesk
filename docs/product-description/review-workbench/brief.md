@@ -6,7 +6,7 @@ Brief gives the maintainer a reading orientation for the represented Review befo
 
 ## The simple case
 
-The maintainer chooses Insights and opens Brief. Patchdesk shows what changed, how the files group by directory, which hunk supports each changed step, what the change may reach, and where to start reading. If no current Brief exists, the maintainer generates one with an available provider and model. A retained Brief can open the Walkthrough for the same revision or offer to generate one.
+The maintainer chooses Insights and opens Brief. Patchdesk shows what changed, how the files group by directory, which hunk supports each changed step, what the change may reach, and where to start reading. If no current Brief exists, a borderless empty state centers the Brief icon, explanation, and Generate brief action in the available reader space. The maintainer generates one with an available provider and model. A retained Brief can open the Walkthrough for the same revision or offer to generate one.
 
 ## The task, event by event
 
@@ -106,6 +106,7 @@ Shape groups files by directory and collapses a directory after twelve files int
 - Directories with more than twelve files collapse the remainder into a count.
 - Evidence chips use short identifiers but keep the full path available in the title. A hunk chip opens a popover showing the cited hunk as a rendered diff; the chip stays plain text when the hunk is too large to preview.
 - A retained Brief remains readable when no provider can start a new run.
+- An empty Brief uses the same centered structure as empty Walkthrough and Analysis readers.
 - Generate Walkthrough is offered only when no current Walkthrough stands for the revision; otherwise Open walkthrough is shown.
 - A status-read failure retains the run identity so polling can resume.
 

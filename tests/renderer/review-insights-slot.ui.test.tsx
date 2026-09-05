@@ -240,6 +240,47 @@ describe("InsightsSlot finding focus", () => {
   });
 });
 
+describe("InsightsSlot empty states", () => {
+  const emptyInsights = [
+    {
+      type: "brief",
+      tabName: /^Brief/,
+      action: "Generate brief",
+      dialogTitle: "Run Brief",
+    },
+    {
+      type: "walkthrough",
+      tabName: /^Walkthrough/,
+      action: "Generate walkthrough",
+      dialogTitle: "Run Walkthrough",
+    },
+    {
+      type: "analysis",
+      tabName: /^Analysis/,
+      action: "Generate analysis",
+      dialogTitle: "Run Analysis",
+    },
+  ] as const;
+
+  for (const emptyInsight of emptyInsights) {
+    it(`uses the shared empty state and action for ${emptyInsight.type}`, async () => {
+      desktop = installDesktopDouble({
+        "/v1/insight-providers": () => success(json(providerCatalog)),
+      });
+      const user = userEvent.setup();
+      renderInsights();
+
+      await user.click(screen.getByRole("tab", { name: emptyInsight.tabName }));
+      await user.click(
+        await screen.findByRole("button", { name: emptyInsight.action }),
+      );
+      expect(
+        screen.getByRole("heading", { name: emptyInsight.dialogTitle }),
+      ).toBeTruthy();
+    });
+  }
+});
+
 describe("InsightsSlot run requests", () => {
   it("marks retained readers as insight results", () => {
     renderInsights(withAnalysis("actionable"), "analysis");

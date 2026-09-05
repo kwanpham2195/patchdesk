@@ -35,7 +35,7 @@ export type InsightProjection =
 /** Each type's call to action when nothing has been generated for this revision. */
 const GENERATE_LABELS = {
   analysis: "Generate analysis",
-  walkthrough: "Generate Walkthrough",
+  walkthrough: "Generate walkthrough",
   brief: "Generate brief",
 } as const satisfies Record<InsightRunDialogType, string>;
 /** What each Insight gives the reviewer, shown before one has been generated. */
@@ -48,6 +48,7 @@ const INSIGHT_PURPOSES = {
     "Maps what changed structurally and where to start, so you can orient before reading the diff.",
 } as const satisfies Record<InsightRunDialogType, string>;
 const INSIGHT_STATE_CLASS = "mx-auto max-w-2xl border py-10";
+const INSIGHT_EMPTY_CLASS = "mx-auto max-w-2xl py-10";
 
 export function InsightNavRail({
   workbench,
@@ -384,7 +385,7 @@ export function InsightEmpty({
 }): React.JSX.Element {
   const Icon = INSIGHT_ICONS[type];
   return (
-    <Empty className={INSIGHT_STATE_CLASS}>
+    <Empty className={INSIGHT_EMPTY_CLASS}>
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <Icon />

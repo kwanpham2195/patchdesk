@@ -6,7 +6,7 @@ Analysis presents a model-backed review of the represented patch as generated pr
 
 ## The simple case
 
-The maintainer generates or opens a retained Analysis, reads its summary, expands a Finding's complete containing hunk, and inspects grouped supporting evidence. For an actionable Finding mapped to the represented diff, they choose Add to review. Patchdesk starts or extends the pending review with the original suggested comment, then labels the Finding pending review or published from the exact receipt-derived state. The maintainer can instead choose Dismiss, provide a reason, and confirm.
+The maintainer generates or opens a retained Analysis. If none exists, a borderless empty state centers the Analysis icon, explanation, and Generate analysis action in the available reader space. With a retained Analysis, they read its summary, expand a Finding's complete containing hunk, and inspect grouped supporting evidence. For an actionable Finding mapped to the represented diff, they choose Add to review. Patchdesk starts or extends the pending review with the original suggested comment, then labels the Finding pending review or published from the exact receipt-derived state. The maintainer can instead choose Dismiss, provide a reason, and confirm.
 
 ## The task, event by event
 
@@ -97,6 +97,7 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 
 ## Edge cases
 
+- An empty Analysis uses the same centered structure as empty Brief and Walkthrough readers.
 - A Finding outside the represented diff has no Add to review action.
 - Two concurrent adds that settle in reverse order preserve both confirmed Findings.
 - A stale lower receipt missing its target cannot overwrite a newer pending-review projection.

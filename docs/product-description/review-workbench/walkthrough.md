@@ -6,7 +6,7 @@ Walkthrough is a generated, guided reading sequence for one represented Review r
 
 ## The simple case
 
-The maintainer opens the Walkthrough, reads the active section and its focused diff, moves with Previous, Next, the chapter rail, or plain `j` and `k`, and marks sections reviewed. At the end they can review Support material and mark Support reviewed. Escape returns focus to the current section heading and, when leaving the takeover, restores focus to the trigger.
+The maintainer opens the Walkthrough. If none exists, a borderless empty state centers the Walkthrough icon, explanation, and Generate walkthrough action in the available reader space. With a retained Walkthrough, they read the active section and its focused diff, move with Previous, Next, the chapter rail, or plain `j` and `k`, and mark sections reviewed. At the end they can review Support material and mark Support reviewed. Escape returns focus to the current section heading and, when leaving the takeover, restores focus to the trigger.
 
 ## The task, event by event
 
@@ -94,6 +94,7 @@ Reviewed indicators survive rerender and are projected for the exact Walkthrough
 
 ## Edge cases
 
+- An empty Walkthrough uses the same centered structure as empty Brief and Analysis readers.
 - With multiple sections, Previous is disabled on the first section and Next on the last; movement never wraps.
 - A one-section Walkthrough omits Previous and Next. A zero-section Walkthrough reports 0 and omits navigation and section-review controls.
 - Repeated files use unique block IDs, so different hunks stay separate.
