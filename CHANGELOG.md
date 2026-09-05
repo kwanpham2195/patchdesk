@@ -5,6 +5,7 @@
 - **Analysis** gains a Copy as markdown prompt button that copies the open findings as a prompt you can paste into a local coding agent to fix them.
 - Widened the **Pull requests** repository picker so typical `owner/repository` names remain readable and longer names reveal their complete value on hover. #101
 - Standardized empty **Brief**, **Walkthrough**, and **Analysis** readers on one borderless, centered layout with sentence-case actions. #100
+- Added the commit count beside **Commits** in the Review navigator. #99
 
 ## 0.0.4 - 2026-09-04
 

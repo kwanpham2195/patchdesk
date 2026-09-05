@@ -104,7 +104,15 @@ export function ReviewNavigator({
             className="min-w-0 shrink-0"
           >
             <TabsTrigger value="files">Browse</TabsTrigger>
-            <TabsTrigger value="commits">Commits</TabsTrigger>
+            <TabsTrigger value="commits" className="gap-1.5">
+              Commits
+              <Badge
+                variant="secondary"
+                className="h-4 min-w-4 px-1 text-[10px]"
+              >
+                {commits.length}
+              </Badge>
+            </TabsTrigger>
             <TabsTrigger value="threads" className="gap-1.5">
               Threads
               <Badge
