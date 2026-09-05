@@ -446,18 +446,24 @@ publishing it.
 
 6. Once the release is published, update the Homebrew tap. Homebrew fetches
    the `.dmg` from the published release URL, so a draft release cannot be
-   installed. Take the checksum of the `.dmg` you attached:
+   installed; `pnpm release:cask` refuses a draft for that reason.
 
    ```bash
-   shasum -a 256 release/Patchdesk-0.2.0-arm64.dmg
+   pnpm release:cask 0.2.0
    ```
 
-   Then, in a checkout of
-   [`kwanpham2195/homebrew-patchdesk`](https://github.com/kwanpham2195/homebrew-patchdesk),
-   set `version` and `sha256` in `Casks/patchdesk.rb`, commit, and push.
-   Check the result from a machine with the tap trusted:
+   It finds the tap checkout through `brew --repository kwanpham2195/patchdesk`
+   (or `PATCHDESK_TAP_DIR`), refuses when that tree is dirty, when release
+   `v0.2.0` is missing or still a draft, or when
+   `release/Patchdesk-0.2.0-arm64.dmg` has not been built, and otherwise sets
+   `version` and `sha256` in `Casks/patchdesk.rb` from that `.dmg`. Like
+   `release:prepare`, it never commits or pushes. Read the diff in the tap,
+   then run the commands it prints there:
 
    ```bash
+   git add Casks/patchdesk.rb
+   git commit -m "Bump patchdesk to 0.2.0"
+   git push origin main
    brew update && brew audit --cask kwanpham2195/patchdesk/patchdesk && brew upgrade --cask patchdesk
    ```
 

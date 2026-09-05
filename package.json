@@ -34,6 +34,7 @@
     "electron-builder:mac": "electron-builder --mac --publish never",
     "release:prepare": "node scripts/prepare-release.mjs",
     "release:notes": "node scripts/release-notes.mjs",
+    "release:cask": "node scripts/bump-cask.mjs",
     "test:performance": "pnpm build && playwright test tests/browser/performance.spec.ts",
     "test:package-smoke": "node scripts/package-smoke.mjs",
     "check:bundle": "node scripts/generate-pierre-theme-catalog.mjs --check && node scripts/check-renderer-bundles.mjs",
