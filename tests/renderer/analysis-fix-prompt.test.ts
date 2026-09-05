@@ -78,6 +78,7 @@ Adds parse_input and a *new* flag.
 
 - File: \`src/a.ts:12-20\`
 - Category: bug
+- Confidence: high
 - Why it matters: Users lose data.
 - Affected scenario: Submitting an empty form.
 
@@ -88,6 +89,7 @@ Suggested change: Flip the condition.
 ### 2. [P2] Second
 
 - File: \`src/b.ts:4\`
+- Confidence: high
 
 Rename to_snake_case here.
 
@@ -153,7 +155,9 @@ Rename to_snake_case here.
         validationPlan: [],
       },
     });
-    expect(prompt).toContain("### 1. [P0] Bare\n\nOnly an explanation.");
+    expect(prompt).toContain(
+      "### 1. [P0] Bare\n\n- Confidence: low\n\nOnly an explanation.",
+    );
     expect(prompt).not.toContain("- File:");
     expect(prompt).not.toContain("- Category:");
     expect(prompt).not.toContain("- Why it matters:");
@@ -162,7 +166,7 @@ Rename to_snake_case here.
     expect(prompt).not.toContain("## Verify");
   });
 
-  it("excludes findings dismissed by disposition and by id", () => {
+  it("excludes findings dismissed by disposition", () => {
     const prompt = renderAnalysisFixPrompt({
       context,
       result: {
@@ -178,15 +182,6 @@ Rename to_snake_case here.
             disposition: "dismissed",
           },
           {
-            id: findingP1,
-            severity: "P1",
-            title: "Dismissed by id",
-            explanation: "Also gone.",
-            confidence: "low",
-            mappingStatus: "mapped",
-            disposition: "open",
-          },
-          {
             id: findingP2,
             severity: "P2",
             title: "Kept",
@@ -196,11 +191,35 @@ Rename to_snake_case here.
           },
         ],
       },
-      dismissedFindingIds: new Set([findingP1]),
     });
     expect(prompt).not.toContain("Dismissed by disposition");
-    expect(prompt).not.toContain("Dismissed by id");
     expect(prompt).toContain("### 1. [P2] Kept");
+  });
+
+  it("says which branch the line numbers belong to for a base-side finding", () => {
+    const prompt = renderAnalysisFixPrompt({
+      context,
+      result: {
+        ...result,
+        findings: [
+          {
+            id: findingP0,
+            severity: "P0",
+            title: "Removed guard",
+            explanation: "The old guard is gone.",
+            confidence: "low",
+            mappingStatus: "mapped",
+            file: fileA,
+            lineStart: 12,
+            lineEnd: 20,
+            diffSide: "old",
+          },
+        ],
+      },
+    });
+    expect(prompt).toContain(
+      "- File: `src/a.ts:12-20` (line numbers on the base branch, not the head)",
+    );
   });
 
   it("says there are no open findings when every finding is dismissed", () => {
