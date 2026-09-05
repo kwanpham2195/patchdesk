@@ -144,6 +144,7 @@ review-workbench/
   conversation-and-metadata.md        PR conversation plus reviewers, assignees, and labels
   files-diff-and-navigation.md        file tree, changed lines, commits, and keyboard movement
   inline-conversations.md             diff comments, replies, thread state, and annotations
+  insights-overview.md                Scope buckets and the three Insight cards
   brief.md                            deterministic and model-backed reading orientation
   analysis.md                         findings, evidence, dismissals, and review commands
   walkthrough.md                      guided narrative tied to a represented revision
@@ -187,6 +188,7 @@ Status is one of `not started`, `drafted`, or `verified`.
 | review-workbench/conversation-and-metadata.md   | drafted |
 | review-workbench/files-diff-and-navigation.md   | drafted |
 | review-workbench/inline-conversations.md        | drafted |
+| review-workbench/insights-overview.md           | drafted |
 | review-workbench/brief.md                       | drafted |
 | review-workbench/analysis.md                    | drafted |
 | review-workbench/walkthrough.md                 | drafted |
