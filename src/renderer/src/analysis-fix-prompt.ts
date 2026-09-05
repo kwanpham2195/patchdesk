@@ -32,7 +32,6 @@ const TASK_INSTRUCTIONS =
 export function renderAnalysisFixPrompt(input: {
   readonly context?: AnalysisFixPromptContext | undefined;
   readonly result: FixPromptResult;
-  readonly dismissedFindingIds?: ReadonlySet<string> | undefined;
 }): string {
   const sections: string[] = [
     "# Fix review findings",
@@ -44,9 +43,7 @@ export function renderAnalysisFixPrompt(input: {
   if (changeSummary !== "")
     sections.push(`## Change summary\n\n${changeSummary}`);
 
-  sections.push(
-    `## Findings\n\n${renderFindings(input.result.findings, input.dismissedFindingIds)}`,
-  );
+  sections.push(`## Findings\n\n${renderFindings(input.result.findings)}`);
 
   if (input.result.validationPlan.length > 0)
     sections.push(
@@ -68,14 +65,9 @@ function renderRepositoryLine(
   );
 }
 
-function renderFindings(
-  findings: ReadonlyArray<ReviewFinding>,
-  dismissedFindingIds: ReadonlySet<string> | undefined,
-): string {
+function renderFindings(findings: ReadonlyArray<ReviewFinding>): string {
   const open = findings.filter(
-    (finding) =>
-      finding.disposition !== "dismissed" &&
-      dismissedFindingIds?.has(finding.id) !== true,
+    (finding) => finding.disposition !== "dismissed",
   );
   const ordered = SEVERITY_ORDER.flatMap((severity) =>
     open.filter((finding) => finding.severity === severity),
@@ -93,9 +85,12 @@ function renderFinding(finding: ReviewFinding, position: number): string {
 
   const facts: string[] = [];
   if (finding.file !== undefined)
-    facts.push(`- File: \`${finding.file}${renderLines(finding)}\``);
+    facts.push(
+      `- File: \`${finding.file}${renderLines(finding)}\`${renderDiffSideNote(finding)}`,
+    );
   if (finding.category !== undefined)
     facts.push(`- Category: ${finding.category}`);
+  facts.push(`- Confidence: ${finding.confidence}`);
   if (finding.whyItMatters !== undefined)
     facts.push(`- Why it matters: ${finding.whyItMatters.trim()}`);
   if (finding.affectedScenario !== undefined)
@@ -108,6 +103,12 @@ function renderFinding(finding: ReviewFinding, position: number): string {
     blocks.push(`Suggested change: ${finding.suggestedChange.trim()}`);
 
   return blocks.join("\n\n");
+}
+
+/** A finding on the base side cites pre-change line numbers, which the agent would otherwise open on the head. */
+function renderDiffSideNote(finding: ReviewFinding): string {
+  if (finding.diffSide !== "old") return "";
+  return " (line numbers on the base branch, not the head)";
 }
 
 function renderLines(finding: ReviewFinding): string {

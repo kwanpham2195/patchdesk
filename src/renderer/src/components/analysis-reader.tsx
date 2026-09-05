@@ -81,7 +81,7 @@ export type AnalysisReaderProps = {
   /** Opens the Diff tab at a mapped finding's lines. */
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
   /** Names the repository and branches in the copied fix prompt. */
-  readonly fixPromptContext?: AnalysisFixPromptContext;
+  readonly fixPromptContext?: AnalysisFixPromptContext | undefined;
 };
 
 /** Decision-first read-side view of one retained Analysis result. */
@@ -402,7 +402,7 @@ function CopyFixPromptButton({
       size="sm"
       variant="outline"
       disabled={disabled}
-      title="Copy the open findings as a prompt for a local coding agent"
+      title="Copy the findings as a prompt for a local coding agent"
       onClick={() => {
         navigator.clipboard
           .writeText(buildPrompt())

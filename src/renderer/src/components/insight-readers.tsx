@@ -65,6 +65,17 @@ export function buildInsightReaders({
           })),
   };
   const analysisResult = workbench.insights.analysis.retained?.value;
+  const pullRequest = workbench.pullRequest;
+  const fixPromptContext =
+    pullRequest === undefined
+      ? undefined
+      : {
+          owner: pullRequest.ref.owner,
+          repo: pullRequest.ref.repo,
+          number: pullRequest.ref.number,
+          headBranch: pullRequest.headBranch,
+          baseBranch: pullRequest.baseBranch,
+        };
 
   const retainedAnalysis =
     selectedInsight === "analysis" &&
@@ -85,17 +96,7 @@ export function buildInsightReaders({
         onOpenFindingInDiff !== undefined
           ? { onOpenFindingInDiff }
           : {})}
-        {...(workbench.pullRequest === undefined
-          ? {}
-          : {
-              fixPromptContext: {
-                owner: workbench.pullRequest.ref.owner,
-                repo: workbench.pullRequest.ref.repo,
-                number: workbench.pullRequest.ref.number,
-                headBranch: workbench.pullRequest.headBranch,
-                baseBranch: workbench.pullRequest.baseBranch,
-              },
-            })}
+        fixPromptContext={fixPromptContext}
         canFinishWithAnalysisSummary={
           workbench.analysisReviewActions?.canFinishWithAnalysisSummary ?? false
         }
