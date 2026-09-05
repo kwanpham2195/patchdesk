@@ -27,6 +27,25 @@ afterEach(() => {
   desktop = undefined;
 });
 
+// The Pierre CodeView suspends pointer events on its sticky container for
+// 120 ms after a scroll or layout pass, and the file header buttons live
+// inside that container, so a click landing in the window throws.
+async function clickWhenInteractive(
+  user: ReturnType<typeof userEvent.setup>,
+  element: HTMLElement,
+): Promise<void> {
+  await waitFor(() => {
+    for (
+      let node: HTMLElement | null = element;
+      node !== null;
+      node = node.parentElement
+    ) {
+      expect(window.getComputedStyle(node).pointerEvents).not.toBe("none");
+    }
+  });
+  await user.click(element);
+}
+
 function requestedPath(input: LocalApiDesktopRequest): string {
   const body = input.body;
   // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows the fake desktop boundary request; production parsing occurs in the local API route.
@@ -145,7 +164,8 @@ describe("diff workbench", () => {
     expect(
       screen.getByRole("group", { name: "Display mode for docs/guide.md" }),
     ).toBeTruthy();
-    await user.click(
+    await clickWhenInteractive(
+      user,
       within(readmeModes).getByRole("button", { name: "Preview" }),
     );
 
@@ -177,7 +197,10 @@ describe("diff workbench", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
 
-    await user.click(within(readmeModes).getByRole("button", { name: "Diff" }));
+    await clickWhenInteractive(
+      user,
+      within(readmeModes).getByRole("button", { name: "Diff" }),
+    );
     await waitFor(() =>
       expect(
         screen.queryByRole("article", { name: "Preview of README.md" }),
