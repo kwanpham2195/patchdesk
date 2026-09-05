@@ -23,6 +23,7 @@ import {
   type ReviewViewPreferences,
 } from "@/review-view-preferences";
 import { cn } from "@/lib/utils";
+import { useMarkdownPreviewPaths } from "@/hooks/use-markdown-preview-paths";
 import {
   Sheet,
   SheetContent,
@@ -128,6 +129,8 @@ export function DiffWorkbench({
   const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const { paths: markdownPreviewPaths, setPreview: setMarkdownPreview } =
+    useMarkdownPreviewPaths(patch, sourceSession);
   const updatePreferences = useCallback(
     (update: Partial<ReviewViewPreferences>): void => {
       setInternalPreferences((current) => ({ ...current, ...update }));
@@ -264,6 +267,8 @@ export function DiffWorkbench({
             collapsedPaths={collapsedPaths}
             onPreferencesChange={updatePreferences}
             onCollapsedPathsChange={setCollapsedPaths}
+            markdownPreviewPaths={markdownPreviewPaths}
+            onMarkdownPreviewChange={setMarkdownPreview}
             {...(sourceSession === undefined ? {} : { sourceSession })}
             {...(localCommentAuthoring === undefined
               ? {}

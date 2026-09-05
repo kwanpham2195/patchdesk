@@ -7,6 +7,7 @@
 - Standardized empty **Brief**, **Walkthrough**, and **Analysis** readers on one borderless, centered layout with sentence-case actions. #100
 - Added the commit count beside **Commits** in the Review navigator. #99
 - Moved pull-request link opening into the global **Navigate** palette, available from Pull requests and Review workbench, with support for URL path, query, and fragment suffixes; Pull requests no longer intercepts document paste. #84
+- Added an independent Diff/Preview switch for each eligible Markdown file, rendering complete verified head content while keeping unavailable, deleted, binary, omitted, mismatched, and oversized files as normal diffs. #98
 
 ## 0.0.4 - 2026-09-04
 

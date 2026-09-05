@@ -6,7 +6,7 @@ The Diff view is the main code-reading surface for a Review. It combines the rep
 
 ## The simple case
 
-The maintainer chooses a file, reads its hunks, moves through files or changes with the navigator or keyboard, and optionally selects one commit to narrow the patch. Patchdesk hydrates file content only for the current patch generation, keeps the selected file visible, and shows discussion annotations at their mapped lines. The maintainer can return to the full pull-request diff without changing the represented Review.
+The maintainer chooses a file, reads its hunks, moves through files or changes with the navigator or keyboard, and optionally selects one commit to narrow the patch. A non-deleted Markdown file can switch independently between Diff and Preview after Patchdesk verifies and loads its complete head text. Patchdesk hydrates file content only for the current patch generation, keeps the selected file visible, and shows discussion annotations at their mapped lines. The maintainer can return to the full pull-request diff without changing the represented Review.
 
 ## The task, event by event
 
@@ -16,6 +16,8 @@ stateDiagram-v2
     fullDiff --> loadingFile : choose a file
     loadingFile --> fileReady : content and highlighting ready
     loadingFile --> fallback : content or highlighting unavailable
+    fileReady --> markdownPreview : choose Preview
+    markdownPreview --> fileReady : choose Diff
     fileReady --> commitLoading : choose a commit
     commitLoading --> commitDiff : commit projection ready
     commitDiff --> fullDiff : clear commit selection
@@ -29,13 +31,13 @@ The first resolvable file becomes active when no saved active file is valid. Res
 
 ### Leave unchanged
 
-Scrolling, selecting a file, changing navigator sections, resizing the navigator, changing any View option, or selecting a commit changes local view state only. It does not write GitHub or change the Review revision.
+Scrolling, selecting a file, switching one Markdown file between Diff and Preview, changing navigator sections, resizing the navigator, changing any View option, or selecting a commit changes local view state only. It does not write GitHub or change the Review revision. Preview mode belongs to that open Diff and is not saved as a preference.
 
 One View options control on the diff toolbar holds every way the diff is drawn: split view, wrapped lines, line numbers, and backgrounds. Each is a switch that states whether the option is on. A change applies to the diff at once and is saved per profile, so the next Review opens the way the last one was left.
 
 ### Begin an action
 
-Selecting a file requests its hydrated diff data when needed. Selecting a commit requests a commit-specific projection and replaces the displayed patch after the response is valid. File, hunk, and unresolved-comment keyboard commands compute the next exact target and stop at the first or last item instead of wrapping.
+Selecting a file requests its hydrated diff data when needed. After complete verified head text loads for a non-deleted `.md` or `.markdown` file, its header offers Diff and Preview. Preview renders the complete head text as Markdown without diff highlighting or inline-comment controls; choosing Diff restores the ordinary diff and its inline-comment behavior. Selecting a commit requests a commit-specific projection and replaces the displayed patch after the response is valid. File, hunk, and unresolved-comment keyboard commands compute the next exact target and stop at the first or last item instead of wrapping.
 
 Changing a diff preference updates the view and saves that preference. The navigator and active file update together so the current location can be restored after renderer reload.
 
@@ -47,7 +49,7 @@ A commit-diff load shows a loading state. If it fails, Patchdesk keeps the repre
 
 ### Settle
 
-A valid file response renders only for the patch generation that requested it. A valid commit response shows its author, short SHA, relative time, position, file count, additions, and deletions. Clearing the commit returns to the full pull-request patch.
+A valid file response renders only for the patch generation that requested it. Verified Markdown head text makes Preview available only for that file; neighboring files keep their own Diff or Preview mode. A valid commit response shows its author, short SHA, relative time, position, file count, additions, and deletions. Clearing the commit returns to the full pull-request patch.
 
 Keyboard movement shows one visible latest-status message for the resolved file, hunk, or unresolved-thread target and for a first or last boundary. It reports a target only after that target materializes; a fallback never claims false success. One shared generation cancels stale file, hunk, and thread effects. A target that mounts after virtualized scrolling is polled across animation frames, then focused unless the Review became stale.
 
@@ -94,6 +96,10 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 **Supported input and accessibility limits.** Mouse and keyboard are supported. The plain-text fallback preserves readable content when the enhanced diff cannot mount. Patchdesk does not claim assistive-technology support.
 
 ## Edge cases
+
+- Loading, unavailable, deleted, binary, omitted, mismatched, and over-1-MiB Markdown files remain ordinary diffs and show no Preview control.
+- Preview renders complete verified head text, not the changed hunk alone and not the base version.
+- Each eligible Markdown file owns its mode independently; switching one does not switch another.
 
 - An empty patch has no active file and keyboard navigation returns no target.
 - A restored file missing from the new patch is treated as unresolved and falls back to the first available file.

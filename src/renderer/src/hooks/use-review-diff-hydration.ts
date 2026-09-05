@@ -50,6 +50,8 @@ type HydrationSource = {
 
 export type ReviewDiffHydration = {
   readonly hydratedFiles: ReadonlyMap<string, FileDiffMetadata>;
+  /** Complete verified head text, present only when the source service returned a matching new file. */
+  readonly verifiedHeadTextByPath: ReadonlyMap<string, string>;
   readonly contextStatus: ReviewContextStatus;
   readonly rawFilePatches: ReadonlyArray<string>;
   readonly rawPatchesByPath: ReadonlyMap<string, string>;
@@ -73,6 +75,9 @@ export function useReviewDiffHydration({
   const [hydratedFiles, setHydratedFiles] = useState<
     ReadonlyMap<string, FileDiffMetadata>
   >(() => new Map());
+  const [verifiedHeadTextByPath, setVerifiedHeadTextByPath] = useState<
+    ReadonlyMap<string, string>
+  >(() => new Map());
   const [contextStatus, setContextStatus] =
     useState<ReviewContextStatus>("idle");
   const sourceProfileId = sourceSession?.profileId;
@@ -95,6 +100,7 @@ export function useReviewDiffHydration({
     setHydrationSource(currentSource);
     setHydrationGeneration((current) => current + 1);
     setHydratedFiles(new Map());
+    setVerifiedHeadTextByPath(new Map());
     setContextStatus("idle");
   }
   const hydrationRequests = useRef(
@@ -104,6 +110,7 @@ export function useReviewDiffHydration({
     >(),
   );
   const hydratedFilesRef = useRef(hydratedFiles);
+  const verifiedHeadTextByPathRef = useRef(verifiedHeadTextByPath);
   const unavailableHydrationPaths = useRef(new Set<string>());
   const committedHydrationGeneration = useRef(hydrationGeneration);
   const hydratedFlushScheduled = useRef(false);
@@ -114,7 +121,8 @@ export function useReviewDiffHydration({
   );
   useLayoutEffect(() => {
     hydratedFilesRef.current = hydratedFiles;
-  }, [hydratedFiles]);
+    verifiedHeadTextByPathRef.current = verifiedHeadTextByPath;
+  }, [hydratedFiles, verifiedHeadTextByPath]);
 
   useLayoutEffect(() => {
     committedHydrationGeneration.current = hydrationGeneration;
@@ -135,6 +143,7 @@ export function useReviewDiffHydration({
     queueMicrotask(() => {
       hydratedFlushScheduled.current = false;
       setHydratedFiles(hydratedFilesRef.current);
+      setVerifiedHeadTextByPath(verifiedHeadTextByPathRef.current);
     });
   }, []);
 
@@ -187,6 +196,11 @@ export function useReviewDiffHydration({
           const next = new Map(hydratedFilesRef.current);
           next.set(path, hydrated);
           hydratedFilesRef.current = next;
+          if (source.newFile?.name === path) {
+            const nextHeadText = new Map(verifiedHeadTextByPathRef.current);
+            nextHeadText.set(path, source.newFile.contents);
+            verifiedHeadTextByPathRef.current = nextHeadText;
+          }
           scheduleHydratedFlush();
           return true;
         })
@@ -262,6 +276,7 @@ export function useReviewDiffHydration({
 
   return {
     hydratedFiles,
+    verifiedHeadTextByPath,
     contextStatus,
     rawFilePatches,
     rawPatchesByPath,

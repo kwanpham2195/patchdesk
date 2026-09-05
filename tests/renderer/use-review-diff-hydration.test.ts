@@ -105,6 +105,7 @@ describe("useReviewDiffHydration", () => {
       await Promise.all([firstHydration, secondHydration]);
     });
     expect(result.current.hydratedFiles.has("src/a.ts")).toBe(true);
+    expect(result.current.verifiedHeadTextByPath.get("src/a.ts")).toBe("new\n");
   });
 
   it("rejects a late response from an old patch generation", async () => {
@@ -130,6 +131,7 @@ describe("useReviewDiffHydration", () => {
     });
     expect(calls).toHaveLength(1);
     expect(result.current.hydratedFiles.size).toBe(0);
+    expect(result.current.verifiedHeadTextByPath.size).toBe(0);
     expect(result.current.contextStatus).toBe("idle");
   });
 
@@ -201,6 +203,26 @@ describe("useReviewDiffHydration", () => {
       await retryHydration;
     });
     expect(result.current.hydratedFiles.has("src/a.ts")).toBe(true);
+  });
+
+  it("does not expose head text whose response path mismatches the requested file", async () => {
+    installBridge(() => ({
+      state: "ready",
+      oldFile: { name: "src/a.ts", contents: "old\n" },
+      newFile: { name: "src/other.ts", contents: "new\n" },
+    }));
+    const { result } = renderHook(() =>
+      useReviewDiffHydration({
+        patch: patchA,
+        sourceSession: { profileId: "profile", sessionId: "session-a" },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.hydrateFiles(["src/a.ts"]);
+    });
+
+    expect(result.current.verifiedHeadTextByPath.size).toBe(0);
   });
 
   it("coalesces concurrent hydration responses into a single render", async () => {

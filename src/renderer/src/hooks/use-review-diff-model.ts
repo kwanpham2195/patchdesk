@@ -48,6 +48,8 @@ export type ReviewDiffModel = {
   readonly files: ReadonlyArray<FileDiffMetadata>;
   readonly visibleFiles: ReadonlyArray<FileDiffMetadata>;
   readonly selectedFile: FileDiffMetadata | undefined;
+  /** Complete verified head text after its hydrated file has settled outside active scrolling. */
+  readonly verifiedHeadTextByPath: ReadonlyMap<string, string>;
   readonly selectedAnnotations: ReturnType<typeof toDiffLineAnnotation>[];
   readonly items: ReadonlyArray<
     CodeViewDiffItem<ReviewInlineAnnotation | undefined>
@@ -84,6 +86,7 @@ export function useReviewDiffModel({
   annotations,
   preferences,
   collapsedPaths,
+  markdownPreviewPaths,
   expandUnchanged,
   themePreferences,
   sourceSession,
@@ -98,6 +101,7 @@ export function useReviewDiffModel({
   readonly annotations: ReadonlyArray<ReviewInlineAnnotation>;
   readonly preferences: Pick<ReviewViewPreferences, "fileMode">;
   readonly collapsedPaths: ReadonlySet<string>;
+  readonly markdownPreviewPaths: ReadonlySet<string>;
   readonly expandUnchanged: boolean;
   readonly themePreferences: DiffThemePreferences;
   readonly sourceSession: ReviewDiffSourceSession | undefined;
@@ -116,6 +120,7 @@ export function useReviewDiffModel({
     hydrationInput.sourceSession = hydrationSourceSession;
   const {
     hydratedFiles,
+    verifiedHeadTextByPath: liveVerifiedHeadTextByPath,
     contextStatus,
     rawFilePatches,
     rawPatchesByPath,
@@ -155,6 +160,15 @@ export function useReviewDiffModel({
         ? files.filter((file) => file.name === selectedPath)
         : files,
     [files, preferences.fileMode, selectedPath],
+  );
+  const verifiedHeadTextByPath = useMemo(
+    () =>
+      new Map(
+        [...liveVerifiedHeadTextByPath].filter(([path]) =>
+          settledHydratedFiles.has(path),
+        ),
+      ),
+    [liveVerifiedHeadTextByPath, settledHydratedFiles],
   );
   const selectedFile = useMemo(
     () =>
@@ -234,9 +248,13 @@ export function useReviewDiffModel({
               ? [toDiffLineAnnotation(annotation)]
               : [],
           ),
-          collapsed: collapsedPaths.has(file.name),
+          collapsed:
+            collapsedPaths.has(file.name) ||
+            markdownPreviewPaths.has(file.name),
           version: reviewDiffItemVersion({
-            collapsed: collapsedPaths.has(file.name),
+            collapsed:
+              collapsedPaths.has(file.name) ||
+              markdownPreviewPaths.has(file.name),
             hydrated: settledHydratedFiles.has(file.name),
             annotationKey,
           }),
@@ -246,6 +264,7 @@ export function useReviewDiffModel({
       annotationKey,
       annotations,
       collapsedPaths,
+      markdownPreviewPaths,
       settledHydratedFiles,
       visibleFiles,
     ],
@@ -370,6 +389,7 @@ export function useReviewDiffModel({
     files,
     visibleFiles,
     selectedFile,
+    verifiedHeadTextByPath,
     selectedAnnotations,
     items,
     selectedLines,
