@@ -36,16 +36,17 @@ function brandedGitHubHost(value: string): GitHubHost {
 
 /** Parse direct URL or compact owner/repo#number input at the UI boundary. */
 export function parsePullRequestInput(
-  input: unknown,
+  input: string | undefined,
   defaultHost: GitHubHost = GITHUB_DOT_COM,
 ): Result<PullRequestRef, InvalidPullRequestInput> {
-  if (typeof input !== "string") {
+  if (input === undefined) {
     return err({ _tag: "InvalidPullRequestInput" });
   }
 
-  const urlMatch = /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(
-    input,
-  );
+  const urlMatch =
+    /^https:\/\/([^/?#]+)\/([^/?#]+)\/([^/?#]+)\/pull\/(\d+)(?:[/?#].*)?$/.exec(
+      input,
+    );
   if (urlMatch !== null) {
     return parseReference(
       urlMatch[1],

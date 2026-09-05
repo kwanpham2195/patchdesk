@@ -9,7 +9,6 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
-import { InboxFlow } from "../../src/renderer/src/flows/inbox-flow";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { Dashboard } from "../../src/renderer/src/renderer-models";
 import {
@@ -32,6 +31,7 @@ import {
   sentRequests,
   SHARED_INBOX_ROUTES,
 } from "./inbox-flow-fixtures";
+import { InboxFlowHarness as InboxFlow } from "./inbox-flow-harness";
 import type { RawJsonValue } from "../../src/domain/json";
 
 let desktop: DesktopDouble | undefined;

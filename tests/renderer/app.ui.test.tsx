@@ -615,8 +615,54 @@ describe("App repository picker", () => {
   });
 });
 
-/** A single-row inbox response for the given state, valid against
- * `parseInboxResponse`'s schema. */
+describe("App global pull-request opening", () => {
+  it.each([
+    ["dashboard", true],
+    ["workbench", true],
+    ["workbench", false],
+  ] as const)("%s activation handles watched=%s", async (start, watched) => {
+    const user = userEvent.setup();
+    const profile = {
+      ...profileFixture,
+      repos: [watched ? repoA : repoB],
+    };
+    if (start === "workbench") {
+      window.localStorage.setItem(
+        "patchdesk.destination",
+        "workbench:review-42",
+      );
+    }
+    installDesktop({ profile });
+    render(
+      <App
+        reviewWorkbenchLoader={async () => ({
+          default: () => <h1>Review destination</h1>,
+        })}
+      />,
+    );
+    await screen.findByRole("button", { name: /^Navigate/ });
+    await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+    await user.type(
+      screen.getByRole("combobox", { name: "Search views and actions" }),
+      "https://github.com/acme/widgets/pull/42/files",
+    );
+    await user.click(
+      screen.getByRole("option", { name: "Open acme/widgets#42" }),
+    );
+    expect(
+      installed?.request.mock.calls.some(
+        ([request]) => "path" in request && request.path === "/v1/reviews/open",
+      ),
+    ).toBe(watched);
+    if (watched) {
+      await screen.findByRole("heading", { name: "Review destination" });
+    } else {
+      expect(await screen.findByRole("alert")).toBeTruthy();
+    }
+  });
+});
+
+/** Builds a single-row inbox response accepted by `parseInboxResponse`. */
 function stateFilteredInbox(
   state: InboxStateFilter,
   number: number,
@@ -678,22 +724,27 @@ function installDesktop(
   options: {
     readonly failInboxRefresh?: boolean;
     readonly inboxRefreshGate?: Promise<void>;
+    readonly profile?: typeof profileFixture & {
+      readonly repos?: ReadonlyArray<typeof repoA>;
+    };
   } = {},
 ): DesktopDouble {
   let inboxRequests = 0;
+  const profile = options.profile ?? profileFixture;
   installed = installDesktopDouble(
     {
       ...APP_BOOT_ROUTES,
-      "/v1/profiles": () => success([profileFixture]),
+      "/v1/profiles": () => success([profile]),
       "/v1/reviews/load": () => success(asJsonBody(projection())),
-      "/v1/inbox?state=open&pageSize=25": async () => {
+      "/v1/reviews/open": () => success(asJsonBody(projection())),
+      "/v1/inbox": async () => {
         inboxRequests += 1;
         if (options.failInboxRefresh && inboxRequests > 1) {
           if (options.inboxRefreshGate !== undefined)
             await options.inboxRefreshGate;
           throw new Error("refresh failed");
         }
-        return success(inbox([openRow()]));
+        return success({ ...inbox([openRow()]), profile });
       },
     },
     { operations: APP_BOOT_OPERATIONS },

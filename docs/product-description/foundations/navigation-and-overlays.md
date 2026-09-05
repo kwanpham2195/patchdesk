@@ -6,7 +6,7 @@ Patchdesk has two primary destinations: the Pull requests screen and a Review wo
 
 ## The simple case
 
-The app opens on the last saved destination. The maintainer selects a pull request and enters its Review workbench, then uses the Back control or Navigate to return to Pull requests. The document title and titlebar name the current destination.
+The app opens on the last saved destination. The maintainer selects a pull request and enters its Review workbench, then uses the Back control or Navigate to return to Pull requests. The document title and titlebar name the current destination. From either destination, entering a GitHub pull-request URL or compact `owner/repository#number` reference in Navigate adds one action to open that pull request.
 
 Settings opens from the titlebar, Navigate, ⌘,, or the native application menu. It defaults to General unless the caller targets a section. Closing it reveals the same destination and returns focus to the control that opened it.
 
@@ -40,13 +40,13 @@ When Settings opens, it remembers an opener for focus return. A caller can targe
 
 Choosing the current destination again does nothing. Closing a clean Settings overlay keeps the underlying destination, clears the session-only Settings restore marker, and returns focus to the opener.
 
-Closing Navigate without choosing a command records no destination change. Opening a Settings section, reading it, and closing it does not change the underlying Review or Pull requests state.
+Closing Navigate without choosing a command records no destination change. Text that is not a pull-request reference adds no pull-request action. Opening a Settings section, reading it, and closing it does not change the underlying Review or Pull requests state.
 
 ### Begin an action
 
 Opening a Review stores its validated workbench projection and changes the destination to that Review's workbench key. The Review code loads only after Patchdesk has a canonical Review projection.
 
-Back, Navigate, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench.
+Back, Navigate, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench. A recognized pull-request reference adds `Open owner/repository#number`; activating it checks the active workspace's watchlist before using the same Review opener as the Pull requests screen.
 
 Opening Settings is refused when navigation state is not clear. ⌘K and the titlebar Settings control are also disabled or ignored. The native close path reads the same navigation state from the renderer.
 
@@ -110,6 +110,8 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 
 **Preferences, keyboard commands, and desktop integration.** ⌘K opens Navigate and ⌘, opens Settings when navigation is clear. Native menu Settings and Refresh actions raise the window before delivery. Window bounds persist separately from workbench position.
 
+Navigate accepts a plain GitHub pull-request URL, a URL with trailing path, query, or fragment content after the pull-request number, or a compact reference. Issue and commit URLs remain ordinary search text and add no pull-request action.
+
 **Supported input and accessibility limits.** Keyboard and mouse navigation are in scope. Destination changes focus the new `h1`; screen-reader behavior is not a supported product claim.
 
 ## Edge cases
@@ -122,6 +124,7 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 - Closing the only window on macOS does not necessarily quit the app; activating the app can recreate or focus the workbench window.
 - Settings cannot open while navigation is blocked, including through ⌘, or the native menu.
 - The Navigate palette closes before it dispatches a destination or Pull requests action.
+- A pull-request palette action is available from both Pull requests and a Review workbench. An unwatched repository returns to Pull requests and shows the existing refusal without sending an opening request.
 
 ## Open questions and verification
 
@@ -132,4 +135,4 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 - Confirm the exact visible restore after a renderer reload from each workbench tab, navigator section, and selected file.
 - Confirm behavior when the saved workbench destination refers to a Review that local cleanup removed; source inspection for the load fallback belongs in `pull-requests/opening-a-review.md`.
 
-Verified against Patchdesk application source commit `3100615`; the removal of the workspace draft guard described from `883fad2`.
+Verified against Patchdesk application source commit `3100615`; the removal of the workspace draft guard described from `883fad2`; global pull-request palette behavior updated for issue #84.

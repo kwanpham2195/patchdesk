@@ -24,22 +24,15 @@ import type {
   Dashboard,
   DashboardScreenState,
   RepoOutcome,
-  WorkbenchPayload,
 } from "../renderer-models";
 import type {
   InboxResponse,
   RepositoryLabelListResponse,
 } from "../renderer-contracts";
-import {
-  sameRepositoryIdentity,
-  type RepositoryIdentity,
-} from "../../../domain/repository-identity";
-import { parseGitHubHost } from "../../../domain/ids";
-import { parsePullRequestInput } from "../../../domain/pull-request";
-import { isTextEntryTarget } from "../text-entry-target";
+import type { RepositoryIdentity } from "../../../domain/repository-identity";
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import { useInboxInsightRequests } from "./use-inbox-insight-requests";
-import { useInboxReviewOpening } from "./use-inbox-review-opening";
+import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 
 export function InboxFlow({
   destination,
@@ -75,7 +68,7 @@ export function InboxFlow({
   onNextInboxPage = () => undefined,
   onSettings,
   onWorkspaceReload = async () => undefined,
-  onOpenWorkbench,
+  reviewOpening,
 }: {
   readonly destination: "dashboard" | "workbench";
   readonly reviewId?: string;
@@ -136,17 +129,15 @@ export function InboxFlow({
    * something. Defaults to a no-op for the callers that never reach the
    * empty state, in the same way every other optional callback here does. */
   readonly onWorkspaceReload?: () => Promise<void>;
-  readonly onOpenWorkbench: (workbench: WorkbenchPayload) => void;
+  readonly reviewOpening: InboxReviewOpeningControls;
 }): React.JSX.Element {
   const {
     openedPr,
     openError,
     openingOperations,
     openInboxRow,
-    openPullRequestByRef,
     openStoredReviewById,
-    reportOpenError,
-  } = useInboxReviewOpening({ dashboard, onOpenWorkbench });
+  } = reviewOpening;
   // A completed run re-reads the listing through the screen's one refresh
   // path, so the inspector's chip and the row's tag update together.
   const { insightRequests, insightRequestAvailability, requestInsight } =
@@ -183,47 +174,6 @@ export function InboxFlow({
       active = false;
     };
   }, [dashboardProfileId, destination, openStoredReviewById, reviewId]);
-
-  const profileGitHubHost = dashboard?.profile.githubHost;
-  const watchedRepos = dashboard?.profile.repos;
-
-  // The Pull requests screen has no address bar, so a pasted pull-request
-  // link is caught on the document and opened as if its row had been
-  // activated (issue #67).
-  useEffect(() => {
-    if (destination !== "dashboard" || profileGitHubHost === undefined) return;
-    const parsedHost = parseGitHubHost(profileGitHubHost);
-    const onPaste = (event: ClipboardEvent): void => {
-      // A paste into a field belongs to that field, never to the screen.
-      if (isTextEntryTarget(event.target)) return;
-      const parsed = parsePullRequestInput(
-        event.clipboardData?.getData("text/plain")?.trim(),
-        parsedHost._tag === "ok" ? parsedHost.value : undefined,
-      );
-      // Anything that is not a pull-request reference stays an ordinary paste.
-      if (parsed._tag === "err") return;
-      event.preventDefault();
-      const ref = parsed.value;
-      const watched = (watchedRepos ?? []).some((repo) =>
-        sameRepositoryIdentity(repo, ref),
-      );
-      if (!watched) {
-        reportOpenError(
-          `Not opened: ${ref.owner}/${ref.repo} is not a watched repository.`,
-        );
-        return;
-      }
-      openPullRequestByRef(ref);
-    };
-    document.addEventListener("paste", onPaste);
-    return () => document.removeEventListener("paste", onPaste);
-  }, [
-    destination,
-    openPullRequestByRef,
-    profileGitHubHost,
-    reportOpenError,
-    watchedRepos,
-  ]);
 
   const rowOpenError = [...openingOperations.values()].find(
     ({ status }) => status === "error",

@@ -151,3 +151,67 @@ describe("AppShell Navigate shortcut", () => {
     ).toBeTruthy();
   });
 });
+
+describe("AppShell pull-request command", () => {
+  it.each([
+    "https://github.com/acme/widgets/pull/42",
+    "https://github.com/acme/widgets/pull/42/files?diff=split#discussion_r1",
+  ])("offers and activates a parsed pull request for %s", async (input) => {
+    const user = userEvent.setup();
+    const onOpenPullRequest = vi.fn();
+    render(
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          onOpenSettings={() => undefined}
+          onOpenPullRequest={onOpenPullRequest}
+        >
+          <div>Inbox content</div>
+        </AppShell>
+      </BusyProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+    await user.type(
+      screen.getByRole("combobox", { name: "Search views and actions" }),
+      input,
+    );
+    await user.click(
+      screen.getByRole("option", { name: "Open acme/widgets#42" }),
+    );
+
+    expect(onOpenPullRequest).toHaveBeenCalledWith({
+      host: "github.com",
+      owner: "acme",
+      repo: "widgets",
+      number: 42,
+    });
+  });
+
+  it("does not offer a pull-request action for a non-PR GitHub URL", async () => {
+    const user = userEvent.setup();
+    render(
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "workbench", reviewId: "review-1" }}
+          onNavigate={() => undefined}
+          onOpenSettings={() => undefined}
+          onOpenPullRequest={() => undefined}
+        >
+          <div>Review content</div>
+        </AppShell>
+      </BusyProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+    await user.type(
+      screen.getByRole("combobox", { name: "Search views and actions" }),
+      "https://github.com/acme/widgets/issues/42",
+    );
+
+    expect(
+      screen.queryByRole("option", { name: "Open acme/widgets#42" }),
+    ).toBeNull();
+  });
+});

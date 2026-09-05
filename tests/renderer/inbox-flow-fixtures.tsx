@@ -54,15 +54,6 @@ export const dashboard: Dashboard = {
   dashboard: { repos: [] },
 };
 
-/** The same profile with a watchlist, which only the paste path reads. */
-export const watchingDashboard: Dashboard = {
-  ...dashboard,
-  profile: {
-    ...dashboard.profile,
-    repos: [{ host: "github.com", owner: "owner", repo: "repo" }],
-  },
-};
-
 export const inbox = {
   profile: {
     id: "profile",
@@ -228,11 +219,4 @@ export function openRowTitle(
 /** Rows carry `aria-disabled` while opening; they are not `<button>` elements. */
 export function rowBusy(option: HTMLElement): boolean {
   return option.getAttribute("aria-disabled") === "true";
-}
-
-/** Pastes `text` at `target` the way a real clipboard paste arrives. */
-export function pasteText(target: Node, text: string): void {
-  fireEvent.paste(target, {
-    clipboardData: { getData: () => text },
-  });
 }

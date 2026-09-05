@@ -1,37 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  GitPullRequest,
-  Search,
-  Settings,
-  User,
-} from "lucide-react";
+import { ArrowLeft, Search, Settings, User } from "lucide-react";
 
 import type { AppDestination } from "@/routes";
-import {
-  destinationKey,
-  destinationTitle,
-  primaryDestinations,
-} from "@/routes";
-import {
-  INBOX_STATE_FILTERS,
-  type InboxStateFilter,
-} from "../../../domain/maintainer-inbox";
+import { destinationKey, destinationTitle } from "@/routes";
+import type { InboxStateFilter } from "../../../domain/maintainer-inbox";
+import type { GitHubHost } from "../../../domain/ids";
+import type { PullRequestRef } from "../../../domain/pull-request";
+import { AppCommandDialog } from "@/components/app-command-dialog";
 import { BrandMark } from "@/components/brand-mark";
 import { BusyIndicator } from "@/components/busy-indicator";
 import { Button } from "@/components/ui/button";
 import { InlineError } from "@/components/ui/inline-error";
-import {
-  Command,
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-  CommandShortcut,
-} from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
@@ -51,10 +30,6 @@ import {
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 import { isTextEntryTarget } from "../text-entry-target";
-const icons = {
-  dashboard: GitPullRequest,
-  settings: Settings,
-} as const;
 
 type ProfileEntry = {
   readonly id: string;
@@ -71,6 +46,8 @@ export function AppShell({
   profileSwitchState,
   onProfileSwitch,
   onInboxStateChange,
+  pullRequestDefaultHost,
+  onOpenPullRequest,
   children,
 }: {
   readonly destination: AppDestination;
@@ -90,9 +67,14 @@ export function AppShell({
    * "Pull requests" command group hides itself in that case rather than
    * dispatching into nothing. */
   readonly onInboxStateChange?: (state: InboxStateFilter) => void;
+  /** Parses compact references against the active profile's GitHub host. */
+  readonly pullRequestDefaultHost?: GitHubHost;
+  /** Opens a parsed pull request through the root Review-opening owner. */
+  readonly onOpenPullRequest?: (ref: PullRequestRef) => void;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
   const mainRef = useRef<HTMLElement | null>(null);
   const navigateOpenerRef = useRef<HTMLButtonElement | null>(null);
   const [initialDestinationKey] = useState(() => destinationKey(destination));
@@ -105,6 +87,7 @@ export function AppShell({
         if (isTextEntryTarget(event.target)) return;
         event.preventDefault();
         if (navigationBlocked) return;
+        setCommandQuery("");
         setCommandOpen((open) => !open);
       }
     };
@@ -133,23 +116,6 @@ export function AppShell({
     };
   }, []);
 
-  const go = (next: AppDestination): void => {
-    setCommandOpen(false);
-    onNavigate(next);
-  };
-  const chooseInboxState = (state: InboxStateFilter): void => {
-    setCommandOpen(false);
-    onNavigate({ kind: "dashboard" });
-    onInboxStateChange?.(state);
-  };
-  const openSelectedInboxAction = (): void => {
-    setCommandOpen(false);
-    onNavigate({ kind: "dashboard" });
-    window.setTimeout(
-      () => window.dispatchEvent(new Event("patchdesk:inbox-action")),
-      0,
-    );
-  };
   return (
     <div className="compact-surface flex h-screen min-h-screen w-full flex-col bg-shell text-foreground">
       <a className="skip-link" href="#main-content">
@@ -165,7 +131,7 @@ export function AppShell({
               variant="ghost"
               size="icon-sm"
               aria-label="Back to pending pull requests"
-              onClick={() => go({ kind: "dashboard" })}
+              onClick={() => onNavigate({ kind: "dashboard" })}
             >
               <ArrowLeft />
             </Button>
@@ -259,7 +225,10 @@ export function AppShell({
                   variant="outline"
                   size="sm"
                   disabled={navigationBlocked}
-                  onClick={() => setCommandOpen(true)}
+                  onClick={() => {
+                    setCommandQuery("");
+                    setCommandOpen(true);
+                  }}
                 />
               }
             >
@@ -288,72 +257,22 @@ export function AppShell({
           {children}
         </main>
       </div>
-      <CommandDialog
+      <AppCommandDialog
         open={commandOpen && !navigationBlocked}
-        onOpenChange={(open) => {
-          if (!navigationBlocked) setCommandOpen(open);
-        }}
-        title="Navigate Patchdesk"
-        description="Open a Patchdesk destination"
-      >
-        <Command>
-          <CommandInput placeholder="Search views and actions…" />
-          <CommandList>
-            <CommandEmpty>No matching destination.</CommandEmpty>
-            <CommandGroup heading="Navigate">
-              {primaryDestinations.map((item) => {
-                const Icon = icons[item.kind];
-                return (
-                  <CommandItem
-                    key={item.kind}
-                    value={item.label}
-                    onSelect={() => go({ kind: item.kind })}
-                  >
-                    <Icon />
-                    {item.label}
-                    {destinationKey(destination) === item.kind ? (
-                      <CommandShortcut>Current</CommandShortcut>
-                    ) : null}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-            <CommandSeparator />
-            <CommandGroup heading="Actions">
-              <CommandItem
-                value="Settings"
-                onSelect={() => {
-                  setCommandOpen(false);
-                  onOpenSettings(navigateOpenerRef.current ?? undefined);
-                }}
-              >
-                <Settings />
-                Settings
-              </CommandItem>
-            </CommandGroup>
-            <CommandSeparator />
-            <CommandGroup heading="Pull requests">
-              {INBOX_STATE_FILTERS.map((option) => (
-                <CommandItem
-                  key={option.state}
-                  value={option.label}
-                  onSelect={() => chooseInboxState(option.state)}
-                >
-                  <GitPullRequest />
-                  {option.label}
-                </CommandItem>
-              ))}
-              <CommandItem
-                value="Open selected pull request action"
-                onSelect={openSelectedInboxAction}
-              >
-                <ArrowLeft className="rotate-180" />
-                Open selected pull request
-              </CommandItem>
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </CommandDialog>
+        query={commandQuery}
+        navigationBlocked={navigationBlocked}
+        destination={destination}
+        settingsOpenerRef={navigateOpenerRef}
+        {...(pullRequestDefaultHost === undefined
+          ? {}
+          : { pullRequestDefaultHost })}
+        onOpenChange={setCommandOpen}
+        onQueryChange={setCommandQuery}
+        onNavigate={onNavigate}
+        onOpenSettings={onOpenSettings}
+        {...(onInboxStateChange === undefined ? {} : { onInboxStateChange })}
+        {...(onOpenPullRequest === undefined ? {} : { onOpenPullRequest })}
+      />
     </div>
   );
 }

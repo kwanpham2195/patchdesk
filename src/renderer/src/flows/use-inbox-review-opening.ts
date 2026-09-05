@@ -25,7 +25,7 @@ export type InboxReviewOpeningControls = {
   readonly openError: string | undefined;
   readonly openingOperations: ReadonlyMap<string, ReviewOpeningRowOperation>;
   readonly openInboxRow: (row: InboxResponse["inbox"]["rows"][number]) => void;
-  /** Opens a pull request named directly — by a pasted link — rather than by
+  /** Opens a pull request named directly by a global command rather than by
    * a listed row, under the same operation owner the row entry points use. */
   readonly openPullRequestByRef: (ref: PullRequestRef) => void;
   readonly openStoredReviewById: (
@@ -53,7 +53,8 @@ type ReviewOpeningRowOperation = {
 /**
  * Owns a Review-opening operation by profile and stable pull-request identity.
  * A ref admits the operation before an await so the row, inspector, and
- * keyboard entry points cannot each start the same request in one event turn.
+ * keyboard and palette entry points cannot each start the same request in
+ * one event turn.
  */
 export function useInboxReviewOpening({
   dashboard,
@@ -212,9 +213,9 @@ export function useInboxReviewOpening({
   /**
    * Admits one opening operation for `identity` under the active profile and
    * runs `request` inside it. Every entry point — the row title, a
-   * double-click, Enter, the inspector, the palette, and a pasted
-   * pull-request link — comes through here, so two of them naming the same
-   * pull request in one event turn still send one request.
+   * double-click, Enter, the inspector, and the palette come through here,
+   * so two of them naming the same pull request in one event turn still send
+   * one request.
    */
   const openByIdentity = useCallback(
     (

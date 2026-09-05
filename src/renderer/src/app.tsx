@@ -49,6 +49,10 @@ import type { WorkbenchResponse } from "./renderer-contracts";
 import { saveInboxViewPreferences } from "./inbox-view-preferences";
 import { inboxFreshnessLabel } from "./inbox-freshness";
 import { firstInboxRequest } from "./inbox-request";
+import { parseGitHubHost } from "../../domain/ids";
+import type { PullRequestRef } from "../../domain/pull-request";
+import { sameRepositoryIdentity } from "../../domain/repository-identity";
+import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
 
 export type { ReviewWorkbenchLoader };
 
@@ -90,12 +94,18 @@ export type AppProps = {
 };
 
 /** Renderer-only dashboard: every product value is loaded from the authenticated local API. */
-// App is the renderer's root component. It owns the dashboard, navigation,
-// and screen routing for the whole app.
-// Splitting this component into smaller files is scheduled work, not done yet.
-// Until that split lands, the file size ratchet blocks this file from growing.
+export function App({ ...props }: AppProps): React.JSX.Element {
+  return (
+    <BusyProvider>
+      <AppContent {...props} />
+    </BusyProvider>
+  );
+}
+
+// AppContent owns dashboard, navigation, and screen routing. Splitting it into
+// smaller files is scheduled work; the file size ratchet blocks growth.
 // react-doctor-disable-next-line react-doctor/no-giant-component -- see comment above
-export function App({
+function AppContent({
   initialState,
   reviewWorkbenchLoader = loadReviewWorkbench,
   fixtureContentLoader = loadFixtureContent,
@@ -207,6 +217,38 @@ export function App({
   const { profileSwitchState, switchProfile } = useProfileSwitch(
     applyLatestProfileSwitch,
   );
+  const openWorkbench = useCallback(
+    (next: WorkbenchResponse): void => {
+      setWorkbench(next);
+      performNavigation({
+        kind: "workbench",
+        reviewId: next.review?.id ?? next.session.id,
+      });
+    },
+    [performNavigation, setWorkbench],
+  );
+  const reviewOpening = useInboxReviewOpening({
+    dashboard,
+    onOpenWorkbench: openWorkbench,
+  });
+  const { openPullRequestByRef, reportOpenError } = reviewOpening;
+  const openPullRequestFromPalette = useCallback(
+    (ref: PullRequestRef): void => {
+      navigate({ kind: "dashboard" });
+      const watched = (dashboard?.profile.repos ?? []).some((repo) =>
+        sameRepositoryIdentity(repo, ref),
+      );
+      if (!watched) {
+        reportOpenError(
+          `Not opened: ${ref.owner}/${ref.repo} is not a watched repository.`,
+        );
+        return;
+      }
+      openPullRequestByRef(ref);
+    },
+    [dashboard?.profile.repos, navigate, openPullRequestByRef, reportOpenError],
+  );
+  const parsedProfileHost = parseGitHubHost(dashboard?.profile.githubHost);
   useDesktopMenuBridge({
     fixtureMode,
     navigationState,
@@ -218,98 +260,102 @@ export function App({
     content: React.ReactNode,
     next: AppDestination = destination,
   ): React.JSX.Element => (
-    <BusyProvider>
-      <TooltipProvider>
-        <AppShell
-          destination={next}
-          navigationBlocked={navigationState !== "clear"}
-          onNavigate={navigate}
-          onOpenSettings={openSettings}
-          profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
-          activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
-          profileSwitchState={profileSwitchState}
-          onInboxStateChange={changeInboxState}
-          onProfileSwitch={(id) => {
-            void switchProfile(id, "header");
-          }}
-        >
-          {content}
-        </AppShell>
-        <SettingsModal
-          open={settingsOpen}
-          onOpenChange={(open) => {
-            setSettingsOpen(open);
-            if (!open) {
-              setSettingsOpener(undefined);
-              clearSettingsRestore();
+    <TooltipProvider>
+      <AppShell
+        destination={next}
+        navigationBlocked={navigationState !== "clear"}
+        onNavigate={navigate}
+        onOpenSettings={openSettings}
+        profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
+        activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
+        profileSwitchState={profileSwitchState}
+        onInboxStateChange={changeInboxState}
+        {...(parsedProfileHost._tag === "ok"
+          ? {
+              pullRequestDefaultHost: parsedProfileHost.value,
+              onOpenPullRequest: openPullRequestFromPalette,
             }
-          }}
-          opener={settingsOpener}
-          initialSection={settingsSection}
-          onSectionChange={(section) => saveSettingsRestore(section)}
-          {...(dashboard === undefined ? {} : { dashboard })}
-          appearance={appearance}
-          onAppearanceChange={(next) => {
-            void updateAppearance(next);
-          }}
-          diffThemePreferences={diffThemePreferences}
-          onDiffThemeChange={(next) => {
-            void updateDiffTheme(next);
-          }}
-          profiles={profiles}
-          onWorkspaceReload={loadWorkspace}
-          profileSwitchState={profileSwitchState}
-          onProfileSwitch={(id) => switchProfile(id, "settings")}
-          onCleanupSuccess={(action) => {
-            if (action === "local") performNavigation({ kind: "dashboard" });
-          }}
-          preferenceError={preferenceError}
-          onRetryPreferences={retryPreferences}
-        />
-        <AlertDialog
-          open={pendingDestination !== undefined}
-          onOpenChange={(open) => {
-            if (!open && navigationState !== "write_pending")
-              setPendingDestination(undefined);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {navigationState === "write_pending"
-                  ? "A GitHub write is still in progress"
-                  : "Leave with an unsaved review draft?"}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {navigationState === "write_pending"
-                  ? "Patchdesk must receive the final result before navigation can continue."
-                  : "Your latest text has not been saved. Stay to save it, or discard only this unsaved local edit."}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>
-                {navigationState === "write_pending"
-                  ? "Wait for completion"
-                  : "Stay on this review"}
-              </AlertDialogCancel>
-              {navigationState === "write_pending" ? null : (
-                <AlertDialogAction
-                  variant="destructive"
-                  onClick={() => {
-                    if (pendingDestination !== undefined)
-                      performNavigation(pendingDestination);
-                    setNavigationState("clear");
-                    setPendingDestination(undefined);
-                  }}
-                >
-                  Discard changes and leave
-                </AlertDialogAction>
-              )}
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </TooltipProvider>
-    </BusyProvider>
+          : {})}
+        onProfileSwitch={(id) => {
+          void switchProfile(id, "header");
+        }}
+      >
+        {content}
+      </AppShell>
+      <SettingsModal
+        open={settingsOpen}
+        onOpenChange={(open) => {
+          setSettingsOpen(open);
+          if (!open) {
+            setSettingsOpener(undefined);
+            clearSettingsRestore();
+          }
+        }}
+        opener={settingsOpener}
+        initialSection={settingsSection}
+        onSectionChange={(section) => saveSettingsRestore(section)}
+        {...(dashboard === undefined ? {} : { dashboard })}
+        appearance={appearance}
+        onAppearanceChange={(next) => {
+          void updateAppearance(next);
+        }}
+        diffThemePreferences={diffThemePreferences}
+        onDiffThemeChange={(next) => {
+          void updateDiffTheme(next);
+        }}
+        profiles={profiles}
+        onWorkspaceReload={loadWorkspace}
+        profileSwitchState={profileSwitchState}
+        onProfileSwitch={(id) => switchProfile(id, "settings")}
+        onCleanupSuccess={(action) => {
+          if (action === "local") performNavigation({ kind: "dashboard" });
+        }}
+        preferenceError={preferenceError}
+        onRetryPreferences={retryPreferences}
+      />
+      <AlertDialog
+        open={pendingDestination !== undefined}
+        onOpenChange={(open) => {
+          if (!open && navigationState !== "write_pending")
+            setPendingDestination(undefined);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {navigationState === "write_pending"
+                ? "A GitHub write is still in progress"
+                : "Leave with an unsaved review draft?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {navigationState === "write_pending"
+                ? "Patchdesk must receive the final result before navigation can continue."
+                : "Your latest text has not been saved. Stay to save it, or discard only this unsaved local edit."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {navigationState === "write_pending"
+                ? "Wait for completion"
+                : "Stay on this review"}
+            </AlertDialogCancel>
+            {navigationState === "write_pending" ? null : (
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  if (pendingDestination !== undefined)
+                    performNavigation(pendingDestination);
+                  setNavigationState("clear");
+                  setPendingDestination(undefined);
+                }}
+              >
+                Discard changes and leave
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </TooltipProvider>
   );
 
   if (fixtureMode)
@@ -441,13 +487,7 @@ export function App({
         onNextInboxPage={nextInboxPage}
         onSettings={(section) => openSettings(undefined, section)}
         onWorkspaceReload={loadWorkspace}
-        onOpenWorkbench={(next) => {
-          setWorkbench(next);
-          navigate({
-            kind: "workbench",
-            reviewId: next.review?.id ?? next.session.id,
-          });
-        }}
+        reviewOpening={reviewOpening}
       />
     </div>,
   );
