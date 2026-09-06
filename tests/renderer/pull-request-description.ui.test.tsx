@@ -192,6 +192,25 @@ describe("PullRequestDescription", () => {
     expect("bad" in window).toBe(false);
   });
 
+  it("renders a badge linking somewhere without nesting it in the link's control", async () => {
+    const dataUri = "data:image/svg+xml;base64,AAAA";
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () => success({ dataUri }),
+    });
+    const { container } = render(
+      <PullRequestDescriptionPreview
+        markdown="[![Quality Gate](/centraldigital/patchdesk/raw/main/badge.svg)](https://example.com/dashboard)"
+        pullRequest={pullRequest}
+        profileId="centraldigital"
+      />,
+    );
+
+    await screen.findByRole("img", { name: "Quality Gate" });
+    // The link is a button, so a zoom button around the badge would nest one
+    // button inside another — invalid HTML React refuses to render.
+    expect(container.querySelector("button button")).toBeNull();
+  });
+
   it("keeps the placeholder for an image no profile can be fetched as", () => {
     render(
       <PullRequestDescriptionPreview

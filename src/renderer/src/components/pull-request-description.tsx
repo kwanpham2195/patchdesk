@@ -599,6 +599,18 @@ function ClickableImage({
       />
     );
   }
+  // An inline badge is a few characters tall, so there is nothing to zoom into,
+  // and the zoom button would be a `<button>` nested inside the link's own one.
+  if (inline) {
+    return (
+      <img
+        src={image.dataUri}
+        alt={alt}
+        loading="lazy"
+        className="inline-block max-w-full align-text-bottom"
+      />
+    );
+  }
   return (
     <>
       <button
