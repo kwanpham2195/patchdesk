@@ -326,7 +326,11 @@ function TimelineCommentEntry({
           </span>
         </div>
         <div className="mt-1 text-sm leading-6">
-          <PullRequestDescriptionPreview markdown={comment.body} {...body} />
+          <PullRequestDescriptionPreview
+            markdown={comment.body}
+            {...body}
+            {...definedProps({ imageRewrites: comment.imageRewrites })}
+          />
         </div>
       </div>
     </div>
@@ -378,7 +382,11 @@ function ReviewSummaryEntry({
         </div>
         {review.body.length > 0 && (
           <div className="mt-1 text-sm leading-6">
-            <PullRequestDescriptionPreview markdown={review.body} {...body} />
+            <PullRequestDescriptionPreview
+              markdown={review.body}
+              {...body}
+              {...definedProps({ imageRewrites: review.imageRewrites })}
+            />
           </div>
         )}
         {onDismiss !== undefined &&

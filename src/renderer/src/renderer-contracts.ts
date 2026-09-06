@@ -453,6 +453,9 @@ const diffLocationSchema = v.strictObject({
   diffSide: v.optional(v.picklist(["new", "old"])),
 });
 
+/** GitHub's camo substitutions for one body's images, keyed by the URL the author wrote; see `GitHubComment.imageRewrites`. */
+const imageRewritesSchema = v.optional(v.record(v.string(), v.string()));
+
 const githubCommentSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
   nodeId: v.optional(v.string()),
@@ -466,6 +469,7 @@ const githubCommentSchema = v.strictObject({
   url: v.optional(v.pipe(v.string(), v.minLength(1))),
   location: v.optional(diffLocationSchema),
   viewerDidAuthor: v.optional(v.boolean()),
+  imageRewrites: imageRewritesSchema,
 });
 
 /** Both timeline comment kinds parse through this one schema: the entry `_tag`, not a comment field, says which endpoint it came from, and the renderer reads none of the extras. The storage boundary is where the two shapes are told apart strictly. */
@@ -668,6 +672,7 @@ const publishedReviewSchema = v.strictObject({
   ]),
   submittedAt: v.pipe(v.string(), v.isoTimestamp()),
   canDismiss: v.boolean(),
+  imageRewrites: imageRewritesSchema,
 });
 
 const conversationEntrySchema = v.variant("_tag", [

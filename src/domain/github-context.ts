@@ -13,6 +13,18 @@ type DiffLocation = {
   readonly diffSide?: "new" | "old";
 };
 
+/**
+ * GitHub's own camo substitutions for the images in one Markdown body, keyed
+ * by the URL the author wrote and valued by the URL GitHub serves.
+ *
+ * An off-site image (a SonarQube badge, say) is refused by the main process's
+ * host allow-list, but GitHub already proxies a copy onto
+ * `*.githubusercontent.com`, which is allowed — so the renderer fetches the
+ * value in place of the key. Read from the comment's `body_html`; see
+ * `extractImageRewrites` in `github-image-rewrites.ts`.
+ */
+export type GitHubImageRewrites = Readonly<Record<string, string>>;
+
 export type GitHubComment = {
   readonly id: string;
   readonly author: string;
@@ -34,6 +46,8 @@ export type GitHubComment = {
   readonly location?: DiffLocation;
   /** GitHub identifies this comment as authored by the authenticated viewer. */
   readonly viewerDidAuthor?: boolean;
+  /** Omitted when GitHub proxied none of this body's images. */
+  readonly imageRewrites?: GitHubImageRewrites;
 };
 
 export type GitHubConversationThread = {
@@ -214,6 +228,8 @@ export type PublishedReview = {
   readonly event: "APPROVED" | "COMMENTED" | "CHANGES_REQUESTED" | "DISMISSED";
   readonly submittedAt: IsoTimestamp;
   readonly canDismiss: boolean;
+  /** A review summary renders Markdown too; see `GitHubImageRewrites`. */
+  readonly imageRewrites?: GitHubImageRewrites;
 };
 
 /** One entry in the Conversation timeline, in chronological order. */

@@ -302,6 +302,78 @@ describe("GitHubAdapter issue comments", () => {
     });
   });
 
+  it("asks for body_html and carries GitHub's camo substitutions onto the comment", async () => {
+    const executor = new FakeProcessExecutor(
+      feedbackResponses({
+        reviews: [],
+        comments: [],
+        issueComments: [
+          {
+            id: 11,
+            user: { login: "sonarqubecloud" },
+            body: "![Passed](https://sonarcloud.io/images/passed.svg)",
+            body_html:
+              '<p><img src="https://camo.githubusercontent.com/digest/hex" alt="Passed" data-canonical-src="https://sonarcloud.io/images/passed.svg" style="max-width: 100%;"></p>',
+            created_at: "2026-08-02T00:00:00Z",
+          },
+        ],
+        permission: json({ role_name: "write" }),
+        protection: json({ required_pull_request_reviews: null }),
+      }),
+    );
+    const result = await testAdapter(executor).getPullRequestPublishedFeedback({
+      profile,
+      pr,
+    });
+    // The header has to reach gh, and the path has to stay last in the argv.
+    for (const index of [0, 1, 2]) {
+      expect(executor.requests[index]).toContain(
+        "Accept: application/vnd.github.full+json",
+      );
+      expect(executor.requests[index]?.at(-1)).toMatch(/^repos\//);
+    }
+    expect(result).toMatchObject({
+      _tag: "ok",
+      value: {
+        issueComments: [
+          {
+            id: "11",
+            imageRewrites: {
+              "https://sonarcloud.io/images/passed.svg":
+                "https://camo.githubusercontent.com/digest/hex",
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("omits imageRewrites when GitHub proxied nothing", async () => {
+    const executor = new FakeProcessExecutor(
+      feedbackResponses({
+        reviews: [],
+        comments: [],
+        issueComments: [
+          {
+            id: 12,
+            user: { login: "reviewer" },
+            body: "plain",
+            body_html: "<p>plain</p>",
+            created_at: "2026-08-02T00:00:00Z",
+          },
+        ],
+        permission: json({ role_name: "write" }),
+        protection: json({ required_pull_request_reviews: null }),
+      }),
+    );
+    const result = await testAdapter(executor).getPullRequestPublishedFeedback({
+      profile,
+      pr,
+    });
+    if (result._tag === "err") throw new Error("Expected a successful read");
+    expect(result.value.issueComments[0]).not.toHaveProperty("imageRewrites");
+  });
+
   it("accepts a comment with no user and a body at the schema's size limit", async () => {
     const body = "a".repeat(65_536);
     const executor = new FakeProcessExecutor(

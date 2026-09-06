@@ -13,6 +13,8 @@ export const publishedReviewSchema = v.array(
     node_id: v.optional(v.string()),
     user: v.nullish(v.looseObject({ login: v.string() })),
     body: v.nullish(v.string()),
+    /** Only present under `Accept: application/vnd.github.full+json`; read for GitHub's camo image substitutions, then discarded. */
+    body_html: v.nullish(v.string()),
     state: v.string(),
     commit_id: v.nullish(v.string()),
     // GitHub omits submitted_at on PENDING reviews (started but not submitted);
@@ -31,6 +33,8 @@ export const publishedCommentSchema = v.array(
       }),
     ),
     body: v.string(),
+    /** See `publishedReviewSchema.body_html`. */
+    body_html: v.nullish(v.string()),
     created_at: v.string(),
     updated_at: v.optional(v.nullable(v.string())),
     html_url: v.optional(v.string()),
@@ -60,6 +64,8 @@ export const publishedIssueCommentSchema = v.array(
       }),
     ),
     body: v.pipe(v.string(), v.maxLength(65_536)),
+    /** See `publishedReviewSchema.body_html`. Uncapped: it is read for its `<img>` attributes and never stored. */
+    body_html: v.nullish(v.string()),
     created_at: v.string(),
     updated_at: v.optional(v.nullable(v.string())),
     html_url: v.optional(v.string()),

@@ -11,6 +11,7 @@ import {
 import type {
   Conversation,
   GitHubComments,
+  GitHubImageRewrites,
   GitHubPublishedFeedback,
   PublishedIssueComment,
   PublishedReview,
@@ -43,7 +44,9 @@ import {
   parseGitHubTimestamp,
   parseLocation,
 } from "./github-wire-projections";
+import { extractImageRewrites } from "./github-image-rewrites";
 import { directSummaryWriteFailure, invalid } from "./github-write-failures";
+import { definedProps } from "../../domain/defined-props";
 import type {
   AuthenticatedGitHubAccount,
   BranchProtectionEvidence,
@@ -53,6 +56,21 @@ import type {
 import type { GitHubPullRequestReader } from "./github-pull-request-reader";
 import type { GitHubThreadReader } from "./github-threads";
 import type { GitHubMergePolicyReader } from "./github-merge-policy";
+
+/**
+ * Asks the REST comment endpoints for `body_html` beside `body`, in the same
+ * request, so `extractImageRewrites` can learn which images GitHub proxied.
+ * `gh api` takes headers before the path, and the path must stay last.
+ */
+const fullJsonAccept = ["-H", "Accept: application/vnd.github.full+json"];
+
+/** Omits the field when GitHub proxied nothing, so a stored snapshot gains no empty object. */
+function imageRewritesOf(
+  bodyHtml: string | null | undefined,
+): GitHubImageRewrites | undefined {
+  const rewrites = extractImageRewrites(bodyHtml ?? undefined);
+  return Object.keys(rewrites).length === 0 ? undefined : rewrites;
+}
 
 /**
  * The one account read this module needs from the adapter: which GitHub
@@ -142,6 +160,7 @@ export class GitHubConversationReader {
             "api",
             "--hostname",
             input.profile.githubHost,
+            ...fullJsonAccept,
             `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
           ],
           timeoutMs: commandTimeoutMs,
@@ -152,6 +171,7 @@ export class GitHubConversationReader {
             "api",
             "--hostname",
             input.profile.githubHost,
+            ...fullJsonAccept,
             `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments?per_page=100&page=1`,
           ],
           timeoutMs: commandTimeoutMs,
@@ -165,6 +185,7 @@ export class GitHubConversationReader {
             "api",
             "--hostname",
             input.profile.githubHost,
+            ...fullJsonAccept,
             `repos/${input.pr.owner}/${input.pr.repo}/issues/${input.pr.number}/comments?per_page=100&page=1`,
           ],
           timeoutMs: commandTimeoutMs,
@@ -265,12 +286,12 @@ export class GitHubConversationReader {
         event,
         submittedAt: submittedAt.value,
         canDismiss: canDismiss && event !== "DISMISSED",
+        ...definedProps({
+          nodeId: review.node_id,
+          imageRewrites: imageRewritesOf(review.body_html),
+        }),
       };
-      publishedReviews.push(
-        review.node_id === undefined
-          ? published
-          : { ...published, nodeId: review.node_id },
-      );
+      publishedReviews.push(published);
     }
     const publishedComments: PublishedReviewComment[] = [];
     for (const comment of parsedComments.output) {
@@ -302,6 +323,7 @@ export class GitHubConversationReader {
         createdAt: createdAt.value,
         canEdit: owned && canWrite === true,
         canDelete: owned && canWrite === true,
+        ...definedProps({ imageRewrites: imageRewritesOf(comment.body_html) }),
       };
       if (authorAvatarUrl !== undefined)
         published = { ...published, authorAvatarUrl };
@@ -343,6 +365,7 @@ export class GitHubConversationReader {
         createdAt: createdAt.value,
         canEdit: owned && canWrite === true,
         canDelete: owned && canWrite === true,
+        ...definedProps({ imageRewrites: imageRewritesOf(comment.body_html) }),
       };
       const authorAvatarUrl = comment.user?.avatar_url ?? undefined;
       if (authorAvatarUrl !== undefined)

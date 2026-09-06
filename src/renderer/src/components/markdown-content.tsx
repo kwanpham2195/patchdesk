@@ -23,6 +23,8 @@ type MarkdownLinkRenderInput = {
 type MarkdownImageRenderInput = {
   readonly token: Tokens.Image | Tokens.Generic;
   readonly key: string;
+  /** The image sits in a line of text (a badge), not on a block of its own, so a loading placeholder must not be block-sized. */
+  readonly inline?: boolean;
 };
 
 /**
@@ -310,7 +312,7 @@ function renderInline(
           key,
         });
       case "image":
-        return policy.renderImage({ token, key });
+        return policy.renderImage({ token, key, inline: true });
       case "html":
         return policy.renderHtml({ html: token.text, key });
       default:

@@ -356,6 +356,85 @@ describe("ReviewRemoteStore", () => {
     ).toBe("err");
   });
 
+  it("round-trips imageRewrites on a comment and a review summary, and still loads a snapshot without them", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const store = new ReviewRemoteStore(PatchdeskPaths.forTest(root));
+    const imageRewrites = {
+      "https://sonarcloud.io/images/passed.svg":
+        "https://camo.githubusercontent.com/digest/hex",
+    };
+    const comment = {
+      id: "9",
+      author: "sonarqubecloud",
+      body: "![Passed](https://sonarcloud.io/images/passed.svg)",
+      // SAFETY: a plain ISO-8601 string already satisfies IsoTimestamp's runtime shape; the brand only exists for compile-time cross-boundary safety, so this fixture literal may bypass it directly.
+      createdAt: "2026-08-14T11:26:55.000Z" as never,
+      canEdit: false,
+      canDelete: false,
+    };
+    const review = {
+      id: "7",
+      author: "sonarqubecloud",
+      body: "![Passed](https://sonarcloud.io/images/passed.svg)",
+      event: "COMMENTED" as const,
+      // SAFETY: as above — a plain ISO-8601 string satisfies IsoTimestamp at runtime.
+      submittedAt: "2026-08-14T11:27:00.000Z" as never,
+      canDismiss: false,
+    };
+    const withRewrites: ReviewRemoteSnapshot = {
+      ...snapshot,
+      conversation: {
+        prDescription: "",
+        entries: [
+          {
+            _tag: "IssueComment" as const,
+            comment: { ...comment, imageRewrites },
+          },
+          {
+            _tag: "ReviewSummary" as const,
+            review: { ...review, imageRewrites },
+          },
+        ],
+        complete: true,
+      },
+    };
+    const saved = await store.saveCandidate({
+      profileId,
+      reviewId,
+      snapshot: withRewrites,
+    });
+    expect(saved._tag).toBe("ok");
+    if (saved._tag === "err") return;
+    await expect(
+      store.load({
+        profileId,
+        reviewId,
+        snapshotHash: saved.value.snapshotHash,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: withRewrites });
+    // The same snapshot written before the field existed still parses, and
+    // gains no empty map on the way back.
+    const legacy = parseReviewRemoteSnapshot({
+      ...withRewrites,
+      conversation: {
+        ...withRewrites.conversation,
+        entries: [
+          { _tag: "IssueComment", comment },
+          { _tag: "ReviewSummary", review },
+        ],
+      },
+    });
+    expect(legacy._tag).toBe("ok");
+    if (legacy._tag === "err") return;
+    expect(legacy.value.conversation.entries[0]).not.toHaveProperty(
+      "comment.imageRewrites",
+    );
+    expect(legacy.value.conversation.entries[1]).not.toHaveProperty(
+      "review.imageRewrites",
+    );
+  });
+
   it("writes and loads a strict content-addressed snapshot", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
     roots.push(root);

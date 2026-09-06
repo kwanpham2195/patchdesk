@@ -11,6 +11,7 @@ import {
 } from "../hooks/use-pull-request-image";
 
 import { definedProps } from "../../../domain/defined-props";
+import type { GitHubImageRewrites } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   openPullRequestExternalUrl,
@@ -154,6 +155,12 @@ export type PullRequestBodyContext = {
   readonly pullRequest?: PullRequestRef;
   /** Enables images: the main process needs a profile to fetch and cache their bytes. */
   readonly profileId?: string;
+  /**
+   * GitHub's camo substitutions for this one body's images. Unlike the two
+   * fields above it belongs to a single comment, so a caller forwarding a
+   * shared context merges its own comment's map over it.
+   */
+  readonly imageRewrites?: GitHubImageRewrites;
 };
 
 /**
@@ -167,25 +174,46 @@ export function PullRequestDescriptionPreview({
   markdown,
   pullRequest,
   profileId,
+  imageRewrites,
 }: PullRequestBodyContext & {
   readonly markdown: string;
 }): React.JSX.Element {
   return (
     <MarkdownContent
       markdown={markdown}
-      policy={githubMarkdownPolicy(
-        pullRequest,
-        pullRequest === undefined || profileId === undefined
-          ? undefined
-          : { profileId, pullRequest },
-      )}
+      policy={githubMarkdownPolicy(pullRequest, {
+        source:
+          pullRequest === undefined || profileId === undefined
+            ? undefined
+            : { profileId, pullRequest },
+        rewrites: imageRewrites,
+      })}
     />
   );
 }
 
+/**
+ * What every image in one body needs: where the main process fetches its bytes
+ * from, and GitHub's camo substitutions for the ones it would otherwise refuse.
+ */
+type BodyImages = {
+  readonly source: PullRequestImageSource | undefined;
+  readonly rewrites: GitHubImageRewrites | undefined;
+};
+
+/**
+ * The URL to actually fetch for one image reference. `Object.hasOwn` keeps an
+ * inherited property name (`constructor`) from masquerading as a rewrite.
+ */
+function resolveImageSrc(src: string, images: BodyImages): string {
+  const { rewrites } = images;
+  if (rewrites === undefined || !Object.hasOwn(rewrites, src)) return src;
+  return rewrites[src] ?? src;
+}
+
 function githubMarkdownPolicy(
   pullRequest: PullRequestRef | undefined,
-  imageSource: PullRequestImageSource | undefined,
+  images: BodyImages,
 ): MarkdownContentPolicy {
   return {
     renderLink: ({ href, children, key }) => {
@@ -202,15 +230,15 @@ function githubMarkdownPolicy(
         </Button>
       );
     },
-    renderImage: ({ token, key }) =>
-      renderMarkdownImage(token, imageSource, key),
+    renderImage: ({ token, key, inline }) =>
+      renderMarkdownImage(token, images, key, inline === true),
     renderHtml: ({ html, closeHtml, children, key }) => (
       <HtmlContent
         key={key}
         html={closeHtml === undefined ? html : `${html}${closeHtml}`}
         {...(children === undefined ? {} : { children })}
         pullRequest={pullRequest}
-        imageSource={imageSource}
+        images={images}
       />
     ),
     renderMermaid: ({ source, key }) => (
@@ -226,14 +254,21 @@ const markdownImageTokenSchema = v.object({
 
 function renderMarkdownImage(
   token: Tokens.Image | Tokens.Generic,
-  imageSource: PullRequestImageSource | undefined,
+  images: BodyImages,
   key: string,
+  inline: boolean,
 ): React.ReactNode {
   const parsed = v.safeParse(markdownImageTokenSchema, token);
   if (!parsed.success) return null;
   const { href, text } = parsed.output;
   return (
-    <ClickableImage key={key} src={href} alt={text} source={imageSource} />
+    <ClickableImage
+      key={key}
+      src={href}
+      alt={text}
+      images={images}
+      inline={inline}
+    />
   );
 }
 
@@ -241,12 +276,12 @@ function HtmlContent({
   html,
   children,
   pullRequest,
-  imageSource,
+  images,
 }: {
   readonly html: string;
   readonly children?: ReadonlyArray<React.ReactNode>;
   readonly pullRequest: PullRequestRef | undefined;
-  readonly imageSource: PullRequestImageSource | undefined;
+  readonly images: BodyImages;
 }): React.JSX.Element {
   if (globalThis.DOMParser === undefined) return <span>{html}</span>;
   const documentFragment = new DOMParser().parseFromString(html, "text/html");
@@ -255,28 +290,26 @@ function HtmlContent({
   // A reassembled element parses to an empty tag pair, so its content arrives
   // already rendered from the Markdown tokens that sat between the two tags.
   if (children !== undefined && only instanceof Element) {
-    return (
-      <>{renderHtmlNode(only, pullRequest, imageSource, "html", children)}</>
-    );
+    return <>{renderHtmlNode(only, pullRequest, images, "html", children)}</>;
   }
-  return <>{renderHtmlNodes(nodes, pullRequest, imageSource, "html")}</>;
+  return <>{renderHtmlNodes(nodes, pullRequest, images, "html")}</>;
 }
 
 function renderHtmlNodes(
   nodes: ReadonlyArray<Node>,
   pullRequest: PullRequestRef | undefined,
-  imageSource: PullRequestImageSource | undefined,
+  images: BodyImages,
   keyPrefix: string,
 ): ReadonlyArray<React.ReactNode> {
   return nodes.map((node, index) =>
-    renderHtmlNode(node, pullRequest, imageSource, `${keyPrefix}-${index}`),
+    renderHtmlNode(node, pullRequest, images, `${keyPrefix}-${index}`),
   );
 }
 
 function renderHtmlNode(
   node: Node,
   pullRequest: PullRequestRef | undefined,
-  imageSource: PullRequestImageSource | undefined,
+  images: BodyImages,
   key: string,
   substituteChildren?: ReadonlyArray<React.ReactNode>,
 ): React.ReactNode {
@@ -286,7 +319,7 @@ function renderHtmlNode(
   const tag = node.tagName.toLowerCase();
   const children =
     substituteChildren ??
-    renderHtmlNodes(Array.from(node.childNodes), pullRequest, imageSource, key);
+    renderHtmlNodes(Array.from(node.childNodes), pullRequest, images, key);
   switch (tag) {
     case "script":
     case "style":
@@ -398,8 +431,16 @@ function renderHtmlNode(
       const src = node.getAttribute("src");
       const alt = node.getAttribute("alt") ?? "";
       if (src === null) return <span key={key}>[Image: {alt}]</span>;
+      // A raw-HTML `<img>` arrives with no signal for whether it sits in a line
+      // of text, so it keeps the block placeholder this view has always shown.
       return (
-        <ClickableImage key={key} src={src} alt={alt} source={imageSource} />
+        <ClickableImage
+          key={key}
+          src={src}
+          alt={alt}
+          images={images}
+          inline={false}
+        />
       );
     }
     case "table":
@@ -506,11 +547,13 @@ function MermaidDiagram({
 function ClickableImage({
   src,
   alt,
-  source,
+  images,
+  inline,
 }: {
   readonly src: string;
   readonly alt: string;
-  readonly source: PullRequestImageSource | undefined;
+  readonly images: BodyImages;
+  readonly inline: boolean;
 }): React.JSX.Element {
   const placeholder = useRef<HTMLSpanElement>(null);
   // Standing in for `loading="lazy"`, which cannot help a `data:` URI the
@@ -520,7 +563,11 @@ function ClickableImage({
   const [visible, setVisible] = useState(
     globalThis.IntersectionObserver === undefined,
   );
-  const image = usePullRequestImage({ source, src, visible });
+  const image = usePullRequestImage({
+    source: images.source,
+    src: resolveImageSrc(src, images),
+    visible,
+  });
   const { lightbox, open } = useLightbox();
 
   useEffect(() => {
@@ -538,11 +585,17 @@ function ClickableImage({
 
   if (image._tag === "Failed") return <span>[Image: {alt}]</span>;
   if (image._tag === "Pending") {
+    // An inline badge is a few characters tall, so the block placeholder would
+    // flash a grey slab into the middle of a sentence for every one of them.
     return (
       <span
         ref={placeholder}
         aria-hidden="true"
-        className="block h-24 w-40 rounded-md bg-muted"
+        className={
+          inline
+            ? "inline-block h-[1.15em] w-16 align-text-bottom rounded-sm bg-muted"
+            : "block h-24 w-40 rounded-md bg-muted"
+        }
       />
     );
   }
