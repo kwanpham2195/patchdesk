@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed badge images in a comment showing as `[Image: alt]` text. A bot that posts a quality-gate summary, or any comment carrying an image hosted outside GitHub, now renders those images the way GitHub does. Patchdesk reads the substitutions GitHub already publishes and fetches the copy GitHub proxies, so opening a review never contacts the site the image came from. #107
+
 ## 0.0.5 - 2026-09-06
 
 - Choosing a bucket on the **Insights** Scope card filters the Diff to that bucket's files: the file tree and the diff pane both narrow to Core, Tests, Generated, Docs, or Config. The same choice is now a Scope picker in the diff toolbar, listing every bucket that has files with its count, so you can narrow or widen the diff without leaving it; All files restores the whole diff. Selecting a commit clears the filter, so a bucket and a commit slice are never shown at once. Commits and Threads stay complete. #68 #104 #106
