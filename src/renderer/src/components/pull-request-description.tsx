@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { ChevronDown } from "lucide-react";
 import type { Mermaid } from "mermaid";
 import * as v from "valibot";
@@ -48,6 +55,20 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 const collapsedDescriptionHeight = 288;
 let mermaidPromise: Promise<Mermaid> | undefined;
+
+/**
+ * Whether a link already rendered this subtree inside a `<button>`, so an image
+ * under it must not add its own zoom `<button>`: React refuses to render one
+ * button nested in another.
+ *
+ * A context and not a parameter because the two render paths reach an image
+ * differently. Block HTML is parsed whole, so `renderHtmlNode` walks from the
+ * `<a>` down to the `<img>` itself; but `marked` lexes inline HTML one tag at a
+ * time, so an inline `<a>`'s content is rendered from its own Markdown tokens
+ * before the anchor around it exists. Only a context reaches both, and it
+ * survives nesting either way (`<a><span><img></span></a>`).
+ */
+const InsideLinkContext = createContext(false);
 
 export function PullRequestDescription({
   markdown,
@@ -226,7 +247,9 @@ function githubMarkdownPolicy(
           size="xs"
           onClick={() => void openPullRequestExternalUrl(href, pullRequest)}
         >
-          {children}
+          <InsideLinkContext.Provider value={true}>
+            {children}
+          </InsideLinkContext.Provider>
         </Button>
       );
     },
@@ -423,7 +446,9 @@ function renderHtmlNode(
           size="xs"
           onClick={() => void openPullRequestExternalUrl(href, pullRequest)}
         >
-          {children}
+          <InsideLinkContext.Provider value={true}>
+            {children}
+          </InsideLinkContext.Provider>
         </Button>
       );
     }
@@ -431,14 +456,16 @@ function renderHtmlNode(
       const src = node.getAttribute("src");
       const alt = node.getAttribute("alt") ?? "";
       if (src === null) return <span key={key}>[Image: {alt}]</span>;
-      // A raw-HTML `<img>` arrives with no signal for whether it sits in a line
-      // of text, so it keeps the block placeholder this view has always shown.
       return (
         <ClickableImage
           key={key}
           src={src}
           alt={alt}
           images={images}
+          // A raw-HTML `<img>` arrives with no signal for whether it sits in a
+          // line of text, so it keeps the block placeholder this view has
+          // always shown. Whether it may carry a zoom button is a separate
+          // question, and `InsideLinkContext` answers that one.
           inline={false}
         />
       );
@@ -553,8 +580,10 @@ function ClickableImage({
   readonly src: string;
   readonly alt: string;
   readonly images: BodyImages;
+  /** The image sits in a line of text, so its loading placeholder must not be block-sized. */
   readonly inline: boolean;
 }): React.JSX.Element {
+  const insideLink = useContext(InsideLinkContext);
   const placeholder = useRef<HTMLSpanElement>(null);
   // Standing in for `loading="lazy"`, which cannot help a `data:` URI the
   // renderer fetches itself: nothing is requested until the image scrolls
@@ -599,18 +628,21 @@ function ClickableImage({
       />
     );
   }
+  const rendered = (
+    <img
+      src={image.dataUri}
+      alt={alt}
+      loading="lazy"
+      className={
+        inline
+          ? "inline-block max-w-full align-text-bottom"
+          : "max-w-full rounded-md"
+      }
+    />
+  );
   // An inline badge is a few characters tall, so there is nothing to zoom into,
-  // and the zoom button would be a `<button>` nested inside the link's own one.
-  if (inline) {
-    return (
-      <img
-        src={image.dataUri}
-        alt={alt}
-        loading="lazy"
-        className="inline-block max-w-full align-text-bottom"
-      />
-    );
-  }
+  // and under a link the zoom button would nest inside the link's own one.
+  if (inline || insideLink) return rendered;
   return (
     <>
       <button
@@ -626,12 +658,7 @@ function ClickableImage({
           )
         }
       >
-        <img
-          src={image.dataUri}
-          alt={alt}
-          loading="lazy"
-          className="max-w-full rounded-md"
-        />
+        {rendered}
       </button>
       {lightbox()}
     </>

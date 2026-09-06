@@ -211,6 +211,68 @@ describe("PullRequestDescription", () => {
     expect(container.querySelector("button button")).toBeNull();
   });
 
+  it("renders a raw HTML badge linking somewhere without nesting it in the link's control", async () => {
+    const dataUri = "data:image/svg+xml;base64,AAAA";
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () => success({ dataUri }),
+    });
+    const { container } = render(
+      <PullRequestDescriptionPreview
+        markdown={
+          '<a href="https://example.com/dashboard"><img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate"></a>'
+        }
+        pullRequest={pullRequest}
+        profileId="centraldigital"
+      />,
+    );
+
+    await screen.findByRole("img", { name: "Quality Gate" });
+    // The link is a button, so a zoom button around the badge would nest one
+    // button inside another — invalid HTML React refuses to render.
+    expect(container.querySelector("button button")).toBeNull();
+  });
+
+  it("renders a raw HTML badge inside a Markdown link without nesting it in the link's control", async () => {
+    const dataUri = "data:image/svg+xml;base64,AAAA";
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () => success({ dataUri }),
+    });
+    const { container } = render(
+      <PullRequestDescriptionPreview
+        markdown={
+          '[<img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate">](https://example.com/dashboard)'
+        }
+        pullRequest={pullRequest}
+        profileId="centraldigital"
+      />,
+    );
+
+    await screen.findByRole("img", { name: "Quality Gate" });
+    // A raw-HTML image is block-sized, so only the Markdown link's own context
+    // keeps it out of a zoom button here.
+    expect(container.querySelector("button button")).toBeNull();
+  });
+
+  it("renders a raw HTML badge under an anchor's intervening element without nesting it in the link's control", async () => {
+    const dataUri = "data:image/svg+xml;base64,AAAA";
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () => success({ dataUri }),
+    });
+    const { container } = render(
+      <PullRequestDescriptionPreview
+        markdown={
+          '<div><a href="https://example.com/dashboard"><span><img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate"></span></a></div>'
+        }
+        pullRequest={pullRequest}
+        profileId="centraldigital"
+      />,
+    );
+
+    await screen.findByRole("img", { name: "Quality Gate" });
+    // The `<span>` between anchor and image proves the signal survives nesting.
+    expect(container.querySelector("button button")).toBeNull();
+  });
+
   it("keeps the placeholder for an image no profile can be fetched as", () => {
     render(
       <PullRequestDescriptionPreview
