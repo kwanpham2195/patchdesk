@@ -27,3 +27,5 @@ agent-browser.json
 .agents/PLANS/
 .agents/tasks/
 .agents/research/
+.pi/artifacts
+.pi/workspace.local.json
