@@ -53,7 +53,7 @@ Both actions settle at once. The Scope filter is worked out locally from the rep
 
 Applying a bucket moves the maintainer to the Diff tab and its Browse section. The file tree and the diff pane both narrow to that bucket's files, listed in the order the patch gives them. If the file that was already selected belongs to the bucket, it stays selected; otherwise the first file of the bucket is selected instead. The chosen bucket row on the Scope card is drawn as pressed.
 
-The Diff toolbar shows a chip naming the active bucket in that bucket's colour. Choosing the chip clears the filter. Choosing the same bucket on the Scope card again also clears it. Moving to the Commits section, or choosing a commit there, clears it too, so a commit slice and a bucket slice never compete over the same pane.
+The Diff toolbar carries a Scope picker showing the active bucket in that bucket's colour, so the same filter can be chosen and changed without returning to Overview. Choosing All files there clears the filter, as does choosing the same bucket on the Scope card again. Moving to the Commits section, or choosing a commit there, clears it too, so a commit slice and a bucket slice never compete over the same pane.
 
 The filter is a way of reading this diff now, not a place to return to. It is session-local and is never stored with the saved workbench position, so a reload comes back unfiltered. Moving to a newer represented revision also drops it along with the rest of the position.
 
@@ -95,7 +95,7 @@ The filter is a way of reading this diff now, not a place to return to. It is se
 
 **Feedback, errors, and diagnostics.** Not generated, Running, Current, Outdated, and Failed are distinct card states, each with its own tone. Overview does not restate a run's error text; the reader for that Insight does.
 
-**Preferences, keyboard commands, and desktop integration.** The Scope card shares its bucket names and colours with the Diff toolbar chip and with the gauge shown in the pull-request list and the workbench header, so a bucket reads the same everywhere.
+**Preferences, keyboard commands, and desktop integration.** The Scope card shares its bucket names and colours with the Diff toolbar's Scope picker and with the gauge shown in the pull-request list and the workbench header, so a bucket reads the same everywhere.
 
 **Supported input and accessibility limits.** The bar carries a single sentence naming each bucket with its counts, used as both the accessible name and the hover text. Patchdesk does not claim screen-reader, touch, or pen support.
 

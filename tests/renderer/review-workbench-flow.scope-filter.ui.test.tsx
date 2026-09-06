@@ -40,6 +40,18 @@ function browsedPaths(): ReadonlyArray<string> {
   return [...tree].map((row) => row.getAttribute("data-item-path") ?? "");
 }
 
+/**
+ * Opens the toolbar's Scope menu. Base UI's menu trigger opens on a real
+ * mousedown, which jsdom's synthetic pointer sequence does not satisfy, so the
+ * keyboard is the only way in here; the pointer path is checked live.
+ */
+async function openScopeMenu(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  screen.getByRole("button", { name: "Scope filter" }).focus();
+  await user.keyboard("{Enter}");
+}
+
 const scopedPatch = [
   "diff --git a/src/a.ts b/src/a.ts",
   "--- a/src/a.ts",
@@ -72,7 +84,7 @@ function scopedProjection(
 }
 
 describe("ReviewWorkbenchFlow Scope filter", () => {
-  it("filters the Diff to a Scope bucket and restores it from the toolbar chip", async () => {
+  it("filters the Diff to a Scope bucket and restores it from the toolbar picker", async () => {
     bridge(async (input) =>
       input.path === "/v1/reviews/detect-updates"
         ? { updatesAvailable: false }
@@ -96,9 +108,45 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     ).toBe("true");
     expect(browsedPaths()).toEqual(["docs/", "docs/guide.md"]);
 
-    await user.click(
-      screen.getByRole("button", { name: "Clear Scope filter: Docs" }),
+    await openScopeMenu(user);
+    await user.click(screen.getByRole("menuitemradio", { name: "All files" }));
+    expect(browsedPaths()).toEqual([
+      "docs/",
+      "docs/guide.md",
+      "src/",
+      "src/a.ts",
+    ]);
+  });
+
+  it("chooses a Scope bucket from the Diff toolbar and shows it on the Scope card", async () => {
+    bridge(async (input) =>
+      input.path === "/v1/reviews/detect-updates"
+        ? { updatesAvailable: false }
+        : Promise.reject(new Error(input.path)),
     );
+    render(
+      <ReviewWorkbenchFlow
+        workbench={scopedProjection()}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await openScopeMenu(user);
+    await user.click(screen.getByRole("menuitemradio", { name: /Docs/ }));
+    expect(browsedPaths()).toEqual(["docs/", "docs/guide.md"]);
+
+    await user.click(screen.getByRole("tab", { name: "Insights" }));
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
+    expect(
+      screen.getByRole("button", { name: /Docs/ }).getAttribute("aria-pressed"),
+    ).toBe("true");
+
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await openScopeMenu(user);
+    await user.click(screen.getByRole("menuitemradio", { name: "All files" }));
     expect(browsedPaths()).toEqual([
       "docs/",
       "docs/guide.md",
@@ -146,14 +194,10 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     // Opening Commits selects the first commit on its own, so the filter has
     // to be gone by then, not only once a commit row is clicked.
     await user.click(screen.getByRole("tab", { name: /^Commits/ }));
-    expect(
-      screen.queryByRole("button", { name: "Clear Scope filter: Docs" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scope filter" })).toBeNull();
     await user.click(screen.getByRole("button", { name: /Rewrite the guide/ }));
 
-    expect(
-      screen.queryByRole("button", { name: "Clear Scope filter: Docs" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Scope filter" })).toBeNull();
     await user.click(screen.getByRole("tab", { name: /^Browse/ }));
     expect(browsedPaths()).toEqual([
       "docs/",

@@ -452,10 +452,13 @@ export function ReviewWorkbench({
     activeScopeBucket,
     scopeFilteredPaths,
     selectScopeBucket,
+    scopeFilter,
     clearScopeBucket,
   } = useReviewScopeFilter({
     fullPatch: model.fullPatch,
+    scope: model.scope,
     selectedPath,
+    commitSliceActive: selectedCommitSha !== undefined,
     commitWorkbenchPosition,
     selectSection,
     setActivePath,
@@ -861,14 +864,12 @@ export function ReviewWorkbench({
                           {...(selectedRange === undefined
                             ? {}
                             : { selectedRange })}
-                          {...(scopeFilteredPaths === undefined ||
-                          activeScopeBucket === undefined
+                          {...(scopeFilteredPaths === undefined
                             ? {}
-                            : {
-                                visiblePaths: scopeFilteredPaths,
-                                activeScopeBucket,
-                                onClearScopeBucket: clearScopeBucket,
-                              })}
+                            : { visiblePaths: scopeFilteredPaths })}
+                          {...(scopeFilter === undefined
+                            ? {}
+                            : { scopeFilter })}
                           {...(selectedCommitSha === undefined
                             ? actions.localCommentAuthoring === undefined
                               ? {}

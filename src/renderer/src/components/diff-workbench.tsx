@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import {
   mapFindingLocation,
   parseUnifiedPatch,
@@ -16,6 +15,7 @@ import {
   type ReviewInlineAnnotation,
   type SelectedDiffRange,
 } from "./review-diff-view";
+import type { ScopeFilterControl } from "./review-diff-toolbar";
 import type { PullRequestBodyContext } from "./pull-request-description";
 import { parseReviewDiff } from "@/review-diff-data";
 import type { FileFindingCount } from "@/review-finding-counts";
@@ -61,8 +61,7 @@ export function DiffWorkbench({
   selectedRange,
   leadingAction,
   visiblePaths,
-  activeScopeBucket,
-  onClearScopeBucket,
+  scopeFilter,
 }: {
   readonly patch: string;
   readonly finding?: FindingLocationInput;
@@ -95,9 +94,8 @@ export function DiffWorkbench({
   readonly leadingAction?: React.ReactNode;
   /** The only files to browse and render; absent when no filter is active. */
   readonly visiblePaths?: ReadonlySet<string>;
-  /** The Scope bucket `visiblePaths` came from, named on the toolbar's clear chip. */
-  readonly activeScopeBucket?: ChangeScopeBucket;
-  readonly onClearScopeBucket?: () => void;
+  /** Drives the toolbar Scope picker; absent where the diff cannot be filtered by bucket. */
+  readonly scopeFilter?: ScopeFilterControl;
 }): React.JSX.Element {
   // Narrowing the patch itself, not just its parsed metadata: the pane falls
   // back to rendering the patch text where Pierre's CodeView is unavailable.
@@ -278,8 +276,7 @@ export function DiffWorkbench({
           </header>
           <ReviewDiffView
             patch={visiblePatch}
-            activeScopeBucket={activeScopeBucket}
-            onClearScopeBucket={onClearScopeBucket}
+            scopeFilter={scopeFilter}
             parsedFiles={parsedDiff.files}
             fileStatsByPath={parsedDiff.statsByPath}
             {...(selectedPath === undefined ? {} : { selectedPath })}

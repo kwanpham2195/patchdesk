@@ -1,5 +1,5 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { ChevronsUpDown, FileCode2, Files } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, FileCode2, Files } from "lucide-react";
 
 import type { ReviewViewPreferences } from "@/review-view-preferences";
 import type {
@@ -9,10 +9,98 @@ import type {
 import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { ReviewDiffOptionsPopover } from "./review-diff-options-popover";
 import { SCOPE_BUCKET_FILLS, SCOPE_BUCKET_LABELS } from "./scope-gauge-buckets";
+
+/** The Scope buckets the diff can be narrowed to, and the state of that choice. */
+export type ScopeFilterControl = {
+  /** The populated buckets in gauge order; an empty bucket is never offered. */
+  readonly buckets: ReadonlyArray<{
+    readonly bucket: ChangeScopeBucket;
+    readonly files: number;
+  }>;
+  readonly activeBucket: ChangeScopeBucket | undefined;
+  readonly onSelect: (bucket: ChangeScopeBucket) => void;
+  readonly onClear: () => void;
+};
+
+/** The radio value standing for "no bucket"; buckets carry their own names. */
+const ALL_FILES_VALUE = "all";
+
+function ScopeBucketSwatch({
+  bucket,
+}: {
+  readonly bucket: ChangeScopeBucket;
+}): React.JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "size-2 shrink-0 rounded-[2px]",
+        SCOPE_BUCKET_FILLS[bucket],
+      )}
+    />
+  );
+}
+
+function ReviewDiffScopePicker({
+  scopeFilter,
+}: {
+  readonly scopeFilter: ScopeFilterControl;
+}): React.JSX.Element | null {
+  const { buckets, activeBucket, onSelect, onClear } = scopeFilter;
+  if (buckets.length === 0) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="secondary" size="xs" aria-label="Scope filter">
+            {activeBucket === undefined ? null : (
+              <ScopeBucketSwatch bucket={activeBucket} />
+            )}
+            {activeBucket === undefined
+              ? "Scope"
+              : SCOPE_BUCKET_LABELS[activeBucket]}
+            <ChevronDown aria-hidden="true" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent className="w-44">
+        <DropdownMenuRadioGroup value={activeBucket ?? ALL_FILES_VALUE}>
+          <DropdownMenuRadioItem
+            value={ALL_FILES_VALUE}
+            closeOnClick
+            onClick={onClear}
+          >
+            All files
+          </DropdownMenuRadioItem>
+          {buckets.map(({ bucket, files }) => (
+            <DropdownMenuRadioItem
+              key={bucket}
+              value={bucket}
+              closeOnClick
+              onClick={() => onSelect(bucket)}
+            >
+              <ScopeBucketSwatch bucket={bucket} />
+              {SCOPE_BUCKET_LABELS[bucket]}
+              <DropdownMenuShortcut>{files}</DropdownMenuShortcut>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /** Renders shared file selection, display, context, and viewed controls above a review diff. */
 export function ReviewDiffToolbar({
@@ -27,8 +115,7 @@ export function ReviewDiffToolbar({
   collapsedPaths,
   files,
   onSetAllCollapsed,
-  activeScopeBucket,
-  onClearScopeBucket,
+  scopeFilter,
 }: {
   readonly virtualized: boolean;
   readonly preferences: Pick<
@@ -46,9 +133,8 @@ export function ReviewDiffToolbar({
   readonly collapsedPaths: ReadonlySet<string>;
   readonly files: ReadonlyArray<FileDiffMetadata>;
   readonly onSetAllCollapsed: (collapsed: boolean) => void;
-  /** The Scope bucket the diff is filtered by; absent when no filter is active. */
-  readonly activeScopeBucket?: ChangeScopeBucket | undefined;
-  readonly onClearScopeBucket?: (() => void) | undefined;
+  /** Drives the Scope picker; absent where the diff cannot be filtered by bucket. */
+  readonly scopeFilter?: ScopeFilterControl | undefined;
 }): React.JSX.Element {
   return (
     <div
@@ -79,23 +165,8 @@ export function ReviewDiffToolbar({
             <FileCode2 /> Selected
           </Button>
         </ButtonGroup>
-        {activeScopeBucket === undefined ||
-        onClearScopeBucket === undefined ? null : (
-          <Button
-            variant="secondary"
-            size="xs"
-            aria-label={`Clear Scope filter: ${SCOPE_BUCKET_LABELS[activeScopeBucket]}`}
-            onClick={onClearScopeBucket}
-          >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "size-2 shrink-0 rounded-[2px]",
-                SCOPE_BUCKET_FILLS[activeScopeBucket],
-              )}
-            />
-            {SCOPE_BUCKET_LABELS[activeScopeBucket]}
-          </Button>
+        {scopeFilter === undefined ? null : (
+          <ReviewDiffScopePicker scopeFilter={scopeFilter} />
         )}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-1">

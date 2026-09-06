@@ -31,8 +31,10 @@ import { type GitHubThreadId } from "../../../domain/ids";
 import { AccessiblePatch } from "./review-diff-accessible-patch";
 import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
 import { renderReviewDiffAnnotation } from "./review-diff-finding-card";
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
-import { ReviewDiffToolbar } from "./review-diff-toolbar";
+import {
+  ReviewDiffToolbar,
+  type ScopeFilterControl,
+} from "./review-diff-toolbar";
 import { useReviewDiffRegionName } from "../hooks/use-review-diff-region-name";
 import type {
   ConversationThreadCardData,
@@ -235,9 +237,8 @@ type ReviewDiffViewProps = {
    * Absent on the surfaces that render no GitHub-authored body -- the
    * walkthrough, the brief's hunk preview, and finding evidence. */
   readonly bodyContext?: PullRequestBodyContext;
-  /** The Scope bucket this pane is filtered by; drives the toolbar's clear chip. */
-  readonly activeScopeBucket?: ChangeScopeBucket | undefined;
-  readonly onClearScopeBucket?: (() => void) | undefined;
+  /** Drives the toolbar Scope picker; absent where the diff cannot be filtered by bucket. */
+  readonly scopeFilter?: ScopeFilterControl | undefined;
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
@@ -265,8 +266,7 @@ function ReviewDiffSurface({
   pendingReviewComposer,
   conversationActions,
   bodyContext = EMPTY_BODY_CONTEXT,
-  activeScopeBucket,
-  onClearScopeBucket,
+  scopeFilter,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const [appearance, setAppearance] = useState<ResolvedAppearance>(() =>
@@ -447,8 +447,7 @@ function ReviewDiffSurface({
       setViewerContainer={setViewerContainer}
       handleCodeViewScroll={handleCodeViewScroll}
       beginAuthoring={beginAuthoring}
-      activeScopeBucket={activeScopeBucket}
-      onClearScopeBucket={onClearScopeBucket}
+      scopeFilter={scopeFilter}
     />
   );
 }
@@ -507,8 +506,7 @@ type ReviewDiffRenderSiteProps = {
   readonly setViewerContainer: ReviewDiffModel["setViewerContainer"];
   readonly handleCodeViewScroll: ReviewDiffModel["handleCodeViewScroll"];
   readonly beginAuthoring: (selection: CodeViewLineSelection | null) => void;
-  readonly activeScopeBucket: ChangeScopeBucket | undefined;
-  readonly onClearScopeBucket: (() => void) | undefined;
+  readonly scopeFilter: ScopeFilterControl | undefined;
 };
 
 function ReviewDiffRenderSite({
@@ -551,8 +549,7 @@ function ReviewDiffRenderSite({
   setViewerContainer,
   handleCodeViewScroll,
   beginAuthoring,
-  activeScopeBucket,
-  onClearScopeBucket,
+  scopeFilter,
 }: ReviewDiffRenderSiteProps): React.JSX.Element {
   const codeViewOptions = useMemo(
     () => ({
@@ -704,8 +701,7 @@ function ReviewDiffRenderSite({
         collapsedPaths={collapsedPaths}
         files={files}
         onSetAllCollapsed={setAllCollapsed}
-        activeScopeBucket={activeScopeBucket}
-        onClearScopeBucket={onClearScopeBucket}
+        scopeFilter={scopeFilter}
       />
       {!browserSupportsPierre &&
       localComposerAnnotation?.localComposer !== undefined ? (
