@@ -6,7 +6,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, {
+  PointerEventsCheckLevel,
+} from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DiffWorkbench } from "../../src/renderer/src/components/diff-workbench";
@@ -26,25 +28,6 @@ afterEach(() => {
   desktop?.restore();
   desktop = undefined;
 });
-
-// The Pierre CodeView suspends pointer events on its sticky container for
-// 120 ms after a scroll or layout pass, and the file header buttons live
-// inside that container, so a click landing in the window throws.
-async function clickWhenInteractive(
-  user: ReturnType<typeof userEvent.setup>,
-  element: HTMLElement,
-): Promise<void> {
-  await waitFor(() => {
-    for (
-      let node: HTMLElement | null = element;
-      node !== null;
-      node = node.parentElement
-    ) {
-      expect(window.getComputedStyle(node).pointerEvents).not.toBe("none");
-    }
-  });
-  await user.click(element);
-}
 
 function requestedPath(input: LocalApiDesktopRequest): string {
   const body = input.body;
@@ -148,7 +131,12 @@ describe("diff workbench", () => {
         });
       },
     });
-    const user = userEvent.setup();
+    // Pierre's CodeView suspends pointer events for 120 ms after any layout
+    // pass as a scroll-jank guard, not as a UX state, and that suspension can
+    // re-engage between any wait and the click it guards.
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
     const onSave = vi.fn(async () => undefined);
     render(
       <DiffWorkbench
@@ -164,8 +152,7 @@ describe("diff workbench", () => {
     expect(
       screen.getByRole("group", { name: "Display mode for docs/guide.md" }),
     ).toBeTruthy();
-    await clickWhenInteractive(
-      user,
+    await user.click(
       within(readmeModes).getByRole("button", { name: "Preview" }),
     );
 
@@ -197,10 +184,7 @@ describe("diff workbench", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
 
-    await clickWhenInteractive(
-      user,
-      within(readmeModes).getByRole("button", { name: "Diff" }),
-    );
+    await user.click(within(readmeModes).getByRole("button", { name: "Diff" }));
     await waitFor(() =>
       expect(
         screen.queryByRole("article", { name: "Preview of README.md" }),

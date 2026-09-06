@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, {
+  PointerEventsCheckLevel,
+} from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 
@@ -33,6 +35,15 @@ vi.mock("@pierre/diffs", async (importOriginal) => {
     preloadHighlighter: vi.fn(async () => undefined),
   };
 });
+
+// Pierre's CodeView suspends pointer events for 120 ms after any layout pass
+// as a scroll-jank guard, not as a UX state, and that suspension can re-engage
+// between any wait and the click it guards.
+function setupCodeViewUser(): ReturnType<typeof userEvent.setup> {
+  return userEvent.setup({
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+  });
+}
 
 let desktop: DesktopDouble | undefined;
 
@@ -251,7 +262,7 @@ describe("review diff hydration", () => {
     const patch =
       "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
     const parsed = parseReviewDiff(patch);
-    const user = userEvent.setup();
+    const user = setupCodeViewUser();
     try {
       render(
         <ReviewDiffView
@@ -333,7 +344,7 @@ describe("review diff hydration", () => {
     const patch =
       "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
     const parsed = parseReviewDiff(patch);
-    const user = userEvent.setup();
+    const user = setupCodeViewUser();
     try {
       render(
         <ReviewDiffView
@@ -407,7 +418,7 @@ describe("review diff hydration", () => {
     const patch =
       "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
     const parsed = parseReviewDiff(patch);
-    const user = userEvent.setup();
+    const user = setupCodeViewUser();
     try {
       render(
         <ReviewDiffView
@@ -646,7 +657,7 @@ it("keeps Reply and Resolve off a published create card even when all global con
   const patch =
     "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n";
   const parsed = parseReviewDiff(patch);
-  const user = userEvent.setup();
+  const user = setupCodeViewUser();
   try {
     render(
       <ReviewDiffView
@@ -834,7 +845,7 @@ describe("pending-review composer lifecycle", () => {
 
   it("shows a transient starting card while the command is unresolved and removes it on success", async () => {
     await withCodeViewDom(async () => {
-      const user = userEvent.setup();
+      const user = setupCodeViewUser();
       let resolveStart!: () => void;
       const startPromise = new Promise<void>((resolve) => {
         resolveStart = resolve;
@@ -861,7 +872,7 @@ describe("pending-review composer lifecycle", () => {
 
   it("keeps a bounded failed card on a confirmed rejection and never claims a thread", async () => {
     await withCodeViewDom(async () => {
-      const user = userEvent.setup();
+      const user = setupCodeViewUser();
       const actions = composerActions({
         onStartReview: vi.fn(async () => {
           throw new PatchdeskApiError(
@@ -888,7 +899,7 @@ describe("pending-review composer lifecycle", () => {
 
   it("leaves no card when the outcome is unknown (recovery owns reconciliation)", async () => {
     await withCodeViewDom(async () => {
-      const user = userEvent.setup();
+      const user = setupCodeViewUser();
       const actions = composerActions({
         onStartReview: vi.fn(async () => {
           throw new PatchdeskApiError(

@@ -7,7 +7,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, {
+  PointerEventsCheckLevel,
+} from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
@@ -83,6 +85,15 @@ async function typePastPierreScrollSuspend(
 ): Promise<void> {
   await waitFor(() => user.click(element));
   await user.type(element, text, { skipClick: true });
+}
+
+// Pierre's CodeView suspends pointer events for 120 ms after any layout pass
+// as a scroll-jank guard, not as a UX state, and that suspension can re-engage
+// between any wait and the click it guards.
+function setupCodeViewUser(): ReturnType<typeof userEvent.setup> {
+  return userEvent.setup({
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+  });
 }
 
 async function openAddedLineComposer(
@@ -705,7 +716,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
           };
         throw new Error(input.path);
       });
-      const user = userEvent.setup();
+      const user = setupCodeViewUser();
       mount(projection());
       fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
       const authorButtons = await screen.findAllByRole("button", {
@@ -766,7 +777,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
           return { _tag: "CommentCreated", commentId: "comment-1" };
         throw new Error(input.path);
       });
-      const user = userEvent.setup();
+      const user = setupCodeViewUser();
       mount(projection());
       fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
       const authorButtons = await screen.findAllByRole("button", {
