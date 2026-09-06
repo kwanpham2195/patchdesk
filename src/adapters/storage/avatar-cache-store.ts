@@ -186,5 +186,33 @@ export function sniffImageContentType(bytes: Uint8Array): string | undefined {
     bytes[11] === 0x50
   )
     return "image/webp";
+  // Safe only because these bytes are shown through an `<img>`, which renders
+  // SVG in secure static mode — no scripts, no external loads — so they must
+  // never reach an inline `<svg>` or `dangerouslySetInnerHTML`.
+  if (isSvgDocument(bytes)) return "image/svg+xml";
   return undefined;
+}
+
+/**
+ * Enough bytes to carry an XML declaration, a doctype, and the opening `<svg>`
+ * of every badge GitHub proxies; sniffing a prefix keeps a 4 MiB non-image
+ * download from being decoded whole just to be refused.
+ */
+const SVG_SNIFF_PREFIX_BYTES = 1024;
+/** An `<svg` that ends the element name, so `<svgish>` is not mistaken for one. */
+const SVG_ELEMENT = /<svg[\s/>]/;
+
+/**
+ * SVG has no magic number, so it is recognized by shape: past an optional
+ * UTF-8 BOM and leading whitespace the document opens with `<?xml` or `<svg`
+ * and contains an `<svg>` element, which rejects both HTML and unrelated XML.
+ */
+function isSvgDocument(bytes: Uint8Array): boolean {
+  const hasBom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  const start = hasBom ? 3 : 0;
+  const prefix = new TextDecoder()
+    .decode(bytes.subarray(start, start + SVG_SNIFF_PREFIX_BYTES))
+    .trimStart();
+  if (!prefix.startsWith("<?xml") && !prefix.startsWith("<svg")) return false;
+  return SVG_ELEMENT.test(prefix);
 }

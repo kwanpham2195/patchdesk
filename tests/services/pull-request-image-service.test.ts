@@ -271,6 +271,29 @@ describe("PullRequestImageService", () => {
     });
   });
 
+  it("resolves an SVG badge proxied through camo", async () => {
+    // camo.githubusercontent.com passes SonarQube's badge through as
+    // image/svg+xml; the sniffer, not the allowlist, used to refuse it.
+    const svg = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="104" height="20"></svg>',
+    );
+    const fetch = stubFetch(() => new Response(svg));
+    const images = await service(fetch);
+
+    const resolved = await images.resolve({
+      profileId,
+      pullRequest,
+      imageUrl: "https://camo.githubusercontent.com/abc123",
+    });
+
+    expect(resolved).toEqual({
+      _tag: "ok",
+      value: {
+        dataUri: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
+      },
+    });
+  });
+
   it("reports a missing image as not found and a refused read as a GitHub failure", async () => {
     const missing = await service(
       stubFetch(() => new Response(null, { status: 404 })),

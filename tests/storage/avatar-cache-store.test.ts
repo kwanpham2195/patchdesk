@@ -8,6 +8,7 @@ import {
   hasAvatar,
   hashAvatarUrl,
   readAvatar,
+  sniffImageContentType,
   writeAvatar,
 } from "../../src/adapters/storage/avatar-cache-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
@@ -102,5 +103,80 @@ describe("avatar cache store", () => {
     await writeAvatar(store, profileId, hash, onePixelPng);
     expect(await hasAvatar(store, profileId, hash)).toBe(true);
     expect(await hasAvatar(store, other, hash)).toBe(false);
+  });
+});
+
+const utf8 = (text: string): Uint8Array => new TextEncoder().encode(text);
+const withBom = (text: string): Uint8Array =>
+  new Uint8Array([0xef, 0xbb, 0xbf, ...utf8(text)]);
+
+describe("sniffImageContentType", () => {
+  it.each([
+    ["PNG", onePixelPng, "image/png"],
+    [
+      "JPEG",
+      new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]),
+      "image/jpeg",
+    ],
+    ["GIF", utf8("GIF89a"), "image/gif"],
+    [
+      "WebP",
+      new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, 0x1a, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+      ]),
+      "image/webp",
+    ],
+  ])("names %s bytes by their magic number", (_case, bytes, contentType) => {
+    expect(sniffImageContentType(bytes)).toBe(contentType);
+  });
+
+  it("names a minimal SVG document", () => {
+    expect(
+      sniffImageContentType(
+        utf8('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+      ),
+    ).toBe("image/svg+xml");
+  });
+
+  it("names an SVG behind an XML declaration and a leading newline", () => {
+    expect(
+      sniffImageContentType(
+        utf8(
+          '\n<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="104" height="20"><rect width="104" height="20"/></svg>',
+        ),
+      ),
+    ).toBe("image/svg+xml");
+  });
+
+  it("names an SVG that starts with a UTF-8 BOM", () => {
+    expect(
+      sniffImageContentType(
+        withBom('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+      ),
+    ).toBe("image/svg+xml");
+  });
+
+  it("refuses a plain HTML document", () => {
+    expect(
+      sniffImageContentType(
+        utf8("<!DOCTYPE html>\n<html><body><svg></svg></body></html>"),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("refuses XML that carries no svg element", () => {
+    expect(
+      sniffImageContentType(
+        utf8('<?xml version="1.0"?><note><to>reviewer</to></note>'),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("refuses an element that merely starts with the letters svg", () => {
+    expect(sniffImageContentType(utf8("<svgish>no</svgish>"))).toBeUndefined();
+  });
+
+  it("refuses bytes that are not a recognized image", () => {
+    expect(sniffImageContentType(new Uint8Array([1, 2, 3, 4]))).toBeUndefined();
   });
 });
