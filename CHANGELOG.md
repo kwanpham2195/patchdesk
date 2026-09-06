@@ -4,6 +4,7 @@
 
 - Choosing a bucket on the **Insights** Scope card filters the Diff to that bucket's files: the file tree and the diff pane both narrow to Core, Tests, Generated, Docs, or Config, a chip in the diff toolbar names the bucket, and choosing that chip restores the whole diff. Selecting a commit clears the filter, so a bucket and a commit slice are never shown at once. Commits and Threads stay complete. #68 #104
 - **Analysis** gains a Copy as markdown prompt button that copies the open findings as a prompt you can paste into a local coding agent to fix them.
+- The **Review opened** and **Could not open review** notices on **Pull requests** are now one centered card with a status icon and a Dismiss button, instead of a full-width strip that read as the page header; the success notice clears itself after six seconds, so coming back from a Review no longer shows a stale confirmation. #105
 - Widened the **Pull requests** repository picker so typical `owner/repository` names remain readable and longer names reveal their complete value on hover. #101
 - Standardized empty **Brief**, **Walkthrough**, and **Analysis** readers on one borderless, centered layout with sentence-case actions. #100
 - Added the commit count beside **Commits** in the Review navigator. #99

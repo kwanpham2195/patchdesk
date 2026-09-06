@@ -48,9 +48,9 @@ The row and inspector show Opening… only for that row. Other rows can be opene
 
 ### Settle
 
-A successful preparation commits the Review session and enters its Review workbench. A saved session reports resumed behavior to the workbench; a new session has the freshly prepared represented revision. The Pull requests screen records a short Review opened notice when it remains mounted.
+A successful preparation commits the Review session and enters its Review workbench. A saved session reports resumed behavior to the workbench; a new session has the freshly prepared represented revision. The Pull requests screen records a Review opened notice when it remains mounted: one centered, width-bounded card above the listing, with a check icon and a Dismiss button. It clears itself six seconds after it appears, or at once when you dismiss it, so returning from the workbench never shows a stale confirmation.
 
-A failed opening clears the row's busy state and shows `Could not open review` with the preparation reason. Loading a saved Review can fall back to `/v1/reviews/open` by row identity. If both load and fallback fail, the row remains in the listing and no workbench is opened. An invalid workbench projection is treated as failure rather than navigating to an unvalidated screen.
+A failed opening clears the row's busy state and shows `Could not open review` with the preparation reason, in the same centered card with an alert icon. That notice does not clear itself: it stays until you dismiss it or the next opening attempt replaces it. Loading a saved Review can fall back to `/v1/reviews/open` by row identity. If both load and fallback fail, the row remains in the listing and no workbench is opened. An invalid workbench projection is treated as failure rather than navigating to an unvalidated screen.
 
 ## Variants
 

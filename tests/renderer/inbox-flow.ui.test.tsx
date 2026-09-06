@@ -358,6 +358,57 @@ describe("InboxFlow first run", () => {
   });
 });
 
+/** The opening notice is the only alert on the screen carrying a Dismiss. */
+function dismissibleNotice(): HTMLElement | undefined {
+  return screen
+    .queryAllByRole("alert")
+    .find(
+      (alert) =>
+        within(alert).queryByRole("button", { name: "Dismiss" }) !== null,
+    );
+}
+
+describe("InboxFlow review-opened notice", () => {
+  it("dismisses the notice a successful opening raised", async () => {
+    const runReviewRow = {
+      ...savedRow,
+      latestReview: undefined,
+      recommendedAction: { kind: "run_review" as const },
+    };
+    // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
+    const runReviewInbox = {
+      ...inbox,
+      inbox: { ...inbox.inbox, rows: [runReviewRow] },
+    } as never;
+    desktop = installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/open": () => success(asJsonBody(projection)),
+    });
+    renderInboxFlow(
+      <InboxFlow
+        destination="dashboard"
+        dashboard={dashboard}
+        inbox={runReviewInbox}
+        state="success"
+        refreshStatus="Current"
+        onRefresh={vi.fn()}
+        onSettings={vi.fn()}
+        onOpenWorkbench={vi.fn()}
+      />,
+    );
+
+    openRowTitle();
+
+    const notice = await waitFor(() => {
+      const raised = dismissibleNotice();
+      if (raised === undefined) throw new Error("Expected an opened notice");
+      return raised;
+    });
+    fireEvent.click(within(notice).getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(dismissibleNotice()).toBeUndefined());
+  });
+});
+
 describe("InboxFlow bootstrap outcome open-error alert", () => {
   it("clears a stale 'Could not open review' error after the active profile changes or clears", async () => {
     const runReviewRow = {

@@ -1,3 +1,4 @@
+import { CircleAlert, CircleCheck, X } from "lucide-react";
 import { useCallback, useEffect } from "react";
 import {
   MaintainerInbox,
@@ -5,7 +6,12 @@ import {
 } from "../components/maintainer-inbox";
 import { MaintainerInboxSkeleton } from "../components/maintainer-inbox-skeleton";
 import type { InspectorInsightRequests } from "../components/review-details-inspector";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { requestJson } from "../api-client";
@@ -137,6 +143,8 @@ export function InboxFlow({
     openingOperations,
     openInboxRow,
     openStoredReviewById,
+    dismissOpenedPr,
+    dismissOpenError,
   } = reviewOpening;
   // A completed run re-reads the listing through the screen's one refresh
   // path, so the inspector's chip and the row's tag update together.
@@ -248,6 +256,8 @@ export function InboxFlow({
         onRequest: requestInsight,
       }}
       onSettings={onSettings}
+      onDismissOpenedPr={dismissOpenedPr}
+      onDismissOpenError={dismissOpenError}
       onOpenReview={openInboxRow}
       onOpenReviewId={(savedReviewId) => {
         const row = inbox.inbox.rows.find(
@@ -295,6 +305,8 @@ function InboxScreen({
   insightRequests,
   refreshStatus,
   onSettings,
+  onDismissOpenedPr,
+  onDismissOpenError,
   onOpenReview,
   onOpenReviewId,
   openedPr,
@@ -346,6 +358,8 @@ function InboxScreen({
   readonly insightRequests: InspectorInsightRequests;
   readonly refreshStatus: InboxFreshnessLabel;
   readonly onSettings: (section?: SettingsSection) => void;
+  readonly onDismissOpenedPr: () => void;
+  readonly onDismissOpenError: () => void;
   readonly onOpenReview: (row: InboxResponse["inbox"]["rows"][number]) => void;
   readonly onOpenReviewId: (reviewId: string) => void;
   readonly openedPr?: string;
@@ -354,16 +368,20 @@ function InboxScreen({
   return (
     <div className="flex min-h-full min-w-0 flex-col">
       {openedPr === undefined ? null : (
-        <Alert variant="success" className="mx-4 mt-4">
-          <AlertTitle>Review opened</AlertTitle>
-          <AlertDescription>{openedPr}</AlertDescription>
-        </Alert>
+        <ReviewOpeningNotice
+          tone="success"
+          title="Review opened"
+          description={openedPr}
+          onDismiss={onDismissOpenedPr}
+        />
       )}
       {openError === undefined ? null : (
-        <Alert variant="destructive" className="mx-4 mt-4">
-          <AlertTitle>Could not open review</AlertTitle>
-          <AlertDescription>{openError}</AlertDescription>
-        </Alert>
+        <ReviewOpeningNotice
+          tone="error"
+          title="Could not open review"
+          description={openError}
+          onDismiss={onDismissOpenError}
+        />
       )}
       <Outcome
         state={state}
@@ -426,6 +444,42 @@ function InboxScreen({
           onOpenReviewId={onOpenReviewId}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The outcome of an opening attempt, as one centred card over the listing
+ * rather than a full-width strip that reads as the screen's header.
+ */
+function ReviewOpeningNotice({
+  tone,
+  title,
+  description,
+  onDismiss,
+}: {
+  readonly tone: "success" | "error";
+  readonly title: string;
+  readonly description: string;
+  readonly onDismiss: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="mx-auto mt-4 w-full max-w-xl px-4">
+      <Alert variant={tone === "success" ? "success" : "destructive"}>
+        {tone === "success" ? <CircleCheck /> : <CircleAlert />}
+        <AlertTitle>{title}</AlertTitle>
+        <AlertDescription>{description}</AlertDescription>
+        <AlertAction>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Dismiss"
+            onClick={onDismiss}
+          >
+            <X />
+          </Button>
+        </AlertAction>
+      </Alert>
     </div>
   );
 }

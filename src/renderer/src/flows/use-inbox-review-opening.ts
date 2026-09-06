@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PatchdeskApiError, requestJson } from "../api-client";
 import { useBusy } from "../hooks/use-busy";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
@@ -36,7 +36,14 @@ export type InboxReviewOpeningControls = {
   /** Raises the screen's "Could not open review" alert for a refusal decided
    * in the renderer, so it clears with the same profile and open rules. */
   readonly reportOpenError: (message: string) => void;
+  readonly dismissOpenedPr: () => void;
+  /** Clears both error sources the screen shows as one notice: the profile's
+   * open error and any row operation left in `error`. */
+  readonly dismissOpenError: () => void;
 };
+
+/** How long the "Review opened" confirmation stays before clearing itself. */
+const OPENED_NOTICE_MS = 6000;
 
 type ReviewOpeningOperation = {
   readonly profileId: string;
@@ -352,11 +359,48 @@ export function useInboxReviewOpening({
     [dashboard?.profile.id],
   );
 
+  const dismissOpenedPr = useCallback((): void => {
+    if (dashboardProfileId === undefined) return;
+    setOpenedPrByProfile((openedPrs) =>
+      withoutProfile(openedPrs, dashboardProfileId),
+    );
+  }, [dashboardProfileId]);
+
+  const dismissOpenError = useCallback((): void => {
+    if (dashboardProfileId === undefined) return;
+    setOpenErrorByProfile((openErrors) =>
+      withoutProfile(openErrors, dashboardProfileId),
+    );
+    const remaining = new Map(operationsRef.current);
+    for (const [operationKey, operation] of remaining)
+      if (
+        operation.profileId === dashboardProfileId &&
+        operation.status === "error"
+      )
+        remaining.delete(operationKey);
+    operationsRef.current = remaining;
+    setOperations(remaining);
+  }, [dashboardProfileId]);
+
+  const openedPr =
+    dashboardProfileId === undefined
+      ? undefined
+      : openedPrByProfile.get(dashboardProfileId);
+
+  // The success notice confirms an action rather than describing state, so it
+  // clears itself; otherwise returning from the Review shows a stale one.
+  useEffect(() => {
+    if (dashboardProfileId === undefined || openedPr === undefined) return;
+    const timer = setTimeout(() => {
+      setOpenedPrByProfile((openedPrs) =>
+        withoutProfile(openedPrs, dashboardProfileId),
+      );
+    }, OPENED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [dashboardProfileId, openedPr]);
+
   return {
-    openedPr:
-      dashboardProfileId === undefined
-        ? undefined
-        : openedPrByProfile.get(dashboardProfileId),
+    openedPr,
     openError:
       dashboardProfileId === undefined
         ? undefined
@@ -369,7 +413,19 @@ export function useInboxReviewOpening({
     openPullRequestByRef,
     openStoredReviewById,
     reportOpenError,
+    dismissOpenedPr,
+    dismissOpenError,
   };
+}
+
+function withoutProfile(
+  byProfile: ReadonlyMap<string, string>,
+  profileId: string,
+): ReadonlyMap<string, string> {
+  if (!byProfile.has(profileId)) return byProfile;
+  const next = new Map(byProfile);
+  next.delete(profileId);
+  return next;
 }
 
 function projectCurrentProfileOpeningOperations(
