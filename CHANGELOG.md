@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.5 - 2026-09-06
+
 - Choosing a bucket on the **Insights** Scope card filters the Diff to that bucket's files: the file tree and the diff pane both narrow to Core, Tests, Generated, Docs, or Config. The same choice is now a Scope picker in the diff toolbar, listing every bucket that has files with its count, so you can narrow or widen the diff without leaving it; All files restores the whole diff. Selecting a commit clears the filter, so a bucket and a commit slice are never shown at once. Commits and Threads stay complete. #68 #104 #106
 - **Analysis** gains a Copy as markdown prompt button that copies the open findings as a prompt you can paste into a local coding agent to fix them.
 - The **Review opened** and **Could not open review** notices on **Pull requests** are now one centered card with a status icon and a Dismiss button, instead of a full-width strip that read as the page header; the success notice clears itself after six seconds, so coming back from a Review no longer shows a stale confirmation. #105
