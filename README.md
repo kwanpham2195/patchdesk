@@ -1,32 +1,98 @@
-# Patchdesk
+<p align="center">
+  <img src="resources/branding/patchdesk-logo.svg" width="96" alt="Patchdesk logo">
+</p>
+<h1 align="center">Patchdesk</h1>
+<p align="center">
+  Review GitHub pull requests on your Mac, next to your checkouts, with no server in between.
+</p>
+<p align="center">
+  <a href="https://github.com/kwanpham2195/patchdesk/releases"><img src="https://img.shields.io/github/v/release/kwanpham2195/patchdesk" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
 
-Patchdesk is a desktop app for reviewing GitHub pull requests. It runs on
-your Mac, next to your local checkouts, with no server in between.
+![Patchdesk reviewing a pull request](docs/assets/review-workbench.png)
 
-You open the Pull requests screen, pick a Selected repository, and see the
-list GitHub gives you for it. From there you read diffs, comment, resolve
-conversations, submit a Review, and merge. None of that needs a model.
-Models are optional, and only add Insights: a summary, a walkthrough, or an
-analysis of the diff.
+## Why Patchdesk
 
-## Requirements
+- Everything runs on your Mac, and no GitHub token is stored: Patchdesk runs
+  `gh auth token` each time it needs one.
+- A GitHub write only happens from an action you name explicitly, never
+  because an Insight finished.
+- Models are optional and only add Insights: a Brief, a Walkthrough, or an
+  Analysis of the diff.
+- The Scope gauge buckets changed files by path and needs no model at all.
+
+## What you get
+
+### Pull requests
+
+![Pull requests list with the Review details panel](docs/assets/pull-requests.png)
+
+- Patchdesk shows one repository at a time, and GitHub decides what is in
+  the list and in what order.
+- Filter by state, labels, and More filters (review state, check status,
+  author, base branch); active choices show as chips and are kept with your
+  workspace.
+- **Review details** shows checks, changes, and whether each Insight is
+  Ready, Outdated, or Not run, with a **Request** button that starts one.
+- The list refreshes only when you ask: opening the screen, changing a
+  filter or page, or pressing ⌘R.
+
+### Review workbench
+
+- The **Conversation** tab holds the description, comments, threads, and the
+  images inside them.
+- The **Diff** tab has a file tree, one-commit slices, threads on their
+  lines, view options, a Viewed mark per file, and a Diff/Preview switch for
+  each Markdown file.
+- The Scope picker in the diff toolbar narrows the tree and the diff to
+  Core, Tests, Generated, Docs, or Config, and All files restores the whole
+  diff.
+- Leave line comments, resolve conversations, collect a pending review, and
+  finish it as Approve, Request changes, or Comment.
+- Merge with Squash, Merge, or Rebase when GitHub says the pull request is
+  ready.
+- A Review of a merged pull request opens read-only and stays readable.
+
+### Insights
+
+An Insight is optional and needs a model. It helps you understand a change;
+it never replaces your Review.
+
+- **Brief**, **Walkthrough**, and **Analysis** read in the order you review a
+  change, and Insights opens on Brief.
+- An **Analysis** finding carries a severity, opens at its line in the
+  **Diff**, can be added to your review, and the open findings copy as a
+  markdown prompt for a local coding agent.
+- The **Scope** gauge buckets changed files by path and needs no model.
+- There are two providers: API keys, read from environment variables for 32
+  providers, or your existing Codex CLI login.
+- The model never touches GitHub, your checkout, or the network beyond the
+  model API itself.
+
+The provider list is in
+[docs/user-guide.md#insights](docs/user-guide.md#insights).
+
+### Navigate
+
+![The Navigate palette](docs/assets/navigate.png)
+
+- ⌘K opens the **Navigate** palette, which jumps to a screen or runs a
+  **Pull requests** action.
+- Enter a GitHub pull request URL or a compact reference there to open that
+  pull request, whether or not it is in the current list.
+
+## Install
+
+You need:
 
 - macOS on Apple Silicon (arm64). Patchdesk does not run on Intel Macs,
   Windows, or Linux.
 - `git`.
-- The GitHub CLI (`gh`), logged in:
-
-  ```bash
-  gh auth login
-  ```
-
-Patchdesk never stores a GitHub token. It runs `gh auth token` each time it
-needs one.
+- The GitHub CLI (`gh`), logged in with `gh auth login`.
 
 You do not need Node.js installed. The part of Patchdesk that runs Insights
 ships inside the app and runs on Electron's own Node.
-
-## Install
 
 Either download the `.dmg` by hand or install through Homebrew.
 
@@ -61,179 +127,15 @@ flag as above, because the app is not notarized. Later versions install with
 Opening Patchdesk a second time while it is already running quits the new
 copy right away; the existing window comes to the front instead.
 
-## First run
+## Learn more
 
-The Pull requests screen starts with **Set up your workspace**, and you finish
-setup there — no trip to Settings:
-
-1. **Reviewing as** — confirm the GitHub account, taken from `gh`. If several
-   are logged in, pick one. If none are, run `gh auth login` in a terminal and
-   press Re-check.
-2. **Folders and repositories** — press Choose folder and pick the folder that
-   holds your checkouts. Patchdesk scans it and lists the repositories it
-   found with GitHub remotes; tick the ones you want to review.
-
-Everything saves as you go, and each control says whether it saved. Ticking
-the first repository is the last step: the pull request list replaces setup on
-its own. Later, the same two cards live in Settings → Workspace.
-
-## Reviewing pull requests
-
-Open the Pull requests screen and pick a Selected repository. Patchdesk
-shows one repository's list at a time; GitHub decides what is in it, the
-order, and the count.
-
-From a pull request you can read the diff, leave comments, resolve
-conversations, submit a Review, and merge. This is the core flow, and it
-needs no model.
-
-Use More filters to filter by Review state or Check status. Active selections
-appear as chips and persist with the active profile across reloads. Clear a
-chip to remove one selection, or choose Clear all filters in More filters to
-clear those selections.
-
-## Insights
-
-An Insight is optional. It helps you understand or evaluate a change, but it
-never replaces a Review. Patchdesk offers three: Analysis, Walkthrough, and
-Brief. A fourth, the Scope gauge, needs no model at all — it buckets changed
-files by path and is always on wherever it is shown.
-
-Each run opens a dialog where you choose the Insight provider, the model,
-and the reasoning level. Patchdesk asks every time; it does not remember a
-choice for you.
-
-There are two Insight providers.
-
-### API keys
-
-This provider talks to a model API directly, and you supply the key through
-an environment variable. There is nothing to install, and there is no key
-field in the app.
-
-Patchdesk supports 32 providers. Thirty of them read a key from an
-environment variable:
-
-- Ant Ling — `ANT_LING_API_KEY`
-- Anthropic — `ANTHROPIC_API_KEY`
-- Azure OpenAI — `AZURE_OPENAI_API_KEY`
-- Cerebras — `CEREBRAS_API_KEY`
-- Cloudflare AI Gateway — `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, and
-  `CLOUDFLARE_GATEWAY_ID`; all three are required
-- DeepSeek — `DEEPSEEK_API_KEY`
-- Fireworks — `FIREWORKS_API_KEY`
-- Google — `GEMINI_API_KEY`
-- Groq — `GROQ_API_KEY`
-- Hugging Face — `HF_TOKEN`
-- Kimi Coding — `KIMI_API_KEY`
-- MiniMax — `MINIMAX_API_KEY`
-- MiniMax China — `MINIMAX_CN_API_KEY`
-- Mistral — `MISTRAL_API_KEY`
-- Moonshot — `MOONSHOT_API_KEY`
-- Moonshot China — `MOONSHOT_API_KEY`
-- NVIDIA — `NVIDIA_API_KEY`
-- OpenAI — `OPENAI_API_KEY`
-- OpenCode — `OPENCODE_API_KEY`
-- OpenCode Go — `OPENCODE_API_KEY`
-- OpenRouter — `OPENROUTER_API_KEY`
-- Together — `TOGETHER_API_KEY`
-- Vercel AI Gateway — `AI_GATEWAY_API_KEY`
-- xAI — `XAI_API_KEY`
-- Xiaomi — `XIAOMI_API_KEY`
-- Xiaomi Token Plan (AMS) — `XIAOMI_TOKEN_PLAN_AMS_API_KEY`
-- Xiaomi Token Plan (China) — `XIAOMI_TOKEN_PLAN_CN_API_KEY`
-- Xiaomi Token Plan (Singapore) — `XIAOMI_TOKEN_PLAN_SGP_API_KEY`
-- ZAI — `ZAI_API_KEY`
-- ZAI Coding China — `ZAI_CODING_CN_API_KEY`
-
-Moonshot and Moonshot China read the same variable, and so do OpenCode and
-OpenCode Go.
-
-The other two providers use credentials instead of a key:
-
-- Amazon Bedrock — your normal AWS credentials
-- Google Vertex — your normal GCP credentials, or `GOOGLE_CLOUD_API_KEY`
-
-The list in `src/adapters/pi/pi-provider-catalog.ts` is the authoritative one.
-
-Providers that sign in through OAuth or a login flow, such as GitHub Copilot
-or a Codex subscription, are left out of the API key provider on purpose;
-the Codex CLI account provider below covers the Codex case.
-
-Export the variable in your shell profile (`~/.zshrc`), then restart
-Patchdesk:
-
-```bash
-export ANTHROPIC_API_KEY="sk-..."
-```
-
-Patchdesk runs your login shell once at startup and reads back the provider
-keys and your PATH, so a Dock or Finder launch sees the same key a terminal
-does. It reads nothing else from your shell, and it never overwrites a
-variable Patchdesk already has. A key you add later needs a restart.
-
-If Patchdesk cannot read your shell's startup files, set the variable for the
-whole login session instead:
-
-```bash
-launchctl setenv ANTHROPIC_API_KEY "sk-..."
-```
-
-That lasts until you log out.
-
-Only the variables the selected provider needs reach the model process, and
-only that process sees them — keys never reach the app's UI. The model list
-you see is Patchdesk's model catalog, filtered to providers you have a key
-for. That catalog is refreshed with each Patchdesk release; there is nothing
-to update on your side.
-
-### Codex CLI account
-
-This provider uses your existing Codex CLI login. Install Codex and run
-`codex login` yourself; Patchdesk never starts a login for you.
-
-Patchdesk finds `codex` by searching your PATH only. It reads PATH from your
-login shell, so a Homebrew or npm install is found, and Patchdesk runs the
-same `codex` your terminal runs.
-
-If Patchdesk cannot find Codex, the dialog says so directly: "Install Codex
-and expose codex on the app launch PATH, then log in externally."
-
-With either provider, the model never touches GitHub, your checkout, or the
-network beyond the model API itself.
-
-## Where Patchdesk keeps its files
-
-- Config: `~/.config/patchdesk`
-- Data: `~/.local/share/patchdesk`
-- Cache: `~/.cache/patchdesk`
-- Logs: `~/.local/share/patchdesk/logs/patchdesk.jsonl`
-
-Patchdesk does not use `~/Library`.
-
-## How Patchdesk stays safe
-
-The local API only listens on `127.0.0.1`, and the app window is sandboxed:
-it has no direct access to Node.js or your filesystem.
-
-A GitHub write only happens from an action you name explicitly, like Add to
-review. Finishing an Insight never triggers one on its own. If Patchdesk
-cannot confirm that a write went through, it locks further writes until you
-check GitHub again — it never retries a write on its own.
-
-## Known limits
-
-- GitHub rate limits and blocked reads (an IP allow list, SAML, a missing
-  scope) show up as what they are, with no retry button — retrying cannot
-  fix either one.
-- Patchdesk is built for a sighted person using a keyboard and mouse. It has
-  no screen reader support.
-- The Pull requests screen only refreshes when you ask: opening the screen,
-  changing a filter or page, or pressing ⌘R.
-
-## Contributing
-
-To build Patchdesk from source or contribute changes, see
-[CONTRIBUTING.md](CONTRIBUTING.md) and
-[docs/architecture.md](docs/architecture.md). Patchdesk is
-[MIT licensed](LICENSE).
+- [docs/user-guide.md](docs/user-guide.md) — first run, reviewing pull
+  requests, Insights and the providers they use, where Patchdesk keeps its
+  files, how it stays safe, and known limits.
+- [docs/product-description/README.md](docs/product-description/README.md) —
+  what Patchdesk does, screen by screen.
+- [docs/architecture.md](docs/architecture.md) — how the app is put together.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — building from source and contributing
+  changes.
+- [CHANGELOG.md](CHANGELOG.md) — what changed in each release.
+- [LICENSE](LICENSE) — Patchdesk is MIT licensed.
