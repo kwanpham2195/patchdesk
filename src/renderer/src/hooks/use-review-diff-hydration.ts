@@ -14,7 +14,6 @@ import type { ReviewContextStatus } from "@/review-context-control";
 import { definedProps } from "../../../domain/defined-props";
 import type { RawJsonValue } from "../../../domain/json";
 import {
-  isUnifiedFileHeader,
   matchUnifiedFileHeader,
   tokenizeUnifiedPatchLines,
 } from "../../../domain/unified-patch";
@@ -155,16 +154,15 @@ export function useReviewDiffHydration({
       const existing = hydrationRequests.current.get(path);
       if (existing !== undefined) return existing.promise;
 
-      const rawFilePatch = selectPatch(
-        rawPatchesByPath,
-        rawFilePatches,
-        patch,
-        path,
-      );
+      // The result is filed under `path`, so only this file's own patch may
+      // hydrate it. A path the current patch does not carry -- the Scope
+      // filter narrows the patch while the pane can still point at a hidden
+      // file -- is unavailable, never another file's patch.
+      const rawFilePatch = rawPatchesByPath.get(path);
       if (
+        rawFilePatch === undefined ||
         sourceProfileId === undefined ||
-        sourceSessionId === undefined ||
-        !isUnifiedFileHeader(rawFilePatch)
+        sourceSessionId === undefined
       ) {
         unavailableHydrationPaths.current.add(path);
         return Promise.resolve(false);
@@ -220,8 +218,6 @@ export function useReviewDiffHydration({
     },
     [
       hydrationGeneration,
-      patch,
-      rawFilePatches,
       rawPatchesByPath,
       scheduleHydratedFlush,
       sourceProfileId,
@@ -284,7 +280,14 @@ export function useReviewDiffHydration({
   };
 }
 
-export function selectPatch(
+/**
+ * The patch text to render when Pierre's CodeView is unavailable and the pane
+ * falls back to one `PatchDiff`. Rendering something beats rendering nothing,
+ * so an unknown `selectedPath` falls back to the first file and then to the
+ * whole patch. Never use this to hydrate a path: the result is keyed by the
+ * path it was asked for, and these fallbacks return another file's patch.
+ */
+export function selectRenderedPatch(
   patchesByPath: ReadonlyMap<string, string>,
   files: ReadonlyArray<string>,
   patch: string,

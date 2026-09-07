@@ -225,6 +225,46 @@ describe("useReviewDiffHydration", () => {
     expect(result.current.verifiedHeadTextByPath.size).toBe(0);
   });
 
+  it("leaves a path the current patch does not carry unhydrated", async () => {
+    const calls = installBridge(() => ready());
+    const { result } = renderHook(() =>
+      useReviewDiffHydration({
+        patch: patchA,
+        sourceSession: { profileId: "profile", sessionId: "session-a" },
+      }),
+    );
+
+    // `src/b.ts` is in the review but not in this (Scope-narrowed) patch.
+    await act(async () => {
+      await result.current.hydrateFiles(["src/b.ts"]);
+    });
+
+    expect(calls).toHaveLength(0);
+    expect(result.current.hydratedFiles.has("src/b.ts")).toBe(false);
+  });
+
+  it("never files one file's hydrated metadata under another file's path", async () => {
+    installBridge(() => ready());
+    const { result, rerender } = renderHook(
+      ({ patch }) =>
+        useReviewDiffHydration({
+          patch,
+          sourceSession: { profileId: "profile", sessionId: "session-a" },
+        }),
+      { initialProps: { patch: patchBoth } },
+    );
+
+    // The Scope filter narrows the patch to `src/a.ts` while the pane still
+    // asks for the file it was pointed at.
+    rerender({ patch: patchA });
+    await act(async () => {
+      await result.current.hydrateFiles(["src/a.ts", "src/b.ts"]);
+    });
+
+    for (const [path, file] of result.current.hydratedFiles)
+      expect(file.name).toBe(path);
+  });
+
   it("coalesces concurrent hydration responses into a single render", async () => {
     const firstFile = deferred<RawJsonValue>();
     const secondFile = deferred<RawJsonValue>();
