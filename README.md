@@ -12,6 +12,8 @@
 
 ![Patchdesk reviewing a pull request](docs/assets/review-workbench.png)
 
+*A pull request open in the Review workbench.*
+
 ## Why Patchdesk
 
 - Everything runs on your Mac, and no GitHub token is stored: Patchdesk runs
@@ -28,6 +30,8 @@
 
 ![Pull requests list with the Review details panel](docs/assets/pull-requests.png)
 
+*One repository at a time, with filters kept alongside your workspace.*
+
 - Patchdesk shows one repository at a time, and GitHub decides what is in
   the list and in what order.
 - Filter by state, labels, and More filters (review state, check status,
@@ -40,35 +44,94 @@
 
 ### Review workbench
 
-- The **Conversation** tab holds the description, comments, threads, and the
-  images inside them.
-- The **Diff** tab has a file tree, one-commit slices, threads on their
-  lines, view options, a Viewed mark per file, and a Diff/Preview switch for
-  each Markdown file.
-- The Scope picker in the diff toolbar narrows the tree and the diff to
-  Core, Tests, Generated, Docs, or Config, and All files restores the whole
-  diff.
-- Leave line comments, resolve conversations, collect a pending review, and
-  finish it as Approve, Request changes, or Comment.
-- Merge with Squash, Merge, or Rebase when GitHub says the pull request is
-  ready.
-- A Review of a merged pull request opens read-only and stays readable.
+![The Conversation tab](docs/assets/conversation.png)
+
+*The Conversation tab: the description and the discussion, with reviewers,
+assignees, and labels beside them.*
+
+The **Conversation** tab holds the description, comments, threads, and the
+images inside them.
+
+![The Diff tab](docs/assets/diff-browse.png)
+
+*The Diff tab: a file tree beside the diff, each file carrying its status and
+its Viewed mark.*
+
+The **Diff** tab has a file tree, one-commit slices, threads on their lines,
+view options, a Viewed mark per file, and a Diff/Preview switch for each
+Markdown file.
+
+![The Scope picker open in the diff toolbar](docs/assets/diff-scope-filter.png)
+
+*Scope narrows the tree and the diff to one bucket, and each bucket shows how
+many files it holds.*
+
+The Scope picker in the diff toolbar narrows the tree and the diff to Core,
+Tests, Generated, Docs, or Config, and All files restores the whole diff.
+
+![A Markdown file shown as a preview](docs/assets/markdown-preview.png)
+
+*A Markdown file switched from Diff to Preview, rendered from the verified head
+content.*
+
+![The Commits section with one commit selected](docs/assets/diff-commits.png)
+
+*Commits reads the change one commit at a time instead of all at once.*
+
+![A comment being written on a diff line](docs/assets/diff-threads.png)
+
+*A line comment reaches GitHub only when you publish it, never before.*
+
+Leave line comments, resolve conversations, collect a pending review, and
+finish it as Approve, Request changes, or Comment.
+
+![The pull request overview and merge readiness](docs/assets/merge-readiness.png)
+
+*Revision freshness, checks, Insight status, and whether GitHub says the pull
+request can merge.*
+
+Merge with Squash, Merge, or Rebase when GitHub says the pull request is ready.
+A Review of a merged pull request opens read-only and stays readable.
 
 ### Insights
 
 An Insight is optional and needs a model. It helps you understand a change;
 it never replaces your Review.
 
-- **Brief**, **Walkthrough**, and **Analysis** read in the order you review a
-  change, and Insights opens on Brief.
-- An **Analysis** finding carries a severity, opens at its line in the
-  **Diff**, can be added to your review, and the open findings copy as a
-  markdown prompt for a local coding agent.
-- The **Scope** gauge buckets changed files by path and needs no model.
-- There are two providers: API keys, read from environment variables for 32
-  providers, or your existing Codex CLI login.
-- The model never touches GitHub, your checkout, or the network beyond the
-  model API itself.
+![The Insights overview](docs/assets/insights-overview.png)
+
+*The Scope gauge, and Brief, Walkthrough, and Analysis with the state each one
+is in.*
+
+**Brief**, **Walkthrough**, and **Analysis** read in the order you review a
+change, and Insights opens on Brief. The **Scope** gauge buckets changed files
+by path and needs no model.
+
+![The Brief reader](docs/assets/insight-brief.png)
+
+*Brief: the shape and reach of the change, and where to start reading.*
+
+![The Walkthrough reader](docs/assets/insight-walkthrough.png)
+
+*Walkthrough: chapters and sections, each shown with the hunks it describes.*
+
+![The Analysis reader](docs/assets/insight-analysis.png)
+
+*Analysis: findings with a severity and their evidence, copyable as one prompt
+for a local coding agent.*
+
+An **Analysis** finding carries a severity, opens at its line in the **Diff**,
+can be added to your review, and the open findings copy as a markdown prompt
+for a local coding agent.
+
+![The run dialog for an Insight](docs/assets/insight-run-dialog.png)
+
+*Every run names its provider, model, and reasoning effort, and says what the
+model may read, before it starts.*
+
+There are two providers: API keys, read from environment variables for 32
+providers, or your existing Codex CLI login. The model never touches GitHub,
+your checkout, or the network beyond the model API itself.
 
 The provider list is in
 [docs/user-guide.md#insights](docs/user-guide.md#insights).
@@ -77,10 +140,23 @@ The provider list is in
 
 ![The Navigate palette](docs/assets/navigate.png)
 
+*⌘K from anywhere, to a screen, an action, or a pull request URL.*
+
 - ⌘K opens the **Navigate** palette, which jumps to a screen or runs a
   **Pull requests** action.
 - Enter a GitHub pull request URL or a compact reference there to open that
   pull request, whether or not it is in the current list.
+
+### Workspace
+
+![Settings, Workspace](docs/assets/settings-workspace.png)
+
+*The account Patchdesk reviews as, read from `gh`, and the folder it finds your
+checkouts in.*
+
+- **Reviewing as** names the GitHub account; Patchdesk never stores its token.
+- **Repositories** points at one folder and lists the checkouts it found, so a
+  Review can open beside the code it describes.
 
 ## Install
 
