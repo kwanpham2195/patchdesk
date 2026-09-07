@@ -97,7 +97,13 @@ export function useReviewWorkbenchPosition({
   );
   const selectSection = useCallback(
     (next: ReviewNavigatorSection): void => {
-      commitWorkbenchPosition({ activeTab: "diff", section: next });
+      // A section is a way into the diff, not a file choice. Dropping the path
+      // here hands the selection back to DiffWorkbench's uncontrolled fallback,
+      // and the header, the tree and the pane stop naming one file.
+      const position: WorkbenchPosition = { activeTab: "diff", section: next };
+      commitWorkbenchPosition(
+        selectedPath === undefined ? position : { ...position, selectedPath },
+      );
       if (next !== "commits") {
         setSelectedCommitSha(undefined);
       }
@@ -108,7 +114,13 @@ export function useReviewWorkbenchPosition({
       )
         loadCommit(model.commits[0].sha);
     },
-    [commitWorkbenchPosition, loadCommit, model.commits, selectedCommitSha],
+    [
+      commitWorkbenchPosition,
+      loadCommit,
+      model.commits,
+      selectedCommitSha,
+      selectedPath,
+    ],
   );
   const selectCommit = useCallback(
     (sha: string): void => {
