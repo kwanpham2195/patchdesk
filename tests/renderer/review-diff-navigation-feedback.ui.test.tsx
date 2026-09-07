@@ -322,6 +322,47 @@ describe("ReviewDiffView navigation feedback", () => {
     });
   });
 
+  it("stops file and hunk navigation while the Markdown preview is active", async () => {
+    enablePierre();
+    const parsed = parseReviewDiff(patch);
+    const view = (markdownPreviewActive: boolean): React.JSX.Element => (
+      <ReviewDiffView
+        patch={patch}
+        parsedFiles={parsed.files}
+        fileStatsByPath={parsed.statsByPath}
+        selectedPath="src/a.ts"
+        annotations={annotations}
+        preferences={DEFAULT_REVIEW_VIEW_PREFERENCES}
+        collapsedPaths={new Set()}
+        markdownPreviewActive={markdownPreviewActive}
+        onMarkdownPreviewChange={() => undefined}
+        onPreferencesChange={() => undefined}
+        onCollapsedPathsChange={() => undefined}
+      />
+    );
+    const { rerender } = render(view(true));
+
+    press(".");
+    press("]");
+    await waitForFrames();
+    await waitForFrames();
+    expect(
+      screen.queryByRole("status", { name: "Diff navigation status" }),
+    ).toBeNull();
+
+    // The keys behind the preview must not have moved either cursor, so the
+    // first press after leaving it steps off the real selection.
+    rerender(view(false));
+    press(".");
+    await expectStatus({
+      kind: "file",
+      state: "target",
+      position: 2,
+      total: 2,
+      path: "src/b.ts",
+    });
+  });
+
   it("invalidates a pending comment operation when its annotation version changes", async () => {
     enablePierre();
     const parsed = parseReviewDiff(patch);

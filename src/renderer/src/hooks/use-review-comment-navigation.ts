@@ -37,6 +37,7 @@ export function useReviewCommentNavigation({
   createNavigationOperation,
   virtualized,
   browserSupportsPierre,
+  markdownPreviewActive,
 }: {
   readonly viewer: RefObject<CodeViewHandle<
     ReviewInlineAnnotation | undefined
@@ -48,6 +49,9 @@ export function useReviewCommentNavigation({
   readonly createNavigationOperation: () => ReviewDiffNavigationOperation;
   readonly virtualized: boolean;
   readonly browserSupportsPierre: boolean;
+  /** The preview pane replaces CodeView, so these keys would move an
+   * invisible cursor behind it. */
+  readonly markdownPreviewActive: boolean;
 }): void {
   const latest = useLatestCommitted({
     items,
@@ -55,7 +59,11 @@ export function useReviewCommentNavigation({
     createNavigationOperation,
   });
   const currentAnchor = useRef<CommentAnchor | undefined>(undefined);
-  const enabled = virtualized && fileMode === "all" && browserSupportsPierre;
+  const enabled =
+    virtualized &&
+    fileMode === "all" &&
+    browserSupportsPierre &&
+    !markdownPreviewActive;
   const commentOrderIdentity = buildCommentOrder(items)
     .map(
       (anchor) =>
@@ -98,7 +106,6 @@ export function useReviewCommentNavigation({
       const stale = () => isStale() || operation.isStale();
       return materializeAndScrollTo({
         viewer,
-        items: currentItems,
         itemId: target.filePath,
         isStale: stale,
         buildTarget: () => ({

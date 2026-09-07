@@ -36,6 +36,7 @@ export function useReviewFileNavigation<T>({
   resolveActiveFilePathAt,
   virtualized,
   browserSupportsPierre,
+  markdownPreviewActive,
 }: {
   readonly viewer: RefObject<CodeViewHandle<T> | null>;
   readonly activePathRef: CurrentPathRef;
@@ -49,6 +50,9 @@ export function useReviewFileNavigation<T>({
   ) => string | undefined;
   readonly virtualized: boolean;
   readonly browserSupportsPierre: boolean;
+  /** The preview pane replaces CodeView, so these keys would move an
+   * invisible cursor behind it. */
+  readonly markdownPreviewActive: boolean;
 }): void {
   const latest = useLatestCommitted({
     items,
@@ -56,7 +60,11 @@ export function useReviewFileNavigation<T>({
     createNavigationOperation,
   });
   const currentPath = useRef<string | undefined>(undefined);
-  const enabled = virtualized && fileMode === "all" && browserSupportsPierre;
+  const enabled =
+    virtualized &&
+    fileMode === "all" &&
+    browserSupportsPierre &&
+    !markdownPreviewActive;
   const itemOrder = items
     .map((item) => `${item.id}\u0000${item.version}`)
     .join("\u0001");
@@ -96,7 +104,6 @@ export function useReviewFileNavigation<T>({
       const stale = () => isStale() || operation.isStale();
       return materializeAndScrollTo({
         viewer,
-        items: currentItems,
         itemId: target,
         isStale: stale,
         buildTarget: () => ({ type: "item", id: target, align: "start" }),

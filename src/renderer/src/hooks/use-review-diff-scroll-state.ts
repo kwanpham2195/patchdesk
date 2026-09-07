@@ -178,6 +178,7 @@ export function useReviewDiffSelectionScroll<T>({
   selectedLines,
   diffStyle,
   fileMode,
+  markdownPreviewActive,
 }: {
   readonly viewer: RefObject<CodeViewHandle<T> | null>;
   readonly items: ReadonlyArray<Pick<CodeViewDiffItem<unknown>, "id">>;
@@ -185,10 +186,14 @@ export function useReviewDiffSelectionScroll<T>({
   readonly selectedLines: CodeViewLineSelection | null;
   readonly diffStyle: string;
   readonly fileMode: "all" | "selected";
+  /** The preview unmounts CodeView, so both entering and leaving it need the
+   * selection scrolled again against a viewer that starts at the top. */
+  readonly markdownPreviewActive: boolean;
 }): void {
   const selectionScrollKey = [
     diffStyle,
     fileMode,
+    markdownPreviewActive ? "preview" : "diff",
     selectedPath ?? "",
     selectedLines?.id ?? "",
     selectedLines?.range.start ?? "",
@@ -214,7 +219,6 @@ export function useReviewDiffSelectionScroll<T>({
     if (selectionScrollProgress.current.completed) return;
     return materializeAndScrollTo({
       viewer,
-      items,
       itemId: selectedPath,
       isStale: () =>
         selectionScrollProgress.current.key !== selectionScrollKey ||
