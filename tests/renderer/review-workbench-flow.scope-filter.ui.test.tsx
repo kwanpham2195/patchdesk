@@ -40,6 +40,23 @@ function browsedPaths(): ReadonlyArray<string> {
   return [...tree].map((row) => row.getAttribute("data-item-path") ?? "");
 }
 
+/** What the pane header, the Browse tree and the diff pane each name. */
+function namedFile() {
+  const attribute = (selector: string, name: string): string | undefined =>
+    document.querySelector(selector)?.getAttribute(name) ?? undefined;
+  return {
+    header: attribute(
+      "[data-diff-workbench-header-path]",
+      "data-diff-workbench-header-path",
+    ),
+    tree: attribute("[data-active-path]", "data-active-path"),
+    pane:
+      screen
+        .getByRole("region", { name: "Review diff" })
+        .getAttribute("data-selected-path") ?? undefined,
+  };
+}
+
 /**
  * Opens the toolbar's Scope menu. Base UI's menu trigger opens on a real
  * mousedown, which jsdom's synthetic pointer sequence does not satisfy, so the
@@ -153,6 +170,51 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
       "src/",
       "src/a.ts",
     ]);
+  });
+
+  it("keeps the header, the tree and the pane on one visible file across a section switch", async () => {
+    bridge(async (input) =>
+      input.path === "/v1/reviews/detect-updates"
+        ? { updatesAvailable: false }
+        : Promise.reject(new Error(input.path)),
+    );
+    render(
+      <ReviewWorkbenchFlow
+        workbench={scopedProjection()}
+        onWorkbenchReplace={vi.fn()}
+        onWorkbenchPatch={vi.fn()}
+        onNavigationStateChange={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Diff" }));
+    await openScopeMenu(user);
+    await user.click(screen.getByRole("menuitemradio", { name: /Docs/ }));
+    expect(namedFile()).toEqual({
+      header: "docs/guide.md",
+      tree: "docs/guide.md",
+      pane: "docs/guide.md",
+    });
+
+    // Threads and Browse are ways into the diff, not file choices, so the
+    // selection has to survive them rather than fall back to a file the Docs
+    // bucket hides.
+    await user.click(screen.getByRole("tab", { name: /^Threads/ }));
+    await user.click(screen.getByRole("tab", { name: /^Browse/ }));
+    expect(namedFile()).toEqual({
+      header: "docs/guide.md",
+      tree: "docs/guide.md",
+      pane: "docs/guide.md",
+    });
+
+    await openScopeMenu(user);
+    await user.click(screen.getByRole("menuitemradio", { name: "All files" }));
+    expect(namedFile()).toEqual({
+      header: "docs/guide.md",
+      tree: "docs/guide.md",
+      pane: "docs/guide.md",
+    });
+    expect(browsedPaths()).toContain("docs/guide.md");
   });
 
   it("clears the Scope filter when a commit is selected", async () => {
