@@ -4,22 +4,21 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 
 export type MaterializeAndScrollOptions<T> = {
   readonly viewer: RefObject<CodeViewHandle<T> | null>;
-  readonly items: ReadonlyArray<{ readonly id: string }>;
-  /** Id used to locate the target's index in `items`. Not necessarily the id
-   * the final scroll target names (e.g. a range target scrolls by its own
-   * id within this item). */
+  /** Id the viewer must already hold for the scroll to land. Not necessarily
+   * the id the final scroll target names (e.g. a range target scrolls by its
+   * own id within this item). */
   readonly itemId: string;
   /** Checked before every attempt, including the first, and again right
    * before the final scroll. Lets the caller cancel a stale or
    * already-satisfied run without this function knowing why. */
   readonly isStale: () => boolean;
-  /** Built once, right before the target is known to exist in `items`. */
+  /** Built once, right before the target is known to exist in the viewer. */
   readonly buildTarget: () => CodeViewScrollTarget;
   readonly onScrolled?: () => void;
 };
 
 /**
- * Scrolls `viewer` to a target item once it is found in `items`.
+ * Scrolls `viewer` to a target item once the viewer holds it.
  *
  * CodeView recalculates line metrics after expanding a selected unchanged
  * hunk, so this waits two animation frames before attempting the scroll.
@@ -29,7 +28,6 @@ export type MaterializeAndScrollOptions<T> = {
  */
 export function materializeAndScrollTo<T>({
   viewer,
-  items,
   itemId,
   isStale,
   buildTarget,
@@ -41,9 +39,15 @@ export function materializeAndScrollTo<T>({
     // A newer target superseded this one while a stale frame from this
     // closure was still pending.
     if (isStale()) return;
-    if (items.findIndex((item) => item.id === itemId) === -1) return;
     const codeView = viewer.current;
-    if (codeView === null) return;
+    // The React item list is only what CodeView was last handed; the viewer's
+    // own list is what a scroll resolves against, and the preview pane and
+    // Scope filter can leave the two disagreeing. Ask the viewer.
+    if (
+      codeView === null ||
+      codeView.getInstance()?.getItem(itemId) === undefined
+    )
+      return;
     codeView.scrollTo(buildTarget());
     if (isStale() || viewer.current === null) return;
     onScrolled?.();
