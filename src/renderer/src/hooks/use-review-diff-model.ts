@@ -16,7 +16,7 @@ import { reviewDiffItemVersion } from "@/review-diff-item-version";
 import { compareTreePaths } from "@/review-diff-order";
 import { toDiffLineAnnotation } from "../review-diff-annotations";
 import {
-  selectPatch,
+  selectRenderedPatch,
   useReviewDiffHydration,
   type ReviewDiffSourceSession,
 } from "./use-review-diff-hydration";
@@ -86,7 +86,6 @@ export function useReviewDiffModel({
   annotations,
   preferences,
   collapsedPaths,
-  markdownPreviewPaths,
   expandUnchanged,
   themePreferences,
   sourceSession,
@@ -101,7 +100,6 @@ export function useReviewDiffModel({
   readonly annotations: ReadonlyArray<ReviewInlineAnnotation>;
   readonly preferences: Pick<ReviewViewPreferences, "fileMode">;
   readonly collapsedPaths: ReadonlySet<string>;
-  readonly markdownPreviewPaths: ReadonlySet<string>;
   readonly expandUnchanged: boolean;
   readonly themePreferences: DiffThemePreferences;
   readonly sourceSession: ReviewDiffSourceSession | undefined;
@@ -141,14 +139,20 @@ export function useReviewDiffModel({
   });
 
   const selectedPatch = useMemo(
-    () => selectPatch(rawPatchesByPath, rawFilePatches, patch, selectedPath),
+    () =>
+      selectRenderedPatch(
+        rawPatchesByPath,
+        rawFilePatches,
+        patch,
+        selectedPath,
+      ),
     [patch, rawFilePatches, rawPatchesByPath, selectedPath],
   );
   const files = useMemo(() => {
     // Read the settled map, not the live one. A layout mutation during a
     // scroll can blank Pierre's virtualized viewport.
     const hydrated = parsedFiles.map(
-      (file) => settledHydratedFiles.get(file.name) ?? file,
+      (file) => hydratedFileNamed(settledHydratedFiles, file.name) ?? file,
     );
     return parsedFiles.length > TREE_ORDER_SORT_LIMIT
       ? hydrated
@@ -248,14 +252,11 @@ export function useReviewDiffModel({
               ? [toDiffLineAnnotation(annotation)]
               : [],
           ),
-          collapsed:
-            collapsedPaths.has(file.name) ||
-            markdownPreviewPaths.has(file.name),
+          collapsed: collapsedPaths.has(file.name),
           version: reviewDiffItemVersion({
-            collapsed:
-              collapsedPaths.has(file.name) ||
-              markdownPreviewPaths.has(file.name),
-            hydrated: settledHydratedFiles.has(file.name),
+            collapsed: collapsedPaths.has(file.name),
+            hydrated:
+              hydratedFileNamed(settledHydratedFiles, file.name) !== undefined,
             annotationKey,
           }),
         }),
@@ -264,7 +265,6 @@ export function useReviewDiffModel({
       annotationKey,
       annotations,
       collapsedPaths,
-      markdownPreviewPaths,
       settledHydratedFiles,
       visibleFiles,
     ],
@@ -398,4 +398,18 @@ export function useReviewDiffModel({
     setViewerContainer,
     handleCodeViewScroll,
   };
+}
+
+/**
+ * The hydrated metadata for `path`, but only when it really describes that
+ * file. Two entries whose `name` collides would reach CodeView as one
+ * duplicate item id, and CodeView throws on those -- taking the whole
+ * workbench down rather than losing one file's full source.
+ */
+function hydratedFileNamed(
+  hydratedFiles: ReadonlyMap<string, FileDiffMetadata>,
+  path: string,
+): FileDiffMetadata | undefined {
+  const hydrated = hydratedFiles.get(path);
+  return hydrated?.name === path ? hydrated : undefined;
 }
