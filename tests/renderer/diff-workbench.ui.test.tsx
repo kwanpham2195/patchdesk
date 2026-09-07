@@ -37,6 +37,98 @@ function requestedPath(input: LocalApiDesktopRequest): string {
   return typeof body.path === "string" ? body.path : "";
 }
 
+const markdownPatch = [
+  "diff --git a/README.md b/README.md",
+  "--- a/README.md",
+  "+++ b/README.md",
+  "@@ -1 +1 @@",
+  "-# Before",
+  "+# Complete head",
+  "diff --git a/docs/guide.md b/docs/guide.md",
+  "--- a/docs/guide.md",
+  "+++ b/docs/guide.md",
+  "@@ -1 +1 @@",
+  "-Before",
+  "+Guide head",
+  "",
+].join("\n");
+
+/**
+ * Pierre's CodeView renders only where constructable stylesheets exist, which
+ * jsdom lacks. Returns the restore for the one own property this adds.
+ */
+function stubPierreStyleSheet(): () => void {
+  if (window.CSSStyleSheet.prototype.replaceSync !== undefined)
+    return () => undefined;
+  window.CSSStyleSheet.prototype.replaceSync = () => undefined;
+  return () => {
+    // oxlint-disable-next-line no-dynamic-delete -- removes the exact own property stubbed above.
+    delete (window.CSSStyleSheet.prototype as { replaceSync?: unknown })
+      .replaceSync;
+  };
+}
+
+type MarkdownWorkbench = {
+  readonly user: ReturnType<typeof userEvent.setup>;
+  readonly container: HTMLElement;
+  /** Moves the workbench's controlled selection, as the navigator would. */
+  readonly rerender: (selectedPath: string) => void;
+};
+
+/**
+ * Renders the workbench over two verified Markdown files with Pierre's
+ * shadow-root stylesheet requirement stubbed in, and restores that stub after
+ * the body runs.
+ */
+async function withMarkdownWorkbench(
+  body: (workbench: MarkdownWorkbench) => Promise<void>,
+): Promise<void> {
+  const restoreStyleSheet = stubPierreStyleSheet();
+  desktop = installDesktopDouble({
+    "/v1/reviews/diff-file": (input) => {
+      const path = requestedPath(input);
+      const readme = path === "README.md";
+      return success({
+        state: "ready",
+        oldFile: {
+          name: path,
+          contents: readme ? "# Before\n\nTail paragraph\n" : "Before\n",
+        },
+        newFile: {
+          name: path,
+          contents: readme
+            ? "# Complete head\n\nTail paragraph\n"
+            : "Guide head\n",
+        },
+      });
+    },
+  });
+  // Pierre's CodeView suspends pointer events for 120 ms after any layout
+  // pass as a scroll-jank guard, not as a UX state, and that suspension can
+  // re-engage between any wait and the click it guards.
+  const user = userEvent.setup({
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+  });
+  const workbenchFor = (selectedPath: string): React.JSX.Element => (
+    <DiffWorkbench
+      patch={markdownPatch}
+      controlledSelectedPath={selectedPath}
+      sourceSession={{ profileId: "profile", sessionId: "session" }}
+      localCommentAuthoring={{ enabled: true, onSave: vi.fn(async () => {}) }}
+    />
+  );
+  const view = render(workbenchFor("README.md"));
+  try {
+    await body({
+      user,
+      container: view.container,
+      rerender: (selectedPath) => view.rerender(workbenchFor(selectedPath)),
+    });
+  } finally {
+    restoreStyleSheet();
+  }
+}
+
 describe("diff workbench", () => {
   it("uses the Pierre navigator and opens a mapped finding without filter controls", () => {
     render(
@@ -89,117 +181,97 @@ describe("diff workbench", () => {
     ).toBeNull();
   });
 
-  it("previews verified Markdown independently and restores its normal diff", async () => {
-    const styleSheet = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
-    if (
-      window.CSSStyleSheet !== undefined &&
-      window.CSSStyleSheet.prototype.replaceSync === undefined
-    ) {
-      window.CSSStyleSheet.prototype.replaceSync = () => undefined;
-    }
-    const markdownPatch = [
-      "diff --git a/README.md b/README.md",
-      "--- a/README.md",
-      "+++ b/README.md",
-      "@@ -1 +1 @@",
-      "-# Before",
-      "+# Complete head",
-      "diff --git a/docs/guide.md b/docs/guide.md",
-      "--- a/docs/guide.md",
-      "+++ b/docs/guide.md",
-      "@@ -1 +1 @@",
-      "-Before",
-      "+Guide head",
-      "",
-    ].join("\n");
-    desktop = installDesktopDouble({
-      "/v1/reviews/diff-file": (input) => {
-        const path = requestedPath(input);
-        const readme = path === "README.md";
-        return success({
-          state: "ready",
-          oldFile: {
-            name: path,
-            contents: readme ? "# Before\n\nTail paragraph\n" : "Before\n",
-          },
-          newFile: {
-            name: path,
-            contents: readme
-              ? "# Complete head\n\nTail paragraph\n"
-              : "Guide head\n",
-          },
-        });
-      },
-    });
-    // Pierre's CodeView suspends pointer events for 120 ms after any layout
-    // pass as a scroll-jank guard, not as a UX state, and that suspension can
-    // re-engage between any wait and the click it guards.
-    const user = userEvent.setup({
-      pointerEventsCheck: PointerEventsCheckLevel.Never,
-    });
-    const onSave = vi.fn(async () => undefined);
-    render(
-      <DiffWorkbench
-        patch={markdownPatch}
-        sourceSession={{ profileId: "profile", sessionId: "session" }}
-        localCommentAuthoring={{ enabled: true, onSave }}
-      />,
-    );
-
-    const readmeModes = await screen.findByRole("group", {
-      name: "Display mode for README.md",
-    });
-    expect(
-      screen.getByRole("group", { name: "Display mode for docs/guide.md" }),
-    ).toBeTruthy();
-    await user.click(
-      within(readmeModes).getByRole("button", { name: "Preview" }),
-    );
-
-    const preview = screen.getByRole("article", {
-      name: "Preview of README.md",
-    });
-    expect(
-      within(preview).getByRole("heading", { name: "Complete head" }),
-    ).toBeTruthy();
-    expect(within(preview).getByText("Tail paragraph")).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Add comment on README.md" }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("article", { name: "Preview of docs/guide.md" }),
-    ).toBeNull();
-    expect(
-      within(
-        screen.getByRole("group", {
-          name: "Display mode for docs/guide.md",
-        }),
-      )
-        .getByRole("button", { name: "Diff" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    expect(
-      within(readmeModes)
-        .getByRole("button", { name: "Preview" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-
-    await user.click(within(readmeModes).getByRole("button", { name: "Diff" }));
-    await waitFor(() =>
+  it("swaps the selected file's diff for its preview pane and back", async () => {
+    await withMarkdownWorkbench(async ({ user, container }) => {
+      const modes = await screen.findByRole("group", {
+        name: "Display mode for README.md",
+      });
+      // One switch, for the file the pane draws -- not one per file header.
       expect(
-        screen.queryByRole("article", { name: "Preview of README.md" }),
-      ).toBeNull(),
-    );
-    expect(
-      screen.getAllByRole("button", { name: "Add comment on README.md" })
-        .length,
-    ).toBeGreaterThan(0);
-    if (styleSheet?.value !== undefined) {
-      delete styleSheet.value.prototype.replaceSync;
-    }
+        screen.queryByRole("group", { name: "Display mode for docs/guide.md" }),
+      ).toBeNull();
+      await user.click(within(modes).getByRole("button", { name: "Preview" }));
+
+      const preview = screen.getByRole("article", {
+        name: "Preview of README.md",
+      });
+      expect(
+        within(preview).getByRole("heading", { name: "Complete head" }),
+      ).toBeTruthy();
+      expect(within(preview).getByText("Tail paragraph")).toBeTruthy();
+      expect(container.querySelector(".review-diff-viewport")).toBeNull();
+
+      await user.click(
+        within(
+          screen.getByRole("group", { name: "Display mode for README.md" }),
+        ).getByRole("button", { name: "Diff" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("article", { name: "Preview of README.md" }),
+        ).toBeNull(),
+      );
+      expect(container.querySelector(".review-diff-viewport")).toBeTruthy();
+      expect(
+        screen.getAllByRole("button", { name: "Add comment on README.md" })
+          .length,
+      ).toBeGreaterThan(0);
+    });
+  });
+
+  it("restores a file's preview when it is selected again", async () => {
+    await withMarkdownWorkbench(async ({ user, rerender }) => {
+      const modes = await screen.findByRole("group", {
+        name: "Display mode for README.md",
+      });
+      await user.click(within(modes).getByRole("button", { name: "Preview" }));
+      expect(
+        screen.getByRole("article", { name: "Preview of README.md" }),
+      ).toBeTruthy();
+
+      rerender("docs/guide.md");
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("article", { name: "Preview of README.md" }),
+        ).toBeNull(),
+      );
+      expect(
+        within(
+          screen.getByRole("group", {
+            name: "Display mode for docs/guide.md",
+          }),
+        )
+          .getByRole("button", { name: "Diff" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+
+      rerender("README.md");
+      const restored = await screen.findByRole("article", {
+        name: "Preview of README.md",
+      });
+      expect(within(restored).getByText("Tail paragraph")).toBeTruthy();
+    });
+  });
+
+  it("previews a file that is already marked viewed", async () => {
+    await withMarkdownWorkbench(async ({ user }) => {
+      const modes = await screen.findByRole("group", {
+        name: "Display mode for README.md",
+      });
+      await user.click(
+        screen.getByRole("checkbox", { name: "Mark file README.md as viewed" }),
+      );
+      await user.click(within(modes).getByRole("button", { name: "Preview" }));
+
+      expect(
+        screen.getByRole("article", { name: "Preview of README.md" }),
+      ).toBeTruthy();
+    });
   });
 
   it("renders only the files a Scope filter leaves visible", () => {
+    // File headers come from Pierre's CodeView, which needs the stub.
+    const restoreStyleSheet = stubPierreStyleSheet();
     const scopedPatch = [
       "diff --git a/src/a.ts b/src/a.ts",
       "--- a/src/a.ts",
@@ -233,5 +305,6 @@ describe("diff workbench", () => {
         .getAllByLabelText(/^Collapse file /)
         .map((header) => header.getAttribute("aria-label")),
     ).toEqual(["Collapse file src/a.ts", "Collapse file src/b.ts"]);
+    restoreStyleSheet();
   });
 });

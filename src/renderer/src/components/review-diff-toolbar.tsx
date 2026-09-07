@@ -102,6 +102,40 @@ function ReviewDiffScopePicker({
   );
 }
 
+/** Drives the Diff/Preview switch for the file currently on screen. */
+export type MarkdownPreviewControl = {
+  readonly path: string;
+  readonly active: boolean;
+  readonly onChange: (active: boolean) => void;
+};
+
+function MarkdownPreviewModeSwitch({
+  preview,
+}: {
+  readonly preview: MarkdownPreviewControl;
+}): React.JSX.Element {
+  return (
+    <ButtonGroup aria-label={`Display mode for ${preview.path}`}>
+      <Button
+        variant={preview.active ? "ghost" : "secondary"}
+        size="xs"
+        aria-pressed={!preview.active}
+        onClick={() => preview.onChange(false)}
+      >
+        Diff
+      </Button>
+      <Button
+        variant={preview.active ? "secondary" : "ghost"}
+        size="xs"
+        aria-pressed={preview.active}
+        onClick={() => preview.onChange(true)}
+      >
+        Preview
+      </Button>
+    </ButtonGroup>
+  );
+}
+
 /** Renders shared file selection, display, context, and viewed controls above a review diff. */
 export function ReviewDiffToolbar({
   virtualized,
@@ -116,6 +150,7 @@ export function ReviewDiffToolbar({
   files,
   onSetAllCollapsed,
   scopeFilter,
+  markdownPreview,
 }: {
   readonly virtualized: boolean;
   readonly preferences: Pick<
@@ -135,74 +170,90 @@ export function ReviewDiffToolbar({
   readonly onSetAllCollapsed: (collapsed: boolean) => void;
   /** Drives the Scope picker; absent where the diff cannot be filtered by bucket. */
   readonly scopeFilter?: ScopeFilterControl | undefined;
+  /** Absent where the file on screen has no Markdown preview to switch to. */
+  readonly markdownPreview?: MarkdownPreviewControl | undefined;
 }): React.JSX.Element {
+  // A showing preview replaces the CodeView, so every control that describes
+  // one is suppressed; the Scope picker stays because it also filters Browse.
+  const previewing = markdownPreview?.active === true;
   return (
     <div
       data-review-diff-toolbar
       className="z-20 flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-card/95 px-2 py-1 backdrop-blur"
     >
       <div className="flex flex-wrap items-center gap-1">
-        <ButtonGroup
-          className={`items-center ${virtualized ? "flex" : "hidden"}`}
-        >
-          <Button
-            variant={preferences.fileMode === "all" ? "secondary" : "ghost"}
-            size="xs"
-            aria-pressed={preferences.fileMode === "all"}
-            onClick={() => onPreferencesChange({ fileMode: "all" })}
+        {previewing ? null : (
+          <ButtonGroup
+            className={`items-center ${virtualized ? "flex" : "hidden"}`}
           >
-            <Files /> All files
-          </Button>
-          <Button
-            variant={
-              preferences.fileMode === "selected" ? "secondary" : "ghost"
-            }
-            size="xs"
-            aria-pressed={preferences.fileMode === "selected"}
-            disabled={selectedPath === undefined}
-            onClick={() => onPreferencesChange({ fileMode: "selected" })}
-          >
-            <FileCode2 /> Selected
-          </Button>
-        </ButtonGroup>
+            <Button
+              variant={preferences.fileMode === "all" ? "secondary" : "ghost"}
+              size="xs"
+              aria-pressed={preferences.fileMode === "all"}
+              onClick={() => onPreferencesChange({ fileMode: "all" })}
+            >
+              <Files /> All files
+            </Button>
+            <Button
+              variant={
+                preferences.fileMode === "selected" ? "secondary" : "ghost"
+              }
+              size="xs"
+              aria-pressed={preferences.fileMode === "selected"}
+              disabled={selectedPath === undefined}
+              onClick={() => onPreferencesChange({ fileMode: "selected" })}
+            >
+              <FileCode2 /> Selected
+            </Button>
+          </ButtonGroup>
+        )}
+        {markdownPreview === undefined ? null : (
+          <MarkdownPreviewModeSwitch preview={markdownPreview} />
+        )}
         {scopeFilter === undefined ? null : (
           <ReviewDiffScopePicker scopeFilter={scopeFilter} />
         )}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-1">
-        <ReviewDiffOptionsPopover
-          preferences={preferences}
-          onPreferencesChange={onPreferencesChange}
-        />
-        <Button
-          variant={expandUnchanged ? "secondary" : "ghost"}
-          size="xs"
-          aria-pressed={expandUnchanged}
-          aria-label={contextControl.description}
-          title={contextControl.description}
-          disabled={contextControl.disabled}
-          onClick={() => onExpandUnchangedChange(!expandUnchanged)}
-        >
-          {contextStatus === "loading" ? <Spinner /> : <ChevronsUpDown />}
-          {contextControl.label}
-        </Button>
-        <Button
-          className={virtualized ? undefined : "hidden"}
-          variant="ghost"
-          size="xs"
-          aria-pressed={
-            collapsedPaths.size === files.length && files.length > 0
-          }
-          onClick={() =>
-            onSetAllCollapsed(
-              !(collapsedPaths.size === files.length && files.length > 0),
-            )
-          }
-        >
-          {collapsedPaths.size === files.length && files.length > 0
-            ? "Show all"
-            : "Mark all viewed"}
-        </Button>
+        {previewing ? null : (
+          <ReviewDiffOptionsPopover
+            preferences={preferences}
+            onPreferencesChange={onPreferencesChange}
+          />
+        )}
+        {previewing ? null : (
+          <Button
+            variant={expandUnchanged ? "secondary" : "ghost"}
+            size="xs"
+            aria-pressed={expandUnchanged}
+            aria-label={contextControl.description}
+            title={contextControl.description}
+            disabled={contextControl.disabled}
+            onClick={() => onExpandUnchangedChange(!expandUnchanged)}
+          >
+            {contextStatus === "loading" ? <Spinner /> : <ChevronsUpDown />}
+            {contextControl.label}
+          </Button>
+        )}
+        {previewing ? null : (
+          <Button
+            className={virtualized ? undefined : "hidden"}
+            variant="ghost"
+            size="xs"
+            aria-pressed={
+              collapsedPaths.size === files.length && files.length > 0
+            }
+            onClick={() =>
+              onSetAllCollapsed(
+                !(collapsedPaths.size === files.length && files.length > 0),
+              )
+            }
+          >
+            {collapsedPaths.size === files.length && files.length > 0
+              ? "Show all"
+              : "Mark all viewed"}
+          </Button>
+        )}
       </div>
     </div>
   );

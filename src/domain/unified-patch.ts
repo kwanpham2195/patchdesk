@@ -33,7 +33,8 @@
  * - `src/services/review-commit-service.ts` decides "binary only" from
  *   unanchored `includes` tests that disagree with the `binary` rule here.
  * - `countChangedFiles` in `src/services/github-revision-identity-reader.ts`
- *   filters lines by a `diff --git ` prefix instead of `isUnifiedFileHeader`.
+ *   filters lines by its own `diff --git ` prefix test rather than asking this
+ *   module what a file header is.
  */
 
 /** The line ranges one `@@` hunk header declares. */
@@ -97,7 +98,7 @@ const barePathPairPattern = /^a\/(.+) b\/(.+)$/;
 const quotedPathPairPattern = /^"((?:[^"\\]|\\.)*)" "((?:[^"\\]|\\.)*)"$/;
 
 /** True for any line git would emit as the start of a new file section. */
-export function isUnifiedFileHeader(line: string): boolean {
+function isUnifiedFileHeader(line: string): boolean {
   return line.startsWith(fileHeaderPrefix);
 }
 

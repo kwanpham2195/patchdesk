@@ -9,7 +9,11 @@ const markdownFilePreviewPolicy: MarkdownContentPolicy = {
   renderHtml: ({ children, key }) => <span key={key}>{children}</span>,
 };
 
-/** Renders verified repository Markdown without activating embedded links or remote content. */
+/**
+ * Renders verified repository Markdown without activating embedded links or
+ * remote content. This is the file pane's own scroll region, not a row inside
+ * the virtualized CodeView, so its height is the Markdown's real height.
+ */
 export function MarkdownFilePreview({
   markdown,
   path,
@@ -20,7 +24,11 @@ export function MarkdownFilePreview({
   return (
     <article
       aria-label={`Preview of ${path}`}
-      className="border-t bg-background px-6 py-5 text-foreground"
+      data-review-diff-markdown-pane={path}
+      // Focusable so the keyboard can scroll it, matching what
+      // `setViewerContainer` applies to the CodeView container.
+      tabIndex={0}
+      className="min-h-0 flex-1 overflow-y-auto bg-background px-6 py-5 text-foreground"
     >
       <MarkdownContent markdown={markdown} policy={markdownFilePreviewPolicy} />
     </article>

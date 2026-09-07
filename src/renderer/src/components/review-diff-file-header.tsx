@@ -15,8 +15,6 @@ import {
 } from "@/review-finding-counts";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
 import { cn } from "@/lib/utils";
 
 /** Text tone for a finding badge, matching the severity badge in the Analysis reader. */
@@ -136,51 +134,15 @@ type FileHeaderToggle = {
   readonly onToggle: () => void;
 };
 
-type FileHeaderPreview = {
-  readonly active: boolean;
-  readonly onChange: (active: boolean) => void;
-};
-
-function FileHeaderPreviewSwitch({
-  path,
-  preview,
-}: {
-  readonly path: string;
-  readonly preview: FileHeaderPreview;
-}): React.JSX.Element {
-  return (
-    <ButtonGroup aria-label={`Display mode for ${path}`}>
-      <Button
-        variant={preview.active ? "ghost" : "secondary"}
-        size="xs"
-        aria-pressed={!preview.active}
-        onClick={() => preview.onChange(false)}
-      >
-        Diff
-      </Button>
-      <Button
-        variant={preview.active ? "secondary" : "ghost"}
-        size="xs"
-        aria-pressed={preview.active}
-        onClick={() => preview.onChange(true)}
-      >
-        Preview
-      </Button>
-    </ButtonGroup>
-  );
-}
-
-/** Renders one diff file header with optional viewed and Markdown-preview controls. */
+/** Renders one diff file header with an optional viewed control. */
 export function FileHeaderRow({
   file,
   stats,
   toggle,
-  preview,
 }: {
   readonly file: Pick<FileDiffMetadata, "name" | "prevName" | "type">;
   readonly stats: React.JSX.Element;
   readonly toggle?: FileHeaderToggle;
-  readonly preview?: FileHeaderPreview;
 }): React.JSX.Element {
   const path = file.name;
   const { Icon, className: iconClassName } = fileChangeTypeIcon(file.type);
@@ -230,9 +192,6 @@ export function FileHeaderRow({
         </Badge>
       ) : null}
       {stats}
-      {preview === undefined ? null : (
-        <FileHeaderPreviewSwitch path={path} preview={preview} />
-      )}
       {toggle !== undefined ? (
         <button
           type="button"
