@@ -33,6 +33,7 @@ import { FileChangeCounts, FileHeaderRow } from "./review-diff-file-header";
 import { renderReviewDiffAnnotation } from "./review-diff-finding-card";
 import {
   ReviewDiffToolbar,
+  type MarkdownPreviewControl,
   type ScopeFilterControl,
 } from "./review-diff-toolbar";
 import { useReviewDiffRegionName } from "../hooks/use-review-diff-region-name";
@@ -217,8 +218,9 @@ type ReviewDiffViewProps = {
   readonly onOpenFindingInAnalysis?: (findingId: string) => void;
   readonly preferences: ReviewViewPreferences;
   readonly collapsedPaths: ReadonlySet<string>;
-  readonly markdownPreviewPaths?: ReadonlySet<string>;
-  readonly onMarkdownPreviewChange?: (path: string, active: boolean) => void;
+  /** Whether the selected file is shown as a Markdown preview instead of a diff. */
+  readonly markdownPreviewActive?: boolean;
+  readonly onMarkdownPreviewChange?: (active: boolean) => void;
   readonly onPreferencesChange: (
     update: Partial<ReviewViewPreferences>,
   ) => void;
@@ -242,7 +244,6 @@ type ReviewDiffViewProps = {
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
-const EMPTY_PATHS: ReadonlySet<string> = new Set();
 
 function ReviewDiffSurface({
   patch,
@@ -255,7 +256,7 @@ function ReviewDiffSurface({
   onOpenFindingInAnalysis,
   preferences,
   collapsedPaths,
-  markdownPreviewPaths = EMPTY_PATHS,
+  markdownPreviewActive = false,
   onMarkdownPreviewChange,
   onPreferencesChange,
   onCollapsedPathsChange,
@@ -339,7 +340,6 @@ function ReviewDiffSurface({
     annotations: displayedAnnotations,
     preferences: { fileMode: preferences.fileMode },
     collapsedPaths,
-    markdownPreviewPaths,
     expandUnchanged,
     themePreferences,
     sourceSession,
@@ -347,6 +347,27 @@ function ReviewDiffSurface({
     viewer,
     onActiveFileChange,
   });
+  // The preview replaces the whole file pane, so it is driven by the one
+  // selected file rather than by a set: the pane can only draw one.
+  const selectedHeadText =
+    selectedFile === undefined
+      ? undefined
+      : verifiedHeadTextByPath.get(selectedFile.name);
+  const previewMarkdown =
+    selectedFile !== undefined &&
+    canPreviewMarkdownFile(selectedFile, selectedHeadText)
+      ? selectedHeadText
+      : undefined;
+  const markdownPreview: MarkdownPreviewControl | undefined =
+    selectedFile === undefined ||
+    previewMarkdown === undefined ||
+    onMarkdownPreviewChange === undefined
+      ? undefined
+      : {
+          path: selectedFile.name,
+          active: markdownPreviewActive,
+          onChange: onMarkdownPreviewChange,
+        };
   useReviewDiffSelectionScroll({
     viewer,
     items,
@@ -354,6 +375,7 @@ function ReviewDiffSurface({
     selectedLines,
     diffStyle: preferences.diffStyle,
     fileMode: preferences.fileMode,
+    markdownPreviewActive,
   });
   // A finding may land inside a collapsed unchanged hunk. Keep that evidence
   // materialized while it is selected; the user's explicit option still
@@ -371,31 +393,7 @@ function ReviewDiffSurface({
   const { navigationStatus, createNavigationOperation } =
     useReviewDiffNavigationFeedback(navigationResetIdentity);
 
-  useReviewFileNavigation({
-    viewer,
-    activePathRef,
-    items,
-    fileMode: preferences.fileMode,
-    onActiveFileChange,
-    createNavigationOperation,
-    resolveActiveFilePathAt,
-    virtualized,
-    browserSupportsPierre,
-  });
-
-  useReviewHunkNavigation({
-    viewer,
-    activePathRef,
-    items,
-    fileMode: preferences.fileMode,
-    onActiveFileChange,
-    createNavigationOperation,
-    resolveActiveFilePathAt,
-    virtualized,
-    browserSupportsPierre,
-  });
-
-  useReviewCommentNavigation({
+  const navigationInputs = {
     viewer,
     activePathRef,
     items,
@@ -404,7 +402,11 @@ function ReviewDiffSurface({
     createNavigationOperation,
     virtualized,
     browserSupportsPierre,
-  });
+    markdownPreviewActive,
+  };
+  useReviewFileNavigation({ ...navigationInputs, resolveActiveFilePathAt });
+  useReviewHunkNavigation({ ...navigationInputs, resolveActiveFilePathAt });
+  useReviewCommentNavigation(navigationInputs);
 
   return (
     <ReviewDiffRenderSite
@@ -421,8 +423,8 @@ function ReviewDiffSurface({
       expandSelectedRange={expandSelectedRange}
       onExpandUnchangedChange={setExpandUnchanged}
       collapsedPaths={collapsedPaths}
-      markdownPreviewPaths={markdownPreviewPaths}
-      onMarkdownPreviewChange={onMarkdownPreviewChange}
+      markdownPreview={markdownPreview}
+      previewMarkdown={previewMarkdown}
       files={files}
       fileStatsByPath={fileStatsByPath}
       findingCountsByPath={findingCountsByPath}
@@ -437,7 +439,6 @@ function ReviewDiffSurface({
       localCommentAuthoring={localCommentAuthoring}
       localComposerAnnotation={localComposerAnnotation}
       contextStatus={contextStatus}
-      verifiedHeadTextByPath={verifiedHeadTextByPath}
       beginAccessibleAuthoring={beginAccessibleAuthoring}
       selectedFile={selectedFile}
       selectedAnnotations={selectedAnnotations}
@@ -465,10 +466,9 @@ type ReviewDiffRenderSiteProps = {
   readonly themePreferences: DiffThemePreferences;
   readonly appearance: ResolvedAppearance;
   readonly expandUnchanged: boolean;
-  readonly markdownPreviewPaths: ReadonlySet<string>;
-  readonly onMarkdownPreviewChange:
-    | ((path: string, active: boolean) => void)
-    | undefined;
+  readonly markdownPreview: MarkdownPreviewControl | undefined;
+  /** The verified head Markdown the preview pane draws; absent when there is none. */
+  readonly previewMarkdown: string | undefined;
   readonly expandSelectedRange: boolean;
   readonly onExpandUnchangedChange: (expanded: boolean) => void;
   readonly collapsedPaths: ReadonlySet<string>;
@@ -490,7 +490,6 @@ type ReviewDiffRenderSiteProps = {
   readonly localCommentAuthoring: LocalCommentAuthoring | undefined;
   readonly localComposerAnnotation: ReviewInlineAnnotation | undefined;
   readonly contextStatus: ReviewContextStatus;
-  readonly verifiedHeadTextByPath: ReadonlyMap<string, string>;
   readonly beginAccessibleAuthoring: (
     path: string,
     line: number,
@@ -516,8 +515,8 @@ function ReviewDiffRenderSite({
   selectedRange,
   preferences,
   onPreferencesChange,
-  markdownPreviewPaths,
-  onMarkdownPreviewChange,
+  markdownPreview,
+  previewMarkdown,
   contextControl,
   themePreferences,
   appearance,
@@ -537,7 +536,6 @@ function ReviewDiffRenderSite({
   navigationStatus,
   syntaxHighlightingStatus,
   localCommentAuthoring,
-  verifiedHeadTextByPath,
   localComposerAnnotation,
   contextStatus,
   beginAccessibleAuthoring,
@@ -613,48 +611,18 @@ function ReviewDiffRenderSite({
     [fileStatsByPath, findingCountsByPath],
   );
   const renderCodeViewHeader = useCallback(
-    (item: CodeViewItem) => {
-      if (item.type !== "diff") return null;
-      const path = item.fileDiff.name;
-      const verifiedHeadText = verifiedHeadTextByPath.get(path);
-      const previewAvailable = canPreviewMarkdownFile(
-        item.fileDiff,
-        verifiedHeadText,
-      );
-      const previewActive = previewAvailable && markdownPreviewPaths.has(path);
-      return (
-        <div>
-          <FileHeaderRow
-            file={item.fileDiff}
-            stats={renderFileChangeCounts(path)}
-            toggle={{
-              collapsed: collapsedPaths.has(path),
-              onToggle: () => toggleFile(path),
-            }}
-            {...(previewAvailable && onMarkdownPreviewChange !== undefined
-              ? {
-                  preview: {
-                    active: previewActive,
-                    onChange: (active: boolean) =>
-                      onMarkdownPreviewChange(path, active),
-                  },
-                }
-              : {})}
-          />
-          {previewActive && !collapsedPaths.has(path) ? (
-            <MarkdownFilePreview markdown={verifiedHeadText} path={path} />
-          ) : null}
-        </div>
-      );
-    },
-    [
-      collapsedPaths,
-      markdownPreviewPaths,
-      onMarkdownPreviewChange,
-      renderFileChangeCounts,
-      toggleFile,
-      verifiedHeadTextByPath,
-    ],
+    (item: CodeViewItem) =>
+      item.type !== "diff" ? null : (
+        <FileHeaderRow
+          file={item.fileDiff}
+          stats={renderFileChangeCounts(item.fileDiff.name)}
+          toggle={{
+            collapsed: collapsedPaths.has(item.fileDiff.name),
+            onToggle: () => toggleFile(item.fileDiff.name),
+          }}
+        />
+      ),
+    [collapsedPaths, renderFileChangeCounts, toggleFile],
   );
   const renderAnnotation = useCallback(
     (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) =>
@@ -676,15 +644,13 @@ function ReviewDiffRenderSite({
         | undefined,
       item: { readonly id: string; readonly type: "diff" | "file" },
     ) =>
-      markdownPreviewPaths.has(item.id)
-        ? null
-        : renderReviewDiffGutterUtility(
-            getHoveredLine,
-            item,
-            localCommentAuthoring,
-            beginAuthoring,
-          ),
-    [beginAuthoring, localCommentAuthoring, markdownPreviewPaths],
+      renderReviewDiffGutterUtility(
+        getHoveredLine,
+        item,
+        localCommentAuthoring,
+        beginAuthoring,
+      ),
+    [beginAuthoring, localCommentAuthoring],
   );
 
   return (
@@ -702,13 +668,19 @@ function ReviewDiffRenderSite({
         files={files}
         onSetAllCollapsed={setAllCollapsed}
         scopeFilter={scopeFilter}
+        markdownPreview={markdownPreview}
       />
       {!browserSupportsPierre &&
       localComposerAnnotation?.localComposer !== undefined ? (
         <InlineCommentComposer {...localComposerAnnotation.localComposer} />
       ) : null}
       <ReviewDiffNavigationFeedback status={navigationStatus} />
-      {!browserSupportsPierre ? (
+      {markdownPreview?.active === true && previewMarkdown !== undefined ? (
+        <MarkdownFilePreview
+          markdown={previewMarkdown}
+          path={markdownPreview.path}
+        />
+      ) : !browserSupportsPierre ? (
         <AccessiblePatch
           patch={preferences.fileMode === "all" ? patch : selectedPatch}
           virtualized={virtualized}

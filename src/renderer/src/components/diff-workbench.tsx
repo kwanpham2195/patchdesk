@@ -158,6 +158,16 @@ export function DiffWorkbench({
     },
     [onPreferencesChange],
   );
+  // Keyboard nav and scrolling move the file on screen without changing the
+  // selection, so the header's path and the pane's path are reported through
+  // this one callback.
+  const reportActiveFile = useCallback(
+    (path: string): void => {
+      setActivePath(path);
+      onActiveFileChange?.(path);
+    },
+    [onActiveFileChange],
+  );
   const selectFile = useCallback(
     (path: string): void => {
       if (controlledSelectedPath === undefined) setInternalSelectedPath(path);
@@ -280,16 +290,23 @@ export function DiffWorkbench({
             parsedFiles={parsedDiff.files}
             fileStatsByPath={parsedDiff.statsByPath}
             {...(selectedPath === undefined ? {} : { selectedPath })}
-            onActiveFileChange={(path) => {
-              setActivePath(path);
-              onActiveFileChange?.(path);
-            }}
+            onActiveFileChange={reportActiveFile}
             preferences={preferences}
             collapsedPaths={collapsedPaths}
             onPreferencesChange={updatePreferences}
             onCollapsedPathsChange={setCollapsedPaths}
-            markdownPreviewPaths={markdownPreviewPaths}
-            onMarkdownPreviewChange={setMarkdownPreview}
+            markdownPreviewActive={
+              selectedPath !== undefined &&
+              markdownPreviewPaths.has(selectedPath)
+            }
+            onMarkdownPreviewChange={(active) => {
+              if (selectedPath === undefined) return;
+              setMarkdownPreview(selectedPath, active);
+              // In `all` file mode the header follows activePath, which
+              // scrolling may have moved off the selection. The pane draws the
+              // selected file, so the two have to be pulled back together.
+              if (active) reportActiveFile(selectedPath);
+            }}
             {...(sourceSession === undefined ? {} : { sourceSession })}
             {...(localCommentAuthoring === undefined
               ? {}
