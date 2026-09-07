@@ -72,4 +72,39 @@ describe("parseReviewDiff", () => {
     expect(parsed.gitStatusByPath.get("added.ts")).toBe("added");
     expect(parsed.gitStatusByPath.get("deleted.ts")).toBe("deleted");
   });
+
+  it("gives a narrowed patch its own Pierre cache keys so a filtered file cannot inherit another file's highlighted lines", () => {
+    const secondFile = [
+      "diff --git a/src/b.ts b/src/b.ts",
+      "--- a/src/b.ts",
+      "+++ b/src/b.ts",
+      "@@ -1 +1 @@",
+      "-second before",
+      "+second after",
+    ];
+    const fullPatch = [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1 +1 @@",
+      "-first before",
+      "+first after",
+      ...secondFile,
+    ].join("\n");
+    const narrowedPatch = secondFile.join("\n");
+
+    const fullKeys = parseReviewDiff(fullPatch).files.map(
+      (file) => file.cacheKey,
+    );
+    const narrowedKeys = parseReviewDiff(narrowedPatch).files.map(
+      (file) => file.cacheKey,
+    );
+
+    expect(fullKeys).toHaveLength(2);
+    expect(narrowedKeys).toHaveLength(1);
+    for (const key of narrowedKeys) expect(fullKeys).not.toContain(key);
+    expect(
+      parseReviewDiff(fullPatch).files.map((file) => file.cacheKey),
+    ).toEqual(fullKeys);
+  });
 });
