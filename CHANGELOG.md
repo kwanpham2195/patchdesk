@@ -10,6 +10,7 @@
 - The Review navigator's file tree now takes the app's own colours instead of the tree library's, so it sits flush with the panel behind it rather than showing as a grey slab with white margins, and a selected file uses the same highlight as the rest of the app. Filenames read as normal text: the git status colour now marks only the status letter beside each file, instead of tinting every name, which in a pull request where almost every file is modified had turned the whole tree one colour.
 - Dialogs, alerts, and sheets now dim the page behind them in dark mode. The scrim was a single value tuned for light mode, so in dark mode the page stayed at almost full brightness behind an open dialog.
 - Fixed the zoom and close controls on a full-size image being invisible in light mode, where white buttons sat on a near-white backdrop.
+- Fixed a flash of the other theme when the window reloads its interface. Patchdesk kept re-applying the appearance it started with, so after you changed **Appearance** any reload of the interface — recovering from a renderer error, for instance — repainted the theme you had left for a frame before the saved one came back.
 - Patchdesk no longer flashes the wrong theme while it starts. The window opened dark whatever your Appearance was, inside a light native frame, so either choice showed a flash of the other; the stored appearance is now resolved before the first frame is painted.
 
 ## 0.0.5 - 2026-09-06

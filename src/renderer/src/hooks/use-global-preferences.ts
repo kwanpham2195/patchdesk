@@ -3,6 +3,7 @@ import { api } from "../api-client";
 import {
   applyAppearance,
   clearAppearancePreference,
+  currentAppearancePreference,
   loadAppearancePreference,
   type AppearancePreference,
 } from "../appearance-preferences";
@@ -45,12 +46,14 @@ type PreferenceRetry = {
 };
 
 export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
-  // Starts from the value `main.tsx` already painted with, which the main
-  // process read from config.json before the window existed. Anything else
-  // would repaint the other theme for the frames before the first
-  // `GET /v1/settings` answers.
+  // Starts from what the document is already painted with, so nothing
+  // repaints the other theme for the frames before the first
+  // `GET /v1/settings` answers. That is module state rather than
+  // `window.patchdesk.appearanceAtLoad`, which preload reads once per document
+  // load: a remount re-runs this initializer, and the bridge value would by
+  // then be the appearance the window booted with, not the current one.
   const [appearance, setAppearance] = useState<AppearancePreference>(
-    () => window.patchdesk?.appearanceAtLoad ?? "system",
+    currentAppearancePreference,
   );
   const [diffThemePreferences, setDiffThemePreferences] =
     useState<DiffThemePreferences>(() => loadDiffThemePreferences());

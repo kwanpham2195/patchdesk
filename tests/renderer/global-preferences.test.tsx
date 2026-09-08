@@ -13,7 +13,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
 
 import { App } from "../../src/renderer/src/app";
-import type { AppearancePreference } from "../../src/renderer/src/appearance-preferences";
+import {
+  applyAppearance,
+  type AppearancePreference,
+} from "../../src/renderer/src/appearance-preferences";
 import {
   parseDiffThemePreferences,
   type DiffThemePreferences,
@@ -39,8 +42,17 @@ const dashboard = {
 
 let desktop: DesktopDouble | undefined;
 
+// `main.tsx` paints the appearance the window booted with before React runs,
+// and `applyAppearance` keeps that value for the rest of the document. No
+// entry module runs here, so each test paints its own boot appearance and this
+// resets the document between them.
+function bootDocument(appearanceAtLoad: AppearancePreference): void {
+  applyAppearance(appearanceAtLoad);
+}
+
 afterEach(() => {
   cleanup();
+  bootDocument("system");
   desktop?.restore();
   desktop = undefined;
   window.localStorage.clear();
@@ -176,6 +188,7 @@ describe("file-backed renderer preferences", () => {
 
   it("surfaces a read failure instead of silently falling back to defaults", async () => {
     installDesktopApi({}, { getFails: true, appearanceAtLoad: "dark" });
+    bootDocument("dark");
 
     render(<App initialState="empty" />);
 
@@ -205,6 +218,7 @@ describe("file-backed renderer preferences", () => {
         setWindowAppearance: (appearance) => reported.push(appearance),
       },
     );
+    bootDocument("dark");
     const { result } = renderHook(() => useGlobalPreferences(false));
 
     await waitFor(() => expect(reported).toEqual(["dark"]));
@@ -215,6 +229,41 @@ describe("file-backed renderer preferences", () => {
     // The window's native background follows the renderer, so the strip a
     // resize exposes is never the appearance the user just left.
     expect(reported).toEqual(["dark", "light"]);
+  });
+
+  it("keeps the painted appearance across a remount while the load is pending", async () => {
+    const reported: AppearancePreference[] = [];
+    const load = deferredDesktopResponse();
+    desktop = installDesktopDouble(
+      {
+        "/v1/settings": (input) =>
+          input.method === "PATCH"
+            ? success({ appearance: "light" })
+            : load.promise,
+      },
+      {
+        // Stale on purpose: the bridge reads this once per document load, so
+        // after a Settings change it no longer matches what is on screen.
+        appearanceAtLoad: "dark",
+        setWindowAppearance: (appearance) => reported.push(appearance),
+      },
+    );
+    bootDocument("dark");
+    const first = renderHook(() => useGlobalPreferences(false));
+    await act(async () => {
+      await first.result.current.updateAppearance("light");
+    });
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+
+    first.unmount();
+    const reportedBeforeRemount = reported.length;
+    renderHook(() => useGlobalPreferences(false));
+
+    // GET /v1/settings has not answered yet, so nothing has corrected the
+    // remount: it must start from what the document is showing, not from the
+    // appearance the window booted with.
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(reported.slice(reportedBeforeRemount)).not.toContain("dark");
   });
 
   it("stays silent for a genuine first run with no config file yet", async () => {
