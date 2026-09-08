@@ -149,20 +149,20 @@ function MarkdownLightboxContent({
         <Button
           size="icon-sm"
           variant="ghost"
-          className="text-white hover:bg-white/10"
+          className="text-foreground hover:bg-accent"
           onClick={zoomOut}
           aria-label="Zoom out"
           disabled={scale <= MIN_SCALE}
         >
           <Minus />
         </Button>
-        <span className="min-w-[3.5rem] text-center text-xs text-white tabular-nums">
+        <span className="min-w-[3.5rem] text-center text-xs text-foreground tabular-nums">
           {Math.round(scale * 100)}%
         </span>
         <Button
           size="icon-sm"
           variant="ghost"
-          className="text-white hover:bg-white/10"
+          className="text-foreground hover:bg-accent"
           onClick={zoomIn}
           aria-label="Zoom in"
           disabled={scale >= MAX_SCALE}
@@ -172,7 +172,7 @@ function MarkdownLightboxContent({
         <Button
           size="icon-sm"
           variant="ghost"
-          className="text-white hover:bg-white/10"
+          className="text-foreground hover:bg-accent"
           onClick={toggleFit}
           aria-label={fitToScreen ? "Actual size" : "Fit to screen"}
         >
@@ -181,7 +181,7 @@ function MarkdownLightboxContent({
         <Button
           size="icon-sm"
           variant="ghost"
-          className="text-white hover:bg-white/10"
+          className="text-foreground hover:bg-accent"
           onClick={onClose}
           aria-label="Close"
         >

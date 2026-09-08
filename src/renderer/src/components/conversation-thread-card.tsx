@@ -193,7 +193,7 @@ function ConversationCommentRow({
             {canEdit ? (
               <button
                 type="button"
-                className="text-xs font-medium text-sky-400 hover:underline"
+                className="text-xs font-medium text-primary hover:underline"
                 disabled={deleting}
                 onClick={() => {
                   setEditing(true);
@@ -403,7 +403,7 @@ export function ConversationThreadCard({
       {hiddenReplyCount > 0 ? (
         <button
           type="button"
-          className="mt-3 text-xs font-medium text-sky-400 hover:underline"
+          className="mt-3 text-xs font-medium text-primary hover:underline"
           onClick={() => setExpanded((current) => !current)}
         >
           {expanded
