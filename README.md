@@ -3,7 +3,18 @@
 </p>
 <h1 align="center">Patchdesk</h1>
 <p align="center">
-  Review GitHub pull requests on your Mac, next to your checkouts, with no server in between.
+  <strong>Review GitHub pull requests with the code beside you.</strong>
+</p>
+<p align="center">
+  Patchdesk is an open-source macOS workbench for developers who want to
+  understand a change before approving it. Browse by file, commit, or scope;
+  comment and merge from one place; and add optional AI Insights. The model
+  never receives access to GitHub.
+</p>
+<p align="center">
+  <a href="https://github.com/kwanpham2195/patchdesk/releases/latest">Download the latest release</a>
+  ·
+  <a href="#install-with-homebrew">Install with Homebrew</a>
 </p>
 <p align="center">
   <a href="https://github.com/kwanpham2195/patchdesk/releases"><img src="https://img.shields.io/github/v/release/kwanpham2195/patchdesk" alt="Latest release"></a>
@@ -12,182 +23,110 @@
 
 ![Patchdesk reviewing a pull request](docs/assets/review-workbench.png)
 
-*A pull request open in the Review workbench.*
+*A pull request open in the Review workbench, beside its local checkout.*
 
-## Why Patchdesk
+## Why developers use Patchdesk
 
-- Everything runs on your Mac, and no GitHub token is stored: Patchdesk runs
-  `gh auth token` each time it needs one.
-- A GitHub write only happens from an action you name explicitly, never
-  because an Insight finished.
-- Models are optional and only add Insights: a Brief, a Walkthrough, or an
-  Analysis of the diff.
-- The Scope gauge buckets changed files by path and needs no model at all.
+- **Understand large changes faster.** Move between the conversation, files,
+  commits, scopes, and review threads without rebuilding context across tabs.
+- **Review beside the local checkout.** Patchdesk finds your repositories and
+  keeps the represented pull-request revision next to the code it describes.
+- **Use AI only when you choose.** The core review workflow needs no model.
+  Optional Insights add a Brief, Walkthrough, or Analysis.
+- **Keep every GitHub write explicit.** Comments, reviews, metadata changes,
+  and merges start only from an action you name.
 
-## What you get
+## Quick start
 
-### Pull requests
+1. Use macOS on Apple Silicon, install `git` and the GitHub CLI, then sign in
+   with `gh auth login`.
+2. Install Patchdesk with Homebrew:
 
-![Pull requests list with the Review details panel](docs/assets/pull-requests.png)
+   ```bash
+   brew trust --tap kwanpham2195/patchdesk
+   brew install --cask kwanpham2195/patchdesk/patchdesk
+   xattr -dr com.apple.quarantine /Applications/Patchdesk.app
+   ```
 
-*One repository at a time, with filters kept alongside your workspace.*
+3. Open Patchdesk, choose the folder that contains your checkouts, and select
+   a repository to review.
 
-- Patchdesk shows one repository at a time, and GitHub decides what is in
-  the list and in what order.
-- Filter by state, labels, and More filters (review state, check status,
-  author, base branch); active choices show as chips and are kept with your
-  workspace.
-- **Review details** shows checks, changes, and whether each Insight is
-  Ready, Outdated, or Not run, with a **Request** button that starts one.
-- The list refreshes only when you ask: opening the screen, changing a
-  filter or page, or pressing ⌘R.
+> Patchdesk is not yet signed with an Apple Developer ID or notarized. The
+> `xattr` command clears the quarantine flag that macOS adds to the downloaded
+> app. See [Install](#install) for the full instructions and current platform
+> limits.
 
-### Review workbench
+## Review from change to decision
 
-![The Conversation tab](docs/assets/conversation.png)
-
-*The Conversation tab: the description and the discussion, with reviewers,
-assignees, and labels beside them.*
-
-The **Conversation** tab holds the description, comments, threads, and the
-images inside them.
+Start with one repository. Filter its pull requests by state, labels, review
+state, check status, author, or base branch. Open a pull request to keep its
+description, discussion, checks, changed files, and review state together.
 
 ![The Diff tab](docs/assets/diff-browse.png)
 
-*The Diff tab: a file tree beside the diff, each file carrying its status and
-its Viewed mark.*
+*Browse the diff from a file tree, narrow it by scope, or read one commit at a
+time.*
 
-The **Diff** tab has a file tree, one-commit slices, threads on their lines,
-view options, a Viewed mark per file, and a Diff/Preview switch for each
-Markdown file.
-
-![The Scope picker open in the diff toolbar](docs/assets/diff-scope-filter.png)
-
-*Scope narrows the tree and the diff to one bucket, and each bucket shows how
-many files it holds.*
-
-The Scope picker in the diff toolbar narrows the tree and the diff to Core,
-Tests, Generated, Docs, or Config, and All files restores the whole diff.
-
-![A Markdown file shown as a preview](docs/assets/markdown-preview.png)
-
-*A Markdown file switched from Diff to Preview, rendered from the verified head
-content.*
-
-![The Commits section with one commit selected](docs/assets/diff-commits.png)
-
-*Commits reads the change one commit at a time instead of all at once.*
+The Diff tab carries each file's status and Viewed mark. Markdown files can
+switch between Diff and Preview. Scope narrows the change to Core, Tests,
+Generated, Docs, or Config without using a model.
 
 ![A comment being written on a diff line](docs/assets/diff-threads.png)
 
-*A line comment reaches GitHub only when you publish it, never before.*
+*A line comment reaches GitHub only when you publish it.*
 
-Leave line comments, resolve conversations, collect a pending review, and
-finish it as Approve, Request changes, or Comment.
+Leave line comments, resolve conversations, and collect a pending review.
+Finish it as Approve, Request changes, or Comment. When GitHub reports that the
+pull request is ready, merge with Squash, Merge, or Rebase.
 
-![The pull request overview and merge readiness](docs/assets/merge-readiness.png)
+Press ⌘K anywhere to open the Navigate palette. Paste a GitHub pull-request
+URL or compact reference to open it directly.
 
-*Revision freshness, checks, Insight status, and whether GitHub says the pull
-request can merge.*
+## Optional Insights
 
-Merge with Squash, Merge, or Rebase when GitHub says the pull request is ready.
-A Review of a merged pull request opens read-only and stays readable.
-
-### Insights
-
-An Insight is optional and needs a model. It helps you understand a change;
-it never replaces your Review.
+Insights help you understand a change; they never replace your Review. The
+core review workflow, including the Scope gauge, works without a model.
 
 ![The Insights overview](docs/assets/insights-overview.png)
 
-*The Scope gauge, and Brief, Walkthrough, and Analysis with the state each one
-is in.*
+*Brief, Walkthrough, and Analysis remain separate, revision-bound results.*
 
-**Brief**, **Walkthrough**, and **Analysis** read in the order you review a
-change, and Insights opens on Brief. The **Scope** gauge buckets changed files
-by path and needs no model.
+- **Brief** shows the shape and reach of the change and suggests where to
+  start reading.
+- **Walkthrough** explains the change in chapters tied to its diff hunks.
+- **Analysis** presents evidence-backed findings that open at their lines in
+  the Diff and can be added to your review.
 
-![The Brief reader](docs/assets/insight-brief.png)
+Every run names its provider, model, reasoning effort, and readable inputs
+before it starts. Patchdesk can use API keys from environment variables or an
+existing Codex CLI login. The model cannot access GitHub, your checkout, or the
+network beyond its model API. See the
+[Insights guide](docs/user-guide.md#insights) for supported providers.
 
-*Brief: the shape and reach of the change, and where to start reading.*
+## Privacy and write safety
 
-![The Walkthrough reader](docs/assets/insight-walkthrough.png)
-
-*Walkthrough: chapters and sections, each shown with the hunks it describes.*
-
-![The Analysis reader](docs/assets/insight-analysis.png)
-
-*Analysis: findings with a severity and their evidence, copyable as one prompt
-for a local coding agent.*
-
-An **Analysis** finding carries a severity, opens at its line in the **Diff**,
-can be added to your review, and the open findings copy as a markdown prompt
-for a local coding agent.
-
-![The run dialog for an Insight](docs/assets/insight-run-dialog.png)
-
-*Every run names its provider, model, and reasoning effort, and says what the
-model may read, before it starts.*
-
-There are two providers: API keys, read from environment variables for 32
-providers, or your existing Codex CLI login. The model never touches GitHub,
-your checkout, or the network beyond the model API itself.
-
-The provider list is in
-[docs/user-guide.md#insights](docs/user-guide.md#insights).
-
-### Navigate
-
-![The Navigate palette](docs/assets/navigate.png)
-
-*⌘K from anywhere, to a screen, an action, or a pull request URL.*
-
-- ⌘K opens the **Navigate** palette, which jumps to a screen or runs a
-  **Pull requests** action.
-- Enter a GitHub pull request URL or a compact reference there to open that
-  pull request, whether or not it is in the current list.
-
-### Workspace
-
-![Settings, Workspace](docs/assets/settings-workspace.png)
-
-*The account Patchdesk reviews as, read from `gh`, and the folder it finds your
-checkouts in.*
-
-- **Reviewing as** names the GitHub account; Patchdesk never stores its token.
-- **Repositories** points at one folder and lists the checkouts it found, so a
-  Review can open beside the code it describes.
+- Patchdesk runs on your Mac, with no Patchdesk server in between.
+- It does not store your GitHub token. It runs `gh auth token` each time it
+  needs one.
+- An Insight result cannot publish a comment, submit a review, change pull
+  request metadata, or merge code.
+- GitHub writes start only from explicit controls and stay tied to the
+  represented pull-request revision.
+- A merged pull request opens read-only and remains available for inspection.
 
 ## Install
 
-You need:
+Patchdesk currently requires:
 
-- macOS on Apple Silicon (arm64). Patchdesk does not run on Intel Macs,
-  Windows, or Linux.
+- macOS on Apple Silicon (arm64). Intel Macs, Windows, and Linux are not
+  supported.
 - `git`.
-- The GitHub CLI (`gh`), logged in with `gh auth login`.
+- The GitHub CLI (`gh`), authenticated with `gh auth login`.
 
-You do not need Node.js installed. The part of Patchdesk that runs Insights
-ships inside the app and runs on Electron's own Node.
+Node.js is not required. The optional Insight runtime ships inside the app and
+uses Electron's Node runtime.
 
-Either download the `.dmg` by hand or install through Homebrew.
-
-**From the `.dmg`:**
-
-1. Download the `.dmg` from the
-   [Releases page](https://github.com/kwanpham2195/patchdesk/releases).
-2. Open the `.dmg` and drag Patchdesk into Applications.
-
-The build is not signed with an Apple Developer ID or notarized. The first
-time you open Patchdesk, macOS reports Patchdesk.app as damaged and offers
-only Move to Trash. Clear the quarantine flag macOS adds to downloads, once,
-from a terminal, then open it normally:
-
-```bash
-xattr -cr /Applications/Patchdesk.app
-```
-
-**With Homebrew:**
+### Install with Homebrew
 
 ```bash
 brew trust --tap kwanpham2195/patchdesk
@@ -195,23 +134,54 @@ brew install --cask kwanpham2195/patchdesk/patchdesk
 xattr -dr com.apple.quarantine /Applications/Patchdesk.app
 ```
 
-Homebrew loads casks from a tap that is not its own only after you trust it,
-which is what `brew trust` does. The `xattr` line clears the same quarantine
-flag as above, because the app is not notarized. Later versions install with
-`brew upgrade --cask patchdesk`.
+Homebrew requires trust before it loads a cask from a third-party tap. The
+`xattr` command is also required because the app is not notarized. Upgrade a
+later release with:
 
-Opening Patchdesk a second time while it is already running quits the new
-copy right away; the existing window comes to the front instead.
+```bash
+brew upgrade --cask patchdesk
+```
 
-## Learn more
+### Install from the disk image
 
-- [docs/user-guide.md](docs/user-guide.md) — first run, reviewing pull
-  requests, Insights and the providers they use, where Patchdesk keeps its
-  files, how it stays safe, and known limits.
-- [docs/product-description/README.md](docs/product-description/README.md) —
-  what Patchdesk does, screen by screen.
-- [docs/architecture.md](docs/architecture.md) — how the app is put together.
-- [CONTRIBUTING.md](CONTRIBUTING.md) — building from source and contributing
-  changes.
-- [CHANGELOG.md](CHANGELOG.md) — what changed in each release.
-- [LICENSE](LICENSE) — Patchdesk is MIT licensed.
+1. Download the `.dmg` from the
+   [latest release](https://github.com/kwanpham2195/patchdesk/releases/latest).
+2. Open it and drag Patchdesk into Applications.
+3. Clear the quarantine flag once, then open Patchdesk normally:
+
+   ```bash
+   xattr -cr /Applications/Patchdesk.app
+   ```
+
+Until Patchdesk is signed and notarized, macOS may report the downloaded app
+as damaged and offer only Move to Trash. The command above clears the download
+quarantine flag; it does not change the app.
+
+Opening Patchdesk while it is already running brings the existing window to
+the front and quits the new copy.
+
+## Build and contribute
+
+Patchdesk is an Electron application released under the MIT license. A source
+checkout requires Node.js 22.19 or later and pnpm 8.8.0:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before making a change. It covers the
+codebase, test boundaries, development commands, and commit conventions.
+
+## Documentation
+
+- [User guide](docs/user-guide.md) — first run, reviews, Insights, storage,
+  safety, and known limits.
+- [Product description](docs/product-description/README.md) — detailed
+  behavior, screen by screen.
+- [Architecture](docs/architecture.md) — application layers and boundaries.
+- [Changelog](CHANGELOG.md) — changes in each release.
+- [License](LICENSE) — MIT license terms.
+
+If Patchdesk improves your review workflow,
+[star the repository](https://github.com/kwanpham2195/patchdesk).
