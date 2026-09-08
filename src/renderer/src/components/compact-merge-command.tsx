@@ -241,7 +241,7 @@ export function CompactMergeCommand(props: {
   return (
     <section
       aria-label="Merge command"
-      className="@container/merge-command rounded-lg border bg-muted/40 p-3"
+      className="@container/merge-command rounded-lg border bg-muted p-3"
     >
       <div className="flex min-w-0 flex-col gap-3 @2xl/merge-command:flex-row @2xl/merge-command:items-center @2xl/merge-command:justify-between">
         <p className="w-full min-w-0 break-words text-xs text-muted-foreground @2xl/merge-command:flex-1">
