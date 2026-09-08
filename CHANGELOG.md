@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.6 - 2026-09-08
+
 - Fixed the **Scope** picker in the Diff toolbar replacing the whole workbench with "Patchdesk could not load the Review workbench." Choosing a bucket handed the renderer one file's syntax highlighting paired with another file's lines, because a narrowed diff reused what the full diff had cached by position. Clearing back to All files could fail a second way, hydrating one file's source under another file's name. Applying, switching, and clearing a bucket are all safe now, and a file the current filter hides is no longer fetched at all.
 - Fixed a Markdown preview you could not read to the end of. A previewed file counted as a single header row in the diff's scrolling, whatever its real length, so a long document ran past the bottom and any file after it became unreachable. A preview is now the pane's own scrolling region at its true height. The Diff/Preview switch has moved from each file's header row to the diff toolbar, where it acts on the file you are reading; each file still remembers its own choice, and a file you have marked viewed can now be previewed too.
 - Fixed clicking **Browse**, **Threads**, or **Commits** in the Review navigator dropping the file you had selected, which left the diff pane showing a file the Scope filter was hiding. Choosing a section is a way into the diff, not a change of file.
