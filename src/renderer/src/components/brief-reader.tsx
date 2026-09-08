@@ -37,13 +37,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 type RetainedBrief = NonNullable<BriefInsight["retained"]>;
 
 /**
- * The glyph and hue each status carries in the tree. The hues are the ones the
- * app already spends on added and removed lines; `renamed` gets the changed
- * glyph in plain text, because a rename is a move rather than an edit.
+ * The glyph and hue each status carries in the tree. Added and removed take the
+ * `--diff-added-fg`/`--diff-removed-fg` tokens the diff view itself draws with,
+ * so a file's status reads the same hue here as its lines do there; `renamed`
+ * gets the changed glyph in plain text, because a rename is a move rather than
+ * an edit.
  */
 const OWNERSHIP_STATUS_MARKS = {
-  added: { glyph: "+", className: "text-emerald-700 dark:text-emerald-400" },
-  removed: { glyph: "−", className: "text-rose-700 dark:text-rose-400" },
+  added: { glyph: "+", className: "text-diff-added-fg" },
+  removed: { glyph: "−", className: "text-diff-removed-fg" },
   modified: { glyph: "~", className: "text-amber-600 dark:text-amber-400" },
   renamed: { glyph: "~", className: "text-muted-foreground" },
 } as const satisfies Record<
@@ -52,15 +54,10 @@ const OWNERSHIP_STATUS_MARKS = {
 >;
 
 /**
- * The glyph, text hue, and row tint each Flow row's change carries. The text
- * hues are the exact ones `OWNERSHIP_STATUS_MARKS` above spends on added and
- * removed files, per ADR 0039: Flow draws with "the same diff colors used
- * elsewhere in Patchdesk." The row tint would ideally reuse the diff view's
- * own added/removed background, but that lives inside `@pierre/diffs`'s
- * shadow DOM as `--diffs-bg-addition-override`/`--diffs-bg-deletion-override`
- * custom properties the web component consumes internally -- nothing outside
- * it can read or reapply them -- so this falls back to a plain Tailwind tint
- * at the same hue. `unchanged` carries no glyph and no tint -- it is the
+ * The glyph, text hue, and row tint each Flow row's change carries, all four
+ * drawn from the `--diff-*` tokens in `styles.css` -- the same hues the diff
+ * view spends on added and removed lines, per ADR 0039's "tinted with the
+ * app's diff hues". `unchanged` carries no glyph and no tint -- it is the
  * dimmed spine, not a claim. Each changed kind also carries an `uncited*`
  * variant, a dimmer version of its own hue for a changed step the model
  * could not cite a hunk for -- see `FlowRowView`.
@@ -68,21 +65,21 @@ const OWNERSHIP_STATUS_MARKS = {
 const FLOW_CHANGE_MARKS = {
   added: {
     glyph: "+",
-    className: "text-emerald-700 dark:text-emerald-400",
-    rowClassName: "bg-emerald-500/10",
+    className: "text-diff-added-fg",
+    rowClassName: "bg-diff-added-fg/10",
     // An uncited changed step is a claim without evidence: the missing chip
     // and this muted marker are the signal, not an error state.
-    uncitedClassName: "text-emerald-700/60 dark:text-emerald-400/60",
-    uncitedRowClassName: "bg-emerald-500/5",
+    uncitedClassName: "text-diff-added-fg/60",
+    uncitedRowClassName: "bg-diff-added-fg/5",
   },
   removed: {
     glyph: "−",
-    className: "text-rose-700 dark:text-rose-400",
-    rowClassName: "bg-rose-500/10",
+    className: "text-diff-removed-fg",
+    rowClassName: "bg-diff-removed-fg/10",
     // Same reasoning as `added` above: no surviving hunk citation, so the row
     // draws as a dimmer version of itself rather than losing its glyph.
-    uncitedClassName: "text-rose-700/60 dark:text-rose-400/60",
-    uncitedRowClassName: "bg-rose-500/5",
+    uncitedClassName: "text-diff-removed-fg/60",
+    uncitedRowClassName: "bg-diff-removed-fg/5",
   },
   unchanged: {
     glyph: "",

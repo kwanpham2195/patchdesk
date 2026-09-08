@@ -275,14 +275,10 @@ function ChangeSize({
         </span>
       )}
       {additions === undefined ? null : (
-        <span className="text-emerald-700 dark:text-emerald-400">
-          +{compactCount(additions)}
-        </span>
+        <span className="text-diff-added-fg">+{compactCount(additions)}</span>
       )}
       {deletions === undefined ? null : (
-        <span className="text-rose-700 dark:text-rose-400">
-          -{compactCount(deletions)}
-        </span>
+        <span className="text-diff-removed-fg">-{compactCount(deletions)}</span>
       )}
     </span>
   );
