@@ -1,0 +1,1 @@
+export const conflictObservation = "base branch version";
