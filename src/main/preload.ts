@@ -1,10 +1,15 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import {
+  readWindowAppearance,
+  sendWindowAppearance,
+} from "./desktop-appearance-channel";
+import {
   readWindowFullScreen,
   subscribeToWindowFullScreen,
 } from "./desktop-full-screen-channel";
 import { subscribeToMenuActions } from "./desktop-menu-channel";
+import type { Appearance } from "../domain/contracts";
 import {
   DESKTOP_REQUEST_CHANNEL,
   type DesktopMenuAction,
@@ -46,6 +51,12 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
   // Read while preload runs, before the renderer paints, so a reload inside
   // full screen never shows a frame with the traffic-light inset.
   windowFullScreenAtLoad: readWindowFullScreen(ipcRenderer),
+  // Read here, before any renderer code runs, so the first render already
+  // carries the stored appearance instead of correcting it after a frame.
+  appearanceAtLoad: readWindowAppearance(ipcRenderer),
+  setWindowAppearance(appearance: Appearance) {
+    sendWindowAppearance(ipcRenderer, appearance);
+  },
   qaScrollDiagnosticsEnabled,
 });
 

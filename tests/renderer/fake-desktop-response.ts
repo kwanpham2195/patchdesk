@@ -164,6 +164,8 @@ export function installDesktopDouble(
       };
     },
     windowFullScreenAtLoad: extras.windowFullScreenAtLoad ?? false,
+    appearanceAtLoad: extras.appearanceAtLoad ?? "system",
+    setWindowAppearance: extras.setWindowAppearance ?? (() => undefined),
     qaScrollDiagnosticsEnabled: extras.qaScrollDiagnosticsEnabled ?? false,
   };
   Object.defineProperty(window, "patchdesk", {

@@ -13,7 +13,11 @@
    cannot clear 3:1 against a near-white and a near-black background at once,
    and the old shared set was tuned for dark only. */
 :root {
-  color-scheme: light dark;
+  /* No `color-scheme` here on purpose. A dark used scheme makes Chromium
+     paint its own near-black canvas and ignore the window's native
+     background, which is the only value that knows the stored appearance
+     before the renderer loads. `applyAppearance` sets `color-scheme` inline
+     on <html> as soon as it resolves, which is where it belongs. */
   --radius: 0.625rem;
   --shell: oklch(0.955 0.005 85);
   --background: oklch(0.981 0.004 85);

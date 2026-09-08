@@ -175,8 +175,7 @@ describe("file-backed renderer preferences", () => {
   });
 
   it("surfaces a read failure instead of silently falling back to defaults", async () => {
-    window.localStorage.setItem("patchdesk.appearance.v1", "dark");
-    installDesktopApi({}, { getFails: true });
+    installDesktopApi({}, { getFails: true, appearanceAtLoad: "dark" });
 
     render(<App initialState="empty" />);
 
@@ -189,9 +188,33 @@ describe("file-backed renderer preferences", () => {
         /Could not load saved preferences\. Appearance and diff theme are using defaults/,
       ),
     ).toBeTruthy();
-    // The visible appearance still falls back to the renderer default rather
+    // The visible appearance stays the one the window was painted for rather
     // than blocking the app or showing an error screen.
     expect(document.documentElement.dataset.appearance).toBe("dark");
+  });
+
+  it("tells the main process every appearance the renderer paints", async () => {
+    const reported: AppearancePreference[] = [];
+    desktop = installDesktopDouble(
+      {
+        "/v1/settings": (input) =>
+          success({ appearance: input.method === "PATCH" ? "light" : "dark" }),
+      },
+      {
+        appearanceAtLoad: "dark",
+        setWindowAppearance: (appearance) => reported.push(appearance),
+      },
+    );
+    const { result } = renderHook(() => useGlobalPreferences(false));
+
+    await waitFor(() => expect(reported).toEqual(["dark"]));
+    await act(async () => {
+      await result.current.updateAppearance("light");
+    });
+
+    // The window's native background follows the renderer, so the strip a
+    // resize exposes is never the appearance the user just left.
+    expect(reported).toEqual(["dark", "light"]);
   });
 
   it("stays silent for a genuine first run with no config file yet", async () => {
@@ -420,6 +443,7 @@ function installDesktopApi(
   options: {
     readonly patchSucceeds?: boolean;
     readonly getFails?: boolean;
+    readonly appearanceAtLoad?: AppearancePreference;
   } = {},
 ): DesktopDouble {
   desktop = installDesktopDouble(
@@ -446,7 +470,10 @@ function installDesktopApi(
       "/v1/github/access": () => success(dashboard),
       "/v1/watchlist/suggestions": () => success([]),
     },
-    { operations: { setNavigationState: () => success({}) } },
+    {
+      operations: { setNavigationState: () => success({}) },
+      appearanceAtLoad: options.appearanceAtLoad ?? "system",
+    },
   );
   return desktop;
 }

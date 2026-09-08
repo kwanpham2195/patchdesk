@@ -15,7 +15,8 @@ export type PatchdeskConfigFile = {
   readonly diffTheme?: DiffTheme;
 };
 
-type Appearance = "system" | "light" | "dark";
+/** The stored appearance choice; "system" follows the OS preference. */
+export type Appearance = "system" | "light" | "dark";
 
 type DiffTheme = {
   readonly light: string;
