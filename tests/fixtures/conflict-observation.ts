@@ -1,0 +1,1 @@
+export const conflictObservation = "pull request branch version";
