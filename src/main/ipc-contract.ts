@@ -1,3 +1,4 @@
+import type { Appearance } from "../domain/contracts";
 import type { RawJsonValue } from "../domain/json";
 
 /** Header accepted by the loopback API for every request. */
@@ -25,6 +26,16 @@ export type DesktopMenuAction = "openSettings" | "refresh";
  */
 export const DESKTOP_WINDOW_FULL_SCREEN_CHANNEL =
   "patchdesk:window-full-screen";
+
+/**
+ * The stored appearance, both directions on one channel, for the reason
+ * `desktop-menu-channel.ts` gives about channel names being runtime strings.
+ * `desktop-appearance-channel.ts` holds every half: preload reads the current
+ * value synchronously while it builds `window.patchdesk`, and sends the new
+ * value whenever the renderer repaints in a different appearance, so the
+ * window's native background never keeps the theme the user just left.
+ */
+export const DESKTOP_WINDOW_APPEARANCE_CHANNEL = "patchdesk:window-appearance";
 
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
@@ -89,6 +100,18 @@ export type PatchdeskDesktopApi = {
    * header on its first frame.
    */
   readonly windowFullScreenAtLoad: boolean;
+  /**
+   * The stored appearance as this renderer loaded, read synchronously in
+   * preload from the main process, which took it from `config.json` before
+   * the window existed. The renderer applies it before its first render, so
+   * the first frame is never the theme the user did not choose.
+   */
+  readonly appearanceAtLoad: Appearance;
+  /**
+   * Tells the main process which appearance the renderer now paints, so the
+   * window's native background colour follows a change made in Settings.
+   */
+  setWindowAppearance(appearance: Appearance): void;
   /** QA-only structural diagnostics are enabled by a main-process argument. */
   readonly qaScrollDiagnosticsEnabled: boolean;
 };

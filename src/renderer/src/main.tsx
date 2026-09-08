@@ -3,10 +3,17 @@ import { createRoot } from "react-dom/client";
 
 import "./styles.css";
 import { App } from "./app";
+import { applyAppearance } from "./appearance-preferences";
 import { RendererRecovery } from "./components/renderer-recovery";
 import { appLog, installRendererLogging } from "./lib/logger";
 
 installRendererLogging();
+
+// The main process read the stored appearance from config.json before this
+// window existed and preload handed it over synchronously, so the first
+// render already paints the chosen theme. `useGlobalPreferences` starts from
+// the same value and keeps applying it from here on.
+applyAppearance(window.patchdesk?.appearanceAtLoad ?? "system");
 
 const rootElement = document.getElementById("root");
 if (rootElement === null) {

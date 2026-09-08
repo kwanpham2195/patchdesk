@@ -45,8 +45,12 @@ type PreferenceRetry = {
 };
 
 export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
-  const [appearance, setAppearance] = useState<AppearancePreference>(() =>
-    loadAppearancePreference(),
+  // Starts from the value `main.tsx` already painted with, which the main
+  // process read from config.json before the window existed. Anything else
+  // would repaint the other theme for the frames before the first
+  // `GET /v1/settings` answers.
+  const [appearance, setAppearance] = useState<AppearancePreference>(
+    () => window.patchdesk?.appearanceAtLoad ?? "system",
   );
   const [diffThemePreferences, setDiffThemePreferences] =
     useState<DiffThemePreferences>(() => loadDiffThemePreferences());
@@ -66,6 +70,10 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
       applyAppearance(appearance);
     };
     apply();
+    // The main process cannot see a Settings change on its own, and its
+    // window background has to follow it: an unpainted strip during a resize
+    // is otherwise the colour of the appearance the user just left.
+    window.patchdesk?.setWindowAppearance(appearance);
     if (window.matchMedia === undefined) return undefined;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     media.addEventListener("change", apply);
@@ -121,8 +129,9 @@ export function useGlobalPreferences(fixtureMode: boolean): GlobalPreferences {
         diffThemeFromStorage !== undefined &&
         !sameDiffTheme(diffThemeFromStorage, nextDiffTheme);
 
-      if (ownsAppearance && appearanceFromStorage !== undefined)
-        setAppearance(nextAppearance);
+      // Also applies the migrated legacy value: the initial state came from
+      // config.json, which does not carry an appearance in this branch.
+      if (ownsAppearance) setAppearance(nextAppearance);
       if (ownsDiffTheme && diffThemeFromStorage !== undefined)
         setDiffThemePreferences(nextDiffTheme);
 

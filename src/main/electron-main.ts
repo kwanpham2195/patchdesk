@@ -4,6 +4,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeTheme,
   screen,
   shell,
 } from "electron";
@@ -15,6 +16,7 @@ import {
   answerWindowFullScreenReads,
   sendWindowFullScreen,
 } from "./desktop-full-screen-channel";
+import { serveWindowAppearance } from "./desktop-appearance-channel";
 import { installDesktopRequestBridge } from "./desktop-bridge";
 import {
   resolveDesktopClose,
@@ -41,6 +43,7 @@ import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
+import type { Appearance } from "../domain/contracts";
 import { parseGitSha } from "../domain/ids";
 import type { InsightProvider } from "../domain/insight-provider";
 import { loggableMetaValue } from "../domain/log-entry";
@@ -55,6 +58,7 @@ import { AppLogService } from "../services/app-log-service";
 import { ReviewLifecycleGate } from "../services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
 import { workbenchWindowChrome } from "./window-chrome";
+import { windowBackgroundColor } from "./window-appearance";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { LocalPiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
 import { CodexAppServerClient } from "../adapters/codex/codex-app-server-client";
@@ -77,6 +81,12 @@ let stopping = false;
 let rendererNavigationState: DesktopNavigationState = "clear";
 let allowWindowClose = false;
 let closePromptOpen = false;
+/**
+ * The appearance the window is painted for. Seeded from `config.json` before
+ * the window exists, then kept current by the renderer, which is the only
+ * side that learns about a change made in Settings.
+ */
+let storedAppearance: Appearance = "system";
 const lifecycleGate = new ReviewLifecycleGate();
 const reviewOperations = new ReviewOperationCoordinator();
 const logs = new AppLogService(PatchdeskPaths.default(), {
@@ -443,13 +453,20 @@ async function ensureWorkbenchWindow(
 async function createWorkbenchWindow(
   server: StartedLocalApi,
 ): Promise<BrowserWindow> {
-  const restoredBounds = await loadWindowBounds(
-    screen.getAllDisplays().map((display) => display.workArea),
-  );
+  const [restoredBounds, appearance] = await Promise.all([
+    loadWindowBounds(
+      screen.getAllDisplays().map((display) => display.workArea),
+    ),
+    loadStoredAppearance(),
+  ]);
+  storedAppearance = appearance;
   const window = new BrowserWindow({
     title: "Patchdesk",
     show: false,
-    backgroundColor: "#fafafa",
+    backgroundColor: windowBackgroundColor(
+      storedAppearance,
+      nativeTheme.shouldUseDarkColors,
+    ),
     ...workbenchWindowChrome,
     ...restoredBounds,
     minWidth: 960,
@@ -529,6 +546,22 @@ async function createWorkbenchWindow(
   answerWindowFullScreenReads(ipcMain, window.webContents.id, () =>
     window.isFullScreen(),
   );
+  const paintWindowBackground = (): void => {
+    if (window.isDestroyed()) return;
+    window.setBackgroundColor(
+      windowBackgroundColor(storedAppearance, nativeTheme.shouldUseDarkColors),
+    );
+  };
+  serveWindowAppearance(ipcMain, window.webContents.id, {
+    current: () => storedAppearance,
+    update: (next) => {
+      storedAppearance = next;
+      paintWindowBackground();
+    },
+  });
+  // A "system" window follows the OS the same way the renderer's
+  // `prefers-color-scheme` listener does.
+  nativeTheme.on("updated", paintWindowBackground);
   window.on("enter-full-screen", () =>
     sendWindowFullScreen(window.webContents, true),
   );
@@ -551,6 +584,7 @@ async function createWorkbenchWindow(
     }
   });
   window.once("closed", () => {
+    nativeTheme.off("updated", paintWindowBackground);
     if (boundsSaveTimer !== undefined) clearTimeout(boundsSaveTimer);
     if (mainWindow === window) {
       mainWindow = undefined;
@@ -617,6 +651,14 @@ async function offerRendererRecovery(
   });
   if (result.response === 0 && !window.isDestroyed()) window.reload();
   else app.quit();
+}
+
+/** The stored appearance, or "system" when no config file names one yet. */
+async function loadStoredAppearance(): Promise<Appearance> {
+  const config = await new ProfileStore(PatchdeskPaths.default()).loadConfig();
+  return config._tag === "ok"
+    ? (config.value.appearance ?? "system")
+    : "system";
 }
 
 async function loadAllowedExternalHosts(): Promise<ReadonlySet<string>> {
