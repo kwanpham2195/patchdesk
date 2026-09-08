@@ -164,11 +164,11 @@ function clickedTitle(target: EventTarget): boolean {
   );
 }
 
-/** Same emerald pair `CheckIcon` uses, so "live" reads the same across the row. */
+/** Same `--status-success` token `CheckIcon` uses, so "live" reads the same across the row. */
 function pullRequestIconTone(row: InboxRow): string {
   if (row.remoteState === "merged") return "text-primary";
   if (row.isDraft) return "text-muted-foreground";
-  return "text-emerald-700 dark:text-emerald-400";
+  return "text-status-success";
 }
 
 function PullRequestLabelColumn({
@@ -205,16 +205,13 @@ export function CheckStatusIcon({
     case "passing":
       return (
         <CheckCircle2
-          className="size-3.5 text-emerald-700 dark:text-emerald-400"
+          className="size-3.5 text-status-success"
           aria-hidden="true"
         />
       );
     case "failing":
       return (
-        <CircleAlert
-          className="size-3.5 text-rose-700 dark:text-rose-400"
-          aria-hidden="true"
-        />
+        <CircleAlert className="size-3.5 text-destructive" aria-hidden="true" />
       );
     case "pending":
       return (
