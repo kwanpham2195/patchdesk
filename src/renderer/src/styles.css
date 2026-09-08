@@ -14,49 +14,46 @@
   color: #d1d5db !important;
 }
 
+/* Light carries a small warm cast — hue 60-85, chroma under 0.013 — because a
+   pure achromatic near-white reads as clinical grey rather than as paper.
+   Every status and scope hue is declared in both blocks: one shared value
+   cannot clear 3:1 against a near-white and a near-black background at once,
+   and the old shared set was tuned for dark only. */
 :root {
   color-scheme: light dark;
   --radius: 0.625rem;
-  --shell: oklch(0.955 0 0);
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.16 0 0);
+  --shell: oklch(0.955 0.005 85);
+  --background: oklch(0.981 0.004 85);
+  --foreground: oklch(0.205 0.012 60);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.16 0 0);
+  --card-foreground: oklch(0.205 0.012 60);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0 0);
-  --primary: #5e6ad2;
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.2 0 0);
-  --muted: oklch(0.96 0 0);
-  --muted-foreground: oklch(0.42 0 0);
-  --accent: oklch(0.95 0.02 280);
-  --accent-foreground: oklch(0.2 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --status-info: oklch(0.68 0.18 250);
-  --status-warning: oklch(0.78 0.18 85);
-  --status-success: oklch(0.72 0.18 145);
-  --border: oklch(0.88 0.005 270);
-  --input: oklch(0.88 0.005 270);
-  --ring: #5e6ad2;
-  --sidebar: oklch(0.975 0 0);
-  --sidebar-foreground: oklch(0.16 0 0);
-  --sidebar-primary: #5e6ad2;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.95 0.02 280);
-  --sidebar-accent-foreground: oklch(0.2 0 0);
-  --sidebar-border: oklch(0.88 0.005 270);
-  --sidebar-ring: #5e6ad2;
+  --popover-foreground: oklch(0.205 0.012 60);
+  --primary: oklch(0.505 0.168 274);
+  --primary-foreground: oklch(0.99 0.003 85);
+  --secondary: oklch(0.955 0.006 85);
+  --secondary-foreground: oklch(0.26 0.012 60);
+  --muted: oklch(0.955 0.006 85);
+  --muted-foreground: oklch(0.475 0.012 65);
+  --accent: oklch(0.945 0.022 278);
+  --accent-foreground: oklch(0.26 0.012 60);
+  --destructive: oklch(0.545 0.19 25);
+  --status-info: oklch(0.545 0.16 255);
+  --status-warning: oklch(0.63 0.145 70);
+  --status-success: oklch(0.545 0.135 150);
+  --border: oklch(0.895 0.008 80);
+  --input: oklch(0.875 0.009 80);
+  --ring: oklch(0.505 0.168 274);
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* Scope gauge buckets. Categorical, never the status hues: a large
      generated or docs share is a fact about the change, not a warning. */
   --scope-core: var(--primary);
-  --scope-tests: oklch(0.68 0.11 150);
-  --scope-generated: oklch(0.8 0.005 270);
-  --scope-docs: oklch(0.7 0.08 240);
-  --scope-config: oklch(0.78 0.11 70);
+  --scope-tests: oklch(0.6 0.11 150);
+  --scope-generated: oklch(0.8 0.008 85);
+  --scope-docs: oklch(0.58 0.1 245);
+  --scope-config: oklch(0.65 0.12 70);
 }
 
 .dark {
@@ -75,19 +72,18 @@
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.25 0.03 280);
   --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --status-info: oklch(0.68 0.18 250);
+  --status-warning: oklch(0.78 0.18 85);
+  --status-success: oklch(0.72 0.18 145);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: #7c85e0;
-  --sidebar: oklch(0.17 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: #5e6ad2;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.25 0.03 280);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: #7c85e0;
   --scope-core: #7c85e0;
+  --scope-tests: oklch(0.68 0.11 150);
   --scope-generated: oklch(0.4 0.005 270);
+  --scope-docs: oklch(0.7 0.08 240);
+  --scope-config: oklch(0.78 0.11 70);
 }
 
 /* The `generated` bucket reads as machine-written rather than as a sixth
@@ -140,14 +136,6 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
 }
 
 * {
@@ -416,38 +404,6 @@ body {
   --sidebar-width: 14.5rem;
   --sidebar-width-icon: 3rem;
   min-height: calc(100vh - 3rem);
-}
-.app-frame > [data-slot="sidebar"] {
-  display: flex;
-  flex: 0 0 var(--sidebar-width);
-  width: var(--sidebar-width);
-  min-width: 0;
-  max-width: var(--sidebar-width);
-  height: auto;
-  transition: flex-basis 160ms ease-out;
-}
-.app-frame > [data-slot="sidebar"][data-state="collapsed"] {
-  flex-basis: var(--sidebar-width-icon);
-  width: var(--sidebar-width-icon);
-  max-width: var(--sidebar-width-icon);
-}
-.app-frame [data-slot="sidebar-gap"] {
-  display: none;
-}
-.app-frame [data-slot="sidebar-container"] {
-  position: static;
-  inset: auto;
-  display: flex;
-  width: 100%;
-  height: auto;
-  border-right: 1px solid var(--border);
-  transition: width 160ms ease-out;
-}
-.app-frame [data-slot="sidebar-inner"] {
-  border-radius: 0;
-}
-.app-sidebar {
-  background: var(--sidebar);
 }
 
 [data-disclosure-motion="panel"] {
