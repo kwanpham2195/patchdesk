@@ -75,7 +75,7 @@ function AvatarFallback({
       aria-hidden="true"
       data-slot="avatar"
       className={cn(
-        "inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-sky-300/30 bg-sky-400/20 text-xs font-semibold text-sky-200",
+        "inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-xs font-semibold text-muted-foreground",
         className,
       )}
     >

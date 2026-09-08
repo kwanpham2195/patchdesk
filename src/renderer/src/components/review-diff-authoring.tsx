@@ -136,7 +136,7 @@ export function PendingReviewThreadCard({
       aria-label="Pending review comment"
     >
       <div className="flex items-center gap-2 text-xs">
-        <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-0.5 font-medium text-amber-200">
+        <span className="rounded-full border border-status-warning/30 bg-status-warning/10 px-2 py-0.5 font-medium text-status-warning">
           Pending review
         </span>
         <span className="text-muted-foreground">Not yet submitted</span>
@@ -202,7 +202,7 @@ export function LocalCommentThread({
               disabled
               title={mockActionTitle}
               data-review-mock-action="reply"
-              className="font-medium text-sky-400 transition-colors disabled:cursor-default disabled:opacity-100"
+              className="font-medium text-primary transition-colors disabled:cursor-default disabled:opacity-100"
             >
               Add reply…
             </button>
@@ -211,7 +211,7 @@ export function LocalCommentThread({
               disabled
               title={mockActionTitle}
               data-review-mock-action="resolve"
-              className="font-medium text-sky-400 transition-colors disabled:cursor-default disabled:opacity-100"
+              className="font-medium text-primary transition-colors disabled:cursor-default disabled:opacity-100"
             >
               Resolve
             </button>
@@ -241,7 +241,7 @@ function MockCommentAvatar({
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${tone === "reply" ? "border-amber-300/30 bg-amber-400/20 text-amber-200" : "border-sky-300/30 bg-sky-400/20 text-sky-200"}`}
+      className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${tone === "reply" ? "border-status-warning/30 bg-status-warning/20 text-status-warning" : "border-status-info/30 bg-status-info/20 text-status-info"}`}
     >
       {initials}
     </span>

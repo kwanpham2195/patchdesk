@@ -417,14 +417,14 @@ export function NarrativeWalkthrough({
                 />
               </CollapsibleTrigger>
               <CollapsibleContent motion="disclosure" className="pt-2">
-                <p className="walkthrough-support-copy px-1 text-xs">
+                <p className="walkthrough-support-copy px-1 text-xs text-muted-foreground">
                   {walkthrough.support.hunks.length} supporting or mechanical
                   hunk
                   {walkthrough.support.hunks.length === 1 ? "" : "s"} outside
                   the reading path.
                 </p>
                 <ul
-                  className="walkthrough-support-copy mt-2 max-h-48 overflow-y-auto px-1 text-xs"
+                  className="walkthrough-support-copy mt-2 max-h-48 overflow-y-auto px-1 text-xs text-muted-foreground"
                   aria-label="Support hunks"
                 >
                   {walkthrough.support.hunks.map((hunk) => (

@@ -341,7 +341,7 @@ function MarkdownTaskListItem({
         aria-label={completed ? "Completed task" : "Incomplete task"}
         className={
           completed
-            ? "mt-1 shrink-0 text-green-500"
+            ? "mt-1 shrink-0 text-status-success"
             : "mt-1 shrink-0 text-muted-foreground"
         }
       >
