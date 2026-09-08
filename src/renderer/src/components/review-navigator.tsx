@@ -8,7 +8,6 @@ import {
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { parseReviewDiff } from "../review-diff-data";
 import type { FileFindingCount } from "../review-finding-counts";
-import { cn } from "@/lib/utils";
 import type { ReviewInlineAnnotation } from "./review-diff-view";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -220,10 +219,7 @@ export function ReviewNavigator({
                       <span className="min-w-0 truncate font-medium">
                         {row.author}
                       </span>
-                      <Badge
-                        variant={badge.variant}
-                        className={cn("shrink-0", badge.className)}
-                      >
+                      <Badge variant={badge.variant} className="shrink-0">
                         {badge.label}
                       </Badge>
                     </span>
@@ -266,16 +262,15 @@ function formatCommitDate(value: string): string {
 
 type ThreadStateBadge = {
   readonly label: string;
-  readonly variant: "default" | "secondary" | "outline";
-  readonly className?: string;
+  readonly variant: "default" | "secondary" | "outline" | "warning";
 };
 
 /**
  * Badge look for a Threads row's state. Published open, published resolved,
  * and pending must read as visually distinct at a glance: open is the
- * filled primary badge, resolved a muted secondary badge, and pending an
- * outline badge in a warm accent color so a not-yet-submitted reply never
- * reads as an already-published thread.
+ * filled primary badge, resolved a muted secondary badge, and pending the
+ * amber warning badge so a not-yet-submitted reply never reads as an
+ * already-published thread.
  *
  * The `"outdated"` and `"unknown"` cases can't happen today: every row this
  * navigator receives comes from a Mapped conversation thread, and
@@ -301,10 +296,6 @@ function threadRowStateBadge(
     case "unknown":
       return { label: "Unknown", variant: "outline" };
     case "pending":
-      return {
-        label: "Pending",
-        variant: "outline",
-        className: "border-amber-500/40 text-amber-600 dark:text-amber-400",
-      };
+      return { label: "Pending", variant: "warning" };
   }
 }

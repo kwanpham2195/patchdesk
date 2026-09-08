@@ -215,22 +215,19 @@ function ReviewStateFilterIcon({
       return (
         <ReviewVerdictIcon
           verdict="approved"
-          className="size-3.5 text-emerald-700 dark:text-emerald-400"
+          className="size-3.5 text-status-success"
         />
       );
     case "changes_requested":
       return (
         <ReviewVerdictIcon
           verdict="changes_requested"
-          className="size-3.5 text-rose-700 dark:text-rose-400"
+          className="size-3.5 text-destructive"
         />
       );
     case "required":
       return (
-        <Clock3
-          className="size-3.5 text-amber-600 dark:text-amber-400"
-          aria-hidden="true"
-        />
+        <Clock3 className="size-3.5 text-status-warning" aria-hidden="true" />
       );
     case "none":
     case undefined:

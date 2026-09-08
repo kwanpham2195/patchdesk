@@ -931,8 +931,16 @@ function InboxFreshness({
       ? undefined
       : Date.now() - Date.parse(snapshot.refreshedAt);
   const degraded = ageMs !== undefined && isInboxCacheDegraded(ageMs);
+  // Degraded outranks a merely-current badge: the age, not the label, is what
+  // tells the maintainer the queue below may be wrong.
   const variant =
-    status === "Stale" ? "destructive" : stable ? "secondary" : "outline";
+    status === "Stale"
+      ? "destructive"
+      : degraded
+        ? "warning"
+        : stable
+          ? "secondary"
+          : "outline";
   return (
     <div className="flex items-center gap-1.5">
       <Badge
@@ -948,9 +956,6 @@ function InboxFreshness({
         className={cn(
           "h-5 max-w-full cursor-pointer px-1.5 text-[10px]",
           "disabled:cursor-default disabled:opacity-70",
-          degraded &&
-            status !== "Stale" &&
-            "border-amber-500/40 text-amber-600 dark:text-amber-400",
         )}
         title={snapshot?.refreshedAt}
       >
