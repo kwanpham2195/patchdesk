@@ -7,13 +7,6 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-.walkthrough-support-copy {
-  color: #111827 !important;
-}
-:root.dark .walkthrough-support-copy {
-  color: #d1d5db !important;
-}
-
 /* Light carries a small warm cast — hue 60-85, chroma under 0.013 — because a
    pure achromatic near-white reads as clinical grey rather than as paper.
    Every status and scope hue is declared in both blocks: one shared value
@@ -44,6 +37,9 @@
   --border: oklch(0.895 0.008 80);
   --input: oklch(0.875 0.009 80);
   --ring: oklch(0.505 0.168 274);
+  /* The modal scrim needs far more weight over a near-black background than
+     over a near-white one, so it is a token rather than a literal. */
+  --overlay: oklch(0 0 0 / 10%);
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -52,8 +48,20 @@
   --scope-core: var(--primary);
   --scope-tests: oklch(0.6 0.11 150);
   --scope-generated: oklch(0.8 0.008 85);
-  --scope-docs: oklch(0.58 0.1 245);
+  --scope-docs: oklch(0.58 0.105 215);
   --scope-config: oklch(0.65 0.12 70);
+  /* Diff hues are their own vocabulary, held apart from the --status-* hues
+     so a removed line never reads as a failing check. diff-colors.ts still
+     carries its own copies; it is rewired to read these next, so that there
+     is one source of truth. */
+  --diff-added-fg: #1a7f37;
+  --diff-removed-fg: #cf222e;
+  --diff-added-number: #1a7f37;
+  --diff-removed-number: #cf222e;
+  --diff-added-bg: #dafbe1;
+  --diff-removed-bg: #ffebe9;
+  --diff-added-emphasis: rgb(46 160 67 / 0.28);
+  --diff-removed-emphasis: rgb(255 129 130 / 0.28);
 }
 
 .dark {
@@ -79,11 +87,20 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: #7c85e0;
+  --overlay: oklch(0 0 0 / 45%);
   --scope-core: #7c85e0;
   --scope-tests: oklch(0.68 0.11 150);
   --scope-generated: oklch(0.4 0.005 270);
-  --scope-docs: oklch(0.7 0.08 240);
+  --scope-docs: oklch(0.72 0.1 215);
   --scope-config: oklch(0.78 0.11 70);
+  --diff-added-fg: #3fb950;
+  --diff-removed-fg: #f85149;
+  --diff-added-number: #7ee787;
+  --diff-removed-number: #ff7b72;
+  --diff-added-bg: #1f3a26;
+  --diff-removed-bg: #3d1d1d;
+  --diff-added-emphasis: rgb(46 160 67 / 0.22);
+  --diff-removed-emphasis: rgb(248 81 73 / 0.22);
 }
 
 /* The `generated` bucket reads as machine-written rather than as a sixth
@@ -132,6 +149,11 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+  --color-diff-added-fg: var(--diff-added-fg);
+  --color-diff-removed-fg: var(--diff-removed-fg);
+  --color-diff-added-bg: var(--diff-added-bg);
+  --color-diff-removed-bg: var(--diff-removed-bg);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -401,8 +423,6 @@ body {
 .app-frame {
   display: flex;
   padding: 0.25rem 0.5rem 0;
-  --sidebar-width: 14.5rem;
-  --sidebar-width-icon: 3rem;
   min-height: calc(100vh - 3rem);
 }
 
@@ -421,12 +441,6 @@ body {
 
 [data-disclosure-motion="chevron"] {
   transition: transform 150ms var(--ease-in-out);
-}
-
-@media (max-width: 959px) {
-  .app-frame > [data-slot="sidebar"] {
-    flex-basis: 4rem;
-  }
 }
 
 /* Readers who ask the OS for less motion get every transition and animation collapsed to an instant. */
