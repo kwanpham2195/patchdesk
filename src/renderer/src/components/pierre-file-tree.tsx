@@ -11,6 +11,7 @@ import {
 import {
   buildActivePathTreeStyle,
   escapeCssAttributeValue,
+  GIT_STATUS_LABEL_TREE_STYLE,
 } from "./pierre-file-tree-active-style";
 
 export type PierreFileTreeItem = {
@@ -115,6 +116,9 @@ function PierreFileTreeModel({
     ),
     initialExpansion: "open",
     search: files.length >= 500,
+    // Carried as an option, not as our own shadow-root <style>, because the
+    // library injects it before first paint and layers it above its own rules.
+    unsafeCSS: GIT_STATUS_LABEL_TREE_STYLE,
     onSelectionChange: (paths) => {
       const path = paths[0];
       if (path !== undefined) onSelect(path);
@@ -194,7 +198,7 @@ function PierreFileTreeModel({
       data-active-path={activePath}
       data-theme={appearance}
       style={
-        // SAFETY: "--trees-git-*-color-override" are custom properties;
+        // SAFETY: every "--trees-*-override" below is a custom property;
         // CSSProperties doesn't declare custom-property keys, but any
         // `--name: string` entry is valid inline-style CSS. @pierre/trees
         // reads them from the host element's computed style.
@@ -202,6 +206,16 @@ function PierreFileTreeModel({
           colorScheme: appearance,
           height: "100%",
           minHeight: 0,
+          // Without these the tree paints its own library greys inside the
+          // app's card panel, leaving a grey slab with white margins.
+          "--trees-bg-override": "var(--card)",
+          "--trees-fg-override": "var(--foreground)",
+          "--trees-fg-muted-override": "var(--muted-foreground)",
+          "--trees-selected-bg-override": "var(--accent)",
+          "--trees-selected-fg-override": "var(--accent-foreground)",
+          "--trees-accent-override": "var(--primary)",
+          "--trees-border-color-override": "var(--border)",
+          "--trees-input-bg-override": "var(--background)",
           "--trees-git-added-color-override": "light-dark(#007a5e, #5eead4)",
           "--trees-git-deleted-color-override": "light-dark(#be123c, #ff8580)",
           "--trees-git-ignored-color-override": "light-dark(#64748b, #a8a8ae)",

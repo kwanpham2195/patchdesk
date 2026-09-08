@@ -34,6 +34,18 @@ export function escapeCssAttributeValue(value: string): string {
 }
 
 /**
+ * Resets the filename back to the tree's normal foreground.
+ *
+ * @pierre/trees' own `[data-item-git-status] > [data-item-section="content"]`
+ * rule paints the git-status hue onto the filename as well as onto the status
+ * marker, so in a PR diff -- where nearly every file is Modified -- the whole
+ * tree collapses into one saturated colour and loses its reading contrast for
+ * information the marker lane already carries. Only the `content` section is
+ * reset; the `git` section keeps its hue.
+ */
+export const GIT_STATUS_LABEL_TREE_STYLE = `[data-item-git-status] > [data-item-section="content"] { color: var(--trees-fg); }`;
+
+/**
  * Builds the shadow-root CSS rule that highlights the active file's row the
  * same way @pierre/trees highlights a selected row (same `--trees-selected-*`
  * custom properties), without going through its selection state -- and
