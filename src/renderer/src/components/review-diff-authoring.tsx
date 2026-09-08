@@ -392,7 +392,7 @@ export function InlineCommentComposer({
             )}
           </Button>
         ) : writeDisabled ? (
-          <p className="text-sm text-amber-600 dark:text-amber-400">
+          <p className="text-sm text-status-warning">
             Pending review state is unavailable. Check GitHub again or refresh
             before commenting.
           </p>

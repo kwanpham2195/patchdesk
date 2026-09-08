@@ -56,6 +56,10 @@
      is one source of truth. */
   --diff-added-fg: #1a7f37;
   --diff-removed-fg: #cf222e;
+  /* Only the vocabulary's third hue has no counterpart in diff-colors.ts:
+     Brief's ownership tree marks a file modified in place, while the diff
+     renderer only ever paints lines it can call added or removed. */
+  --diff-modified-fg: #9a6700;
   --diff-added-number: #1a7f37;
   --diff-removed-number: #cf222e;
   --diff-added-bg: #dafbe1;
@@ -95,6 +99,7 @@
   --scope-config: oklch(0.78 0.11 70);
   --diff-added-fg: #3fb950;
   --diff-removed-fg: #f85149;
+  --diff-modified-fg: #d29922;
   --diff-added-number: #7ee787;
   --diff-removed-number: #ff7b72;
   --diff-added-bg: #1f3a26;
@@ -152,6 +157,7 @@
   --color-overlay: var(--overlay);
   --color-diff-added-fg: var(--diff-added-fg);
   --color-diff-removed-fg: var(--diff-removed-fg);
+  --color-diff-modified-fg: var(--diff-modified-fg);
   --color-diff-added-bg: var(--diff-added-bg);
   --color-diff-removed-bg: var(--diff-removed-bg);
   --radius-sm: calc(var(--radius) - 4px);
@@ -168,10 +174,18 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 16px;
+}
+
+/* The background waits for `applyAppearance` (src/renderer/src/appearance-
+   preferences.ts), which sets `data-appearance` before the first render.
+   Until then the page is transparent and the window shows the native colour
+   the main process already chose from the stored appearance, rather than the
+   `:root` light default flashing at someone who chose dark. */
+html[data-appearance] body {
+  background: var(--background);
 }
 
 @layer base {

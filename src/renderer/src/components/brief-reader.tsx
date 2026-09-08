@@ -37,16 +37,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 type RetainedBrief = NonNullable<BriefInsight["retained"]>;
 
 /**
- * The glyph and hue each status carries in the tree. Added and removed take the
- * `--diff-added-fg`/`--diff-removed-fg` tokens the diff view itself draws with,
- * so a file's status reads the same hue here as its lines do there; `renamed`
- * gets the changed glyph in plain text, because a rename is a move rather than
- * an edit.
+ * The glyph and hue each status carries in the tree. Added, removed, and
+ * modified take the `--diff-*-fg` tokens, so a file's status reads on the diff
+ * vocabulary rather than the status one -- a modified file is a fact about the
+ * change, not a warning; `renamed` gets the changed glyph in plain text,
+ * because a rename is a move rather than an edit.
  */
 const OWNERSHIP_STATUS_MARKS = {
   added: { glyph: "+", className: "text-diff-added-fg" },
   removed: { glyph: "−", className: "text-diff-removed-fg" },
-  modified: { glyph: "~", className: "text-amber-600 dark:text-amber-400" },
+  modified: { glyph: "~", className: "text-diff-modified-fg" },
   renamed: { glyph: "~", className: "text-muted-foreground" },
 } as const satisfies Record<
   BriefOwnershipRow["status"],
