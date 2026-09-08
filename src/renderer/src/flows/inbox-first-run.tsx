@@ -62,7 +62,7 @@ export function WorkspaceFirstRun({
       <ReviewingAsCard editor={editor} probe={probe} title="1. Reviewing as" />
       {gitMissing ? (
         <p
-          className="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-400"
+          className="flex items-center gap-1.5 text-xs text-destructive"
           role="status"
         >
           <CircleAlert className="size-3.5 shrink-0" aria-hidden="true" />

@@ -116,9 +116,9 @@ export function ReviewDetailsInspector({
         />
       </dl>
       {freshness === "cached" ? (
-        <Card className="gap-1.5 border-amber-500/30 bg-amber-500/5 py-2.5">
+        <Card className="gap-1.5 border-status-warning/30 bg-status-warning/5 py-2.5">
           <CardContent className="flex gap-2 px-2.5 text-[11px] leading-4 text-muted-foreground">
-            <CircleAlert className="size-3.5 shrink-0 text-amber-500" />
+            <CircleAlert className="size-3.5 shrink-0 text-status-warning" />
             GitHub data is cached.
           </CardContent>
         </Card>
@@ -144,12 +144,12 @@ export function ReviewDetailsInspector({
   );
 }
 
-/** Emerald matches the row's live glyph; amber matches the stale-data badge. */
+/** `--status-success` matches the row's live glyph; `--status-warning` matches the stale-data card. */
 const STATUS_DOT_FILLS = {
   merged: "bg-primary",
   not_reviewed: "bg-muted-foreground",
-  current: "bg-emerald-700 dark:bg-emerald-400",
-  updates_available: "bg-amber-600 dark:bg-amber-400",
+  current: "bg-status-success",
+  updates_available: "bg-status-warning",
 } satisfies Record<InspectorReviewStatusKind, string>;
 
 function InspectorStatusCard({
@@ -200,6 +200,13 @@ const INSIGHT_STATE_LABELS = {
   absent: "Not run",
 } as const;
 
+/** Retained-but-stale evidence is still readable, so Outdated reads amber rather than red. */
+const INSIGHT_STATE_TONES = {
+  ready: "secondary",
+  outdated: "warning",
+  absent: "outline",
+} as const;
+
 const INSIGHT_REQUEST_PENDING_LABELS = {
   preparing: "Preparing…",
   starting: "Requesting…",
@@ -242,13 +249,11 @@ function InsightsFact({
               <li key={kind} className="min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <Badge
-                    variant={state === "ready" ? "secondary" : "outline"}
+                    variant={INSIGHT_STATE_TONES[state]}
                     aria-label={`${noun}: ${INSIGHT_STATE_LABELS[state]}`}
                     className={cn(
                       "h-5 gap-1 px-1.5 text-[10px]",
                       state === "absent" && "text-muted-foreground",
-                      state === "outdated" &&
-                        "border-amber-500/40 text-amber-700 dark:text-amber-400",
                     )}
                   >
                     {noun}
