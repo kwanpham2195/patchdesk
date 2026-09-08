@@ -1,11 +1,17 @@
 /**
- * The added and removed colours every diff surface shares.
+ * The added and removed colours for the diff surfaces Patchdesk paints itself.
  *
  * Pierre derives diff chrome from the selected Shiki theme, and some themes
  * use saturated terminal red and green that read badly in the dark line
  * gutters, so Patchdesk overrides them with this small GitHub-like semantic
- * palette. A ```diff fence in a comment body uses the same values, so the
- * same change is the same colour wherever a reviewer meets it.
+ * palette. The override covers the walkthrough, the Brief hunk preview and the
+ * Analysis evidence, plus the ```diff fence in a comment body. The Diff tab is
+ * deliberately left out: it is the main reading surface, so its hues track
+ * whichever diff theme the maintainer picks in Settings.
+ *
+ * These tokens do not adopt that theme's hues in turn because the surfaces
+ * above render small text, where the Pierre hues measure as low as 2.28:1 on a
+ * white card.
  *
  * The hues themselves live in `styles.css` as the `--diff-*` tokens, declared
  * once per theme, so a diff hue is written down in exactly one place and every

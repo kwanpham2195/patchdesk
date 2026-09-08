@@ -40,6 +40,8 @@ Before starting any task, make sure the dev log tails are live in herdr:
   renderer error surfaces, root test suite, staged lint) is the pre-handoff
   command.
 - Drive the running app with `agent-browser` over CDP. Read-only by default; ask before any write. A renderer change is finished only when you have looked at a screenshot of the affected screen taken after the change loaded; an API response, a log line, or a passing test is not live verification, so say which you have.
+- `location.reload()` is swallowed by this app: a `window` global survives the call. Reload with `agent-browser reload` (CDP `Page.reload`).
+- After a change that adds or removes a Tailwind utility class, reload rather than waiting on HMR. Vite's regenerated CSS can fail to reach the running renderer, leaving the stale rule in `document.styleSheets` indefinitely.
 - CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, never kills a process it did not start, and asks before restarting 9233. `pnpm cdp:ready` checks the port: run it before claiming anything about the running app, before reporting, and before delegating a live-verification slice.
 - Package only when asked, when the change is packaging-specific, or when distribution proof is required. A packaged app is evidence only for the commit it was built from.
 - Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use a low-cost model such as `gpt-5.6-luna` on the Codex CLI account provider, not `gpt-5.6-sol`; pick it in the run dialog rather than changing the maintainer's stored preference.
