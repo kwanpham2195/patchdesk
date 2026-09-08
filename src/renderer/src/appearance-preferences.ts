@@ -27,6 +27,20 @@ export function clearAppearancePreference(): void {
   appearancePreference.clear();
 }
 
+// The bridge reads `window.patchdesk.appearanceAtLoad` once per document
+// load, so it goes stale as soon as the appearance changes. This holds what the
+// document is painted with instead: it survives a React remount and is read
+// again only on a real page load, which is the lifetime a remount needs.
+let currentAppearance: AppearancePreference =
+  globalThis.window === undefined
+    ? DEFAULT_APPEARANCE
+    : (window.patchdesk?.appearanceAtLoad ?? DEFAULT_APPEARANCE);
+
+/** The appearance this document is currently painted with. */
+export function currentAppearancePreference(): AppearancePreference {
+  return currentAppearance;
+}
+
 function resolveAppearance(value: AppearancePreference): ResolvedAppearance {
   if (value !== "system") return value;
   return globalThis.window !== undefined &&
@@ -41,6 +55,7 @@ export function applyAppearance(
   value: AppearancePreference,
 ): ResolvedAppearance {
   const resolved = resolveAppearance(value);
+  currentAppearance = value;
   const root = document.documentElement;
   root.classList.toggle("dark", resolved === "dark");
   root.dataset.appearance = resolved;
