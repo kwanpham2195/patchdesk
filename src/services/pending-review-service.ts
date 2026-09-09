@@ -283,11 +283,16 @@ export class PendingReviewService {
     ) {
       return ok({ session, state: next, unavailable: false });
     }
-    const saved = await this.sessions.save({
-      ...session,
-      pendingReview: next,
-      updatedAt: this.now(),
-    });
+    // Compare-and-swap against the session this reconcile read, so a write
+    // that landed during the GitHub reads is reported instead of overwritten.
+    const saved = await this.sessions.save(
+      {
+        ...session,
+        pendingReview: next,
+        updatedAt: this.now(),
+      },
+      session.updatedAt,
+    );
     if (saved._tag === "err") {
       return ok({ session, state: stored, unavailable: true });
     }
