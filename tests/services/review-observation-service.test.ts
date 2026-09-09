@@ -20,7 +20,10 @@ import {
   moveReviewToSession,
   type Review,
 } from "../../src/domain/review";
-import { createReviewSession } from "../../src/domain/review-session";
+import {
+  createReviewSession,
+  type ReviewSession,
+} from "../../src/domain/review-session";
 import {
   createPendingReviewRequestId,
   parseGitHubHost,
@@ -36,6 +39,7 @@ import { err, ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { runWithRequestAbortSignal } from "../../src/adapters/github/command-runner";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 import {
   ReviewObservationService,
   type ReviewObservationDependencies,
@@ -59,6 +63,8 @@ const baseSha = must(parseGitSha("0".repeat(40)));
 const otherSha = must(parseGitSha("2".repeat(40)));
 const at = must(parseIsoTimestamp("2026-08-12T00:00:00.000Z"));
 const observedAt = must(parseIsoTimestamp("2026-08-12T00:01:00.000Z"));
+/** Where a competing writer parks the session so the observation's CAS fails. */
+const competingSessionAt = must(parseIsoTimestamp("2026-08-12T00:00:30.000Z"));
 const patch = [
   "diff --git a/a.ts b/a.ts",
   "index 1111111..2222222 100644",
@@ -81,6 +87,7 @@ async function fixture(
     readonly terminal?: boolean;
     readonly locked?: boolean;
     readonly failReviewSave?: boolean;
+    readonly failSessionSave?: boolean;
     readonly failJournalRemove?: boolean;
     readonly project?: boolean;
   } = {},
@@ -180,6 +187,7 @@ async function fixture(
   const journals = new ReviewObservationJournalStore(paths);
   const recentWrites = new RecentWriteJournalStore(paths);
   let removeFailed = options.failJournalRemove === true;
+  let sessionSaveFailed = options.failSessionSave === true;
   const observationDependencies = {
     profiles,
     reviews:
@@ -202,7 +210,27 @@ async function fixture(
             },
           }
         : reviews,
-    sessions,
+    sessions:
+      options.failSessionSave === true
+        ? {
+            load: sessions.load.bind(sessions),
+            async save(value: ReviewSession, expected?: IsoTimestamp) {
+              if (sessionSaveFailed) {
+                sessionSaveFailed = false;
+                // Reproduces the production race: a competing writer moves the
+                // session between the journal write and this CAS, so the CAS
+                // fails and can never match again.
+                const current = await sessions.load(profileId, value.id);
+                if (current._tag === "ok")
+                  await sessions.save(
+                    { ...current.value, updatedAt: competingSessionAt },
+                    current.value.updatedAt,
+                  );
+              }
+              return sessions.save(value, expected);
+            },
+          }
+        : sessions,
     remote,
     journals:
       options.failJournalRemove === true
@@ -277,6 +305,29 @@ async function fixture(
     journals,
     recentWrites,
   };
+}
+
+/**
+ * Wires the fixture's real durable stores and observation service into the
+ * workbench controller, so a test can prove `load` still opens the Review.
+ * An orphaned observation journal is what the user actually sees, as a 503.
+ */
+function workbench(value: Awaited<ReturnType<typeof fixture>>) {
+  return new ReviewWorkbenchController(
+    // SAFETY: `load` never reaches session preparation, so this suite omits it.
+    {} as never,
+    // SAFETY: the projection body is opaque to `load`; only its ok-ness is asserted.
+    { loadRepresented: async () => ok({ state: "review" }) } as never,
+    // SAFETY: `load` only touches reviews, remote, journals, observation and
+    // the coordinator; the rest of the lifecycle bag is deliberately absent.
+    {
+      reviews: value.reviews,
+      remote: value.remote,
+      journals: value.journals,
+      observation: value.observation,
+      coordinator: new ReviewOperationCoordinator(),
+    } as never,
+  );
 }
 
 function snapshot(input: {
@@ -576,6 +627,22 @@ describe("ReviewObservationService", () => {
     ).resolves.toEqual({ _tag: "ok", value: undefined });
   });
 
+  it("drops the journal when a competing session write fails the observation CAS", async () => {
+    const value = await fixture({ failSessionSave: true });
+    await expect(
+      value.observation.observe({ profileId, reviewId: value.review.id }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Unavailable", reason: "reconciliation_incomplete" },
+    });
+    await expect(
+      value.journals.load(profileId, value.review.id),
+    ).resolves.toEqual({ _tag: "ok", value: undefined });
+    await expect(
+      workbench(value).load({ profileId, reviewId: value.review.id }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+  });
+
   it("preserves a later explicit pending-review resolution while replaying an older journal", async () => {
     const value = await fixture({ failReviewSave: true });
     await value.observation.observe({ profileId, reviewId: value.review.id });
@@ -707,6 +774,13 @@ describe("ReviewObservationService", () => {
       _tag: "ok",
       value: { _tag: "Unavailable", reason: "reconciliation_incomplete" },
     });
+    await expect(journals.load(profileId, value.review.id)).resolves.toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    await expect(
+      workbench(value).load({ profileId, reviewId: value.review.id }),
+    ).resolves.toMatchObject({ _tag: "ok" });
   });
 
   it("gives terminal state precedence without adopting changed remote metadata", async () => {

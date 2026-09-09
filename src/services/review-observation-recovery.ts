@@ -120,6 +120,14 @@ export class ReviewObservationRecovery {
       // A later explicit pending-review recovery has stronger remote proof
       // than this older observation journal. Preserve that resolved state.
     } else if (!sameSessionAdoption(session.value, intendedSession)) {
+      // The session moved past this journal's CAS without adopting it, so no
+      // later replay can ever match. Drop the journal here so an already
+      // wedged Review heals on the next recovery instead of failing to open.
+      const discarded = await this.dependencies.journals.remove(
+        input.profileId,
+        input.reviewId,
+      );
+      if (discarded._tag === "err") return err({ reason: "storage" });
       return this.markUnavailable(
         input,
         review.value,

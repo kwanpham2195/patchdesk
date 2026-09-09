@@ -457,6 +457,14 @@ export class ReviewObservationService {
       session.updatedAt,
     );
     if (savedSession._tag === "err") {
+      // Nothing has adopted this journal yet, and a session that moved under
+      // this CAS can never match `expectedSessionUpdatedAt` again, so keeping
+      // the journal would only wedge every later open on an unreplayable file.
+      const discarded = await this.dependencies.journals.remove(
+        input.profileId,
+        input.reviewId,
+      );
+      if (discarded._tag === "err") return err({ reason: "storage" });
       return this.markUnavailable(
         input,
         review,
