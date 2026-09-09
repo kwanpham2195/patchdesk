@@ -36,6 +36,20 @@ function must<T>(
   return value.value;
 }
 
+function fixtureProfile() {
+  return must(
+    parseWorkspaceProfileConfig({
+      id: "cfw",
+      label: "CFW",
+      githubHost: "github.com",
+      ghAccount: "fixture",
+      workspaceRoots: [],
+      rulePaths: [],
+      repos: [],
+    }),
+  );
+}
+
 const fixtureMergeBaseSha = "0123456789abcdef0123456789abcdef01234567";
 
 class SourceGit implements GitReadExecutor {
@@ -135,17 +149,7 @@ describe("ReviewDiffSourceService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-cache-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const profile = must(
-        parseWorkspaceProfileConfig({
-          id: "cfw",
-          label: "CFW",
-          githubHost: "github.com",
-          ghAccount: "fixture",
-          workspaceRoots: [],
-          rulePaths: [],
-          repos: [],
-        }),
-      );
+      const profile = fixtureProfile();
       const profiles = new ProfileStore(paths);
       const sessions = new ReviewSessionStore(paths);
       await profiles.save(profile);
@@ -218,17 +222,7 @@ describe("ReviewDiffSourceService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-source-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const profile = must(
-        parseWorkspaceProfileConfig({
-          id: "cfw",
-          label: "CFW",
-          githubHost: "github.com",
-          ghAccount: "fixture",
-          workspaceRoots: [],
-          rulePaths: [],
-          repos: [],
-        }),
-      );
+      const profile = fixtureProfile();
       const profileStore = new ProfileStore(paths);
       await profileStore.save(profile);
       const key = {
@@ -390,17 +384,7 @@ describe("ReviewDiffSourceService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-source-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const profile = must(
-        parseWorkspaceProfileConfig({
-          id: "cfw",
-          label: "CFW",
-          githubHost: "github.com",
-          ghAccount: "fixture",
-          workspaceRoots: [],
-          rulePaths: [],
-          repos: [],
-        }),
-      );
+      const profile = fixtureProfile();
       const profiles = new ProfileStore(paths);
       await profiles.save(profile);
       const key = {
@@ -473,17 +457,7 @@ describe("ReviewDiffSourceService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-source-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const profile = must(
-        parseWorkspaceProfileConfig({
-          id: "cfw",
-          label: "CFW",
-          githubHost: "github.com",
-          ghAccount: "fixture",
-          workspaceRoots: [],
-          rulePaths: [],
-          repos: [],
-        }),
-      );
+      const profile = fixtureProfile();
       await new ProfileStore(paths).save(profile);
       const key = {
         profileId: profile.id,
@@ -556,17 +530,7 @@ describe("ReviewDiffSourceService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-source-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const profile = must(
-        parseWorkspaceProfileConfig({
-          id: "cfw",
-          label: "CFW",
-          githubHost: "github.com",
-          ghAccount: "fixture",
-          workspaceRoots: [],
-          rulePaths: [],
-          repos: [],
-        }),
-      );
+      const profile = fixtureProfile();
       const profiles = new ProfileStore(paths);
       const sessions = new ReviewSessionStore(paths);
       await profiles.save(profile);
@@ -619,17 +583,7 @@ describe("ReviewDiffSourceService", () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-diff-source-"));
     try {
       const paths = PatchdeskPaths.forTest(root);
-      const profile = must(
-        parseWorkspaceProfileConfig({
-          id: "cfw",
-          label: "CFW",
-          githubHost: "github.com",
-          ghAccount: "fixture",
-          workspaceRoots: [],
-          rulePaths: [],
-          repos: [],
-        }),
-      );
+      const profile = fixtureProfile();
       const profiles = new ProfileStore(paths);
       const sessions = new ReviewSessionStore(paths);
       await profiles.save(profile);

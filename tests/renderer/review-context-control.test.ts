@@ -40,4 +40,21 @@ describe("reviewContextControl", () => {
       description: "Exact file contents are unavailable for this review",
     });
   });
+
+  it("explains when required contents cannot be read from saved revisions", () => {
+    expect(
+      reviewContextControl({
+        hasSourceSession: true,
+        status: "unavailable",
+        hasExpandableRenderedFile: false,
+        expanded: false,
+        unavailableReason: "github_read",
+      }),
+    ).toEqual({
+      disabled: true,
+      label: "Context unavailable",
+      description:
+        "Patchdesk could not read the required file contents from the saved review revisions",
+    });
+  });
 });
