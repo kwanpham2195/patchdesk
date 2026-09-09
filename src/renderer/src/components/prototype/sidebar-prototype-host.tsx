@@ -6,6 +6,7 @@ import { SidebarPrototypeSwitcher } from "./sidebar-prototype-switcher";
 import { SidebarVariantATree } from "./sidebar-variant-a-tree";
 import { SidebarVariantBQueue } from "./sidebar-variant-b-queue";
 import { SidebarVariantCRail } from "./sidebar-variant-c-rail";
+import { SidebarVariantDVisited } from "./sidebar-variant-d-visited";
 
 /** The registry the switcher walks. Variants B and C are one entry each. */
 const variants = [
@@ -23,6 +24,11 @@ const variants = [
     id: "C",
     label: "C — Workspace rail",
     render: (): React.JSX.Element => <SidebarVariantCRail />,
+  },
+  {
+    id: "D",
+    label: "D — Visited PRs",
+    render: (): React.JSX.Element => <SidebarVariantDVisited />,
   },
 ];
 
