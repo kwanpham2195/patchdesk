@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Fixed the **Diff** giving no sign that a pull request no longer merges. A pull request that conflicts with its base branch now opens the Diff with a **Merge conflicts** notice saying the conflict has to be resolved on GitHub before the pull request can merge; the diff below it is unchanged. #114
+- Fixed the **Diff** giving no sign that a pull request no longer merges. A pull request that conflicts with its base branch now opens the Diff with a **Merge conflicts** notice saying the conflicts, not the checks, are what block the merge, naming the head and base branch and telling you to resolve them in your own local checkout; the diff below it is unchanged. #114 #116
 
 ## 0.0.6 - 2026-09-08
 
