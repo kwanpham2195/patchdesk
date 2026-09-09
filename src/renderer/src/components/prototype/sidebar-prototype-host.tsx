@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { SidebarPrototypeSwitcher } from "./sidebar-prototype-switcher";
 import { SidebarVariantATree } from "./sidebar-variant-a-tree";
+import { SidebarVariantBQueue } from "./sidebar-variant-b-queue";
 import { SidebarVariantCRail } from "./sidebar-variant-c-rail";
 
 /** The registry the switcher walks. Variants B and C are one entry each. */
@@ -12,6 +13,11 @@ const variants = [
     id: "A",
     label: "A — Nested tree",
     render: (): React.JSX.Element => <SidebarVariantATree />,
+  },
+  {
+    id: "B",
+    label: "B — Queue first",
+    render: (): React.JSX.Element => <SidebarVariantBQueue />,
   },
   {
     id: "C",
