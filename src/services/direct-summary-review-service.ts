@@ -365,7 +365,10 @@ export class DirectSummaryReviewService {
             : { directSummaryReview: state }),
           updatedAt: this.now(),
         };
-        const saved = await this.sessions.save(next);
+        // Compare-and-swap against the reload above: the mutex only orders
+        // writers in this process, so a second Patchdesk can still land a
+        // write in the gap between that read and this one.
+        const saved = await this.sessions.save(next, current.value.updatedAt);
         return saved._tag === "ok";
       },
     );

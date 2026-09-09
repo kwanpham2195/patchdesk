@@ -1,5 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { createReviewSessionId, type IsoTimestamp } from "../../src/domain/ids";
 import { err, ok } from "../../src/domain/result";
 import type { DirectSummaryReviewState } from "../../src/domain/direct-summary-review";
 import type { PendingReviewState } from "../../src/domain/pending-review";
@@ -21,6 +28,12 @@ const sessionId =
   "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca" as never;
 // SAFETY: this literal is a well-formed ISO 8601 instant, matching parseIsoTimestamp's format.
 const now = "2026-08-09T11:35:00.000Z" as never;
+// SAFETY: these literals are well-formed ISO 8601 instants, matching parseIsoTimestamp's format.
+// Ordered before `now` so a rejected compare-and-swap can only be the
+// expectation mismatch, never the store's strictly-increasing updatedAt rule.
+const seededAt = "2026-08-09T11:30:00.000Z" as never;
+// SAFETY: this literal is a well-formed ISO 8601 instant, matching parseIsoTimestamp's format.
+const competingAt = "2026-08-09T11:32:00.000Z" as never;
 // SAFETY: this literal is a 64-character hex string, matching parseContentHash's format.
 const expected = { sessionId, headSha, patchHash: "b".repeat(64) as never };
 function session(
@@ -273,5 +286,108 @@ describe("DirectSummaryReviewService", () => {
     expect(value.current()).toMatchObject({
       directSummaryReview: { _tag: "Confirmed" },
     });
+  });
+});
+
+describe("DirectSummaryReviewService save compare-and-swap", () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    await Promise.all(
+      roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+    );
+  });
+
+  it("reports unavailable when a competing write lands between the reload and the save", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-summary-cas-"));
+    roots.push(root);
+    const sessions = new ReviewSessionStore(PatchdeskPaths.forTest(root));
+    const operation = {
+      requestId: "request",
+      event: "COMMENT" as const,
+      bodyDigest: "a".repeat(64),
+      headSha,
+      baselineReviewIds: [],
+      startedAt: now,
+    };
+    // The store rejects any session whose id is not derived from its key, so
+    // the literal id the fake-store fixtures use will not round-trip here.
+    const base = session({
+      _tag: "OutcomeUnknown",
+      operation,
+      resolution: "check_required",
+    } as never);
+    const seeded = {
+      ...base,
+      id: createReviewSessionId(base.key),
+      updatedAt: seededAt,
+    };
+    expect(await sessions.save(seeded)).toMatchObject({ _tag: "ok" });
+    let competing = true;
+    const store = {
+      load: sessions.load.bind(sessions),
+      async save(next: ReviewSession, expectedUpdatedAt?: IsoTimestamp) {
+        if (competing) {
+          competing = false;
+          // Another process lands a write in the window the in-process mutex
+          // does not cover: after this service's reload, before its write.
+          const current = await sessions.load(profileId, seeded.id);
+          if (current._tag === "ok")
+            await sessions.save(
+              { ...current.value, updatedAt: competingAt },
+              current.value.updatedAt,
+            );
+        }
+        return sessions.save(next, expectedUpdatedAt);
+      },
+    };
+    const gate = {
+      requireCurrentSession: vi.fn(async () => {
+        const loaded = await sessions.load(profileId, seeded.id);
+        if (loaded._tag === "err") throw new Error("fixture");
+        return ok({ profile: { ghAccount: "fixture" }, session: loaded.value });
+      }),
+    };
+    const github = {
+      resolveAuthenticatedAccount: vi.fn(async () =>
+        ok({ account: "fixture" }),
+      ),
+      getViewerDirectSummaryReviews: vi.fn(async () =>
+        ok({ complete: true, reviews: [] }),
+      ),
+    };
+    const service = new DirectSummaryReviewService(
+      // SAFETY: these fixture mocks implement only the Pick<...> subset each
+      // dependency interface requires; the service never calls their other members.
+      gate as never,
+      store as never,
+      github as never,
+      () => now,
+      new ReviewOperationCoordinator(),
+      { append: vi.fn(async () => ok(undefined)) },
+    );
+
+    await expect(service.reconcile({ profileId, reviewId })).resolves.toEqual({
+      _tag: "err",
+      error: "unavailable",
+    });
+    const rejected = await sessions.load(profileId, seeded.id);
+    expect(rejected).toMatchObject({
+      _tag: "ok",
+      value: {
+        updatedAt: competingAt,
+        directSummaryReview: { _tag: "OutcomeUnknown" },
+      },
+    });
+
+    // The next reconcile reloads the competitor's session, so its expectation
+    // matches and the same clear now lands.
+    await expect(service.reconcile({ profileId, reviewId })).resolves.toEqual({
+      _tag: "ok",
+      value: undefined,
+    });
+    const cleared = await sessions.load(profileId, seeded.id);
+    expect(cleared).toMatchObject({ _tag: "ok", value: { updatedAt: now } });
+    if (cleared._tag === "err") throw new Error("fixture");
+    expect(cleared.value.directSummaryReview).toBeUndefined();
   });
 });
