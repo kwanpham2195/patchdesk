@@ -6,6 +6,7 @@ import { SidebarPrototypeSwitcher } from "./sidebar-prototype-switcher";
 import { SidebarVariantATree } from "./sidebar-variant-a-tree";
 import { SidebarVariantBQueue } from "./sidebar-variant-b-queue";
 import { SidebarVariantCRail } from "./sidebar-variant-c-rail";
+import { SidebarVariantD2Grouped } from "./sidebar-variant-d2-grouped";
 import { SidebarVariantDVisited } from "./sidebar-variant-d-visited";
 
 /** The registry the switcher walks. Variants B and C are one entry each. */
@@ -29,6 +30,11 @@ const variants = [
     id: "D",
     label: "D — Visited PRs",
     render: (): React.JSX.Element => <SidebarVariantDVisited />,
+  },
+  {
+    id: "D2",
+    label: "D2 — Visited, grouped",
+    render: (): React.JSX.Element => <SidebarVariantD2Grouped />,
   },
 ];
 
