@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed a Review that could never be opened again after a background refresh lost a race with another write. Patchdesk left behind a record of the interrupted update that it could no longer replay, and refused to open the Review while that record existed, so the failure survived restarts. The unusable record is now discarded, an already-stuck Review recovers on the next open, and the two writes that could silently overwrite each other now report the clash instead. #121
 - Fixed the **Diff** giving no sign that a pull request no longer merges. A pull request that conflicts with its base branch now opens the Diff with a **Merge conflicts** notice saying the conflicts, not the checks, are what block the merge, naming the head and base branch and telling you to resolve them in your own local checkout; the diff below it is unchanged. #114 #116
 
 ## 0.0.6 - 2026-09-08
