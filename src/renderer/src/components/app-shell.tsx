@@ -30,6 +30,14 @@ import {
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 import { isTextEntryTarget } from "../text-entry-target";
+// PROTOTYPE — issue #119, throwaway. Do not build on this.
+import { SidebarPrototypeHost } from "@/components/prototype/sidebar-prototype-host";
+
+/** PROTOTYPE — issue #119, throwaway. `?variant=` swaps the header workspace
+ * picker for the sidebar prototype; with no such param this is inert. */
+const prototypeSidebar =
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).has("variant");
 
 type ProfileEntry = {
   readonly id: string;
@@ -146,7 +154,9 @@ export function AppShell({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          {profiles !== undefined && profiles.length > 0 ? (
+          {profiles !== undefined &&
+          profiles.length > 0 &&
+          !prototypeSidebar ? (
             <div className="flex items-center gap-1.5">
               <Select
                 value={activeProfileId ?? ""}
@@ -248,6 +258,7 @@ export function AppShell({
         <BusyIndicator />
       </header>
       <div className="app-frame min-h-0 flex-1">
+        {prototypeSidebar ? <SidebarPrototypeHost /> : null}
         <main
           ref={mainRef}
           id="main-content"
