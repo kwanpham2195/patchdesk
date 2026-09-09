@@ -37,6 +37,7 @@ import type {
 } from "../renderer-contracts";
 import { Conversation } from "./conversation";
 import { DiffWorkbench } from "./diff-workbench";
+import { ReviewDiffPane } from "./review-diff-pane";
 import type {
   LocalCommentAuthoring,
   LocalCommentLocation,
@@ -806,7 +807,7 @@ export function ReviewWorkbench({
                       onResizeEnd={handleNavigatorResizeEnd}
                     />
                   ) : null}
-                  <div className="min-h-0 min-w-0">
+                  <ReviewDiffPane model={model}>
                     {selectedCommitSha !== undefined &&
                     commitDiffState._tag === "Loading" ? (
                       <p
@@ -947,7 +948,7 @@ export function ReviewWorkbench({
                         This commit diff could not be loaded.
                       </InlineError>
                     ) : null}
-                  </div>
+                  </ReviewDiffPane>
                 </div>
               )}
             </div>

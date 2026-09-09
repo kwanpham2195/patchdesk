@@ -37,9 +37,21 @@ type ReadyDiffSourceResponse = {
   readonly newFile?: DiffFileContents;
 };
 
+type ReviewDiffUnavailableReason =
+  | "revision_unavailable"
+  | "head_changed"
+  | "patch_unavailable"
+  | "path_unavailable"
+  | "binary"
+  | "too_large"
+  | "github_read";
+
 type DiffSourceResponse =
   | ReadyDiffSourceResponse
-  | { readonly state: "unavailable"; readonly reason: string };
+  | {
+      readonly state: "unavailable";
+      readonly reason: ReviewDiffUnavailableReason;
+    };
 
 type HydrationSource = {
   readonly patch: string;
@@ -49,6 +61,8 @@ type HydrationSource = {
 
 export type ReviewDiffHydration = {
   readonly hydratedFiles: ReadonlyMap<string, FileDiffMetadata>;
+  /** Source failure for each unavailable path in the current generation. */
+  readonly unavailableReasons: ReadonlyMap<string, ReviewDiffUnavailableReason>;
   /** Complete verified head text, present only when the source service returned a matching new file. */
   readonly verifiedHeadTextByPath: ReadonlyMap<string, string>;
   readonly contextStatus: ReviewContextStatus;
@@ -77,6 +91,9 @@ export function useReviewDiffHydration({
   const [verifiedHeadTextByPath, setVerifiedHeadTextByPath] = useState<
     ReadonlyMap<string, string>
   >(() => new Map());
+  const [unavailableReasons, setUnavailableReasons] = useState<
+    ReadonlyMap<string, ReviewDiffUnavailableReason>
+  >(() => new Map());
   const [contextStatus, setContextStatus] =
     useState<ReviewContextStatus>("idle");
   const sourceProfileId = sourceSession?.profileId;
@@ -100,6 +117,7 @@ export function useReviewDiffHydration({
     setHydrationGeneration((current) => current + 1);
     setHydratedFiles(new Map());
     setVerifiedHeadTextByPath(new Map());
+    setUnavailableReasons(new Map());
     setContextStatus("idle");
   }
   const hydrationRequests = useRef(
@@ -110,6 +128,7 @@ export function useReviewDiffHydration({
   );
   const hydratedFilesRef = useRef(hydratedFiles);
   const verifiedHeadTextByPathRef = useRef(verifiedHeadTextByPath);
+  const unavailableReasonsRef = useRef(unavailableReasons);
   const unavailableHydrationPaths = useRef(new Set<string>());
   const committedHydrationGeneration = useRef(hydrationGeneration);
   const hydratedFlushScheduled = useRef(false);
@@ -121,7 +140,8 @@ export function useReviewDiffHydration({
   useLayoutEffect(() => {
     hydratedFilesRef.current = hydratedFiles;
     verifiedHeadTextByPathRef.current = verifiedHeadTextByPath;
-  }, [hydratedFiles, verifiedHeadTextByPath]);
+    unavailableReasonsRef.current = unavailableReasons;
+  }, [hydratedFiles, unavailableReasons, verifiedHeadTextByPath]);
 
   useLayoutEffect(() => {
     committedHydrationGeneration.current = hydrationGeneration;
@@ -143,6 +163,7 @@ export function useReviewDiffHydration({
       hydratedFlushScheduled.current = false;
       setHydratedFiles(hydratedFilesRef.current);
       setVerifiedHeadTextByPath(verifiedHeadTextByPathRef.current);
+      setUnavailableReasons(unavailableReasonsRef.current);
     });
   }, []);
 
@@ -179,6 +200,12 @@ export function useReviewDiffHydration({
           const source = parseDiffSourceResponse(value);
           if (source?.state !== "ready") {
             unavailableHydrationPaths.current.add(path);
+            if (source?.state === "unavailable") {
+              const next = new Map(unavailableReasonsRef.current);
+              next.set(path, source.reason);
+              unavailableReasonsRef.current = next;
+              scheduleHydratedFlush();
+            }
             return false;
           }
           const hydrateOptions: ProcessFileOptions = {};
@@ -272,6 +299,7 @@ export function useReviewDiffHydration({
 
   return {
     hydratedFiles,
+    unavailableReasons,
     verifiedHeadTextByPath,
     contextStatus,
     rawFilePatches,
@@ -341,6 +369,16 @@ const diffSourceEnvelopeSchema = v.looseObject({
   newFile: v.optional(v.unknown()),
 });
 
+const unavailableReasonSchema = v.picklist([
+  "revision_unavailable",
+  "head_changed",
+  "patch_unavailable",
+  "path_unavailable",
+  "binary",
+  "too_large",
+  "github_read",
+]);
+
 function parseDiffSourceResponse(
   value: RawJsonValue | undefined,
 ): DiffSourceResponse | undefined {
@@ -348,7 +386,7 @@ function parseDiffSourceResponse(
   if (!envelope.success) return undefined;
   const { state, reason, oldFile, newFile } = envelope.output;
   if (state === "unavailable") {
-    const parsedReason = v.safeParse(v.string(), reason);
+    const parsedReason = v.safeParse(unavailableReasonSchema, reason);
     return parsedReason.success
       ? { state: "unavailable", reason: parsedReason.output }
       : undefined;

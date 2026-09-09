@@ -16,6 +16,7 @@ export function reviewContextControl(input: {
   readonly status: ReviewContextStatus;
   readonly hasExpandableRenderedFile: boolean;
   readonly expanded: boolean;
+  readonly unavailableReason?: string | undefined;
 }): ReviewContextControl {
   if (input.hasExpandableRenderedFile) {
     return {
@@ -37,7 +38,28 @@ export function reviewContextControl(input: {
     disabled: true,
     label: "Context unavailable",
     description: input.hasSourceSession
-      ? "Exact file contents are unavailable for the rendered diff"
+      ? unavailableContextDescription(input.unavailableReason)
       : "Exact file contents are unavailable for this review",
   };
+}
+
+function unavailableContextDescription(reason: string | undefined): string {
+  switch (reason) {
+    case "github_read":
+      return "Patchdesk could not read the required file contents from the saved review revisions";
+    case "binary":
+      return "Unchanged context is unavailable for binary files";
+    case "too_large":
+      return "The file is too large to load unchanged context";
+    case "revision_unavailable":
+      return "The saved review does not include the revisions required for unchanged context";
+    case "head_changed":
+      return "The pull request head changed after this review was prepared";
+    case "patch_unavailable":
+      return "The saved patch does not match the required file contents";
+    case "path_unavailable":
+      return "The selected path is unavailable in the saved review";
+    default:
+      return "Exact file contents are unavailable for the rendered diff";
+  }
 }

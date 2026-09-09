@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the **Diff** giving no sign that a pull request no longer merges. A pull request that conflicts with its base branch now opens the Diff with a **Merge conflicts** notice saying the conflict has to be resolved on GitHub before the pull request can merge; the diff below it is unchanged. #114
+
 ## 0.0.6 - 2026-09-08
 
 - Fixed the **Scope** picker in the Diff toolbar replacing the whole workbench with "Patchdesk could not load the Review workbench." Choosing a bucket handed the renderer one file's syntax highlighting paired with another file's lines, because a narrowed diff reused what the full diff had cached by position. Clearing back to All files could fail a second way, hydrating one file's source under another file's name. Applying, switching, and clearing a bucket are all safe now, and a file the current filter hides is no longer fetched at all.

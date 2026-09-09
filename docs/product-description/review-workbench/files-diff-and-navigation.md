@@ -8,6 +8,8 @@ The Diff view is the main code-reading surface for a Review. It combines the rep
 
 The maintainer chooses a file, reads its hunks, moves through files or changes with the navigator or keyboard, and optionally selects one commit to narrow the patch. A non-deleted Markdown file can switch independently between Diff and Preview after Patchdesk verifies and loads its complete head text. Patchdesk hydrates file content only for the current patch generation, keeps the selected file visible, and shows discussion annotations at their mapped lines. The maintainer can return to the full pull-request diff without changing the represented Review.
 
+When a pull request conflicts with its base branch, a Merge conflicts notice sits above the diff. It says the conflict has to be resolved on GitHub before the pull request can merge, and that the diff below still shows the changes the pull request makes. The diff itself reads as it always does.
+
 ## The task, event by event
 
 ```mermaid
@@ -57,13 +59,13 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 
 ## Variants
 
-| Variant                                                | Before the action runs                                                                                                                          | While the action runs                                                                                                              |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Workspace profile and GitHub account                   | Paths and local checkout roots belong to the active profile's prepared Review session.                                                          | A profile change leaves the Review; late hydration for the old session cannot become the new screen.                               |
-| Pull request and Review state                          | Open, closed, and merged Reviews can be read. A metadata-only Review explains that local expansion and commit inspection are unavailable.       | Revision change marks the represented Review as having updates; it does not rewrite the patch underneath the maintainer.           |
-| GitHub permissions and merge readiness                 | Diff reading does not require write permission. Checks and merge readiness open the PR overview.                                                | Read failures do not change merge authority. A terminal transition can update the header after refresh.                            |
-| Network, local tool, and Insight provider availability | Saved patch data can render without an Insight provider. Local `git` and checkout preparation enable local expansion and commit inspection.     | Hydration, commit load, or syntax-highlighting failure falls back or shows a local error without corrupting the represented patch. |
-| Input path: mouse, keyboard, or desktop menu           | Files, commits, tabs, and preferences support mouse and keyboard. Plain unmodified shortcuts move through files, hunks, or unresolved comments. | Shortcuts are ignored in text controls, dialogs, with modifiers, or during IME composition.                                        |
+| Variant                                                | Before the action runs                                                                                                                                                                                              | While the action runs                                                                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | Paths and local checkout roots belong to the active profile's prepared Review session.                                                                                                                              | A profile change leaves the Review; late hydration for the old session cannot become the new screen.                               |
+| Pull request and Review state                          | Open, closed, and merged Reviews can be read. A metadata-only Review explains that local expansion and commit inspection are unavailable. A conflicting pull request shows a Merge conflicts notice above the diff. | Revision change marks the represented Review as having updates; it does not rewrite the patch underneath the maintainer.           |
+| GitHub permissions and merge readiness                 | Diff reading does not require write permission. Checks and merge readiness open the PR overview.                                                                                                                    | Read failures do not change merge authority. A terminal transition can update the header after refresh.                            |
+| Network, local tool, and Insight provider availability | Saved patch data can render without an Insight provider. Local `git` and checkout preparation enable local expansion and commit inspection.                                                                         | Hydration, commit load, or syntax-highlighting failure falls back or shows a local error without corrupting the represented patch. |
+| Input path: mouse, keyboard, or desktop menu           | Files, commits, tabs, and preferences support mouse and keyboard. Plain unmodified shortcuts move through files, hunks, or unresolved comments.                                                                     | Shortcuts are ignored in text controls, dialogs, with modifiers, or during IME composition.                                        |
 
 ## Cancel and interrupt
 
@@ -100,6 +102,7 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 ## Edge cases
 
 - Loading, unavailable, deleted, binary, omitted, mismatched, and over-1-MiB Markdown files remain ordinary diffs and show no Preview control.
+- The Merge conflicts notice appears only for an open pull request that conflicts with its base branch; a merge blocked by a draft, a stale head, a failing check, or an outstanding review shows no notice.
 - Preview renders complete verified head text, not the changed hunk alone and not the base version.
 - Each eligible Markdown file owns its mode independently; switching one does not switch another.
 
@@ -126,4 +129,4 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 - Confirm which navigator and scroll values survive app quit, not only renderer reload.
 - Confirm the visible transition from full diff to commit diff when the selected commit touches no files currently in view.
 
-Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`.
+Baseline drafted from Patchdesk application source commit `3100615`; scoped follow-up behavior updated through application commit `3951bf98`. The Merge conflicts notice was verified in the Electron workbench: it appears above an otherwise unchanged diff on a conflicting pull request, and is absent when the merge is blocked for another reason.

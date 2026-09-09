@@ -225,6 +225,25 @@ describe("useReviewDiffHydration", () => {
     expect(result.current.verifiedHeadTextByPath.size).toBe(0);
   });
 
+  it("preserves the source failure reason for the selected path", async () => {
+    installBridge(() => ({ state: "unavailable", reason: "github_read" }));
+    const { result } = renderHook(() =>
+      useReviewDiffHydration({
+        patch: patchA,
+        sourceSession: { profileId: "profile", sessionId: "session-a" },
+        selectedPath: "src/a.ts",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(result.current.contextStatus).toBe("unavailable"),
+    );
+
+    expect(result.current.unavailableReasons.get("src/a.ts")).toBe(
+      "github_read",
+    );
+  });
+
   it("leaves a path the current patch does not carry unhydrated", async () => {
     const calls = installBridge(() => ready());
     const { result } = renderHook(() =>

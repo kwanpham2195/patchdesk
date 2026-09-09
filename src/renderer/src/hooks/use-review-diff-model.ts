@@ -118,6 +118,7 @@ export function useReviewDiffModel({
     hydrationInput.sourceSession = hydrationSourceSession;
   const {
     hydratedFiles,
+    unavailableReasons,
     verifiedHeadTextByPath: liveVerifiedHeadTextByPath,
     contextStatus,
     rawFilePatches,
@@ -378,6 +379,10 @@ export function useReviewDiffModel({
     status: contextStatus,
     hasExpandableRenderedFile,
     expanded: expandUnchanged,
+    unavailableReason:
+      selectedPath === undefined
+        ? undefined
+        : unavailableReasons.get(selectedPath),
   });
 
   return {
