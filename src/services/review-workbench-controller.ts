@@ -154,6 +154,7 @@ export class ReviewWorkbenchController {
           return err({ reason: "storage" });
         return this.restartUnusableReview(identity, expectedTerminalState);
       }
+      const title = currentSession.value.prContext?.title;
       if (existing.value.representedRemote !== undefined) {
         const represented = await this.lifecycle.remote.load({
           profileId: identity.profileId,
@@ -165,15 +166,11 @@ export class ReviewWorkbenchController {
             return err({ reason: "storage" });
           return this.restartUnusableReview(identity, expectedTerminalState);
         }
-        const opened = await this.recordReviewOpened(
-          existing.value,
-          currentSession.value.prContext?.title,
-        );
         if (expectedTerminalState === undefined)
-          return this.projectStableUnlocked(opened);
-        if (opened.status._tag === "Terminal")
-          return opened.status.state === "merged"
-            ? this.projectStableUnlocked(opened)
+          return this.projectOpenedUnlocked(existing.value, title);
+        if (existing.value.status._tag === "Terminal")
+          return existing.value.status.state === "merged"
+            ? this.projectOpenedUnlocked(existing.value, title)
             : err({ reason: "terminal" });
         const initialized = await this.initializeSnapshot(
           identity.profileId,
@@ -182,7 +179,7 @@ export class ReviewWorkbenchController {
         );
         return initialized._tag === "err"
           ? initialized
-          : this.projectStableUnlocked(initialized.value);
+          : this.projectOpenedUnlocked(initialized.value, title);
       }
       const initialized = await this.initializeSnapshot(
         identity.profileId,
@@ -190,7 +187,7 @@ export class ReviewWorkbenchController {
         expectedTerminalState,
       );
       if (initialized._tag === "err") return initialized;
-      return this.projectStableUnlocked(initialized.value);
+      return this.projectOpenedUnlocked(initialized.value, title);
     }
     return this.openFresh(identity, expectedTerminalState);
   }
@@ -252,18 +249,33 @@ export class ReviewWorkbenchController {
   }
 
   /**
+   * Projects the Review and records the open only when a projection comes
+   * back, so an open the maintainer was refused — a Terminal record under
+   * `openMerged`, or a projection failure — never reorders the sidebar's
+   * visited pull requests.
+   */
+  private async projectOpenedUnlocked(
+    review: Review,
+    title: string | undefined,
+  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
+    const projected = await this.projectStableUnlocked(review);
+    if (projected._tag === "ok") await this.recordReviewOpened(review, title);
+    return projected;
+  }
+
+  /**
    * Records the open on the durable Review. Best effort by design: a lost
-   * compare-and-set or any storage failure is logged and the record that was
-   * loaded is returned unchanged, because sidebar bookkeeping must never fail
-   * the open the maintainer asked for.
+   * compare-and-set or any storage failure is logged and the open continues,
+   * because sidebar bookkeeping must never fail the open the maintainer
+   * asked for.
    */
   private async recordReviewOpened(
     review: Review,
     title: string | undefined,
-  ): Promise<Review> {
+  ): Promise<void> {
     const opened = markReviewOpened(review, { title, now: this.now() });
     const saved = await this.lifecycle.reviews.save(opened, review.updatedAt);
-    if (saved._tag === "ok") return opened;
+    if (saved._tag === "ok") return;
     this.lifecycle.logs?.write({
       process: "main",
       level: "warn",
@@ -277,7 +289,6 @@ export class ReviewWorkbenchController {
           : { tag: saved.error._tag, reason: saved.error.reason }),
       },
     });
-    return review;
   }
 
   /**
@@ -298,7 +309,7 @@ export class ReviewWorkbenchController {
     );
     if (reset._tag === "err") return reset;
     if (!reset.value.restarted && reset.value.review.representedRemote)
-      return this.projectStableUnlocked(reset.value.review);
+      return this.projectOpenedUnlocked(reset.value.review, reset.value.title);
     const initialized = await this.initializeSnapshot(
       identity.profileId,
       reviewId,
@@ -306,7 +317,7 @@ export class ReviewWorkbenchController {
     );
     return initialized._tag === "err"
       ? initialized
-      : this.projectStableUnlocked(initialized.value);
+      : this.projectOpenedUnlocked(initialized.value, reset.value.title);
   }
 
   /** Decides whether the existing Review can be kept or must be quarantined and rebuilt fresh; see `restartUnusableReview`'s lock note. */
@@ -315,7 +326,12 @@ export class ReviewWorkbenchController {
     expectedTerminalState?: "merged",
   ): Promise<
     Result<
-      { readonly review: Review; readonly restarted: boolean },
+      {
+        readonly review: Review;
+        readonly restarted: boolean;
+        /** The kept Review's session title, so the caller's open records it; a restarted Review already took its title from preparation. */
+        readonly title: string | undefined;
+      },
       ReviewWorkbenchFailure
     >
   > {
@@ -339,7 +355,7 @@ export class ReviewWorkbenchController {
       );
       return created._tag === "err"
         ? created
-        : ok({ review: created.value, restarted: true });
+        : ok({ review: created.value, restarted: true, title: undefined });
     }
     const session = await this.lifecycle.sessions.load(
       identity.profileId,
@@ -361,7 +377,13 @@ export class ReviewWorkbenchController {
         return err({ reason: "storage" });
       restart = represented._tag === "err";
     }
-    if (!restart) return ok({ review: current.value, restarted: false });
+    if (!restart)
+      return ok({
+        review: current.value,
+        restarted: false,
+        title:
+          session._tag === "ok" ? session.value.prContext?.title : undefined,
+      });
     const quarantinedSession =
       await this.lifecycle.artifacts.quarantineIfPresent(
         identity.profileId,
@@ -398,7 +420,7 @@ export class ReviewWorkbenchController {
     );
     return created._tag === "err"
       ? created
-      : ok({ review: created.value, restarted: true });
+      : ok({ review: created.value, restarted: true, title: undefined });
   }
 
   /**
@@ -434,7 +456,13 @@ export class ReviewWorkbenchController {
     return err({ reason: "storage" });
   }
 
-  private async projectStable(
+  /**
+   * `load`'s projection. Reaching a Review this way — the sidebar's own click,
+   * or restoring the last destination at launch — counts as opening it, so it
+   * records the open too. The load path holds no session, so it records only
+   * the instant and leaves any stored title as it is.
+   */
+  private async projectStableRecordingOpen(
     review: Review,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     return this.lifecycle.coordinator.withReviewLock(
@@ -446,7 +474,7 @@ export class ReviewWorkbenchController {
           review.id,
         );
         return current._tag === "ok"
-          ? this.projectStableUnlocked(current.value)
+          ? this.projectOpenedUnlocked(current.value, undefined)
           : err({
               reason:
                 current.error.reason === "not_found" ? "not_found" : "storage",
@@ -510,7 +538,7 @@ export class ReviewWorkbenchController {
       return err({
         reason: review.error.reason === "not_found" ? "not_found" : "storage",
       });
-    return this.projectStable(review.value);
+    return this.projectStableRecordingOpen(review.value);
   }
 
   /** Used only by `load`, which does not hold `open`'s coordinator lock. */

@@ -233,6 +233,25 @@ describe("SidebarListingService.list", () => {
     expect(Object.hasOwn(listing.rows.at(1) ?? {}, "title")).toBe(false);
   });
 
+  it("omits the title key for a record whose stored title is empty", async () => {
+    const value = service(
+      ok({
+        reviews: [
+          review({
+            number: 9,
+            updatedAt: "2026-03-01T00:00:00.000Z",
+            title: "",
+          }),
+        ],
+        unreadable: 0,
+      }),
+    );
+
+    const listing = must(await value.listed.list(profileId));
+
+    expect(Object.hasOwn(listing.rows.at(0) ?? {}, "title")).toBe(false);
+  });
+
   it("reports a failed listing as a storage failure", async () => {
     const value = service({
       _tag: "err",

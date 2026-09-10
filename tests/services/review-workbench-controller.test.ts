@@ -196,6 +196,96 @@ describe("ReviewWorkbenchController", () => {
     );
   });
 
+  it("records the open when the sidebar reaches a Review through load", async () => {
+    const openedAt = "2026-09-10T09:00:00.000Z";
+    const value = fixture();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(openedAt));
+    try {
+      await expect(
+        value.controller.load({ profileId, reviewId }),
+      ).resolves.toEqual({ _tag: "ok", value: projection });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(value.lifecycle.reviews.save).toHaveBeenCalledWith(
+      expect.objectContaining({ lastOpenedAt: openedAt, updatedAt: openedAt }),
+      at,
+    );
+  });
+
+  it("records the open on a Review whose first snapshot never landed", async () => {
+    // A record left without a represented snapshot takes openUnlocked's other
+    // existing-Review exit, which projected without ever recording the open.
+    const openedAt = "2026-09-10T09:30:00.000Z";
+    const { representedRemote: _unrepresented, ...withoutSnapshot } = review;
+    const reviews = {
+      load: vi
+        .fn()
+        .mockResolvedValueOnce(ok(withoutSnapshot))
+        .mockResolvedValue(ok(review)),
+      save: vi.fn(async () => ok(undefined)),
+    };
+    const value = fixture({
+      reviews,
+      sessions: {
+        load: vi.fn(async () =>
+          ok({ id: sessionId, prContext: { title: "Add the sidebar" } }),
+        ),
+      },
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(openedAt));
+    try {
+      await expect(
+        value.controller.open({
+          profileId,
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          number: 42,
+        }),
+      ).resolves.toEqual({ _tag: "ok", value: projection });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(reviews.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Add the sidebar",
+        lastOpenedAt: openedAt,
+      }),
+      at,
+    );
+  });
+
+  it("records nothing when a closed Review refuses a merged open", async () => {
+    // Recording before the Terminal check would rank a pull request the
+    // maintainer could not open first in the sidebar.
+    const closed: Review = {
+      ...review,
+      status: { _tag: "Terminal", state: "closed", observedAt: at },
+    };
+    const value = fixture({
+      reviews: {
+        load: vi.fn(async () => ok(closed)),
+        save: vi.fn(async () => ok(undefined)),
+      },
+    });
+
+    await expect(
+      value.controller.openMerged({
+        profileId,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      }),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "terminal" } });
+    expect(value.lifecycle.reviews.save).not.toHaveBeenCalled();
+  });
+
   it("opens anyway when recording the open loses the compare-and-set", async () => {
     const logs = { write: vi.fn() };
     const value = fixture({
@@ -787,7 +877,8 @@ describe("ReviewWorkbenchController", () => {
   it("open() never re-enters its own coordinator lock while recovering, restarting, refreshing, or projecting", async () => {
     // Safety net beyond the two lock sites the plan names: every method
     // `open()`'s tree reaches (recoverObservation, restartUnusableReview,
-    // initializeSnapshot's refresh, projectStable) has an Unlocked sibling.
+    // initializeSnapshot's refresh, projectStableRecordingOpen) has an
+    // Unlocked sibling.
     // Each "locked" fake below re-enters the *same* real coordinator on the
     // same key `open()` already holds, so calling the wrong (locked)
     // sibling from inside open()'s tree would hang this test rather than
