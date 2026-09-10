@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a column of the pull requests you have opened, beside the app frame and present on every screen. It lists the active workspace's visited pull requests, most recently opened first, with the one you are reading marked, and clicking a row resumes that pull request where you left it. Every row is read from what Patchdesk already stored, so the column costs no GitHub call and works with the network off. A pull request appears once you have opened it — the Pull requests table is still where you find new work — and one you opened before this release shows `owner/repo#number` until the next time you open it. The column collapses from a button in the header and stays collapsed until you open it again. #119
+- Fixed moving between two pull requests showing the first one's diff until the second finished loading, and indefinitely if that load failed. #131
+- Fixed adding or removing a repository in **Settings** during a workspace switch landing the change in the workspace you were leaving. A repository toggle went to whichever workspace Patchdesk had most recently selected, while the Repositories card was still showing the previous one's repositories; each change now names the workspace it belongs to. #136
+- Fixed a pull request whose review Patchdesk swept fourteen days after it merged or closed leaving behind a record that could never be opened again, failing with a generic storage error. The sweep now removes that record along with the session it belongs to. #135
+
 ## 0.0.7 - 2026-09-10
 
 - Fixed a Review that could never be opened again after a background refresh lost a race with another write. Patchdesk left behind a record of the interrupted update that it could no longer replay, and refused to open the Review while that record existed, so the failure survived restarts. The unusable record is now discarded, an already-stuck Review recovers on the next open, and the two writes that could silently overwrite each other now report the clash instead. #121
