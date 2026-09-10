@@ -141,12 +141,54 @@ describe("SidebarListingService.list", () => {
     const listing = must(await value.listed.list(profileId));
 
     expect(numbers(listing.rows)).toEqual([2, 1, 4, 3]);
-    expect(listing.rows.map((row) => row.openedAt)).toEqual([
+    expect(listing.rows.map((row) => row.sortedAt)).toEqual([
       "2026-04-01T00:00:00.000Z",
       "2026-03-01T00:00:00.000Z",
       "2026-02-15T00:00:00.000Z",
       "2026-01-15T00:00:00.000Z",
     ]);
+  });
+
+  it("projects the recorded open of a record that has one", async () => {
+    const value = service(
+      ok({
+        reviews: [
+          review({
+            number: 21,
+            updatedAt: "2026-04-01T00:00:00.000Z",
+            lastOpenedAt: "2026-03-01T00:00:00.000Z",
+          }),
+        ],
+        unreadable: 0,
+      }),
+    );
+
+    const listing = must(await value.listed.list(profileId));
+
+    expect(listing.rows.at(0)).toMatchObject({
+      lastOpenedAt: "2026-03-01T00:00:00.000Z",
+      sortedAt: "2026-03-01T00:00:00.000Z",
+    });
+  });
+
+  it("omits the recorded open of a record that has none, keeping the sort instant", async () => {
+    const value = service(
+      ok({
+        reviews: [
+          review({ number: 22, updatedAt: "2026-04-01T00:00:00.000Z" }),
+        ],
+        unreadable: 0,
+      }),
+    );
+
+    const listing = must(await value.listed.list(profileId));
+
+    // `updatedAt` is GitHub's activity, not a visit: it may order the row but
+    // must not reach it as a recorded open.
+    expect(Object.hasOwn(listing.rows.at(0) ?? {}, "lastOpenedAt")).toBe(false);
+    expect(listing.rows.at(0)).toMatchObject({
+      sortedAt: "2026-04-01T00:00:00.000Z",
+    });
   });
 
   it("keeps the twenty most recently opened pull requests", async () => {

@@ -934,7 +934,11 @@ const sidebarReviewsResponseSchema = v.strictObject({
       number: v.pipe(v.number(), v.integer(), v.minValue(1)),
       // Absent on a Review opened before the route stored a title.
       title: v.optional(v.pipe(v.string(), v.minLength(1))),
-      openedAt: v.pipe(v.string(), v.minLength(1)),
+      // What the column orders and date-groups by, present on every row.
+      sortedAt: v.pipe(v.string(), v.minLength(1)),
+      // Absent on a Review stored before Patchdesk recorded opens. The row's
+      // age comes from this alone, so an unvisited row shows none.
+      lastOpenedAt: v.optional(v.pipe(v.string(), v.minLength(1))),
       // Absent while the pull request is still open. `observedAt` is when
       // Patchdesk saw the state, so the row can date what it shows.
       terminal: v.optional(

@@ -4,6 +4,7 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { definedProps } from "../../src/domain/defined-props";
 import type { RawJsonValue } from "../../src/domain/json";
 import type { AppDestination } from "../../src/renderer/src/routes";
 import {
@@ -36,15 +37,25 @@ const NOW = "2026-09-10T10:00:00.000Z";
 const MIDDAY = Date.parse("2026-09-10T12:00:00.000Z");
 const DAY_MS = 86_400_000;
 
-/** A row whose only interesting field is which date bucket it lands in. */
-function aged(number: number, daysAgo: number): RawJsonValue {
+/**
+ * A row whose only interesting field is which date bucket it lands in.
+ * `recordedOpen` drops the stored visit, which must change the bucket for
+ * nothing.
+ */
+function aged(
+  number: number,
+  daysAgo: number,
+  recordedOpen = true,
+): RawJsonValue {
+  const at = new Date(MIDDAY - daysAgo * DAY_MS).toISOString();
   return {
     reviewId: `review-${number}`,
     owner: "kwanpham2195",
     repo: "patchdesk",
     number,
     title: `Opened ${daysAgo} days ago`,
-    openedAt: new Date(MIDDAY - daysAgo * DAY_MS).toISOString(),
+    sortedAt: at,
+    ...definedProps({ lastOpenedAt: recordedOpen ? at : undefined }),
   };
 }
 
@@ -54,7 +65,8 @@ const titled = {
   repo: "patchdesk",
   number: 125,
   title: "Prototype: three sidebar variants for #119",
-  openedAt: OPENED_AT,
+  sortedAt: OPENED_AT,
+  lastOpenedAt: OPENED_AT,
 } satisfies RawJsonValue;
 
 const untitled = {
@@ -62,7 +74,8 @@ const untitled = {
   owner: "kwanpham2195",
   repo: "herdr",
   number: 7,
-  openedAt: OPENED_AT,
+  sortedAt: OPENED_AT,
+  lastOpenedAt: OPENED_AT,
 } satisfies RawJsonValue;
 
 // Shares `titled`'s repository, so a column holding the two of them lists one.
@@ -71,7 +84,8 @@ const untitledSameRepo = {
   owner: "kwanpham2195",
   repo: "patchdesk",
   number: 412,
-  openedAt: OPENED_AT,
+  sortedAt: OPENED_AT,
+  lastOpenedAt: OPENED_AT,
 } satisfies RawJsonValue;
 
 // The only fixture under another owner, so a column holding it and `titled`
@@ -81,7 +95,8 @@ const otherOwner = {
   owner: "centraldigital",
   repo: "cfw-sales-crm-api",
   number: 98,
-  openedAt: OPENED_AT,
+  sortedAt: OPENED_AT,
+  lastOpenedAt: OPENED_AT,
 } satisfies RawJsonValue;
 
 const MERGED_OBSERVED_AT = new Date(MIDDAY - 3 * DAY_MS).toISOString();
@@ -94,8 +109,21 @@ const merged = {
   repo: "patchdesk",
   number: 300,
   title: "Land the visited column",
-  openedAt: OPENED_AT,
+  sortedAt: OPENED_AT,
+  lastOpenedAt: OPENED_AT,
   terminal: { state: "merged", observedAt: MERGED_OBSERVED_AT },
+} satisfies RawJsonValue;
+
+// A Review stored before Patchdesk recorded opens: it sorts by `updatedAt`,
+// which GitHub activity moves, so the row knows of no visit to date.
+const unvisited = {
+  reviewId: "review-unvisited",
+  owner: "kwanpham2195",
+  repo: "patchdesk",
+  number: 118,
+  title: "Opened before Patchdesk recorded opens",
+  sortedAt: OPENED_AT,
+  terminal: { state: "closed", observedAt: MERGED_OBSERVED_AT },
 } satisfies RawJsonValue;
 
 function renderColumn(options: {
@@ -245,6 +273,25 @@ describe("VisitedPullRequests", () => {
     expect(row.querySelector("time")?.textContent).toBe(shown);
   });
 
+  it("prints no age on a row with no recorded open, and still its reference and marker", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MIDDAY);
+    renderColumn({ rows: [unvisited] });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const row = screen.getByRole("button", { name: /#118/ });
+    expect(row.textContent).toContain("#118");
+    // The only stamp on the row is the state marker: no empty `<time>` stands
+    // where the age would be, and no separator is left dangling for it.
+    const stamps = [...row.querySelectorAll("time")];
+    expect(stamps.map((stamp) => stamp.textContent)).toEqual([
+      "Closed · seen 3d",
+    ]);
+    expect(row.textContent).not.toContain("#118 · ");
+  });
+
   it("dates the state a terminal row reached and leaves an open row unmarked", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(MIDDAY);
@@ -314,6 +361,22 @@ describe("VisitedPullRequests", () => {
       "Opened 4 days ago",
       "Opened 30 days ago",
     ]);
+  });
+
+  it("heads a row with no recorded open the same as one that has an age", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MIDDAY);
+    renderColumn({ rows: [aged(1, 0, false), aged(2, 1), aged(3, 30, false)] });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    expect(headings(column)).toEqual(["Today", "Yesterday", "Earlier"]);
+    // Every row is drawn, whether or not it could print an age.
+    expect(within(column).getAllByRole("button")).toHaveLength(3);
   });
 
   it("names no bucket that holds no row", async () => {
@@ -402,6 +465,13 @@ describe("visitedRowLabels", () => {
     expect(visitedRowLabels(titled, "owner-repo")).toEqual({
       title: "Prototype: three sidebar variants for #119",
       reference: "kwanpham2195/patchdesk#125 · ",
+    });
+  });
+
+  it("ends the reference at the number when no age follows it", () => {
+    expect(visitedRowLabels(unvisited, "repo")).toEqual({
+      title: "Opened before Patchdesk recorded opens",
+      reference: "patchdesk#118",
     });
   });
 

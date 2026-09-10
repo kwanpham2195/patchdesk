@@ -181,7 +181,7 @@ function withDateHeaders(
 ): ReadonlyArray<VisitedListEntry> {
   let previous: string | undefined;
   return rows.map((row) => {
-    const label = visitedDateGroupLabel(row.openedAt, now);
+    const label = visitedDateGroupLabel(row.sortedAt, now);
     const heading = label === previous ? undefined : label;
     previous = label;
     return { row, heading };
@@ -198,10 +198,10 @@ const DAY_MS = 86_400_000;
  */
 // oxlint-disable-next-line react/only-export-components -- Shared grouping rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedDateGroupLabel(
-  openedAt: string,
+  sortedAt: string,
   now: number = Date.now(),
 ): string {
-  const days = localDayIndex(now) - localDayIndex(Date.parse(openedAt));
+  const days = localDayIndex(now) - localDayIndex(Date.parse(sortedAt));
   if (days <= 0) return "Today";
   if (days === 1) return "Yesterday";
   if (days < 7) return "This week";
@@ -250,18 +250,22 @@ function VisitedRow({
         <span className="flex min-w-0 items-baseline gap-2 text-[11px] text-muted-foreground">
           {/* The age is computed once per render; nothing ticks it. The
            * reference is the only part that clips, because the age is what
-           * the row exists to tell you and it never gets its space back. */}
+           * the row exists to tell you and it never gets its space back. A row
+           * with no recorded open prints no age rather than dating a visit
+           * Patchdesk never saw. */}
           <span className="flex min-w-0 items-baseline tabular-nums">
             {reference === "" ? null : (
               <span className="min-w-0 truncate">{reference}</span>
             )}
-            <time
-              dateTime={row.openedAt}
-              title={formatExactTime(row.openedAt)}
-              className="shrink-0"
-            >
-              {formatCompactRelativeTime(row.openedAt)}
-            </time>
+            {row.lastOpenedAt === undefined ? null : (
+              <time
+                dateTime={row.lastOpenedAt}
+                title={formatExactTime(row.lastOpenedAt)}
+                className="shrink-0"
+              >
+                {formatCompactRelativeTime(row.lastOpenedAt)}
+              </time>
+            )}
           </span>
           {row.terminal === undefined ? null : (
             <TerminalMarker terminal={row.terminal} />
@@ -330,19 +334,24 @@ type VisitedRowLabels = {
  * The label a visited row shows and the reference printed under it. A Review
  * opened before the route stored titles has none, so its reference becomes the
  * label; printing the reference again underneath would repeat the number, so
- * that row leaves the age standing alone.
+ * that row leaves the age standing alone. The separator belongs to the age, so
+ * a row with no recorded open ends its reference at the number.
  */
 // oxlint-disable-next-line react/only-export-components -- Shared row-label rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedRowLabels(
-  row: Pick<SidebarReviewRow, "title" | "owner" | "repo" | "number">,
+  row: Pick<
+    SidebarReviewRow,
+    "title" | "owner" | "repo" | "number" | "lastOpenedAt"
+  >,
   scope: VisitedLabelScope,
 ): VisitedRowLabels {
   const repository = visitedRepositoryLabel(row, scope);
   if (row.title === undefined)
     return { title: `${repository}#${row.number}`, reference: "" };
+  const separator = row.lastOpenedAt === undefined ? "" : " · ";
   return {
     title: row.title,
-    reference: `${repository}#${row.number} · `,
+    reference: `${repository}#${row.number}${separator}`,
   };
 }
 
