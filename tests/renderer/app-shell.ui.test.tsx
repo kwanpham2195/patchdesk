@@ -9,6 +9,9 @@ import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
 
 afterEach(() => {
   cleanup();
+  // The visited column's collapsed state is a local preference, so it would
+  // otherwise carry into the next test in this file.
+  window.localStorage.clear();
 });
 
 function ContentEditableAncestorFixture(): React.JSX.Element {
@@ -213,5 +216,41 @@ describe("AppShell pull-request command", () => {
     expect(
       screen.queryByRole("option", { name: "Open acme/widgets#42" }),
     ).toBeNull();
+  });
+});
+
+describe("AppShell visited pull requests toggle", () => {
+  it("names the toggle for the action it performs and points it at the column", async () => {
+    const user = userEvent.setup();
+    render(
+      <BusyProvider>
+        <AppShell
+          destination={{ kind: "dashboard" }}
+          onNavigate={() => undefined}
+          onOpenSettings={() => undefined}
+        >
+          <div>Inbox content</div>
+        </AppShell>
+      </BusyProvider>,
+    );
+
+    const collapse = screen.getByRole("button", {
+      name: "Collapse the pull requests you have opened",
+    });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      document.getElementById(collapse.getAttribute("aria-controls") ?? ""),
+    ).toBe(
+      screen.getByRole("complementary", {
+        name: "Pull requests you have opened",
+      }),
+    );
+
+    await user.click(collapse);
+
+    const expand = screen.getByRole("button", {
+      name: "Expand the pull requests you have opened",
+    });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
   });
 });

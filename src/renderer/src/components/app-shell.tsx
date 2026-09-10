@@ -101,6 +101,9 @@ export function AppShell({
   const [initialDestinationKey] = useState(() => destinationKey(destination));
   const focusedDestination = useRef(initialDestinationKey);
   const windowFullScreen = useWindowFullScreen();
+  const activeProfileLabel = profiles?.find(
+    (profile) => profile.id === activeProfileId,
+  )?.label;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -150,7 +153,12 @@ export function AppShell({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Pull requests you have opened"
+            aria-label={
+              visitedCollapsed
+                ? "Expand the pull requests you have opened"
+                : "Collapse the pull requests you have opened"
+            }
+            aria-controls="visited-pull-requests"
             aria-expanded={!visitedCollapsed}
             onClick={() => {
               const next = !visitedCollapsed;
@@ -199,8 +207,7 @@ export function AppShell({
                 >
                   <User className="size-3" />
                   <SelectValue placeholder="Select workspace">
-                    {profiles.find((p) => p.id === activeProfileId)?.label ??
-                      "Workspace"}
+                    {activeProfileLabel ?? "Workspace"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -289,6 +296,7 @@ export function AppShell({
             onNavigate={onNavigate}
             reloadKey={visitedReloadKey ?? 0}
             watchedRepoCount={watchedRepoCount ?? 0}
+            workspaceLabel={activeProfileLabel}
           />
         )}
         <main

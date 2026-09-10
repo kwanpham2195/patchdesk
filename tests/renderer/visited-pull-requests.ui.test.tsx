@@ -59,6 +59,7 @@ function renderColumn(options: {
       onNavigate={options.onNavigate ?? (() => undefined)}
       reloadKey={0}
       watchedRepoCount={options.watchedRepoCount ?? 1}
+      workspaceLabel="Personal"
     />,
   );
 }
@@ -93,8 +94,16 @@ describe("VisitedPullRequests", () => {
     ).toBeTruthy();
   });
 
-  it("falls back to owner/repo#number when the record has no title, and prints the number once", async () => {
-    renderColumn({ rows: [untitled] });
+  it("falls back to the number alone when the workspace watches one repository", async () => {
+    renderColumn({ rows: [untitled], watchedRepoCount: 1 });
+
+    const row = await screen.findByRole("button", { name: /#7/ });
+    expect(row.textContent).not.toContain("kwanpham2195");
+    expect(row.textContent?.match(/#7/g)).toHaveLength(1);
+  });
+
+  it("falls back to owner/repo#number when the workspace watches more than one, and prints the number once", async () => {
+    renderColumn({ rows: [untitled], watchedRepoCount: 2 });
 
     const row = await screen.findByRole("button", {
       name: /kwanpham2195\/herdr#7/,
@@ -117,6 +126,8 @@ describe("VisitedPullRequests", () => {
 
     const open = await screen.findByRole("button", { name: /#7/ });
     expect(open.getAttribute("aria-current")).toBe("page");
+    // Focusable but inert, so Enter on it is announced as leading nowhere.
+    expect(open.getAttribute("aria-disabled")).toBe("true");
     expect(
       screen.getByRole("button", { name: /#125/ }).getAttribute("aria-current"),
     ).toBeNull();
@@ -149,11 +160,11 @@ describe("VisitedPullRequests", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByRole("button", { name: /2 min ago/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /2m/ })).toBeTruthy();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600_000);
     });
-    expect(screen.getByRole("button", { name: /2 min ago/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /2m/ })).toBeTruthy();
   });
 });
