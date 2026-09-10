@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -265,6 +265,59 @@ describe("ReviewStore", () => {
     ).resolves.toMatchObject({
       _tag: "err",
       error: { reason: "stale_revision" },
+    });
+  });
+
+  it("deletes the whole Review directory, not just the record", async () => {
+    const { paths, store } = await storeFixture();
+    const review = makeReview();
+    await expect(store.save(review)).resolves.toMatchObject({ _tag: "ok" });
+    await writeFile(
+      paths.reviewObservationJournalFile(profileId, review.id),
+      "{}",
+      "utf8",
+    );
+    await mkdir(paths.insightDirectory(profileId, review.id), {
+      recursive: true,
+    });
+
+    await expect(store.delete(profileId, review.id)).resolves.toMatchObject({
+      _tag: "ok",
+    });
+    await expect(store.load(profileId, review.id)).resolves.toMatchObject({
+      _tag: "err",
+      error: { reason: "not_found" },
+    });
+    await expect(
+      stat(paths.reviewDirectory(profileId, review.id)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("treats deleting an absent Review as success", async () => {
+    const { store } = await storeFixture();
+
+    await expect(
+      store.delete(profileId, makeReview().id),
+    ).resolves.toMatchObject({ _tag: "ok" });
+  });
+
+  it("serializes a delete against a concurrent save of the same Review", async () => {
+    const { store } = await storeFixture();
+    const review = makeReview();
+    await expect(store.save(review)).resolves.toMatchObject({ _tag: "ok" });
+
+    // Queued in this order in one tick: the save must observe the delete, so
+    // its compare-and-set token no longer matches anything on disk.
+    const deleting = store.delete(profileId, review.id);
+    const saving = store.save(
+      { ...review, updatedAt: later },
+      review.updatedAt,
+    );
+
+    await expect(deleting).resolves.toMatchObject({ _tag: "ok" });
+    await expect(saving).resolves.toMatchObject({
+      _tag: "err",
+      error: { _tag: "ReviewConflict", reason: "stale_revision" },
     });
   });
 
