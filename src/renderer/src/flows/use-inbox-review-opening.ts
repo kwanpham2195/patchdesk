@@ -79,6 +79,18 @@ export function useInboxReviewOpening({
     ReadonlyMap<string, string>
   >(new Map());
   const operationsRef = useRef<Map<string, ReviewOpeningOperation>>(new Map());
+  /**
+   * Every caller waiting on one in-flight stored-review load, keyed the same
+   * way the operation is. A second caller for a load already in flight is
+   * turned away below, so without this the caller that started it would decide
+   * alone whether the payload lands — and it is routinely the one that has
+   * gone: `InboxFlow` remounts whenever the workbench route hands back to it,
+   * which asks for the same Review from a live caller while the first one's
+   * cleanup has already marked it inactive.
+   */
+  const storedReviewWaitersRef = useRef<Map<string, Set<() => boolean>>>(
+    new Map(),
+  );
   const [operations, setOperations] = useState<
     ReadonlyMap<string, ReviewOpeningOperation>
   >(operationsRef.current);
@@ -160,6 +172,11 @@ export function useInboxReviewOpening({
       const githubHost = dashboard?.profile.githubHost ?? "github.com";
       if (dashboardProfileIdRef.current !== profileId) return;
       const operationKey = `review:${profileId}:${reviewId}`;
+      const waiters =
+        storedReviewWaitersRef.current.get(operationKey) ??
+        new Set<() => boolean>();
+      waiters.add(isActive);
+      storedReviewWaitersRef.current.set(operationKey, waiters);
       if (operationsRef.current.get(operationKey)?.status === "opening") return;
       const operation: ReviewOpeningOperation = {
         profileId,
@@ -175,7 +192,8 @@ export function useInboxReviewOpening({
         return next;
       });
       const isOperationActive = () =>
-        dashboardProfileIdRef.current === profileId && isActive();
+        dashboardProfileIdRef.current === profileId &&
+        [...waiters].some((waiting) => waiting());
       try {
         await runBusy(
           () =>
@@ -202,6 +220,7 @@ export function useInboxReviewOpening({
         });
       } finally {
         if (operationsRef.current.get(operationKey) === operation) {
+          storedReviewWaitersRef.current.delete(operationKey);
           const settled = new Map(operationsRef.current);
           settled.delete(operationKey);
           operationsRef.current = settled;
