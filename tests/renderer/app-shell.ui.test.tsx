@@ -41,7 +41,6 @@ describe("AppShell settings overlay entry points", () => {
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
-          watchedRepoCount={0}
           onOpenSettings={onOpenSettings}
         >
           <div>Inbox content</div>
@@ -68,7 +67,6 @@ describe("AppShell settings overlay entry points", () => {
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
-          watchedRepoCount={0}
           onOpenSettings={() => undefined}
         >
           <div>Inbox content</div>
@@ -111,7 +109,6 @@ describe("AppShell Navigate shortcut", () => {
             destination={{ kind: "dashboard" }}
             onNavigate={() => undefined}
             visitedReloadKey={0}
-            watchedRepoCount={0}
             onOpenSettings={() => undefined}
           >
             {target}
@@ -146,7 +143,6 @@ describe("AppShell Navigate shortcut", () => {
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
-          watchedRepoCount={0}
           onOpenSettings={() => undefined}
         >
           <button type="button">Review content</button>
@@ -176,7 +172,6 @@ describe("AppShell pull-request command", () => {
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
-          watchedRepoCount={0}
           onOpenSettings={() => undefined}
           onOpenPullRequest={onOpenPullRequest}
         >
@@ -210,7 +205,6 @@ describe("AppShell pull-request command", () => {
           destination={{ kind: "workbench", reviewId: "review-1" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
-          watchedRepoCount={0}
           onOpenSettings={() => undefined}
           onOpenPullRequest={() => undefined}
         >
@@ -240,7 +234,6 @@ describe("AppShell visited pull requests toggle", () => {
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
-          watchedRepoCount={0}
           onOpenSettings={() => undefined}
         >
           <div>Inbox content</div>

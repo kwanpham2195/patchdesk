@@ -61,7 +61,6 @@ export function AppShell({
   pullRequestDefaultHost,
   onOpenPullRequest,
   visitedReloadKey,
-  watchedRepoCount,
   children,
 }: {
   readonly destination: AppDestination;
@@ -87,8 +86,6 @@ export function AppShell({
   readonly onOpenPullRequest?: (ref: PullRequestRef) => void;
   /** Re-reads the visited pull requests whenever it moves: `App` bumps it on every Review open. */
   readonly visitedReloadKey: number;
-  /** Watched repositories in the active workspace; two or more put `owner/repo` on each visited row. */
-  readonly watchedRepoCount: number;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
@@ -295,7 +292,6 @@ export function AppShell({
             destination={destination}
             onNavigate={onNavigate}
             reloadKey={visitedReloadKey}
-            watchedRepoCount={watchedRepoCount}
             workspaceLabel={activeProfileLabel}
           />
         )}

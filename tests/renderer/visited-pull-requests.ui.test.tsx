@@ -46,10 +46,18 @@ const untitled = {
   openedAt: OPENED_AT,
 } satisfies RawJsonValue;
 
+// Shares `titled`'s repository, so a column holding the two of them lists one.
+const untitledSameRepo = {
+  reviewId: "review-untitled-same-repo",
+  owner: "kwanpham2195",
+  repo: "patchdesk",
+  number: 412,
+  openedAt: OPENED_AT,
+} satisfies RawJsonValue;
+
 function renderColumn(options: {
   readonly rows: ReadonlyArray<RawJsonValue>;
   readonly destination?: AppDestination;
-  readonly watchedRepoCount?: number;
   readonly onNavigate?: (destination: AppDestination) => void;
 }): void {
   desktop = installDesktopDouble({
@@ -61,7 +69,6 @@ function renderColumn(options: {
       destination={options.destination ?? { kind: "dashboard" }}
       onNavigate={options.onNavigate ?? (() => undefined)}
       reloadKey={0}
-      watchedRepoCount={options.watchedRepoCount ?? 1}
       workspaceLabel="Personal"
     />,
   );
@@ -81,12 +88,34 @@ describe("VisitedPullRequests", () => {
   });
 
   it("renders the derived label and reference on the row", async () => {
-    renderColumn({ rows: [titled], watchedRepoCount: 2 });
+    renderColumn({ rows: [titled] });
 
     const row = await screen.findByRole("button", { name: /#125/ });
-    const labels = visitedRowLabels(titled, true);
+    const labels = visitedRowLabels(titled, false);
     expect(row.textContent).toContain(labels.title);
     expect(row.textContent).toContain(labels.reference);
+  });
+
+  it("leaves owner/repo off the rows when they all name one repository", async () => {
+    renderColumn({ rows: [titled, untitledSameRepo] });
+
+    const fallback = await screen.findByRole("button", { name: /#412/ });
+    expect(fallback.textContent).toContain("#412");
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    expect(column.textContent).not.toContain("kwanpham2195/patchdesk");
+  });
+
+  it("names owner/repo on the rows when they span two repositories", async () => {
+    renderColumn({ rows: [titled, untitled] });
+
+    const row = await screen.findByRole("button", { name: /#125/ });
+    expect(row.textContent).toContain("kwanpham2195/patchdesk #125 · ");
+    // The titleless row carries the same rule in its fallback label.
+    expect(screen.getByRole("button", { name: /#7/ }).textContent).toContain(
+      "kwanpham2195/herdr#7",
+    );
   });
 
   it("marks the row of the open pull request as the current page", async () => {
@@ -153,7 +182,7 @@ describe("visitedRowLabels", () => {
     });
   });
 
-  it("names the repository in the reference when the workspace watches more than one", () => {
+  it("names the repository in the reference when the rows span more than one", () => {
     expect(visitedRowLabels(titled, true)).toEqual({
       title: "Prototype: three sidebar variants for #119",
       reference: "kwanpham2195/patchdesk #125 · ",
@@ -167,7 +196,7 @@ describe("visitedRowLabels", () => {
     });
   });
 
-  it("falls back to owner/repo#number when the workspace watches more than one", () => {
+  it("falls back to owner/repo#number when the rows span more than one", () => {
     expect(visitedRowLabels(untitled, true)).toEqual({
       title: "kwanpham2195/herdr#7",
       reference: "",

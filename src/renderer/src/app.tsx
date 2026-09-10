@@ -275,7 +275,6 @@ function AppContent({
         activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
         profileSwitchState={profileSwitchState}
         visitedReloadKey={visitedReloadKey}
-        watchedRepoCount={dashboard?.profile.repos?.length ?? 0}
         onInboxStateChange={changeInboxState}
         {...(parsedProfileHost._tag === "ok"
           ? {
