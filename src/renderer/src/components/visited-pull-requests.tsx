@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { requestJson } from "@/api-client";
 import {
@@ -117,16 +117,24 @@ export function VisitedPullRequests({
           </div>
         ) : null}
         {state.kind === "loaded"
-          ? state.rows.map((row) => (
-              <VisitedRow
-                key={row.reviewId}
-                row={row}
-                selected={row.reviewId === openReviewId}
-                showRepo={showRepo}
-                onOpen={() =>
-                  onNavigate({ kind: "workbench", reviewId: row.reviewId })
-                }
-              />
+          ? withDateHeaders(state.rows, Date.now()).map(({ row, heading }) => (
+              <Fragment key={row.reviewId}>
+                {heading === undefined ? null : (
+                  // The list already pads its own top, so the first header
+                  // does not stack a second gap above it.
+                  <p className="px-2.5 pt-3 pb-0.5 text-[10px] font-semibold tracking-widest text-muted-foreground/80 uppercase first:pt-0">
+                    {heading}
+                  </p>
+                )}
+                <VisitedRow
+                  row={row}
+                  selected={row.reviewId === openReviewId}
+                  showRepo={showRepo}
+                  onOpen={() =>
+                    onNavigate({ kind: "workbench", reviewId: row.reviewId })
+                  }
+                />
+              </Fragment>
             ))
           : null}
       </div>
@@ -138,6 +146,56 @@ function distinctRepositoryCount(
   rows: ReadonlyArray<Pick<SidebarReviewRow, "owner" | "repo">>,
 ): number {
   return new Set(rows.map((row) => `${row.owner}/${row.repo}`)).size;
+}
+
+type VisitedListEntry = {
+  readonly row: SidebarReviewRow;
+  /** The header this row is drawn under, set only on the row that opens a bucket. */
+  readonly heading: string | undefined;
+};
+
+/**
+ * Marks the row that opens each date bucket, in the order the route returned
+ * the rows: nothing is sorted or dropped, and a bucket holding no row is never
+ * named.
+ */
+function withDateHeaders(
+  rows: ReadonlyArray<SidebarReviewRow>,
+  now: number,
+): ReadonlyArray<VisitedListEntry> {
+  let previous: string | undefined;
+  return rows.map((row) => {
+    const label = visitedDateGroupLabel(row.openedAt, now);
+    const heading = label === previous ? undefined : label;
+    previous = label;
+    return { row, heading };
+  });
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * The date bucket a visited row falls in. The cuts are calendar days, not
+ * elapsed hours, so a pull request opened this morning reads Today whatever
+ * the hour; an unreadable stamp falls to the oldest bucket rather than
+ * claiming a day.
+ */
+// oxlint-disable-next-line react/only-export-components -- Shared grouping rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
+export function visitedDateGroupLabel(
+  openedAt: string,
+  now: number = Date.now(),
+): string {
+  const days = localDayIndex(now) - localDayIndex(Date.parse(openedAt));
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return "This week";
+  return "Earlier";
+}
+
+/** Which local calendar day an instant lands on, counted from the epoch. */
+function localDayIndex(at: number): number {
+  const day = new Date(at);
+  return Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()) / DAY_MS;
 }
 
 function VisitedRow({
