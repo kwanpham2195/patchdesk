@@ -32,7 +32,14 @@ type SidebarReviewRow = {
   readonly repo: GitHubRepoName;
   readonly number: PullRequestNumber;
   readonly title?: string;
-  readonly openedAt: IsoTimestamp;
+  /** What the column orders and date-groups by. A guess is allowed here. */
+  readonly sortedAt: IsoTimestamp;
+  /**
+   * When the maintainer last opened this pull request in Patchdesk, absent on a
+   * record stored before Patchdesk recorded opens. The row prints an age only
+   * from this, so it can never date a visit that never happened.
+   */
+  readonly lastOpenedAt?: IsoTimestamp;
   /** Absent while the pull request is still open. */
   readonly terminal?: SidebarTerminalState;
 };
@@ -71,7 +78,7 @@ export class SidebarListingService {
     if (unreadable > 0) await this.recordUnreadable(profileId, unreadable);
 
     const rows = [...reviews]
-      .sort((left, right) => openedAt(right).localeCompare(openedAt(left)))
+      .sort((left, right) => sortedAt(right).localeCompare(sortedAt(left)))
       .slice(0, SIDEBAR_ROW_LIMIT)
       .map((review): SidebarReviewRow => ({
         reviewId: review.id,
@@ -83,8 +90,9 @@ export class SidebarListingService {
         ...definedProps({
           title: review.title === "" ? undefined : review.title,
           terminal: terminalState(review),
+          lastOpenedAt: review.lastOpenedAt,
         }),
-        openedAt: openedAt(review),
+        sortedAt: sortedAt(review),
       }));
     return ok({ rows, unreadable });
   }
@@ -108,10 +116,12 @@ export class SidebarListingService {
 }
 
 /**
- * `updatedAt` stands in for Reviews written before `lastOpenedAt` shipped, so
- * a record from an earlier build still sorts and dates somewhere sensible.
+ * Where a row sits in the list. `updatedAt` stands in for a Review written
+ * before `lastOpenedAt` shipped, so a record from an earlier build still lands
+ * somewhere sensible. GitHub activity bumps `updatedAt`, so this instant is a
+ * guess about the visit and never reaches the row as an age.
  */
-function openedAt(review: Review): IsoTimestamp {
+function sortedAt(review: Review): IsoTimestamp {
   return review.lastOpenedAt ?? review.updatedAt;
 }
 
