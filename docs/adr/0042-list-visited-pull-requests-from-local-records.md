@@ -25,9 +25,10 @@ that pull request. The column issues no GitHub request.
 
 `GET /v1/sidebar/reviews?profileId=` is the whole data path.
 `SidebarListingService.list` reads `ReviewStore.list` for that one profile,
-sorts by the opened instant descending, and slices to `SIDEBAR_ROW_LIMIT`,
+sorts by the ordering instant descending, and slices to `SIDEBAR_ROW_LIMIT`,
 which is 20. A row carries the review id, `owner`, `repo`, the number, an
-optional title, and the opened instant — nothing a GitHub read would supply.
+optional title, the instant it is ordered and grouped by, and — only where
+Patchdesk recorded one — the last open. Nothing a GitHub read would supply.
 
 A row names the repository only when the listed rows span more than one, and
 names the owner only when they span more than one owner; a record with no
@@ -48,9 +49,14 @@ persisted as one local boolean.
 The column follows prototype variant D2 in details the first cut of it dropped.
 The age is compact — `4h`, `2d` — through a new `formatCompactRelativeTime`,
 because a fixed-width column cannot spare `4 h ago`, and the exact instant is
-on the `<time>` element's title. The header strip is back, carrying the active
-workspace's label, and the native scrollbar is styled thin and low contrast,
-because the shared `ScrollArea` draws a zero-width thumb here.
+on the `<time>` element's title. It counts elapsed time all the way up and
+names no calendar day, because the date header above the row already answers
+that question and the two answers disagree across local midnight: twenty-six
+elapsed hours can sit under `THIS WEEK`, where a row reading `yesterday` would
+contradict the header it is filed under. One line does not answer the same
+question twice. The header strip is back, carrying the active workspace's
+label, and the native scrollbar is styled thin and low contrast, because the
+shared `ScrollArea` draws a zero-width thumb here.
 
 Every click routes through the existing `navigate()` guard, so a pending GitHub
 write parks the destination behind the confirmation dialog exactly as it does
@@ -106,9 +112,16 @@ it dates the last write to the record rather than the observation.
 The word is "seen" because that is the whole claim. Three of the four sites
 that write `observedAt` stamp it from Patchdesk's own clock next to the
 confirming GitHub read: `ReviewObservationService`'s `now()`, the merge write
-controller's `startedAt`, and `ReviewRefreshService`'s `refreshedAt`. Only
-`ReviewRecoveryService` uses GitHub's own `mergedAt`, and only for a merge. The
-marker therefore says when Patchdesk saw the state, not when GitHub reached it.
+controller's `startedAt`, and `ReviewRefreshService`'s `refreshedAt`. The
+fourth is `ReviewRecoveryService`, which stamps GitHub's own `mergedAt` for a
+merge and Patchdesk's clock for a close, so on that one path the marker dates
+GitHub rather than Patchdesk: a merge whose outcome was lost and reconciled at
+the next boot can read `Merged · seen 3d` for something Patchdesk learned
+minutes ago. Everywhere else the marker says when Patchdesk saw the state, not
+when GitHub reached it. Either way the date is a first sighting rather than a
+running one — `ReviewObservationService`'s `observeUnlocked` returns early on a
+Terminal record, so a stored state is never observed again and its date never
+moves.
 
 ### This reinstates the listing ADR 0031 removed
 
@@ -139,26 +152,49 @@ not the maintainer's own, and a pull request nobody has looked at in a week
 floats to the top when someone comments on it.
 
 `markReviewOpened` writes `lastOpenedAt`, and the workbench controller records
-it in one place: `projectOpenedUnlocked`, which writes only once a projection
-has come back. Every path that returns a projection therefore records the open,
-and an open the maintainer was refused — a Terminal record turned away by
-`openMerged`, or a projection that failed — records nothing and cannot rank a
-pull request nobody reached. `title` rides the same write. `openUnlocked` takes
+it in two: `createFreshReview` stamps the record it is creating, and
+`projectOpenedUnlocked` writes only once a projection has come back. A Review
+Patchdesk had to restart comes through the first, so it projects stably rather
+than stamping a second time under a fresh clock. Every path that returns a
+projection therefore records the open exactly once, and an open the maintainer
+was refused — a Terminal record turned away by `openMerged`, or a projection
+that failed — records nothing and cannot rank a pull request nobody reached. `title` rides the same write. `openUnlocked` takes
 it from `ReviewSession.prContext.title`; `load` holds no session, so it fills a
 missing title from the projection it already built. The save is best effort:
 `ReviewStore.save` takes a compare-and-set token, and a lost race or any storage
 failure is logged while the open continues with the record that was loaded.
 Bookkeeping for a sidebar must never fail the open the maintainer asked for.
 
-Restoring the last destination counts as opening it. The column navigates to the
-workbench rather than opening a Review itself, so its own click arrives through
-`load`, which makes `load` a maintainer's gesture and not boot bookkeeping.
-Recording only on the `open` paths left the feature's primary click unable to
-reorder the list it belongs to: clicking a row moved nothing.
+Restoring the last destination counts as opening it, and so does the column's
+own click: the column navigates to the workbench rather than opening a Review
+itself, so both reach `load` through `openStoredReviewById`. Recording only on
+the `open` paths left the feature's primary click unable to reorder the list it
+belongs to: clicking a row moved nothing.
 
-Records written before this shipped have neither field. They fall back to
-`updatedAt` for the sort and to the `#number` reference for the label, which is
-why an old row keeps printing its number until the next time it is opened.
+`load` is not only those two, though. Five more callers reach it — the reload
+after a publish, the reload after a merge, the reload when an Insight run
+finishes, and the two server-side recovery routes — and every one of them
+re-reads a workbench that never left the screen. Recording those reordered the
+column for something the maintainer had not opened. The request therefore
+carries an explicit `recordOpen`, set only by the caller that is a real open;
+the other five reload the workbench and stamp nothing. The claim belongs to the
+caller because the renderer knows which request it is making and the controller
+cannot tell. It has to be this exact: the field is called `lastOpenedAt` and the
+column prints it under a header reading "recent", so it has to mean an open.
+
+Records written before this shipped have neither field, and a row carries two
+instants for their sake. `sortedAt` is what the column orders and date-groups
+by, and still falls back to `updatedAt`; `lastOpenedAt` is the recorded open,
+and the printed age is drawn from that alone, so a row with no recorded open
+prints no age at all. Such a row also falls back to the `#number` reference for
+its label, which is why it keeps printing its number until the next time it is
+opened.
+
+The two are separate because `updatedAt` is GitHub's activity rather than the
+maintainer's: on a workspace whose records predate this branch, 13 of 20 rows
+printed an `openedAt` equal to the terminal `observedAt` to the millisecond — a
+merge observation wearing a visit's clothes. Ordering keeps the fallback, since
+ordering is a guess and a printed age is a claim.
 
 ### The record schema stays at version 2
 
