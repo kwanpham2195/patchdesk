@@ -13,6 +13,7 @@ import { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
 import { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
+import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { InsightStore } from "../adapters/storage/insight-store";
 import { StorageManagementService } from "../services/storage-management-service";
@@ -175,6 +176,7 @@ export async function buildLocalApiStores(
     reviews,
     insights,
     mergeOperations: new MergeOperationStore(paths),
+    writeOperations: new ReviewWriteOperationStore(paths),
     artifacts: storageArtifacts,
     paths,
     lifecycleGate,

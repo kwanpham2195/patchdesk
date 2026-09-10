@@ -96,6 +96,20 @@ export async function writeAtomicFile(
     return err(storageFailure("write", "io"));
   }
 }
+
+/** Remove one file or directory tree; already absent counts as removed. */
+export async function removePath(
+  path: string,
+): Promise<Result<void, StorageFailure>> {
+  try {
+    await rm(path, { recursive: true, force: true });
+    return ok(undefined);
+  } catch (cause: unknown) {
+    if (isNotFound(cause)) return ok(undefined);
+    return err(storageFailure("write", "io"));
+  }
+}
+
 function storageFailure(
   operation: StorageFailure["operation"],
   reason: StorageFailure["reason"],

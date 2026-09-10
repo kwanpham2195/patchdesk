@@ -12,6 +12,7 @@ import { parseReview, type Review } from "../../domain/review";
 import {
   isNotFound,
   readJsonFile,
+  removePath,
   writeAtomicJson,
   type StorageFailure,
 } from "./json-file";
@@ -100,6 +101,23 @@ export class ReviewStore {
         value,
       );
     });
+  }
+
+  /**
+   * Remove one Review's whole directory: the record, its Insights, its
+   * observation journal and its recent-write journal. Removing only the record
+   * would leave those behind as orphans. A directory that is already gone is
+   * success. Serialized against `save` on the same key so a delete cannot
+   * interleave with a compare-and-set write.
+   */
+  async delete(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<void, StorageFailure>> {
+    const key = `${profileId}\n${reviewId}`;
+    return this.saveLocks.run(key, () =>
+      removePath(this.paths.reviewDirectory(profileId, reviewId)),
+    );
   }
 
   async findOwner(

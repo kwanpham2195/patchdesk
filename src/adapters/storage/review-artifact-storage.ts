@@ -12,7 +12,7 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
-import { isNotFound, type StorageFailure } from "./json-file";
+import { isNotFound, removePath, type StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
 /**
@@ -574,16 +574,6 @@ function isSafeEntryName(input: string): boolean {
     !input.includes("\\") &&
     input[0] !== "."
   );
-}
-
-async function removePath(path: string): Promise<Result<void, StorageFailure>> {
-  try {
-    await rm(path, { recursive: true, force: true });
-    return ok(undefined);
-  } catch (cause: unknown) {
-    if (isNotFound(cause)) return ok(undefined);
-    return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
-  }
 }
 
 type LimitedIo = <T>(work: () => Promise<T>) => Promise<T>;

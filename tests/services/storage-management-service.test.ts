@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import {
+  createReviewId,
   createReviewSessionId,
   parseGitHubHost,
   parseGitHubOwner,
@@ -96,6 +97,9 @@ async function fixture(
     }>;
     readonly removeSessionErrors?: number;
     readonly removeQuarantinedErrors?: number;
+    readonly deleteReviewErrors?: number;
+    readonly writeOperation?: unknown;
+    readonly writeOperationFails?: boolean;
     readonly diagnostics?: unknown;
   } = {},
 ) {
@@ -114,6 +118,22 @@ async function fixture(
       void sessionIdValue;
       if (removeSessionErrors > 0) {
         removeSessionErrors -= 1;
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "io",
+        });
+      }
+      return ok(undefined);
+    },
+  );
+  let deleteReviewErrors = options.deleteReviewErrors ?? 0;
+  const deleteReview = vi.fn(
+    async (profile: WorkspaceProfileId, reviewIdValue: ReviewId) => {
+      void profile;
+      void reviewIdValue;
+      if (deleteReviewErrors > 0) {
+        deleteReviewErrors -= 1;
         return err({
           _tag: "StorageFailure",
           operation: "write",
@@ -163,6 +183,14 @@ async function fixture(
         return options.review === undefined
           ? err({ reason: "not_found" })
           : ok(options.review);
+      },
+      delete: deleteReview,
+    },
+    writeOperations: {
+      async load() {
+        return options.writeOperationFails === true
+          ? err({ reason: "io" })
+          : ok(options.writeOperation);
       },
     },
     insights: {
@@ -220,7 +248,7 @@ async function fixture(
   const service = new StorageManagementService(
     storageDependencies(dependencies),
   );
-  return { service, removeSession, removeQuarantined, paths };
+  return { service, removeSession, removeQuarantined, deleteReview, paths };
 }
 
 describe("StorageManagementService", () => {
@@ -325,6 +353,77 @@ describe("StorageManagementService", () => {
       expect(value.removeSession).toHaveBeenCalledWith(profileId, sessionId);
     });
 
+    it("removes a terminal review's record along with its session", async () => {
+      const value = await fixture({
+        review: terminalReview,
+        sessions: [oldSession],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.deleteReview).toHaveBeenCalledWith(
+        profileId,
+        createReviewId(session.key),
+      );
+      expect(value.removeSession).toHaveBeenCalledWith(profileId, sessionId);
+      expect(value.deleteReview.mock.invocationCallOrder[0]).toBeLessThan(
+        // The session must outlive a failed record delete, so the next sweep
+        // still finds the pair.
+        value.removeSession.mock.invocationCallOrder[0] ?? 0,
+      );
+    });
+
+    it("leaves the session in place when the record delete fails", async () => {
+      const value = await fixture({
+        review: terminalReview,
+        sessions: [oldSession],
+        deleteReviewErrors: 1,
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.deleteReview).toHaveBeenCalledTimes(1);
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("keeps a terminal review holding an unreconciled write operation", async () => {
+      const value = await fixture({
+        review: terminalReview,
+        sessions: [oldSession],
+        writeOperation: { _tag: "ReviewWriteOperation" },
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.deleteReview).not.toHaveBeenCalled();
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("keeps a terminal review whose write operation cannot be read", async () => {
+      const value = await fixture({
+        review: terminalReview,
+        sessions: [oldSession],
+        writeOperationFails: true,
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.deleteReview).not.toHaveBeenCalled();
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("leaves a non-terminal review's record and session alone", async () => {
+      const value = await fixture({
+        review: { currentSessionId: undefined, status: { _tag: "Open" } },
+        sessions: [oldSession],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.deleteReview).not.toHaveBeenCalled();
+      expect(value.removeSession).not.toHaveBeenCalled();
+    });
+
     it("keeps a terminal session younger than 14 days", async () => {
       const value = await fixture({
         review: terminalReview,
@@ -390,6 +489,7 @@ describe("StorageManagementService", () => {
         value.service.sweepRetained(profileId, at),
       ).resolves.toMatchObject({ _tag: "ok" });
       expect(value.removeSession).toHaveBeenCalledWith(profileId, sessionId);
+      expect(value.deleteReview).not.toHaveBeenCalled();
     });
 
     it("keeps an orphaned session younger than 14 days", async () => {
@@ -537,6 +637,7 @@ describe("StorageManagementService", () => {
           category: "cleanup",
           phase: "retention_sweep",
           sessionId,
+          detail: "discarded terminal session and its review record",
         }),
       );
       expect(record).toHaveBeenCalledWith(

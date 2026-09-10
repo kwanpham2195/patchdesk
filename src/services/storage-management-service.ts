@@ -2,6 +2,7 @@ import { err, ok, type Result } from "../domain/result";
 import { definedProps } from "../domain/defined-props";
 import {
   type IsoTimestamp,
+  type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
@@ -14,6 +15,7 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { MergeOperationStore } from "../adapters/storage/merge-operation-store";
+import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import { createReviewId } from "../domain/ids";
 import {
   parseQuarantineEntryName,
@@ -66,9 +68,10 @@ export type StorageManagementFailure =
 type Dependencies = {
   readonly profiles: ProfileStore;
   readonly sessions: ReviewSessionStore;
-  readonly reviews: Pick<ReviewStore, "load">;
+  readonly reviews: Pick<ReviewStore, "load" | "delete">;
   readonly insights: Pick<InsightStore, "load">;
   readonly mergeOperations: Pick<MergeOperationStore, "load">;
+  readonly writeOperations: Pick<ReviewWriteOperationStore, "load">;
   readonly artifacts: ReviewArtifactStorage;
   readonly paths: PatchdeskPaths;
   readonly trash?: TrashMover;
@@ -316,10 +319,8 @@ export class StorageManagementService {
       return false;
     }
     if (running.value) return false;
-    const review = await this.deps.reviews.load(
-      profileId,
-      createReviewId(session.key),
-    );
+    const reviewId = createReviewId(session.key);
+    const review = await this.deps.reviews.load(profileId, reviewId);
     if (review._tag === "err" && review.error.reason !== "not_found") {
       await this.recordSweepDiagnostic(
         profileId,
@@ -337,6 +338,17 @@ export class StorageManagementService {
       review.value.status._tag === "Terminal" &&
       isOlderThan(session.updatedAt, at, RETAIN_TERMINAL_SESSIONS_MS);
     if (!orphaned && !terminalAndOld) return false;
+    if (terminalAndOld) {
+      const deleted = await this.deleteSweptRecord(
+        profileId,
+        session.id,
+        reviewId,
+      );
+      // Leaving the session in place makes the next sweep retry the pair; the
+      // sweep iterates sessions, so a record outliving its session is never
+      // revisited.
+      if (!deleted) return false;
+    }
     const removed = await this.deps.artifacts.removeSession(
       profileId,
       session.id,
@@ -353,8 +365,56 @@ export class StorageManagementService {
     await this.recordSweepDiagnostic(
       profileId,
       session.id,
-      orphaned ? "discarded orphaned session" : "discarded terminal session",
+      orphaned
+        ? "discarded orphaned session"
+        : "discarded terminal session and its review record",
     );
+    return true;
+  }
+
+  /**
+   * Remove one terminal Review's record before its session is swept. An
+   * unreconciled GitHub write is not something a fourteen-day-old terminal
+   * Review can have, so finding one is a reason to leave the pair alone rather
+   * than an expected path. Returns false when the record must stay.
+   */
+  private async deleteSweptRecord(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    reviewId: ReviewId,
+  ): Promise<boolean> {
+    const writeOperation = await this.deps.writeOperations.load(
+      profileId,
+      reviewId,
+    );
+    if (writeOperation._tag === "err") {
+      await this.recordSweepDiagnostic(
+        profileId,
+        sessionId,
+        "review write-operation check failed",
+        true,
+      );
+      return false;
+    }
+    if (writeOperation.value !== undefined) {
+      await this.recordSweepDiagnostic(
+        profileId,
+        sessionId,
+        "kept review record with an unreconciled write operation",
+        true,
+      );
+      return false;
+    }
+    const deleted = await this.deps.reviews.delete(profileId, reviewId);
+    if (deleted._tag === "err") {
+      await this.recordSweepDiagnostic(
+        profileId,
+        sessionId,
+        "review record removal failed",
+        true,
+      );
+      return false;
+    }
     return true;
   }
 
