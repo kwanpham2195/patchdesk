@@ -140,7 +140,10 @@ export function useInboxReviewOpening({
       try {
         const value = await requestJson("/v1/reviews/load", {
           method: "POST",
-          body: { profileId, reviewId },
+          // This is the maintainer reaching the Review — the visited column's
+          // click or the boot restore — so it stamps the open. The reloads
+          // after a publish, a merge or an Insight run send no such claim.
+          body: { profileId, reviewId, recordOpen: true },
         });
         const parsed = parseWorkbenchResponse(value);
         if (parsed === undefined)

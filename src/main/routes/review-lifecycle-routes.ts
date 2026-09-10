@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import {
   array,
+  boolean,
   integer,
   minLength,
   minValue,
@@ -51,7 +52,7 @@ export function registerReviewLifecycleRoutes(
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/merge/recover", async (context) => {
-    const parsed = safeParse(reviewLoadSchema, await jsonBody(context));
+    const parsed = safeParse(reviewRecoverSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
@@ -161,6 +162,13 @@ const reviewOpenSchema = strictObject({
   number: pipe(number(), integer(), minValue(1)),
 });
 const reviewLoadSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  /** Set only by the maintainer's own open; see `ReviewWorkbenchController.load`. */
+  recordOpen: optional(boolean()),
+});
+/** The recovery routes reload the workbench already on screen, so they never carry `recordOpen`. */
+const reviewRecoverSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
 });

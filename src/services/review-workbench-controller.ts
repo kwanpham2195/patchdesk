@@ -321,8 +321,12 @@ export class ReviewWorkbenchController {
       reviewId,
       expectedTerminalState,
     );
-    return initialized._tag === "err"
-      ? initialized
+    if (initialized._tag === "err") return initialized;
+    // A restarted Review came through `createFreshReview`, which already
+    // stamped and saved the open; recording again would save it twice, which
+    // is what `openFresh` projects stably to avoid.
+    return reset.value.restarted
+      ? this.projectStableUnlocked(initialized.value)
       : this.projectOpenedUnlocked(initialized.value, reset.value.title);
   }
 
@@ -463,13 +467,15 @@ export class ReviewWorkbenchController {
   }
 
   /**
-   * `load`'s projection. Reaching a Review this way — the sidebar's own click,
-   * or restoring the last destination at launch — counts as opening it, so it
-   * records the open too, taking the title from the projection it already
-   * built rather than reading the session for the same value.
+   * `load`'s projection, taken under the Review's lock. `recordOpen` is the
+   * caller's own claim that this request is the maintainer opening the Review
+   * rather than a reload of the workbench already on screen; only that stamps
+   * `lastOpenedAt`. The title comes from the projection it already built,
+   * because the load path holds no session to read it from.
    */
-  private async projectStableRecordingOpen(
+  private async projectStableLocked(
     review: Review,
+    recordOpen: boolean,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     return this.lifecycle.coordinator.withReviewLock(
       review.identity.profileId,
@@ -479,12 +485,14 @@ export class ReviewWorkbenchController {
           review.identity.profileId,
           review.id,
         );
-        return current._tag === "ok"
+        if (current._tag === "err")
+          return err({
+            reason:
+              current.error.reason === "not_found" ? "not_found" : "storage",
+          });
+        return recordOpen
           ? this.projectOpenedUnlocked(current.value, undefined)
-          : err({
-              reason:
-                current.error.reason === "not_found" ? "not_found" : "storage",
-            });
+          : this.projectStableUnlocked(current.value);
       },
     );
   }
@@ -521,6 +529,14 @@ export class ReviewWorkbenchController {
       : projected;
   }
 
+  /**
+   * Projects a stored Review by id. `recordOpen` is how the caller says this
+   * is the maintainer opening it — the visited column's click, or restoring
+   * the persisted destination at launch — and only those stamp
+   * `lastOpenedAt`. Every other caller re-reads the workbench already on
+   * screen after a publish, a merge, an Insight run, or a recovery, and must
+   * leave the visited column's order alone; omitting the field says so.
+   */
   async load(
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this method is the controller's own I/O boundary parser (see class doc): the route only schema-validates shape, `load` re-parses every domain value itself.
     input: unknown,
@@ -531,6 +547,7 @@ export class ReviewWorkbenchController {
     const reviewId = parseReviewId(readObjectField(input, "reviewId"));
     if (profileId._tag === "err" || reviewId._tag === "err")
       return err({ reason: "invalid_input" });
+    const recordOpen = readObjectField(input, "recordOpen") === true;
     const recovered = await this.recoverObservation(
       profileId.value,
       reviewId.value,
@@ -544,7 +561,7 @@ export class ReviewWorkbenchController {
       return err({
         reason: review.error.reason === "not_found" ? "not_found" : "storage",
       });
-    return this.projectStableRecordingOpen(review.value);
+    return this.projectStableLocked(review.value, recordOpen);
   }
 
   /** Used only by `load`, which does not hold `open`'s coordinator lock. */
