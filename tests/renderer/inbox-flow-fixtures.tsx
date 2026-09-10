@@ -126,7 +126,6 @@ export const projection: WorkbenchResponse = {
  */
 export const SHARED_INBOX_ROUTES = {
   "/v1/logs": () => success(null),
-  "/v1/github/access": () => success({}),
   "/v1/environment": () => success({}),
 } satisfies Readonly<Record<string, DesktopRoute>>;
 

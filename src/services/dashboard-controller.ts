@@ -133,22 +133,17 @@ export class DashboardController {
   }
 
   /**
-   * `forceDetection` discards a cached negative/ephemeral detection and
-   * re-probes `gh` immediately. No caller passes it today: the setup
-   * checklist's "Re-check" action, the one that did, went away with
-   * `POST /v1/github/access`. Every caller (inbox/dashboard polling,
-   * `GET /v1/profiles`) takes the memoized reading, since those happen on a
-   * timer rather than in response to the user just having taken an action.
+   * Lists the saved profiles, falling back to a one-time `gh` detection when
+   * the store is empty. Every caller (inbox/dashboard polling,
+   * `GET /v1/profiles`) shares the same memoized detection for the life of
+   * this controller; nothing re-probes on demand.
    */
-  async listProfiles(
-    forceDetection = false,
-  ): Promise<
+  async listProfiles(): Promise<
     Result<ReadonlyArray<WorkspaceProfileConfig>, DashboardControllerFailure>
   > {
     const existing = await this.profiles.list();
     if (existing._tag === "err") return failure("storage");
     if (existing.value.length > 0) return ok(existing.value);
-    if (forceDetection) this.detectionMemo = undefined;
     if (this.detectionMemo === undefined) {
       this.detectionMemo = detectDefaultWorkspaceProfile(this.commands);
     }
@@ -160,8 +155,8 @@ export class DashboardController {
       // there is nothing valid to save yet; hand the renderer this ephemeral,
       // neutral profile so it can prompt for an account instead of writing an
       // unusable record or auto-selecting a profile that was never saved.
-      // The negative reading is memoized (see `detectionMemo`) until either
-      // a real profile is saved or `forceDetection` re-probes explicitly.
+      // The negative reading is memoized (see `detectionMemo`) until a real
+      // profile is saved.
       return ok([detected.value]);
     }
     const saved = await this.settings.saveProfile(detected.value);

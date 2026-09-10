@@ -513,10 +513,7 @@ function installDesktopApi(
           inbox: { rows: [], repositories: [], snapshot: {} },
         }),
       "/v1/environment": () => success({}),
-      // Neither of these is what any test here asserts on; both keep the
-      // `dashboard` body the file's previous catch-all returned, so the
-      // screen boots exactly as it did before.
-      "/v1/github/access": () => success(dashboard),
+      // No test here asserts on this, but the screen requests it on boot.
       "/v1/watchlist/suggestions": () => success([]),
     },
     {
