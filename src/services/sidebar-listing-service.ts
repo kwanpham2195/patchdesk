@@ -66,7 +66,11 @@ export class SidebarListingService {
         owner: review.identity.owner,
         repo: review.identity.repo,
         number: review.identity.prNumber,
-        ...definedProps({ title: review.title }),
+        // An empty stored title is no title: the renderer's row schema requires
+        // a non-empty string, and one such row must not fail the whole parse.
+        ...definedProps({
+          title: review.title === "" ? undefined : review.title,
+        }),
         openedAt: openedAt(review),
       }));
     return ok({ rows, unreadable });
