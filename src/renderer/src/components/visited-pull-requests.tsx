@@ -121,7 +121,12 @@ function VisitedRow({
 }): React.JSX.Element {
   // A Review opened before the route stored titles has none.
   const title = row.title ?? `${row.owner}/${row.repo}#${row.number}`;
-  const repo = showRepo ? `${row.owner}/${row.repo} ` : "";
+  // That fallback title is already the reference, so repeating it under itself
+  // would print the number twice; the age stands alone instead.
+  const reference =
+    row.title === undefined
+      ? ""
+      : `${showRepo ? `${row.owner}/${row.repo} ` : ""}#${row.number} · `;
   return (
     <button
       type="button"
@@ -144,7 +149,8 @@ function VisitedRow({
         </span>
         {/* The age is computed once per render; nothing ticks it. */}
         <span className="min-w-0 truncate tabular-nums text-[11px] text-muted-foreground">
-          {repo}#{row.number} · {formatRelativeTime(row.openedAt)}
+          {reference}
+          {formatRelativeTime(row.openedAt)}
         </span>
       </span>
     </button>

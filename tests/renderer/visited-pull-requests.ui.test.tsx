@@ -93,12 +93,20 @@ describe("VisitedPullRequests", () => {
     ).toBeTruthy();
   });
 
-  it("falls back to owner/repo#number when the record has no title", async () => {
+  it("falls back to owner/repo#number when the record has no title, and prints the number once", async () => {
     renderColumn({ rows: [untitled] });
 
-    expect(
-      await screen.findByRole("button", { name: /kwanpham2195\/herdr#7/ }),
-    ).toBeTruthy();
+    const row = await screen.findByRole("button", {
+      name: /kwanpham2195\/herdr#7/,
+    });
+    expect(row.textContent?.match(/#7/g)).toHaveLength(1);
+  });
+
+  it("keeps the number under a row that does have a title", async () => {
+    renderColumn({ rows: [titled] });
+
+    const row = await screen.findByRole("button", { name: /#125/ });
+    expect(row.textContent?.match(/#125/g)).toHaveLength(1);
   });
 
   it("marks the row of the open pull request as the current page", async () => {
