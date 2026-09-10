@@ -54,10 +54,9 @@ export function useAppNavigation(): AppNavigation {
   const performNavigation = useCallback((next: AppDestination): void => {
     setWorkbench((held) => {
       if (next.kind !== "workbench" || held === undefined) return undefined;
-      // Same derivation as `openWorkbench` in `app.tsx`, so a payload the route
-      // was built from is recognized as the one the route still names.
-      const heldReviewId = held.review?.id ?? held.session.id;
-      return heldReviewId === next.reviewId ? held : undefined;
+      // The same id `openWorkbench` in `app.tsx` routes by, so a payload the
+      // route was built from is recognized as the one the route still names.
+      return held.review.id === next.reviewId ? held : undefined;
     });
     setDestination(next);
     window.localStorage.setItem("patchdesk.destination", destinationKey(next));

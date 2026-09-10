@@ -164,7 +164,7 @@ export class ReviewStore {
     for (const entry of entries) {
       const reviewId = parseReviewId(entry);
       if (reviewId._tag === "err") continue;
-      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- a profile holds few Reviews, and reading them one at a time holds one descriptor open instead of one per record
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- mapConcurrent would fan these reads out, as insight-recovery.ts does over profiles; serial is the choice here because that caller already runs four listings at once, so one open descriptor per listing keeps the total bounded
       const review = await this.load(profileId, reviewId.value);
       if (review._tag === "err") {
         // A vanished file is an ordinary race with deletion, not a lost record.

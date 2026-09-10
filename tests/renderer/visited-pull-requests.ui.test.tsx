@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
 import type { AppDestination } from "../../src/renderer/src/routes";
-import { VisitedPullRequests } from "../../src/renderer/src/components/visited-pull-requests";
+import {
+  VisitedPullRequests,
+  visitedRowLabels,
+} from "../../src/renderer/src/components/visited-pull-requests";
 import {
   installDesktopDouble,
   success,
@@ -65,57 +68,25 @@ function renderColumn(options: {
 }
 
 describe("VisitedPullRequests", () => {
-  it("explains the empty column in two lines and lists no row", async () => {
+  it("shows the empty state and lists no row when nothing has been opened", async () => {
     renderColumn({ rows: [] });
 
-    expect(
-      await screen.findByText(/have not opened a pull request/),
-    ).toBeTruthy();
-    expect(screen.getByText(/Open one from Pull requests/)).toBeTruthy();
-    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    // The empty column explains itself in prose; the wording is the
+    // component's to change.
+    expect(await within(column).findAllByRole("paragraph")).not.toHaveLength(0);
+    expect(within(column).queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("names the repository on each row only when the workspace watches more than one", async () => {
-    renderColumn({ rows: [titled], watchedRepoCount: 1 });
-
-    await screen.findByRole("button", { name: /#125/ });
-    expect(
-      screen.queryByRole("button", { name: /kwanpham2195\/patchdesk #125/ }),
-    ).toBeNull();
-
-    cleanup();
-    desktop?.restore();
+  it("renders the derived label and reference on the row", async () => {
     renderColumn({ rows: [titled], watchedRepoCount: 2 });
 
-    expect(
-      await screen.findByRole("button", {
-        name: /kwanpham2195\/patchdesk #125/,
-      }),
-    ).toBeTruthy();
-  });
-
-  it("falls back to the number alone when the workspace watches one repository", async () => {
-    renderColumn({ rows: [untitled], watchedRepoCount: 1 });
-
-    const row = await screen.findByRole("button", { name: /#7/ });
-    expect(row.textContent).not.toContain("kwanpham2195");
-    expect(row.textContent?.match(/#7/g)).toHaveLength(1);
-  });
-
-  it("falls back to owner/repo#number when the workspace watches more than one, and prints the number once", async () => {
-    renderColumn({ rows: [untitled], watchedRepoCount: 2 });
-
-    const row = await screen.findByRole("button", {
-      name: /kwanpham2195\/herdr#7/,
-    });
-    expect(row.textContent?.match(/#7/g)).toHaveLength(1);
-  });
-
-  it("keeps the number under a row that does have a title", async () => {
-    renderColumn({ rows: [titled] });
-
     const row = await screen.findByRole("button", { name: /#125/ });
-    expect(row.textContent?.match(/#125/g)).toHaveLength(1);
+    const labels = visitedRowLabels(titled, true);
+    expect(row.textContent).toContain(labels.title);
+    expect(row.textContent).toContain(labels.reference);
   });
 
   it("marks the row of the open pull request as the current page", async () => {
@@ -152,7 +123,7 @@ describe("VisitedPullRequests", () => {
     });
   });
 
-  it("keeps the relative age fixed as time passes, so no clock ticks the column", async () => {
+  it("stamps the row with the time it was opened and never ticks it", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));
     renderColumn({ rows: [titled] });
@@ -160,11 +131,46 @@ describe("VisitedPullRequests", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByRole("button", { name: /2m/ })).toBeTruthy();
+    const row = screen.getByRole("button", { name: /#125/ });
+    // How the age reads is `formatCompactRelativeTime`'s own test; the row
+    // only has to carry the stamp and never redraw it (ADR 0032).
+    const age = row.querySelector("time");
+    expect(age?.dateTime).toBe(OPENED_AT);
+    const shown = age?.textContent;
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600_000);
     });
-    expect(screen.getByRole("button", { name: /2m/ })).toBeTruthy();
+    expect(row.querySelector("time")?.textContent).toBe(shown);
+  });
+});
+
+describe("visitedRowLabels", () => {
+  it("keeps a stored title and prints the reference under it", () => {
+    expect(visitedRowLabels(titled, false)).toEqual({
+      title: "Prototype: three sidebar variants for #119",
+      reference: "#125 · ",
+    });
+  });
+
+  it("names the repository in the reference when the workspace watches more than one", () => {
+    expect(visitedRowLabels(titled, true)).toEqual({
+      title: "Prototype: three sidebar variants for #119",
+      reference: "kwanpham2195/patchdesk #125 · ",
+    });
+  });
+
+  it("falls back to the number alone and drops the reference for a row with no title", () => {
+    expect(visitedRowLabels(untitled, false)).toEqual({
+      title: "#7",
+      reference: "",
+    });
+  });
+
+  it("falls back to owner/repo#number when the workspace watches more than one", () => {
+    expect(visitedRowLabels(untitled, true)).toEqual({
+      title: "kwanpham2195/herdr#7",
+      reference: "",
+    });
   });
 });

@@ -4,10 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
 import { useInboxReviewOpening } from "../../src/renderer/src/flows/use-inbox-review-opening";
-import { installDesktopDouble } from "./fake-desktop-response";
+import { installDesktopDouble, success } from "./fake-desktop-response";
 import {
   asJsonBody,
   dashboard,
+  deferred,
   projection,
   savedRow,
   SHARED_INBOX_ROUTES,
@@ -121,5 +122,74 @@ describe("useInboxReviewOpening notice timing", () => {
     });
     expect(result.current.openError).toBeUndefined();
     expect(result.current.openingOperations.size).toBe(0);
+  });
+});
+
+/**
+ * Two entry points can name one stored Review in the same event turn: the
+ * second is turned away because the load is already in flight, so the hook
+ * has to answer to whichever of them is still live when the payload arrives.
+ */
+describe("useInboxReviewOpening stored-review loading", () => {
+  function renderStoredReviewOpening() {
+    const load = deferred<ReturnType<typeof success>>();
+    installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/load": () => load.promise,
+    });
+    const onOpenWorkbench = vi.fn();
+    const { result } = renderHook(
+      () => useInboxReviewOpening({ dashboard, onOpenWorkbench }),
+      { wrapper: BusyProvider },
+    );
+    return { load, onOpenWorkbench, result };
+  }
+
+  it("lands the payload on the caller still live when the one that started the load has gone", async () => {
+    const { load, onOpenWorkbench, result } = renderStoredReviewOpening();
+    let firstCallerActive = true;
+
+    act(() => {
+      void result.current.openStoredReviewById(
+        "profile",
+        "review-1",
+        () => firstCallerActive,
+      );
+      void result.current.openStoredReviewById(
+        "profile",
+        "review-1",
+        () => true,
+      );
+    });
+    // The flow that asked first unmounts while the single request is in
+    // flight, which is what remounting InboxFlow behind the workbench does.
+    firstCallerActive = false;
+    load.resolve(success(asJsonBody(projection)));
+    await settle();
+
+    expect(onOpenWorkbench).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the payload when every caller waiting on the load has gone", async () => {
+    const { load, onOpenWorkbench, result } = renderStoredReviewOpening();
+    let anyCallerActive = true;
+
+    act(() => {
+      void result.current.openStoredReviewById(
+        "profile",
+        "review-1",
+        () => anyCallerActive,
+      );
+      void result.current.openStoredReviewById(
+        "profile",
+        "review-1",
+        () => anyCallerActive,
+      );
+    });
+    anyCallerActive = false;
+    load.resolve(success(asJsonBody(projection)));
+    await settle();
+
+    expect(onOpenWorkbench).not.toHaveBeenCalled();
   });
 });

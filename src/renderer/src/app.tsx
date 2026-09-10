@@ -227,7 +227,7 @@ function AppContent({
       setVisitedReloadKey((key) => key + 1);
       performNavigation({
         kind: "workbench",
-        reviewId: next.review?.id ?? next.session.id,
+        reviewId: next.review.id,
       });
     },
     [performNavigation, setWorkbench],

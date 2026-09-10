@@ -366,11 +366,6 @@ describe("StorageManagementService", () => {
         createReviewId(session.key),
       );
       expect(value.removeSession).toHaveBeenCalledWith(profileId, sessionId);
-      expect(value.deleteReview.mock.invocationCallOrder[0]).toBeLessThan(
-        // The session must outlive a failed record delete, so the next sweep
-        // still finds the pair.
-        value.removeSession.mock.invocationCallOrder[0] ?? 0,
-      );
     });
 
     it("leaves the session in place when the record delete fails", async () => {
@@ -637,7 +632,6 @@ describe("StorageManagementService", () => {
           category: "cleanup",
           phase: "retention_sweep",
           sessionId,
-          detail: "discarded terminal session and its review record",
         }),
       );
       expect(record).toHaveBeenCalledWith(

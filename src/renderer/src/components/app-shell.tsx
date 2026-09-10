@@ -86,9 +86,9 @@ export function AppShell({
   /** Opens a parsed pull request through the root Review-opening owner. */
   readonly onOpenPullRequest?: (ref: PullRequestRef) => void;
   /** Re-reads the visited pull requests whenever it moves: `App` bumps it on every Review open. */
-  readonly visitedReloadKey?: number;
+  readonly visitedReloadKey: number;
   /** Watched repositories in the active workspace; two or more put `owner/repo` on each visited row. */
-  readonly watchedRepoCount?: number;
+  readonly watchedRepoCount: number;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
@@ -294,8 +294,8 @@ export function AppShell({
             profileId={activeProfileId ?? ""}
             destination={destination}
             onNavigate={onNavigate}
-            reloadKey={visitedReloadKey ?? 0}
-            watchedRepoCount={watchedRepoCount ?? 0}
+            reloadKey={visitedReloadKey}
+            watchedRepoCount={watchedRepoCount}
             workspaceLabel={activeProfileLabel}
           />
         )}
