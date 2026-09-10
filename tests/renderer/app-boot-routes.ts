@@ -9,7 +9,6 @@ export const APP_BOOT_ROUTES = {
   "/v1/logs": () => success(null),
   "/v1/settings": () => success({}),
   "/v1/environment": () => success({}),
-  "/v1/github/access": () => success({}),
   "/v1/watchlist/suggestions": () => success([]),
   "/v1/sidebar/reviews": () => success({ rows: [], unreadable: 0 }),
 } satisfies Readonly<Record<string, DesktopRoute>>;
