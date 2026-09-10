@@ -8,6 +8,7 @@ import type { RawJsonValue } from "../../src/domain/json";
 import type { AppDestination } from "../../src/renderer/src/routes";
 import {
   VisitedPullRequests,
+  visitedDateGroupLabel,
   visitedRowLabels,
 } from "../../src/renderer/src/components/visited-pull-requests";
 import {
@@ -28,6 +29,22 @@ afterEach(() => {
 
 const OPENED_AT = "2026-09-10T09:58:00.000Z";
 const NOW = "2026-09-10T10:00:00.000Z";
+// Midday, so a whole number of days either side of it stays on the same local
+// calendar day in every timezone the tests may run in.
+const MIDDAY = Date.parse("2026-09-10T12:00:00.000Z");
+const DAY_MS = 86_400_000;
+
+/** A row whose only interesting field is which date bucket it lands in. */
+function aged(number: number, daysAgo: number): RawJsonValue {
+  return {
+    reviewId: `review-${number}`,
+    owner: "kwanpham2195",
+    repo: "patchdesk",
+    number,
+    title: `Opened ${daysAgo} days ago`,
+    openedAt: new Date(MIDDAY - daysAgo * DAY_MS).toISOString(),
+  };
+}
 
 const titled = {
   reviewId: "review-titled",
@@ -185,7 +202,89 @@ describe("VisitedPullRequests", () => {
     });
     expect(row.querySelector("time")?.textContent).toBe(shown);
   });
+
+  it("heads each date bucket the rows reach, in the order the route returned them", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MIDDAY);
+    renderColumn({ rows: [aged(1, 0), aged(2, 1), aged(3, 4), aged(4, 30)] });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    expect(headings(column)).toEqual([
+      "Today",
+      "Yesterday",
+      "This week",
+      "Earlier",
+    ]);
+    // Headers are inserted between the rows; the order the route sent stands.
+    expect(
+      within(column)
+        .getAllByRole("button")
+        .map((row) => row.getAttribute("title")),
+    ).toEqual([
+      "Opened 0 days ago",
+      "Opened 1 days ago",
+      "Opened 4 days ago",
+      "Opened 30 days ago",
+    ]);
+  });
+
+  it("names no bucket that holds no row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MIDDAY);
+    renderColumn({ rows: [aged(1, 0), aged(2, 30)] });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    expect(headings(column)).toEqual(["Today", "Earlier"]);
+  });
 });
+
+/** The date headers standing in the column, top to bottom. */
+function headings(column: HTMLElement): ReadonlyArray<string> {
+  return within(column)
+    .getAllByRole("paragraph")
+    .map((paragraph) => paragraph.textContent ?? "")
+    .filter((text) =>
+      ["Today", "Yesterday", "This week", "Earlier"].includes(text),
+    );
+}
+
+describe("visitedDateGroupLabel", () => {
+  it("keeps every row opened on the current calendar day under Today", () => {
+    expect(visitedDateGroupLabel(iso(0), MIDDAY)).toBe("Today");
+    // A clock that ran ahead of the stored stamp still reads as the day it is.
+    expect(visitedDateGroupLabel(iso(-1), MIDDAY)).toBe("Today");
+  });
+
+  it("names the day before, and stops naming it at two", () => {
+    expect(visitedDateGroupLabel(iso(1), MIDDAY)).toBe("Yesterday");
+    expect(visitedDateGroupLabel(iso(2), MIDDAY)).toBe("This week");
+  });
+
+  it("holds the week open to the sixth day back and cuts at the seventh", () => {
+    expect(visitedDateGroupLabel(iso(4), MIDDAY)).toBe("This week");
+    expect(visitedDateGroupLabel(iso(6), MIDDAY)).toBe("This week");
+    expect(visitedDateGroupLabel(iso(7), MIDDAY)).toBe("Earlier");
+  });
+
+  it("puts a month-old row, and a stamp it cannot read, in Earlier", () => {
+    expect(visitedDateGroupLabel(iso(30), MIDDAY)).toBe("Earlier");
+    expect(visitedDateGroupLabel("not a timestamp", MIDDAY)).toBe("Earlier");
+  });
+});
+
+function iso(daysAgo: number): string {
+  return new Date(MIDDAY - daysAgo * DAY_MS).toISOString();
+}
 
 describe("visitedRowLabels", () => {
   it("keeps a stored title and prints the reference under it", () => {
