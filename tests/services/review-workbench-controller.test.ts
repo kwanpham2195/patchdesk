@@ -196,21 +196,31 @@ describe("ReviewWorkbenchController", () => {
     );
   });
 
-  it("records the open when the sidebar reaches a Review through load", async () => {
+  it("records the open with the projection's title when the sidebar reaches a Review through load", async () => {
     const openedAt = "2026-09-10T09:00:00.000Z";
     const value = fixture();
+    value.project.loadRepresented.mockResolvedValue(
+      // SAFETY: the controller returns this projection to its caller
+      // untouched and reads only the pull request title from it, so this
+      // narrowing of ReviewWorkbenchProjection is all the test needs.
+      ok({ pullRequest: { title: "Add the sidebar" } }) as never,
+    );
     vi.useFakeTimers();
     vi.setSystemTime(new Date(openedAt));
     try {
       await expect(
         value.controller.load({ profileId, reviewId }),
-      ).resolves.toEqual({ _tag: "ok", value: projection });
+      ).resolves.toMatchObject({ _tag: "ok" });
     } finally {
       vi.useRealTimers();
     }
 
     expect(value.lifecycle.reviews.save).toHaveBeenCalledWith(
-      expect.objectContaining({ lastOpenedAt: openedAt, updatedAt: openedAt }),
+      expect.objectContaining({
+        title: "Add the sidebar",
+        lastOpenedAt: openedAt,
+        updatedAt: openedAt,
+      }),
       at,
     );
   });
