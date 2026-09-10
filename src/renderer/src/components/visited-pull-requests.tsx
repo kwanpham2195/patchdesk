@@ -30,7 +30,6 @@ export function VisitedPullRequests({
   destination,
   onNavigate,
   reloadKey,
-  watchedRepoCount,
   workspaceLabel,
 }: {
   /** Empty while a workspace switch is in flight, which draws the frame alone. */
@@ -39,8 +38,6 @@ export function VisitedPullRequests({
   readonly onNavigate: (destination: AppDestination) => void;
   /** Moves on every Review open, so a just-opened pull request appears without a relaunch. */
   readonly reloadKey: number;
-  /** `owner/repo` on every row is noise when the workspace watches one repository. */
-  readonly watchedRepoCount: number;
   /** The active workspace's label for the header strip; undefined while a switch is in flight. */
   readonly workspaceLabel: string | undefined;
 }): React.JSX.Element {
@@ -76,6 +73,11 @@ export function VisitedPullRequests({
 
   const openReviewId =
     destination.kind === "workbench" ? destination.reviewId : undefined;
+  // The count is over the rows on screen rather than the watchlist, so a column
+  // listing one repository labels its rows bare even when the workspace watches
+  // several: the label is there to tell apart what is visible.
+  const showRepo =
+    state.kind === "loaded" && distinctRepositoryCount(state.rows) > 1;
 
   return (
     <aside
@@ -112,7 +114,7 @@ export function VisitedPullRequests({
                 key={row.reviewId}
                 row={row}
                 selected={row.reviewId === openReviewId}
-                showRepo={watchedRepoCount > 1}
+                showRepo={showRepo}
                 onOpen={() =>
                   onNavigate({ kind: "workbench", reviewId: row.reviewId })
                 }
@@ -122,6 +124,12 @@ export function VisitedPullRequests({
       </div>
     </aside>
   );
+}
+
+function distinctRepositoryCount(
+  rows: ReadonlyArray<Pick<SidebarReviewRow, "owner" | "repo">>,
+): number {
+  return new Set(rows.map((row) => `${row.owner}/${row.repo}`)).size;
 }
 
 function VisitedRow({

@@ -183,6 +183,9 @@ Each of these is built once there is evidence it is missed.
   grows with how many pull requests that workspace has ever opened.
 - A row says nothing about merge state or checks, so a merged, closed, or
   conflicting pull request reads the same as an open one until it is opened.
+- A row's title is written on open and never refreshed, so a pull request
+  renamed on GitHub keeps its old title in the column until the next time it is
+  opened, while the workbench header beside it already shows the new one.
 - Arriving at a workbench mounts the Review loader twice, so two callers can
   wait on one in-flight stored-review load. Every waiter on an operation key is
   tracked now, because the answer used to be dropped when the run that started
