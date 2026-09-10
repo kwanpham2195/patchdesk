@@ -29,10 +29,13 @@ sorts by the opened instant descending, and slices to `SIDEBAR_ROW_LIMIT`,
 which is 20. A row carries the review id, `owner`, `repo`, the number, an
 optional title, and the opened instant — nothing a GitHub read would supply.
 
-A row shows `owner/repo` only when the workspace watches more than one
+A row shows `owner/repo` only when the listed rows span more than one
 repository, and a record with no stored title falls under the same rule: its
-label is `#number` on a single-repository workspace and `owner/repo#number`
-when the workspace watches more. The relative age is computed at render and
+label is `#number` when they all name one repository and `owner/repo#number`
+when they do not. The rule reads the rows rather than the watchlist because
+unwatching a repository leaves its records in place — only retention deletes
+them — so its rows keep listing, and a bare `#412` beside another
+repository's `#412` is the collision the label exists to prevent. The relative age is computed at render and
 does not tick. The open pull request's row is highlighted, carries
 `aria-current="page"`, and does nothing when clicked, because it is already
 where navigation would land. The column collapses from a toggle in the header,
