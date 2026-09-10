@@ -1,139 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createReviewId } from "../../src/domain/ids";
 import type { Review } from "../../src/domain/review";
 import { err, ok } from "../../src/domain/result";
-import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-
-// SAFETY: this literal is a well-formed WorkspaceProfileId slug.
-const profileId = "cfw" as never;
-// SAFETY: 40 lowercase hex characters are well-formed GitShas.
-const headSha = "a".repeat(40) as never;
-// SAFETY: 40 lowercase hex characters are a well-formed GitSha fixture.
-const baseSha = "b".repeat(40) as never;
-// SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
-// branded IsoTimestamp values this fixture's Review/session fields expect.
-const at = "2026-08-09T11:35:00.000Z" as never;
-// SAFETY: this literal matches the branded head/base-aware ReviewSessionId slug format.
-const sessionId =
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__b48f8e2e76ca" as never;
-// SAFETY: these literals are well-formed GitHubHost/GitHubOwner/
-// GitHubRepoName/PullRequestNumber values, matching their branded shapes.
-const identity = {
-  profileId,
-  host: "github.com" as never,
-  owner: "centraldigital" as never,
-  repo: "patchdesk" as never,
-  prNumber: 42 as never,
-};
-const reviewId = createReviewId(identity);
-// SAFETY: 64 lowercase hex characters is a well-formed ContentHash.
-const snapshotHash = "b".repeat(64) as never;
-const review: Review = {
-  schemaVersion: 2,
-  id: reviewId,
+import {
+  at,
+  baseSha,
+  fixture,
+  headSha,
   identity,
-  currentSessionId: sessionId,
-  currentHeadSha: headSha,
-  representedRemote: {
-    headSha,
-    pullRequestUpdatedAt: at,
-    snapshotHash,
-    refreshedAt: at,
-  },
-  freshness: { _tag: "Fresh" },
-  status: { _tag: "Open" },
-  createdAt: at,
-  updatedAt: at,
-};
-// SAFETY: this minimal shape is opaque to the controller under test — it is
-// only ever passed through `remote.load`/`project.loadRepresented`'s mocks,
-// never inspected field-by-field, so a full ReviewRemoteSnapshot is unneeded.
-const snapshot = { pullRequest: { title: "represented" } } as never;
-// SAFETY: matches the renderer's ReviewWorkbenchProjection wire shape; the
-// controller under test passes it through opaquely, so this suite only
-// needs the fields it actually asserts on to be present.
-const projection = {
-  state: "review",
-  review: { id: reviewId, status: "open" },
-  session: { id: sessionId },
-  revision: { reviewedHeadSha: headSha, freshness: "fresh", refreshedAt: at },
-  commits: [],
-  insights: {},
-  analysisReviewActions: {},
-  conversation: {},
-  checks: {},
-  mergeReadiness: {},
-  mergeReasons: [],
-  directSummaryDecision: "unknown",
-} as never;
-function fixture(
-  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- each test overrides a different, differently-shaped subset of the lifecycle mock bag below (error-shaped Results, plain methods instead of vi.fn(), a real ReviewOperationCoordinator, etc.); the merged result is narrowed to `never` at the constructor call below, same as the base fixture fields it's merged with.
-  overrides: Record<string, unknown> = {},
-) {
-  const preparation = {
-    prepare: vi.fn(async () =>
-      ok({
-        session: { id: sessionId, key: { headSha, baseSha }, createdAt: at },
-      }),
-    ),
-  };
-  const project = { loadRepresented: vi.fn(async () => ok(projection)) };
-  // `refreshUnlocked`/`recoverUnlocked` alias the same mock as their locked
-  // sibling by default: `open()`'s tree calls the Unlocked name (see
-  // review-workbench-controller.ts), everything else calls the locked name,
-  // and most tests don't care which was invoked, only that it was.
-  const refreshFn = vi.fn(async () => ok(projection));
-  const recoverFn = vi.fn(async () => ok(undefined));
-  const lifecycle = {
-    reviews: {
-      load: vi.fn(async () => ok(review)),
-      save: vi.fn(async () => ok(undefined)),
-    },
-    sessions: { load: vi.fn(async () => ok({ id: sessionId })) },
-    artifacts: {
-      quarantineIfPresent: vi.fn(async () =>
-        ok({ entryName: "session.backup" }),
-      ),
-      quarantineReview: vi.fn(async () => ok({ entryName: "review.backup" })),
-    },
-    remote: { load: vi.fn(async () => ok(snapshot)) },
-    journals: { load: vi.fn(async () => ok(undefined)) },
-    recentWrites: { load: vi.fn(async () => ok([])) },
-    refresh: { refresh: refreshFn, refreshUnlocked: refreshFn },
-    observation: {
-      recover: recoverFn,
-      recoverUnlocked: recoverFn,
-      observe: vi.fn(async () => ok(undefined)),
-    },
-    coordinator: {
-      withReviewLock: vi.fn(
-        async (_profile, _review, action) => await action(),
-      ),
-    },
-    commits: { diff: vi.fn(async () => ok({})) },
-    ...overrides,
-  };
-  return {
-    controller: new ReviewWorkbenchController(
-      // SAFETY: this fixture only implements the `prepare` method the
-      // controller actually calls, a deliberate narrowing of the full
-      // ReviewSessionPreparation surface to what this suite exercises.
-      preparation as never,
-      // SAFETY: same narrowing as `preparation` above, scoped to
-      // ReviewWorkbenchProjectionService's single `loadRepresented` method.
-      project as never,
-      // SAFETY: `lifecycle` implements every member the controller's
-      // `lifecycle` dependency bag actually calls in this suite; unused
-      // members of the real interfaces are intentionally omitted.
-      lifecycle as never,
-    ),
-    preparation,
-    project,
-    lifecycle,
-  };
-}
+  profileId,
+  projection,
+  review,
+  reviewId,
+  sessionId,
+  snapshot,
+  snapshotHash,
+} from "./review-workbench-controller-fixture";
 
 describe("ReviewWorkbenchController", () => {
   it("loads only by reviewId and projects the durable represented snapshot", async () => {
@@ -159,168 +42,6 @@ describe("ReviewWorkbenchController", () => {
       }),
     );
     expect(value.preparation.prepare).not.toHaveBeenCalled();
-  });
-
-  it("records the open on the durable Review with the pull request title", async () => {
-    const openedAt = "2026-09-10T09:00:00.000Z";
-    const value = fixture({
-      sessions: {
-        load: vi.fn(async () =>
-          ok({ id: sessionId, prContext: { title: "Add the sidebar" } }),
-        ),
-      },
-    });
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(openedAt));
-    try {
-      await expect(
-        value.controller.open({
-          profileId,
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "patchdesk",
-          number: 42,
-        }),
-      ).resolves.toEqual({ _tag: "ok", value: projection });
-    } finally {
-      vi.useRealTimers();
-    }
-
-    expect(value.lifecycle.reviews.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Add the sidebar",
-        lastOpenedAt: openedAt,
-        updatedAt: openedAt,
-      }),
-      at,
-    );
-  });
-
-  it("records the open with the projection's title when the sidebar reaches a Review through load", async () => {
-    const openedAt = "2026-09-10T09:00:00.000Z";
-    const value = fixture();
-    value.project.loadRepresented.mockResolvedValue(
-      // SAFETY: the controller returns this projection to its caller
-      // untouched and reads only the pull request title from it, so this
-      // narrowing of ReviewWorkbenchProjection is all the test needs.
-      ok({ pullRequest: { title: "Add the sidebar" } }) as never,
-    );
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(openedAt));
-    try {
-      await expect(
-        value.controller.load({ profileId, reviewId }),
-      ).resolves.toMatchObject({ _tag: "ok" });
-    } finally {
-      vi.useRealTimers();
-    }
-
-    expect(value.lifecycle.reviews.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Add the sidebar",
-        lastOpenedAt: openedAt,
-        updatedAt: openedAt,
-      }),
-      at,
-    );
-  });
-
-  it("records the open on a Review whose first snapshot never landed", async () => {
-    // A record left without a represented snapshot takes openUnlocked's other
-    // existing-Review exit, which projected without ever recording the open.
-    const openedAt = "2026-09-10T09:30:00.000Z";
-    const { representedRemote: _unrepresented, ...withoutSnapshot } = review;
-    const reviews = {
-      load: vi
-        .fn()
-        .mockResolvedValueOnce(ok(withoutSnapshot))
-        .mockResolvedValue(ok(review)),
-      save: vi.fn(async () => ok(undefined)),
-    };
-    const value = fixture({
-      reviews,
-      sessions: {
-        load: vi.fn(async () =>
-          ok({ id: sessionId, prContext: { title: "Add the sidebar" } }),
-        ),
-      },
-    });
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(openedAt));
-    try {
-      await expect(
-        value.controller.open({
-          profileId,
-          host: "github.com",
-          owner: "centraldigital",
-          repo: "patchdesk",
-          number: 42,
-        }),
-      ).resolves.toEqual({ _tag: "ok", value: projection });
-    } finally {
-      vi.useRealTimers();
-    }
-
-    expect(reviews.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Add the sidebar",
-        lastOpenedAt: openedAt,
-      }),
-      at,
-    );
-  });
-
-  it("records nothing when a closed Review refuses a merged open", async () => {
-    // Recording before the Terminal check would rank a pull request the
-    // maintainer could not open first in the sidebar.
-    const closed: Review = {
-      ...review,
-      status: { _tag: "Terminal", state: "closed", observedAt: at },
-    };
-    const value = fixture({
-      reviews: {
-        load: vi.fn(async () => ok(closed)),
-        save: vi.fn(async () => ok(undefined)),
-      },
-    });
-
-    await expect(
-      value.controller.openMerged({
-        profileId,
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        number: 42,
-      }),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "terminal" } });
-    expect(value.lifecycle.reviews.save).not.toHaveBeenCalled();
-  });
-
-  it("opens anyway when recording the open loses the compare-and-set", async () => {
-    const logs = { write: vi.fn() };
-    const value = fixture({
-      reviews: {
-        load: vi.fn(async () => ok(review)),
-        save: vi.fn(async () =>
-          err({ _tag: "ReviewConflict", reason: "stale_revision" }),
-        ),
-      },
-      logs,
-    });
-
-    await expect(
-      value.controller.open({
-        profileId,
-        host: "github.com",
-        owner: "centraldigital",
-        repo: "patchdesk",
-        number: 42,
-      }),
-    ).resolves.toEqual({ _tag: "ok", value: projection });
-    expect(value.lifecycle.reviews.save).toHaveBeenCalledOnce();
-    expect(logs.write).toHaveBeenCalledWith(
-      expect.objectContaining({ topic: "review-workbench", level: "warn" }),
-    );
   });
 
   it("recovers an observation journal before projection", async () => {
@@ -887,7 +608,7 @@ describe("ReviewWorkbenchController", () => {
   it("open() never re-enters its own coordinator lock while recovering, restarting, refreshing, or projecting", async () => {
     // Safety net beyond the two lock sites the plan names: every method
     // `open()`'s tree reaches (recoverObservation, restartUnusableReview,
-    // initializeSnapshot's refresh, projectStableRecordingOpen) has an
+    // initializeSnapshot's refresh, projectStableLocked) has an
     // Unlocked sibling.
     // Each "locked" fake below re-enters the *same* real coordinator on the
     // same key `open()` already holds, so calling the wrong (locked)
