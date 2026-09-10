@@ -10,7 +10,9 @@ import {
   VisitedPullRequests,
   visitedDateGroupLabel,
   visitedRowLabels,
+  visitedTerminalMarker,
 } from "../../src/renderer/src/components/visited-pull-requests";
+import { formatExactTime } from "../../src/renderer/src/lib/relative-time";
 import {
   installDesktopDouble,
   success,
@@ -70,6 +72,20 @@ const untitledSameRepo = {
   repo: "patchdesk",
   number: 412,
   openedAt: OPENED_AT,
+} satisfies RawJsonValue;
+
+const MERGED_OBSERVED_AT = new Date(MIDDAY - 3 * DAY_MS).toISOString();
+
+// The pull request reached its end state, and the row must say when that was
+// seen rather than implying it was just read from GitHub.
+const merged = {
+  reviewId: "review-merged",
+  owner: "kwanpham2195",
+  repo: "patchdesk",
+  number: 300,
+  title: "Land the visited column",
+  openedAt: OPENED_AT,
+  terminal: { state: "merged", observedAt: MERGED_OBSERVED_AT },
 } satisfies RawJsonValue;
 
 function renderColumn(options: {
@@ -203,6 +219,26 @@ describe("VisitedPullRequests", () => {
     expect(row.querySelector("time")?.textContent).toBe(shown);
   });
 
+  it("dates the state a terminal row reached and leaves an open row unmarked", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MIDDAY);
+    renderColumn({ rows: [merged, titled] });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const marked = screen.getByRole("button", { name: /#300/ });
+    expect(marked.textContent).toContain("Merged · seen 3d");
+    // The exact instant sits on hover, the way the row's own age does.
+    expect(
+      within(marked).getByTitle(formatExactTime(MERGED_OBSERVED_AT))
+        .textContent,
+    ).toBe("Merged · seen 3d");
+    // An open pull request gets no marker at all; absence is the design.
+    const open = screen.getByRole("button", { name: /#125/ });
+    expect(open.textContent).not.toContain("seen");
+  });
+
   it("heads each date bucket the rows reach, in the order the route returned them", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(MIDDAY);
@@ -285,6 +321,20 @@ describe("visitedDateGroupLabel", () => {
 function iso(daysAgo: number): string {
   return new Date(MIDDAY - daysAgo * DAY_MS).toISOString();
 }
+
+describe("visitedTerminalMarker", () => {
+  it("dates a merged pull request with when Patchdesk saw it, in the info tone", () => {
+    expect(
+      visitedTerminalMarker({ state: "merged", observedAt: iso(3) }, MIDDAY),
+    ).toEqual({ label: "Merged · seen 3d", tone: "text-status-info" });
+  });
+
+  it("dates a closed pull request the same way, in the destructive tone", () => {
+    expect(
+      visitedTerminalMarker({ state: "closed", observedAt: iso(12) }, MIDDAY),
+    ).toEqual({ label: "Closed · seen 12d", tone: "text-destructive" });
+  });
+});
 
 describe("visitedRowLabels", () => {
   it("keeps a stored title and prints the reference under it", () => {

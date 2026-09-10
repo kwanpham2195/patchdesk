@@ -44,6 +44,10 @@ function review(input: {
   readonly updatedAt: string;
   readonly lastOpenedAt?: string;
   readonly title?: string;
+  readonly terminal?: {
+    readonly state: "merged" | "closed";
+    readonly observedAt: string;
+  };
 }): Review {
   const identity: ReviewIdentity = {
     profileId,
@@ -58,9 +62,19 @@ function review(input: {
     headSha,
     createdAt,
   });
+  // `createReview` leaves the Review Open, which is the other case under test.
+  const status: Review["status"] =
+    input.terminal === undefined
+      ? { _tag: "Open" }
+      : {
+          _tag: "Terminal",
+          state: input.terminal.state,
+          observedAt: must(parseIsoTimestamp(input.terminal.observedAt)),
+        };
   return {
     ...base,
     updatedAt: must(parseIsoTimestamp(input.updatedAt)),
+    status,
     ...definedProps({
       lastOpenedAt:
         input.lastOpenedAt === undefined
@@ -250,6 +264,54 @@ describe("SidebarListingService.list", () => {
     const listing = must(await value.listed.list(profileId));
 
     expect(Object.hasOwn(listing.rows.at(0) ?? {}, "title")).toBe(false);
+  });
+
+  it("projects the state a terminal Review reached and when it was observed", async () => {
+    const value = service(
+      ok({
+        reviews: [
+          review({
+            number: 11,
+            updatedAt: "2026-03-01T00:00:00.000Z",
+            terminal: {
+              state: "merged",
+              observedAt: "2026-02-20T08:30:00.000Z",
+            },
+          }),
+          review({
+            number: 12,
+            updatedAt: "2026-02-01T00:00:00.000Z",
+            terminal: {
+              state: "closed",
+              observedAt: "2026-01-18T11:00:00.000Z",
+            },
+          }),
+        ],
+        unreadable: 0,
+      }),
+    );
+
+    const listing = must(await value.listed.list(profileId));
+
+    expect(listing.rows.map((row) => row.terminal)).toEqual([
+      { state: "merged", observedAt: "2026-02-20T08:30:00.000Z" },
+      { state: "closed", observedAt: "2026-01-18T11:00:00.000Z" },
+    ]);
+  });
+
+  it("omits the terminal key for a Review that is still open", async () => {
+    const value = service(
+      ok({
+        reviews: [
+          review({ number: 13, updatedAt: "2026-03-01T00:00:00.000Z" }),
+        ],
+        unreadable: 0,
+      }),
+    );
+
+    const listing = must(await value.listed.list(profileId));
+
+    expect(Object.hasOwn(listing.rows.at(0) ?? {}, "terminal")).toBe(false);
   });
 
   it("reports a failed listing as a storage failure", async () => {
