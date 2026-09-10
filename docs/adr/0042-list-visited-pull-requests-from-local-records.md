@@ -29,13 +29,17 @@ sorts by the opened instant descending, and slices to `SIDEBAR_ROW_LIMIT`,
 which is 20. A row carries the review id, `owner`, `repo`, the number, an
 optional title, and the opened instant — nothing a GitHub read would supply.
 
-A row shows `owner/repo` only when the listed rows span more than one
-repository, and a record with no stored title falls under the same rule: its
-label is `#number` when they all name one repository and `owner/repo#number`
-when they do not. The rule reads the rows rather than the watchlist because
-unwatching a repository leaves its records in place — only retention deletes
-them — so its rows keep listing, and a bare `#412` beside another
-repository's `#412` is the collision the label exists to prevent. The relative age is computed at render and
+A row names the repository only when the listed rows span more than one, and
+names the owner only when they span more than one owner; a record with no
+stored title falls under the same rule, so its label is `#number`,
+`repo#number`, or `owner/repo#number` as the rows require. The rule reads the
+rows rather than the watchlist because unwatching a repository leaves its
+records in place — only retention deletes them — so its rows keep listing, and
+a bare `#412` beside another repository's `#412` is the collision the label
+exists to prevent. The owner is a separate cut because it is the expensive
+half: on a workspace where every row sits under one owner, `centraldigital/`
+was roughly half the line, distinguished nothing, and pushed the age off a
+titled row's meta line. The relative age is computed at render and
 does not tick. The open pull request's row is highlighted, carries
 `aria-current="page"`, and does nothing when clicked, because it is already
 where navigation would land. The column collapses from a toggle in the header,
@@ -59,6 +63,52 @@ until the next one loaded.
 The header workspace `Select` and the repository picker both stay. The Pull
 requests table is still where new work is found; the column is where work is
 resumed.
+
+### Date group headers, cut and then reinstated
+
+The rows carry `TODAY`, `YESTERDAY`, `THIS WEEK`, and `EARLIER` headers,
+inserted where the bucket changes in the order the route already returned. The
+first cut of the column dropped them, on the argument that the evidence for
+them was twenty fixture rows drawing titles from a pool of eight, a harder
+scanning problem than real data. Real data on a real workspace reversed it:
+with the maintainer's own visits in the column the grouping earned its line,
+and the fixture argument turned out to be an argument about the fixtures.
+
+The boundaries are whole calendar days measured from the maintainer's local
+midnight, deliberately not the prototype's UTC floor. At UTC+7 a pull request
+opened an hour ago sits on the previous UTC day for most of the working day, so
+a UTC floor would head it Yesterday. `visitedDateGroupLabel` therefore compares
+local calendar days rather than elapsed hours, which is also why a pull request
+opened this morning reads Today whatever the hour. The headers are not sticky,
+and a bucket holding no row is never named: the label is computed per row and
+only the row that opens a bucket carries one, so nothing is sorted, nothing is
+dropped, and a column whose rows were all opened today shows one header.
+
+### Dated state markers, cut and then reinstated
+
+A row whose pull request is merged or closed carries `Merged · seen 3d` or
+`Closed · seen 12d`, right-aligned on the meta line and coloured from a plain
+function — the informational tone for merged, which is the ordinary end of a
+review, and the destructive tone for closed, which ended without the change
+landing. An open pull request carries nothing.
+
+The rule that cut them still holds and is now satisfied rather than waived:
+a marker here is dated or absent, because nothing in this column recomputes
+freshness and a marker that looks live and is not is worse than none. The date
+costs nothing to have. `ReviewStatus`'s `Terminal` variant already carries its
+own required `observedAt`, validated by `reviewV2Schema` and loaded with the
+record, so `SidebarListingService` projects the state and its date out of what
+`ReviewStore.list` has already read: no GitHub call and no second file read.
+`updatedAt` would have been the wrong field to date the marker with, because
+unrelated writes bump it — detect-updates saves whenever GitHub has moved — so
+it dates the last write to the record rather than the observation.
+
+The word is "seen" because that is the whole claim. Three of the four sites
+that write `observedAt` stamp it from Patchdesk's own clock next to the
+confirming GitHub read: `ReviewObservationService`'s `now()`, the merge write
+controller's `startedAt`, and `ReviewRefreshService`'s `refreshedAt`. Only
+`ReviewRecoveryService` uses GitHub's own `mergedAt`, and only for a merge. The
+marker therefore says when Patchdesk saw the state, not when GitHub reached it.
 
 ### This reinstates the listing ADR 0031 removed
 
@@ -155,7 +205,9 @@ that outlived its session would never be revisited.
 
 ## Cut from v1
 
-Each of these is built once there is evidence it is missed.
+Each of these is built once there is evidence it is missed. Date group headers
+and remote-derived state markers were on this list and have come off it; both
+are in the decision above, with what changed the answer.
 
 - **The workspace rail and the workspace home.** Both existed to replace a
   header workspace selector and a repository picker that are staying, so both
@@ -167,11 +219,6 @@ Each of these is built once there is evidence it is missed.
   cause of the title truncation seen in the prototype.
 - **The cap footer and its pinned row.** Opening a pull request makes it rank
   one, so it can never be the row pushed out of a 20-row cap.
-- **Date group headers.** The evidence for them was twenty fixture rows drawing
-  titles from a pool of eight, a harder scanning problem than real data.
-- **Remote-derived state markers.** Nothing recomputes freshness without a
-  GitHub call, so a marker here would report whatever was true the last time the
-  pull request was opened. A marker that looks live and is not is worse than none.
 - **The Insight chip.** Three file reads per row to render one dot.
 
 ## Consequences
@@ -184,8 +231,11 @@ Each of these is built once there is evidence it is missed.
 - `ReviewStore.list` has no index — it opens every review file under the
   profile. The listing therefore runs on demand for one profile, and its cost
   grows with how many pull requests that workspace has ever opened.
-- A row says nothing about merge state or checks, so a merged, closed, or
-  conflicting pull request reads the same as an open one until it is opened.
+- A row says whether its pull request merged or closed and when Patchdesk last
+  saw that, but nothing about checks, so a pull request whose checks have gone
+  red or which no longer merges reads the same as one that is fine until it is
+  opened. The state marker is only as current as the last observation: a pull
+  request merged on GitHub since it was last opened still reads as open here.
 - A row's title is written on open and never refreshed, so a pull request
   renamed on GitHub keeps its old title in the column until the next time it is
   opened, while the workbench header beside it already shows the new one.
