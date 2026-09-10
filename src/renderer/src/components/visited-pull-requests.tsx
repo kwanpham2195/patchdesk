@@ -334,7 +334,7 @@ export function visitedRowLabels(
     return { title: `${repository}#${row.number}`, reference: "" };
   return {
     title: row.title,
-    reference: `${repository === "" ? "" : `${repository} `}#${row.number} · `,
+    reference: `${repository}#${row.number} · `,
   };
 }
 
