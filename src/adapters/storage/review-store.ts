@@ -24,6 +24,12 @@ type ReviewStoreConflict = {
 
 export type ReviewStoreFailure = StorageFailure | ReviewStoreConflict;
 
+/** Every readable Review in one profile, plus how many records were skipped. */
+export type ReviewListing = {
+  readonly reviews: ReadonlyArray<Review>;
+  readonly unreadable: number;
+};
+
 /** Owns one durable Review aggregate per workspace profile and pull request. */
 export class ReviewStore {
   private readonly saveLocks = new KeyedMutex();
@@ -116,27 +122,36 @@ export class ReviewStore {
     return ok(undefined);
   }
 
+  /**
+   * Read every Review in one profile, newest updatedAt first. There is no
+   * index: this opens each review file under the profile in turn. A record
+   * that cannot be read is skipped and counted in `unreadable` so one corrupt
+   * file costs the caller that row rather than the whole listing.
+   */
   async list(
     profileId: WorkspaceProfileId,
-  ): Promise<Result<ReadonlyArray<Review>, StorageFailure>> {
+  ): Promise<Result<ReviewListing, StorageFailure>> {
     let entries: ReadonlyArray<string>;
     try {
       entries = await readdir(
         this.paths.profileWorkbenchesDirectory(profileId),
       );
     } catch (cause: unknown) {
-      if (isNotFound(cause)) return ok([]);
+      if (isNotFound(cause)) return ok({ reviews: [], unreadable: 0 });
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
     }
 
     const reviews: Review[] = [];
+    let unreadable = 0;
     for (const entry of entries) {
       const reviewId = parseReviewId(entry);
       if (reviewId._tag === "err") continue;
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- a profile holds few Reviews, and reading them one at a time holds one descriptor open instead of one per record
       const review = await this.load(profileId, reviewId.value);
       if (review._tag === "err") {
-        if (review.error.reason === "not_found") continue;
-        return review;
+        // A vanished file is an ordinary race with deletion, not a lost record.
+        if (review.error.reason !== "not_found") unreadable += 1;
+        continue;
       }
       reviews.push(review.value);
     }
@@ -144,7 +159,7 @@ export class ReviewStore {
     reviews.sort((left, right) =>
       right.updatedAt.localeCompare(left.updatedAt),
     );
-    return ok(reviews);
+    return ok({ reviews, unreadable });
   }
 }
 

@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -94,7 +94,7 @@ describe("ReviewStore", () => {
     });
     await expect(store.list(profileId)).resolves.toMatchObject({
       _tag: "ok",
-      value: [second, first],
+      value: { reviews: [second, first], unreadable: 0 },
     });
   });
 
@@ -137,7 +137,54 @@ describe("ReviewStore", () => {
     });
     await expect(store.list(otherProfileId)).resolves.toEqual({
       _tag: "ok",
-      value: [],
+      value: { reviews: [], unreadable: 0 },
+    });
+  });
+
+  it("skips and counts an unreadable Review while listing the readable ones", async () => {
+    const { paths, store } = await storeFixture();
+    const readable = makeReview();
+    await expect(store.save(readable)).resolves.toMatchObject({ _tag: "ok" });
+    const corrupt = createReviewId({
+      ...readable.identity,
+      repo: anotherRepo,
+    });
+    await mkdir(paths.reviewDirectory(profileId, corrupt), { recursive: true });
+    await writeFile(paths.reviewFile(profileId, corrupt), "{}", "utf8");
+
+    await expect(store.list(profileId)).resolves.toEqual({
+      _tag: "ok",
+      value: { reviews: [readable], unreadable: 1 },
+    });
+  });
+
+  it("skips a Review deleted mid-listing without counting it unreadable", async () => {
+    const { paths, store } = await storeFixture();
+    const readable = makeReview();
+    await expect(store.save(readable)).resolves.toMatchObject({ _tag: "ok" });
+    const vanished = createReviewId({
+      ...readable.identity,
+      repo: anotherRepo,
+    });
+    await mkdir(paths.reviewDirectory(profileId, vanished), {
+      recursive: true,
+    });
+
+    await expect(store.list(profileId)).resolves.toEqual({
+      _tag: "ok",
+      value: { reviews: [readable], unreadable: 0 },
+    });
+  });
+
+  it("fails the listing when the profile directory cannot be read", async () => {
+    const { paths, store } = await storeFixture();
+    const workbenches = paths.profileWorkbenchesDirectory(profileId);
+    await mkdir(dirname(workbenches), { recursive: true });
+    await writeFile(workbenches, "not a directory", "utf8");
+
+    await expect(store.list(profileId)).resolves.toMatchObject({
+      _tag: "err",
+      error: { _tag: "StorageFailure", operation: "read", reason: "io" },
     });
   });
 
