@@ -111,12 +111,16 @@ export class InsightRecovery {
       const profileId = parseWorkspaceProfileId(entry);
       return profileId._tag === "ok" ? [profileId.value] : [];
     });
-    const listed = await mapConcurrent(profileIds, 4, async (profileId) => ({
+    const listings = await mapConcurrent(profileIds, 4, async (profileId) => ({
       profileId,
-      reviews: await this.reviews.list(profileId),
+      listing: await this.reviews.list(profileId),
     }));
     await mapConcurrent(
-      listed.filter((entry) => entry.reviews._tag === "err"),
+      // An unreadable record is reported like a failed listing, but the
+      // readable Reviews of that profile are still recovered below.
+      listings.filter(
+        ({ listing }) => listing._tag === "err" || listing.value.unreadable > 0,
+      ),
       4,
       async ({ profileId }) =>
         this.recordRecoveryDiagnostic(
@@ -125,9 +129,9 @@ export class InsightRecovery {
           "review_list_failed",
         ),
     );
-    const recoveryTargets = listed.flatMap(({ profileId, reviews }) =>
-      reviews._tag === "ok"
-        ? reviews.value.flatMap((review) =>
+    const recoveryTargets = listings.flatMap(({ profileId, listing }) =>
+      listing._tag === "ok"
+        ? listing.value.reviews.flatMap((review) =>
             (["analysis", "walkthrough", "brief"] as const).map((type) => ({
               profileId,
               review,
