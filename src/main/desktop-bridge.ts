@@ -55,11 +55,9 @@ const allowedRoutes = new Set([
   "GET /v1/inbox",
   "GET /v1/inbox/labels",
   "POST /v1/watchlist",
-  "PATCH /v1/watchlist/path",
   "DELETE /v1/watchlist",
 
   "GET /v1/watchlist/suggestions",
-  "POST /v1/github/access",
   "GET /v1/environment",
   "POST /v1/reviews/inline-conversations/command",
   "POST /v1/reviews/write/recover",

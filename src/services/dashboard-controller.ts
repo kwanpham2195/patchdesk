@@ -44,7 +44,6 @@ import {
   detectDefaultWorkspaceProfile,
   ProfileSettingsService,
   removeWatchedRepo,
-  updateWatchedRepoPath,
 } from "./profile-service";
 import { sameRepositoryIdentity } from "../domain/repository-identity";
 import type { ProfileMutationFailure, WatchedRepoRef } from "./profile-service";
@@ -75,10 +74,9 @@ const watchlistRepoInputSchema = v.object({
   repo: v.unknown(),
   localPath: v.optional(v.unknown()),
 });
-const localPathInputSchema = v.object({
-  localPath: v.optional(v.unknown()),
+const watchlistProfileInputSchema = v.object({
+  profileId: v.unknown(),
 });
-const nonEmptyStringSchema = v.pipe(v.string(), v.minLength(1));
 const saveProfileInputSchema = v.object({
   // Absent on a create from the New workspace dialog, which sends a name and
   // lets `resolveSaveProfileId` derive the id.
@@ -112,7 +110,7 @@ export class DashboardController {
 
   constructor(
     private readonly profiles: ProfileStore,
-    private readonly github: GitHubReader,
+    github: GitHubReader,
     origins?: OriginFinder,
     paths: PatchdeskPaths = PatchdeskPaths.default(),
     private readonly commands: CommandRunner = new CommandRunner(),
@@ -136,10 +134,9 @@ export class DashboardController {
 
   /**
    * `forceDetection` discards a cached negative/ephemeral detection and
-   * re-probes `gh` immediately. Only `testGitHubAccess` passes `true` — it
-   * backs the setup checklist's explicit "Re-check" action, the one place a
-   * user expects a stale "not authenticated" reading to update the moment
-   * they fix it in a terminal. Every other caller (inbox/dashboard polling,
+   * re-probes `gh` immediately. No caller passes it today: the setup
+   * checklist's "Re-check" action, the one that did, went away with
+   * `POST /v1/github/access`. Every caller (inbox/dashboard polling,
    * `GET /v1/profiles`) takes the memoized reading, since those happen on a
    * timer rather than in response to the user just having taken an action.
    */
@@ -355,13 +352,24 @@ export class DashboardController {
     );
   }
 
+  /**
+   * Adds one repository to the watchlist of the workspace `profileId`
+   * names, rather than to whichever workspace the server last recorded as
+   * selected. During a workspace switch the selection changes the moment
+   * `POST /v1/profiles/select` resolves, while the Settings Repositories
+   * card keeps rendering the previous workspace's repositories until its
+   * reload lands; a toggle in that window would otherwise add the
+   * repository to the workspace the switch is moving away from.
+   */
   async addWatchlistRepo(
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `POST /v1/watchlist`; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
     if (!v.safeParse(rawObjectSchema, input).success)
       return failure("invalid_input");
-    const profile = await this.activeProfile();
+    const profileId = watchlistProfileId(input);
+    if (profileId._tag === "err") return profileId;
+    const profile = await this.profileById(profileId.value);
     if (profile._tag === "err") return profile;
     const parsedInput = v.safeParse(watchlistRepoInputSchema, input);
     if (!parsedInput.success) return failure("invalid_input");
@@ -369,8 +377,7 @@ export class DashboardController {
     const host = parseGitHubHost(fields.host);
     const owner = parseGitHubOwner(fields.owner);
     const repo = parseGitHubRepoName(fields.repo);
-    // `localPath` really is optional here (unlike `setLocalPath`, there is no
-    // existing association to "clear"): omit it when absent, but once
+    // `localPath` really is optional here: omit it when absent, but once
     // present it must parse as a genuine absolute path — no longer smuggled
     // through as `localPath as never`, which previously bypassed validation
     // entirely and could persist an unusable path.
@@ -401,39 +408,14 @@ export class DashboardController {
     return saved._tag === "ok" ? ok(changed.value) : failure("storage");
   }
 
-  async setLocalPath(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `PATCH /v1/watchlist/path`; there is no earlier boundary to run it at.
-    input: unknown,
-  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    if (!v.safeParse(rawObjectSchema, input).success)
-      return failure("invalid_input");
-    const profile = await this.activeProfile();
-    if (profile._tag === "err") return profile;
-    const ref = repoRef(input);
-    if (ref._tag === "err") return ref;
-    const parsedLocalPath = v.safeParse(localPathInputSchema, input);
-    const rawLocalPath = parsedLocalPath.success
-      ? parsedLocalPath.output.localPath
-      : undefined;
-    // A missing/blank/non-string `localPath` means "clear the association",
-    // not "invalid request" — `updateWatchedRepoPath` below is what actually
-    // validates a present value as a real absolute path.
-    const nonEmptyLocalPath = v.safeParse(nonEmptyStringSchema, rawLocalPath);
-    const changed = updateWatchedRepoPath(
-      profile.value,
-      ref.value,
-      nonEmptyLocalPath.success ? nonEmptyLocalPath.output : undefined,
-    );
-    if (changed._tag === "err") return failure("invalid_input");
-    const saved = await this.settings.saveProfile(changed.value);
-    return saved._tag === "ok" ? ok(changed.value) : failure("storage");
-  }
-
+  /** Removes one repository from the watchlist of the workspace `profileId` names, for the reason `addWatchlistRepo` gives. */
   async removeWatchlistRepo(
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser (via `repoRef`) for `DELETE /v1/watchlist`; there is no earlier boundary to run it at.
     input: unknown,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    const profile = await this.activeProfile();
+    const profileId = watchlistProfileId(input);
+    if (profileId._tag === "err") return profileId;
+    const profile = await this.profileById(profileId.value);
     if (profile._tag === "err") return profile;
     const ref = repoRef(input);
     if (ref._tag === "err") return ref;
@@ -443,6 +425,12 @@ export class DashboardController {
     return saved._tag === "ok" ? ok(changed.value) : failure("storage");
   }
 
+  /**
+   * Scans the selected workspace's roots, not a named one: this is a read,
+   * so the worst a mid-switch request can do is list suggestions for the
+   * workspace being switched away from, which the reload already in flight
+   * replaces. The watchlist writes take a named workspace instead.
+   */
   async discoverWorkspaceRepos(): Promise<
     Result<
       ReadonlyArray<DiscoveredWorkspaceRootResult>,
@@ -457,31 +445,20 @@ export class DashboardController {
     return discovered._tag === "ok" ? discovered : failure("storage");
   }
 
-  async testGitHubAccess(): Promise<
-    Result<
-      { readonly state: "available" | "github_auth" },
-      DashboardControllerFailure
-    >
-  > {
-    // Force a fresh detection probe: this is the setup checklist's
-    // "Confirm GitHub access" / "Re-check" flow, so a user who just ran
-    // `gh auth login` in a terminal must see it reflected immediately
-    // rather than a memoized pre-login reading (see `detectionMemo`).
-    const profile = await this.activeProfile(true);
-    if (profile._tag === "err") return profile;
-    // Consult authentication directly rather than inferring it from
-    // per-repo read state: on an empty watchlist there is no repo to attach
-    // an auth failure to, regardless of whether `gh` is authenticated. That
-    // would report a false "available" on first run, before any repo has
-    // been added.
-    const auth = await this.github.resolveAuthenticatedAccount(profile.value);
-    return ok({ state: auth._tag === "err" ? "github_auth" : "available" });
+  /** Resolves the workspace a request names, so the write cannot land in whichever workspace `activeProfile` happens to resolve to. */
+  private async profileById(
+    id: WorkspaceProfileId,
+  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
+    const profiles = await this.listProfiles();
+    if (profiles._tag === "err") return profiles;
+    const found = profiles.value.find((profile) => profile.id === id);
+    return found === undefined ? failure("not_found") : ok(found);
   }
 
-  private async activeProfile(
-    forceDetection = false,
-  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
-    const profiles = await this.listProfiles(forceDetection);
+  private async activeProfile(): Promise<
+    Result<WorkspaceProfileConfig, DashboardControllerFailure>
+  > {
+    const profiles = await this.listProfiles();
     if (profiles._tag === "err") return profiles;
     const config = await this.profiles.loadConfig();
     const selected =
@@ -516,6 +493,16 @@ function repoRef(
   return host._tag === "ok" && owner._tag === "ok" && repo._tag === "ok"
     ? ok({ host: host.value, owner: owner.value, repo: repo.value })
     : failure("invalid_input");
+}
+/** The workspace both watchlist writes name; required on `POST` and `DELETE /v1/watchlist` alike. */
+function watchlistProfileId(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for the `profileId` both watchlist writes carry; there is no earlier boundary to run it at.
+  input: unknown,
+): Result<WorkspaceProfileId, DashboardControllerFailure> {
+  const parsed = v.safeParse(watchlistProfileInputSchema, input);
+  if (!parsed.success) return failure("invalid_input");
+  const id = parseWorkspaceProfileId(parsed.output.profileId);
+  return id._tag === "ok" ? ok(id.value) : failure("invalid_input");
 }
 function failure(
   reason: DashboardControllerFailure["reason"],

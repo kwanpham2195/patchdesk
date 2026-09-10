@@ -378,6 +378,7 @@ describe("watchlist toggling", () => {
         path: "/v1/watchlist",
         method: "POST",
         body: {
+          profileId: "cfw",
           host: "github.com",
           owner: "centraldigital",
           repo: "patchdesk",
@@ -415,6 +416,7 @@ describe("watchlist toggling", () => {
         path: "/v1/watchlist",
         method: "DELETE",
         body: {
+          profileId: "cfw",
           host: "github.com",
           owner: "centraldigital",
           repo: "watched-repo",

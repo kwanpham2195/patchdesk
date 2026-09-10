@@ -37,6 +37,7 @@ const repoB: WatchlistEntry = {
   repo: "beta",
   localPath: "/workspace/beta",
 };
+const WORKSPACE_ID = "acme-workspace";
 const repoAKey = "github.com/acme/alpha";
 const repoBKey = "github.com/acme/beta";
 
@@ -57,7 +58,7 @@ describe("useWatchlistToggle", () => {
       return requestGate.promise;
     });
     const { result } = renderHook(() =>
-      useWatchlistToggle(async () => undefined),
+      useWatchlistToggle(WORKSPACE_ID, async () => undefined),
     );
     let firstRequest: Promise<void> | undefined;
     let duplicateRequest: Promise<void> | undefined;
@@ -86,7 +87,7 @@ describe("useWatchlistToggle", () => {
       return requestGate.promise;
     });
     const { result } = renderHook(() =>
-      useWatchlistToggle(async () => undefined),
+      useWatchlistToggle(WORKSPACE_ID, async () => undefined),
     );
     let firstRequest: Promise<void> | undefined;
     let secondRequest: Promise<void> | undefined;
@@ -114,6 +115,38 @@ describe("useWatchlistToggle", () => {
     });
   });
 
+  it("names the workspace it was given in both watchlist requests", async () => {
+    const bodies: unknown[] = [];
+    installWatchlistRoute((input) => {
+      bodies.push(input.body);
+      return success({});
+    });
+    const { result } = renderHook(() =>
+      useWatchlistToggle(WORKSPACE_ID, async () => undefined),
+    );
+
+    await act(async () => {
+      await result.current.toggleRepo(repoA, false);
+      await result.current.toggleRepo(repoB, true);
+    });
+
+    expect(bodies).toEqual([
+      {
+        profileId: WORKSPACE_ID,
+        host: "github.com",
+        owner: "acme",
+        repo: "alpha",
+        localPath: "/workspace/alpha",
+      },
+      {
+        profileId: WORKSPACE_ID,
+        host: "github.com",
+        owner: "acme",
+        repo: "beta",
+      },
+    ]);
+  });
+
   it("keeps the exact repository pending when requests settle in reverse order", async () => {
     const firstGate = deferredResponse();
     const secondGate = deferredResponse();
@@ -126,7 +159,7 @@ describe("useWatchlistToggle", () => {
       return gate.promise;
     });
     const { result } = renderHook(() =>
-      useWatchlistToggle(async () => undefined),
+      useWatchlistToggle(WORKSPACE_ID, async () => undefined),
     );
     let firstRequest: Promise<void> | undefined;
     let secondRequest: Promise<void> | undefined;
@@ -167,7 +200,7 @@ describe("RepositoryChecklist", () => {
     installWatchlistRoute(() => requestGate.promise);
 
     function Harness(): React.JSX.Element {
-      const toggle = useWatchlistToggle(async () => undefined);
+      const toggle = useWatchlistToggle(WORKSPACE_ID, async () => undefined);
       return (
         <RepositoryChecklist
           entries={[repoA, repoB]}

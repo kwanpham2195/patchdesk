@@ -352,15 +352,65 @@ describe("profile settings and dashboard services", () => {
     });
   });
 
-  it("reports github_auth on an empty watchlist when gh is unauthenticated, not a false available", async () => {
-    const root = await mkdtemp(`${tmpdir()}/patchdesk-access-check-`);
+  it("adds a watched repository to the workspace the request names, not the selected one", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-watchlist-named-`);
     try {
       const paths = PatchdeskPaths.forTest(root);
       const store = new ProfileStore(paths);
-      const emptyWatchlistProfile = mustParse(
-        parseWorkspaceProfileConfig({ ...profile, repos: [] }),
+      const otherProfile = mustParse(
+        parseWorkspaceProfileConfig({
+          ...profile,
+          id: "platform",
+          label: "Platform",
+          repos: [],
+        }),
       );
-      await store.save(emptyWatchlistProfile);
+      await store.save(profile);
+      await store.save(otherProfile);
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        undefined,
+        paths,
+      );
+      // The selected workspace is the other one, as it is for a toggle sent
+      // between `POST /v1/profiles/select` resolving and the reload landing.
+      await controller.selectProfile(otherProfile.id);
+
+      const added = await controller.addWatchlistRepo({
+        profileId: profile.id,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "new-repo",
+        localPath: "/workspace/new-repo",
+      });
+
+      expect(added).toMatchObject({
+        _tag: "ok",
+        value: {
+          id: "cfw",
+          repos: [{ repo: "patchdesk" }, { repo: "new-repo" }],
+        },
+      });
+      expect(await store.load(otherProfile.id)).toMatchObject({
+        _tag: "ok",
+        value: { repos: [] },
+      });
+      expect(await store.loadConfig()).toMatchObject({
+        _tag: "ok",
+        value: { lastSelectedProfileId: "platform" },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a watchlist removal for a workspace id it does not know", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-watchlist-unknown-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      await store.save(profile);
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
@@ -368,39 +418,20 @@ describe("profile settings and dashboard services", () => {
         paths,
       );
 
-      // With no watched repos there is no repo to attach an auth failure
-      // to, so testGitHubAccess must consult authentication directly
-      // instead of inferring it from an empty per-repo list.
-      expect(await controller.testGitHubAccess()).toEqual({
-        _tag: "ok",
-        value: { state: "github_auth" },
+      const removed = await controller.removeWatchlistRepo({
+        profileId: "gone",
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
       });
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
 
-  it("reports available on an empty watchlist when gh is authenticated", async () => {
-    const root = await mkdtemp(`${tmpdir()}/patchdesk-access-check-ok-`);
-    try {
-      const paths = PatchdeskPaths.forTest(root);
-      const store = new ProfileStore(paths);
-      const emptyWatchlistProfile = mustParse(
-        parseWorkspaceProfileConfig({ ...profile, repos: [] }),
-      );
-      await store.save(emptyWatchlistProfile);
-      const controller = new DashboardController(
-        store,
-        new FakeGitHubAdapter({
-          authenticatedAccount: { host: "github.com", account: "pmquan2cfw" },
-        }),
-        undefined,
-        paths,
-      );
-
-      expect(await controller.testGitHubAccess()).toEqual({
+      expect(removed).toEqual({
+        _tag: "err",
+        error: { _tag: "DashboardControllerFailure", reason: "not_found" },
+      });
+      expect(await store.load(profile.id)).toMatchObject({
         _tag: "ok",
-        value: { state: "available" },
+        value: { repos: [{ repo: "patchdesk" }] },
       });
     } finally {
       await rm(root, { recursive: true, force: true });
