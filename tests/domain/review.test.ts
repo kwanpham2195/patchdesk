@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createReview,
+  markReviewOpened,
   markReviewRevisionChanged,
   markReviewUnavailable,
   markReviewTerminal,
@@ -118,6 +119,26 @@ describe("Review", () => {
         updatedAt: later,
       },
     });
+  });
+
+  it("records an open with its title, instant, and advanced updatedAt", () => {
+    expect(
+      markReviewOpened(review(), { title: "Add the sidebar", now: later }),
+    ).toMatchObject({
+      title: "Add the sidebar",
+      lastOpenedAt: later,
+      updatedAt: later,
+    });
+  });
+
+  it("keeps the recorded title when a later open carries none", () => {
+    const titled = markReviewOpened(review(), {
+      title: "Add the sidebar",
+      now,
+    });
+    expect(
+      markReviewOpened(titled, { title: undefined, now: later }),
+    ).toMatchObject({ title: "Add the sidebar", lastOpenedAt: later });
   });
 
   it("rejects identity mismatches in stored data", () => {

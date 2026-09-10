@@ -1,5 +1,5 @@
 import type { Review, ReviewIdentity } from "../domain/review";
-import type { ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -10,7 +10,7 @@ import {
   createReviewId,
   parseWorkspaceProfileId,
 } from "../domain/ids";
-import { createReview } from "../domain/review";
+import { createReview, markReviewOpened } from "../domain/review";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
@@ -36,6 +36,7 @@ import type {
   ReviewWorkbenchProjectionService,
   WorkbenchProjectionFailure,
 } from "./review-workbench-projection";
+import { systemNow } from "../adapters/process/system-clock";
 import { readObjectField } from "./read-object-field";
 import type { AppLogService } from "./app-log-service";
 
@@ -83,6 +84,8 @@ export class ReviewWorkbenchController {
       /** Local diagnostic log stream; best effort, never gates a request. Wire-visible failures stay collapsed to their existing reason — this only makes the underlying cause observable in `patchdesk.jsonl`. */
       readonly logs?: Pick<AppLogService, "write">;
     },
+    /** Injected so a test can pin the instant `markReviewOpened` records. */
+    private readonly now: () => IsoTimestamp = systemNow,
   ) {}
 
   async open(
@@ -162,11 +165,15 @@ export class ReviewWorkbenchController {
             return err({ reason: "storage" });
           return this.restartUnusableReview(identity, expectedTerminalState);
         }
+        const opened = await this.recordReviewOpened(
+          existing.value,
+          currentSession.value.prContext?.title,
+        );
         if (expectedTerminalState === undefined)
-          return this.projectStableUnlocked(existing.value);
-        if (existing.value.status._tag === "Terminal")
-          return existing.value.status.state === "merged"
-            ? this.projectStableUnlocked(existing.value)
+          return this.projectStableUnlocked(opened);
+        if (opened.status._tag === "Terminal")
+          return opened.status.state === "merged"
+            ? this.projectStableUnlocked(opened)
             : err({ reason: "terminal" });
         const initialized = await this.initializeSnapshot(
           identity.profileId,
@@ -228,14 +235,49 @@ export class ReviewWorkbenchController {
     );
     if (prepared._tag === "err")
       return err(mapPreparationFailure(prepared.error, this.lifecycle.logs));
-    const created = createReview({
-      identity,
-      currentSessionId: prepared.value.session.id,
-      headSha: prepared.value.session.key.headSha,
-      createdAt: prepared.value.session.createdAt,
-    });
+    const created = markReviewOpened(
+      createReview({
+        identity,
+        currentSessionId: prepared.value.session.id,
+        headSha: prepared.value.session.key.headSha,
+        createdAt: prepared.value.session.createdAt,
+      }),
+      {
+        title: prepared.value.session.prContext?.title,
+        now: prepared.value.session.createdAt,
+      },
+    );
     const saved = await this.lifecycle.reviews.save(created);
     return saved._tag === "ok" ? ok(created) : err({ reason: "storage" });
+  }
+
+  /**
+   * Records the open on the durable Review. Best effort by design: a lost
+   * compare-and-set or any storage failure is logged and the record that was
+   * loaded is returned unchanged, because sidebar bookkeeping must never fail
+   * the open the maintainer asked for.
+   */
+  private async recordReviewOpened(
+    review: Review,
+    title: string | undefined,
+  ): Promise<Review> {
+    const opened = markReviewOpened(review, { title, now: this.now() });
+    const saved = await this.lifecycle.reviews.save(opened, review.updatedAt);
+    if (saved._tag === "ok") return opened;
+    this.lifecycle.logs?.write({
+      process: "main",
+      level: "warn",
+      topic: "review-workbench",
+      message: "recording the review open failed; the open continues",
+      profileId: review.identity.profileId,
+      meta: {
+        reviewId: review.id,
+        ...(saved.error._tag === "StorageFailure"
+          ? { operation: saved.error.operation, reason: saved.error.reason }
+          : { tag: saved.error._tag, reason: saved.error.reason }),
+      },
+    });
+    return review;
   }
 
   /**
