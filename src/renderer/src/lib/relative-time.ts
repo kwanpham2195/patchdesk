@@ -26,9 +26,10 @@ export function formatRelativeTime(
 
 /**
  * The same age in the width a narrow column can spare: "45s", "2m", "14h",
- * "3d", "yesterday", "8w". Boundaries match `formatRelativeTime` up to a day;
- * past that the column names the day before and rolls over to weeks at
- * twenty-eight days, where a day count stops being worth reading.
+ * "3d", "8w". Boundaries match `formatRelativeTime` throughout; the column
+ * rolls over to weeks at twenty-eight days, where a day count stops being
+ * worth reading. Elapsed hours never name a calendar day — a row's date
+ * header carries that, and the two disagree across local midnight.
  */
 export function formatCompactRelativeTime(
   iso: string,
@@ -44,7 +45,6 @@ export function formatCompactRelativeTime(
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
-  if (days === 1) return "yesterday";
   if (days < 28) return `${days}d`;
   return `${Math.round(days / 7)}w`;
 }

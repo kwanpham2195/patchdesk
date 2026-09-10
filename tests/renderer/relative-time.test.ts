@@ -68,9 +68,12 @@ describe("formatCompactRelativeTime", () => {
     ).toBe("23h");
   });
 
-  it("names the day before at twenty-four hours", () => {
-    expect(formatCompactRelativeTime(secondsBefore(86_400), now)).toBe(
-      "yesterday",
+  it("counts elapsed days at twenty-four hours and never names one", () => {
+    // A calendar-day word here would contradict the date header a visited row
+    // sits under, which buckets by local day rather than elapsed hours.
+    expect(formatCompactRelativeTime(secondsBefore(86_400), now)).toBe("1d");
+    expect(formatCompactRelativeTime(secondsBefore(2 * 86_400 - 1), now)).toBe(
+      "1d",
     );
     expect(formatCompactRelativeTime(secondsBefore(2 * 86_400), now)).toBe(
       "2d",
