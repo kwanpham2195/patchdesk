@@ -14,6 +14,7 @@ import { registerPublishedFeedbackRoutes } from "./routes/published-feedback-rou
 import { registerPullRequestImageRoutes } from "./routes/pull-request-image-routes";
 import { registerReviewLifecycleRoutes } from "./routes/review-lifecycle-routes";
 import { registerReviewWriteRoutes } from "./routes/review-write-routes";
+import { registerSidebarRoutes } from "./routes/sidebar-routes";
 import { registerStorageDiagnosticsRoutes } from "./routes/storage-diagnostics-routes";
 
 export { createReadOnlyGitExecutor } from "./local-api-stores";
@@ -50,6 +51,7 @@ export async function startLocalApiServer(
   registerReviewLifecycleRoutes(app, container);
   registerInsightRoutes(app, container);
   registerStorageDiagnosticsRoutes(app, container);
+  registerSidebarRoutes(app, container);
 
   const { server, port } = await listenOnLoopback(app);
   const url = new URL(`http://${localhostHostname}:${port}/`);

@@ -42,6 +42,7 @@ import { ReviewRecoveryService } from "../services/review-recovery-service";
 import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
+import { SidebarListingService } from "../services/sidebar-listing-service";
 import type { AppLogService } from "../services/app-log-service";
 
 /** The narrow log seam every request-scoped writer needs. */
@@ -73,6 +74,7 @@ export type LocalApiContainer = {
   readonly directSummaryReviews: DirectSummaryReviewService | undefined;
   readonly publishedFeedback: PublishedFeedbackService;
   readonly pullRequestImages: PullRequestImageService;
+  readonly sidebarListing: SidebarListingService;
 };
 
 /** Either the built container, or the startup refusal that stopped it. */
@@ -363,6 +365,7 @@ export async function buildLocalApiContainer(
     sessions,
     readOnlyGit,
   );
+  const sidebarListing = new SidebarListingService({ reviews, diagnostics });
   const reviewDiffSources = new ReviewDiffSourceService(
     profiles,
     sessions,
@@ -433,6 +436,7 @@ export async function buildLocalApiContainer(
       directSummaryReviews,
       publishedFeedback,
       pullRequestImages,
+      sidebarListing,
     },
   };
 }
