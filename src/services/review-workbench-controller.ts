@@ -259,7 +259,13 @@ export class ReviewWorkbenchController {
     title: string | undefined,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
     const projected = await this.projectStableUnlocked(review);
-    if (projected._tag === "ok") await this.recordReviewOpened(review, title);
+    // `openUnlocked` passes the session's title; `load` holds no session, so it
+    // falls back to the projection's copy of the same pull request title.
+    if (projected._tag === "ok")
+      await this.recordReviewOpened(
+        review,
+        title ?? projected.value.pullRequest?.title,
+      );
     return projected;
   }
 
@@ -459,8 +465,8 @@ export class ReviewWorkbenchController {
   /**
    * `load`'s projection. Reaching a Review this way — the sidebar's own click,
    * or restoring the last destination at launch — counts as opening it, so it
-   * records the open too. The load path holds no session, so it records only
-   * the instant and leaves any stored title as it is.
+   * records the open too, taking the title from the projection it already
+   * built rather than reading the session for the same value.
    */
   private async projectStableRecordingOpen(
     review: Review,
