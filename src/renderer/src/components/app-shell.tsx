@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Search, Settings, User } from "lucide-react";
+import {
+  ArrowLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings,
+  User,
+} from "lucide-react";
 
 import type { AppDestination } from "@/routes";
 import { destinationKey, destinationTitle } from "@/routes";
@@ -27,6 +34,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { VisitedPullRequests } from "@/components/visited-pull-requests";
+import {
+  loadVisitedPullRequestsCollapsed,
+  saveVisitedPullRequestsCollapsed,
+} from "@/visited-pull-requests-preferences";
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 import { isTextEntryTarget } from "../text-entry-target";
@@ -48,6 +60,8 @@ export function AppShell({
   onInboxStateChange,
   pullRequestDefaultHost,
   onOpenPullRequest,
+  visitedReloadKey,
+  watchedRepoCount,
   children,
 }: {
   readonly destination: AppDestination;
@@ -71,12 +85,19 @@ export function AppShell({
   readonly pullRequestDefaultHost?: GitHubHost;
   /** Opens a parsed pull request through the root Review-opening owner. */
   readonly onOpenPullRequest?: (ref: PullRequestRef) => void;
+  /** Re-reads the visited pull requests whenever it moves: `App` bumps it on every Review open. */
+  readonly visitedReloadKey?: number;
+  /** Watched repositories in the active workspace; two or more put `owner/repo` on each visited row. */
+  readonly watchedRepoCount?: number;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const mainRef = useRef<HTMLElement | null>(null);
   const navigateOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const [visitedCollapsed, setVisitedCollapsed] = useState(
+    loadVisitedPullRequestsCollapsed,
+  );
   const [initialDestinationKey] = useState(() => destinationKey(destination));
   const focusedDestination = useRef(initialDestinationKey);
   const windowFullScreen = useWindowFullScreen();
@@ -126,6 +147,19 @@ export function AppShell({
         data-window-full-screen={windowFullScreen}
       >
         <div className="flex min-w-0 items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Pull requests you have opened"
+            aria-expanded={!visitedCollapsed}
+            onClick={() => {
+              const next = !visitedCollapsed;
+              setVisitedCollapsed(next);
+              saveVisitedPullRequestsCollapsed(next);
+            }}
+          >
+            {visitedCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+          </Button>
           {destination.kind === "workbench" ? (
             <Button
               variant="ghost"
@@ -248,6 +282,15 @@ export function AppShell({
         <BusyIndicator />
       </header>
       <div className="app-frame min-h-0 flex-1">
+        {visitedCollapsed ? null : (
+          <VisitedPullRequests
+            profileId={activeProfileId ?? ""}
+            destination={destination}
+            onNavigate={onNavigate}
+            reloadKey={visitedReloadKey ?? 0}
+            watchedRepoCount={watchedRepoCount ?? 0}
+          />
+        )}
         <main
           ref={mainRef}
           id="main-content"

@@ -921,3 +921,37 @@ export function parseCommitDiffResponse(
     return undefined;
   return parsed.output;
 }
+
+// `GET /v1/sidebar/reviews` is a local-API payload Patchdesk owns on both
+// sides (ADR "Choose a validation style by data boundary"), so it gets a
+// `v.strictObject` parsed with `v.safeParse`.
+const sidebarReviewsResponseSchema = v.strictObject({
+  rows: v.array(
+    v.strictObject({
+      reviewId: v.pipe(v.string(), v.minLength(1)),
+      owner: v.pipe(v.string(), v.minLength(1)),
+      repo: v.pipe(v.string(), v.minLength(1)),
+      number: v.pipe(v.number(), v.integer(), v.minValue(1)),
+      // Absent on a Review opened before the route stored a title.
+      title: v.optional(v.pipe(v.string(), v.minLength(1))),
+      openedAt: v.pipe(v.string(), v.minLength(1)),
+    }),
+  ),
+  // How many stored Reviews the route could not read. A diagnostic the main
+  // process already recorded; the column draws nothing for it.
+  unreadable: v.pipe(v.number(), v.integer(), v.minValue(0)),
+});
+
+type SidebarReviewsResponse = v.InferOutput<
+  typeof sidebarReviewsResponseSchema
+>;
+export type SidebarReviewRow = SidebarReviewsResponse["rows"][number];
+
+/** Parses the visited pull requests the sidebar column lists. */
+export function parseSidebarReviewsResponse(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser; there is no earlier boundary to run it at.
+  input: unknown,
+): SidebarReviewsResponse | undefined {
+  const parsed = v.safeParse(sidebarReviewsResponseSchema, input);
+  return parsed.success ? parsed.output : undefined;
+}
