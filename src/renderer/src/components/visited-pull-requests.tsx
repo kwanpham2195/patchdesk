@@ -312,7 +312,10 @@ type VisitedTerminalMarker = {
  * without the change landing, so it takes the destructive red. "seen" is the
  * whole claim: three of the four writers of `observedAt` stamp Patchdesk's own
  * clock beside the GitHub read, so the age is when Patchdesk saw the state,
- * not when GitHub reached it.
+ * not when GitHub reached it. The fourth, `ReviewRecoveryService`, dates a
+ * merge from GitHub's own `mergedAt`, so a merge reconciled at boot can read
+ * older than Patchdesk's sighting of it. Either way the date never moves
+ * again: a Terminal record is not observed a second time.
  */
 // oxlint-disable-next-line react/only-export-components -- Shared state-marker rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedTerminalMarker(
