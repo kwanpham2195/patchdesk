@@ -248,10 +248,18 @@ function VisitedRow({
           {title}
         </span>
         <span className="flex min-w-0 items-baseline gap-2 text-[11px] text-muted-foreground">
-          {/* The age is computed once per render; nothing ticks it. */}
-          <span className="min-w-0 truncate tabular-nums">
-            {reference}
-            <time dateTime={row.openedAt} title={formatExactTime(row.openedAt)}>
+          {/* The age is computed once per render; nothing ticks it. The
+           * reference is the only part that clips, because the age is what
+           * the row exists to tell you and it never gets its space back. */}
+          <span className="flex min-w-0 items-baseline tabular-nums">
+            {reference === "" ? null : (
+              <span className="min-w-0 truncate">{reference}</span>
+            )}
+            <time
+              dateTime={row.openedAt}
+              title={formatExactTime(row.openedAt)}
+              className="shrink-0"
+            >
               {formatCompactRelativeTime(row.openedAt)}
             </time>
           </span>

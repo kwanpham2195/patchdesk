@@ -265,6 +265,27 @@ describe("VisitedPullRequests", () => {
     expect(open.textContent).not.toContain("seen");
   });
 
+  it("keeps the whole age on a marked row and clips the reference instead", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(MIDDAY);
+    // Two owners, so every row spells out `owner/repo#number` and the meta
+    // line is as wide as it ever gets.
+    renderColumn({ rows: [merged, otherOwner] });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const row = screen.getByRole("button", { name: /#300/ });
+    const [age, marker] = [...row.querySelectorAll("time")];
+    expect(age?.textContent).toBe("2h");
+    expect(marker?.textContent).toBe("Merged · seen 3d");
+    // Nothing above the age truncates, so the reference is what gives way.
+    expect(age?.closest(".truncate")).toBeNull();
+    const reference = age?.previousElementSibling;
+    expect(reference?.textContent).toBe("kwanpham2195/patchdesk#300 · ");
+    expect(reference?.className).toContain("truncate");
+  });
+
   it("heads each date bucket the rows reach, in the order the route returned them", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(MIDDAY);
