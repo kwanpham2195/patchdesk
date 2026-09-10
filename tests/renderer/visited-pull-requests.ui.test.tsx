@@ -74,6 +74,16 @@ const untitledSameRepo = {
   openedAt: OPENED_AT,
 } satisfies RawJsonValue;
 
+// The only fixture under another owner, so a column holding it and `titled`
+// spans two owners as well as two repositories.
+const otherOwner = {
+  reviewId: "review-other-owner",
+  owner: "centraldigital",
+  repo: "cfw-sales-crm-api",
+  number: 98,
+  openedAt: OPENED_AT,
+} satisfies RawJsonValue;
+
 const MERGED_OBSERVED_AT = new Date(MIDDAY - 3 * DAY_MS).toISOString();
 
 // The pull request reached its end state, and the row must say when that was
@@ -137,7 +147,7 @@ describe("VisitedPullRequests", () => {
     renderColumn({ rows: [titled] });
 
     const row = await screen.findByRole("button", { name: /#125/ });
-    const labels = visitedRowLabels(titled, false);
+    const labels = visitedRowLabels(titled, "number");
     expect(row.textContent).toContain(labels.title);
     expect(row.textContent).toContain(labels.reference);
   });
@@ -153,14 +163,30 @@ describe("VisitedPullRequests", () => {
     expect(column.textContent).not.toContain("kwanpham2195/patchdesk");
   });
 
-  it("names owner/repo on the rows when they span two repositories", async () => {
+  it("names the repository without the owner when the rows share one owner", async () => {
     renderColumn({ rows: [titled, untitled] });
+
+    const row = await screen.findByRole("button", { name: /#125/ });
+    expect(row.textContent).toContain("patchdesk #125 · ");
+    // The titleless row carries the same rule in its fallback label.
+    expect(screen.getByRole("button", { name: /#7/ }).textContent).toContain(
+      "herdr#7",
+    );
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    // The owner distinguishes nothing here, so it costs width for nothing.
+    expect(column.textContent).not.toContain("kwanpham2195");
+  });
+
+  it("names owner/repo on the rows when they span two owners", async () => {
+    renderColumn({ rows: [titled, otherOwner] });
 
     const row = await screen.findByRole("button", { name: /#125/ });
     expect(row.textContent).toContain("kwanpham2195/patchdesk #125 · ");
     // The titleless row carries the same rule in its fallback label.
-    expect(screen.getByRole("button", { name: /#7/ }).textContent).toContain(
-      "kwanpham2195/herdr#7",
+    expect(screen.getByRole("button", { name: /#98/ }).textContent).toContain(
+      "centraldigital/cfw-sales-crm-api#98",
     );
   });
 
@@ -338,28 +364,42 @@ describe("visitedTerminalMarker", () => {
 
 describe("visitedRowLabels", () => {
   it("keeps a stored title and prints the reference under it", () => {
-    expect(visitedRowLabels(titled, false)).toEqual({
+    expect(visitedRowLabels(titled, "number")).toEqual({
       title: "Prototype: three sidebar variants for #119",
       reference: "#125 · ",
     });
   });
 
-  it("names the repository in the reference when the rows span more than one", () => {
-    expect(visitedRowLabels(titled, true)).toEqual({
+  it("names the repository alone in the reference under one owner", () => {
+    expect(visitedRowLabels(titled, "repo")).toEqual({
+      title: "Prototype: three sidebar variants for #119",
+      reference: "patchdesk #125 · ",
+    });
+  });
+
+  it("names the owner in the reference when the rows span two owners", () => {
+    expect(visitedRowLabels(titled, "owner-repo")).toEqual({
       title: "Prototype: three sidebar variants for #119",
       reference: "kwanpham2195/patchdesk #125 · ",
     });
   });
 
   it("falls back to the number alone and drops the reference for a row with no title", () => {
-    expect(visitedRowLabels(untitled, false)).toEqual({
+    expect(visitedRowLabels(untitled, "number")).toEqual({
       title: "#7",
       reference: "",
     });
   });
 
-  it("falls back to owner/repo#number when the rows span more than one", () => {
-    expect(visitedRowLabels(untitled, true)).toEqual({
+  it("falls back to repo#number under one owner", () => {
+    expect(visitedRowLabels(untitled, "repo")).toEqual({
+      title: "herdr#7",
+      reference: "",
+    });
+  });
+
+  it("falls back to owner/repo#number when the rows span two owners", () => {
+    expect(visitedRowLabels(untitled, "owner-repo")).toEqual({
       title: "kwanpham2195/herdr#7",
       reference: "",
     });

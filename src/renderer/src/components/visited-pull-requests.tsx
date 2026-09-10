@@ -73,11 +73,11 @@ export function VisitedPullRequests({
 
   const openReviewId =
     destination.kind === "workbench" ? destination.reviewId : undefined;
-  // The count is over the rows on screen rather than the watchlist, so a column
+  // The scope is over the rows on screen rather than the watchlist, so a column
   // listing one repository labels its rows bare even when the workspace watches
   // several: the label is there to tell apart what is visible.
-  const showRepo =
-    state.kind === "loaded" && distinctRepositoryCount(state.rows) > 1;
+  const scope: VisitedLabelScope =
+    state.kind === "loaded" ? visitedLabelScope(state.rows) : "number";
 
   return (
     <aside
@@ -129,7 +129,7 @@ export function VisitedPullRequests({
                 <VisitedRow
                   row={row}
                   selected={row.reviewId === openReviewId}
-                  showRepo={showRepo}
+                  scope={scope}
                   onOpen={() =>
                     onNavigate({ kind: "workbench", reviewId: row.reviewId })
                   }
@@ -142,10 +142,26 @@ export function VisitedPullRequests({
   );
 }
 
-function distinctRepositoryCount(
+/**
+ * How much of `owner/repo` a row spells out. The owner is never shown without
+ * the repository, so the three settings are one value rather than two
+ * booleans that could be combined into a label nobody wants.
+ */
+type VisitedLabelScope = "number" | "repo" | "owner-repo";
+
+/**
+ * The narrowest label that still tells the listed rows apart: the repository is
+ * named only when the rows span more than one, and its owner only when they
+ * span more than one owner. In a workspace whose rows all sit under one owner
+ * the owner is roughly half the width of `centraldigital/cfw-sales-crm-api#98`
+ * and distinguishes nothing, which pushed the age off the meta line.
+ */
+function visitedLabelScope(
   rows: ReadonlyArray<Pick<SidebarReviewRow, "owner" | "repo">>,
-): number {
-  return new Set(rows.map((row) => `${row.owner}/${row.repo}`)).size;
+): VisitedLabelScope {
+  const repositories = new Set(rows.map((row) => `${row.owner}/${row.repo}`));
+  if (repositories.size <= 1) return "number";
+  return new Set(rows.map((row) => row.owner)).size > 1 ? "owner-repo" : "repo";
 }
 
 type VisitedListEntry = {
@@ -201,15 +217,15 @@ function localDayIndex(at: number): number {
 function VisitedRow({
   row,
   selected,
-  showRepo,
+  scope,
   onOpen,
 }: {
   readonly row: SidebarReviewRow;
   readonly selected: boolean;
-  readonly showRepo: boolean;
+  readonly scope: VisitedLabelScope;
   readonly onOpen: () => void;
 }): React.JSX.Element {
-  const { title, reference } = visitedRowLabels(row, showRepo);
+  const { title, reference } = visitedRowLabels(row, scope);
   return (
     <button
       type="button"
@@ -311,13 +327,22 @@ type VisitedRowLabels = {
 // oxlint-disable-next-line react/only-export-components -- Shared row-label rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
 export function visitedRowLabels(
   row: Pick<SidebarReviewRow, "title" | "owner" | "repo" | "number">,
-  showRepo: boolean,
+  scope: VisitedLabelScope,
 ): VisitedRowLabels {
-  const repository = showRepo ? `${row.owner}/${row.repo}` : "";
+  const repository = visitedRepositoryLabel(row, scope);
   if (row.title === undefined)
     return { title: `${repository}#${row.number}`, reference: "" };
   return {
     title: row.title,
     reference: `${repository === "" ? "" : `${repository} `}#${row.number} · `,
   };
+}
+
+/** The repository part of a row's label, empty when the scope names none. */
+function visitedRepositoryLabel(
+  row: Pick<SidebarReviewRow, "owner" | "repo">,
+  scope: VisitedLabelScope,
+): string {
+  if (scope === "number") return "";
+  return scope === "owner-repo" ? `${row.owner}/${row.repo}` : row.repo;
 }
