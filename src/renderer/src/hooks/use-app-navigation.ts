@@ -15,9 +15,10 @@ export type NavigationState = "clear" | "dirty_draft" | "write_pending";
  * the loaded Review the workbench route renders.
  *
  * `workbench` lives here rather than in `use-review-workbench-route` because
- * navigating away clears it — `performNavigation` drops the payload for any
- * destination that is not the workbench — so the route state and the payload
- * are one piece of state, not two.
+ * navigating away clears it — `performNavigation` keeps the payload only for a
+ * workbench destination naming the Review it already holds, and drops it
+ * otherwise — so the route state and the payload are one piece of state, not
+ * two.
  */
 export type AppNavigation = {
   readonly destination: AppDestination;
@@ -30,7 +31,7 @@ export type AppNavigation = {
   readonly setPendingDestination: Dispatch<
     SetStateAction<AppDestination | undefined>
   >;
-  /** Navigates without asking, and forgets the Review the workbench held. */
+  /** Navigates without asking, forgetting a held Review the route leaves. */
   readonly performNavigation: (next: AppDestination) => void;
   /** Navigates, or parks the destination behind the leave-confirmation. */
   readonly navigate: (next: AppDestination) => void;
@@ -51,7 +52,13 @@ export function useAppNavigation(): AppNavigation {
     useState<AppDestination>();
 
   const performNavigation = useCallback((next: AppDestination): void => {
-    if (next.kind !== "workbench") setWorkbench(undefined);
+    setWorkbench((held) => {
+      if (next.kind !== "workbench" || held === undefined) return undefined;
+      // Same derivation as `openWorkbench` in `app.tsx`, so a payload the route
+      // was built from is recognized as the one the route still names.
+      const heldReviewId = held.review?.id ?? held.session.id;
+      return heldReviewId === next.reviewId ? held : undefined;
+    });
     setDestination(next);
     window.localStorage.setItem("patchdesk.destination", destinationKey(next));
   }, []);
