@@ -87,6 +87,19 @@ describe("VisitedPullRequests", () => {
     expect(within(column).queryAllByRole("button")).toHaveLength(0);
   });
 
+  it("gives the header strip a hover fallback for the workspace and marks the list recent", async () => {
+    renderColumn({ rows: [titled] });
+
+    await screen.findByRole("button", { name: /#125/ });
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    // The label is the one truncatable string with no other hover fallback.
+    const label = within(column).getByTitle("Personal");
+    expect(label.textContent).toBe("Personal");
+    expect(within(column).getByText("recent").textContent).toBe("recent");
+  });
+
   it("renders the derived label and reference on the row", async () => {
     renderColumn({ rows: [titled] });
 
