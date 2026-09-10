@@ -31,7 +31,7 @@ function openWorkbench(
     result.current.setWorkbench(payload);
     result.current.performNavigation({
       kind: "workbench",
-      reviewId: payload.review?.id ?? payload.session.id,
+      reviewId: payload.review.id,
     });
   });
 }
