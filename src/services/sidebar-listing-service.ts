@@ -15,6 +15,16 @@ import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 /** How many visited pull requests the sidebar shows. */
 const SIDEBAR_ROW_LIMIT = 20;
 
+/**
+ * The state a pull request finished in, dated with the moment Patchdesk
+ * observed it. The date travels with the state so the row can say when it was
+ * seen instead of implying the state is live.
+ */
+type SidebarTerminalState = {
+  readonly state: "merged" | "closed";
+  readonly observedAt: IsoTimestamp;
+};
+
 /** One visited pull request, as the sidebar renders it. */
 type SidebarReviewRow = {
   readonly reviewId: ReviewId;
@@ -23,6 +33,8 @@ type SidebarReviewRow = {
   readonly number: PullRequestNumber;
   readonly title?: string;
   readonly openedAt: IsoTimestamp;
+  /** Absent while the pull request is still open. */
+  readonly terminal?: SidebarTerminalState;
 };
 
 /** The sidebar's rows, plus how many stored Reviews could not be read. */
@@ -70,6 +82,7 @@ export class SidebarListingService {
         // a non-empty string, and one such row must not fail the whole parse.
         ...definedProps({
           title: review.title === "" ? undefined : review.title,
+          terminal: terminalState(review),
         }),
         openedAt: openedAt(review),
       }));
@@ -100,4 +113,15 @@ export class SidebarListingService {
  */
 function openedAt(review: Review): IsoTimestamp {
   return review.lastOpenedAt ?? review.updatedAt;
+}
+
+/**
+ * The Terminal state already stored on the Review, or nothing while it is
+ * Open. This reads what the record holds and calls no one: a row never
+ * recomputes a pull request's state.
+ */
+function terminalState(review: Review): SidebarTerminalState | undefined {
+  const { status } = review;
+  if (status._tag !== "Terminal") return undefined;
+  return { state: status.state, observedAt: status.observedAt };
 }

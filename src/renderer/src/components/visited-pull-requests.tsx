@@ -231,16 +231,70 @@ function VisitedRow({
         <span className="min-w-0 truncate text-[13px] leading-snug font-medium">
           {title}
         </span>
-        {/* The age is computed once per render; nothing ticks it. */}
-        <span className="min-w-0 truncate tabular-nums text-[11px] text-muted-foreground">
-          {reference}
-          <time dateTime={row.openedAt} title={formatExactTime(row.openedAt)}>
-            {formatCompactRelativeTime(row.openedAt)}
-          </time>
+        <span className="flex min-w-0 items-baseline gap-2 text-[11px] text-muted-foreground">
+          {/* The age is computed once per render; nothing ticks it. */}
+          <span className="min-w-0 truncate tabular-nums">
+            {reference}
+            <time dateTime={row.openedAt} title={formatExactTime(row.openedAt)}>
+              {formatCompactRelativeTime(row.openedAt)}
+            </time>
+          </span>
+          {row.terminal === undefined ? null : (
+            <TerminalMarker terminal={row.terminal} />
+          )}
         </span>
       </span>
     </button>
   );
+}
+
+/**
+ * What a pull request that is no longer open reads as. The state is dated,
+ * because the row is drawn from a stored observation and never from a live
+ * GitHub read: an undated marker would look current when it is not.
+ */
+function TerminalMarker({
+  terminal,
+}: {
+  readonly terminal: NonNullable<SidebarReviewRow["terminal"]>;
+}): React.JSX.Element {
+  const { label, tone } = visitedTerminalMarker(terminal);
+  return (
+    <time
+      dateTime={terminal.observedAt}
+      title={formatExactTime(terminal.observedAt)}
+      className={cn("ml-auto shrink-0 text-[10px] font-medium", tone)}
+    >
+      {label}
+    </time>
+  );
+}
+
+/** The text colour that tells the state apart at a glance. */
+type VisitedTerminalTone = "text-status-info" | "text-destructive";
+
+type VisitedTerminalMarker = {
+  readonly label: string;
+  readonly tone: VisitedTerminalTone;
+};
+
+/**
+ * The marker a closed or merged row carries, and its tone. Merged is the
+ * ordinary end of a review, so it takes the informational blue; closed ended
+ * without the change landing, so it takes the destructive red. "seen" is the
+ * whole claim: three of the four writers of `observedAt` stamp Patchdesk's own
+ * clock beside the GitHub read, so the age is when Patchdesk saw the state,
+ * not when GitHub reached it.
+ */
+// oxlint-disable-next-line react/only-export-components -- Shared state-marker rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
+export function visitedTerminalMarker(
+  terminal: NonNullable<SidebarReviewRow["terminal"]>,
+  now: number = Date.now(),
+): VisitedTerminalMarker {
+  const seen = `seen ${formatCompactRelativeTime(terminal.observedAt, now)}`;
+  return terminal.state === "merged"
+    ? { label: `Merged · ${seen}`, tone: "text-status-info" }
+    : { label: `Closed · ${seen}`, tone: "text-destructive" };
 }
 
 type VisitedRowLabels = {
