@@ -41,7 +41,9 @@
 > return its pull request — deleted, transferred, made private, or simply
 > off the current filter and page. The saved review itself is not lost and
 > still opens normally once its pull request is reachable again; only this
-> screen's separate listing of it is gone.
+> screen's separate listing of it is gone. ADR 0042 later brought a local
+> listing back, beside the app frame rather than on this screen, so this
+> screen still has one source and the reasoning below is unchanged.
 
 The Pull requests screen scans every watched repository of a workspace
 profile at once. `MaintainerInboxService.list` reads one GraphQL page
