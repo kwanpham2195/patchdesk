@@ -87,9 +87,17 @@ export function VisitedPullRequests({
     >
       {/* The strip keeps its height with no label so the list does not jump
        * up while a workspace switch is in flight. */}
-      <div className="flex min-h-8 min-w-0 shrink-0 items-center border-b px-2.5 py-2">
-        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-tight uppercase">
+      <div className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b px-2.5 py-2">
+        <span
+          className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-tight uppercase"
+          title={workspaceLabel}
+        >
           {workspaceLabel}
+        </span>
+        {/* Names the order the list is in and the cap it stops at
+         * (`SIDEBAR_ROW_LIMIT`), which is otherwise silent. */}
+        <span className="shrink-0 text-[11px] text-muted-foreground">
+          recent
         </span>
       </div>
       {/* The shared ScrollArea draws a zero-width thumb here, so the native

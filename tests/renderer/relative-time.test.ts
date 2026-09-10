@@ -68,10 +68,30 @@ describe("formatCompactRelativeTime", () => {
     ).toBe("23h");
   });
 
-  it("switches to days at twenty-four hours", () => {
-    expect(formatCompactRelativeTime(secondsBefore(86_400), now)).toBe("1d");
+  it("names the day before at twenty-four hours", () => {
+    expect(formatCompactRelativeTime(secondsBefore(86_400), now)).toBe(
+      "yesterday",
+    );
+    expect(formatCompactRelativeTime(secondsBefore(2 * 86_400), now)).toBe(
+      "2d",
+    );
     expect(formatCompactRelativeTime(secondsBefore(14 * 86_400), now)).toBe(
       "14d",
+    );
+  });
+
+  it("rolls over to weeks at twenty-eight days", () => {
+    expect(formatCompactRelativeTime(secondsBefore(27 * 86_400), now)).toBe(
+      "27d",
+    );
+    expect(formatCompactRelativeTime(secondsBefore(28 * 86_400), now)).toBe(
+      "4w",
+    );
+    expect(formatCompactRelativeTime(secondsBefore(30 * 86_400), now)).toBe(
+      "4w",
+    );
+    expect(formatCompactRelativeTime(secondsBefore(147 * 86_400), now)).toBe(
+      "21w",
     );
   });
 

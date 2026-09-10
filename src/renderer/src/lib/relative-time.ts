@@ -26,7 +26,9 @@ export function formatRelativeTime(
 
 /**
  * The same age in the width a narrow column can spare: "45s", "2m", "14h",
- * "3d". Boundaries match `formatRelativeTime`; only the wording is shorter.
+ * "3d", "yesterday", "8w". Boundaries match `formatRelativeTime` up to a day;
+ * past that the column names the day before and rolls over to weeks at
+ * twenty-eight days, where a day count stops being worth reading.
  */
 export function formatCompactRelativeTime(
   iso: string,
@@ -41,7 +43,10 @@ export function formatCompactRelativeTime(
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 28) return `${days}d`;
+  return `${Math.round(days / 7)}w`;
 }
 
 /** The exact time a relative age stands for, shown on hover. */
