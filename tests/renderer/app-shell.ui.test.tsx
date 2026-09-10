@@ -40,6 +40,8 @@ describe("AppShell settings overlay entry points", () => {
         <AppShell
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
+          visitedReloadKey={0}
+          watchedRepoCount={0}
           onOpenSettings={onOpenSettings}
         >
           <div>Inbox content</div>
@@ -65,6 +67,8 @@ describe("AppShell settings overlay entry points", () => {
         <AppShell
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
+          visitedReloadKey={0}
+          watchedRepoCount={0}
           onOpenSettings={() => undefined}
         >
           <div>Inbox content</div>
@@ -106,6 +110,8 @@ describe("AppShell Navigate shortcut", () => {
           <AppShell
             destination={{ kind: "dashboard" }}
             onNavigate={() => undefined}
+            visitedReloadKey={0}
+            watchedRepoCount={0}
             onOpenSettings={() => undefined}
           >
             {target}
@@ -139,6 +145,8 @@ describe("AppShell Navigate shortcut", () => {
         <AppShell
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
+          visitedReloadKey={0}
+          watchedRepoCount={0}
           onOpenSettings={() => undefined}
         >
           <button type="button">Review content</button>
@@ -167,6 +175,8 @@ describe("AppShell pull-request command", () => {
         <AppShell
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
+          visitedReloadKey={0}
+          watchedRepoCount={0}
           onOpenSettings={() => undefined}
           onOpenPullRequest={onOpenPullRequest}
         >
@@ -199,6 +209,8 @@ describe("AppShell pull-request command", () => {
         <AppShell
           destination={{ kind: "workbench", reviewId: "review-1" }}
           onNavigate={() => undefined}
+          visitedReloadKey={0}
+          watchedRepoCount={0}
           onOpenSettings={() => undefined}
           onOpenPullRequest={() => undefined}
         >
@@ -227,6 +239,8 @@ describe("AppShell visited pull requests toggle", () => {
         <AppShell
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
+          visitedReloadKey={0}
+          watchedRepoCount={0}
           onOpenSettings={() => undefined}
         >
           <div>Inbox content</div>

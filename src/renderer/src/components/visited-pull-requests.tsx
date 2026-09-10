@@ -135,16 +135,7 @@ function VisitedRow({
   readonly showRepo: boolean;
   readonly onOpen: () => void;
 }): React.JSX.Element {
-  // A Review opened before the route stored titles has none, so the reference
-  // becomes the label and follows the same repository rule as the line below.
-  const title =
-    row.title ?? `${showRepo ? `${row.owner}/${row.repo}` : ""}#${row.number}`;
-  // That fallback title is already the reference, so repeating it under itself
-  // would print the number twice; the age stands alone instead.
-  const reference =
-    row.title === undefined
-      ? ""
-      : `${showRepo ? `${row.owner}/${row.repo} ` : ""}#${row.number} · `;
+  const { title, reference } = visitedRowLabels(row, showRepo);
   return (
     <button
       type="button"
@@ -176,4 +167,29 @@ function VisitedRow({
       </span>
     </button>
   );
+}
+
+type VisitedRowLabels = {
+  readonly title: string;
+  readonly reference: string;
+};
+
+/**
+ * The label a visited row shows and the reference printed under it. A Review
+ * opened before the route stored titles has none, so its reference becomes the
+ * label; printing the reference again underneath would repeat the number, so
+ * that row leaves the age standing alone.
+ */
+// oxlint-disable-next-line react/only-export-components -- Shared row-label rule, tested as a function in tests/renderer/visited-pull-requests.ui.test.tsx.
+export function visitedRowLabels(
+  row: Pick<SidebarReviewRow, "title" | "owner" | "repo" | "number">,
+  showRepo: boolean,
+): VisitedRowLabels {
+  const repository = showRepo ? `${row.owner}/${row.repo}` : "";
+  if (row.title === undefined)
+    return { title: `${repository}#${row.number}`, reference: "" };
+  return {
+    title: row.title,
+    reference: `${repository === "" ? "" : `${repository} `}#${row.number} · `,
+  };
 }
