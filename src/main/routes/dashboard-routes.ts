@@ -200,9 +200,6 @@ export function registerDashboardRoutes(
       await dashboard.addWatchlistRepo(await jsonBody(context)),
     ),
   );
-  app.patch("/v1/watchlist/path", async (context) =>
-    response(context, await dashboard.setLocalPath(await jsonBody(context))),
-  );
   app.delete("/v1/watchlist", async (context) =>
     response(
       context,
@@ -212,9 +209,6 @@ export function registerDashboardRoutes(
 
   app.get("/v1/watchlist/suggestions", async (context) =>
     response(context, await dashboard.discoverWorkspaceRepos()),
-  );
-  app.post("/v1/github/access", async (context) =>
-    response(context, await dashboard.testGitHubAccess()),
   );
   app.get("/v1/environment", async (context) => {
     const [git, gh, ghAuth, githubAccounts] = await Promise.all([

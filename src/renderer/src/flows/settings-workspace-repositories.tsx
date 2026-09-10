@@ -108,9 +108,15 @@ export type WatchlistToggleHook = {
  * Owns repository-scoped pending, draft, and error state for watchlist
  * changes. A synchronous key guard rejects duplicate same-row submissions
  * while allowing requests for different repositories to run concurrently.
+ *
+ * `profileId` is the workspace each request edits, sent with it rather than
+ * left to the server's selected workspace: a switch flips that selection as
+ * soon as `POST /v1/profiles/select` resolves, while this card still shows
+ * the previous workspace's repositories until the reload lands.
  */
 // oxlint-disable-next-line react/only-export-components -- Merge/group helpers and the toggle hook share this module with the components that consume them.
 export function useWatchlistToggle(
+  profileId: string | undefined,
   onWorkspaceReload: () => Promise<void>,
 ): WatchlistToggleHook {
   const pendingKeysRef = useRef(new Set<string>());
@@ -131,6 +137,16 @@ export function useWatchlistToggle(
   ): Promise<void> => {
     const key = repositoryKey(entry);
     if (pendingKeysRef.current.has(key)) return;
+    if (profileId === undefined) {
+      // No loaded workspace means no workspace to name in the request.
+      setErrorsByKey((current) =>
+        new Map(current).set(
+          key,
+          "Patchdesk has not finished loading this workspace.",
+        ),
+      );
+      return;
+    }
 
     pendingKeysRef.current.add(key);
     setPendingKeys((current) => new Set(current).add(key));
@@ -147,13 +163,19 @@ export function useWatchlistToggle(
       if (currentlyWatched) {
         await requestJson("/v1/watchlist", {
           method: "DELETE",
-          body: { host: entry.host, owner: entry.owner, repo: entry.repo },
+          body: {
+            profileId,
+            host: entry.host,
+            owner: entry.owner,
+            repo: entry.repo,
+          },
         });
         setFeedback(`Removed ${entry.owner}/${entry.repo} from the watchlist.`);
       } else {
         await requestJson("/v1/watchlist", {
           method: "POST",
           body: {
+            profileId,
             host: entry.host,
             owner: entry.owner,
             repo: entry.repo,

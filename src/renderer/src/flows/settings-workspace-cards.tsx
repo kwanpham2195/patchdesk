@@ -112,7 +112,10 @@ export function RepositoriesCard({
   const watchedKeys = new Set(savedRepos.map((repo) => repositoryKey(repo)));
   const isWatched = (entry: WatchlistEntry): boolean =>
     watchedKeys.has(repositoryKey(entry));
-  const watchlistToggle = useWatchlistToggle(onWorkspaceReload);
+  const watchlistToggle = useWatchlistToggle(
+    dashboard?.profile.id,
+    onWorkspaceReload,
+  );
   const handleToggle = (
     entry: WatchlistEntry,
     currentlyWatched: boolean,

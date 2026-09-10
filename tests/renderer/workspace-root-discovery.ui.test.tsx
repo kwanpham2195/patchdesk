@@ -170,6 +170,7 @@ describe("workspace root discovery", () => {
         path: "/v1/watchlist",
         method: "POST",
         body: {
+          profileId: "cfw",
           host: "github.com",
           owner: "centraldigital",
           repo: "ready-repo",
