@@ -940,7 +940,8 @@ const sidebarReviewsResponseSchema = v.strictObject({
       // age comes from this alone, so an unvisited row shows none.
       lastOpenedAt: v.optional(v.pipe(v.string(), v.minLength(1))),
       // Absent while the pull request is still open. `observedAt` is when
-      // Patchdesk saw the state, so the row can date what it shows.
+      // Patchdesk saw the state — except on the recovery path, which dates a
+      // merge from GitHub's own `mergedAt` — so the row can date what it shows.
       terminal: v.optional(
         v.strictObject({
           state: v.picklist(["merged", "closed"]),
