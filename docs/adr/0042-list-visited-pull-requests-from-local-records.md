@@ -1,6 +1,6 @@
 # List visited pull requests from local Review records
 
-> **Status: Accepted. Implemented in `17ebba9d..69bc472c` on
+> **Status: Accepted. Implemented in PR #137 on
 > `feat/119-visited-pull-requests`** — the column, `GET /v1/sidebar/reviews`,
 > the `title` and `lastOpenedAt` fields on the Review record, and the retention
 > change that sweeps a record with its session. Issue #119. Companion to ADR
@@ -29,12 +29,21 @@ sorts by the opened instant descending, and slices to `SIDEBAR_ROW_LIMIT`,
 which is 20. A row carries the review id, `owner`, `repo`, the number, an
 optional title, and the opened instant — nothing a GitHub read would supply.
 
-The renderer falls back to `owner/repo#number` when a record has no stored
-title, and shows `owner/repo` on a row only when the workspace watches more than
-one repository. The relative age is computed at render and does not tick. The
-open pull request's row is highlighted, carries `aria-current="page"`, and does
-nothing when clicked, because it is already where navigation would land. The
-column collapses from a toggle in the header, persisted as one local boolean.
+A row shows `owner/repo` only when the workspace watches more than one
+repository, and a record with no stored title falls under the same rule: its
+label is `#number` on a single-repository workspace and `owner/repo#number`
+when the workspace watches more. The relative age is computed at render and
+does not tick. The open pull request's row is highlighted, carries
+`aria-current="page"`, and does nothing when clicked, because it is already
+where navigation would land. The column collapses from a toggle in the header,
+persisted as one local boolean.
+
+The column follows prototype variant D2 in details the first cut of it dropped.
+The age is compact — `4h`, `2d` — through a new `formatCompactRelativeTime`,
+because a fixed-width column cannot spare `4 h ago`, and the exact instant is
+on the `<time>` element's title. The header strip is back, carrying the active
+workspace's label, and the native scrollbar is styled thin and low contrast,
+because the shared `ScrollArea` draws a zero-width thumb here.
 
 Every click routes through the existing `navigate()` guard, so a pending GitHub
 write parks the destination behind the confirmation dialog exactly as it does
@@ -76,17 +85,27 @@ writes whenever GitHub has moved; boot-time journal recovery writes as well
 not the maintainer's own, and a pull request nobody has looked at in a week
 floats to the top when someone comments on it.
 
-`markReviewOpened` writes `lastOpenedAt`, and the workbench controller calls it
-on both open paths — the existing Review and the freshly created one. `title`
-rides the same write, because the open path already holds it in
-`ReviewSession.prContext.title`. The save is best effort: `ReviewStore.save`
-takes a compare-and-set token, and a lost race or any storage failure is logged
-while the open continues with the record that was loaded. Bookkeeping for a
-sidebar must never fail the open the maintainer asked for.
+`markReviewOpened` writes `lastOpenedAt`, and the workbench controller records
+it in one place: `projectOpenedUnlocked`, which writes only once a projection
+has come back. Every path that returns a projection therefore records the open,
+and an open the maintainer was refused — a Terminal record turned away by
+`openMerged`, or a projection that failed — records nothing and cannot rank a
+pull request nobody reached. `title` rides the same write. `openUnlocked` takes
+it from `ReviewSession.prContext.title`; `load` holds no session, so it fills a
+missing title from the projection it already built. The save is best effort:
+`ReviewStore.save` takes a compare-and-set token, and a lost race or any storage
+failure is logged while the open continues with the record that was loaded.
+Bookkeeping for a sidebar must never fail the open the maintainer asked for.
+
+Restoring the last destination counts as opening it. The column navigates to the
+workbench rather than opening a Review itself, so its own click arrives through
+`load`, which makes `load` a maintainer's gesture and not boot bookkeeping.
+Recording only on the `open` paths left the feature's primary click unable to
+reorder the list it belongs to: clicking a row moved nothing.
 
 Records written before this shipped have neither field. They fall back to
-`updatedAt` for the sort and to `owner/repo#number` for the label, which is why
-an old row keeps printing its number until the next time it is opened.
+`updatedAt` for the sort and to the `#number` reference for the label, which is
+why an old row keeps printing its number until the next time it is opened.
 
 ### The record schema stays at version 2
 
@@ -115,7 +134,10 @@ corrupt file would empty a column that is meant to be always present. It now
 skips that record and returns `{ reviews, unreadable }`. The count is a
 diagnostic rather than a line in the column: `SidebarListingService` records it
 as a `recovery` diagnostic and renders the rows it has. `insight-recovery.ts`
-had the same defect and was fixed with it.
+had the same defect and was fixed with it. The same failure has a second form
+one layer up, where `SidebarListingService` projects a stored title of `""` as
+no title at all: the renderer's row schema requires a non-empty string, so one
+such record would fail the whole response parse and blank the column.
 
 ### Retention takes the record with the session
 
@@ -161,6 +183,11 @@ Each of these is built once there is evidence it is missed.
   grows with how many pull requests that workspace has ever opened.
 - A row says nothing about merge state or checks, so a merged, closed, or
   conflicting pull request reads the same as an open one until it is opened.
+- Arriving at a workbench mounts the Review loader twice, so two callers can
+  wait on one in-flight stored-review load. Every waiter on an operation key is
+  tracked now, because the answer used to be dropped when the run that started
+  it had already gone, leaving the destination with no workbench to render and
+  no second attempt to make.
 - A record this build writes cannot be parsed by a build that predates `title`
   and `lastOpenedAt`.
 - The retention sweep now deletes Review records. Fourteen days after a pull
