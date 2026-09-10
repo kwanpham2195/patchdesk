@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { requestJson } from "@/api-client";
-import { formatRelativeTime } from "@/lib/relative-time";
+import {
+  formatCompactRelativeTime,
+  formatExactTime,
+} from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import {
   parseSidebarReviewsResponse,
@@ -28,6 +31,7 @@ export function VisitedPullRequests({
   onNavigate,
   reloadKey,
   watchedRepoCount,
+  workspaceLabel,
 }: {
   /** Empty while a workspace switch is in flight, which draws the frame alone. */
   readonly profileId: string;
@@ -37,6 +41,8 @@ export function VisitedPullRequests({
   readonly reloadKey: number;
   /** `owner/repo` on every row is noise when the workspace watches one repository. */
   readonly watchedRepoCount: number;
+  /** The active workspace's label for the header strip; undefined while a switch is in flight. */
+  readonly workspaceLabel: string | undefined;
 }): React.JSX.Element {
   const [state, setState] = useState<ListState>({ kind: "idle" });
 
@@ -73,10 +79,20 @@ export function VisitedPullRequests({
 
   return (
     <aside
+      id="visited-pull-requests"
       aria-label="Pull requests you have opened"
       className="mr-1 flex w-[252px] shrink-0 flex-col overflow-hidden rounded-t-lg border border-b-0 bg-card"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
+      {/* The strip keeps its height with no label so the list does not jump
+       * up while a workspace switch is in flight. */}
+      <div className="flex min-h-8 min-w-0 shrink-0 items-center border-b px-2.5 py-2">
+        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-tight uppercase">
+          {workspaceLabel}
+        </span>
+      </div>
+      {/* The shared ScrollArea draws a zero-width thumb here, so the native
+       * bar is styled down instead: thin, rounded, low contrast. */}
+      <div className="min-h-0 flex-1 overflow-y-auto pt-3 pb-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/45">
         {state.kind === "failed" ? (
           <p className="px-2.5 py-2 text-[12px] text-muted-foreground">
             Patchdesk could not read the pull requests you have opened.
@@ -119,8 +135,10 @@ function VisitedRow({
   readonly showRepo: boolean;
   readonly onOpen: () => void;
 }): React.JSX.Element {
-  // A Review opened before the route stored titles has none.
-  const title = row.title ?? `${row.owner}/${row.repo}#${row.number}`;
+  // A Review opened before the route stored titles has none, so the reference
+  // becomes the label and follows the same repository rule as the line below.
+  const title =
+    row.title ?? `${showRepo ? `${row.owner}/${row.repo}` : ""}#${row.number}`;
   // That fallback title is already the reference, so repeating it under itself
   // would print the number twice; the age stands alone instead.
   const reference =
@@ -131,11 +149,12 @@ function VisitedRow({
     <button
       type="button"
       aria-current={selected ? "page" : undefined}
+      aria-disabled={selected ? true : undefined}
       title={title}
       // The row already showing is where navigation would land, so it does nothing.
       onClick={selected ? undefined : onOpen}
       className={cn(
-        "ui-state-transition relative flex w-full min-w-0 items-start gap-1.5 py-1.5 pr-3 pl-2.5 text-left outline-none",
+        "ui-state-transition relative flex w-full min-w-0 items-start py-1.5 pr-3 pl-2.5 text-left outline-none",
         "hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         selected && "bg-primary/10",
       )}
@@ -150,7 +169,9 @@ function VisitedRow({
         {/* The age is computed once per render; nothing ticks it. */}
         <span className="min-w-0 truncate tabular-nums text-[11px] text-muted-foreground">
           {reference}
-          {formatRelativeTime(row.openedAt)}
+          <time dateTime={row.openedAt} title={formatExactTime(row.openedAt)}>
+            {formatCompactRelativeTime(row.openedAt)}
+          </time>
         </span>
       </span>
     </button>

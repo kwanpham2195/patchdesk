@@ -24,6 +24,26 @@ export function formatRelativeTime(
   return `${Math.floor(hours / 24)} d ago`;
 }
 
+/**
+ * The same age in the width a narrow column can spare: "45s", "2m", "14h",
+ * "3d". Boundaries match `formatRelativeTime`; only the wording is shorter.
+ */
+export function formatCompactRelativeTime(
+  iso: string,
+  now: number = Date.now(),
+): string {
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) return iso;
+  const seconds = Math.floor((now - timestamp) / 1_000);
+  if (seconds < 1) return "now";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
 /** The exact time a relative age stands for, shown on hover. */
 export function formatExactTime(iso: string): string {
   const timestamp = Date.parse(iso);
