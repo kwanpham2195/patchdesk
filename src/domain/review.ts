@@ -93,6 +93,16 @@ export type Review = {
   readonly status: ReviewStatus;
   readonly createdAt: IsoTimestamp;
   readonly updatedAt: IsoTimestamp;
+  /**
+   * What a sidebar row of visited pull requests shows. Both stay on
+   * schemaVersion 2: there is no migration framework, so bumping the version
+   * would send every record already on disk to quarantine. The price is
+   * one-directional — `reviewV2Schema` is a `strictObject`, so an older build
+   * refuses to parse a record this build writes, and there is no downgrade
+   * path back to a build that predates these fields.
+   */
+  readonly title?: string;
+  readonly lastOpenedAt?: IsoTimestamp;
 };
 
 export type InvalidReview = { readonly _tag: "InvalidReview" };
@@ -158,6 +168,8 @@ const reviewV2Schema = v.strictObject({
   status: statusSchema,
   createdAt: v.string(),
   updatedAt: v.string(),
+  title: v.optional(v.string()),
+  lastOpenedAt: v.optional(v.string()),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
@@ -232,6 +244,27 @@ export function moveReviewToSession(
     freshness: { _tag: "Fresh" },
     updatedAt: laterTimestamp(review.updatedAt, input.updatedAt),
   });
+}
+
+/**
+ * Record that the maintainer opened this pull request, for the sidebar's
+ * visited rows. There is no Terminal guard: opening a merged or closed pull
+ * request is a legitimate gesture, so this returns a plain Review.
+ */
+export function markReviewOpened(
+  review: Review,
+  input: {
+    readonly title?: string | undefined;
+    readonly now: IsoTimestamp;
+  },
+): Review {
+  return {
+    ...review,
+    // An open with no title in hand keeps the title already recorded.
+    ...definedProps({ title: input.title }),
+    lastOpenedAt: input.now,
+    updatedAt: laterTimestamp(review.updatedAt, input.now),
+  };
 }
 
 /**
@@ -360,6 +393,8 @@ function parseReviewBase(
     | "status"
     | "createdAt"
     | "updatedAt"
+    | "title"
+    | "lastOpenedAt"
   >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
@@ -401,7 +436,15 @@ function parseReviewBase(
       ? ok(undefined)
       : parseRepresentedRemote(raw.representedRemote);
   const status = parseStatus(raw.status);
-  if (representedRemote._tag === "err" || status._tag === "err")
+  const lastOpenedAt =
+    raw.lastOpenedAt === undefined
+      ? ok(undefined)
+      : parseIsoTimestamp(raw.lastOpenedAt);
+  if (
+    representedRemote._tag === "err" ||
+    status._tag === "err" ||
+    lastOpenedAt._tag === "err"
+  )
     return invalid();
 
   return ok({
@@ -409,7 +452,11 @@ function parseReviewBase(
     identity,
     currentSessionId: sessionId.value,
     currentHeadSha: headSha.value,
-    ...definedProps({ representedRemote: representedRemote.value }),
+    ...definedProps({
+      representedRemote: representedRemote.value,
+      title: raw.title,
+      lastOpenedAt: lastOpenedAt.value,
+    }),
     status: status.value,
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,

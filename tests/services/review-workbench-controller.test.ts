@@ -161,6 +161,68 @@ describe("ReviewWorkbenchController", () => {
     expect(value.preparation.prepare).not.toHaveBeenCalled();
   });
 
+  it("records the open on the durable Review with the pull request title", async () => {
+    const openedAt = "2026-09-10T09:00:00.000Z";
+    const value = fixture({
+      sessions: {
+        load: vi.fn(async () =>
+          ok({ id: sessionId, prContext: { title: "Add the sidebar" } }),
+        ),
+      },
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(openedAt));
+    try {
+      await expect(
+        value.controller.open({
+          profileId,
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          number: 42,
+        }),
+      ).resolves.toEqual({ _tag: "ok", value: projection });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(value.lifecycle.reviews.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Add the sidebar",
+        lastOpenedAt: openedAt,
+        updatedAt: openedAt,
+      }),
+      at,
+    );
+  });
+
+  it("opens anyway when recording the open loses the compare-and-set", async () => {
+    const logs = { write: vi.fn() };
+    const value = fixture({
+      reviews: {
+        load: vi.fn(async () => ok(review)),
+        save: vi.fn(async () =>
+          err({ _tag: "ReviewConflict", reason: "stale_revision" }),
+        ),
+      },
+      logs,
+    });
+
+    await expect(
+      value.controller.open({
+        profileId,
+        host: "github.com",
+        owner: "centraldigital",
+        repo: "patchdesk",
+        number: 42,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: projection });
+    expect(value.lifecycle.reviews.save).toHaveBeenCalledOnce();
+    expect(logs.write).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: "review-workbench", level: "warn" }),
+    );
+  });
+
   it("recovers an observation journal before projection", async () => {
     const journals = {
       load: vi
