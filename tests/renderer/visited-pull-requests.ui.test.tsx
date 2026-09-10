@@ -167,7 +167,7 @@ describe("VisitedPullRequests", () => {
     renderColumn({ rows: [titled, untitled] });
 
     const row = await screen.findByRole("button", { name: /#125/ });
-    expect(row.textContent).toContain("patchdesk #125 · ");
+    expect(row.textContent).toContain("patchdesk#125 · ");
     // The titleless row carries the same rule in its fallback label.
     expect(screen.getByRole("button", { name: /#7/ }).textContent).toContain(
       "herdr#7",
@@ -183,7 +183,7 @@ describe("VisitedPullRequests", () => {
     renderColumn({ rows: [titled, otherOwner] });
 
     const row = await screen.findByRole("button", { name: /#125/ });
-    expect(row.textContent).toContain("kwanpham2195/patchdesk #125 · ");
+    expect(row.textContent).toContain("kwanpham2195/patchdesk#125 · ");
     // The titleless row carries the same rule in its fallback label.
     expect(screen.getByRole("button", { name: /#98/ }).textContent).toContain(
       "centraldigital/cfw-sales-crm-api#98",
@@ -373,14 +373,14 @@ describe("visitedRowLabels", () => {
   it("names the repository alone in the reference under one owner", () => {
     expect(visitedRowLabels(titled, "repo")).toEqual({
       title: "Prototype: three sidebar variants for #119",
-      reference: "patchdesk #125 · ",
+      reference: "patchdesk#125 · ",
     });
   });
 
   it("names the owner in the reference when the rows span two owners", () => {
     expect(visitedRowLabels(titled, "owner-repo")).toEqual({
       title: "Prototype: three sidebar variants for #119",
-      reference: "kwanpham2195/patchdesk #125 · ",
+      reference: "kwanpham2195/patchdesk#125 · ",
     });
   });
 
