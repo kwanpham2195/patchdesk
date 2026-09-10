@@ -4,6 +4,7 @@ import {
   Suspense,
   useCallback,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 import { AppShell } from "./components/app-shell";
@@ -217,9 +218,13 @@ function AppContent({
   const { profileSwitchState, switchProfile } = useProfileSwitch(
     applyLatestProfileSwitch,
   );
+  const [visitedReloadKey, setVisitedReloadKey] = useState(0);
   const openWorkbench = useCallback(
     (next: WorkbenchResponse): void => {
       setWorkbench(next);
+      // Every open path funnels through here, so bumping the key is what puts
+      // the pull request at the top of the visited column without a relaunch.
+      setVisitedReloadKey((key) => key + 1);
       performNavigation({
         kind: "workbench",
         reviewId: next.review?.id ?? next.session.id,
@@ -269,6 +274,8 @@ function AppContent({
         profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
         activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
         profileSwitchState={profileSwitchState}
+        visitedReloadKey={visitedReloadKey}
+        watchedRepoCount={dashboard?.profile.repos?.length ?? 0}
         onInboxStateChange={changeInboxState}
         {...(parsedProfileHost._tag === "ok"
           ? {

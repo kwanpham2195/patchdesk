@@ -24,8 +24,8 @@ import {
   installDesktopDouble,
   success,
   type DesktopDouble,
-  type DesktopRoute,
 } from "./fake-desktop-response";
+import { APP_BOOT_OPERATIONS, APP_BOOT_ROUTES } from "./app-boot-routes";
 
 const sha = "a".repeat(40);
 const patchHash = contentHashFixture("b".repeat(64));
@@ -46,23 +46,6 @@ const profileFixture = {
   githubHost: "github.com",
   ghAccount: "fixture",
 };
-
-/**
- * The paths `App` requests on every boot that no test here asserts on, plus
- * the navigation-state operation it reports after each destination change.
- * Naming them keeps the double strict about the ones a test is about.
- */
-const APP_BOOT_ROUTES = {
-  "/v1/logs": () => success(null),
-  "/v1/settings": () => success({}),
-  "/v1/environment": () => success({}),
-  "/v1/github/access": () => success({}),
-  "/v1/watchlist/suggestions": () => success([]),
-} satisfies Readonly<Record<string, DesktopRoute>>;
-
-const APP_BOOT_OPERATIONS = {
-  setNavigationState: () => success({}),
-} as const;
 
 /**
  * Projects a fixture into the JSON grammar `DesktopResponse.body` carries.
