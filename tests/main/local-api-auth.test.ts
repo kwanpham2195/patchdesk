@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FakeGitHubAdapter } from "../src/adapters/github/github-adapter";
-import { ProfileStore } from "../src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "../src/adapters/storage/review-session-store";
-import { createReviewSession } from "../src/domain/review-session";
+import { FakeGitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { ProfileStore } from "../../src/adapters/storage/profile-store";
+import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
+import { createReviewSession } from "../../src/domain/review-session";
 import {
   createReviewSessionId,
   parseAbsolutePath,
@@ -17,18 +17,18 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
-} from "../src/domain/ids";
-import { parseWorkspaceProfileConfig } from "../src/domain/workspace-profile";
-import { PatchdeskPaths } from "../src/adapters/storage/patchdesk-paths";
+} from "../../src/domain/ids";
+import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import {
   createReadOnlyGitExecutor,
   startLocalApiServer,
   type LocalApiServer,
-} from "../src/main/local-api";
-import type { CommandRequest } from "../src/adapters/github/command-runner";
-import { ok } from "../src/domain/result";
-import { StorageManagementService } from "../src/services/storage-management-service";
-import { ReviewWorkbenchController } from "../src/services/review-workbench-controller";
+} from "../../src/main/local-api";
+import type { CommandRequest } from "../../src/adapters/github/command-runner";
+import { ok } from "../../src/domain/result";
+import { StorageManagementService } from "../../src/services/storage-management-service";
+import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 
 const capability = "test-capability";
 const origin = "http://patchdesk.test";

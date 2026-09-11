@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   deliberatelyDeniedRoutes,
   isAllowedDesktopRequest,
-} from "../src/main/desktop-bridge";
-import type { LocalApiDesktopRequest } from "../src/main/ipc-contract";
+} from "../../src/main/desktop-bridge";
+import type { LocalApiDesktopRequest } from "../../src/main/ipc-contract";
 
 /**
  * Hono route registrations look like `app.get("/v1/foo", ...)` or the
@@ -36,7 +36,7 @@ type RegisteredRoute = { readonly method: HttpMethod; readonly path: string };
  * the `registerXRoutes` modules beside it, so the scan reads both places.
  */
 function localApiSourceFiles(): ReadonlyArray<string> {
-  const main = join(import.meta.dirname, "..", "src", "main");
+  const main = join(import.meta.dirname, "..", "..", "src", "main");
   const routesDirectory = join(main, "routes");
   return [
     join(main, "local-api.ts"),

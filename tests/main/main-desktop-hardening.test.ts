@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createDesktopMenuTemplate } from "../src/main/desktop-menu";
-import { resolveDesktopClose } from "../src/main/desktop-close-guard";
+import { createDesktopMenuTemplate } from "../../src/main/desktop-menu";
+import { resolveDesktopClose } from "../../src/main/desktop-close-guard";
 import {
   contentSecurityPolicy,
   installWebContentsSecurity,
@@ -12,14 +12,14 @@ import {
   normalizeExternalHosts,
   openAllowedExternalUrl,
   openUserActivatedExternalUrl,
-} from "../src/main/external-navigation";
+} from "../../src/main/external-navigation";
 import {
   workbenchTitlebarHeight,
   workbenchWindowChrome,
-} from "../src/main/window-chrome";
-import { clampWindowBounds } from "../src/main/window-state";
-import { generatedPiAiCatalog } from "../src/adapters/pi/pi-ai-catalog.generated";
-import { resolveInsightRuntime } from "../src/main/insight-runtime";
+} from "../../src/main/window-chrome";
+import { clampWindowBounds } from "../../src/main/window-state";
+import { generatedPiAiCatalog } from "../../src/adapters/pi/pi-ai-catalog.generated";
+import { resolveInsightRuntime } from "../../src/main/insight-runtime";
 
 describe("desktop hardening", () => {
   it("allows clean close, confirms dirty drafts, and blocks pending writes", async () => {
