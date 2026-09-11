@@ -1,5 +1,6 @@
 import type { Server } from "node:http";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import { installTestDesktopBridge } from "./bridge-fixture";
 import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 // Keyboard operability for the audience ADR 0034 keeps: a sighted person
@@ -29,7 +30,7 @@ test.describe("keyboard operability", () => {
   test("keyboard users can skip, navigate, and close quick navigation", async ({
     page,
   }) => {
-    await installBridgeStub(page);
+    await installTestDesktopBridge(page, { kind: "static" });
     await page.goto(serverOrigin(server));
 
     await page.keyboard.press("Tab");
@@ -49,7 +50,7 @@ test.describe("keyboard operability", () => {
   test("Settings modal has a named, trapped, independently scrollable surface", async ({
     page,
   }) => {
-    await installBridgeStub(page);
+    await installTestDesktopBridge(page, { kind: "static" });
     await page.goto(serverOrigin(server));
 
     // Open it from the keyboard, not with a click: Enter on the header
@@ -317,28 +318,4 @@ async function openConversationRail(page: Page): Promise<void> {
   await expect(
     page.getByRole("complementary", { name: "Pull request metadata" }),
   ).toBeVisible();
-}
-
-/**
- * Stand in for Electron's IPC bridge so the dashboard (rather than a fixture
- * hash) renders in a plain browser tab.
- */
-async function installBridgeStub(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    Object.defineProperty(window, "patchdesk", {
-      value: {
-        async request(input: {
-          readonly path?: string;
-          readonly operation?: string;
-        }) {
-          if (input.path === "/v1/profiles")
-            return { ok: true, status: 200, body: [], correlationId: "keys" };
-          return { ok: true, status: 200, body: {}, correlationId: "keys" };
-        },
-        onMenuAction() {
-          return () => undefined;
-        },
-      },
-    });
-  });
 }

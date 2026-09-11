@@ -1,5 +1,6 @@
 import type { Server } from "node:http";
 import { expect, test, type Page } from "playwright/test";
+import { installTestDesktopBridge } from "./bridge-fixture";
 import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 
 // Issue #126: `ScrollBar` styled itself with `data-vertical:` / `data-horizontal:`
@@ -24,7 +25,7 @@ test.describe("scroll area scrollbar", () => {
   test("an overflowing surface draws a full-width bar with a sized thumb", async ({
     page,
   }) => {
-    await installBridgeStub(page);
+    await installTestDesktopBridge(page, { kind: "static" });
     await page.setViewportSize({ width: 1100, height: 900 });
     await page.goto(serverOrigin(server));
 
@@ -71,33 +72,5 @@ function measure(
       width: Number.parseFloat(style.width),
       height: Number.parseFloat(style.height),
     };
-  });
-}
-
-/**
- * Stand in for Electron's IPC bridge so the dashboard (rather than a fixture
- * hash) renders in a plain browser tab.
- */
-async function installBridgeStub(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    Object.defineProperty(window, "patchdesk", {
-      value: {
-        async request(input: { readonly path?: string }) {
-          if (input.path === "/v1/profiles")
-            return { ok: true, status: 200, body: [], correlationId: "keys" };
-          return { ok: true, status: 200, body: {}, correlationId: "keys" };
-        },
-        onMenuAction() {
-          return () => undefined;
-        },
-        onWindowFullScreen() {
-          return () => undefined;
-        },
-        windowFullScreenAtLoad: false,
-        setWindowAppearance() {
-          return undefined;
-        },
-      },
-    });
   });
 }
