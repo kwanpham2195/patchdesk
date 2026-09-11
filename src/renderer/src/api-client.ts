@@ -6,6 +6,7 @@ export type ApiFailureKind =
   | "invalid_input"
   | "auth"
   | "forbidden"
+  | "not_found"
   | "unavailable"
   | "timeout"
   | "storage"
@@ -232,7 +233,8 @@ function failureKind(status: number, code: string | undefined): ApiFailureKind {
     return "revision_conflict";
   if (code === "not_fresh" || code?.includes("stale") === true)
     return "stale_head";
-  if (code === "not_found" || code === "unavailable") return "unavailable";
+  if (code === "not_found") return "not_found";
+  if (code === "unavailable") return "unavailable";
   if (code === "permission_denied" || code === "confirmation_required")
     return "github_rejected";
   if (code === "pending_review" || code === "pending_review_exists")
@@ -256,6 +258,8 @@ function safeMessage(kind: ApiFailureKind): string {
       return "GitHub authentication is required for this action.";
     case "forbidden":
       return "GitHub blocked this action: the repository or organization restricts access here (an IP allow list, SSO requirement, or token scope). Retrying will not help — check GitHub's access settings for this organization.";
+    case "not_found":
+      return "The requested item no longer exists.";
     case "unavailable":
       return "The requested service is currently unavailable.";
     case "timeout":

@@ -68,6 +68,32 @@ describe("renderer API boundary", () => {
     expect(thrown.message).not.toMatch(/try again|retry the/i);
   });
 
+  it("classifies a missing record as its own 'not_found' kind, not the service-outage bucket a 503 fills", async () => {
+    desktop = installDesktopDouble({
+      "/v1/reviews/load": () => ({
+        ok: false,
+        status: 404,
+        body: { error: "not_found" },
+        correlationId: "corr-not-found",
+      }),
+    });
+
+    let thrown: unknown;
+    try {
+      await requestJson("/v1/reviews/load", { method: "POST" });
+    } catch (cause: unknown) {
+      thrown = cause;
+    }
+
+    expect(thrown).toBeInstanceOf(PatchdeskApiError);
+    if (!(thrown instanceof PatchdeskApiError)) return;
+    expect(thrown.kind).toBe("not_found");
+    expect(thrown.status).toBe(404);
+    // The record is gone; the service answered, so it must not be described
+    // as unavailable.
+    expect(thrown.message).not.toMatch(/unavailable/i);
+  });
+
   it("classifies a locked merge as its own 'merge_in_progress' kind", async () => {
     desktop = installDesktopDouble({
       "/v1/reviews/merge": () => ({

@@ -105,9 +105,13 @@ export function useReviewMetadataActions({
         void observeConfirmedReviewWrite([recentWrite]).catch(() => undefined);
         return receipt;
       } catch (cause: unknown) {
+        // `not_found` is named alongside `unavailable` because a metadata write
+        // answers 404 for an unreadable record too (`mapMetadataGateFailure`),
+        // and splitting the two kinds apart (#122) must not disarm recovery.
         if (
           isOutcomeUnknownRetry(cause) ||
-          (cause instanceof PatchdeskApiError && cause.kind === "unavailable")
+          (cause instanceof PatchdeskApiError &&
+            (cause.kind === "unavailable" || cause.kind === "not_found"))
         )
           requireRecovery(input.operation);
         throw cause;
