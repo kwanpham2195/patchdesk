@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 /**
  * The Apple credentials the macOS package build reads, under the exact names
  * electron-builder reads them under. `CSC_LINK` and `CSC_KEY_PASSWORD` are the
@@ -72,6 +74,21 @@ export function resolveMacSigningEnvironment(environment) {
       : "Packaging signed: Developer ID certificate from CSC_LINK. Notarization is skipped because APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID are not all set.",
     environment: resolved,
   };
+}
+
+/**
+ * The unpacked app `pnpm package:mac` writes under `releaseRoot`: `mac-arm64/` on Apple Silicon, `mac/` on Intel.
+ *
+ * @param {string} releaseRoot
+ * @param {string} arch
+ * @returns {string}
+ */
+export function packagedMacAppBundlePath(releaseRoot, arch) {
+  return join(
+    releaseRoot,
+    arch === "arm64" ? "mac-arm64" : "mac",
+    "Patchdesk.app",
+  );
 }
 
 /**

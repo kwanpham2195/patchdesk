@@ -15,6 +15,7 @@ import { execFile, spawn } from "node:child_process";
 import { chromium } from "playwright";
 
 import { validatePackagedFontRuntime } from "./font-package-validation.mjs";
+import { packagedMacAppBundlePath } from "./package-mac-lib.mjs";
 import { validatePackageSizes } from "./package-size-validation.mjs";
 
 import { packageSmokeEnvironment } from "./smoke-env.mjs";
@@ -28,8 +29,7 @@ const releaseRoot = join(root, "release");
 const { version } = JSON.parse(
   await readFile(join(root, "package.json"), "utf8"),
 );
-const archFolder = process.arch === "arm64" ? "mac-arm64" : "mac";
-const bundle = join(releaseRoot, archFolder, "Patchdesk.app");
+const bundle = packagedMacAppBundlePath(releaseRoot, process.arch);
 const executable = join(bundle, "Contents/MacOS/Patchdesk");
 const runtimeRoot = join(bundle, "Contents/Resources/insight-runtime");
 await validatePackagedRuntime(executable, runtimeRoot);

@@ -544,6 +544,32 @@ part of the handoff.
 A local build is never signed: it takes the same path the release build takes
 with no secrets set.
 
+### Installing a package by hand
+
+`pnpm install:mac` builds and installs the app on this Mac: it runs
+`pnpm package:mac`, copies `release/mac-arm64/Patchdesk.app` into `/Applications`, registers it
+with Launch Services, prints the installed version, and opens it. To install
+a build you already have without packaging again, run the install step alone:
+
+```bash
+pnpm install:mac
+node scripts/install-mac.mjs            # install the existing build
+node scripts/install-mac.mjs --no-open  # install it without opening it
+```
+
+Set `PATCHDESK_INSTALL_DIR` to another existing absolute folder, for example
+`PATCHDESK_INSTALL_DIR=~/Applications` when `/Applications` is not writable.
+If Patchdesk is running from that folder, the script asks it to quit and waits
+up to 20 seconds; if it is still running, the script stops without copying
+anything. Copies running from anywhere else, such as the dev app or
+`release/`, are left alone. The new app is copied into a hidden sibling first
+and swapped in by rename, so a failed install leaves the previous app in
+place.
+
+A local build carries no quarantine flag, so it needs no `xattr` step. The
+install replaces a Homebrew-cask install in place, and the next
+`brew upgrade --cask patchdesk` that finds a newer release overwrites it.
+
 ## Pull requests
 
 Base branch: `main`. Keep PRs focused on one logical change. User-visible

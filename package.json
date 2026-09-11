@@ -31,6 +31,7 @@
     "build:icon": "node scripts/build-app-icon.mjs",
     "verify:icon": "node scripts/verify-app-icon.mjs",
     "package:mac": "pnpm build && pnpm stage:insight-runtime && pnpm verify:icon && node scripts/package-mac.mjs",
+    "install:mac": "pnpm package:mac && node scripts/install-mac.mjs",
     "electron-builder:mac": "electron-builder --mac --publish never",
     "release:prepare": "node scripts/prepare-release.mjs",
     "release:notes": "node scripts/release-notes.mjs",
