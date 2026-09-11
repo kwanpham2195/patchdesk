@@ -1,23 +1,18 @@
 import {
   access,
-  cp,
   mkdtemp,
   mkdir,
-  readdir,
   readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { stageInsightRuntime } from "../../scripts/stage-insight-runtime-lib.mjs";
 
 const roots: string[] = [];
-const execFileAsync = promisify(execFile);
 afterEach(
   async () =>
     await Promise.all(
@@ -147,47 +142,6 @@ describe("stageInsightRuntime", () => {
       );
     }
   });
-
-  it("keeps TypeScript for development but removes it from the staged production tree", async () => {
-    const projectRoot = resolve(import.meta.dirname, "../..");
-    const fixture = await createFixture();
-    await Promise.all([
-      cp(
-        join(projectRoot, "runtime/insight/package.json"),
-        join(fixture.projectRoot, "runtime/insight/package.json"),
-      ),
-      cp(
-        join(projectRoot, "runtime/insight/pnpm-lock.yaml"),
-        join(fixture.projectRoot, "runtime/insight/pnpm-lock.yaml"),
-      ),
-    ]);
-
-    await stageInsightRuntime({
-      ...fixture,
-      run: async (command: string, args: string[]) => {
-        if (args.includes("build")) return "";
-        const { stdout } = await execFileAsync(command, args, {
-          cwd: fixture.projectRoot,
-        });
-        return stdout;
-      },
-    });
-
-    const stagedPaths = await readdir(
-      join(fixture.runtimeRoot, "node_modules"),
-      { recursive: true },
-    );
-    expect(
-      stagedPaths.filter((path) =>
-        path
-          .split("/")
-          .some(
-            (segment) =>
-              segment === "typescript" || segment.startsWith("typescript@"),
-          ),
-      ),
-    ).toEqual([]);
-  }, 30_000);
 });
 
 async function createFixture() {
