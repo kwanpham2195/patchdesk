@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BusyProvider } from "../../src/renderer/src/hooks/use-busy";
 import { useInboxReviewOpening } from "../../src/renderer/src/flows/use-inbox-review-opening";
-import { installDesktopDouble, success } from "./fake-desktop-response";
+import {
+  failure,
+  installDesktopDouble,
+  success,
+} from "./fake-desktop-response";
 import {
   asJsonBody,
   dashboard,
@@ -191,5 +195,56 @@ describe("useInboxReviewOpening stored-review loading", () => {
     await settle();
 
     expect(onOpenWorkbench).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A destination restored from localStorage can name a Review the retention
+ * sweep has since deleted, so the boot restore asks to handle that itself
+ * rather than have the screen raise its "Could not open review" alert.
+ */
+describe("useInboxReviewOpening restore of a deleted Review", () => {
+  function renderMissingStoredReview() {
+    installDesktopDouble({
+      ...SHARED_INBOX_ROUTES,
+      "/v1/reviews/load": () => failure({ error: "not_found" }, 404),
+    });
+    return renderHook(
+      () => useInboxReviewOpening({ dashboard, onOpenWorkbench: vi.fn() }),
+      { wrapper: BusyProvider },
+    );
+  }
+
+  it("hands a missing record to the boot restore instead of raising the open error", async () => {
+    const { result } = renderMissingStoredReview();
+    const onMissingRecord = vi.fn();
+
+    act(() => {
+      void result.current.openStoredReviewById(
+        "profile",
+        "review-1",
+        () => true,
+        onMissingRecord,
+      );
+    });
+    await settle();
+
+    expect(onMissingRecord).toHaveBeenCalledTimes(1);
+    expect(result.current.openError).toBeUndefined();
+  });
+
+  it("reports a missing record to a caller that did not offer to handle it", async () => {
+    const { result } = renderMissingStoredReview();
+
+    act(() => {
+      void result.current.openStoredReviewById(
+        "profile",
+        "review-1",
+        () => true,
+      );
+    });
+    await settle();
+
+    expect(result.current.openError).not.toBeUndefined();
   });
 });

@@ -75,6 +75,22 @@ describe("useAppNavigation", () => {
     expect(result.current.workbench).toBeUndefined();
   });
 
+  it("treats the destination restored at mount as the boot restore until the first navigation", () => {
+    window.localStorage.setItem("patchdesk.destination", "workbench:a");
+    const { result } = renderHook(() => useAppNavigation());
+    expect(result.current.destination).toEqual({
+      kind: "workbench",
+      reviewId: "a",
+    });
+    expect(result.current.bootRestoredDestination).toBe(true);
+
+    act(() => {
+      result.current.performNavigation({ kind: "dashboard" });
+    });
+
+    expect(result.current.bootRestoredDestination).toBe(false);
+  });
+
   it("drops the held Review when the leave-confirmation is discarded", () => {
     const { result } = renderHook(() => useAppNavigation());
     openWorkbench(result, projection({ review: { id: "a", status: "open" } }));

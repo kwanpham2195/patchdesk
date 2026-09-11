@@ -32,6 +32,12 @@ export type InboxReviewOpeningControls = {
     profileId: string,
     reviewId: string,
     isActive: () => boolean,
+    /**
+     * Called instead of raising the "Could not open review" alert when the
+     * saved record is gone. Passed only by the boot restore, which names a
+     * Review the maintainer never asked for in this session.
+     */
+    onMissingRecord?: () => void,
   ) => Promise<void>;
   /** Raises the screen's "Could not open review" alert for a refusal decided
    * in the renderer, so it clears with the same profile and open rules. */
@@ -171,6 +177,7 @@ export function useInboxReviewOpening({
       profileId: string,
       reviewId: string,
       isActive: () => boolean,
+      onMissingRecord?: () => void,
     ): Promise<void> => {
       const githubHost = dashboard?.profile.githubHost ?? "github.com";
       if (dashboardProfileIdRef.current !== profileId) return;
@@ -215,6 +222,17 @@ export function useInboxReviewOpening({
           operationsRef.current.get(operationKey) !== operation
         )
           return;
+        // The retention sweep (#135) deletes a review record after fourteen
+        // days, so a restored destination naming a swept Review is an ordinary
+        // boot, not a failure: the caller leaves the route instead.
+        if (
+          onMissingRecord !== undefined &&
+          cause instanceof PatchdeskApiError &&
+          cause.kind === "not_found"
+        ) {
+          onMissingRecord();
+          return;
+        }
         const detail = cause instanceof Error ? cause.message : String(cause);
         setOpenErrorByProfile((openErrors) => {
           const next = new Map(openErrors);

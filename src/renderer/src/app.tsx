@@ -130,6 +130,7 @@ function AppContent({
     setWorkbench,
     navigationState,
     setNavigationState,
+    bootRestoredDestination,
     pendingDestination,
     setPendingDestination,
     performNavigation,
@@ -232,6 +233,12 @@ function AppContent({
     },
     [performNavigation, setWorkbench],
   );
+  // The boot restore's way out when the saved Review it named is gone: leaving
+  // the route also rewrites the stored destination, so the next launch starts
+  // on the dashboard rather than asking for the same missing Review again.
+  const returnToDashboard = useCallback((): void => {
+    performNavigation({ kind: "dashboard" });
+  }, [performNavigation]);
   const reviewOpening = useInboxReviewOpening({
     dashboard,
     onOpenWorkbench: openWorkbench,
@@ -432,6 +439,9 @@ function AppContent({
 
   const reviewIdField =
     destination.kind === "workbench" ? { reviewId: destination.reviewId } : {};
+  const bootRestoreMissingField = bootRestoredDestination
+    ? { onBootRestoreMissing: returnToDashboard }
+    : {};
   const dashboardField = dashboard === undefined ? {} : { dashboard };
   const inboxField = inbox === undefined ? {} : { inbox };
   const remoteField =
@@ -447,6 +457,7 @@ function AppContent({
       <InboxFlow
         destination={destination.kind}
         {...reviewIdField}
+        {...bootRestoreMissingField}
         {...dashboardField}
         {...inboxField}
         state={state}
