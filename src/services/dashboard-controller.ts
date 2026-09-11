@@ -266,7 +266,7 @@ export class DashboardController {
    * of the active profile's watchlist, or the request is rejected before any
    * GitHub call. Without this check the renderer could point the
    * maintainer's token at a repository they never watched — the same class
-   * of hole `buildInboxSearchQuery` guards against for the filter string.
+   * of hole `composeInboxSearchQuery` guards against for the filter string.
    */
   async inboxForActiveProfile(
     repository: InboxRepositoryRef | undefined,

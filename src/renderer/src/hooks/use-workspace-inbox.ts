@@ -9,6 +9,7 @@ import {
 } from "react";
 import { api } from "../api-client";
 import {
+  inboxPreferencesWithinQueryBudget,
   loadInboxViewPreferences,
   saveInboxViewPreferences,
 } from "../inbox-view-preferences";
@@ -37,13 +38,17 @@ import {
   type WorkspaceAction,
 } from "../workspace-state";
 import {
+  inboxSearchQueryExcess,
+  MAX_INBOX_FILTER_LABELS,
   parseInboxAuthorFilter,
   parseInboxBaseBranchFilter,
   type InboxCheckStatusFilter,
+  type InboxFilter,
   type InboxFilterTextFailure,
   type InboxPageSize,
   type InboxReviewStateFilter,
 } from "../../../domain/maintainer-inbox";
+import { definedProps } from "../../../domain/defined-props";
 import { sameRepositoryIdentity } from "../../../domain/repository-identity";
 import { ok, type Result } from "../../../domain/result";
 
@@ -81,6 +86,8 @@ export type WorkspaceInbox = {
   readonly changeInboxState: (nextState: InboxRequestState["state"]) => void;
   readonly changeInboxPageSize: (pageSize: InboxPageSize) => void;
   readonly changeInboxLabels: (selectedLabels: ReadonlyArray<string>) => void;
+  /** Whether selecting this label would still leave a query GitHub accepts, so the menu can refuse the row that would breach rather than the read that follows it. Deselecting always fits. */
+  readonly labelFits: (name: string) => boolean;
   readonly changeInboxAwaitingMyReview: (awaitingMyReview: boolean) => void;
   readonly changeInboxReviewState: (
     reviewState: InboxReviewStateFilter | undefined,
@@ -113,6 +120,31 @@ function commitFilterText(
   const parsed = parse(value);
   if (parsed._tag === "ok") return parsed;
   return parsed.error === "empty" ? ok(undefined) : parsed;
+}
+
+/** The GitHub search filter a pending request would compose, so its query can be measured before the request is sent. */
+function filterFor(request: InboxRequestState): InboxFilter {
+  return {
+    state: request.state,
+    labels: request.selectedLabels,
+    awaitingMyReview: request.awaitingMyReview,
+    ...definedProps({
+      reviewState: request.reviewState,
+      checkStatus: request.checkStatus,
+      author: request.author,
+      baseBranch: request.baseBranch,
+    }),
+  };
+}
+
+/** True when the request's composed search query is inside GitHub's cap for the repository it names. */
+function requestFitsQueryBudget(request: InboxRequestState): boolean {
+  return (
+    inboxSearchQueryExcess(
+      request.repository === undefined ? [] : [request.repository],
+      filterFor(request),
+    ) === 0
+  );
 }
 
 export function useWorkspaceInbox({
@@ -263,7 +295,7 @@ export function useWorkspaceInbox({
     )
       return;
     restoredInboxStateProfileId.current = profileId;
-    const preferences = loadInboxViewPreferences(profileId);
+    const stored = loadInboxViewPreferences(profileId);
     // The bootstrap request (`firstInboxRequest`) never carries a
     // repository — the renderer does not learn the active profile's
     // watchlist until this response arrives. Once it has, every later
@@ -274,8 +306,11 @@ export function useWorkspaceInbox({
     // second fetch.
     const repository = resolveInboxRepository(
       dashboard?.profile.repos ?? [],
-      preferences.selectedRepository,
+      stored.selectedRepository,
     );
+    // Only now, with the repository resolved, can the stored filter's whole
+    // composed query be measured — the repository name is part of its length.
+    const preferences = inboxPreferencesWithinQueryBudget(stored, repository);
     const repositoryChanged = !sameRepositoryIdentity(
       repository,
       inboxRequestRef.current.repository,
@@ -373,6 +408,7 @@ export function useWorkspaceInbox({
       const request = nextInboxRequest(inboxRequestRef.current, {
         selectedLabels,
       });
+      if (!requestFitsQueryBudget(request)) return;
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { selectedLabels });
@@ -381,6 +417,23 @@ export function useWorkspaceInbox({
     },
     [refreshInbox, updateInboxRequest],
   );
+  /**
+   * Whether the label menu may still select this label: a sixth label breaks
+   * `MAX_INBOX_FILTER_LABELS`, and one long enough to breach the query cap
+   * breaks the budget, and either would come back as a generic refresh
+   * failure once the route refused the read. A label already selected always
+   * fits, because clearing it only shortens the query.
+   */
+  const labelFits = useCallback((name: string): boolean => {
+    const current = inboxRequestRef.current;
+    if (current.selectedLabels.includes(name)) return true;
+    if (current.selectedLabels.length >= MAX_INBOX_FILTER_LABELS) return false;
+    return requestFitsQueryBudget(
+      nextInboxRequest(current, {
+        selectedLabels: [...current.selectedLabels, name],
+      }),
+    );
+  }, []);
   /**
    * Toggles the "Awaiting review from you" preset (ADR 0031) — GitHub's
    * `user-review-requested:@me` qualifier, which composes with the state and
@@ -436,6 +489,7 @@ export function useWorkspaceInbox({
       if (parsed._tag === "err") return parsed.error;
       const author = parsed.value;
       const request = nextInboxRequest(inboxRequestRef.current, { author });
+      if (!requestFitsQueryBudget(request)) return "query_too_long";
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { author });
@@ -452,6 +506,7 @@ export function useWorkspaceInbox({
       if (parsed._tag === "err") return parsed.error;
       const baseBranch = parsed.value;
       const request = nextInboxRequest(inboxRequestRef.current, { baseBranch });
+      if (!requestFitsQueryBudget(request)) return "query_too_long";
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
         saveInboxViewPreferences(profileId, { baseBranch });
@@ -552,6 +607,7 @@ export function useWorkspaceInbox({
     changeInboxState,
     changeInboxPageSize,
     changeInboxLabels,
+    labelFits,
     changeInboxAwaitingMyReview,
     changeInboxReviewState,
     changeInboxCheckStatus,

@@ -440,7 +440,7 @@ describe("local API current Review capability boundary", () => {
   });
 });
 
-describe("GET /v1/inbox page size boundary", () => {
+describe("GET /v1/inbox request boundaries", () => {
   async function startWithWatchedProfile() {
     const adapter = new FakeGitHubAdapter({
       authenticatedAccount: { host: "github.com", account: "fixture" },
@@ -509,6 +509,29 @@ describe("GET /v1/inbox page size boundary", () => {
       );
       expect(response.status, value).toBe(400);
     }
+    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("rejects a filter whose composed search query passes GitHub's cap", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+    // Five labels, each at the 50-character per-label cap: every field is
+    // within its own bound, and their sum is not. GitHub's own refusal would
+    // come back as an unreadable command failure, so the request never goes.
+    const query = new URLSearchParams({
+      host: "github.com",
+      owner: "centraldigital",
+      repo: "patchdesk",
+    });
+    for (const index of [1, 2, 3, 4, 5])
+      query.append("label", `${index}`.padEnd(50, "-label-name"));
+
+    const response = await fetch(new URL(`v1/inbox?${query}`, api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
     expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
   });
 
