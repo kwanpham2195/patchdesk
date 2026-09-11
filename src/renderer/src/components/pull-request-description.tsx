@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { ChevronDown } from "lucide-react";
 import type { Mermaid } from "mermaid";
 import * as v from "valibot";
 import type { Tokens } from "marked";
@@ -17,43 +16,19 @@ import {
   type PullRequestImageSource,
 } from "../hooks/use-pull-request-image";
 
-import { definedProps } from "../../../domain/defined-props";
 import type { GitHubImageRewrites } from "../../../domain/github-context";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import {
   openPullRequestExternalUrl,
   resolvePullRequestExternalUrl,
 } from "@/external-links";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import {
   inlineCodeClassName,
   MarkdownContent,
   type MarkdownContentPolicy,
 } from "./markdown-content";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
-const collapsedDescriptionHeight = 288;
 let mermaidPromise: Promise<Mermaid> | undefined;
 
 /**
@@ -69,102 +44,6 @@ let mermaidPromise: Promise<Mermaid> | undefined;
  * survives nesting either way (`<a><span><img></span></a>`).
  */
 const InsideLinkContext = createContext(false);
-
-export function PullRequestDescription({
-  markdown,
-  pullRequest,
-  profileId,
-  truncated = false,
-}: {
-  readonly markdown?: string;
-  readonly pullRequest?: PullRequestRef;
-  /** Enables images: the main process needs a profile to fetch and cache their bytes. */
-  readonly profileId?: string;
-  readonly truncated?: boolean;
-}): React.JSX.Element {
-  const [open, setOpen] = useState(true);
-  const [expanded, setExpanded] = useState(false);
-  const [overflows, setOverflows] = useState(false);
-  const content = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const element = content.current;
-    if (element === null || markdown === undefined) return;
-    const measure = (): void =>
-      setOverflows(element.scrollHeight > collapsedDescriptionHeight + 1);
-    measure();
-    if (globalThis.ResizeObserver === undefined) return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [markdown]);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pull request description</CardTitle>
-        <CardDescription>
-          Saved Markdown from GitHub. Links open only on this pull request’s
-          GitHub host.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {markdown === undefined || markdown.trim().length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>No description provided</EmptyTitle>
-              <EmptyDescription>
-                No description was provided on GitHub.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <Collapsible open={open} onOpenChange={setOpen}>
-            <CollapsibleTrigger render={<Button variant="outline" size="sm" />}>
-              Description
-              <ChevronDown data-icon="inline-end" aria-hidden="true" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="mt-3 flex flex-col gap-3">
-              {truncated ? (
-                <Alert>
-                  <AlertTitle>Description truncated</AlertTitle>
-                  <AlertDescription>
-                    The saved preview ends at Patchdesk’s safe size limit.
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-              <ScrollArea className={expanded ? undefined : "max-h-72"}>
-                <div
-                  ref={content}
-                  className="pr-3"
-                  aria-label="Pull request description rendered from Markdown"
-                >
-                  <PullRequestDescriptionPreview
-                    markdown={markdown}
-                    {...definedProps({ pullRequest, profileId })}
-                  />
-                </div>
-              </ScrollArea>
-            </CollapsibleContent>
-          </Collapsible>
-        )}
-      </CardContent>
-      {overflows && open ? (
-        <CardFooter>
-          <ButtonGroup>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setExpanded((current) => !current)}
-            >
-              {expanded ? "Show less" : "Show more"}
-            </Button>
-          </ButtonGroup>
-        </CardFooter>
-      ) : null}
-    </Card>
-  );
-}
 
 /**
  * What a rendered Markdown body needs beyond its own text: the pull request its
