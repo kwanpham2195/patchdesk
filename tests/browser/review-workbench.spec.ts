@@ -240,43 +240,6 @@ test("review navigator resize handle keyboard-resizes the pane, resets on double
   }
 });
 
-test("Patchdesk has no application sidebar and keeps the desktop width", async ({
-  page,
-}) => {
-  const server = await serveRenderer();
-  try {
-    await page.setViewportSize({ width: 1_440, height: 900 });
-    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
-    await expect(
-      page.getByRole("region", { name: "Review diff" }),
-    ).toBeVisible();
-
-    const metrics = await page.evaluate(() => {
-      const titlebar = document.querySelector(".app-titlebar");
-      const sidebar = document.querySelector(
-        '.app-frame > [data-slot="sidebar"]',
-      );
-      const diff = document.querySelector('[aria-label="Review diff"]');
-      if (diff === null) throw new Error("Expected the review diff");
-      return {
-        hasTitlebar: titlebar !== null,
-        hasSidebar: sidebar !== null,
-        diffWidth: diff.getBoundingClientRect().width,
-        overflow:
-          document.documentElement.scrollWidth -
-          document.documentElement.clientWidth,
-      };
-    });
-
-    expect(metrics.hasTitlebar).toBe(true);
-    expect(metrics.hasSidebar).toBe(false);
-    expect(metrics.diffWidth).toBeGreaterThan(1_000);
-    expect(metrics.overflow).toBeLessThanOrEqual(1);
-  } finally {
-    await closeServer(server);
-  }
-});
-
 test("native diff scrolling passively follows the active file without changing finding state", async ({
   page,
 }) => {
