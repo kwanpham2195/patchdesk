@@ -81,9 +81,13 @@ export function useDirectConversationActions({
         try {
           value = await runDirectCommand(request);
         } catch (cause) {
+          // `not_found` is named alongside `unavailable` because splitting the
+          // two kinds apart (#122) must not disarm the recovery a 404 from this
+          // command has always armed.
           if (
             isOutcomeUnknownRetry(cause) ||
-            (cause instanceof PatchdeskApiError && cause.kind === "unavailable")
+            (cause instanceof PatchdeskApiError &&
+              (cause.kind === "unavailable" || cause.kind === "not_found"))
           )
             requireRecovery(operation);
           throw cause;
