@@ -24,6 +24,7 @@ import {
   type WorkspaceProfileId,
 } from "../domain/ids";
 import {
+  composeInboxSearchQuery,
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
@@ -243,7 +244,7 @@ export class MaintainerInboxService {
    * Extracts `filter.state` once into a plain `InboxStateFilter` and normalizes
    * `filter.labels` once into a sorted, deduplicated label list
    * (`normalizeInboxLabels`), then threads both through `readRepository`,
-   * `cachedOrUnavailable`, `unavailablePage`, and `buildInboxSearchQuery`.
+   * `cachedOrUnavailable`, `unavailablePage`, and `composeInboxSearchQuery`.
    *
    * Only the wholly unfiltered listing — no labels, no review/check qualifier,
    * no author or base branch, and no "Awaiting review from you" preset — is
@@ -422,16 +423,12 @@ export class MaintainerInboxService {
       owner: repository.owner,
       repo: repository.repo,
     };
-    const searchQuery = buildInboxSearchQuery(
-      repo,
+    const searchQuery = composeInboxSearchQuery([repo], {
       state,
       labels,
       awaitingMyReview,
-      reviewState,
-      checkStatus,
-      author,
-      baseBranch,
-    );
+      ...definedProps({ reviewState, checkStatus, author, baseBranch }),
+    });
     const searched = await this.github.searchMaintainerPullRequests(
       cursor === undefined
         ? { profile, repo, searchQuery, state, pageSize }
@@ -560,45 +557,6 @@ export class MaintainerInboxService {
       snapshot: { state: "unavailable" },
     });
   }
-}
-
-/**
- * Builds the GitHub search qualifier string for one repository, state, label
- * filter, review/check qualifiers, author, base branch, and preset:
- * `repo:OWNER/NAME is:pr is:open user-review-requested:@me review:approved
- * status:failure author:"LOGIN" base:"BRANCH" label:"NAME"`. The sole place
- * that builds this string, so every renderer-chosen filter extends it here
- * rather than through ad hoc concatenation elsewhere — and so GitHub's
- * 256-character search cap has one place to be enforced. `labels`, `author`
- * and `baseBranch` are trusted here: the route already bounds their count,
- * length, and character set (see `parseInboxLabelsQuery` and
- * `parseInboxQualifierTextQuery` in `dashboard-routes.ts`) before they reach
- * this function, so none of them can contain the quote it is wrapped in.
- */
-function buildInboxSearchQuery(
-  repo: InboxRepositoryRef,
-  state: InboxStateFilter,
-  labels: ReadonlyArray<string>,
-  awaitingMyReview: boolean,
-  reviewState: InboxReviewStateFilter | undefined,
-  checkStatus: InboxCheckStatusFilter | undefined,
-  author: string | undefined,
-  baseBranch: string | undefined,
-): string {
-  const stateQualifier = state === "merged" ? "is:merged" : "is:open";
-  // `@me` is GitHub's own token for the authenticated viewer and is resolved
-  // server-side, so this needs no viewer login lookup. Probed 2026-08-26:
-  // `author:@me` and `author:<login>` return the identical `issueCount`.
-  const qualifiers = [
-    ...(awaitingMyReview ? ["user-review-requested:@me"] : []),
-    ...(reviewState === undefined ? [] : [`review:${reviewState}`]),
-    ...(checkStatus === undefined ? [] : [`status:${checkStatus}`]),
-    ...(author === undefined ? [] : [`author:"${author}"`]),
-    ...(baseBranch === undefined ? [] : [`base:"${baseBranch}"`]),
-    ...labels.map((label) => `label:"${label}"`),
-  ].join(" ");
-  const base = `repo:${repo.owner}/${repo.repo} is:pr ${stateQualifier}`;
-  return qualifiers.length === 0 ? base : `${base} ${qualifiers}`;
 }
 
 /** Sorted, deduplicated label filter — the canonical form compared against

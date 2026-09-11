@@ -484,6 +484,49 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     expect(paths).toHaveLength(pathsBefore);
   });
 
+  it("refuses a label selection whose query would pass GitHub's cap", async () => {
+    // Each label is within the per-label cap; four of them against this
+    // repository are not, and nothing downstream could tell that refusal
+    // apart from a network failure.
+    const longLabels = [1, 2, 3, 4].map((index) =>
+      `${index}`.padEnd(50, "-label-name"),
+    );
+    const paths: string[] = [];
+    desktop = installDesktopDouble({
+      "/v1/profiles": () => success([profileA]),
+      "/v1/logs": () => success({}),
+      "/v1/inbox": (input) => {
+        paths.push(input.path);
+        return success(inbox(profileA));
+      },
+    });
+    const { result } = renderHook(() =>
+      useWorkspaceInbox({ fixtureMode: true, initialState: undefined }),
+    );
+    await act(async () => {
+      await result.current.loadWorkspace();
+    });
+    await waitFor(() => expect(result.current.dashboard?.profile.id).toBe("a"));
+    act(() => {
+      result.current.updateInboxRequest({
+        ...result.current.inboxRequest,
+        selectedLabels: longLabels.slice(0, 3),
+      });
+    });
+    const pathsBefore = paths.length;
+
+    expect(result.current.labelFits(longLabels[3] ?? "")).toBe(false);
+    act(() => {
+      result.current.changeInboxLabels(longLabels);
+    });
+
+    expect(result.current.inboxRequest.selectedLabels).toEqual(
+      longLabels.slice(0, 3),
+    );
+    expect(loadInboxViewPreferences("a").selectedLabels).toEqual([]);
+    expect(paths).toHaveLength(pathsBefore);
+  });
+
   it("clears all four More filters in one request while preserving other filters", async () => {
     const paths: string[] = [];
     saveInboxViewPreferences("a", {

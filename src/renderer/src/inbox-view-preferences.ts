@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
+  inboxSearchQueryExcess,
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
   MAX_INBOX_FILTER_LABELS,
@@ -15,6 +16,7 @@ import {
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
+import { definedProps } from "../../domain/defined-props";
 import type { RepositoryIdentity } from "../../domain/repository-identity";
 import type { Result } from "../../domain/result";
 import { definePreference } from "./lib/local-preference";
@@ -205,6 +207,37 @@ export function loadInboxViewPreferences(
     legacyInboxViewPreference.load(profileId) ??
     DEFAULT_INBOX_VIEW_PREFERENCES
   );
+}
+
+/**
+ * Drops a stored label filter that no longer fits GitHub's search cap once
+ * the repository it will be read against is known.
+ *
+ * Every other field falls back on its own (see the schema), but the cap binds
+ * the sum, and the repository name is part of that sum — the same stored
+ * labels can fit one repository and breach the next. The labels go because
+ * they are the repository-scoped part of the filter, the part
+ * `changeInboxRepository` already clears on a repository change.
+ */
+export function inboxPreferencesWithinQueryBudget(
+  preferences: InboxViewPreferences,
+  repository: RepositoryIdentity | undefined,
+): InboxViewPreferences {
+  const excess = inboxSearchQueryExcess(
+    repository === undefined ? [] : [repository],
+    {
+      state: preferences.state,
+      labels: preferences.selectedLabels,
+      awaitingMyReview: preferences.awaitingMyReview,
+      ...definedProps({
+        reviewState: preferences.reviewState,
+        checkStatus: preferences.checkStatus,
+        author: preferences.author,
+        baseBranch: preferences.baseBranch,
+      }),
+    },
+  );
+  return excess === 0 ? preferences : { ...preferences, selectedLabels: [] };
 }
 
 /** Persists local presentation state and bounded GitHub filter choices; cursors never enter this key. */

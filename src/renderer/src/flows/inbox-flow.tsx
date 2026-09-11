@@ -57,6 +57,7 @@ export function InboxFlow({
   onInboxPageSizeChange = () => undefined,
   selectedLabels = [],
   onInboxLabelsChange = () => undefined,
+  labelFits = () => true,
   awaitingMyReview = false,
   onInboxAwaitingMyReviewChange = () => undefined,
   reviewState,
@@ -104,6 +105,8 @@ export function InboxFlow({
    * local, in-page filter. Only App owns its request transition. */
   readonly selectedLabels?: ReadonlyArray<string>;
   readonly onInboxLabelsChange?: (labels: ReadonlyArray<string>) => void;
+  /** Whether a label may still be selected under the search-query budget; only App owns it. */
+  readonly labelFits?: (name: string) => boolean;
   /** The "Awaiting review from you" preset (ADR 0031), sent to GitHub as
    * `user-review-requested:@me`. Only App owns its request transition. */
   readonly awaitingMyReview?: boolean;
@@ -249,6 +252,7 @@ export function InboxFlow({
       onInboxPageSizeChange={onInboxPageSizeChange}
       selectedLabels={selectedLabels}
       onInboxLabelsChange={onInboxLabelsChange}
+      labelFits={labelFits}
       awaitingMyReview={awaitingMyReview}
       onInboxAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
       {...(reviewState === undefined ? {} : { reviewState })}
@@ -301,6 +305,7 @@ function InboxScreen({
   onInboxPageSizeChange,
   selectedLabels,
   onInboxLabelsChange,
+  labelFits,
   awaitingMyReview,
   onInboxAwaitingMyReviewChange,
   reviewState,
@@ -343,6 +348,7 @@ function InboxScreen({
   readonly onInboxPageSizeChange: (pageSize: InboxPageSize) => void;
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
+  readonly labelFits: (name: string) => boolean;
   readonly awaitingMyReview: boolean;
   readonly onInboxAwaitingMyReviewChange: (value: boolean) => void;
   readonly reviewState?: InboxReviewStateFilter;
@@ -432,6 +438,7 @@ function InboxScreen({
           onRefresh={onRefresh}
           selectedLabels={selectedLabels}
           onLabelsChange={onInboxLabelsChange}
+          labelFits={labelFits}
           awaitingMyReview={awaitingMyReview}
           onAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
           {...(reviewState === undefined ? {} : { reviewState })}

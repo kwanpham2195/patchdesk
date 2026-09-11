@@ -8,6 +8,7 @@ import {
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
+  inboxSearchQueryExcess,
   MAX_INBOX_FILTER_LABELS,
   MAX_INBOX_FILTER_LABEL_LENGTH,
   parseInboxAuthorFilter,
@@ -85,8 +86,8 @@ export function registerDashboardRoutes(
       // The filter is a structured, enumerated value — each field is
       // validated against a literal union here, exactly as `state` was
       // validated here. The renderer never sends a GitHub search
-      // qualifier string; `buildInboxSearchQuery` in
-      // `maintainer-inbox-service.ts` is the only place that composes one.
+      // qualifier string; `composeInboxSearchQuery` in
+      // `maintainer-inbox.ts` is the only place that composes one.
       const state = context.req.query("state") ?? "open";
       if (state !== "open" && state !== "merged")
         return response(context, err({ reason: "invalid_input" }));
@@ -149,6 +150,18 @@ export function registerDashboardRoutes(
         ...authorField,
         ...baseBranchField,
       };
+      // Every field above is bounded on its own, but the 256-character cap
+      // binds their sum, so it is checked once here over the whole composed
+      // query. Sending it and reading GitHub's refusal instead cannot work:
+      // it arrives as a `gh` command failure, indistinguishable from a
+      // network failure without parsing stderr.
+      if (
+        inboxSearchQueryExcess(
+          repository === undefined ? [] : [repository],
+          filter,
+        ) > 0
+      )
+        return response(context, err({ reason: "invalid_input" }));
       const page = context.req.query("page");
       const result = await dashboard.inboxForActiveProfile(
         repository,
@@ -281,9 +294,10 @@ function parseInboxRepositoryQuery(
 
 /**
  * Validates the `GET /v1/inbox` `label` query param(s) — repeatable, one per
- * selected label — into the structured filter `buildInboxSearchQuery`
- * composes into `label:"NAME"` qualifiers. Bounded by count and length so
- * the composed query cannot exceed GitHub's 256-character search cap, and
+ * selected label — into the structured filter `composeInboxSearchQuery`
+ * composes into `label:"NAME"` qualifiers. Bounded by count and length; the
+ * composed query's own length is checked once, over every field together, by
+ * `inboxSearchQueryExcess` at the route, and the values here are also
  * stripped of the double quote a label name would otherwise use to break
  * out of its own qualifier. This is the injection boundary ADR 0031/0032
  * name: the renderer sends label names, never GitHub search-qualifier text.

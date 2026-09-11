@@ -582,7 +582,9 @@ function MoreFiltersTextField({
       ? undefined
       : failure === "too_long"
         ? `At most ${maxLength} characters`
-        : "No spaces or quotes";
+        : failure === "query_too_long"
+          ? "Too long alongside the other filters"
+          : "No spaces or quotes";
 
   return (
     <Field data-invalid={message === undefined ? undefined : true}>

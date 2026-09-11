@@ -7,6 +7,7 @@ import type {
 } from "./github-context";
 import type { GitSha, IsoTimestamp, ReviewId } from "./ids";
 import type { PullRequestRef } from "./pull-request";
+import type { RepositoryIdentity } from "./repository-identity";
 import { err, ok, type Result } from "./result";
 
 /** The only page sizes the main process accepts. */
@@ -68,7 +69,7 @@ export const INBOX_REPOSITORY_OUTCOMES = [
 ] as const;
 export type InboxRepositoryOutcome = (typeof INBOX_REPOSITORY_OUTCOMES)[number];
 
-/** The only repository label filter GitHub's search API and Patchdesk's 256-character query cap can absorb; see `buildInboxSearchQuery`. */
+/** The only repository label filter GitHub's search API and Patchdesk's 256-character query cap can absorb; see `composeInboxSearchQuery`. */
 export const MAX_INBOX_FILTER_LABELS = 5;
 /** GitHub's own label-name length cap. */
 export const MAX_INBOX_FILTER_LABEL_LENGTH = 50;
@@ -77,8 +78,12 @@ export const MAX_INBOX_FILTER_AUTHOR_LENGTH = 39;
 /** A generous bound on a branch name, which Git itself leaves unbounded. */
 export const MAX_INBOX_FILTER_BASE_BRANCH_LENGTH = 100;
 
-/** Which rule a free-text inbox filter value broke, so the field that refused it can name the rule. */
-export type InboxFilterTextFailure = "empty" | "characters" | "too_long";
+/** Which rule a free-text inbox filter value broke, so the field that refused it can name the rule. `query_too_long` is the one rule the value alone cannot break: it is the whole composed query that would not fit. */
+export type InboxFilterTextFailure =
+  | "empty"
+  | "characters"
+  | "too_long"
+  | "query_too_long";
 
 /** The last control-character code point below the printable range; a value carrying one could smuggle a newline into a search query. */
 const LAST_CONTROL_CHARACTER = 0x1f;
@@ -130,8 +135,8 @@ function containsUnusableFilterCharacter(value: string): boolean {
  * A structured, enumerated inbox filter. Every field is validated at the
  * route the same way `scope` used to be — the renderer never sends a GitHub
  * search-qualifier string, only these bounded, enumerated-or-sanitized
- * values, so `buildInboxSearchQuery` (in `maintainer-inbox-service.ts`) stays
- * the one place free text can reach GitHub's search API.
+ * values, so `composeInboxSearchQuery` stays the one place free text can
+ * reach GitHub's search API.
  */
 export type InboxFilter = {
   readonly state: InboxStateFilter;
@@ -156,6 +161,73 @@ export type InboxFilter = {
   /** GitHub's `base:<value>` qualifier, validated by `parseInboxBaseBranchFilter`; absent means any base branch. */
   readonly baseBranch?: string;
 };
+
+/** GitHub's search API refuses a query longer than this. */
+export const INBOX_SEARCH_QUERY_MAX_LENGTH = 256;
+
+/**
+ * Builds the GitHub search qualifier string for a set of repositories and one
+ * filter: `repo:OWNER/NAME is:pr is:open user-review-requested:@me
+ * review:approved status:failure author:"LOGIN" base:"BRANCH" label:"NAME"`.
+ * The sole place that builds this string, so every renderer-chosen filter
+ * extends it here rather than through ad hoc concatenation elsewhere — and so
+ * `INBOX_SEARCH_QUERY_MAX_LENGTH` has one thing to measure.
+ *
+ * `repos` is a list because a search may scope to more than one repository at
+ * once; each becomes its own leading `repo:` clause.
+ *
+ * `filter.labels`, `filter.author` and `filter.baseBranch` are trusted here:
+ * the route already bounds their count, length, and character set (see
+ * `parseInboxLabelsQuery` and `parseInboxFilterTextQuery` in
+ * `dashboard-routes.ts`) before they reach this function, so none of them can
+ * contain the quote it is wrapped in.
+ */
+export function composeInboxSearchQuery(
+  repos: ReadonlyArray<RepositoryIdentity>,
+  filter: InboxFilter,
+): string {
+  const stateQualifier = filter.state === "merged" ? "is:merged" : "is:open";
+  // `@me` is GitHub's own token for the authenticated viewer and is resolved
+  // server-side, so this needs no viewer login lookup. Probed 2026-08-26:
+  // `author:@me` and `author:<login>` return the identical `issueCount`.
+  const qualifiers = [
+    ...(filter.awaitingMyReview ? ["user-review-requested:@me"] : []),
+    ...(filter.reviewState === undefined
+      ? []
+      : [`review:${filter.reviewState}`]),
+    ...(filter.checkStatus === undefined
+      ? []
+      : [`status:${filter.checkStatus}`]),
+    ...(filter.author === undefined ? [] : [`author:"${filter.author}"`]),
+    ...(filter.baseBranch === undefined ? [] : [`base:"${filter.baseBranch}"`]),
+    ...(filter.labels ?? []).map((label) => `label:"${label}"`),
+  ].join(" ");
+  const scope = repos
+    .map((repo) => `repo:${repo.owner}/${repo.repo}`)
+    .join(" ");
+  const base = `${scope === "" ? "" : `${scope} `}is:pr ${stateQualifier}`;
+  return qualifiers.length === 0 ? base : `${base} ${qualifiers}`;
+}
+
+/**
+ * How many characters the composed query is over
+ * `INBOX_SEARCH_QUERY_MAX_LENGTH`, or 0 when it fits.
+ *
+ * Each repository is read with its own query, so the budget binds one
+ * repository at a time and the longest repository name decides. Length is
+ * measured in UTF-16 code units, which over-counts an astral character
+ * against GitHub's own measure and so errs toward refusing early.
+ */
+export function inboxSearchQueryExcess(
+  repos: ReadonlyArray<RepositoryIdentity>,
+  filter: InboxFilter,
+): number {
+  const lengths =
+    repos.length === 0
+      ? [composeInboxSearchQuery([], filter).length]
+      : repos.map((repo) => composeInboxSearchQuery([repo], filter).length);
+  return Math.max(0, Math.max(...lengths) - INBOX_SEARCH_QUERY_MAX_LENGTH);
+}
 
 /** Presented together in the filter bar and the command palette; one list so the two surfaces cannot drift. */
 export const INBOX_STATE_FILTERS: ReadonlyArray<{

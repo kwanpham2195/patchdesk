@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { parseGitSha } from "../../src/domain/ids";
 import {
+  composeInboxSearchQuery,
+  inboxSearchQueryExcess,
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
+  INBOX_SEARCH_QUERY_MAX_LENGTH,
+  MAX_INBOX_FILTER_AUTHOR_LENGTH,
+  MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
+  MAX_INBOX_FILTER_LABELS,
+  MAX_INBOX_FILTER_LABEL_LENGTH,
   parseInboxAuthorFilter,
   parseInboxBaseBranchFilter,
   projectMaintainerInboxRow,
+  type InboxFilter,
 } from "../../src/domain/maintainer-inbox";
 import { err, ok } from "../../src/domain/result";
 
@@ -234,5 +242,66 @@ describe("maintainer inbox", () => {
       });
       expect(row.categories).not.toContain("ready_to_merge");
     });
+  });
+});
+
+describe("inbox search query budget", () => {
+  const repository = { host: "github.com", owner: "owner", repo: "repo" };
+  // The longest repository a GitHub identity can name: a 39-character owner
+  // and a 100-character name, the two caps the free-text filters share.
+  const longestRepository = {
+    host: "github.com",
+    owner: "o".repeat(MAX_INBOX_FILTER_AUTHOR_LENGTH),
+    repo: "r".repeat(MAX_INBOX_FILTER_BASE_BRANCH_LENGTH),
+  };
+  const maxLengthLabels = Array.from(
+    { length: MAX_INBOX_FILTER_LABELS },
+    (_unused, index) =>
+      `${index}`.padEnd(MAX_INBOX_FILTER_LABEL_LENGTH, "-label-name"),
+  );
+  const fiveLongLabels: InboxFilter = {
+    state: "open",
+    labels: maxLengthLabels,
+  };
+
+  it("fits the longest query no filter control can lengthen", () => {
+    // Every part that is not typed at a control of its own: the longest
+    // repository, the longer state, and all three enumerated qualifiers.
+    const widest: InboxFilter = {
+      state: "merged",
+      awaitingMyReview: true,
+      reviewState: "changes_requested",
+      checkStatus: "pending",
+    };
+
+    expect(composeInboxSearchQuery([longestRepository], widest)).toHaveLength(
+      227,
+    );
+    expect(inboxSearchQueryExcess([longestRepository], widest)).toBe(0);
+  });
+
+  it("refuses five maximum-length labels, which no per-field cap catches", () => {
+    expect(maxLengthLabels.every((label) => label.length === 50)).toBe(true);
+    expect(
+      inboxSearchQueryExcess([repository], fiveLongLabels),
+    ).toBeGreaterThan(0);
+  });
+
+  it("reports the excess as the difference from the cap", () => {
+    expect(inboxSearchQueryExcess([repository], fiveLongLabels)).toBe(
+      composeInboxSearchQuery([repository], fiveLongLabels).length -
+        INBOX_SEARCH_QUERY_MAX_LENGTH,
+    );
+  });
+
+  it("measures the longest repository, because each is read on its own query", () => {
+    const filter: InboxFilter = {
+      state: "open",
+      labels: maxLengthLabels.slice(0, 2),
+    };
+
+    expect(
+      inboxSearchQueryExcess([repository, longestRepository], filter),
+    ).toBe(inboxSearchQueryExcess([longestRepository], filter));
   });
 });
