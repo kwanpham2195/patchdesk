@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 
 import { requestJson } from "@/api-client";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   formatCompactRelativeTime,
   formatExactTime,
@@ -100,44 +101,51 @@ export function VisitedPullRequests({
           recent
         </span>
       </div>
-      {/* The shared ScrollArea draws a zero-width thumb here, so the native
-       * bar is styled down instead: thin, rounded, low contrast. */}
-      <div className="min-h-0 flex-1 overflow-y-auto pt-3 pb-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/45">
-        {state.kind === "failed" ? (
-          <p className="px-2.5 py-2 text-[12px] text-muted-foreground">
-            Patchdesk could not read the pull requests you have opened.
-          </p>
-        ) : null}
-        {state.kind === "loaded" && state.rows.length === 0 ? (
-          <div className="px-2.5 py-2 text-[12px] text-muted-foreground">
-            <p>You have not opened a pull request yet.</p>
-            <p className="mt-1">
-              Open one from Pull requests and it appears here.
+      <ScrollArea className="min-h-0 flex-1">
+        {/* The padding sits inside the viewport so it does not inset the
+         * scrollbar, which is positioned against the ScrollArea root. */}
+        <div className="pt-3 pb-2">
+          {state.kind === "failed" ? (
+            <p className="px-2.5 py-2 text-[12px] text-muted-foreground">
+              Patchdesk could not read the pull requests you have opened.
             </p>
-          </div>
-        ) : null}
-        {state.kind === "loaded"
-          ? withDateHeaders(state.rows, Date.now()).map(({ row, heading }) => (
-              <Fragment key={row.reviewId}>
-                {heading === undefined ? null : (
-                  // The list already pads its own top, so the first header
-                  // does not stack a second gap above it.
-                  <p className="px-2.5 pt-3 pb-0.5 text-[10px] font-semibold tracking-widest text-muted-foreground/80 uppercase first:pt-0">
-                    {heading}
-                  </p>
-                )}
-                <VisitedRow
-                  row={row}
-                  selected={row.reviewId === openReviewId}
-                  scope={scope}
-                  onOpen={() =>
-                    onNavigate({ kind: "workbench", reviewId: row.reviewId })
-                  }
-                />
-              </Fragment>
-            ))
-          : null}
-      </div>
+          ) : null}
+          {state.kind === "loaded" && state.rows.length === 0 ? (
+            <div className="px-2.5 py-2 text-[12px] text-muted-foreground">
+              <p>You have not opened a pull request yet.</p>
+              <p className="mt-1">
+                Open one from Pull requests and it appears here.
+              </p>
+            </div>
+          ) : null}
+          {state.kind === "loaded"
+            ? withDateHeaders(state.rows, Date.now()).map(
+                ({ row, heading }) => (
+                  <Fragment key={row.reviewId}>
+                    {heading === undefined ? null : (
+                      // The list already pads its own top, so the first header
+                      // does not stack a second gap above it.
+                      <p className="px-2.5 pt-3 pb-0.5 text-[10px] font-semibold tracking-widest text-muted-foreground/80 uppercase first:pt-0">
+                        {heading}
+                      </p>
+                    )}
+                    <VisitedRow
+                      row={row}
+                      selected={row.reviewId === openReviewId}
+                      scope={scope}
+                      onOpen={() =>
+                        onNavigate({
+                          kind: "workbench",
+                          reviewId: row.reviewId,
+                        })
+                      }
+                    />
+                  </Fragment>
+                ),
+              )
+            : null}
+        </div>
+      </ScrollArea>
     </aside>
   );
 }
