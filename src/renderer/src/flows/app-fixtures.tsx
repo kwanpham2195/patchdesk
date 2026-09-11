@@ -1,6 +1,6 @@
 import { DiffWorkbench } from "../components/diff-workbench";
 import { CompactMergeCommand } from "../components/compact-merge-command";
-import { PullRequestDescription } from "../components/pull-request-description";
+import { PullRequestDescriptionPreview } from "../components/pull-request-description";
 import type { FindingId } from "../../../domain/ids";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import { parsePullRequestInput } from "../../../domain/pull-request";
@@ -64,7 +64,7 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
         throw new Error("Fixture pull request is invalid");
       return (
         <div className="mx-auto max-w-3xl p-6">
-          <PullRequestDescription
+          <PullRequestDescriptionPreview
             markdown={"```mermaid\ngraph TD\n  A[Open] --> B[Review]\n```"}
             pullRequest={parsedPullRequest.value}
           />

@@ -4,10 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parsePullRequestInput } from "../../src/domain/pull-request";
-import {
-  PullRequestDescription,
-  PullRequestDescriptionPreview,
-} from "../../src/renderer/src/components/pull-request-description";
+import { PullRequestDescriptionPreview } from "../../src/renderer/src/components/pull-request-description";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 const pullRequest = (() => {
@@ -69,7 +66,7 @@ describe("PullRequestDescription", () => {
     desktop = installDesktopDouble({}, { openExternalHttps });
 
     render(
-      <PullRequestDescription
+      <PullRequestDescriptionPreview
         markdown={
           "# Context\n\n**Keep this**. [Docs](/centraldigital/patchdesk/wiki)\n\n<script>window.bad = true</script>\n\n[javascript](javascript:alert(1))\n\n[Other](https://example.com/docs)"
         }
@@ -158,13 +155,6 @@ describe("PullRequestDescription", () => {
     } finally {
       consoleError.mockRestore();
     }
-  });
-
-  it("states when the author did not provide a description", () => {
-    render(<PullRequestDescription />);
-    expect(
-      screen.getByText("No description was provided on GitHub."),
-    ).toBeTruthy();
   });
 
   it("preserves safe GitHub HTML and image content without executing arbitrary markup", async () => {
@@ -363,57 +353,5 @@ describe("PullRequestDescription", () => {
     const source = screen.getByText("Mermaid source");
     expect(source.closest('[role="img"]')).toBeNull();
     expect(screen.getByText(/graph TD/)).toBeTruthy();
-  });
-
-  it("caps a long description at twelve visual lines until Show more is requested", async () => {
-    const user = userEvent.setup();
-    const originalScrollHeight = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "scrollHeight",
-    );
-    const originalResizeObserver = globalThis.ResizeObserver;
-
-    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
-      configurable: true,
-      get: () => 320,
-    });
-    class TestResizeObserver implements ResizeObserver {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(): void {
-        this.callback([], this);
-      }
-      disconnect(): void {}
-      unobserve(): void {}
-    }
-    Object.defineProperty(globalThis, "ResizeObserver", {
-      configurable: true,
-      value: TestResizeObserver,
-    });
-
-    try {
-      render(<PullRequestDescription markdown="A saved description" />);
-      const showMore = await screen.findByRole("button", { name: "Show more" });
-      await user.click(showMore);
-      expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
-      expect(
-        screen
-          .getByText("A saved description")
-          .closest('[data-slot="scroll-area"]')?.className,
-      ).not.toMatch(/max-h/);
-    } finally {
-      if (originalScrollHeight === undefined) {
-        Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
-      } else {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "scrollHeight",
-          originalScrollHeight,
-        );
-      }
-      Object.defineProperty(globalThis, "ResizeObserver", {
-        configurable: true,
-        value: originalResizeObserver,
-      });
-    }
   });
 });
