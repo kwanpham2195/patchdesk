@@ -198,10 +198,17 @@ describe("useInboxInsightRequests", () => {
         status: "running",
       }),
     );
-    await waitFor(() => expect(onRowRefresh).toHaveBeenCalledTimes(1), {
-      timeout: 3000,
-    });
-    expect(result.current.insightRequests.get(key)).toBeUndefined();
+    // A completed poll calls settle() and onRowRefresh() back to back, so the
+    // mock call says nothing about React having flushed settle()'s state
+    // update into result.current yet -- under load it had not, and the row
+    // still read { status: "running" }. Both belong in the same wait.
+    await waitFor(
+      () => {
+        expect(onRowRefresh).toHaveBeenCalledTimes(1);
+        expect(result.current.insightRequests.get(key)).toBeUndefined();
+      },
+      { timeout: 3000 },
+    );
     expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "POST /v1/reviews/open",
       "POST /v1/reviews/insights/brief/run",
