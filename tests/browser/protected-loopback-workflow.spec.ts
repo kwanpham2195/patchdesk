@@ -60,7 +60,11 @@ test("renderer uses the protected loopback API for profile and watchlist control
   if (started._tag !== "started") throw new Error("local API did not start");
   api = started.server;
 
-  await installTestDesktopBridge(page, api.url.toString(), capability);
+  await installTestDesktopBridge(page, {
+    kind: "localApi",
+    baseUrl: api.url.toString(),
+    capability,
+  });
   await page.goto(origin);
 
   expect(

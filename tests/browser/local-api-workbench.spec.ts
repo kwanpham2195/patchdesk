@@ -57,7 +57,11 @@ test("desktop bridge opens the canonical represented workbench without removed R
     });
     if (started._tag !== "started") throw new Error("local API did not start");
     api = started.server;
-    await installTestDesktopBridge(page, api.url.toString(), "cap");
+    await installTestDesktopBridge(page, {
+      kind: "localApi",
+      baseUrl: api.url.toString(),
+      capability: "cap",
+    });
     await page.addInitScript(
       (id) =>
         window.localStorage.setItem("patchdesk.destination", `workbench:${id}`),
