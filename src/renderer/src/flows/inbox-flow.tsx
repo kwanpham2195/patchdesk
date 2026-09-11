@@ -74,6 +74,7 @@ export function InboxFlow({
   onNextInboxPage = () => undefined,
   onSettings,
   onWorkspaceReload = async () => undefined,
+  onBootRestoreMissing,
   reviewOpening,
 }: {
   readonly destination: "dashboard" | "workbench";
@@ -135,6 +136,10 @@ export function InboxFlow({
    * something. Defaults to a no-op for the callers that never reach the
    * empty state, in the same way every other optional callback here does. */
   readonly onWorkspaceReload?: () => Promise<void>;
+  /** Leaves the workbench route when the Review restored at boot is gone.
+   * Supplied only while `destination` is that restored one, so a Review the
+   * maintainer opened in this session still reports its failure. */
+  readonly onBootRestoreMissing?: () => void;
   readonly reviewOpening: InboxReviewOpeningControls;
 }): React.JSX.Element {
   const {
@@ -177,11 +182,22 @@ export function InboxFlow({
     )
       return;
     let active = true;
-    void openStoredReviewById(dashboardProfileId, reviewId, () => active);
+    void openStoredReviewById(
+      dashboardProfileId,
+      reviewId,
+      () => active,
+      onBootRestoreMissing,
+    );
     return () => {
       active = false;
     };
-  }, [dashboardProfileId, destination, openStoredReviewById, reviewId]);
+  }, [
+    dashboardProfileId,
+    destination,
+    onBootRestoreMissing,
+    openStoredReviewById,
+    reviewId,
+  ]);
 
   const rowOpenError = [...openingOperations.values()].find(
     ({ status }) => status === "error",

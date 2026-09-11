@@ -27,6 +27,12 @@ export type AppNavigation = {
   readonly setWorkbench: Dispatch<SetStateAction<WorkbenchPayload | undefined>>;
   readonly navigationState: NavigationState;
   readonly setNavigationState: Dispatch<SetStateAction<NavigationState>>;
+  /**
+   * Whether the app is still on the destination restored from localStorage at
+   * mount, with no navigation since. Only that first destination is a boot
+   * restore, so only it may fail quietly when its Review is gone.
+   */
+  readonly bootRestoredDestination: boolean;
   readonly pendingDestination: AppDestination | undefined;
   readonly setPendingDestination: Dispatch<
     SetStateAction<AppDestination | undefined>
@@ -46,6 +52,7 @@ export function useAppNavigation(): AppNavigation {
     ),
   );
   const [workbench, setWorkbench] = useState<WorkbenchPayload | undefined>();
+  const [bootRestoredDestination, setBootRestoredDestination] = useState(true);
   const [navigationState, setNavigationState] =
     useState<NavigationState>("clear");
   const [pendingDestination, setPendingDestination] =
@@ -59,6 +66,7 @@ export function useAppNavigation(): AppNavigation {
       return held.review.id === next.reviewId ? held : undefined;
     });
     setDestination(next);
+    setBootRestoredDestination(false);
     window.localStorage.setItem("patchdesk.destination", destinationKey(next));
   }, []);
   const navigate = useCallback(
@@ -79,6 +87,7 @@ export function useAppNavigation(): AppNavigation {
     setWorkbench,
     navigationState,
     setNavigationState,
+    bootRestoredDestination,
     pendingDestination,
     setPendingDestination,
     performNavigation,
