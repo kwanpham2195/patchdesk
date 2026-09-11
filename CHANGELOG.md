@@ -6,6 +6,7 @@
 - Fixed moving between two pull requests showing the first one's diff until the second finished loading, and indefinitely if that load failed. #131
 - Fixed adding or removing a repository in **Settings** during a workspace switch landing the change in the workspace you were leaving. A repository toggle went to whichever workspace Patchdesk had most recently selected, while the Repositories card was still showing the previous one's repositories; each change now names the workspace it belongs to. #136
 - Fixed a pull request whose review Patchdesk swept fourteen days after it merged or closed leaving behind a record that could never be opened again, failing with a generic storage error. The sweep now removes that record along with the session it belongs to. #135
+- Fixed scrollbars never appearing in **Settings**, the **Pull requests** inbox, the review details panel, and the walkthrough reader. Patchdesk hides the system scrollbar inside these panels and draws its own, but the styling never reached the bar it drew, so it sat at a hairline with no thumb: a panel taller than its frame gave no sign it scrolled or how far through it you were. The column of pull requests you have opened now uses that same scrollbar, in place of the system one it had been styling itself. #126
 
 ## 0.0.7 - 2026-09-10
 
