@@ -561,7 +561,8 @@ Set `PATCHDESK_INSTALL_DIR` to another existing absolute folder, for example
 `PATCHDESK_INSTALL_DIR=~/Applications` when `/Applications` is not writable.
 If Patchdesk is running from that folder, the script asks it to quit and waits
 up to 20 seconds; if it is still running, the script stops without copying
-anything. Copies running from anywhere else, such as the dev app or
+anything. The first time it does this, macOS asks whether your terminal may
+control Patchdesk; if you decline, quit Patchdesk yourself and run again. Copies running from anywhere else, such as the dev app or
 `release/`, are left alone. The new app is copied into a hidden sibling first
 and swapped in by rename, so a failed install leaves the previous app in
 place.
