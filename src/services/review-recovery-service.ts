@@ -215,16 +215,21 @@ export class ReviewRecoveryService {
       operation.reviewId,
     );
     if (review._tag === "err") return { recovered: 0, failed: 1 };
-    const terminal = markReviewTerminal(
-      review.value,
-      outcome.value.state === "merged" ? "merged" : "closed",
-      outcome.value.state === "merged" ? outcome.value.mergedAt : this.now(),
-    );
-    const saved = await this.options.reviews.save(
-      terminal,
-      review.value.updatedAt,
-    );
-    if (saved._tag === "err") return { recovered: 0, failed: 1 };
+    // A Review that is already Terminal has nothing left to write, and re-saving
+    // it is always a stale conflict in `ReviewStore.save`, which would keep this
+    // pass from ever reaching the removal and pin the evidence forever.
+    if (review.value.status._tag !== "Terminal") {
+      const terminal = markReviewTerminal(
+        review.value,
+        outcome.value.state === "merged" ? "merged" : "closed",
+        outcome.value.state === "merged" ? outcome.value.mergedAt : this.now(),
+      );
+      const saved = await this.options.reviews.save(
+        terminal,
+        review.value.updatedAt,
+      );
+      if (saved._tag === "err") return { recovered: 0, failed: 1 };
+    }
     const removed =
       await this.options.mergeOperations.removeAfterSessionReceipt(
         operation.profileId,

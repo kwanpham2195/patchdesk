@@ -1,9 +1,56 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { ReviewStore } from "../../src/adapters/storage/review-store";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
 import { ReviewRecoveryService } from "../../src/services/review-recovery-service";
-import { ok, err } from "../../src/domain/result";
+import { createReview, type ReviewIdentity } from "../../src/domain/review";
+import {
+  createReviewId,
+  createReviewSessionId,
+  parseGitHubHost,
+  parseGitHubOwner,
+  parseGitHubRepoName,
+  parseGitSha,
+  parseIsoTimestamp,
+  parsePullRequestNumber,
+  parseWorkspaceProfileId,
+} from "../../src/domain/ids";
+import { ok, err, type Result } from "../../src/domain/result";
+
+function must<T>(result: Result<T, unknown>): T {
+  if (result._tag === "err") throw new Error("Invalid fixture");
+  return result.value;
+}
+
+const storedIdentity: ReviewIdentity = {
+  profileId: must(parseWorkspaceProfileId("cfw")),
+  host: must(parseGitHubHost("github.com")),
+  owner: must(parseGitHubOwner("centraldigital")),
+  repo: must(parseGitHubRepoName("patchdesk")),
+  prNumber: must(parsePullRequestNumber(42)),
+};
+const storedReviewId = createReviewId(storedIdentity);
+const storedHeadSha = must(parseGitSha("1".repeat(40)));
+const storedSessionId = createReviewSessionId({
+  ...storedIdentity,
+  headSha: storedHeadSha,
+  baseSha: must(parseGitSha("b".repeat(40))),
+});
+const storedCreatedAt = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
+const mergedAt = must(parseIsoTimestamp("2026-08-01T00:05:00.000Z"));
+const roots: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
+});
 
 // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
 const now = "2026-08-01T00:00:00.000Z" as never;
@@ -249,6 +296,115 @@ describe("ReviewRecoveryService", () => {
       failed: 1,
     });
     expect(value.remove).not.toHaveBeenCalled();
+  });
+
+  it("converges when removing the merge evidence fails once", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-review-recovery-"));
+    roots.push(root);
+    const store = new ReviewStore(PatchdeskPaths.forTest(root));
+    await expect(
+      store.save(
+        createReview({
+          identity: storedIdentity,
+          currentSessionId: storedSessionId,
+          headSha: storedHeadSha,
+          createdAt: storedCreatedAt,
+        }),
+      ),
+    ).resolves.toMatchObject({ _tag: "ok" });
+
+    let pending = [
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+      {
+        operationId: "merge-1",
+        profileId: storedIdentity.profileId,
+        reviewId: storedReviewId,
+        sessionId: storedSessionId,
+        pr: {
+          host: storedIdentity.host,
+          owner: storedIdentity.owner,
+          repo: storedIdentity.repo,
+          number: storedIdentity.prNumber,
+        },
+        expectedHeadSha: storedHeadSha,
+        method: "squash",
+        acknowledgedWarningCodes: [],
+        startedAt: storedCreatedAt,
+        state: { _tag: "OutcomeUnknown" },
+      } as never,
+    ];
+    let attempts = 0;
+    const remove = vi.fn(async () => {
+      attempts += 1;
+      // The real store reports a failed unlink as `err`; it does not throw.
+      if (attempts === 1) {
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "io",
+        } as const);
+      }
+      pending = [];
+      return ok(undefined);
+    });
+    const recovery = new ReviewRecoveryService(
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+      {
+        list: async () => ok([{ id: storedIdentity.profileId }]),
+        load: async () => ok({}),
+      } as never,
+      // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
+      {
+        scanSessionEntries: async () =>
+          ok({ sessions: [], invalidEntries: [] }),
+      } as never,
+      () => now,
+      {
+        operationCoordinator: new ReviewOperationCoordinator(),
+        reviews: store,
+        mergeOperations: {
+          listPending: async () => ok(pending),
+          removeAfterSessionReceipt: remove,
+        },
+        github: {
+          getMergeOutcome: async () => ok({ state: "merged", mergedAt }),
+        },
+      },
+    );
+
+    await expect(recovery.reconcile()).resolves.toEqual({
+      recovered: 0,
+      failed: 1,
+    });
+    const afterFirst = await store.load(
+      storedIdentity.profileId,
+      storedReviewId,
+    );
+    expect(afterFirst).toMatchObject({
+      _tag: "ok",
+      value: {
+        status: { _tag: "Terminal", state: "merged", observedAt: mergedAt },
+      },
+    });
+    const terminalUpdatedAt = must(afterFirst).updatedAt;
+    expect(pending).toHaveLength(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+
+    await expect(recovery.reconcile()).resolves.toEqual({
+      recovered: 1,
+      failed: 0,
+    });
+    expect(pending).toEqual([]);
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(
+      must(await store.load(storedIdentity.profileId, storedReviewId))
+        .updatedAt,
+    ).toBe(terminalUpdatedAt);
+
+    await expect(recovery.reconcile()).resolves.toEqual({
+      recovered: 0,
+      failed: 0,
+    });
   });
 });
 
