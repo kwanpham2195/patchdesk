@@ -57,6 +57,19 @@ async function openPicker(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Manage assignees" }));
 }
 
+/**
+ * Open it the way a keyboard user does, and hand back the trigger so a test
+ * can assert focus came back to it.
+ */
+async function openPickerFromKeyboard(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<HTMLElement> {
+  const trigger = screen.getByRole("button", { name: "Manage assignees" });
+  trigger.focus();
+  await user.keyboard("{Enter}");
+  return trigger;
+}
+
 describe("AssigneePicker", () => {
   it("renders nothing when the Review can no longer accept assignee writes", () => {
     const { container } = render(<AssigneePicker attachedAssignees={[]} />);
@@ -136,5 +149,47 @@ describe("AssigneePicker", () => {
       document.querySelector('[data-slot="picker-permission-denied"]'),
     ).toBeTruthy();
     expect(checkbox("hubot").getAttribute("aria-disabled")).toBe("true");
+  });
+
+  // Movement between rows is the document's own tab order: the rows are plain
+  // checkboxes in a <ul>, not a roving-tabindex listbox, so arrow keys do
+  // nothing here and there is no arrow handling to assert.
+  it("opens onto its search box from the keyboard, reaches each person row with Tab, and toggles the focused row with Space", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture();
+    render(<AssigneePicker attachedAssignees={[]} actions={actions} />);
+    await openPickerFromKeyboard(user);
+
+    // The search box is the popup's first tabbable control, so opening lands
+    // there rather than leaving focus behind on the trigger.
+    expect(document.activeElement).toBe(
+      screen.getByRole("searchbox", { name: "Search assignable people" }),
+    );
+    await screen.findByRole("checkbox", { name: "hubot" });
+
+    await user.tab();
+    expect(document.activeElement).toBe(checkbox("octocat"));
+    await user.tab();
+    expect(document.activeElement).toBe(checkbox("hubot"));
+
+    await user.keyboard(" ");
+    await waitFor(() => expect(actions.addAssignees).toHaveBeenCalledOnce());
+    expect(checkbox("hubot").getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("closes on Escape and hands focus back to the trigger that opened it", async () => {
+    const user = userEvent.setup();
+    const actions = actionsFixture();
+    render(<AssigneePicker attachedAssignees={[]} actions={actions} />);
+    const trigger = await openPickerFromKeyboard(user);
+    await screen.findByRole("checkbox", { name: "hubot" });
+
+    await user.tab();
+    await user.keyboard("{Escape}");
+
+    await waitFor(() =>
+      expect(screen.queryByRole("checkbox", { name: "hubot" })).toBe(null),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });

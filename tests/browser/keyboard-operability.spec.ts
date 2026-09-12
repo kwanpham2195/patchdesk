@@ -158,23 +158,42 @@ test.describe("keyboard operability", () => {
     await expect(diagram).toBeFocused();
   });
 
-  test("the rail's Labels picker is fully keyboard-reachable and operable", async ({
+  // What each rail picker does once it has focus -- where focus lands on
+  // open, Tab between rows, Space toggling the focused row, Escape closing
+  // and handing focus back to the trigger -- is proved at RTL, in
+  // `tests/renderer/label-picker.ui.test.tsx` and its assignee and reviewer
+  // siblings. Those mount one picker on its own, so the one thing they cannot
+  // show is that the whole page's focus order arrives at a picker at all.
+  // That is what this walk is for, and why one test covers all three pickers:
+  // they sit in the same rail, reached the same way.
+  test("a keyboard user reaches a rail picker through the page's own tab order", async ({
     page,
   }) => {
     await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
     await openConversationRail(page);
 
+    // Start from the first stop a keyboard user lands on, then press Tab until
+    // the rail's Labels trigger takes focus.
+    await page.getByRole("link", { name: "Skip to content" }).focus();
     const manageLabels = page.getByRole("button", { name: "Manage labels" });
-    await expectReachableByTab(page, manageLabels);
-    await page.keyboard.press("Enter");
+    const triggerFocused = (): Promise<boolean> =>
+      manageLabels.evaluate((element) => element === document.activeElement);
 
-    const docs = page.getByRole("checkbox", { name: "documentation" });
-    await expect(docs).toBeVisible();
-    await docs.focus();
-    await expect(docs).toBeFocused();
-    expect(await docs.getAttribute("aria-checked")).toBe("false");
-    await page.keyboard.press("Space");
-    await expect(docs).toHaveAttribute("aria-checked", "true");
+    const visited: string[] = [];
+    while (visited.length < 80 && !(await triggerFocused())) {
+      await page.keyboard.press("Tab");
+      visited.push(await focusedDescription(page));
+    }
+    expect(
+      await triggerFocused(),
+      `Tab visited ${visited.length} stops without reaching the rail's Labels trigger: ${visited.join(" -> ")}`,
+    ).toBe(true);
+
+    // Arriving is half of it; the trigger also opens from the keyboard.
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("checkbox", { name: "documentation" }),
+    ).toBeVisible();
   });
 
   test("the header refresh control is keyboard-reachable with an accessible name", async ({
@@ -201,29 +220,6 @@ test.describe("keyboard operability", () => {
     await expect(refresh).toBeEnabled();
   });
 
-  test("the rail's Assignees picker is fully keyboard-reachable and operable", async ({
-    page,
-  }) => {
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    await openConversationRail(page);
-
-    const manageAssignees = page.getByRole("button", {
-      name: "Manage assignees",
-    });
-    await expectReachableByTab(page, manageAssignees);
-    await page.keyboard.press("Enter");
-
-    const collaborator = page.getByRole("checkbox", {
-      name: "fixture-collaborator",
-    });
-    await expect(collaborator).toBeVisible();
-    await collaborator.focus();
-    await expect(collaborator).toBeFocused();
-    expect(await collaborator.getAttribute("aria-checked")).toBe("false");
-    await page.keyboard.press("Space");
-    await expect(collaborator).toHaveAttribute("aria-checked", "true");
-  });
-
   test("the Assignees empty-state self-assign shortcut is keyboard-reachable and operable", async ({
     page,
   }) => {
@@ -236,29 +232,6 @@ test.describe("keyboard operability", () => {
     await expectReachableByTab(page, assignSelf);
     await page.keyboard.press("Enter");
     await expect(page.getByText("fixture-viewer")).toBeVisible();
-  });
-
-  test("the rail's Reviewers picker is fully keyboard-reachable and operable", async ({
-    page,
-  }) => {
-    await page.goto(`${serverOrigin(server)}/#workbench-fixture`);
-    await openConversationRail(page);
-
-    const manageReviewers = page.getByRole("button", {
-      name: "Manage reviewers",
-    });
-    await expectReachableByTab(page, manageReviewers);
-    await page.keyboard.press("Enter");
-
-    const other = page.getByRole("checkbox", {
-      name: "fixture-other-reviewer",
-    });
-    await expect(other).toBeVisible();
-    await other.focus();
-    await expect(other).toBeFocused();
-    expect(await other.getAttribute("aria-checked")).toBe("false");
-    await page.keyboard.press("Space");
-    await expect(other).toHaveAttribute("aria-checked", "true");
   });
 });
 
@@ -289,6 +262,19 @@ async function settledFocusStop(page: Page, dialog: Locator): Promise<string> {
     if (Date.now() > deadline) return "focus never settled on any control";
     await page.waitForTimeout(20);
   }
+}
+
+/** Names the focused element, so a tab walk that never arrives says where it went. */
+async function focusedDescription(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const focused = document.activeElement;
+    if (focused === null) return "<none>";
+    const name =
+      focused.getAttribute("aria-label") ??
+      focused.textContent?.trim().slice(0, 30) ??
+      "";
+    return `<${focused.tagName.toLowerCase()}> "${name}"`;
+  });
 }
 
 /**
