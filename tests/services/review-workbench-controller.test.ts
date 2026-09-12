@@ -606,10 +606,13 @@ describe("ReviewWorkbenchController", () => {
   });
 
   it("open() never re-enters its own coordinator lock while recovering, restarting, refreshing, or projecting", async () => {
-    // Safety net beyond the two lock sites the plan names: every method
-    // `open()`'s tree reaches (recoverObservation, restartUnusableReview,
-    // initializeSnapshot's refresh, projectStableLocked) has an
-    // Unlocked sibling.
+    // Safety net beyond the two lock sites the plan names: `open()` holds this
+    // Review's lock across its whole tree, and exactly two dependencies it
+    // reaches have a locked/unlocked pair — observation recovery (through
+    // recoverObservationUnlocked) and the refresh inside initializeSnapshot —
+    // so both must be called by their Unlocked name. Every controller helper in
+    // that tree (restartUnusableReview, restartOrKeepReview,
+    // projectOpenedUnlocked, projectStableUnlocked) takes no lock at all.
     // Each "locked" fake below re-enters the *same* real coordinator on the
     // same key `open()` already holds, so calling the wrong (locked)
     // sibling from inside open()'s tree would hang this test rather than
