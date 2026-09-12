@@ -105,6 +105,8 @@ export function useReviewFileNavigation<T>({
       return materializeAndScrollTo({
         viewer,
         itemId: target,
+        // An item target reads the item record, so it needs no remeasure.
+        needsLayoutRecompute: false,
         isStale: stale,
         buildTarget: () => ({ type: "item", id: target, align: "start" }),
         onScrolled: () => {

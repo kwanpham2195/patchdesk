@@ -129,6 +129,8 @@ export function useReviewHunkNavigation<T>({
       return materializeAndScrollTo({
         viewer,
         itemId: target.filePath,
+        // A line target resolves through the expanded-hunks map.
+        needsLayoutRecompute: true,
         isStale: stale,
         buildTarget: () => ({
           type: "line",

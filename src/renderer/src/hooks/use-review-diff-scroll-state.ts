@@ -8,6 +8,7 @@ import {
 import type {
   CodeViewDiffItem,
   CodeViewLineSelection,
+  CodeViewScrollTarget,
   FileDiffMetadata,
 } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
@@ -231,21 +232,24 @@ export function useReviewDiffSelectionScroll<T>({
     }
     if (selectionScrollProgress.current.completed) return;
     selectionScrollPending.current = true;
+    // Picked once so the target kind and the wait it needs cannot disagree.
+    const target: CodeViewScrollTarget =
+      selectedLines === null
+        ? { type: "item", id: selectedPath, align: "start" }
+        : {
+            type: "range",
+            id: selectedLines.id,
+            range: selectedLines.range,
+            align: "center",
+          };
     return materializeAndScrollTo({
       viewer,
       itemId: selectedPath,
+      needsLayoutRecompute: target.type !== "item",
       isStale: () =>
         selectionScrollProgress.current.key !== selectionScrollKey ||
         selectionScrollProgress.current.completed,
-      buildTarget: () =>
-        selectedLines === null
-          ? { type: "item", id: selectedPath, align: "start" }
-          : {
-              type: "range",
-              id: selectedLines.id,
-              range: selectedLines.range,
-              align: "center",
-            },
+      buildTarget: () => target,
       onScrolled: () => {
         selectionScrollProgress.current.completed = true;
         selectionScrollPending.current = false;

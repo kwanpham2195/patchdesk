@@ -14,16 +14,28 @@ export type MaterializeAndScrollOptions<T> = {
   readonly isStale: () => boolean;
   /** Built once, right before the target is known to exist in the viewer. */
   readonly buildTarget: () => CodeViewScrollTarget;
+  /** Whether the target's destination depends on a layout CodeView has yet to
+   * recompute. Range and line targets resolve through the expanded-hunks map,
+   * so they need the remeasure that follows an unchanged-hunk expansion; an
+   * item target reads the item record directly and needs no wait. */
+  readonly needsLayoutRecompute: boolean;
   readonly onScrolled?: () => void;
 };
+
+/** Frames a no-wait target retries on before it gives up on this run. */
+const IMMEDIATE_TARGET_RETRY_FRAMES = 2;
 
 /**
  * Scrolls `viewer` to a target item once the viewer holds it.
  *
- * CodeView recalculates line metrics after expanding a selected unchanged
- * hunk, so this waits two animation frames before attempting the scroll.
+ * A target that `needsLayoutRecompute` waits two animation frames before its
+ * one attempt, so CodeView has remeasured line metrics after expanding a
+ * selected unchanged hunk. Any other target is attempted immediately, then
+ * retried on each of the next two frames until one scrolls -- on a first
+ * mount the viewer may not hold the item yet, and without the retries a bail
+ * would leave the pane unscrolled until `items` next changes.
  *
- * Returns a cleanup that cancels the pending animation frames; callers must
+ * Returns a cleanup that cancels the pending animation frame; callers must
  * invoke it when the triggering condition changes or the component unmounts.
  */
 export function materializeAndScrollTo<T>({
@@ -31,14 +43,16 @@ export function materializeAndScrollTo<T>({
   itemId,
   isStale,
   buildTarget,
+  needsLayoutRecompute,
   onScrolled,
 }: MaterializeAndScrollOptions<T>): () => void {
-  let secondFrame: number | undefined;
+  let pendingFrame: number | undefined;
 
-  const attempt = (): void => {
+  /** True once this run is finished, whether it scrolled or went stale. */
+  const attempt = (): boolean => {
     // A newer target superseded this one while a stale frame from this
     // closure was still pending.
-    if (isStale()) return;
+    if (isStale()) return true;
     const codeView = viewer.current;
     // The React item list is only what CodeView was last handed; the viewer's
     // own list is what a scroll resolves against, and the preview pane and
@@ -47,18 +61,34 @@ export function materializeAndScrollTo<T>({
       codeView === null ||
       codeView.getInstance()?.getItem(itemId) === undefined
     )
-      return;
+      return false;
     codeView.scrollTo(buildTarget());
-    if (isStale() || viewer.current === null) return;
+    if (isStale() || viewer.current === null) return true;
     onScrolled?.();
+    return true;
   };
 
-  const firstFrame = requestAnimationFrame(() => {
-    secondFrame = requestAnimationFrame(attempt);
-  });
-
-  return () => {
-    cancelAnimationFrame(firstFrame);
-    if (secondFrame !== undefined) cancelAnimationFrame(secondFrame);
+  const cleanup = (): void => {
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
   };
+
+  if (needsLayoutRecompute) {
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = undefined;
+        attempt();
+      });
+    });
+    return cleanup;
+  }
+
+  let retriesLeft = IMMEDIATE_TARGET_RETRY_FRAMES;
+  const attemptOrRetry = (): void => {
+    pendingFrame = undefined;
+    if (attempt() || retriesLeft === 0) return;
+    retriesLeft -= 1;
+    pendingFrame = requestAnimationFrame(attemptOrRetry);
+  };
+  attemptOrRetry();
+  return cleanup;
 }

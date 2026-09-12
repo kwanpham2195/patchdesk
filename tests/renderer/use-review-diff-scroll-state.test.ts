@@ -2,7 +2,7 @@
 import { renderHook } from "@testing-library/react";
 import { useEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { FileDiffMetadata } from "@pierre/diffs";
+import type { CodeViewLineSelection, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 
 import {
@@ -43,7 +43,10 @@ function fakeViewer(
   return { current: handle };
 }
 
-// `materializeAndScrollTo` waits two animation frames before it scrolls.
+// Covers both waits `materializeAndScrollTo` can take: the two frames a range
+// target waits for CodeView's remeasure, and the two frames an item target
+// retries on. It cannot tell either apart from an immediate scroll, so the
+// tests that pin the wait itself assert before calling this.
 function flushFrames(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => {
@@ -131,6 +134,95 @@ describe("useReviewDiffScrollState", () => {
 });
 
 describe("useReviewDiffSelectionScroll", () => {
+  it("scrolls to a selected file without waiting for an animation frame", () => {
+    const scrollTo = vi.fn();
+    const selectionScrollPending = { current: false };
+    const viewer = fakeViewer(scrollTo, () => ["src/a.ts", "src/b.ts"]);
+
+    renderHook(() =>
+      useReviewDiffSelectionScroll({
+        viewer,
+        items,
+        selectedPath: "src/b.ts",
+        selectedLines: null,
+        diffStyle: "unified",
+        fileMode: "all",
+        markdownPreviewActive: false,
+        selectionScrollPending,
+      }),
+    );
+
+    // An item target reads the item record straight off, so waiting frames
+    // before the attempt only stalls the pane. No flush here on purpose.
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenLastCalledWith(selectionTarget);
+  });
+
+  it("retries on the next frame when the viewer does not hold the file yet", async () => {
+    const scrollTo = vi.fn();
+    const selectionScrollPending = { current: false };
+    // A first mount: the viewer takes the item list after the immediate
+    // attempt has already asked for it.
+    let attempts = 0;
+    const viewer = fakeViewer(scrollTo, () => {
+      attempts += 1;
+      return attempts === 1 ? [] : ["src/a.ts", "src/b.ts"];
+    });
+
+    renderHook(() =>
+      useReviewDiffSelectionScroll({
+        viewer,
+        items,
+        selectedPath: "src/b.ts",
+        selectedLines: null,
+        diffStyle: "unified",
+        fileMode: "all",
+        markdownPreviewActive: false,
+        selectionScrollPending,
+      }),
+    );
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    await flushFrames();
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenLastCalledWith(selectionTarget);
+  });
+
+  it("waits for CodeView to remeasure before scrolling to a selected range", async () => {
+    const scrollTo = vi.fn();
+    const selectionScrollPending = { current: false };
+    const viewer = fakeViewer(scrollTo, () => ["src/a.ts", "src/b.ts"]);
+    const selectedLines: CodeViewLineSelection = {
+      id: "src/b.ts",
+      range: { start: 12, end: 18, side: "additions" },
+    };
+
+    renderHook(() =>
+      useReviewDiffSelectionScroll({
+        viewer,
+        items,
+        selectedPath: "src/b.ts",
+        selectedLines,
+        diffStyle: "unified",
+        fileMode: "all",
+        markdownPreviewActive: false,
+        selectionScrollPending,
+      }),
+    );
+
+    // A range resolves through the expanded-hunks map, which is only right
+    // after CodeView remeasures the expanded unchanged hunk.
+    expect(scrollTo).not.toHaveBeenCalled();
+    await flushFrames();
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenLastCalledWith({
+      type: "range",
+      id: "src/b.ts",
+      range: selectedLines.range,
+      align: "center",
+    });
+  });
+
   it("scrolls to the selection again after the Markdown preview closes", async () => {
     const scrollTo = vi.fn();
     const selectionScrollPending = { current: false };
