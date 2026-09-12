@@ -329,6 +329,7 @@ function ReviewDiffSurface({
     items,
     selectedLines,
     activePathRef,
+    selectionScrollPending,
     resolveActiveFilePathAt,
     setViewerContainer,
     handleCodeViewScroll,
@@ -376,6 +377,7 @@ function ReviewDiffSurface({
     diffStyle: preferences.diffStyle,
     fileMode: preferences.fileMode,
     markdownPreviewActive,
+    selectionScrollPending,
   });
   // A finding may land inside a collapsed unchanged hunk. Keep that evidence
   // materialized while it is selected; the user's explicit option still

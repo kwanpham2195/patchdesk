@@ -56,6 +56,7 @@ export type ReviewDiffModel = {
   >;
   readonly selectedLines: CodeViewLineSelection | null;
   readonly activePathRef: { current: string | undefined };
+  readonly selectionScrollPending: { current: boolean };
   readonly resolveActiveFilePathAt: ReviewDiffScrollState<
     ReviewInlineAnnotation | undefined
   >["resolveActiveFilePathAt"];
@@ -128,6 +129,7 @@ export function useReviewDiffModel({
   const {
     settledHydratedFiles,
     activePathRef,
+    selectionScrollPending,
     setViewerContainer,
     resolveActiveFilePathAt,
     handleCodeViewScroll,
@@ -399,6 +401,7 @@ export function useReviewDiffModel({
     items,
     selectedLines,
     activePathRef,
+    selectionScrollPending,
     resolveActiveFilePathAt,
     setViewerContainer,
     handleCodeViewScroll,

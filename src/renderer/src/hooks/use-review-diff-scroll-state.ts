@@ -27,6 +27,7 @@ type PierreCodeView<T> = NonNullable<
 export type ReviewDiffScrollState<T> = {
   readonly settledHydratedFiles: ReadonlyMap<string, FileDiffMetadata>;
   readonly activePathRef: { current: string | undefined };
+  readonly selectionScrollPending: { current: boolean };
   readonly viewerElement: HTMLDivElement | null;
   readonly setViewerContainer: (node: HTMLDivElement | null) => void;
   readonly resolveActiveFilePathAt: (
@@ -58,6 +59,7 @@ export function useReviewDiffScrollState<T>({
   readonly onActiveFileChange: ((path: string) => void) | undefined;
 }): ReviewDiffScrollState<T> {
   const activePathRef = useRef<string | undefined>(undefined);
+  const selectionScrollPending = useRef(false);
   const viewerContainer = useRef<HTMLDivElement>(null);
   const [viewerElement, setViewerElement] = useState<HTMLDivElement | null>(
     null,
@@ -126,6 +128,9 @@ export function useReviewDiffScrollState<T>({
   useEffect(() => {
     if (fileMode !== "all") return;
     const frame = window.requestAnimationFrame(() => {
+      // This polls the viewer's current scroll position, and a selection
+      // scroll still in flight means that position is about to be wrong.
+      if (selectionScrollPending.current) return;
       const codeView = viewer.current?.getInstance();
       if (codeView === undefined) return;
       updateActivePath(codeView.getScrollTop(), codeView);
@@ -163,6 +168,7 @@ export function useReviewDiffScrollState<T>({
   return {
     settledHydratedFiles,
     activePathRef,
+    selectionScrollPending,
     viewerElement,
     setViewerContainer,
     resolveActiveFilePathAt,
@@ -179,6 +185,7 @@ export function useReviewDiffSelectionScroll<T>({
   diffStyle,
   fileMode,
   markdownPreviewActive,
+  selectionScrollPending,
 }: {
   readonly viewer: RefObject<CodeViewHandle<T> | null>;
   readonly items: ReadonlyArray<Pick<CodeViewDiffItem<unknown>, "id">>;
@@ -189,6 +196,9 @@ export function useReviewDiffSelectionScroll<T>({
   /** The preview unmounts CodeView, so both entering and leaving it need the
    * selection scrolled again against a viewer that starts at the top. */
   readonly markdownPreviewActive: boolean;
+  /** Raised for the whole flight of a selection scroll, so the scroll-state
+   * hook can tell a stale scroll position from a settled one. */
+  readonly selectionScrollPending: { current: boolean };
 }): void {
   const selectionScrollKey = [
     diffStyle,
@@ -209,7 +219,10 @@ export function useReviewDiffSelectionScroll<T>({
   }>({ key: "", completed: false });
 
   useEffect(() => {
-    if (selectedPath === undefined) return;
+    if (selectedPath === undefined) {
+      selectionScrollPending.current = false;
+      return;
+    }
     if (selectionScrollProgress.current.key !== selectionScrollKey) {
       selectionScrollProgress.current = {
         key: selectionScrollKey,
@@ -217,6 +230,7 @@ export function useReviewDiffSelectionScroll<T>({
       };
     }
     if (selectionScrollProgress.current.completed) return;
+    selectionScrollPending.current = true;
     return materializeAndScrollTo({
       viewer,
       itemId: selectedPath,
@@ -234,6 +248,7 @@ export function useReviewDiffSelectionScroll<T>({
             },
       onScrolled: () => {
         selectionScrollProgress.current.completed = true;
+        selectionScrollPending.current = false;
       },
     });
   }, [
@@ -242,6 +257,7 @@ export function useReviewDiffSelectionScroll<T>({
     selectedLines,
     selectedPath,
     selectionScrollKey,
+    selectionScrollPending,
     viewer,
   ]);
 }
