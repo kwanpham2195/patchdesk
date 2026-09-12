@@ -140,7 +140,17 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
 
     const user = userEvent.setup();
     await user.click(checks);
-    expect(screen.getByRole("dialog", { name: "PR overview" })).toBeTruthy();
+    const overview = screen.getByRole("dialog", { name: "PR overview" });
+    // Every PR action the header used to carry lives in the drawer's rows.
+    for (const section of [
+      "Revision",
+      "Checks",
+      "Review status",
+      "Merge readiness",
+    ])
+      expect(
+        within(overview).getByRole("button", { name: section }),
+      ).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "PR overview" })).toBeNull(),

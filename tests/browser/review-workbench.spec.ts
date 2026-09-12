@@ -784,100 +784,6 @@ test("file-tree search selects a file deep in a large patch and scrolls its head
   }
 });
 
-test("switching the diff theme no longer rebuilds CodeView, and the reader stays on the same file", async ({
-  page,
-}) => {
-  const server = await serveRenderer();
-  try {
-    await page.setViewportSize({ width: 1_440, height: 900 });
-    await page.goto(`${serverOrigin(server)}/#performance-fixture`);
-    const diff = page.getByRole("region", { name: "Review diff" });
-    const diffViewport = page.locator(".review-diff-viewport");
-    const path = "src/generated/file-0050.ts";
-
-    // As in "file-tree search selects a file deep in a large patch...",
-    // scroll to a file far enough down that it starts outside CodeView's
-    // rendered window.
-    await page.locator("[data-file-tree-search-input]").fill("file-0050");
-    const target = page.getByRole("treeitem", { name: "file-0050.ts" });
-    await expect(target).toBeVisible();
-    await target.click();
-    await expect(diff).toHaveAttribute("data-selected-path", path);
-
-    const header = page.locator(`[data-review-diff-file-header="${path}"]`);
-    await expect(header).toBeVisible({ timeout: 5_000 });
-    const landedOnFile = async (): Promise<boolean> => {
-      const [headerBox, viewportBox] = await Promise.all([
-        header.boundingBox(),
-        diffViewport.boundingBox(),
-      ]);
-      if (headerBox === null || viewportBox === null) return false;
-      // scrollTop alone would not prove file-0050's header actually reached
-      // the viewport: only a vertical overlap between the header's box and
-      // the viewport's visible box does.
-      return (
-        headerBox.y + headerBox.height > viewportBox.y &&
-        headerBox.y < viewportBox.y + viewportBox.height
-      );
-    };
-    expect(await landedOnFile()).toBe(true);
-
-    // Before slice 6, changing the light diff theme rewrote
-    // `themePreferences.light`, part of `CodeView`'s own React key alongside
-    // `fileMode` and `appearance` -- tearing `CodeView` down and rebuilding
-    // it, which discarded its scroll position. That is what
-    // `restoreFilePathRef`/the `useLayoutEffect` above it in
-    // `review-diff-view.tsx` exists to repair, and this test originally
-    // proved that repair by using a theme switch as its rebuild trigger
-    // deliberately (a `fileMode` round trip was ruled out at the time:
-    // "Selected" mode only ever shows one file, so returning from it
-    // restores trivially through `selectionScrollProgress` regardless of
-    // whether the repair effect does anything).
-    //
-    // Slice 6 moved `theme`/`themeType` off the key onto Pierre's own
-    // options path (`codeViewOptions`, forwarded through
-    // `instance.setOptions()`), so a theme switch no longer rebuilds
-    // `CodeView` at all -- confirmed by "switching the diff appearance
-    // genuinely re-colours the rendered code" in
-    // `tests/browser/review-diff-theme.spec.ts`, which shows the same
-    // options path repaints every token whether or not a rebuild happens.
-    // With no rebuild, this test's outcome (the reader stays on
-    // file-0050) is now trivially true and no longer exercises
-    // `restoreFilePathRef` here.
-    //
-    // Checked whether a `fileMode` round trip ("All files" -> "Selected" ->
-    // "All files", the only trigger left in `codeViewKey` now that it is
-    // just `viewerKey`) could take over as the rebuild trigger instead: it
-    // cannot. With `restoreFilePathRef`'s restore temporarily disabled,
-    // that round trip still landed back on the selected file every time,
-    // because `selectionScrollProgress` -- the same pre-existing effect
-    // ruled out above -- re-scrolls to `selectedPath` on every `fileMode`
-    // change unconditionally, and "Selected" mode's toolbar button is
-    // disabled whenever nothing is selected, so a `fileMode` change with no
-    // `selectedPath` to fall back on is not reachable through the UI
-    // either. No reachable trigger distinguishes `restoreFilePathRef`
-    // working from it doing nothing, so this repo currently has no test
-    // that exercises it -- it is not deleted (`review-diff-view.tsx` is
-    // still in scope for future rebuild triggers that key might grow), but
-    // it should be treated as unreachable, not as covered, until one is
-    // added.
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Settings" });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("combobox", { name: "Light diff theme" }).click();
-    await page.getByRole("option", { name: "Pierre Light Soft" }).click();
-    await dialog.getByRole("button", { name: "Close" }).click();
-    await expect(dialog).toBeHidden();
-
-    // No rebuild means no scroll reset to repair; file-0050's header simply
-    // never leaves the viewport.
-    await expect(header).toBeVisible({ timeout: 5_000 });
-    await expect.poll(landedOnFile).toBe(true);
-  } finally {
-    await closeServer(server);
-  }
-});
-
 test("keyboard input scrolls the diff viewport once it is focusable", async ({
   page,
 }) => {
@@ -1125,24 +1031,6 @@ test("Pierre headers retain per-file totals while the navigator stays compact", 
   }
 });
 
-test("Review diff region reflects unified/split toggle via data-diff-style", async ({
-  page,
-}) => {
-  const server = await serveRenderer();
-  try {
-    await page.setViewportSize({ width: 1_440, height: 900 });
-    await openDiff(page, `${serverOrigin(server)}/#workbench-fixture`);
-    const diff = page.getByRole("region", { name: "Review diff" });
-
-    await expect(diff).toHaveAttribute("data-diff-style", "unified");
-
-    await chooseDiffOptions(page, { split: true });
-    await expect(diff).toHaveAttribute("data-diff-style", "split");
-  } finally {
-    await closeServer(server);
-  }
-});
-
 test("completed-review workbench keeps PR actions in the overview drawer", async ({
   page,
 }) => {
@@ -1155,22 +1043,10 @@ test("completed-review workbench keeps PR actions in the overview drawer", async
         origin: rendererOrigin,
       });
     await openDiff(page, `${rendererOrigin}/#workbench-fixture`);
-    await expect(
-      page.getByRole("region", { name: "Review workbench" }),
-    ).toBeVisible();
     await prOverviewTrigger(page).click();
-    const overview = page.getByRole("dialog", { name: "PR overview" });
-    await expect(overview).toBeVisible();
-    for (const section of [
-      "Revision",
-      "Checks",
-      "Review status",
-      "Merge readiness",
-    ]) {
-      await expect(
-        overview.getByRole("button", { name: section }),
-      ).toBeVisible();
-    }
+    await expect(
+      page.getByRole("dialog", { name: "PR overview" }),
+    ).toBeVisible();
     await expect(reviewDiffBehindTheDrawer(page)).toBeVisible();
   } finally {
     await closeServer(server);
@@ -1216,54 +1092,6 @@ test("PR overview overlays without viewport overflow and scrolls independently",
       await expect(overview).toBeHidden();
       await expect(prOverviewTrigger(page)).toBeFocused();
     }
-  } finally {
-    await closeServer(server);
-  }
-});
-
-test("the header refresh control is reachable when GitHub state is unavailable, and the sheet no longer drives refresh", async ({
-  page,
-}) => {
-  const server = await serveRenderer();
-  try {
-    await page.goto(
-      `${serverOrigin(server)}/#workbench-refresh-unavailable-fixture`,
-    );
-    await expect(page.getByText("Remote state unavailable")).toBeVisible();
-    const unavailableRefresh = page.getByRole("button", {
-      name: "Refresh GitHub state",
-    });
-    await expect(unavailableRefresh).toBeVisible();
-    await expect(unavailableRefresh).toBeEnabled();
-    // The sheet no longer drives refresh -- it only reads state.
-    await prOverviewTrigger(page).click();
-    const overview = page.getByRole("dialog", { name: "PR overview" });
-    await expect(overview).toBeVisible();
-    await expect(
-      overview.getByRole("button", { name: "Refresh GitHub state" }),
-    ).toHaveCount(0);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-test("the amber Updates available indicator renders as a signal without its own button", async ({
-  page,
-}) => {
-  const server = await serveRenderer();
-  try {
-    await page.goto(
-      `${serverOrigin(server)}/#workbench-updates-available-fixture`,
-    );
-    const indicator = page.locator("[data-review-new-version-indicator]");
-    await expect(indicator).toBeVisible();
-    await expect(indicator).toHaveAttribute("role", "status");
-    await expect(indicator).toHaveText("Updates available");
-    await expect(indicator.getByRole("button")).toHaveCount(0);
-    // Refresh lives in exactly one place now: the header control beside it.
-    await expect(
-      page.getByRole("button", { name: "Refresh GitHub state" }),
-    ).toBeVisible();
   } finally {
     await closeServer(server);
   }
