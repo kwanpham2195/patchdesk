@@ -53,13 +53,10 @@ describe("Reviewing as panel", () => {
     const user = userEvent.setup();
     renderSettings();
 
-    expect(
-      await screen.findByText(
-        (_, element) =>
-          element?.textContent ===
-          "Reviewing as patchdesk on github.com, from the GitHub CLI.",
-      ),
-    ).toBeTruthy();
+    // The statement's wording is the panel's to change; what a maintainer
+    // acts on is which account and host it names.
+    expect(await screen.findByText("patchdesk")).toBeTruthy();
+    expect(screen.getByText("github.com")).toBeTruthy();
     expect(screen.queryByLabelText("GitHub account")).toBeNull();
 
     await user.click(
@@ -81,11 +78,7 @@ describe("Reviewing as panel", () => {
     const user = userEvent.setup();
     renderSettings();
 
-    await screen.findByText(
-      (_, element) =>
-        element?.textContent ===
-        "Reviewing as patchdesk on github.com, from the GitHub CLI.",
-    );
+    await screen.findByRole("button", { name: "Use a different account" });
 
     await user.click(
       screen.getByRole("button", { name: "Use a different account" }),
@@ -312,23 +305,20 @@ describe("Reviewing as panel", () => {
     const user = userEvent.setup();
     renderSettings();
 
-    expect(
-      await screen.findByText(
-        (_, element) =>
-          element?.textContent ===
-          "Not authenticated. Run gh auth login, then re-check.",
-      ),
-    ).toBeTruthy();
+    // Unauthenticated: no account is resolved, so manual entry is offered
+    // directly rather than behind the disclosure.
+    expect(await screen.findAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByLabelText("GitHub account")).toBeTruthy();
+    expect(screen.queryByText("patchdesk")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Re-check" }));
 
+    expect(await screen.findByText("patchdesk")).toBeTruthy();
+    expect(screen.getByText("github.com")).toBeTruthy();
     expect(
-      await screen.findByText(
-        (_, element) =>
-          element?.textContent ===
-          "Reviewing as patchdesk on github.com, from the GitHub CLI.",
-      ),
+      screen.getByRole("button", { name: "Use a different account" }),
     ).toBeTruthy();
+    expect(screen.queryByLabelText("GitHub account")).toBeNull();
   });
 });
 

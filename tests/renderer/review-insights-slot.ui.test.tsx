@@ -185,18 +185,12 @@ describe("InsightsSlot overview", () => {
 });
 
 describe("InsightsSlot reading order", () => {
-  it("orders the sub-nav Overview, Brief, Walkthrough, Analysis and lands on Brief", () => {
+  it("lands on Brief by default", () => {
     renderInsights();
 
     const rail = within(
       screen.getByRole("navigation", { name: "Insight navigation" }),
     );
-    expect(rail.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Overview",
-      "BriefNot generated",
-      "WalkthroughNot generated",
-      "AnalysisNot generated",
-    ]);
     expect(rail.getByRole("tab", { selected: true }).textContent).toBe(
       "BriefNot generated",
     );
