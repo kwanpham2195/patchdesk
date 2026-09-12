@@ -77,7 +77,7 @@ export class ReviewWorkbenchController {
       readonly refresh: ReviewRefreshService;
       readonly observation: Pick<
         ReviewObservationService,
-        "observe" | "recover" | "recoverUnlocked"
+        "observe" | "recoverUnlocked"
       >;
       readonly coordinator: Pick<ReviewOperationCoordinator, "withReviewLock">;
       readonly commits: ReviewCommitService;
@@ -466,37 +466,6 @@ export class ReviewWorkbenchController {
     return err({ reason: "storage" });
   }
 
-  /**
-   * `load`'s projection, taken under the Review's lock. `recordOpen` is the
-   * caller's own claim that this request is the maintainer opening the Review
-   * rather than a reload of the workbench already on screen; only that stamps
-   * `lastOpenedAt`. The title comes from the projection it already built,
-   * because the load path holds no session to read it from.
-   */
-  private async projectStableLocked(
-    review: Review,
-    recordOpen: boolean,
-  ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
-    return this.lifecycle.coordinator.withReviewLock(
-      review.identity.profileId,
-      review.id,
-      async () => {
-        const current = await this.lifecycle.reviews.load(
-          review.identity.profileId,
-          review.id,
-        );
-        if (current._tag === "err")
-          return err({
-            reason:
-              current.error.reason === "not_found" ? "not_found" : "storage",
-          });
-        return recordOpen
-          ? this.projectOpenedUnlocked(current.value, undefined)
-          : this.projectStableUnlocked(current.value);
-      },
-    );
-  }
-
   private async projectStableUnlocked(
     review: Review,
   ): Promise<Result<ReviewWorkbenchProjection, ReviewWorkbenchFailure>> {
@@ -548,41 +517,38 @@ export class ReviewWorkbenchController {
     if (profileId._tag === "err" || reviewId._tag === "err")
       return err({ reason: "invalid_input" });
     const recordOpen = readObjectField(input, "recordOpen") === true;
-    const recovered = await this.recoverObservation(
+    // One lock for the whole body: the Review lock is not reentrant, so every
+    // step here calls the `*Unlocked` variant of what it needs.
+    return this.lifecycle.coordinator.withReviewLock(
       profileId.value,
       reviewId.value,
+      async () => {
+        const recovered = await this.recoverObservationUnlocked(
+          profileId.value,
+          reviewId.value,
+        );
+        if (recovered._tag === "err") return recovered;
+        const review = await this.lifecycle.reviews.load(
+          profileId.value,
+          reviewId.value,
+        );
+        if (review._tag === "err")
+          return err({
+            reason:
+              review.error.reason === "not_found" ? "not_found" : "storage",
+          });
+        return recordOpen
+          ? this.projectOpenedUnlocked(review.value, undefined)
+          : this.projectStableUnlocked(review.value);
+      },
     );
-    if (recovered._tag === "err") return recovered;
-    const review = await this.lifecycle.reviews.load(
-      profileId.value,
-      reviewId.value,
-    );
-    if (review._tag === "err")
-      return err({
-        reason: review.error.reason === "not_found" ? "not_found" : "storage",
-      });
-    return this.projectStableLocked(review.value, recordOpen);
-  }
-
-  /** Used only by `load`, which does not hold `open`'s coordinator lock. */
-  private async recoverObservation(
-    profileId: WorkspaceProfileId,
-    reviewId: ReviewId,
-  ): Promise<Result<void, ReviewWorkbenchFailure>> {
-    const journal = await this.lifecycle.journals.load(profileId, reviewId);
-    if (journal._tag === "err") return err({ reason: "storage" });
-    if (journal.value === undefined) return ok(undefined);
-    const recovered = await this.lifecycle.observation.recover({
-      profileId,
-      reviewId,
-    });
-    return recovered._tag === "ok" ? ok(undefined) : err({ reason: "storage" });
   }
 
   /**
-   * Same recovery as `recoverObservation`, for `openUnlocked`, which already
-   * holds `open`'s coordinator lock for this Review — calls `recoverUnlocked`,
-   * never `recover` (which would retake that same lock and deadlock).
+   * Recovers an orphaned observation journal for a caller that already holds
+   * this Review's coordinator lock (`openUnlocked`, `load`) — calls
+   * `recoverUnlocked`, never `recover` (which would retake that same lock and
+   * deadlock).
    */
   private async recoverObservationUnlocked(
     profileId: WorkspaceProfileId,

@@ -94,13 +94,12 @@ export const REVIEW_WRITE_IN_PROGRESS = {
 };
 
 /**
- * The controller's two still-red Review entry points. Both touch a durable
- * store before any lock, and the suite docstring names the exact dependency and
- * the `src/` change that turns each green. They share this shape because the
- * row IS the method call.
+ * The controller's one still-red Review entry point. It touches a durable store
+ * before any lock, and the suite docstring names the exact dependency and the
+ * `src/` change that turns it green.
  */
 function controllerRead(
-  method: "load" | "detectUpdates",
+  method: "detectUpdates",
   todo: string,
   call: (controller: ReviewWorkbenchController) => Promise<LockRowOutcome>,
 ): LockRow {
@@ -161,11 +160,14 @@ export const lockRows: ReadonlyArray<LockRow> = [
         });
     },
   },
-  controllerRead(
-    "load",
-    "no program item — reads journals.load then reviews.load before any lock",
-    (controller) => controller.load({ profileId, reviewId }),
-  ),
+  {
+    name: "ReviewWorkbenchController.load",
+    kind: "queues",
+    build: (coordinator, track) => {
+      const controller = workbenchController(coordinator, track);
+      return () => controller.load({ profileId, reviewId });
+    },
+  },
   // `observe` is a stub here, so the trace's second entry is that stub, not
   // the real locked `ReviewObservationService.observe`. The finding is the
   // FIRST entry: `recentWrites.load`, read before anything takes the lock.

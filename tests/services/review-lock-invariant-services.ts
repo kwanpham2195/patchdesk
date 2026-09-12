@@ -176,7 +176,6 @@ export function workbenchController(
       },
       observation: {
         observe: track.stub("observe", err({ reason: "storage" })),
-        recover: track.stub("recover", err({ reason: "storage" })),
         recoverUnlocked: track.stub(
           "recoverUnlocked",
           err({ reason: "storage" }),
