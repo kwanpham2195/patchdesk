@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "./pierre-highlighter-mock";
 import {
   cleanup,
   render,
@@ -10,7 +11,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type * as PierreDiffs from "@pierre/diffs";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { providerCatalog, withAnalysis } from "./review-workbench-fixtures";
@@ -20,15 +20,6 @@ import { providerCatalog, withAnalysis } from "./review-workbench-fixtures";
  * Insights slot and the Diff tab. Split from `review-workbench-flow.ui.test.tsx`
  * only because that file sits at the size ceiling.
  */
-
-// oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real.
-vi.mock("@pierre/diffs", async (importOriginal) => {
-  const actual = await importOriginal<typeof PierreDiffs>();
-  return {
-    ...actual,
-    preloadHighlighter: vi.fn(async () => undefined),
-  };
-});
 
 afterEach(() => {
   cleanup();

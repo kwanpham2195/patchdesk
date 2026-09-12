@@ -1,17 +1,11 @@
 // @vitest-environment jsdom
+import "./pierre-highlighter-mock";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type * as PierreDiffs from "@pierre/diffs";
 
 import { ReviewDiffView } from "../../src/renderer/src/components/review-diff-view";
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
-
-// oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs owns the rendering boundary; its WASM highlighter cannot run in jsdom, so this test retains every export and replaces only preloadHighlighter.
-vi.mock("@pierre/diffs", async (importOriginal) => {
-  const actual = await importOriginal<typeof PierreDiffs>();
-  return { ...actual, preloadHighlighter: vi.fn(async () => undefined) };
-});
 
 let restorePierre: (() => void) | undefined;
 afterEach(() => {

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "./pierre-highlighter-mock";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,16 +8,6 @@ import type { ComponentProps } from "react";
 import { ReviewDiffView } from "../../src/renderer/src/components/review-diff-view";
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
-import type * as PierreDiffs from "@pierre/diffs";
-
-// oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real.
-vi.mock("@pierre/diffs", async (importOriginal) => {
-  const actual = await importOriginal<typeof PierreDiffs>();
-  return {
-    ...actual,
-    preloadHighlighter: vi.fn(async () => undefined),
-  };
-});
 
 afterEach(cleanup);
 

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "./pierre-highlighter-mock";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,16 +14,6 @@ import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-v
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import { installDesktopDouble, success } from "./fake-desktop-response";
-import type * as PierreDiffs from "@pierre/diffs";
-
-// oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real.
-vi.mock("@pierre/diffs", async (importOriginal) => {
-  const actual = await importOriginal<typeof PierreDiffs>();
-  return {
-    ...actual,
-    preloadHighlighter: vi.fn(async () => undefined),
-  };
-});
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 afterEach(() => {

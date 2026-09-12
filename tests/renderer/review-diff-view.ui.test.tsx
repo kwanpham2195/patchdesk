@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "./pierre-highlighter-mock";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent, {
   PointerEventsCheckLevel,
@@ -15,7 +16,6 @@ import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-v
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
-import type * as PierreDiffs from "@pierre/diffs";
 import {
   installDesktopDouble,
   success,
@@ -26,15 +26,6 @@ const must = <T,>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
   throw new Error("fixture");
 };
-
-// oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real.
-vi.mock("@pierre/diffs", async (importOriginal) => {
-  const actual = await importOriginal<typeof PierreDiffs>();
-  return {
-    ...actual,
-    preloadHighlighter: vi.fn(async () => undefined),
-  };
-});
 
 // Pierre's CodeView suspends pointer events for 120 ms after any layout pass
 // as a scroll-jank guard, not as a UX state, and that suspension can re-engage

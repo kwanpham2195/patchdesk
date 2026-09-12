@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "./pierre-highlighter-mock";
 import {
   cleanup,
   fireEvent,
@@ -14,7 +15,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { ReviewWorkbenchFlow } from "../../src/renderer/src/flows/review-workbench-flow";
-import type * as PierreDiffs from "@pierre/diffs";
 import { bridge, restoreBridge } from "./review-workbench-bridge";
 import {
   callBody,
@@ -35,15 +35,6 @@ import {
  * `use-direct-summary-actions.test.ts`; a hook test supplies its own adapters,
  * so it can never observe the wiring below.
  */
-
-// oxlint-disable-next-line anti-slop/no-module-mocking -- @pierre/diffs is a third-party rendering library with no DI seam patchdesk owns; `preloadHighlighter` loads a WASM-backed syntax highlighter that jsdom cannot run, so it is the one method stubbed here while every other export passes through real. Only tests that also shim `CSSStyleSheet.prototype.replaceSync` reach Pierre's CodeView path at all; every other test in this file renders through the accessible plain-text fallback, which never calls `preloadHighlighter`.
-vi.mock("@pierre/diffs", async (importOriginal) => {
-  const actual = await importOriginal<typeof PierreDiffs>();
-  return {
-    ...actual,
-    preloadHighlighter: vi.fn(async () => undefined),
-  };
-});
 
 function mount(
   workbench: WorkbenchResponse,
