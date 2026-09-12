@@ -1,4 +1,5 @@
 import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
+import { InsightRunCoordinator } from "../../src/services/insight-run-coordinator";
 import { PendingReviewService } from "../../src/services/pending-review-service";
 import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
 import { ReviewLifecycleGate } from "../../src/services/review-lifecycle-gate";
@@ -347,5 +348,40 @@ export function publishedFeedbackService(
       reject: track.stub("reviewWriteOperations.reject", ok(undefined)),
       remove: track.stub("reviewWriteOperations.remove", ok(undefined)),
     },
+  );
+}
+
+/**
+ * `InsightRunCoordinator` reaches one Review through three stores: the Review
+ * itself, its session, and the Insight record. A row's first touch is whichever
+ * of those its entry point reads, so all three are recorded. The Review loads
+ * successfully here: the ownership check every Insight entry point runs first
+ * would otherwise short-circuit on `not_found` and hide the record read behind
+ * it.
+ */
+export function insightRunCoordinator(
+  coordinator: ReviewOperationCoordinator,
+  track: Recorder,
+): InsightRunCoordinator {
+  // SAFETY: recorded partial dependencies expose lock timing; the coordinator's own suite covers its result behavior.
+  return new InsightRunCoordinator(
+    {
+      load: track.stub("reviews.load", ok(values.review)),
+      findOwner: track.stub("reviews.findOwner", ok(undefined)),
+      list: track.stub("reviews.list", ok({ reviews: [], unreadable: 0 })),
+    } as never,
+    sessionStore(track),
+    {
+      load: track.stub("insights.load", err({ reason: "not_found" })),
+      loadTyped: track.stub("insights.loadTyped", err({ reason: "not_found" })),
+      mutate: track.stub("insights.mutate", err("not_active")),
+    } as never,
+    // Paths are read only by the cross-profile `recoverAll` sweep, which no row calls.
+    {} as never,
+    { get: track.stub("catalog.get", err({ reason: "unavailable" })) } as never,
+    // No row reaches a provider invocation.
+    {} as never,
+    coordinator,
+    now,
   );
 }

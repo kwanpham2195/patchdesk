@@ -1,4 +1,5 @@
 import { InlineConversationService } from "../../src/services/inline-conversation-service";
+import type { InsightRunCoordinator } from "../../src/services/insight-run-coordinator";
 import { LabelService } from "../../src/services/label-service";
 import { AssigneeService } from "../../src/services/assignee-service";
 import { ReviewerService } from "../../src/services/reviewer-service";
@@ -10,6 +11,8 @@ import {
   anchor,
   at,
   expected,
+  findingId,
+  insightRunId,
   now,
   profileId,
   reviewId,
@@ -20,6 +23,7 @@ import {
 import {
   directSummaryService,
   gateway,
+  insightRunCoordinator,
   observationService,
   pendingReviewService,
   publishedFeedbackService,
@@ -46,12 +50,15 @@ function reviewWriteOperations(track: Recorder) {
 
 /**
  * Every entry point that can touch one Review, and the shape in which each
- * respects the coordinator lock. The two shapes are not a style choice:
+ * respects the coordinator lock. The three shapes are not a style choice:
  *
  * - `queues` — `withReviewLock`. The operation body does not start; it runs
  *   after release.
  * - `refuses` — `acquire`/`release`. A command caller must not sit behind
  *   another user action, so it returns an immediate typed in-progress result.
+ * - `reads` — no Review lock at all, on purpose. The row names the exact
+ *   dependency trace the read runs while another caller holds the lock, so
+ *   adding a lock here goes red as loudly as widening the read does.
  */
 
 /**
@@ -62,12 +69,8 @@ export type LockRowOutcome =
   | Result<unknown, unknown>
   | { readonly recovered: number; readonly failed: number };
 
-export type LockRow = {
+type LockRowEntry = {
   readonly name: string;
-  /** `queues` waits for the lock; `refuses` returns an immediate refusal. */
-  readonly kind: "queues" | "refuses";
-  /** The exact result a `refuses` row must return while the lock is held. */
-  readonly refusal?: unknown;
   readonly build: (
     coordinator: ReviewOperationCoordinator,
     track: Recorder,
@@ -76,19 +79,28 @@ export type LockRow = {
   readonly todo?: string;
 };
 
+export type LockRow = LockRowEntry &
+  (
+    | { readonly kind: "queues" }
+    /** The exact result a `refuses` row must return while the lock is held. */
+    | { readonly kind: "refuses"; readonly refusal: unknown }
+    /** Every dependency a `reads` row touches while the lock is held, in order. */
+    | { readonly kind: "reads"; readonly unlockedPrefix: ReadonlyArray<string> }
+  );
+
 export const REVIEW_WRITE_IN_PROGRESS = {
   _tag: "err",
   error: "review_write_in_progress",
 };
 
 /**
- * The controller's three remaining public Review entry points. All three are
- * red and stay red — each touches a durable store before any lock — and the
- * suite docstring names the exact dependency and why no program item covers
- * it. They share this shape because the row IS the method call.
+ * The controller's two still-red Review entry points. Both touch a durable
+ * store before any lock, and the suite docstring names the exact dependency and
+ * the `src/` change that turns each green. They share this shape because the
+ * row IS the method call.
  */
 function controllerRead(
-  method: "load" | "detectUpdates" | "commitDiff",
+  method: "load" | "detectUpdates",
   todo: string,
   call: (controller: ReviewWorkbenchController) => Promise<LockRowOutcome>,
 ): LockRow {
@@ -100,6 +112,21 @@ function controllerRead(
       const controller = workbenchController(coordinator, track);
       return () => call(controller);
     },
+  };
+}
+
+/**
+ * `InsightRunCoordinator`'s Review entry points. The row IS the method call, so
+ * only the construction is shared. Every row is answered before its run id,
+ * finding id or progress reaches storage, so the fixture values only need to be
+ * well formed.
+ */
+function insightBuild(
+  call: (coordinator: InsightRunCoordinator) => Promise<LockRowOutcome>,
+): LockRow["build"] {
+  return (coordinator, track) => {
+    const insights = insightRunCoordinator(coordinator, track);
+    return () => call(insights);
   };
 }
 
@@ -147,12 +174,24 @@ export const lockRows: ReadonlyArray<LockRow> = [
     "no program item — reads recentWrites.load before delegating to the locked observe",
     (controller) => controller.detectUpdates({ profileId, reviewId }),
   ),
-  controllerRead(
-    "commitDiff",
-    "no program item — calls commits.diff directly and takes no Review lock at all",
-    (controller) =>
-      controller.commitDiff({ profileId, reviewId, commitSha: values.headSha }),
-  ),
+  {
+    // Pinned unlocked: `commits.diff` re-validates the Review, the snapshot hash
+    // and the session before diffing immutable commit objects, and locking it
+    // would fail any user command that landed mid-read. The suite docstring
+    // carries the full reasoning.
+    name: "ReviewWorkbenchController.commitDiff",
+    kind: "reads",
+    unlockedPrefix: ["commits.diff"],
+    build: (coordinator, track) => {
+      const controller = workbenchController(coordinator, track);
+      return () =>
+        controller.commitDiff({
+          profileId,
+          reviewId,
+          commitSha: values.headSha,
+        });
+    },
+  },
   {
     name: "ReviewRefreshService.refresh",
     kind: "queues",
@@ -192,6 +231,93 @@ export const lockRows: ReadonlyArray<LockRow> = [
       const service = recoveryService(coordinator, track);
       return () => service.reconcileReview(profileId, reviewId);
     },
+  },
+  {
+    name: "InsightRunCoordinator.start",
+    kind: "queues",
+    build: insightBuild((insights) =>
+      insights.start({
+        profileId,
+        reviewId,
+        type: "analysis",
+        model: "gpt-5-codex",
+        reasoning: "high",
+      }),
+    ),
+  },
+  {
+    name: "InsightRunCoordinator.cancel",
+    kind: "queues",
+    build: insightBuild((insights) =>
+      insights.cancel({
+        profileId,
+        reviewId,
+        type: "analysis",
+        runId: insightRunId,
+      }),
+    ),
+  },
+  {
+    name: "InsightRunCoordinator.dismissFinding",
+    kind: "queues",
+    build: insightBuild((insights) =>
+      insights.dismissFinding({
+        profileId,
+        reviewId,
+        runId: insightRunId,
+        findingId,
+        reason: "handled elsewhere",
+      }),
+    ),
+  },
+  {
+    name: "InsightRunCoordinator.updateWalkthroughProgress",
+    kind: "queues",
+    build: insightBuild((insights) =>
+      insights.updateWalkthroughProgress({
+        profileId,
+        reviewId,
+        runId: insightRunId,
+        progress: { reviewedSectionIds: [], supportReviewed: false },
+      }),
+    ),
+  },
+  {
+    name: "InsightRunCoordinator.recover",
+    kind: "queues",
+    build: insightBuild((insights) =>
+      insights.recover({ profileId, reviewId, type: "analysis" }),
+    ),
+  },
+  {
+    // Pinned unlocked with `commitDiff`: an atomically written Insight record
+    // read back for one run id, so a half-written record is unobservable.
+    name: "InsightRunCoordinator.observe",
+    kind: "reads",
+    unlockedPrefix: ["reviews.load", "insights.load"],
+    build: insightBuild((insights) =>
+      insights.observe({
+        profileId,
+        reviewId,
+        type: "analysis",
+        runId: insightRunId,
+      }),
+    ),
+  },
+  {
+    // Pinned unlocked: the ownership check is the whole body, and the route is
+    // refused before it can write.
+    name: "InsightRunCoordinator.addFinding",
+    kind: "reads",
+    unlockedPrefix: ["reviews.load"],
+    build: insightBuild((insights) =>
+      insights.addFinding({
+        profileId,
+        reviewId,
+        runId: insightRunId,
+        findingId,
+      }),
+    ),
   },
   {
     name: "PendingReviewService.start",

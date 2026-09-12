@@ -1,9 +1,11 @@
 import {
+  parseFindingId,
   parseGitHubLogin,
   parseGitHubReviewCommentId,
   parseGitHubReviewNodeId,
   parseGitHubReviewRestId,
   parseGitHubThreadId,
+  parseInsightRunId,
   parseRepoRelativePath,
 } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
@@ -44,6 +46,19 @@ export const reviewNodeId = must(
 export const reviewCommentId = must(
   parseGitHubReviewCommentId("PRRC_kwDORJzsQM7fI2Rd"),
 );
+
+/**
+ * The Insight run and finding an `InsightRunCoordinator` row names. Every such
+ * row is refused or answered before either value is read, so they only have to
+ * be well formed: the run id carries the fixture's own head SHA and Review id
+ * because `parseInsightRunId` encodes both.
+ */
+export const insightRunId = must(
+  parseInsightRunId(
+    `insight-analysis-1-${values.headSha.slice(0, 12)}-${reviewId}`,
+  ),
+);
+export const findingId = must(parseFindingId("finding-1"));
 
 export const anchor = {
   path: must(parseRepoRelativePath("src/a.ts")),

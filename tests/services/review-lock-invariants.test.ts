@@ -26,40 +26,59 @@ import { lockRows } from "./review-lock-invariant-rows";
  * Review's durable state outside that owner can interleave with a refresh or a
  * recovery and observe half a transaction.
  *
- * The invariant, one sentence: while a deferred lock holder is active, NO
- * entry point for that Review begins any work.
+ * The invariant, one sentence: while a deferred lock holder is active, no entry
+ * point for that Review begins any work EXCEPT the reads pinned unlocked below,
+ * which must begin.
  *
  * "Began" is observed at each service's OWN first dependency (its journal
  * store, profile store, gate or gateway), not at the coordinator: a service
  * that did work before taking the lock would show no lock acquisition and
  * would still be wrong.
  *
- * THREE ROWS ARE RED AND STAY RED, and they are exactly that shape. The
- * table covers every public Review entry point on `ReviewWorkbenchController`
- * and on the six Review services; three of the controller's do durable-store
- * work before any lock and are `it.todo` with the reason on the row rather
- * than left out of the table:
+ * THREE READS ARE PINNED UNLOCKED, as `reads` rows that name the exact
+ * dependency trace they run while another caller holds the lock:
+ *
+ * - `ReviewWorkbenchController.commitDiff` calls `commits.diff`, which
+ *   cross-checks the Review, the snapshot hash and the session id, then
+ *   verifies the managed ref against `session.key.headSha`
+ *   (`src/services/review-commit-service.ts`) before diffing immutable commit
+ *   objects — the read validates itself. Locking it would also fail any user
+ *   command that landed mid-read with `review_write_in_progress`: the
+ *   renderer's commit-diff fetch is not wrapped in `runDirectCommand`
+ *   (`src/renderer/src/flows/review-workbench-commit-diff.ts`) and commands
+ *   take the lock without waiting.
+ * - `InsightRunCoordinator.observe` and `InsightRunCoordinator.addFinding` take
+ *   no lock either. Both read an Insight record the store writes atomically, so
+ *   there is no half-written state to observe; `addFinding` is refused before it
+ *   can write at all.
+ *
+ * TWO ROWS ARE `it.todo` PENDING A `src/` CHANGE, each with its reason on the
+ * row:
  *
  * - `load` reads `journals.load` (through `recoverObservation`) and then
- *   `reviews.load`, both unlocked; it takes the lock later, inside the
- *   private `projectStable`. Two sequential locked segments, not one — B3's
- *   report states this is unchanged from `main` and deliberate.
- * - `detectUpdates` reads `recentWrites.load` before delegating to the
- *   locked `observation.observe`.
- * - `commitDiff` takes no Review lock at all; it calls `commits.diff`
- *   directly.
+ *   `reviews.load`, both unlocked, and takes the lock later inside the private
+ *   `projectStable`. A separate slice rewrites it as one locked segment; the row
+ *   then goes green unchanged.
+ * - `detectUpdates` reads `recentWrites.load` before delegating to the locked
+ *   `observation.observe`. That is a real defect, filed as issue #179; the row
+ *   goes green when the fix lands.
  *
- * No program item covers any of the three. Whether they are product defects
- * is arguable — all three are reads, and `open`/`openMerged`/`refresh` are
- * the paths that write. Their absence from the table would not have been.
+ * Two entry points are deliberately absent:
  *
- * Two entry points remain outside the table and are reported rather than
- * added: `InsightRunCoordinator` (six sites) and
- * `ReviewRecoveryService.reconcile`, which sweeps every Review rather than
- * one. So this is EVERY entry point for a single Review on the classes the
- * table covers, not every line in the app that can reach a Review.
+ * - `InsightRunExecutor.persistTerminal`
+ *   (`src/services/insight-run-executor.ts`) is private and reached only from
+ *   the `execute` that `start` fires and forgets, so a row's promise settles
+ *   before that lock is taken and the row would prove nothing. It needs a
+ *   bespoke test that parks the invoker stub, re-holds the lock, then asserts
+ *   `insights.mutate` waits.
+ * - `ReviewRecoveryService.reconcile` takes no `reviewId` at all; its first
+ *   touch is `profiles.list` (`src/services/review-recovery-service.ts`) and the
+ *   sweep legitimately touches other Reviews and profiles while one Review's
+ *   lock is held. Its per-Review half, `reconcileReview`, is in the table.
+ *
+ * So this is EVERY entry point for a single Review on the classes the table
+ * covers, not every line in the app that can reach a Review.
  */
-
 describe("every Review entry point waits for the coordinator lock", () => {
   for (const row of lockRows) {
     const scenario = row.todo === undefined ? it : it.todo;
@@ -81,6 +100,22 @@ describe("every Review entry point waits for the coordinator lock", () => {
         // outcome is swallowed; `began()` is what says the flow actually ran.
         const running = invoke().catch(() => ({ _tag: "err", error: "threw" }));
         await settle();
+
+        if (row.kind === "reads") {
+          // Pinned unlocked: the read must both touch exactly its recorded
+          // dependencies and settle before release, so adding a lock here goes
+          // red as loudly as widening the read does.
+          expect(
+            track.touched,
+            `${row.name} no longer reads exactly its pinned dependencies`,
+          ).toEqual(row.unlockedPrefix);
+          await expect(
+            withinDeadline(running, 1000, row.name),
+          ).resolves.toBeDefined();
+          holder.release();
+          await held;
+          return;
+        }
 
         expect(
           track.touched,
