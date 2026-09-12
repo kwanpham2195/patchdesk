@@ -124,6 +124,7 @@ function corsForRenderer(
     }
     if (context.req.method === "OPTIONS") return context.body(null, 204);
     await next();
+    return;
   };
 }
 
@@ -162,6 +163,7 @@ function requireLocalApiAccess(
     }
 
     await next();
+    return;
   };
 }
 
