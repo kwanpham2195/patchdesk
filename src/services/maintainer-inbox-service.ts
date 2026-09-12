@@ -31,11 +31,10 @@ import {
   INBOX_REVIEW_STATE_FILTER_VALUES,
   parseInboxAuthorFilter,
   parseInboxBaseBranchFilter,
+  type InboxFilter,
   type InboxPageRequest,
   type InboxPageSize,
   INBOX_STATE_FILTER_VALUES,
-  type InboxCheckStatusFilter,
-  type InboxReviewStateFilter,
   type InboxStateFilter,
   projectMaintainerInboxRow,
   type InboxInsightReadiness,
@@ -120,6 +119,26 @@ const inboxPageTokenSchema = v.strictObject({
 
 type InboxPageToken = v.InferOutput<typeof inboxPageTokenSchema>;
 
+/** The request's own filter with the two fields a page token compares
+ * exactly: `labels` in the canonical sorted, deduplicated form and
+ * `awaitingMyReview` resolved, so the token a page is cut with and the token
+ * the next request presents are built from the same values. */
+type NormalizedInboxFilter = Omit<
+  InboxFilter,
+  "labels" | "awaitingMyReview"
+> & {
+  readonly labels: string[];
+  readonly awaitingMyReview: boolean;
+};
+
+/** What a supplied page token is matched against, and what the first page's own token is minted from. */
+type InboxPageTokenInput = {
+  readonly repository: InboxRepositoryRef;
+  readonly filter: NormalizedInboxFilter;
+  readonly pageSize: InboxPageSize;
+  readonly pageToken: string | undefined;
+};
+
 type MaintainerInboxRepository = {
   readonly repo: WatchedRepoConfig;
   readonly state: InboxCacheRepository["state"];
@@ -171,6 +190,16 @@ type RepositoryRead = {
   readonly repository: MaintainerInboxRepository;
   /** GitHub's `issueCount` for the search query just read; absent on a failed read. */
   readonly issueCount?: number;
+};
+
+/** One repository's page read: the filter and page to search under, plus the sessions each row's Review evidence is projected from. */
+type InboxRepositoryReadInput = {
+  readonly profile: WorkspaceProfileConfig;
+  readonly repository: InboxRepositoryRef;
+  readonly filter: NormalizedInboxFilter;
+  readonly pageSize: InboxPageSize;
+  readonly cursor: string | undefined;
+  readonly sessions: ReadonlyArray<ReviewSession>;
 };
 
 /** Reads one Selected repository's maintainer inbox page and keeps its GitHub cursor inside an opaque token. */
@@ -241,10 +270,11 @@ export class MaintainerInboxService {
   /**
    * Reads one page of the Selected repository's inbox.
    *
-   * Extracts `filter.state` once into a plain `InboxStateFilter` and normalizes
-   * `filter.labels` once into a sorted, deduplicated label list
-   * (`normalizeInboxLabels`), then threads both through `readRepository`,
-   * `cachedOrUnavailable`, `unavailablePage`, and `composeInboxSearchQuery`.
+   * Normalizes the request's filter once — `filter.labels` sorted and
+   * deduplicated (`normalizeInboxLabels`), `awaitingMyReview` resolved — and
+   * threads that one value through `decodeInboxPageToken`, `readRepository`,
+   * and `composeInboxSearchQuery`. `cachedOrUnavailable` and `unavailablePage`
+   * take `filter.state` alone, for the reason below.
    *
    * Only the wholly unfiltered listing — no labels, no review/check qualifier,
    * no author or base branch, and no "Awaiting review from you" preset — is
@@ -267,24 +297,17 @@ export class MaintainerInboxService {
       pageSize: DEFAULT_INBOX_PAGE_SIZE,
     },
   ): Promise<Result<MaintainerInbox, InboxPageRequestFailure>> {
-    const state = request.filter.state;
-    const labels = normalizeInboxLabels(request.filter.labels);
-    const awaitingMyReview = request.filter.awaitingMyReview ?? false;
-    const reviewState = request.filter.reviewState;
-    const checkStatus = request.filter.checkStatus;
-    const author = request.filter.author;
-    const baseBranch = request.filter.baseBranch;
-    const pageToken = decodeInboxPageToken(
-      request,
+    const filter: NormalizedInboxFilter = {
+      ...request.filter,
+      labels: normalizeInboxLabels(request.filter.labels),
+      awaitingMyReview: request.filter.awaitingMyReview ?? false,
+    };
+    const pageToken = decodeInboxPageToken({
       repository,
-      state,
-      labels,
-      awaitingMyReview,
-      reviewState,
-      checkStatus,
-      author,
-      baseBranch,
-    );
+      filter,
+      pageSize: request.pageSize,
+      pageToken: request.pageToken,
+    });
     if (pageToken === undefined) return { _tag: "err", error: "invalid_page" };
 
     const authenticated =
@@ -294,30 +317,24 @@ export class MaintainerInboxService {
         ? await this.cachedOrUnavailable(
             profile,
             repository,
-            state,
+            filter.state,
             request.pageSize,
           )
-        : this.unavailablePage(repository, state, request.pageSize);
+        : this.unavailablePage(repository, filter.state, request.pageSize);
 
     const sessions = await this.sessions.listSessions(profile.id);
     const allSessions = sessions._tag === "ok" ? sessions.value : [];
     const repositorySessions = allSessions.filter((session) =>
       sameRepositoryIdentity(session.key, repository),
     );
-    const read = await this.readRepository(
+    const read = await this.readRepository({
       profile,
       repository,
-      state,
-      labels,
-      awaitingMyReview,
-      reviewState,
-      checkStatus,
-      author,
-      baseBranch,
-      request.pageSize,
-      pageToken.cursor,
-      repositorySessions,
-    );
+      filter,
+      pageSize: request.pageSize,
+      cursor: pageToken.cursor,
+      sessions: repositorySessions,
+    });
     const visible = read.entries.slice(0, request.pageSize);
     const hasNextPage =
       read.entries.length > visible.length || read.hasNextPage;
@@ -331,7 +348,7 @@ export class MaintainerInboxService {
     const cursor =
       visible.at(-1)?.cursor ?? read.emptyPageEndCursor ?? pageToken.cursor;
     const baseNextToken = {
-      state,
+      state: filter.state,
       page: pageToken.page + 1,
       size: request.pageSize,
       repository: {
@@ -339,12 +356,12 @@ export class MaintainerInboxService {
         owner: repository.owner,
         repo: repository.repo,
       },
-      labels,
-      awaitingMyReview,
-      reviewState,
-      checkStatus,
-      author,
-      baseBranch,
+      labels: filter.labels,
+      awaitingMyReview: filter.awaitingMyReview,
+      reviewState: filter.reviewState,
+      checkStatus: filter.checkStatus,
+      author: filter.author,
+      baseBranch: filter.baseBranch,
     };
     const nextPageToken = hasNextPage
       ? encodeInboxPageToken(
@@ -362,7 +379,7 @@ export class MaintainerInboxService {
         : visible.map((entry) => toCachedRow(entry.row)),
     );
     const value: MaintainerInbox = {
-      state,
+      state: filter.state,
       pageSize: request.pageSize,
       rows,
       repositories: [read.repository],
@@ -372,13 +389,13 @@ export class MaintainerInboxService {
       ...matchCountField,
     };
     if (
-      state === "open" &&
-      labels.length === 0 &&
-      !awaitingMyReview &&
-      reviewState === undefined &&
-      checkStatus === undefined &&
-      author === undefined &&
-      baseBranch === undefined &&
+      filter.state === "open" &&
+      filter.labels.length === 0 &&
+      !filter.awaitingMyReview &&
+      filter.reviewState === undefined &&
+      filter.checkStatus === undefined &&
+      filter.author === undefined &&
+      filter.baseBranch === undefined &&
       request.pageToken === undefined &&
       complete &&
       dataFreshness === "fresh"
@@ -404,31 +421,21 @@ export class MaintainerInboxService {
     );
   }
 
-  private async readRepository(
-    profile: WorkspaceProfileConfig,
-    repository: InboxRepositoryRef,
-    state: InboxStateFilter,
-    labels: ReadonlyArray<string>,
-    awaitingMyReview: boolean,
-    reviewState: InboxReviewStateFilter | undefined,
-    checkStatus: InboxCheckStatusFilter | undefined,
-    author: string | undefined,
-    baseBranch: string | undefined,
-    pageSize: InboxPageSize,
-    cursor: string | undefined,
-    sessions: ReadonlyArray<ReviewSession>,
-  ): Promise<RepositoryRead> {
+  private async readRepository({
+    profile,
+    repository,
+    filter,
+    pageSize,
+    cursor,
+    sessions,
+  }: InboxRepositoryReadInput): Promise<RepositoryRead> {
     const repo = {
       host: repository.host,
       owner: repository.owner,
       repo: repository.repo,
     };
-    const searchQuery = composeInboxSearchQuery([repo], {
-      state,
-      labels,
-      awaitingMyReview,
-      ...definedProps({ reviewState, checkStatus, author, baseBranch }),
-    });
+    const searchQuery = composeInboxSearchQuery([repo], filter);
+    const state = filter.state;
     const searched = await this.github.searchMaintainerPullRequests(
       cursor === undefined
         ? { profile, repo, searchQuery, state, pageSize }
@@ -629,54 +636,51 @@ function failedRepositoryRead(
   };
 }
 
-function decodeInboxPageToken(
-  request: InboxPageRequest,
-  repository: InboxRepositoryRef,
-  state: InboxStateFilter,
-  labels: string[],
-  awaitingMyReview: boolean,
-  reviewState: InboxReviewStateFilter | undefined,
-  checkStatus: InboxCheckStatusFilter | undefined,
-  author: string | undefined,
-  baseBranch: string | undefined,
-): InboxPageToken | undefined {
-  if (request.pageToken === undefined) {
+function decodeInboxPageToken({
+  repository,
+  filter,
+  pageSize,
+  pageToken,
+}: InboxPageTokenInput): InboxPageToken | undefined {
+  if (pageToken === undefined) {
     const token: InboxPageToken = {
-      state,
+      state: filter.state,
       page: 1,
-      size: request.pageSize,
+      size: pageSize,
       repository: {
         host: repository.host,
         owner: repository.owner,
         repo: repository.repo,
       },
-      labels,
-      awaitingMyReview,
+      labels: filter.labels,
+      awaitingMyReview: filter.awaitingMyReview,
     };
-    if (reviewState !== undefined) token.reviewState = reviewState;
-    if (checkStatus !== undefined) token.checkStatus = checkStatus;
-    if (author !== undefined) token.author = author;
-    if (baseBranch !== undefined) token.baseBranch = baseBranch;
+    if (filter.reviewState !== undefined)
+      token.reviewState = filter.reviewState;
+    if (filter.checkStatus !== undefined)
+      token.checkStatus = filter.checkStatus;
+    if (filter.author !== undefined) token.author = filter.author;
+    if (filter.baseBranch !== undefined) token.baseBranch = filter.baseBranch;
     return token;
   }
-  if (request.pageToken.length > MAX_PAGE_TOKEN_LENGTH) return undefined;
+  if (pageToken.length > MAX_PAGE_TOKEN_LENGTH) return undefined;
   try {
     const decoded: unknown = JSON.parse(
-      Buffer.from(request.pageToken, "base64url").toString("utf8"),
+      Buffer.from(pageToken, "base64url").toString("utf8"),
     );
     const parsed = v.safeParse(inboxPageTokenSchema, decoded);
     if (!parsed.success) return undefined;
     const value = parsed.output;
     if (
-      value.state !== state ||
-      value.size !== request.pageSize ||
+      value.state !== filter.state ||
+      value.size !== pageSize ||
       !sameRepositoryIdentity(value.repository, repository) ||
-      !sameLabels(value.labels, labels) ||
-      value.awaitingMyReview !== awaitingMyReview ||
-      value.reviewState !== reviewState ||
-      value.checkStatus !== checkStatus ||
-      value.author !== author ||
-      value.baseBranch !== baseBranch
+      !sameLabels(value.labels, filter.labels) ||
+      value.awaitingMyReview !== filter.awaitingMyReview ||
+      value.reviewState !== filter.reviewState ||
+      value.checkStatus !== filter.checkStatus ||
+      value.author !== filter.author ||
+      value.baseBranch !== filter.baseBranch
     )
       return undefined;
     return value;
