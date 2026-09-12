@@ -104,7 +104,6 @@ export function fixture(
     },
     remote: { load: vi.fn(async () => ok(snapshot)) },
     journals: { load: vi.fn(async () => ok(undefined)) },
-    recentWrites: { load: vi.fn(async () => ok([])) },
     refresh: { refresh: refreshFn, refreshUnlocked: refreshFn },
     observation: {
       recover: recoverFn,
