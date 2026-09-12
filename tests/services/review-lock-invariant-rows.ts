@@ -5,7 +5,6 @@ import { AssigneeService } from "../../src/services/assignee-service";
 import { ReviewerService } from "../../src/services/reviewer-service";
 import { MergeWriteController } from "../../src/services/merge-write-controller";
 import type { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import type { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 import { ok, type Result } from "../../src/domain/result";
 import {
   anchor,
@@ -94,27 +93,6 @@ export const REVIEW_WRITE_IN_PROGRESS = {
 };
 
 /**
- * The controller's one still-red Review entry point. It touches a durable store
- * before any lock, and the suite docstring names the exact dependency and the
- * `src/` change that turns it green.
- */
-function controllerRead(
-  method: "detectUpdates",
-  todo: string,
-  call: (controller: ReviewWorkbenchController) => Promise<LockRowOutcome>,
-): LockRow {
-  return {
-    name: `ReviewWorkbenchController.${method}`,
-    kind: "queues",
-    todo,
-    build: (coordinator, track) => {
-      const controller = workbenchController(coordinator, track);
-      return () => call(controller);
-    },
-  };
-}
-
-/**
  * `InsightRunCoordinator`'s Review entry points. The row IS the method call, so
  * only the construction is shared. Every row is answered before its run id,
  * finding id or progress reaches storage, so the fixture values only need to be
@@ -168,14 +146,18 @@ export const lockRows: ReadonlyArray<LockRow> = [
       return () => controller.load({ profileId, reviewId });
     },
   },
-  // `observe` is a stub here, so the trace's second entry is that stub, not
-  // the real locked `ReviewObservationService.observe`. The finding is the
-  // FIRST entry: `recentWrites.load`, read before anything takes the lock.
-  controllerRead(
-    "detectUpdates",
-    "no program item — reads recentWrites.load before delegating to the locked observe",
-    (controller) => controller.detectUpdates({ profileId, reviewId }),
-  ),
+  {
+    // A pass-through onto `observation.observe`: this row proves the controller
+    // takes no durable read of its own first. The helper's `observe` stub takes
+    // the lock, so what `began()` records here is the delegation, and observe's
+    // own row below independently proves the real service locks.
+    name: "ReviewWorkbenchController.detectUpdates",
+    kind: "queues",
+    build: (coordinator, track) => {
+      const controller = workbenchController(coordinator, track);
+      return () => controller.detectUpdates({ profileId, reviewId });
+    },
+  },
   {
     // Pinned unlocked: `commits.diff` re-validates the Review, the snapshot hash
     // and the session before diffing immutable commit objects, and locking it

@@ -14,15 +14,11 @@ import { createReview, markReviewOpened } from "../domain/review";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ReviewRefreshService } from "./review-refresh-service";
-import {
-  unionRecentWrites,
-  type RecentReviewWrite,
-} from "../domain/recent-review-write";
+import type { RecentReviewWrite } from "../domain/recent-review-write";
 import type { ReviewObservationService } from "./review-observation-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewCommitService } from "./review-commit-service";
@@ -73,7 +69,6 @@ export class ReviewWorkbenchController {
       >;
       readonly remote: Pick<ReviewRemoteStore, "load">;
       readonly journals: Pick<ReviewObservationJournalStore, "load">;
-      readonly recentWrites: Pick<RecentWriteJournalStore, "load">;
       readonly refresh: ReviewRefreshService;
       readonly observation: Pick<
         ReviewObservationService,
@@ -602,28 +597,10 @@ export class ReviewWorkbenchController {
     readonly reviewId: ReviewId;
     readonly recentWrites?: ReadonlyArray<RecentReviewWrite>;
   }): Promise<Result<unknown, ReviewWorkbenchFailure>> {
-    // A renderer reload or app restart starts with an empty in-memory
-    // journal; the durable journal survives that and is unioned in so the
-    // maintainer's own just-made write is never read as absent. A durable
-    // load failure fails open onto the request-supplied array alone.
-    const durable = await this.lifecycle.recentWrites.load(
-      input.profileId,
-      input.reviewId,
-    );
-    const recentWrites = unionRecentWrites(
-      durable._tag === "ok" ? durable.value : [],
-      input.recentWrites ?? [],
-    );
-    return recentWrites.length === 0
-      ? this.lifecycle.observation.observe({
-          profileId: input.profileId,
-          reviewId: input.reviewId,
-        })
-      : this.lifecycle.observation.observe({
-          profileId: input.profileId,
-          reviewId: input.reviewId,
-          recentWrites,
-        });
+    // Pass-through: the durable own-write journal is unioned in by `observe`
+    // itself, under the coordinator lock, because a union read before the lock
+    // misses a receipt a write path holding the lock has yet to append (#179).
+    return this.lifecycle.observation.observe(input);
   }
 
   async refresh(

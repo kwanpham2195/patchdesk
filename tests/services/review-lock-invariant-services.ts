@@ -167,7 +167,6 @@ export function workbenchController(
       },
       remote: { load: track.stub("remote.load", ok(values.snapshot)) },
       journals: { load: track.stub("journals.load", ok(undefined)) },
-      recentWrites: { load: track.stub("recentWrites.load", ok([])) },
       refresh: {
         refreshUnlocked: track.stub(
           "refreshUnlocked",
@@ -175,7 +174,19 @@ export function workbenchController(
         ),
       },
       observation: {
-        observe: track.stub("observe", err({ reason: "storage" })),
+        // Takes the lock like the real `ReviewObservationService.observe`, so
+        // the `detectUpdates` row proves the controller delegates rather than
+        // re-proving observe's own row: a stub that recorded immediately would
+        // read as the controller having begun work while the lock was held.
+        observe: (input: {
+          readonly profileId: string;
+          readonly reviewId: string;
+        }) =>
+          coordinator.withReviewLock(
+            input.profileId,
+            input.reviewId,
+            track.stub("observe", err({ reason: "storage" })),
+          ),
         recoverUnlocked: track.stub(
           "recoverUnlocked",
           err({ reason: "storage" }),

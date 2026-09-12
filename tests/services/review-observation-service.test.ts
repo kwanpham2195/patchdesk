@@ -39,6 +39,7 @@ import { err, ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { runWithRequestAbortSignal } from "../../src/adapters/github/command-runner";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { barrier, settle } from "./review-invariant-fixtures";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
 import {
   ReviewObservationService,
@@ -76,6 +77,9 @@ const patch = [
   "",
 ].join("\n");
 
+/** `RecentWriteJournalStore.load` filters against the real clock's 24h ceiling, so a durable receipt must be dated now, not at this fixture's pinned instant. */
+const justWrittenAt = () => must(parseIsoTimestamp(new Date().toISOString()));
+
 afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
@@ -94,6 +98,8 @@ async function fixture(
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-observation-"));
   roots.push(root);
+  // Returned, so a test can park a holder on the same lock `observe` takes.
+  const coordinator = new ReviewOperationCoordinator();
   const paths = PatchdeskPaths.forTest(root);
   const profiles = new ProfileStore(paths);
   const profile = must(
@@ -280,7 +286,7 @@ async function fixture(
       },
     },
     recentWrites,
-    coordinator: new ReviewOperationCoordinator(),
+    coordinator,
     now: () => observedAt,
   };
   const observation = new ReviewObservationService(
@@ -304,6 +310,7 @@ async function fixture(
     observation,
     journals,
     recentWrites,
+    coordinator,
   };
 }
 
@@ -583,6 +590,43 @@ describe("ReviewObservationService", () => {
         expect(result.value.projection).toBeUndefined();
     },
   );
+
+  it("withholds the projection for a receipt appended while a lock holder was parked", async () => {
+    // Regression for issue #179. The durable union used to be read before the
+    // coordinator lock, by `ReviewWorkbenchController.detectUpdates`: a write
+    // path holding the lock had not appended its receipt yet, so the queued
+    // observation ran against a stale empty journal, found the candidate
+    // vacuously complete and pushed the pre-write state back onto the screen.
+    const value = await fixture({ project: true });
+    const holder = barrier();
+    const held = value.coordinator.withReviewLock(
+      profileId,
+      value.review.id,
+      () => holder.wait,
+    );
+    const observing = value.observation.observe({
+      profileId,
+      reviewId: value.review.id,
+    });
+    // Give a union read taken before the lock every chance to finish first, so
+    // moving it back out of the lock goes red here rather than passing by luck.
+    await settle();
+    await value.recentWrites.append(
+      profileId,
+      value.review.id,
+      { _tag: "Comment", commentId: "not-visible-yet" },
+      justWrittenAt(),
+    );
+    holder.release();
+    await held;
+    const observed = await observing;
+    expect(observed).toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Reconciled" },
+    });
+    if (observed._tag === "ok" && observed.value._tag === "Reconciled")
+      expect(observed.value.projection).toBeUndefined();
+  });
 
   it("replays a journal left by a failed Review save without exposing a mixed state", async () => {
     const value = await fixture({ failReviewSave: true });

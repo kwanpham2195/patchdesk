@@ -39,7 +39,10 @@ import type {
   ReviewWorkbenchProjection,
   WorkbenchProjectionFailure,
 } from "./review-workbench-projection";
-import type { RecentReviewWrite } from "../domain/recent-review-write";
+import {
+  unionRecentWrites,
+  type RecentReviewWrite,
+} from "../domain/recent-review-write";
 import { GitHubRevisionIdentityReader } from "./github-revision-identity-reader";
 import type { PendingReviewService } from "./pending-review-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
@@ -105,7 +108,10 @@ export type ReviewObservationDependencies = {
     ReviewObservationJournalStore,
     "load" | "save" | "remove"
   >;
-  readonly recentWrites: Pick<RecentWriteJournalStore, "prune" | "clear">;
+  readonly recentWrites: Pick<
+    RecentWriteJournalStore,
+    "load" | "prune" | "clear"
+  >;
   readonly github: ObservationGitHub;
   readonly pendingReview: Pick<PendingReviewService, "adoptObservedState">;
   readonly coordinator: ReviewOperationCoordinator;
@@ -160,7 +166,23 @@ export class ReviewObservationService {
         const recovered = await this.recoverUnlocked(input);
         if (recovered._tag === "err") return recovered;
         if (recovered.value._tag === "Unavailable") return recovered;
-        return this.observeUnlocked(input);
+        // Read under the lock: a write path holding it has not appended its
+        // receipt yet, so a union taken before the lock misses the maintainer's
+        // own just-confirmed write and pushes a pre-write projection (#179).
+        // The durable journal also survives a renderer reload or app restart,
+        // which both start with an empty in-memory journal. A durable load
+        // failure fails open onto the request-supplied array alone.
+        const durable = await this.dependencies.recentWrites.load(
+          input.profileId,
+          input.reviewId,
+        );
+        return this.observeUnlocked({
+          ...input,
+          recentWrites: unionRecentWrites(
+            durable._tag === "ok" ? durable.value : [],
+            input.recentWrites ?? [],
+          ),
+        });
       },
     );
   }

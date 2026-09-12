@@ -380,7 +380,6 @@ export async function buildLocalApiContainer(
       artifacts: storageArtifacts,
       remote: remoteReviews,
       journals: observationJournals,
-      recentWrites: recentWriteJournals,
       coordinator: reviewOperations,
       refresh: reviewRefresh,
       observation: reviewObservation,

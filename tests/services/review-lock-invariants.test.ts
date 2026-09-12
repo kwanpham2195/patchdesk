@@ -52,12 +52,6 @@ import { lockRows } from "./review-lock-invariant-rows";
  *   there is no half-written state to observe; `addFinding` is refused before it
  *   can write at all.
  *
- * ONE ROW IS `it.todo` PENDING A `src/` CHANGE, with its reason on the row:
- *
- * - `detectUpdates` reads `recentWrites.load` before delegating to the locked
- *   `observation.observe`. That is a real defect, filed as issue #179; the row
- *   goes green when the fix lands.
- *
  * Two entry points are deliberately absent:
  *
  * - `InsightRunExecutor.persistTerminal`
