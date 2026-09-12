@@ -161,7 +161,6 @@ export function ReviewWorkbenchHeader({
             <span
               className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-status-warning/50 bg-status-warning/10 px-2 py-0.5 font-medium text-status-warning"
               role="status"
-              data-review-new-version-indicator
             >
               Updates available
             </span>

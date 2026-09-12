@@ -19,8 +19,6 @@ const fixtureHashes = new Set([
   "#workbench-reviewers-read-failure-fixture",
   "#workbench-reviewers-pending-fixture",
   "#workbench-merged-fixture",
-  "#workbench-refresh-unavailable-fixture",
-  "#workbench-updates-available-fixture",
   "#conversation-rail-fixture",
   "#walkthrough-fixture",
   "#long-workbench-fixture",

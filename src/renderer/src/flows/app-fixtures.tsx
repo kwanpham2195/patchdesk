@@ -224,34 +224,6 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
         }}
       />
     ),
-    "#workbench-refresh-unavailable-fixture": (onNavigationStateChange) => (
-      <CanonicalFixtureWorkbench
-        data={workbenchFixtureData}
-        onNavigationStateChange={onNavigationStateChange}
-        modelOverrides={{
-          revision: {
-            reviewedHeadSha: workbenchFixtureData.pullRequest.headSha,
-            currentHeadSha: workbenchFixtureData.pullRequest.headSha,
-            freshness: "unavailable",
-            refreshedAt: "2026-07-17T00:00:00.000Z",
-          },
-        }}
-      />
-    ),
-    "#workbench-updates-available-fixture": (onNavigationStateChange) => (
-      <CanonicalFixtureWorkbench
-        data={workbenchFixtureData}
-        onNavigationStateChange={onNavigationStateChange}
-        modelOverrides={{
-          revision: {
-            reviewedHeadSha: workbenchFixtureData.pullRequest.headSha,
-            currentHeadSha: workbenchFixtureData.pullRequest.headSha,
-            freshness: "updates_available",
-            refreshedAt: "2026-07-17T00:00:00.000Z",
-          },
-        }}
-      />
-    ),
     "#conversation-rail-fixture": (onNavigationStateChange) => (
       <CanonicalFixtureWorkbench
         data={workbenchFixtureData}
