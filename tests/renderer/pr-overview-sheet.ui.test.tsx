@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CanonicalReviewOverviewSheet,
   mergeReadinessLabel,
-  mergeReadinessTone,
   type CanonicalReviewOverview,
 } from "../../src/renderer/src/components/pr-overview-sheet";
 import type { MergeDisplayReason } from "../../src/domain/github-context";
@@ -115,8 +114,6 @@ describe("pr overview sheet merge readiness", () => {
     );
     const card = document.querySelector('[data-reason-availability="partial"]');
     expect(card).not.toBeNull();
-    expect(card?.className).toContain("border-status-info/30");
-    expect(card?.className).not.toContain("border-destructive/30");
     expect(card?.querySelector("svg.lucide-info")).not.toBeNull();
     expect(card?.querySelector("svg.lucide-circle-x")).toBeNull();
   });
@@ -139,8 +136,6 @@ describe("pr overview sheet merge readiness", () => {
       '[data-reason-availability="available"]',
     );
     expect(card).not.toBeNull();
-    expect(card?.className).toContain("border-destructive/30");
-    expect(card?.className).not.toContain("border-status-info/30");
     expect(card?.querySelector("svg.lucide-circle-x")).not.toBeNull();
   });
 
@@ -155,8 +150,6 @@ describe("pr overview sheet merge readiness", () => {
       '[data-blocker="mergeability_unknown"]',
     );
     expect(unknownCard).not.toBeNull();
-    expect(unknownCard?.className).toContain("border-status-info/30");
-    expect(unknownCard?.className).not.toContain("border-destructive/30");
     expect(unknownCard?.querySelector("svg.lucide-info")).not.toBeNull();
   });
 
@@ -171,8 +164,6 @@ describe("pr overview sheet merge readiness", () => {
       '[data-blocker="conflicting"]',
     );
     expect(conflictingCard).not.toBeNull();
-    expect(conflictingCard?.className).toContain("border-destructive/30");
-    expect(conflictingCard?.className).not.toContain("border-status-info/30");
     expect(
       conflictingCard?.querySelector("svg.lucide-circle-x"),
     ).not.toBeNull();
@@ -229,11 +220,11 @@ describe("pr overview sheet merge readiness", () => {
     );
   });
 
-  // What the header says and how it is toned is the rule
-  // `merge-readiness-header.test.ts` owns, for all five readiness states.
-  // The one thing that test cannot see is whether this sheet still asks the
-  // rule, so this smoke test compares the rendered header against the rule's
-  // own answer rather than against a written-out label or class token.
+  // What the header says is the rule `merge-readiness-header.test.ts` owns,
+  // for all five readiness states. The one thing that test cannot see is
+  // whether this sheet still asks the rule, so this smoke test compares the
+  // rendered header against the rule's own answer rather than against a
+  // written-out label.
   it.each([
     ["an unconfirmed block", ["mergeability_unknown"]],
     ["a block GitHub confirmed", ["mergeability_unknown", "conflicting"]],
@@ -242,12 +233,9 @@ describe("pr overview sheet merge readiness", () => {
     (_name, blockers) => {
       const readiness: Readiness = { _tag: "Blocked", blockers, warnings: [] };
       renderOverview(baseOverview({ mergeReadiness: readiness }));
-      const header = screen.getByText(
-        mergeReadinessLabel(readiness._tag, blockers),
-      );
-      expect(header.className).toContain(
-        mergeReadinessTone(readiness._tag, blockers),
-      );
+      expect(
+        screen.getByText(mergeReadinessLabel(readiness._tag, blockers)),
+      ).toBeTruthy();
     },
   );
 

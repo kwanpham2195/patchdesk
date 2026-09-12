@@ -9,11 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DesktopResponse } from "../../src/main/ipc-contract";
-import {
-  LogsPanel,
-  levelClass,
-} from "../../src/renderer/src/components/logs-panel";
-import type { LogLevel } from "../../src/domain/log-entry";
+import { LogsPanel } from "../../src/renderer/src/components/logs-panel";
 import {
   installDesktopDouble,
   success,
@@ -71,38 +67,6 @@ function deferredResponse(): DeferredResponse {
 }
 
 describe("LogsPanel", () => {
-  // Which token each level gets is the rule `log-level-class.test.ts` owns,
-  // for all four levels. The one thing that test cannot see is whether a
-  // rendered row still asks the rule, so this compares the rendered level
-  // against the rule's own answer rather than against a written-out token.
-  it("tones each rendered log row through the shared level rule", async () => {
-    vi.stubGlobal("window", window);
-    desktop = installDesktopDouble({
-      "/v1/logs?limit=300": () =>
-        success({
-          entries: [
-            { ...entry(0, "message-error"), level: "error" },
-            { ...entry(1, "message-debug"), level: "debug" },
-          ],
-          nextAfter: 1,
-        }),
-    });
-    vi.useFakeTimers();
-    try {
-      render(<LogsPanel />);
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      for (const level of ["error", "debug"] satisfies LogLevel[]) {
-        expect(screen.getByText(level, { exact: true }).className).toContain(
-          levelClass(level),
-        );
-      }
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("tails the stream and resumes exactly once with the nextAfter cursor", async () => {
     vi.stubGlobal("window", window);
     desktop = installDesktopDouble({

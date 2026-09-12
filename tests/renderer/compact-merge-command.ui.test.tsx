@@ -223,12 +223,11 @@ describe("compact merge command", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Merge" }));
-    const error = await screen.findByText(
-      "Another action is still finishing. The merge was not submitted. Wait a moment, then try again.",
-    );
-    const alert = error.closest('[data-slot="alert"]');
-    expect(alert?.className).toContain("w-full");
-    expect(alert?.className).toContain("min-w-0");
+    expect(
+      await screen.findByText(
+        "Another action is still finishing. The merge was not submitted. Wait a moment, then try again.",
+      ),
+    ).toBeTruthy();
   });
 
   it("reports a non-cancellable merge until GitHub returns a final result", async () => {

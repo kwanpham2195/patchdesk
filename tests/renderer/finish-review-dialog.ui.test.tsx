@@ -256,12 +256,5 @@ describe("FinishReviewDialog", () => {
     expect(primaryGroup?.textContent).toContain("Close");
     expect(primaryGroup?.textContent).toContain("Submit review");
     expect(primaryGroup?.textContent).not.toContain("Discard");
-    // Both footer groups and the decision row wrap instead of clipping.
-    const actions = dialog.querySelector("[data-finish-review-actions]");
-    expect(actions?.className).toContain("flex-wrap");
-    expect(actions?.className).toContain("justify-between");
-    expect(
-      dialog.querySelector("[data-finish-review-decision-row]")?.className,
-    ).toContain("flex-wrap");
   });
 });

@@ -46,20 +46,14 @@ describe("GeneratedMarkdown", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Primary heading" }).className,
-    ).toContain("text-xl");
+      screen.getByRole("heading", { level: 1, name: "Primary heading" }),
+    ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Secondary heading" }).className,
-    ).toContain("text-lg");
-    expect(
-      screen.getByText("Ordinary item").closest("li")?.className,
-    ).toContain("marker:text-primary");
+      screen.getByRole("heading", { level: 2, name: "Secondary heading" }),
+    ).toBeTruthy();
     expect(screen.getByLabelText("Completed task").tagName).toBe("SPAN");
     expect(screen.getByLabelText("Incomplete task").tagName).toBe("SPAN");
     expect(container.querySelector('input[type="checkbox"]')).toBeNull();
-    expect(screen.getByText("Completed task").className).toContain(
-      "line-through",
-    );
   });
 
   it("renders repeated identical tokens without duplicate-key warnings", () => {

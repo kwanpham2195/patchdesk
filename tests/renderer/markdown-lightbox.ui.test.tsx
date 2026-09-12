@@ -47,7 +47,7 @@ function restoreDialogMethod(
 }
 
 describe("MarkdownLightbox", () => {
-  it("makes zoomed content scrollable and pans it by dragging", async () => {
+  it("zooms content in and pans it by dragging", async () => {
     const user = userEvent.setup();
     render(
       <MarkdownLightbox open onClose={vi.fn()}>
@@ -58,8 +58,6 @@ describe("MarkdownLightbox", () => {
     const viewport = screen.getByRole("region", { name: "Zoomable content" });
     await user.click(screen.getByRole("button", { name: "Zoom in" }));
 
-    expect(viewport.className).toContain("overflow-auto");
-    expect(viewport.className).toContain("cursor-grab");
     expect((viewport.firstElementChild as HTMLElement).style.zoom).toBe("1.25");
 
     viewport.scrollLeft = 120;

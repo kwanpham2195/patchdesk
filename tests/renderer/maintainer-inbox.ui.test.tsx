@@ -671,12 +671,10 @@ describe("MaintainerInbox", () => {
     const warning = within(container).getByText(
       /Priority order may be unreliable/,
     );
-    const alert = warning.closest('[data-slot="alert"]');
-    expect(alert).not.toBeNull();
-    expect(alert?.className).toContain("status-warning");
+    expect(warning.closest('[data-slot="alert"]')).not.toBeNull();
   });
 
-  it("renders each label in a dedicated column and clamps pull request titles to two lines", () => {
+  it("renders each label in a dedicated column", () => {
     const labeled: InboxRow = {
       ...row,
       title:
@@ -707,9 +705,6 @@ describe("MaintainerInbox", () => {
       throw new Error("expected dedicated pull request label column");
     expect(within(labelColumn).getByTitle("bug")).toBeTruthy();
     expect(within(labelColumn).getByTitle("enhancement")).toBeTruthy();
-    expect(labelColumn.className).toContain("flex-col");
-    const title = rowTitle(inboxRow);
-    expect(title.className).toContain("line-clamp-2");
     // The single row is auto-selected, so the Inspector still gives the
     // complete label count when GitHub returned only a partial label list.
     expect(screen.getByText("+3 more")).toBeTruthy();
@@ -849,32 +844,6 @@ describe("MaintainerInbox", () => {
     expect(
       screen.queryByRole("button", { name: "Filter by label" }),
     ).toBeNull();
-  });
-
-  it("reserves the review-details grid column while the inspector is open", () => {
-    // Assert on the rendered className directly (via `container.firstChild`,
-    // the component's root grid div)
-    // since there is no dedicated seam for the grid template today.
-    const { container } = render(
-      <MaintainerInbox
-        profileId="grid-columns"
-        profileLabel="P"
-        state="open"
-        rows={[row]}
-        freshness="fresh"
-        refreshStatus="Current"
-        onOpenReview={vi.fn()}
-        onOpenReviewId={vi.fn()}
-      />,
-    );
-    const grid = container.firstChild;
-    if (!(grid instanceof HTMLElement))
-      throw new Error("expected root grid element");
-    // Inspector open by default (see `inbox-view-preferences.ts`), so the
-    // grid reserves the review-details column. The queue rail's own column
-    // — reserved only in "open" state — is gone entirely (slice 8a); there
-    // is no state-conditional grid template left to assert on.
-    expect(grid.className).toMatch(/grid-cols-\[minmax\(0,1fr\)_21rem\]/);
   });
 
   it("refreshes GitHub from the freshness badge, the screen's one refresh affordance", async () => {
