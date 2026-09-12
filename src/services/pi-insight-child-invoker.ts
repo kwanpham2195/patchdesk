@@ -89,6 +89,10 @@ export class PiInsightChildInvoker implements InsightInvoker {
       "dist",
       "patchdesk-insight-runner.js",
     ),
+    /** Injected so the forwarded-credential allowlist can be tested without mutating the process environment. */
+    private readonly environment: (name: string) => string | undefined = (
+      name,
+    ) => process.env[name],
   ) {}
 
   /**
@@ -209,7 +213,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
     const stdin = JSON.stringify(body);
     if (Buffer.byteLength(stdin, "utf8") > MAX_CHILD_STDIN_BYTES)
       return err({ reason: "execution_failed" });
-    const environment = productionChildEnvironment(body);
+    const environment = productionChildEnvironment(body, this.environment);
     if (environment === undefined)
       return err({ reason: "runtime_unavailable" });
     const output = await this.commands.runJson({
@@ -258,6 +262,7 @@ function childResponseReason(reason: string): PiInsightChildFailure["reason"] {
 
 function productionChildEnvironment(
   body: unknown,
+  environment: (name: string) => string | undefined,
 ): Readonly<Record<string, string>> | undefined {
   if (typeof body !== "object" || body === null || Array.isArray(body))
     return undefined;
@@ -271,22 +276,22 @@ function productionChildEnvironment(
   const provider = model.slice(0, separator).toLowerCase();
   const names = providerEnvironmentNames(provider);
   if (names.length === 0) return undefined;
-  const environment: Record<string, string> = {};
-  environment.ELECTRON_RUN_AS_NODE = "1";
-  environment.PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
-  environment.LANG = "C";
-  environment.LC_ALL = "C";
+  const childEnvironment: Record<string, string> = {};
+  childEnvironment.ELECTRON_RUN_AS_NODE = "1";
+  childEnvironment.PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+  childEnvironment.LANG = "C";
+  childEnvironment.LC_ALL = "C";
   for (const name of names) {
-    const value = process.env[name];
-    if (value !== undefined) environment[name] = value;
+    const value = environment(name);
+    if (value !== undefined) childEnvironment[name] = value;
   }
-  const home = process.env.HOME;
+  const home = environment("HOME");
   if (
     home !== undefined &&
     (provider === "amazon-bedrock" || provider === "google-vertex")
   )
-    environment.HOME = home;
-  return environment;
+    childEnvironment.HOME = home;
+  return childEnvironment;
 }
 
 function parseChildResponse(input: unknown):

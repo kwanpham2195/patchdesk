@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   CommandRunner,
@@ -41,12 +41,11 @@ const analysisResult = {
   validationPlan: ["Fixture validation plan."],
   assumptions: ["Fixture assumption."],
 };
-const originalDeepSeekKey = process.env.DEEPSEEK_API_KEY;
-
-afterEach(() => {
-  if (originalDeepSeekKey === undefined) delete process.env.DEEPSEEK_API_KEY;
-  else process.env.DEEPSEEK_API_KEY = originalDeepSeekKey;
-});
+/** The names the invoker's injected lookup answers; dummy values, never a real credential. */
+const fixtureEnvironment = (name: string): string | undefined =>
+  ({ DEEPSEEK_API_KEY: "selected-provider-secret", HOME: "/Users/fixture" })[
+    name
+  ];
 
 class RecordingExecutor implements CommandExecutor {
   readonly requests: CommandRequest[] = [];
@@ -95,7 +94,6 @@ function invocation(
 
 describe("PiInsightChildInvoker", () => {
   it("passes a bounded strict stdin protocol and parses only the child data result", async () => {
-    process.env.DEEPSEEK_API_KEY = "selected-provider-secret";
     const executor = new RecordingExecutor({
       _tag: "Exited",
       exitCode: 0,
@@ -107,6 +105,7 @@ describe("PiInsightChildInvoker", () => {
       "/workspace/patchdesk",
       "/runtime/node",
       "/runtime/child.mjs",
+      fixtureEnvironment,
     );
     await expect(
       invoker.invokeWalkthrough(
@@ -154,7 +153,6 @@ describe("PiInsightChildInvoker", () => {
   // shared bound is only observed through one of the two invokers that
   // spend it.
   it("bounds an analysis run by the shared analysis timeout", async () => {
-    process.env.DEEPSEEK_API_KEY = "selected-provider-secret";
     const executor = new RecordingExecutor({
       _tag: "Exited",
       exitCode: 0,
@@ -166,6 +164,7 @@ describe("PiInsightChildInvoker", () => {
       "/workspace/patchdesk",
       "/runtime/node",
       "/runtime/child.mjs",
+      fixtureEnvironment,
     );
     const result = await invoker.invoke(invocation(), {
       signal: new AbortController().signal,
@@ -426,5 +425,125 @@ describe("PiInsightChildInvoker strict response boundary", () => {
         60_000,
       ),
     ).resolves.toEqual({ _tag: "err", error: { reason: "invalid_result" } });
+  });
+});
+
+/**
+ * The forwarding allowlist is the one place credentials leave the main process,
+ * so the names are written out here rather than imported from the catalog:
+ * sharing the source would make the assertion tautological, and widening a
+ * provider's `keys`/`requiredKeys`/`ambient` must fail in this table.
+ */
+describe("PiInsightChildInvoker forwarded credential names", () => {
+  const FIXED_NAMES = ["ELECTRON_RUN_AS_NODE", "LANG", "LC_ALL", "PATH"];
+  const BEDROCK_NAMES = [
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_PROFILE",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "AWS_SDK_LOAD_CONFIG",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+    "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_ROLE_ARN",
+    "AWS_ROLE_SESSION_NAME",
+    "AWS_SHARED_CREDENTIALS_FILE",
+    "AWS_CONFIG_FILE",
+    "AWS_EC2_METADATA_DISABLED",
+    "AWS_EC2_METADATA_SERVICE_ENDPOINT",
+    "AWS_EC2_METADATA_SERVICE_ENDPOINT_MODE",
+  ];
+  const VERTEX_NAMES = [
+    "GOOGLE_CLOUD_API_KEY",
+    "GOOGLE_CLOUD_PROJECT",
+    "GCLOUD_PROJECT",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "CLOUDSDK_CONFIG",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+  ];
+
+  /** An invoker whose lookup answers only `provided`, with dummy values, never a real credential. */
+  function run(provided: ReadonlyArray<string>) {
+    const executor = new RecordingExecutor({
+      _tag: "Exited",
+      exitCode: 0,
+      stdout: JSON.stringify({ ok: true, value: analysisResult }),
+      stderr: "",
+    });
+    const values = new Map(
+      provided.map((name, index) => [name, `dummy-value-${index}`]),
+    );
+    return {
+      executor,
+      invoker: new PiInsightChildInvoker(
+        new CommandRunner(executor),
+        "/workspace/patchdesk",
+        "/runtime/node",
+        "/runtime/child.mjs",
+        (name) => values.get(name),
+      ),
+    };
+  }
+
+  const cases = [
+    {
+      name: "an API-key provider forwards its one key, and never HOME",
+      model: "deepseek/deepseek-v4-flash",
+      provided: [
+        "DEEPSEEK_API_KEY",
+        "AWS_SECRET_ACCESS_KEY",
+        "GITHUB_TOKEN",
+        "HOME",
+      ],
+      expectedKeys: ["DEEPSEEK_API_KEY"],
+    },
+    {
+      name: "amazon-bedrock forwards its ambient names and HOME",
+      model: "amazon-bedrock/anthropic.claude-sonnet-4",
+      provided: [...BEDROCK_NAMES, "HOME", "GITHUB_TOKEN"],
+      expectedKeys: [...BEDROCK_NAMES, "HOME"],
+    },
+    {
+      name: "amazon-bedrock forwards only the allowlisted names the lookup answers",
+      model: "amazon-bedrock/anthropic.claude-sonnet-4",
+      provided: ["AWS_PROFILE", "AWS_REGION", "HOME", "GITHUB_TOKEN"],
+      expectedKeys: ["AWS_PROFILE", "AWS_REGION", "HOME"],
+    },
+    {
+      name: "google-vertex forwards its API key, its ambient names and HOME",
+      model: "google-vertex/gemini-3-pro",
+      provided: [...VERTEX_NAMES, "HOME", "GITHUB_TOKEN"],
+      expectedKeys: [...VERTEX_NAMES, "HOME"],
+    },
+  ];
+
+  it.each(cases)("$name", async ({ model, provided, expectedKeys }) => {
+    const { executor, invoker } = run(provided);
+    const result = await invoker.invoke(invocation({ model }), {
+      signal: new AbortController().signal,
+    });
+    expect(result._tag).toBe("ok");
+    expect(Object.keys(executor.requests[0]?.environment ?? {}).sort()).toEqual(
+      [...FIXED_NAMES, ...expectedKeys].sort(),
+    );
+  });
+
+  it("spawns no child for a provider id the catalog does not know", async () => {
+    const { executor, invoker } = run(["DEEPSEEK_API_KEY", "HOME"]);
+    await expect(
+      invoker.invoke(invocation({ model: "not-a-provider/some-model" }), {
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "runtime_unavailable" },
+    });
+    expect(executor.requests).toEqual([]);
   });
 });
