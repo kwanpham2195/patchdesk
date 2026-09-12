@@ -17,6 +17,7 @@ import {
   type ActiveFileViewport,
 } from "../review-diff-active-file";
 import { materializeAndScrollTo } from "../review-diff-materialize-and-scroll";
+import { useLatestCommitted } from "./use-latest-committed";
 import { useReviewDiffQaScrollDiagnostics } from "./use-review-diff-qa-scroll-diagnostics";
 import { useScrollSettledValue } from "./use-scroll-settled-value";
 
@@ -125,6 +126,11 @@ export function useReviewDiffScrollState<T>({
     [fileMode, onActiveFileChange, resolveActiveFilePathAt],
   );
 
+  // `onActiveFileChange` arrives as a fresh arrow on every parent render, so
+  // reading the callback through a ref keeps that identity out of the poll's
+  // dependencies.
+  const updateActivePathRef = useLatestCommitted(updateActivePath);
+
   useEffect(() => {
     if (fileMode !== "all") return;
     const frame = window.requestAnimationFrame(() => {
@@ -133,12 +139,13 @@ export function useReviewDiffScrollState<T>({
       if (selectionScrollPending.current) return;
       const codeView = viewer.current?.getInstance();
       if (codeView === undefined) return;
-      updateActivePath(codeView.getScrollTop(), codeView);
+      updateActivePathRef.current(codeView.getScrollTop(), codeView);
     });
     return () => window.cancelAnimationFrame(frame);
     // The full item list mounts at once, so its length is the signal that the
-    // rendered file set changed.
-  }, [fileMode, itemCount, updateActivePath, viewer]);
+    // rendered file set changed -- and only that signal may re-poll, because a
+    // plain parent re-render would report the outgoing file over a fresh click.
+  }, [fileMode, itemCount, updateActivePathRef, viewer]);
 
   // CodeView emits scroll events faster than the browser paints. Keep the
   // settling debounce on every event, but coalesce measured active-file reads

@@ -137,6 +137,39 @@ describe("useReviewDiffScrollState", () => {
     expect(scrollTo).toHaveBeenLastCalledWith(selectionTarget);
     expect(onActiveFileChange).not.toHaveBeenCalledWith("src/a.ts");
   });
+
+  it("does not re-poll the active file when only the callback identity changes", async () => {
+    const tops = new Map([["src/a.ts", 8]]);
+    const viewer = fakeViewer(vi.fn(), () => ["src/a.ts"], {
+      getScrollTop: () => 0,
+      tops,
+    });
+    const onActiveFileChange = vi.fn();
+
+    const { result, rerender } = renderHook(() =>
+      useReviewDiffScrollState({
+        viewer,
+        hydratedFiles: noHydratedFiles,
+        fileMode: "all",
+        itemCount: 1,
+        // Fresh identity per render, as review-workbench passes it.
+        onActiveFileChange: (path: string) => onActiveFileChange(path),
+      }),
+    );
+
+    await flushFrames();
+    expect(onActiveFileChange).toHaveBeenCalledWith("src/a.ts");
+    onActiveFileChange.mockClear();
+
+    // The rendered item list is unchanged, so a parent re-render must not
+    // report an active file again -- review-diff-view has just cleared the
+    // remembered path, so a re-poll would overwrite what the click set.
+    result.current.activePathRef.current = undefined;
+    rerender();
+    await flushFrames();
+
+    expect(onActiveFileChange).not.toHaveBeenCalled();
+  });
 });
 
 describe("useReviewDiffSelectionScroll", () => {

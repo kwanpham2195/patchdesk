@@ -977,12 +977,15 @@ function useLargeDiffSelection(
 ): string | undefined {
   const [renderedPath, setRenderedPath] = useState(selectedPath);
   useEffect(() => {
-    if (!deferReplacement || selectedPath === undefined) {
+    if (!deferReplacement) return;
+    if (selectedPath === undefined) {
       setRenderedPath(selectedPath);
       return;
     }
     const timer = window.setTimeout(() => setRenderedPath(selectedPath), 150);
     return () => window.clearTimeout(timer);
   }, [deferReplacement, selectedPath]);
-  return renderedPath;
+  // Routing a normal review through the state above would render the surface
+  // once more with the outgoing path, which flips the navigator's highlight.
+  return deferReplacement ? renderedPath : selectedPath;
 }
