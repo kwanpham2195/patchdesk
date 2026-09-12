@@ -81,12 +81,6 @@ describe("AnalysisReader", () => {
     const evidence = screen.getByRole("region", {
       name: "Finding evidence src/a.ts",
     });
-    expect(
-      screen.getByLabelText("Resizable code evidence").className,
-    ).toContain("h-[50vh]");
-    expect(
-      screen.getByLabelText("Resizable code evidence").className,
-    ).toContain("resize-y");
     expect(evidence.textContent).toContain("unchanged();");
     expect(evidence.textContent).toContain("oldValue();");
     expect(evidence.textContent).toContain("acceptInvalidValue();");

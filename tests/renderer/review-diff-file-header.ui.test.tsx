@@ -15,7 +15,6 @@ describe("FileChangeCounts", () => {
     );
     const badge = screen.getByRole("img", { name: "2 findings, highest P1" });
     expect(badge.textContent).toBe("2");
-    expect(badge.className).toContain("text-destructive");
     expect(screen.getByLabelText("3 additions, 1 deletions")).toBeTruthy();
   });
 

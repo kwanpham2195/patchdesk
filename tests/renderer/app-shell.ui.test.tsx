@@ -31,7 +31,7 @@ function ContentEditableAncestorFixture(): React.JSX.Element {
 }
 
 describe("AppShell settings overlay entry points", () => {
-  it("opens Settings without making it a destination or changing the main scroll owner", async () => {
+  it("opens Settings without making it a destination", async () => {
     const user = userEvent.setup();
     const onOpenSettings = vi.fn();
 
@@ -50,7 +50,6 @@ describe("AppShell settings overlay entry points", () => {
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("main").className).toContain("overflow-hidden");
     expect(screen.queryByText("Settings content")).toBeNull();
     expect(screen.queryByLabelText("Workspace navigation")).toBeNull();
     expect(

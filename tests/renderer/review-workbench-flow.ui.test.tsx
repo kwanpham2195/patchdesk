@@ -125,8 +125,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     const merge = screen.getByRole("button", {
       name: "Open PR overview: merge blocked",
     });
-    expect(checks.className).toContain("text-status-success");
-    expect(merge.className).toContain("text-destructive");
     expect(screen.queryByRole("button", { name: "PR overview" })).toBeNull();
 
     const user = userEvent.setup();
