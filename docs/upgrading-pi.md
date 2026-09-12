@@ -48,8 +48,8 @@ Expect hits in exactly these places, and edit each one to NEW:
 - `scripts/stage-insight-runtime-lib.mjs` (one) and `scripts/package-smoke.mjs`
   (three)
 - test fixtures: `runtime/insight/tests/insight-runtime.test.ts` (one),
-  `tests/main-desktop-hardening.test.ts` (three, plus one deliberate mismatch
-  fixture that must stay a version other than NEW),
+  `tests/main/main-desktop-hardening.test.ts` (three, plus one deliberate
+  mismatch fixture that must stay a version other than NEW),
   `tests/scripts/stage-insight-runtime.test.ts` (two lines, one of them naming
   both packages)
 

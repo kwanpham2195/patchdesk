@@ -109,10 +109,10 @@ const allowedRoutePatterns = [
 
 /**
  * Routes registered in `local-api.ts` that are intentionally unreachable
- * through the desktop bridge. `tests/desktop-bridge.test.ts` derives every
- * route Hono actually registers and fails, naming the route, unless it
- * appears here or in `allowedRoutes` / `allowedRoutePatterns` — so adding a
- * Hono route without a matching bridge decision cannot ship silently.
+ * through the desktop bridge. `tests/main/desktop-bridge-allowlist.test.ts`
+ * derives every route Hono actually registers and fails, naming the route,
+ * unless it appears here or in `allowedRoutes` / `allowedRoutePatterns` — so
+ * adding a Hono route without a matching bridge decision cannot ship silently.
  */
 export const deliberatelyDeniedRoutes = new Set([
   // Liveness probe for the local HTTP server process itself; the renderer
