@@ -631,6 +631,40 @@ describe("InsightRunCoordinator current lifecycle", () => {
     });
   });
 
+  it("fails a run as invalid_result when the invoker's payload is outside the JSON grammar", async () => {
+    // `InsightInvoker.invoke` types its payload `unknown`, so an in-process
+    // invoker can hand back a key whose value is `undefined` — which no JSON
+    // boundary produces, and which the analysis schema's optional field would
+    // otherwise accept and retain.
+    const value = await fixture({
+      async invoke() {
+        return ok({ ...analysisResult, coverage: undefined });
+      },
+    });
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      model: "model",
+      reasoning: "medium",
+    });
+    if (started._tag === "err") throw new Error("expected run");
+    expect(
+      await settled(value.coordinator, value.review.id, started.value.runId),
+    ).toMatchObject({ status: "failed", failureReason: "invalid_result" });
+    expect(
+      await value.insights.load(profileId, value.review.id, "analysis"),
+    ).toMatchObject({
+      _tag: "ok",
+      value: {
+        replacementFailure: {
+          reason: "invalid_result",
+          category: "invalid_result",
+        },
+      },
+    });
+  });
+
   it("keeps the last retained result when a replacement returns malformed output", async () => {
     let calls = 0;
     const value = await fixture({

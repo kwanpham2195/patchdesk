@@ -1,3 +1,5 @@
+import * as v from "valibot";
+
 import {
   parseContentHash,
   parseIsoTimestamp,
@@ -14,7 +16,7 @@ import {
   type InsightRecord,
   type InsightType,
 } from "../domain/insight-record";
-import type { RawJsonValue } from "../domain/json";
+import { rawJsonValueSchema } from "../domain/json";
 import { err, type Result } from "../domain/result";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
@@ -182,13 +184,21 @@ export class InsightRunExecutor {
           );
         return;
       }
+      // Every invoker leaves its payload `unknown`; the JSON grammar is the contract validation needs.
+      const payload = v.safeParse(rawJsonValueSchema, invocation.value);
+      if (!payload.success) {
+        await this.failAsInvalidResult(
+          input,
+          type,
+          runId,
+          timestamp.value,
+          "payload_not_json",
+        );
+        return;
+      }
       const validated = await validateInsightResult(
         type,
-        // SAFETY: invocation.value is InsightInvoker.invoke's ok payload. Its only implementation
-        // (CodexInsightInvoker -> CodexAppServerClient.run) resolves it from `JSON.parse` of the
-        // provider's turn/completed RPC payload, so it is always JSON-grammar data even though the
-        // invoker interface leaves it `unknown`.
-        invocation.value as RawJsonValue,
+        payload.output,
         input,
         {
           sessionId: input.sessionId,
@@ -198,29 +208,11 @@ export class InsightRunExecutor {
         this.reach,
       );
       if (validated._tag === "err") {
-        await this.persistTerminal(
+        await this.failAsInvalidResult(
           input,
           type,
           runId,
           timestamp.value,
-          (record) =>
-            failInsightRun(
-              record,
-              runId,
-              {
-                runId,
-                reason: "invalid_result",
-                category: "invalid_result",
-                retryable: true,
-                failedAt: timestamp.value,
-              },
-              timestamp.value,
-            ),
-          "invalid_result",
-        );
-        await this.recordDiagnostic(
-          input,
-          type,
           `invalid_result_${validated.error}`,
         );
         return;
@@ -278,6 +270,41 @@ export class InsightRunExecutor {
     } finally {
       this.active.delete(runId);
     }
+  }
+
+  /**
+   * One terminal record for every rejected payload, whether the JSON grammar
+   * or the type's own schema turned it down, so the renderer shows a single
+   * invalid-result state for both.
+   */
+  private async failAsInvalidResult(
+    input: InsightInvocationInput,
+    type: InsightType,
+    runId: InsightRunId,
+    failedAt: IsoTimestamp,
+    detail: string,
+  ): Promise<void> {
+    await this.persistTerminal(
+      input,
+      type,
+      runId,
+      failedAt,
+      (record) =>
+        failInsightRun(
+          record,
+          runId,
+          {
+            runId,
+            reason: "invalid_result",
+            category: "invalid_result",
+            retryable: true,
+            failedAt,
+          },
+          failedAt,
+        ),
+      "invalid_result",
+    );
+    await this.recordDiagnostic(input, type, detail);
   }
 
   private async persistTerminal(
