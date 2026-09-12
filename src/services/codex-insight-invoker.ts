@@ -18,9 +18,12 @@ import type {
   InsightInvoker,
 } from "./insight-run-coordinator";
 import { err } from "../domain/result";
-import { prepareBriefPrompt } from "./brief-operation";
+import { prepareBriefPrompt, type BriefPromptFailure } from "./brief-operation";
 import { composeReviewPrompt } from "./review-rubric";
-import { prepareWalkthroughPrompt } from "./walkthrough-operation";
+import {
+  prepareWalkthroughPrompt,
+  type WalkthroughPromptFailure,
+} from "./walkthrough-operation";
 import {
   ANALYSIS_RUN_TIMEOUT_MS,
   BRIEF_RUN_TIMEOUT_MS,
@@ -101,16 +104,16 @@ export class CodexInsightInvoker implements InsightInvoker {
       const patchPath = resolvedArtifacts[2];
       if (contextPath === undefined || patchPath === undefined)
         return err({ reason: "runtime_unavailable" as const });
-      let walkthroughPrompt: string;
-      try {
-        walkthroughPrompt = await prepareWalkthroughPrompt({
-          contextPath,
-          patchPath,
-        });
-      } catch {
-        return err({ reason: "execution_failed" as const });
-      }
-      const prompt = buildCodexWalkthroughPrompt({ walkthroughPrompt, policy });
+      const walkthroughPrompt = await prepareWalkthroughPrompt({
+        contextPath,
+        patchPath,
+      });
+      if (walkthroughPrompt._tag === "err")
+        return err(promptPreparationFailure(walkthroughPrompt.error));
+      const prompt = buildCodexWalkthroughPrompt({
+        walkthroughPrompt: walkthroughPrompt.value,
+        policy,
+      });
       if (prompt._tag === "err")
         return err({ reason: "execution_failed" as const });
       // Match the insight-runtime path: scale the run bound with the patch instead of a flat five minutes.
@@ -138,13 +141,15 @@ export class CodexInsightInvoker implements InsightInvoker {
       const briefPatchPath = resolvedArtifacts[2];
       if (briefPatchPath === undefined)
         return err({ reason: "runtime_unavailable" as const });
-      let briefPrompt: string;
-      try {
-        briefPrompt = await prepareBriefPrompt({ patchPath: briefPatchPath });
-      } catch {
-        return err({ reason: "execution_failed" as const });
-      }
-      const prompt = buildCodexBriefPrompt({ briefPrompt, policy });
+      const briefPrompt = await prepareBriefPrompt({
+        patchPath: briefPatchPath,
+      });
+      if (briefPrompt._tag === "err")
+        return err(promptPreparationFailure(briefPrompt.error));
+      const prompt = buildCodexBriefPrompt({
+        briefPrompt: briefPrompt.value,
+        policy,
+      });
       if (prompt._tag === "err")
         return err({ reason: "execution_failed" as const });
       const result = await this.clientFactory(this.executablePath).run(
@@ -207,4 +212,35 @@ export class CodexInsightInvoker implements InsightInvoker {
       ? result
       : err({ reason: result.error.reason, phase: result.error.phase });
   }
+}
+
+/**
+ * Maps a prompt-preparation failure onto the invoker's closed vocabulary. The
+ * category stays `execution_failed` for a too-large or unindexable artifact
+ * because the model was never asked; `phase` is what carries the actionable
+ * reason into the run's diagnostic.
+ */
+function promptPreparationFailure(
+  failure: WalkthroughPromptFailure | BriefPromptFailure,
+) {
+  if (
+    failure.reason === "artifact_too_large" ||
+    failure.reason === "patch_too_large"
+  )
+    return {
+      reason: "execution_failed",
+      phase: "prompt_artifact_too_large",
+    } as const;
+  if (
+    failure.reason === "artifact_unreadable" ||
+    failure.reason === "patch_unreadable"
+  )
+    return {
+      reason: "runtime_unavailable",
+      phase: "prompt_artifact_unreadable",
+    } as const;
+  return {
+    reason: "execution_failed",
+    phase: "prompt_patch_not_indexable",
+  } as const;
 }

@@ -17,15 +17,24 @@ const PATCH = [
   "",
 ].join("\n");
 
-async function briefPrompt(): Promise<string> {
+async function briefPromptResult(patch: string | Buffer) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-brief-prompt-"));
   try {
     const patchPath = join(root, "patch.diff");
-    await writeFile(patchPath, PATCH, "utf8");
+    await writeFile(patchPath, patch);
     return await prepareBriefPrompt({ patchPath });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+}
+
+async function briefPrompt(): Promise<string> {
+  const prepared = await briefPromptResult(PATCH);
+  if (prepared._tag === "err")
+    throw new Error(
+      `brief prompt preparation failed: ${prepared.error.reason}`,
+    );
+  return prepared.value;
 }
 
 describe("prepareBriefPrompt", () => {
@@ -43,5 +52,11 @@ describe("prepareBriefPrompt", () => {
     expect(prompt).not.toContain("provenance");
     expect(prompt).not.toContain("Profile ");
     expect(prompt).not.toContain("do not repeat them in prose");
+  });
+
+  it("returns patch_too_large for a patch past the bounded input size", async () => {
+    await expect(
+      briefPromptResult(Buffer.alloc(2 * 1024 * 1024 + 1, 0x78)),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "patch_too_large" } });
   });
 });

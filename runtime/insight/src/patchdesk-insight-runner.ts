@@ -516,15 +516,20 @@ export async function runProductionChild(
   };
   if (canonical.type === "walkthrough") {
     const prompt = await prepareWalkthroughPrompt(canonical.input);
+    if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
     return await runPatchdeskChild(
-      { type: "walkthrough", input: { ...canonical.input, prompt } },
+      {
+        type: "walkthrough",
+        input: { ...canonical.input, prompt: prompt.value },
+      },
       childOptions,
     );
   }
   if (canonical.type === "brief") {
     const prompt = await prepareBriefPrompt(canonical.input);
+    if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
     return await runPatchdeskChild(
-      { type: "brief", input: { ...canonical.input, prompt } },
+      { type: "brief", input: { ...canonical.input, prompt: prompt.value } },
       childOptions,
     );
   }

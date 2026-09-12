@@ -196,6 +196,20 @@ describe("CodexInsightInvoker", () => {
     expect(invocation.runTimeoutMs).toBe(EXPECTED_WALKTHROUGH_TIMEOUT_MS);
   });
 
+  it("names the prompt-preparation failure in the phase for an oversized patch", async () => {
+    const value = await fixture({ type: "walkthrough" });
+    await writeFile(value.patch, Buffer.alloc(2 * 1024 * 1024 + 1, 0x78));
+    await expect(
+      value.invoker.invoke(value.input, {
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "execution_failed", phase: "prompt_artifact_too_large" },
+    });
+    expect(value.calls).toHaveLength(0);
+  });
+
   it("builds an analysis prompt with the patch and the verdict rule, and uses the analysis bounds", async () => {
     const value = await fixture({ type: "analysis" });
     await expect(

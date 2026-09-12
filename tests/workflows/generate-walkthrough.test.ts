@@ -166,10 +166,15 @@ describe("walkthrough prompt preparation", () => {
       "diff --git a/src/recovery.ts b/src/recovery.ts\n--- a/src/recovery.ts\n+++ b/src/recovery.ts\n@@ -1,1 +1,1 @@\n-old\n+new\n",
     );
     try {
-      const prompt = await prepareWalkthroughPrompt({
+      const prepared = await prepareWalkthroughPrompt({
         contextPath,
         patchPath,
       });
+      if (prepared._tag === "err")
+        throw new Error(
+          `walkthrough prompt preparation failed: ${prepared.error.reason}`,
+        );
+      const prompt = prepared.value;
       expect(prompt).toContain("behavior before consequences and validation");
       expect(prompt).toContain("ASD-STE100 / Simplified Technical English");
       expect(prompt).toContain(
@@ -219,7 +224,31 @@ describe("walkthrough prompt preparation", () => {
           contextPath,
           patchPath,
         }),
-      ).rejects.toThrow("Walkthrough artifact exceeds the bounded input size");
+      ).resolves.toEqual({
+        _tag: "err",
+        error: { reason: "artifact_too_large", artifact: "patch" },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("names the artifact it could not read at all", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "patchdesk-walkthrough-unreadable-"),
+    );
+    const contextPath = join(directory, "context.json");
+    await writeFile(contextPath, "context artifact");
+    try {
+      await expect(
+        prepareWalkthroughPrompt({
+          contextPath,
+          patchPath: join(directory, "missing.diff"),
+        }),
+      ).resolves.toEqual({
+        _tag: "err",
+        error: { reason: "artifact_unreadable", artifact: "patch" },
+      });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

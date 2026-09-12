@@ -3,7 +3,10 @@ import * as v from "valibot";
 import { insightOutputGuidance } from "../domain/insight-output-guidance";
 import { narrativeHunkManifest } from "../domain/narrative-walkthrough";
 import { err, ok, type Result } from "../domain/result";
-import { readBoundedArtifact } from "./walkthrough-artifact-reader";
+import {
+  readBoundedArtifact,
+  type BoundedArtifactReadError,
+} from "./walkthrough-artifact-reader";
 
 const MAX_WALKTHROUGH_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_WALKTHROUGH_CONTEXT_BYTES = 512 * 1024;
@@ -100,18 +103,42 @@ export function parseWalkthroughOutput(
     : err({ _tag: "InvalidWalkthroughOutput" });
 }
 
-/** Reads fixed bounded artifacts and composes the only model-visible walkthrough prompt. */
+/** Why a walkthrough prompt could not be composed from its artifacts. */
+export type WalkthroughPromptFailure =
+  | {
+      readonly reason: "artifact_too_large";
+      readonly artifact: "context" | "patch";
+    }
+  | {
+      readonly reason: "artifact_unreadable";
+      readonly artifact: "context" | "patch";
+    }
+  | { readonly reason: "patch_not_indexable" };
+
+/**
+ * Reads fixed bounded artifacts and composes the only model-visible walkthrough
+ * prompt.
+ *
+ * Returns `artifact_too_large` or `artifact_unreadable` naming the artifact the
+ * bounded reader refused, and `patch_not_indexable` when the patch carries no
+ * hunk the manifest can alias.
+ */
 export async function prepareWalkthroughPrompt(input: {
   readonly contextPath: string;
   readonly patchPath: string;
-}): Promise<string> {
-  const [context, patch] = await Promise.all([
-    readRequiredArtifact(input.contextPath, MAX_WALKTHROUGH_CONTEXT_BYTES),
-    readRequiredArtifact(input.patchPath, MAX_WALKTHROUGH_ARTIFACT_BYTES),
+}): Promise<Result<string, WalkthroughPromptFailure>> {
+  const [contextRead, patchRead] = await Promise.all([
+    readBoundedArtifact(input.contextPath, MAX_WALKTHROUGH_CONTEXT_BYTES),
+    readBoundedArtifact(input.patchPath, MAX_WALKTHROUGH_ARTIFACT_BYTES),
   ]);
+  if (contextRead._tag === "err")
+    return err(artifactFailure("context", contextRead.error));
+  if (patchRead._tag === "err")
+    return err(artifactFailure("patch", patchRead.error));
+  const context = contextRead.value;
+  const patch = patchRead.value;
   const manifest = narrativeHunkManifest(patch);
-  if (manifest._tag === "err")
-    throw new Error("Walkthrough patch could not be indexed");
+  if (manifest._tag === "err") return err({ reason: "patch_not_indexable" });
   const targetChapters = Math.min(
     MAX_CHAPTERS,
     Math.max(
@@ -119,33 +146,33 @@ export async function prepareWalkthroughPrompt(input: {
       Math.ceil(Math.max(1, (patch.match(/^@@ /gm) ?? []).length) / 3),
     ),
   );
-  return [
-    "Generate a read-only walkthrough for the supplied immutable patch.",
-    insightOutputGuidance("walkthrough"),
-    "The persistent reader shows the chapters in order on a rail and their sections on one continuous reading surface.",
-    "Write the top-level focus as one or two concise sentences summarizing what the patch does; keep hunk aliases and paths out of it.",
-    "Explain behavior before consequences and validation; use aliases exactly, and route only mechanical or low-signal changes to Support.",
-    `Create at most ${targetChapters} chapters. Each chapter cites the coherent cluster of hunks that establishes its behavior; an isolated one-hunk change is the only exception.`,
-    "Set citationVersion to 2. Write each section's prose as one concise sentence, or at most two very short sentences: state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
-    `Use at most ${MAX_CHAPTERS} chapters and at most ${MAX_TOTAL_SECTIONS} sections in total. Keep the title within ${MAX_TITLE_LENGTH} characters, the focus within ${MAX_FOCUS_LENGTH}, each chapter title within ${MAX_CHAPTER_TITLE_LENGTH}, each section title within ${MAX_SECTION_TITLE_LENGTH}, and each section's prose within ${MAX_PROSE_LENGTH}.`,
-    "HUNK ALIAS MANIFEST:",
-    manifest.value
-      .map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`)
-      .join("\n"),
-    "CONTEXT ARTIFACT:",
-    context,
-    "PATCH ARTIFACT:",
-    patch,
-  ].join("\n\n");
+  return ok(
+    [
+      "Generate a read-only walkthrough for the supplied immutable patch.",
+      insightOutputGuidance("walkthrough"),
+      "The persistent reader shows the chapters in order on a rail and their sections on one continuous reading surface.",
+      "Write the top-level focus as one or two concise sentences summarizing what the patch does; keep hunk aliases and paths out of it.",
+      "Explain behavior before consequences and validation; use aliases exactly, and route only mechanical or low-signal changes to Support.",
+      `Create at most ${targetChapters} chapters. Each chapter cites the coherent cluster of hunks that establishes its behavior; an isolated one-hunk change is the only exception.`,
+      "Set citationVersion to 2. Write each section's prose as one concise sentence, or at most two very short sentences: state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
+      `Use at most ${MAX_CHAPTERS} chapters and at most ${MAX_TOTAL_SECTIONS} sections in total. Keep the title within ${MAX_TITLE_LENGTH} characters, the focus within ${MAX_FOCUS_LENGTH}, each chapter title within ${MAX_CHAPTER_TITLE_LENGTH}, each section title within ${MAX_SECTION_TITLE_LENGTH}, and each section's prose within ${MAX_PROSE_LENGTH}.`,
+      "HUNK ALIAS MANIFEST:",
+      manifest.value
+        .map((hunk) => `${hunk.id} | ${hunk.path} | ${hunk.header}`)
+        .join("\n"),
+      "CONTEXT ARTIFACT:",
+      context,
+      "PATCH ARTIFACT:",
+      patch,
+    ].join("\n\n"),
+  );
 }
 
-async function readRequiredArtifact(
-  path: string,
-  maxBytes: number,
-): Promise<string> {
-  const result = await readBoundedArtifact(path, maxBytes);
-  if (result._tag === "ok") return result.value;
-  if (result.error.reason === "input_too_large")
-    throw new Error("Walkthrough artifact exceeds the bounded input size");
-  throw new Error("Walkthrough artifact could not be read");
+function artifactFailure(
+  artifact: "context" | "patch",
+  error: BoundedArtifactReadError,
+): WalkthroughPromptFailure {
+  return error.reason === "input_too_large"
+    ? { reason: "artifact_too_large", artifact }
+    : { reason: "artifact_unreadable", artifact };
 }
