@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.8 - 2026-09-12
+
 - Added a column of the pull requests you have opened, beside the app frame and present on every screen. It lists the active workspace's visited pull requests, most recently opened first, with the one you are reading marked, and clicking a row resumes that pull request where you left it and moves it back to the top. Rows are grouped under Today, Yesterday, This week, and Earlier by when you opened them, each row saying how long ago that was, and one that has merged or closed says so with the date Patchdesk last saw that state. Every row is read from what Patchdesk already stored, so the column costs no GitHub call and works with the network off. A pull request appears once you have opened it — the Pull requests table is still where you find new work — and one you opened before this release shows its number and no age until the next time you open it, which fills in its title and how long ago you opened it. The column collapses from a button in the header and stays collapsed until you open it again. #119
 - Fixed moving between two pull requests showing the first one's diff until the second finished loading, and indefinitely if that load failed. #131
 - Fixed adding or removing a repository in **Settings** during a workspace switch landing the change in the workspace you were leaving. A repository toggle went to whichever workspace Patchdesk had most recently selected, while the Repositories card was still showing the previous one's repositories; each change now names the workspace it belongs to. #136
