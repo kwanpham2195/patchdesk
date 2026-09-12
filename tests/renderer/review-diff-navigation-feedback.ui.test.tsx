@@ -249,10 +249,7 @@ describe("ReviewDiffView navigation feedback", () => {
       path: "src/a.ts",
       line: 10,
     });
-    // `.` scrolls to its item target within the keypress, so it reports
-    // src/b.ts before `]` starts. What the later operation takes over is the
-    // status and the surviving active-file report.
-    expect(onActiveFileChange).toHaveBeenLastCalledWith("src/a.ts");
+    expect(onActiveFileChange).not.toHaveBeenCalledWith("src/b.ts");
     cleanup();
     const descriptor = Object.getOwnPropertyDescriptor(window, "CSSStyleSheet");
     Object.defineProperty(window, "CSSStyleSheet", {
@@ -428,9 +425,7 @@ describe("ReviewDiffView navigation feedback", () => {
     enablePierre();
     const onActiveFileChange = renderNavigationDiff();
 
-    // A hunk jump waits frames for CodeView to remeasure, so it is still in
-    // flight when the surface goes away. A file jump scrolls within the
-    // keypress and has nothing left to cancel.
+    press(".");
     press("]");
     cleanup();
     await waitForFrames();

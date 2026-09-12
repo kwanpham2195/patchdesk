@@ -107,16 +107,14 @@ export function useReviewCommentNavigation({
       return materializeAndScrollTo({
         viewer,
         itemId: target.filePath,
-        // A line target resolves through the expanded-hunks map.
-        needsLayoutRecompute: true,
         isStale: stale,
-        buildTarget: () => ({
+        target: {
           type: "line",
           id: target.filePath,
           lineNumber: target.lineNumber,
           side: target.side,
           align: "start",
-        }),
+        },
         onScrolled: () => {
           if (stale()) return;
           activePathRef.current = target.filePath;

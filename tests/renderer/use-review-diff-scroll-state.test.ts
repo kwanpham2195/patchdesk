@@ -67,8 +67,12 @@ describe("useReviewDiffScrollState", () => {
       ["src/b.ts", 4000],
     ]);
     let scrollTop = 8;
+    // CodeView.scrollTo only records the target and queues its own render
+    // frame, so the viewport moves a frame after the call returns.
     const scrollTo = vi.fn((target: { readonly id: string }) => {
-      scrollTop = tops.get(target.id) ?? 0;
+      requestAnimationFrame(() => {
+        scrollTop = tops.get(target.id) ?? 0;
+      });
     });
     const viewer = fakeViewer(scrollTo, () => ["src/a.ts", "src/b.ts"], {
       getScrollTop: () => scrollTop,
@@ -91,7 +95,9 @@ describe("useReviewDiffScrollState", () => {
           hydratedFiles: noHydratedFiles,
           fileMode: "all",
           itemCount,
-          onActiveFileChange,
+          // Fresh identity per render, as review-workbench passes it. It
+          // restarts the poll effect, so nothing upstream dedupes the report.
+          onActiveFileChange: (path: string) => onActiveFileChange(path),
         });
         useReviewDiffSelectionScroll({
           viewer,
