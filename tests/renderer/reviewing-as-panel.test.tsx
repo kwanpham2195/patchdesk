@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -107,14 +107,18 @@ describe("Reviewing as panel", () => {
     const select = await screen.findByRole("combobox", {
       name: "Reviewing as account",
     });
-    expect(select.textContent).toContain("bob");
+    // Adoption saves the active account before the trigger can render it, so
+    // the combobox first exists on the placeholder render.
+    await waitFor(() => expect(select.textContent).toContain("bob"));
 
     await user.click(
       screen.getByRole("button", { name: "Use a different account" }),
     );
-    expect(
-      screen.getByLabelText<HTMLInputElement>("GitHub account").value,
-    ).toBe("bob");
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText<HTMLInputElement>("GitHub account").value,
+      ).toBe("bob"),
+    );
     expect(screen.getByLabelText<HTMLInputElement>("GitHub host").value).toBe(
       "github.com",
     );
