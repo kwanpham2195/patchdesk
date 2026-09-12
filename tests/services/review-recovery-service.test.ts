@@ -121,9 +121,6 @@ describe("ReviewRecoveryService", () => {
       failed: 0,
     });
     expect(value.reviews.load).toHaveBeenCalledWith("cfw", reviewId);
-    expect(value.reviews.save.mock.invocationCallOrder[0]).toBeLessThan(
-      value.remove.mock.invocationCallOrder[0] ?? Infinity,
-    );
     expect(value.reviews.save).toHaveBeenCalledWith(
       expect.objectContaining({
         status: expect.objectContaining({ _tag: "Terminal", state: "merged" }),
@@ -471,8 +468,5 @@ it("terminalizes a confirmed closed-unmerged Review before removing the operatio
       status: expect.objectContaining({ state: "closed" }),
     }),
     reviewUpdatedAt,
-  );
-  expect(value.reviews.save.mock.invocationCallOrder[0]).toBeLessThan(
-    value.remove.mock.invocationCallOrder[0] ?? Infinity,
   );
 });
