@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import {
+  PullRequestImageCacheProvider,
   usePullRequestImage,
   type PullRequestImageSource,
 } from "../../src/renderer/src/hooks/use-pull-request-image";
@@ -24,6 +26,7 @@ const source: PullRequestImageSource = {
 };
 
 const dataUri = "data:image/png;base64,AAAA";
+const src = "https://github.com/user-attachments/assets/diagram.png";
 
 let desktop: DesktopDouble | undefined;
 afterEach(() => {
@@ -32,25 +35,36 @@ afterEach(() => {
 });
 
 /**
- * A fresh URL per test: the hook memoizes each resolved image for the life of
- * the module, so reusing one URL would answer a later test from the first
- * test's resolution instead of the route it installed.
+ * Every `renderHook` mounts its own provider, so one fixed URL is enough: no
+ * test is answered from the resolution another test's route produced.
  */
-let nextImage = 0;
-function imageUrl(): string {
-  nextImage += 1;
-  return `https://github.com/user-attachments/assets/image-${nextImage}`;
+const wrapper = ({
+  children,
+}: {
+  readonly children: ReactNode;
+}): React.JSX.Element => (
+  <PullRequestImageCacheProvider>{children}</PullRequestImageCacheProvider>
+);
+
+/**
+ * Counts image requests rather than every bridge call, because the renderer's
+ * 300 ms log flush goes through the same double and lands by timing.
+ */
+function imageRequests(double: DesktopDouble): number {
+  return double.request.mock.calls.filter(
+    ([input]) => "path" in input && input.path === "/v1/reviews/markdown-image",
+  ).length;
 }
 
 describe("usePullRequestImage", () => {
   it("asks the main process for the image and reports the data URI it answers with", async () => {
-    const src = imageUrl();
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
 
-    const { result } = renderHook(() =>
-      usePullRequestImage({ source, src, visible: true }),
+    const { result } = renderHook(
+      () => usePullRequestImage({ source, src, visible: true }),
+      { wrapper },
     );
 
     expect(result.current).toEqual({ _tag: "Pending" });
@@ -72,14 +86,13 @@ describe("usePullRequestImage", () => {
   });
 
   it("requests nothing until the image is visible", async () => {
-    const src = imageUrl();
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
 
     const { result, rerender } = renderHook(
       (visible: boolean) => usePullRequestImage({ source, src, visible }),
-      { initialProps: false },
+      { initialProps: false, wrapper },
     );
 
     expect(result.current).toEqual({ _tag: "Pending" });
@@ -92,55 +105,86 @@ describe("usePullRequestImage", () => {
   });
 
   it("resolves the same image once however many copies are shown", async () => {
-    const src = imageUrl();
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
 
-    const first = renderHook(() =>
-      usePullRequestImage({ source, src, visible: true }),
+    // Both copies in one tree, because a second `renderHook` would mount a
+    // second provider and so a second cache.
+    const { result } = renderHook(
+      () => ({
+        first: usePullRequestImage({ source, src, visible: true }),
+        second: usePullRequestImage({ source, src, visible: true }),
+      }),
+      { wrapper },
     );
-    const second = renderHook(() =>
-      usePullRequestImage({ source, src, visible: true }),
+
+    await waitFor(() => {
+      expect(result.current.first).toEqual({ _tag: "Ready", dataUri });
+      expect(result.current.second).toEqual({ _tag: "Ready", dataUri });
+    });
+    expect(imageRequests(desktop)).toBe(1);
+  });
+
+  it("does not share resolutions across providers", async () => {
+    desktop = installDesktopDouble({
+      "/v1/reviews/markdown-image": () => success({ dataUri }),
+    });
+
+    const first = renderHook(
+      () => usePullRequestImage({ source, src, visible: true }),
+      { wrapper },
+    );
+    const second = renderHook(
+      () => usePullRequestImage({ source, src, visible: true }),
+      { wrapper },
     );
 
     await waitFor(() => {
       expect(first.result.current).toEqual({ _tag: "Ready", dataUri });
       expect(second.result.current).toEqual({ _tag: "Ready", dataUri });
     });
-    expect(desktop.request).toHaveBeenCalledTimes(1);
+    expect(imageRequests(desktop)).toBe(2);
   });
 
   it("evicts the oldest resolution once 32 images are memoized", async () => {
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
-    const first = imageUrl();
-    const newest = [first, ...Array.from({ length: 32 }, imageUrl)];
+    const imageSrc = (index: number): string =>
+      `https://github.com/user-attachments/assets/image-${index}`;
 
-    // The first resolution plus 32 later ones, so the cap of 32 pushes the
-    // first out while the newest one stays memoized.
-    const show = async (src: string): Promise<void> => {
-      const { result } = renderHook(() =>
-        usePullRequestImage({ source, src, visible: true }),
-      );
+    // One hook swapped between sources, because a `renderHook` per source
+    // would mount a provider per source and never fill one cache.
+    const { result, rerender } = renderHook(
+      (shown: string) =>
+        usePullRequestImage({ source, src: shown, visible: true }),
+      { initialProps: imageSrc(0), wrapper },
+    );
+    const show = async (shown: string): Promise<void> => {
+      rerender(shown);
       await waitFor(() => {
         expect(result.current).toEqual({ _tag: "Ready", dataUri });
       });
     };
-    for (const src of newest) await show(src);
 
-    const resolved = desktop.request.mock.calls.length;
-    await show(newest.at(-1) ?? first);
-    expect(desktop.request.mock.calls.length).toBe(resolved);
-    await show(first);
-    expect(desktop.request.mock.calls.length).toBe(resolved + 1);
+    // The first resolution plus 32 later ones, so the cap of 32 pushes the
+    // first out while the newest one stays memoized.
+    for (let index = 0; index <= 32; index += 1) await show(imageSrc(index));
+
+    expect(imageRequests(desktop)).toBe(33);
+    // The second-oldest survived the one eviction the 33rd resolution forced,
+    // and the oldest did not.
+    await show(imageSrc(1));
+    expect(imageRequests(desktop)).toBe(33);
+    await show(imageSrc(0));
+    expect(imageRequests(desktop)).toBe(34);
   });
 
   it("fails without a source, since the main process needs a profile to fetch as", async () => {
-    const src = imageUrl();
-    const { result } = renderHook(() =>
-      usePullRequestImage({ source: undefined, src, visible: true }),
+    const { result } = renderHook(
+      () => usePullRequestImage({ source: undefined, src, visible: true }),
+      { wrapper },
     );
 
     await waitFor(() => {
@@ -149,14 +193,14 @@ describe("usePullRequestImage", () => {
   });
 
   it("fails when the main process refuses the image", async () => {
-    const src = imageUrl();
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () =>
         failure({ error: "invalid_input" }, 400),
     });
 
-    const { result } = renderHook(() =>
-      usePullRequestImage({ source, src, visible: true }),
+    const { result } = renderHook(
+      () => usePullRequestImage({ source, src, visible: true }),
+      { wrapper },
     );
 
     await waitFor(() => {
@@ -165,14 +209,14 @@ describe("usePullRequestImage", () => {
   });
 
   it("fails when the answer is not a data URI", async () => {
-    const src = imageUrl();
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () =>
         success({ dataUri: "https://github.com/a.png" }),
     });
 
-    const { result } = renderHook(() =>
-      usePullRequestImage({ source, src, visible: true }),
+    const { result } = renderHook(
+      () => usePullRequestImage({ source, src, visible: true }),
+      { wrapper },
     );
 
     await waitFor(() => {

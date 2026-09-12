@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ConversationThreadCard,
@@ -14,6 +15,7 @@ import {
 } from "../../src/renderer/src/components/conversation-thread-card";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import { PullRequestImageCacheProvider } from "../../src/renderer/src/hooks/use-pull-request-image";
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
@@ -101,6 +103,13 @@ const thread = (
   ],
   ...overrides,
 });
+
+/** Comment bodies resolve images through the hook, which needs the cache its provider owns. */
+function renderWithImageCache(ui: ReactNode): ReturnType<typeof render> {
+  return render(
+    <PullRequestImageCacheProvider>{ui}</PullRequestImageCacheProvider>,
+  );
+}
 
 describe("ConversationThreadCard", () => {
   it("treats a freshly published card as authoritative: no pending marker, full actions", () => {
@@ -600,7 +609,7 @@ describe("ConversationThreadCard", () => {
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
-    render(
+    renderWithImageCache(
       <ConversationThreadCard
         thread={thread({
           comments: [
@@ -621,7 +630,7 @@ describe("ConversationThreadCard", () => {
   });
 
   it("keeps the placeholder for a comment image when no body context is given", () => {
-    render(
+    renderWithImageCache(
       <ConversationThreadCard
         thread={thread({
           comments: [

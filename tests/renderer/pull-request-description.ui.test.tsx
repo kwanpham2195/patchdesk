@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import { PullRequestDescriptionPreview } from "../../src/renderer/src/components/pull-request-description";
+import { PullRequestImageCacheProvider } from "../../src/renderer/src/hooks/use-pull-request-image";
 import { installDesktopDouble, success } from "./fake-desktop-response";
 
 const pullRequest = (() => {
@@ -59,13 +61,20 @@ function restoreDialogMethod(
   Object.defineProperty(HTMLDialogElement.prototype, method, descriptor);
 }
 
+/** The preview resolves body images through the hook, which needs the cache its provider owns. */
+function renderWithImageCache(ui: ReactNode): ReturnType<typeof render> {
+  return render(
+    <PullRequestImageCacheProvider>{ui}</PullRequestImageCacheProvider>,
+  );
+}
+
 describe("PullRequestDescription", () => {
   it("renders safe GitHub-flavored Markdown and opens every explicit HTTPS link", async () => {
     const user = userEvent.setup();
     const openExternalHttps = vi.fn(async () => true);
     desktop = installDesktopDouble({}, { openExternalHttps });
 
-    render(
+    renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
           "# Context\n\n**Keep this**. [Docs](/centraldigital/patchdesk/wiki)\n\n<script>window.bad = true</script>\n\n[javascript](javascript:alert(1))\n\n[Other](https://example.com/docs)"
@@ -95,7 +104,7 @@ describe("PullRequestDescription", () => {
     const openExternalHttps = vi.fn(async () => true);
     desktop = installDesktopDouble({}, { openExternalHttps });
 
-    const { container } = render(
+    const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
           '\u{1F4A1} <a href="/centraldigital/patchdesk/new/master?filename=x" class="Link--inTextBlock">Add a `code-review` agent skill</a> or configure MCP servers.'
@@ -117,7 +126,7 @@ describe("PullRequestDescription", () => {
   });
 
   it("renders list-item text and inline Markdown", () => {
-    render(
+    renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
           "- **Changed** the route-planning solver.\n- Preserved [deterministic tie-breaking](https://github.com/centraldigital/patchdesk)."
@@ -138,7 +147,7 @@ describe("PullRequestDescription", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
     try {
-      render(
+      renderWithImageCache(
         <PullRequestDescriptionPreview
           markdown={
             "[Same](https://github.com/centraldigital/patchdesk) and [Same](https://github.com/centraldigital/patchdesk)\n\n`dup` and `dup`"
@@ -162,7 +171,7 @@ describe("PullRequestDescription", () => {
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
-    render(
+    renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
           "<details open><summary>Context</summary><p>Details</p></details>\n\n![Architecture diagram](/centraldigital/patchdesk/raw/main/diagram.png)\n\n<script>window.bad = true</script>"
@@ -187,7 +196,7 @@ describe("PullRequestDescription", () => {
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
-    const { container } = render(
+    const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown="[![Quality Gate](/centraldigital/patchdesk/raw/main/badge.svg)](https://example.com/dashboard)"
         pullRequest={pullRequest}
@@ -206,7 +215,7 @@ describe("PullRequestDescription", () => {
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
-    const { container } = render(
+    const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
           '<a href="https://example.com/dashboard"><img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate"></a>'
@@ -227,7 +236,7 @@ describe("PullRequestDescription", () => {
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
-    const { container } = render(
+    const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
           '[<img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate">](https://example.com/dashboard)'
@@ -248,7 +257,7 @@ describe("PullRequestDescription", () => {
     desktop = installDesktopDouble({
       "/v1/reviews/markdown-image": () => success({ dataUri }),
     });
-    const { container } = render(
+    const { container } = renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={
           '<div><a href="https://example.com/dashboard"><span><img src="/centraldigital/patchdesk/raw/main/badge.svg" alt="Quality Gate"></span></a></div>'
@@ -264,7 +273,7 @@ describe("PullRequestDescription", () => {
   });
 
   it("keeps the placeholder for an image no profile can be fetched as", () => {
-    render(
+    renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown="![Architecture diagram](/centraldigital/patchdesk/raw/main/diagram.png)"
         pullRequest={pullRequest}
@@ -294,7 +303,7 @@ describe("PullRequestDescription", () => {
       value: () => 100,
     });
     try {
-      render(
+      renderWithImageCache(
         <PullRequestDescriptionPreview
           markdown={"```mermaid\ngraph TD\n  A[Start] --> B[Review]\n```"}
           pullRequest={pullRequest}
@@ -342,7 +351,7 @@ describe("PullRequestDescription", () => {
   });
 
   it("renders Mermaid fences as a diagram surface with readable source fallback", async () => {
-    render(
+    renderWithImageCache(
       <PullRequestDescriptionPreview
         markdown={"```mermaid\ngraph TD\n  A[Start] --> B[Review]\n```"}
         pullRequest={pullRequest}

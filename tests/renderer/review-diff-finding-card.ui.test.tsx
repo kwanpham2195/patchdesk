@@ -9,6 +9,7 @@ import {
   ReviewDiffView,
   type ReviewInlineAnnotation,
 } from "../../src/renderer/src/components/review-diff-view";
+import { PullRequestImageCacheProvider } from "../../src/renderer/src/hooks/use-pull-request-image";
 import { parseReviewDiff } from "../../src/renderer/src/review-diff-data";
 import { DEFAULT_REVIEW_VIEW_PREFERENCES } from "../../src/renderer/src/review-view-preferences";
 import { parseGitHubThreadId } from "../../src/domain/ids";
@@ -195,7 +196,8 @@ function renderAnnotationCard(
     bodyContext,
   );
   if (card === null) throw new Error("expected an inline annotation card");
-  render(card);
+  // Card bodies resolve images through the hook, which needs the cache its provider owns.
+  render(<PullRequestImageCacheProvider>{card}</PullRequestImageCacheProvider>);
 }
 
 describe("inline card body context", () => {

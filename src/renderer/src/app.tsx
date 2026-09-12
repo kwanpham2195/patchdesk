@@ -27,6 +27,7 @@ import {
 } from "./components/ui/alert-dialog";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { BusyProvider } from "./hooks/use-busy";
+import { PullRequestImageCacheProvider } from "./hooks/use-pull-request-image";
 import {
   useAppNavigation,
   type NavigationState,
@@ -98,7 +99,9 @@ export type AppProps = {
 export function App({ ...props }: AppProps): React.JSX.Element {
   return (
     <BusyProvider>
-      <AppContent {...props} />
+      <PullRequestImageCacheProvider>
+        <AppContent {...props} />
+      </PullRequestImageCacheProvider>
     </BusyProvider>
   );
 }
