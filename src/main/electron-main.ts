@@ -407,10 +407,10 @@ function registerDesktopEvents(): void {
   });
 
   app.on("second-instance", () => {
-    void focusOrRecreateWorkbench().catch(() => undefined);
+    focusOrRecreateWorkbenchLogged("second-instance");
   });
   app.on("activate", () => {
-    void focusOrRecreateWorkbench().catch(() => undefined);
+    focusOrRecreateWorkbenchLogged("activate");
   });
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
@@ -681,6 +681,21 @@ async function focusOrRecreateWorkbench(): Promise<void> {
   }
 }
 
+/** Records which trigger failed, so a dock click that opens nothing leaves a trace. */
+function focusOrRecreateWorkbenchLogged(
+  trigger: "second-instance" | "activate",
+): void {
+  void focusOrRecreateWorkbench().catch((cause: unknown) => {
+    logs.write({
+      process: "main",
+      level: "error",
+      topic: "desktop",
+      message: "Workbench could not be focused or recreated",
+      meta: { trigger, error: loggableMetaValue(cause) },
+    });
+  });
+}
+
 function focusWindow(window: BrowserWindow): void {
   if (window.isMinimized()) window.restore();
   window.show();
@@ -755,7 +770,15 @@ function terminateAfterServerStops(): void {
   stopping = true;
   void desktopLifecycle
     .stop()
-    .catch(() => undefined)
+    .catch((cause: unknown) => {
+      logs.write({
+        process: "main",
+        level: "error",
+        topic: "desktop",
+        message: "Desktop lifecycle did not stop cleanly",
+        meta: { error: loggableMetaValue(cause) },
+      });
+    })
     .finally(async () => {
       await logs.flush();
       app.exit();
