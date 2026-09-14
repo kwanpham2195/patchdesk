@@ -2,6 +2,8 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
+import { contextualMessage } from "../api-client";
+import { FINDING_ACTION_MESSAGES } from "../review-copy";
 import {
   renderAnalysisFixPrompt,
   type AnalysisFixPromptContext,
@@ -150,13 +152,10 @@ export function AnalysisReader({
     try {
       await action();
       return true;
-    } catch {
+    } catch (cause) {
       setFindingErrors((current) => {
         const next = new Map(current);
-        next.set(
-          findingId,
-          "The Finding action could not be saved. Try again.",
-        );
+        next.set(findingId, contextualMessage(cause, FINDING_ACTION_MESSAGES));
         return next;
       });
       return false;

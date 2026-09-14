@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed editing, deleting, or replying to a comment, and adding or dismissing a Finding, reporting the same sentence whatever went wrong. A failure now says what happened: GitHub rate-limiting you, GitHub blocking the write, or GitHub not confirming it. That last case used to say to try again, when the write may already have gone through, so repeating it could post a reply or apply an edit twice; it now tells you to check GitHub first. #167
+
 ## 0.0.8 - 2026-09-12
 
 - Added a column of the pull requests you have opened, beside the app frame and present on every screen. It lists the active workspace's visited pull requests, most recently opened first, with the one you are reading marked, and clicking a row resumes that pull request where you left it and moves it back to the top. Rows are grouped under Today, Yesterday, This week, and Earlier by when you opened them, each row saying how long ago that was, and one that has merged or closed says so with the date Patchdesk last saw that state. Every row is read from what Patchdesk already stored, so the column costs no GitHub call and works with the network off. A pull request appears once you have opened it — the Pull requests table is still where you find new work — and one you opened before this release shows its number and no age until the next time you open it, which fills in its title and how long ago you opened it. The column collapses from a button in the header and stays collapsed until you open it again. #119
