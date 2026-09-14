@@ -6,34 +6,34 @@ A consolidated record of defects raised by the product documents, the verificati
 
 Twenty-four entries. The eight from the first pass are fixed: one former high-severity work-loss risk and seven former medium-severity correctness, focus, or feedback risks, clustered in workspace setup, switching, and discovery. B-01, B-02, and B-07 have post-fix desktop evidence, and B-08's exact Reply-textarea live rerun remains outstanding.
 
-The UX pass adds sixteen open entries after deduplication: seven medium and nine low, none high. Five medium entries were confirmed live and by the independent review: the Workspace authentication banner, the Reviewers control on merged or closed Reviews, the unexplained disabled Generate on those Reviews, the Checks control, and the missing Review worktree. The largest cluster is merged or closed Reviews, whose read-only state is explained unevenly (B-10, B-11, B-19); the second is the Visited pull requests column's recovery from removed Review records (B-15, B-16). The review marked B-09 to B-12 fix now and B-13 and B-14 as named follow-ups; the rest wait for a decision. No GitHub issue has been filed for any entry.
+The UX pass adds sixteen open entries after deduplication: seven medium and nine low, none high. Five medium entries were confirmed live and by the independent review: the Workspace authentication banner, the Reviewers control on merged or closed Reviews, the unexplained disabled Generate on those Reviews, the Checks control, and the missing Review worktree. The largest cluster is merged or closed Reviews, whose read-only state is explained unevenly (B-10, B-11, B-19); the second is the Visited pull requests column's recovery from removed Review records (B-15, B-16). The review marked B-09 to B-12 fix now and B-13 and B-14 as named follow-ups; the rest wait for a decision. B-09 to B-12 are filed as [#185](https://github.com/kwanpham2195/patchdesk/issues/185) to [#188](https://github.com/kwanpham2195/patchdesk/issues/188); the other entries are not filed.
 
-| ID   | Title                                                                                      | Severity | Area                               | Resolution or decision          | Issue |
-| ---- | ------------------------------------------------------------------------------------------ | -------- | ---------------------------------- | ------------------------------- | ----- |
-| B-01 | New profile replaces a Dirty draft without a choice                                        | high     | Settings / Workspace               | fixed (`31284f3`)               | —     |
-| B-09 | Workspace settings reports GitHub authentication required while the active account works | medium   | Settings / Workspace               | fix (fix now)                   | —     |
-| B-10 | The Reviewers control never loads on a merged or closed Review                            | medium   | Review workbench / Conversation    | fix (fix now)                   | —     |
-| B-11 | Generate and Regenerate are disabled on a merged or closed Review with no reason          | medium   | Review workbench / Insights        | fix (fix now)                   | —     |
-| B-12 | The Checks control opens PR overview on Merge readiness                                   | medium   | Review workbench / Merge           | fix (fix now)                   | —     |
-| B-13 | Context and Preview stay unavailable when the Review worktree is missing                  | medium   | Review workbench / Diff            | fix (named follow-up)           | —     |
-| B-15 | A failed load from a Visited row leaves the destination on the missing Review             | medium   | Visited pull requests column       | fix                             | —     |
-| B-17 | The inline composer shortcut starts a review while its hint says comment                  | medium   | Review workbench / Inline comments | fix                             | —     |
-| B-02 | Scalar profile validation falls through to a generic request error                        | medium   | Settings / Workspace               | fixed (`8dce9e7`)               | —     |
-| B-03 | Open Review recommendation preempts ready-to-merge action                                 | medium   | Pull requests                      | fixed (`b66a0a9`), superseded   | —     |
-| B-04 | Stale Review-opening error remains on the first-run screen                                | medium   | First run / Pull requests          | fixed (`8d372ab`)               | —     |
-| B-05 | Repository grouping treats a path prefix as containment                                   | medium   | Settings / Workspace discovery     | fixed (`c59d249`)               | —     |
-| B-06 | A failed root scan is omitted from an otherwise successful discovery result               | medium   | Workspace discovery                | fixed (`c49045d`)               | —     |
-| B-07 | Profile switch can leave the Repository picker unset after rows reload                    | medium   | Pull requests / Workspace          | fixed (`c1ce7a2`)               | —     |
-| B-08 | Navigate shortcut opens from a focused Review reply editor                                | medium   | Review workbench / Keyboard        | fixed (`75fadec`)               | —     |
-| B-14 | A re-render can cancel heading focus after a destination change                           | low      | Navigation / Focus                 | fix (named follow-up)           | —     |
-| B-16 | The Visited pull requests column keeps rows for removed Reviews                           | low      | Visited pull requests column       | fix                             | —     |
-| B-18 | A Markdown-syntax image never opens the full-size view                                    | low      | Review workbench / Conversation    | fix                             | —     |
-| B-19 | Try again and related run controls stay enabled on a merged or closed Review              | low      | Review workbench / Insights        | fix                             | —     |
-| B-20 | Some Pull requests filters are not measured against the search length limit              | low      | Pull requests / Filters            | fix                             | —     |
-| B-21 | Dismissed Findings still add to Finding badges                                            | low      | Review workbench / Diff            | fix                             | —     |
-| B-22 | Small copy and rendering slips                                                             | low      | Insights / Settings                | fix                             | —     |
-| B-23 | Walkthrough section keys ignore modifier keys                                              | low      | Review workbench / Walkthrough     | fix                             | —     |
-| B-24 | Repository-marked generated files do not reach the Scope gauge                            | low      | Review workbench / Insights        | product call                    | —     |
+| ID   | Title                                                                                      | Severity | Area                               | Resolution or decision          | Issue                                                        |
+| ---- | ------------------------------------------------------------------------------------------ | -------- | ---------------------------------- | ------------------------------- | ------------------------------------------------------------ |
+| B-01 | New profile replaces a Dirty draft without a choice                                        | high     | Settings / Workspace               | fixed (`31284f3`)               | —                                                            |
+| B-09 | Workspace settings reports GitHub authentication required while the active account works | medium   | Settings / Workspace               | fix (fix now)                   | [#185](https://github.com/kwanpham2195/patchdesk/issues/185) |
+| B-10 | The Reviewers control never loads on a merged or closed Review                            | medium   | Review workbench / Conversation    | fix (fix now)                   | [#186](https://github.com/kwanpham2195/patchdesk/issues/186) |
+| B-11 | Generate and Regenerate are disabled on a merged or closed Review with no reason          | medium   | Review workbench / Insights        | fix (fix now)                   | [#187](https://github.com/kwanpham2195/patchdesk/issues/187) |
+| B-12 | The Checks control opens PR overview on Merge readiness                                   | medium   | Review workbench / Merge           | fix (fix now)                   | [#188](https://github.com/kwanpham2195/patchdesk/issues/188) |
+| B-13 | Context and Preview stay unavailable when the Review worktree is missing                  | medium   | Review workbench / Diff            | fix (named follow-up)           | —                                                            |
+| B-15 | A failed load from a Visited row leaves the destination on the missing Review             | medium   | Visited pull requests column       | fix                             | —                                                            |
+| B-17 | The inline composer shortcut starts a review while its hint says comment                  | medium   | Review workbench / Inline comments | fix                             | —                                                            |
+| B-02 | Scalar profile validation falls through to a generic request error                        | medium   | Settings / Workspace               | fixed (`8dce9e7`)               | —                                                            |
+| B-03 | Open Review recommendation preempts ready-to-merge action                                 | medium   | Pull requests                      | fixed (`b66a0a9`), superseded   | —                                                            |
+| B-04 | Stale Review-opening error remains on the first-run screen                                | medium   | First run / Pull requests          | fixed (`8d372ab`)               | —                                                            |
+| B-05 | Repository grouping treats a path prefix as containment                                   | medium   | Settings / Workspace discovery     | fixed (`c59d249`)               | —                                                            |
+| B-06 | A failed root scan is omitted from an otherwise successful discovery result               | medium   | Workspace discovery                | fixed (`c49045d`)               | —                                                            |
+| B-07 | Profile switch can leave the Repository picker unset after rows reload                    | medium   | Pull requests / Workspace          | fixed (`c1ce7a2`)               | —                                                            |
+| B-08 | Navigate shortcut opens from a focused Review reply editor                                | medium   | Review workbench / Keyboard        | fixed (`75fadec`)               | —                                                            |
+| B-14 | A re-render can cancel heading focus after a destination change                           | low      | Navigation / Focus                 | fix (named follow-up)           | —                                                            |
+| B-16 | The Visited pull requests column keeps rows for removed Reviews                           | low      | Visited pull requests column       | fix                             | —                                                            |
+| B-18 | A Markdown-syntax image never opens the full-size view                                    | low      | Review workbench / Conversation    | fix                             | —                                                            |
+| B-19 | Try again and related run controls stay enabled on a merged or closed Review              | low      | Review workbench / Insights        | fix                             | —                                                            |
+| B-20 | Some Pull requests filters are not measured against the search length limit              | low      | Pull requests / Filters            | fix                             | —                                                            |
+| B-21 | Dismissed Findings still add to Finding badges                                            | low      | Review workbench / Diff            | fix                             | —                                                            |
+| B-22 | Small copy and rendering slips                                                             | low      | Insights / Settings                | fix                             | —                                                            |
+| B-23 | Walkthrough section keys ignore modifier keys                                              | low      | Review workbench / Walkthrough     | fix                             | —                                                            |
+| B-24 | Repository-marked generated files do not reach the Scope gauge                            | low      | Review workbench / Insights        | product call                    | —                                                            |
 
 ## High
 
@@ -145,7 +145,7 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 - **Decision needed:** `fix`, fix now per the independent review. Treat a non-empty account list as ready in the route or the view, and extend `tests/renderer/reviewing-as-panel.test.tsx`.
 - **Raised by:** [Workspace settings](settings/workspace-profile-editor.md#open-questions-and-verification), [Workspace profile and identity](foundations/workspace-profile-and-identity.md#interactions-with-other-systems).
 - **Status:** confirmed 2026-09-14 on `5fe7df3b`. The settings live pass saw the alert while GitHub data loaded normally; the review read `GET /v1/environment` returning `githubAuth: "authentication_required"` together with the two working accounts, and a third account with an invalid token.
-- **Issue:** —
+- **Issue:** [#185](https://github.com/kwanpham2195/patchdesk/issues/185)
 
 ### B-10: The Reviewers control never loads on a merged or closed Review
 
@@ -157,7 +157,7 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 - **Decision needed:** `fix`, fix now per the independent review. Render a read-only state for terminal Reviews and add a rail test.
 - **Raised by:** [Conversation and pull request metadata](review-workbench/conversation-and-metadata.md#open-questions-and-verification).
 - **Status:** confirmed 2026-09-14 on `5fe7df3b` on #96, #109, #91, and #86 by the workbench live pass; the review confirmed #96 (merged) and read logs showing the reviewers endpoint answering in about 1.2 seconds for open #113 and #125.
-- **Issue:** —
+- **Issue:** [#186](https://github.com/kwanpham2195/patchdesk/issues/186)
 
 ### B-11: Generate and Regenerate are disabled on a merged or closed Review with no reason
 
@@ -169,7 +169,7 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 - **Decision needed:** `fix`, fix now per the independent review. Add a terminal branch to the empty-state copy; the page Variants rows already state the rule.
 - **Raised by:** [Brief](review-workbench/brief.md#open-questions-and-verification), [Analysis](review-workbench/analysis.md#open-questions-and-verification), [Walkthrough](review-workbench/walkthrough.md#open-questions-and-verification).
 - **Status:** confirmed 2026-09-14 on `5fe7df3b` on merged #96 and #91 against open #113 by the Insights live pass, and by the review from source.
-- **Issue:** —
+- **Issue:** [#187](https://github.com/kwanpham2195/patchdesk/issues/187)
 
 ### B-12: The Checks control opens PR overview on Merge readiness
 
@@ -181,7 +181,7 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 - **Decision needed:** `fix`, fix now per the independent review. Add a `checks` focus section with its own trigger ref and default-open, call it from the header, and mirror the Merge test.
 - **Raised by:** [Merge](review-workbench/merge.md#open-questions-and-verification), [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#variants).
 - **Status:** confirmed 2026-09-14 on `5fe7df3b` on #113 by the workbench live pass, and by the review's accessibility snapshot of the drawer.
-- **Issue:** —
+- **Issue:** [#188](https://github.com/kwanpham2195/patchdesk/issues/188)
 
 ### B-13: Context and Preview stay unavailable when the Review worktree is missing
 
@@ -338,4 +338,4 @@ From the 2026-09-14 UX pass:
 - The stale comment at `src/renderer/src/components/finish-review-dialog.tsx:44`, which says Discard is not offered while the dialog offers Discard review, has no user-visible effect.
 - The blank Visited pull requests column on a fresh install, before the first workspace exists, is unobserved and stays an open question in [Visited pull requests](foundations/visited-pull-requests.md#open-questions-and-verification).
 
-No GitHub issue or external tracker entry has been created for any entry. The first pass's source snapshot is `3100615`; the UX pass's is `dd613996`.
+B-09 to B-12 are filed as GitHub issues #185 to #188; no issue or external tracker entry has been created for any other entry. The first pass's source snapshot is `3100615`; the UX pass's is `dd613996`.
