@@ -6,7 +6,7 @@ Complete every document in the README structure, run the consistency pass, build
 
 ## Source of truth
 
-Patchdesk is checked out at `/Users/kwanpham/Work/patchdesk`. Describe the default macOS desktop app from `src/renderer/src/app.tsx`, with no fixture route active. Application behavior is pinned to committed source `3100615`; uncommitted application-source changes are not evidence for this pass. Fixture routes, release packaging, unsupported platforms, assistive-technology behavior, and exact model-generated wording are out of scope.
+Patchdesk is checked out at `/Users/kwanpham/Work/personal/patchdesk`. Describe the default macOS desktop app from `src/renderer/src/app.tsx`, with no fixture route active. Application behavior is pinned to committed source `dd613996`, the pin of the 2026-09-14 UX pass; documents that pass did not revise keep the pin in their footer. Uncommitted application-source changes are not evidence. Fixture routes, release packaging, unsupported platforms, assistive-technology behavior, and exact model-generated wording are out of scope.
 
 For each document, read in this order:
 
@@ -16,7 +16,7 @@ For each document, read in this order:
 4. Product language in `CONTEXT.md`, visible copy in the renderer, and the relevant public overview in `README.md`.
 5. Defaults and limits in domain constants, renderer preference modules, service options, and route parsers.
 
-Use a command such as `git show 3100615:src/main/electron-main.ts` instead of the working-tree file when a source path has uncommitted changes. Do not describe those uncommitted changes.
+Use a command such as `git show dd613996:src/main/electron-main.ts` instead of the working-tree file when a source path has uncommitted changes. Do not describe those uncommitted changes.
 
 Do not describe code. Describe what the maintainer sees and does. Technical detail belongs only in `> Technical note:` block quotes, and only when the mechanism changes what the maintainer would expect.
 
@@ -88,6 +88,11 @@ Do not describe code. Describe what the maintainer sees and does. Technical deta
 - Analysis Finding actions are row-local and cumulative. Exact run, Finding, session, head, patch, and pending-review identities are required before a Finding becomes pending review or published.
 - Finish review uses GitHub's authoritative pending review. Its summary and decision are modal-local, submission is admitted once, Discard requires separate confirmation, and malformed or unknown results require recovery.
 - Merge authority is bound to exact head, base, patch, refresh revision, readiness, and acknowledged warnings. A typed receipt commits terminal state before refresh; every other uncertain outcome is non-retryable until read-side recovery.
+- The Visited pull requests column lists up to 20 pull requests opened in the active workspace, most recently opened first, from local Review records with no GitHub request. It re-reads only on a workspace switch, on any Review open, and when it is expanded; cleanup and the retention sweep do not make it re-read. Its collapse choice is one per-machine setting shared by every workspace. `foundations/visited-pull-requests.md` owns it.
+- A launch that restores a Review whose record no longer exists returns quietly to Pull requests and saves that destination. A Review opened during the session that fails to load shows `Could not open review` and leaves the destination on that Review.
+- The retention sweep removes a terminal Review's record together with its session, unless the Review still holds an unreconciled GitHub write operation.
+- The file display mode defaults to All files and is saved per profile. File, hunk, and unresolved-comment keyboard commands work only in All files.
+- The Checks and Merge status controls both open PR overview; only Merge moves focus, to Merge readiness. Insights opens on Brief. Generating or regenerating an Insight requires an open Review.
 
 ## State ownership in the Review workbench
 
@@ -120,7 +125,7 @@ Update the README coverage table to `drafted` as documents land. Never mark a do
 - If source and tests do not determine a behavior, write what they do determine, record the rest under Open questions and verification, and move on.
 - The pilot target is roughly 150 to 200 lines. Hard Review-workbench documents can be longer. Completeness matters more than length.
 - If the planned structure is wrong, update README.md structure and coverage before creating, removing, splitting, or merging a document.
-- Run `python3 /Users/kwanpham/.agents/skills/product-description/references/check-links.py /Users/kwanpham/Work/patchdesk/docs/product-description` during the consistency pass.
+- Run `python3 /Users/kwanpham/.claude/skills/product-description/references/check-links.py /Users/kwanpham/Work/personal/patchdesk/docs/product-description` during the consistency pass.
 - Run live verification only with the required Patchdesk dev and log panes observable. Insight runs cost provider usage; use the configured low-cost Codex CLI account model and do not run them merely to test fixed UI structure.
 
 The documentation set is complete when no coverage row says `not started`, the consistency pass passes, the checklists and triage exist, live results are reported without overclaiming, and all product-description changes are committed.
