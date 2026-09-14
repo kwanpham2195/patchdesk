@@ -19,7 +19,7 @@ stateDiagram-v2
     [*] --> pullRequests : launch or navigate home
     pullRequests --> workbench : open Review
     workbench --> pullRequests : Back or Navigate
-    workbench --> workbench : open another Review from the Visited column
+    workbench --> workbench : open another Review from the Visited pull requests column
     pullRequests --> settings : open Settings
     workbench --> settings : open Settings
     settings --> pullRequests : close over Pull requests

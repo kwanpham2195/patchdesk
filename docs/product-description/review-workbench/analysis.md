@@ -59,7 +59,7 @@ Add to review sends the Finding's original suggested comment together with its A
 
 Finish review in the verdict card opens Finish review with an Analysis-built summary. It prefills only the modal-local review summary and leaves Comment selected; it does not silently submit or change pending comments.
 
-A Diff card's Open in Analysis link opens Insights on the Analysis reader, opens Lower severity when the target is a P2 or P3 Finding, and scrolls to and focuses that Finding's row.
+A Finding card's Open in Analysis opens Insights on the Analysis reader, opens Lower severity when the target is a P2 or P3 Finding, and scrolls to and focuses that Finding's row.
 
 ### While the action runs
 
@@ -121,7 +121,7 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 - An empty Analysis uses the same centered structure as empty Brief and Walkthrough readers.
 - A Finding outside the represented diff has no Add to review action and no Diff link.
 - Lower severity appears only when the Analysis has both P0 or P1 and P2 or P3 Findings.
-- Opening a P2 or P3 Finding from a Diff card opens Lower severity even when the maintainer had closed it.
+- Opening a P2 or P3 Finding from a Finding card opens Lower severity even when the maintainer had closed it.
 - The needs-attention count uses the same handled rule as merge readiness, so the verdict card, the Overview card, and the readiness card agree.
 - Verification ticks reset when the maintainer leaves the Analysis reader, with no warning.
 - Two concurrent adds that settle in reverse order preserve both confirmed Findings.

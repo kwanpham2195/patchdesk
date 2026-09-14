@@ -31,7 +31,7 @@ stateDiagram-v2
 
 Conversation is the default outer tab: a Review with no saved position opens there, and Diff is one click away. A Review that carries a saved position reopens on the tab it was left on. Insights follows the same rule and the same reading order: its sub-nav reads Overview, Brief, Walkthrough, Analysis, and with no saved Insight it lands on Brief, showing Brief's Generate control when none has been generated. The header names the pull request and represented revision, shows Checks and Merge status controls, and offers Refresh GitHub state. The left navigator has three tabs: Browse, Commits, and Threads. The Commits and Threads tab labels each show a count, including zero. The main pane shows the full patch unless a commit is selected.
 
-When the Review has a current Analysis for the represented session and head, each file that one or more mapped Findings cite shows a count badge on its Browse row and in its diff file header. The badge takes the tone of the most severe Finding among them: destructive for P0 and P1, warning for P2, muted for P3. Its accessible name reads, for example, "2 findings, highest P1". Each mapped Finding also appears as a card at its line in the diff, with its severity, title, and explanation.
+When the Review has a current Analysis for the represented session and head, each file that one or more mapped Findings cite shows a Finding badge on its Browse row and in its diff file header. The badge takes the tone of the most severe Finding among them: destructive for P0 and P1, warning for P2, muted for P3. Its accessible name reads, for example, "2 findings, highest P1". Each mapped Finding also appears as a card at its line in the diff, with its severity, title, and explanation.
 
 The first resolvable file becomes active when no saved active file is valid. Restored position can select an outer tab, navigator section, commit, file, and scroll target only when those values still exist in the current projection.
 
@@ -80,7 +80,7 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 | Workspace profile and GitHub account                   | Paths and local checkout roots belong to the active profile's prepared Review session. The file display mode and View options are the active profile's saved choices.                                              | A profile change leaves the Review; late hydration for the old session cannot become the new screen.                               |
 | Pull request and Review state                          | Open, closed, and merged Reviews can be read. A metadata-only Review explains that local expansion and commit inspection are unavailable. A conflicting open pull request shows a Merge conflicts notice above the diff. | Revision change marks the represented Review as having updates; it does not rewrite the patch underneath the maintainer.           |
 | GitHub permissions and merge readiness                 | Diff reading does not require write permission. The Checks and Merge status controls both open PR overview in the same state; [Merge](merge.md#arrive) owns it.                                                    | Read failures do not change merge authority. A terminal transition can update the header after refresh.                            |
-| Network, local tool, and Insight provider availability | Saved patch data can render without an Insight provider. Local `git` and checkout preparation enable local expansion and commit inspection. Finding badges and cards appear only while the Analysis is current.     | Hydration, commit load, or syntax-highlighting failure falls back or shows a local error without corrupting the represented patch. |
+| Network, local tool, and Insight provider availability | Saved patch data can render without an Insight provider. Local `git` and checkout preparation enable local expansion and commit inspection. Finding badges and Finding cards appear only while the Analysis is current.     | Hydration, commit load, or syntax-highlighting failure falls back or shows a local error without corrupting the represented patch. |
 | Input path: mouse, keyboard, or desktop menu           | Files, commits, tabs, toolbar buttons, and preferences support mouse and keyboard. Plain unmodified shortcuts move through files, hunks, or unresolved comments while All files is chosen.                          | Shortcuts are ignored in text controls, dialogs, with modifiers, or during IME composition.                                        |
 
 ## Cancel and interrupt
@@ -99,7 +99,7 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 
 **Workspace profile and identity.** The prepared session and local checkout are profile-scoped, and so are the saved file display mode and View options. Diff reading itself is not viewer-specific.
 
-**Review revision and freshness.** Every hydrated file and Insight annotation is tied to the represented patch generation. Finding badges and cards come only from an Analysis that is current for the represented session and head. Detecting updates never mutates the currently represented revision in place.
+**Review revision and freshness.** Every hydrated file and Insight annotation is tied to the represented patch generation. Finding badges and Finding cards come only from an Analysis that is current for the represented session and head. Detecting updates never mutates the currently represented revision in place.
 
 **Local persistence and recovery.** Review position, file display mode, and diff preferences are saved. Prepared patches, indexes, and worktrees are local Review data managed separately from UI preferences.
 
@@ -125,7 +125,7 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 - The notice's instruction to push the head branch is an action outside Patchdesk, which has no push control.
 - Preview renders complete verified head text, not the changed hunk alone and not the base version.
 - Each eligible Markdown file owns its mode independently; switching one does not switch another.
-- A Finding with no mapped file and line adds no badge and no card. An Analysis that is outdated, failed, or not generated shows no badges.
+- A Finding with no mapped file and line adds no Finding badge and no Finding card. An Analysis that is outdated, failed, or not generated shows no Finding badges.
 - The Scope picker's All files entry clears the bucket filter; the toolbar's All files button chooses the file display mode. They are separate controls.
 
 - A Scope filter never hides a commit or a Conversation thread; only Browse and the diff pane narrow.
@@ -152,7 +152,7 @@ Keyboard movement shows one visible latest-status message for the resolved file,
 - Confirmed live and by an independent review: with Selected chosen, `]` did nothing and showed no message; with All files chosen it showed "Already at the last hunk." The gating is intended and test-covered. The live pass saw Selected on a freshly opened Review only because that machine's Personal profile had stored Selected; the default is All files. A hint in Selected, or file movement there, is a named follow-up in [UX friction](../ux-friction.md#ux-02-keyboard-navigation-does-nothing-in-selected-with-no-hint).
 - Suspected defect, confirmed live and by an independent review: in the live workspace, Context read Context unavailable with the `github_read` reason on every Review checked and no Markdown file offered Preview, because the Personal profile's represented-review worktrees were missing from disk. Nothing rebuilds a missing worktree, and the reason names a GitHub read rather than the missing local checkout. See [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).
 - Not checked live: Finding badges, Finding cards, Open in Analysis, and the arrival from Analysis, because no Review in the workspace had a current Analysis.
-- Suspected defect: Finding badges and cards count every mapped Finding of the current Analysis. The renderer does not exclude a dismissed Finding, so a dismissed Finding may still add to a file's count and keep its card. Confirm against a Review with a dismissed mapped Finding.
+- Suspected defect: Finding badges and Finding cards count every mapped Finding of the current Analysis. The renderer does not exclude a dismissed Finding, so a dismissed Finding may still add to a file's count and keep its card. Confirm against a Review with a dismissed mapped Finding.
 - Not checked live: the absence of the Merge conflicts notice when a merge is blocked for another reason. The workspace had no such pull request; the claim rests on source.
 - Confirm virtualized scroll settlement, focus, sticky headers, and the timing of the plain-text fallback.
 - Confirm the exact desktop presentation and focus for an unresolved-thread target that materializes through the virtualized portal.
