@@ -48,7 +48,7 @@ The row's indicators remain read-only facts from the settled listing. A cached l
 
 ### Settle
 
-A successful opening enters the keyed Review workbench. A failure leaves the row selected, clears its busy state, and shows `Could not open review` with the local reason. A saved-review load failure can fall back to opening by the row's Pull request identity, which heals a missing or obsolete local record.
+A successful opening enters the keyed Review workbench. A failure leaves the row selected, clears its busy state, and shows `Could not open review` with the local reason. [Opening a Review](opening-a-review.md#settle) owns the other outcomes, including the quiet launch restore. A saved-review load failure can fall back to opening by the row's Pull request identity, which heals a missing or obsolete local record.
 
 Merged rows remain readable through the terminal-only route. They do not enter active-work categories, and the listing does not turn them into merge or Review-write targets.
 
@@ -84,7 +84,7 @@ After a row-open failure, the row remains inspectable and can be activated again
 
 **Review revision and freshness.** Row freshness is a listing fact. The Review workbench owns represented revisions and refresh transitions.
 
-**Local persistence and recovery.** Selected row and inspector state are local preferences. Review sessions and preparation artifacts are durable only after the opening workflow commits them.
+**Local persistence and recovery.** Selected row and inspector state are local preferences. Review sessions and preparation artifacts are durable only after the opening workflow commits them. A row opened successfully appears at the top of the [Visited pull requests column](../foundations/visited-pull-requests.md), which reopens that Review without its listing row.
 
 **GitHub permissions and write authority.** Listing rows are read-only. Checks and mergeability inform indicators but never authorize a write.
 
@@ -117,10 +117,10 @@ After a row-open failure, the row remains inspectable and can be activated again
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- Live pass on 2026-09-14 confirmed the inspector's Insights line, its Request Brief, Request Analysis, and Request Walkthrough buttons, and the Scope gauge with bucket counts. No Request button was pressed. Evidence: `/tmp/pd-ux/shots/pull-requests/06-pull-requests-screen.png`.
 - Confirm row selection, inspector focus, and Arrow key wrapping in a real window.
 - Confirm the exact visible behavior when a selected row disappears during refresh.
 - Confirm which cached listing actions remain available in the running workbench.
 - Confirm the title hover affordance, double-click, and Enter each open exactly once in a real window.
 
-Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`; scoped select-then-open row and single Open action behavior updated through `838a47e`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`.

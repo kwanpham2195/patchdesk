@@ -50,6 +50,8 @@ When a confirmed failure arrives, the screen keeps the prior safe projection and
 
 A validated success replaces or patches the screen. A confirmed failure becomes retryable, terminal, or read-only according to the feature. An unavailable read remains a named unavailable state; it is not silently converted into an empty result.
 
+One confirmed failure is deliberately silent. When the destination restored at launch names a Review whose saved record is gone, Patchdesk returns to the Pull requests screen with no notice, because a record removed by retention is an ordinary launch. [Opening a Review](../pull-requests/opening-a-review.md#settle) owns that behavior.
+
 An outcome-unknown write settles only after explicit reconciliation proves the remote effect or proves that a new safe action is possible. [Persistence and recovery](../foundations/persistence-and-recovery.md) owns restart journals and durable locks; feature documents own the visible recovery control.
 
 ## Variants
@@ -104,13 +106,16 @@ An outcome-unknown write settles only after explicit reconciliation proves the r
 - A confirmed GitHub rejection may be retried when the feature says it is safe; an outcome-unknown write must not be retried automatically.
 - An invalid stored session is quarantined instead of becoming a renderer error with guessed content.
 - Recovery can require manual GitHub inspection when no exact receipt or projection proves the result.
+- A value refused before any request names its reason beside its own control. On the Pull requests screen an Author reads `No spaces or quotes` or `Too long alongside the other filters`, and a full label menu disables the labels that no longer fit; see [the search length limit](../pull-requests/filters-pagination-and-refresh.md#the-search-length-limit).
+- The Review opened notice clears itself after six seconds, while the `Could not open review` notice stays until dismissed or replaced by the next opening attempt.
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- Live pass on 2026-09-14 confirmed one prerequisite refusal: an Author of `bad name` showed `No spaces or quotes` under the field, kept the value, and changed nothing in the listing. The absence of a request was inferred from the screen; no network panel was open.
+- The quiet launch restore and `Too long alongside the other filters` were not live-checked.
 - Confirm the exact error copy and next action for each repository, Review, Settings, Insight, and write failure surface.
 - Confirm which error banners survive a renderer reload and which are intentionally renderer-only.
 - Confirm focus placement after Retry, Reload, Check GitHub again, and recovery-required states.
 - Confirm the visible distinction between an unavailable read and an empty successful result in every screen that has both.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`.

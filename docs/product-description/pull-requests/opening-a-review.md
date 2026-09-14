@@ -2,11 +2,11 @@
 
 ## Summary
 
-Opening a Review turns one Pull requests row into a readable Review workbench. The maintainer can start a new Review, load a saved Review session, or view a merged pull request. Patchdesk reads and prepares an immutable represented revision, local context, checks, comments, and diff before changing screens. Opening is read-only and performs no GitHub write.
+Opening a Review turns one Pull requests row, a palette reference, or a row in the [Visited pull requests column](../foundations/visited-pull-requests.md) into a readable Review workbench. The maintainer can start a new Review, load a saved Review session, or view a merged pull request. Patchdesk reads and prepares an immutable represented revision, local context, checks, comments, and diff before changing screens. Opening is read-only and performs no GitHub write.
 
 ## The simple case
 
-The maintainer opens a row from its title, a double-click on the row, Enter on the focused row, the inspector's Open button, or the command palette. A pull request can also be opened without finding its row by entering its GitHub URL or compact reference in the global command palette from Pull requests or a Review workbench. A single row click only selects. Patchdesk shows Opening… and a shared Opening Review… busy indicator. It reads the pull request and prepares or resumes the Review session for the exact revision.
+The maintainer opens a row from its title, a double-click on the row, Enter on the focused row, the inspector's Open button, or the command palette. A pull request can also be opened without finding its row by entering its GitHub URL or compact reference in the global command palette from Pull requests or a Review workbench. A single row click only selects. A pull request the maintainer has opened before can also be reopened from the Visited pull requests column on either destination. Patchdesk shows Opening… and a shared Opening Review… busy indicator. It reads the pull request and prepares or resumes the Review session for the exact revision.
 
 When preparation succeeds, the app navigates to the keyed Review workbench. The workbench receives the pull-request context, represented revision, diff, checks, comments, and any retained Insights. If a saved Review cannot be loaded, Patchdesk retries by Pull request identity so a missing local record can be healed.
 
@@ -27,6 +27,10 @@ stateDiagram-v2
 The row supplies profile, host, owner, repository, and pull-request number, and one Open action serves every row state. An unreviewed row opens as a new Review. A row with a saved Review loads that saved Review ID first. A merged row uses the terminal-only opening path. The app retains the row identity while the request runs.
 
 A recognized palette reference supplies the same identity without a row. Patchdesk accepts a plain GitHub pull-request URL, ignores path, query, or fragment content after its number, and also accepts `owner/repository#number` against the active GitHub host. It checks that identity against the active profile's watched repositories before anything is opened. An accepted command opens as a new Review under the same operation owner the row uses, so a pull request already opening is not opened a second time.
+
+A Visited pull requests row supplies only the saved Review ID. Activating it changes the destination to that Review workbench at once and loads the saved Review from local data; it does not read GitHub or prepare a session. The Review workbench already on screen is released immediately, so the Pull requests screen, or its loading skeleton, shows beneath the titlebar until the saved Review loads. No listing row is involved, so no row says Opening…; the shared busy indicator says Loading review….
+
+At launch, the saved destination can name a Review workbench. Patchdesk loads that saved Review the same way.
 
 ### Leave unchanged
 
@@ -50,6 +54,10 @@ The row and inspector show Opening… only for that row. Other rows can be opene
 
 A successful preparation commits the Review session and enters its Review workbench. A saved session reports resumed behavior to the workbench; a new session has the freshly prepared represented revision. The Pull requests screen records a Review opened notice when it remains mounted: one centered, width-bounded card above the listing, with a check icon and a Dismiss button. It clears itself six seconds after it appears, or at once when you dismiss it, so returning from the workbench never shows a stale confirmation.
 
+A saved Review opened from the Visited pull requests column enters its workbench when the load succeeds. A failure shows the same `Could not open review` card with `Could not open the saved review.` and the reason. There is no fallback by Pull request identity on this path, because the column holds no row identity.
+
+When the destination restored at launch names a Review whose saved record is gone, for example because retention removed it, Patchdesk returns quietly to the Pull requests screen and shows no notice. The saved destination is rewritten, so the next launch starts on Pull requests. Any other failure of that restore, and the same missing record for a Review opened during the session, shows the `Could not open review` card.
+
 A failed opening clears the row's busy state and shows `Could not open review` with the preparation reason, in the same centered card with an alert icon. That notice does not clear itself: it stays until you dismiss it or the next opening attempt replaces it. Loading a saved Review can fall back to `/v1/reviews/open` by row identity. If both load and fallback fail, the row remains in the listing and no workbench is opened. An invalid workbench projection is treated as failure rather than navigating to an unvalidated screen.
 
 ## Variants
@@ -60,7 +68,7 @@ A failed opening clears the row's busy state and shows `Could not open review` w
 | Pull request and Review state | Unreviewed, saved-review, updated-review, and merged rows choose different opening routes. | New preparation pins one exact revision. Merged opening requires the pull request to remain non-open through final checks. |
 | GitHub permissions and merge readiness | Opening is read-only and does not require merge readiness. | GitHub authentication, read, or permission failures stop preparation; no write is attempted. |
 | Network, local tool, and Insight provider availability | A local checkout enables worktree mode; otherwise a snapshot mode may be used. Insights are retained if available but are not required to open. | GitHub reads, local Git preparation, storage, and context generation can fail independently; the opening settles with a named failure. |
-| Input path: mouse, keyboard, or desktop menu | The row title, a double-click, Enter, the inspector's Open button, and the global command palette use the same operation owner; a single row click only selects. The Pull requests screen does not intercept document paste. | The row-local busy state and its feedback apply across entry points, including for a palette reference that a listed row also names. |
+| Input path: mouse, keyboard, or desktop menu | The row title, a double-click, Enter, the inspector's Open button, and the global command palette use the same operation owner; a single row click only selects. A Visited pull requests row opens on one click, Enter, or Space. The Pull requests screen does not intercept document paste. | The row-local busy state and its feedback apply across listing and palette entry points, including for a palette reference that a listed row also names. A Visited row has no busy state of its own. |
 
 The chosen opening route is fixed at admission. A remote change discovered during preparation does not silently switch a normal opening into a merged opening or adopt a different head.
 
@@ -69,8 +77,8 @@ The chosen opening route is fixed at admission. A remote change discovered durin
 | Event | Before the action runs | While the action runs |
 | --- | --- | --- |
 | Cancel, Stop, or Escape | Escape or leaving the row unactivated makes no change. | No row Stop control is provided. Preparation must settle or fail safely; its journal handles interruption. |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Clean navigation can leave the listing. | Navigation and profile-switch guards apply; an inactive or superseded opening cannot navigate to a workbench. |
-| Start another action or request a refresh | Another row can be selected without opening the first. | Different rows can prepare concurrently. The same row and saved Review key admit only one pending opening. Refresh can replace the listing while preparation continues. |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Clean navigation can leave the listing. A Visited pull requests row requests its Review workbench through the same guard, so a pending GitHub write in the current workbench blocks it. | Navigation and profile-switch guards apply; an inactive or superseded opening cannot navigate to a workbench. Choosing a second Visited row while the first loads makes the second Review the destination, and the first load can no longer land. |
+| Start another action or request a refresh | Another row can be selected without opening the first. | Different rows can prepare concurrently. The same row and saved Review key admit only one pending opening; a second request for a saved Review already loading joins the first. Refresh can replace the listing while preparation continues. |
 | GitHub, the network, a local tool, or an Insight provider fails or times out | No preparation starts until the action is accepted. | The operation reports a read, authentication, storage, worktree, or revision failure. A later explicit activation can retry a confirmed failure. |
 | Close Settings, reload the renderer, close the window, or quit Patchdesk | No durable work exists before activation. | The preparation journal protects partial files and worktrees; the renderer does not promise to keep its Opening… label after reload. |
 | The pull request, represented revision, pending review, permission, or other target changes elsewhere | The row's revision is only last-known listing evidence. | A head or state change aborts adoption. The old session remains unchanged and the new revision must be opened explicitly. |
@@ -84,7 +92,7 @@ After failure, no partially prepared session is presented as current. Recovery r
 
 **Review revision and freshness.** The opening workflow creates or resumes one Review session for one represented revision; later refresh owns revision changes.
 
-**Local persistence and recovery.** Journals record prepared artifacts and worktrees until a session commits. Interrupted preparation is recoverable rather than silently adopted.
+**Local persistence and recovery.** Journals record prepared artifacts and worktrees until a session commits. Interrupted preparation is recoverable rather than silently adopted. A maintainer's open, from any entry point including the launch restore, records the pull request's title and open time on the Review record for the Visited pull requests column; reloading the workbench after a write, merge, Insight run, or recovery does not. [Local storage and privacy](../cross-cutting/local-storage-and-privacy.md) describes those fields.
 
 **GitHub permissions and write authority.** Opening performs reads only. Review and merge writes require separate workbench actions and current evidence.
 
@@ -94,7 +102,7 @@ After failure, no partially prepared session is presented as current. Recovery r
 
 **Feedback, errors, and diagnostics.** Opening progress is row-local plus shared busy feedback. Failures name the affected repository and pull request without exposing credentials.
 
-**Preferences, keyboard commands, and desktop integration.** Keyboard and command-palette entry points use the same opening behavior. Successful navigation becomes the Review workbench destination.
+**Preferences, keyboard commands, and desktop integration.** Keyboard and command-palette entry points use the same opening behavior. Successful navigation becomes the Review workbench destination. A Visited pull requests row changes the saved destination before its Review loads.
 
 **Supported input and accessibility limits.** Mouse and keyboard activation are supported. Touch, pen, and screen-reader behavior are outside the product claim.
 
@@ -112,14 +120,21 @@ After failure, no partially prepared session is presented as current. Recovery r
 - Opening one row leaves unrelated rows interactive, but the busy row's title, double-click, and inspector Open button are inert.
 - A failure after partial preparation is cleaned through the journal before the operation settles.
 - A stale listing can still be readable while opening performs its own current reads and may reject the target.
+- Opening from the Visited pull requests column does not change the Selected repository.
+- A Visited row for the Review already on screen does nothing when activated.
+- A launch restore whose saved Review record is gone lands on Pull requests without a notice.
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- Live pass on 2026-09-14 confirmed that a Visited pull requests row opens its Review on one click (#94, #109, #120) and on Enter, and that no row-local busy state appeared; each transition finished before the next screenshot. Evidence: `/tmp/pd-ux/shots/pull-requests/21-visited-click-immediate.png`, `24-check-current-state.png`. Opening from the listing row, inspector, and palette was not exercised.
+- The Pull requests screen showing between two workbenches while a saved Review loads is source behavior; the live pass could not observe it because every Review it opened loaded at once.
+- After a failed load from the Visited pull requests column, the destination stays on the requested Review workbench: the titlebar says Review workbench and shows Back while the Pull requests screen and its failure card fill the window. Confirm whether that pairing is intended.
+- Confirm duplicate protection when a Visited row is double-clicked, and that a pull request opened from the palette then appears in the column.
+- The quiet return to Pull requests for a launch restore whose record is gone was not live-checked; it needs a Review swept by retention.
 - Confirm Opening… focus and the busy indicator when opening from the row, inspector, keyboard, and command palette.
 - Confirm the visible difference between resumed and newly prepared sessions.
 - Confirm the metadata-only warning when a watched repository has no usable local checkout.
 - Confirm the error and retry experience after a saved-review load fails and identity fallback also fails.
 - Confirm cleanup and visible behavior when preparation sees a changed head between its first and final reads.
 
-Verified against Patchdesk application source commit `3100615`; scoped select-then-open entry points and single Open action behavior updated through `838a47e`; global pull-request palette behavior updated for issue #84.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`, including the palette entry point (issue #84), the Visited pull requests entry point, and the launch restore.

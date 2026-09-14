@@ -24,9 +24,13 @@ stateDiagram-v2
 
 ### Arrive
 
-Config lives under `~/.config/patchdesk` and contains profiles, the active-profile choice, Appearance, and Diff theme. Local data lives under `~/.local/share/patchdesk` and contains Review sessions, retained Insights, write intents and receipts, journals, prepared artifacts, and Diagnostics. Cache lives under `~/.cache/patchdesk` and contains re-creatable inbox data, avatars, and represented-review worktrees. The app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
+Config lives under `~/.config/patchdesk` and contains profiles, the active-profile choice, Appearance, and Diff theme. Local data lives under `~/.local/share/patchdesk` and contains Review records, Review sessions, retained Insights, write intents and receipts, journals, prepared artifacts, and Diagnostics. Cache lives under `~/.cache/patchdesk` and contains re-creatable inbox data, avatars, and represented-review worktrees. The app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
 
 The [persistence foundation](../foundations/persistence-and-recovery.md) owns these classes and their recovery behavior. A stored profile contains account settings but no credential; GitHub CLI authentication is resolved when Patchdesk needs it.
+
+A Review record also holds the pull request's title and the time the maintainer last opened it. The [Visited pull requests column](../foundations/visited-pull-requests.md) reads both from Local data and makes no GitHub read. A successful open records them; reloading a workbench already on screen does not. A record written before these fields existed has neither.
+
+> Technical note: The two fields were added without changing the Review record's schema version, and the record schema rejects unknown fields. An older Patchdesk build therefore refuses to read a record this build has written, and there is no downgrade path.
 
 ### Leave unchanged
 
@@ -42,7 +46,7 @@ Review preparation journals paths before creating worktrees or artifacts. GitHub
 
 The previous complete file remains authoritative until the replacement is safely installed. A storage or directory-sync failure is reported as a local failure rather than loading partial bytes.
 
-Invalid JSON, invalid domain values, secret-shaped keys, or token-shaped content is rejected. Invalid Review entries are quarantined so valid neighboring evidence remains usable. Active Reviews, active Insights, protected writes, pending merges, and preparation journals protect their sessions from Clear local review data.
+Invalid JSON, invalid domain values, secret-shaped keys, or token-shaped content is rejected. Invalid Review entries are quarantined so valid neighboring evidence remains usable. When the Visited pull requests column reads a profile's Review records, an unreadable record is skipped rather than emptying the column, and a recovery Diagnostic records how many were skipped. Active Reviews, active Insights, protected writes, pending merges, and preparation journals protect their sessions from Clear local review data.
 
 App Logs mask credential shapes and drop sensitive metadata keys, but they may retain local paths and error text for debugging. Review Diagnostics use fail-closed redaction and omit prompts, provider output, diff bodies, stack details, tokens, credentials, and sensitive paths.
 
@@ -50,7 +54,7 @@ App Logs mask credential shapes and drop sensitive metadata keys, but they may r
 
 A successful save makes one validated complete value authoritative. A failed save leaves the prior value where possible. A recovered journal either completes or cleans its owned artifacts before normal use.
 
-Clear cache removes rebuildable children while durable Review history remains. Clear local review data removes eligible non-running sessions and leaves active work and Diagnostics protected. Automatic retention removes old terminal or orphaned sessions after 14 days and quarantine entries after 30 days.
+Clear cache removes rebuildable children while durable Review history remains. Clear local review data removes eligible non-running sessions and leaves active work and Diagnostics protected. Automatic retention removes a terminal Review's record together with its session 14 days after the session last changed, removes orphaned sessions after 14 days, and removes quarantine entries after 30 days. A terminal Review that still has an unreconciled GitHub write operation keeps its record and session. Once retention removes a record, its pull request leaves the Visited pull requests column.
 
 ## Variants
 
@@ -90,7 +94,7 @@ Clear cache removes rebuildable children while durable Review history remains. C
 
 **Feedback, errors, and diagnostics.** Diagnostics are bounded and fail closed. App Logs provide richer local debugging context but are still credential-masked.
 
-**Preferences, keyboard commands, and desktop integration.** Appearance and Diff theme are global Config; Review defaults and view positions use their own preference scopes. Settings commands do not alter storage classes.
+**Preferences, keyboard commands, and desktop integration.** Appearance and Diff theme are global Config; Review defaults and view positions use their own preference scopes. Whether the Visited pull requests column is collapsed is one renderer local-storage preference for the whole app, shared by every workspace. Settings commands do not alter storage classes.
 
 **Supported input and accessibility limits.** Storage and redaction are input-independent. Keyboard and mouse controls are supported; touch, pen, and screen-reader behavior are outside the supported product surface.
 
@@ -104,14 +108,16 @@ Clear cache removes rebuildable children while durable Review history remains. C
 - Clear cache does not remove durable Review history; Clear local review data protects active work and Diagnostics.
 - A represented-review worktree is Cache even though it is a Git checkout; the session that identifies it is Local data.
 - Atomic replacement failures leave the previous complete value authoritative where possible.
-- Retention sweeps remove only old terminal/orphaned sessions and stale quarantine entries, and continue after per-item errors.
+- Retention sweeps remove only old terminal Review records with their sessions, old orphaned sessions, and stale quarantine entries, and continue after per-item errors. A sweep that cannot remove a terminal record leaves its session for the next sweep.
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- Live pass on 2026-09-14 confirmed that opening a pull request moves it to the top of the Visited pull requests column with a fresh open time (#94, #109, #120, #95, #96). Settings → Data & recovery describes the manual actions only; retention removing records with sessions is source behavior and has no visible copy to check. Evidence: `/tmp/pd-ux/shots/pull-requests/21-visited-click-immediate.png`, `26-settings-data-recovery.png`.
+- The skipped-record Diagnostic needs a corrupted Review file and was not live-checked.
+- Confirm that the collapsed column preference is shared across workspaces in the running app; the live pass did not switch workspace.
 - Confirm the visible error and retry path for unreadable Config, Local data, Cache, Logs, and Diagnostics.
 - Confirm post-cleanup re-creation of a represented-review worktree and the visible local-checkout limitation.
 - Confirm which local paths and error details remain visible in the app Logs panel and which are redacted in Review activity.
 - Confirm startup presentation after interrupted atomic writes and preparation-journal recovery.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`.

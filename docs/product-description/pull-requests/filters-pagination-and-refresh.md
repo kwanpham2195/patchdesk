@@ -31,15 +31,26 @@ The freshness badge says GitHub: Current, Aged, Partial, Cached after refresh fa
 
 ### Leave unchanged
 
-Opening the label menu or More filters does not change the listing until a choice is selected. Choosing `Any` removes that field's qualifier. Typing in the Author or Base branch field changes nothing until the value is applied with Enter or by leaving the field, because every applied value is a new GitHub read. A value carrying spaces or quotes, or one past its length limit, is refused before any read: the typed text stays in the field, the field is marked invalid, and a one-line reason appears under it until the next applied value or Escape. Escape in either field restores the last applied value and keeps the popover open. Any active chip can be cleared without changing the other three fields. Closing either popover without a change has no effect. Clicking a disabled Previous or Next control does nothing. Reading the count or freshness badge without activating it does not issue a request.
+Opening the label menu or More filters does not change the listing until a choice is selected. Choosing `Any` removes that field's qualifier. Typing in the Author or Base branch field changes nothing until the value is applied with Enter or by leaving the field, because every applied value is a new GitHub read. A value Patchdesk cannot send is refused before any read: the typed text stays in the field, the field is marked invalid, and a one-line reason appears under it until the next applied value or Escape. The reason is `No spaces or quotes`, `At most 39 characters` for Author or `At most 100 characters` for Base branch, or `Too long alongside the other filters` when the value is valid alone but would push the whole search past GitHub's limit (see [The search length limit](#the-search-length-limit)). Escape in either field restores the last applied value and keeps the popover open. Any active chip can be cleared without changing the other three fields. Closing either popover without a change has no effect. Clicking a disabled Previous or Next control does nothing. Reading the count or freshness badge without activating it does not issue a request.
 
 ### Begin an action
 
-Changing state, page size, labels, Awaiting review from you, Review state, Check status, Author, or Base branch updates the requested filter, persists the profile-scoped presentation choice, clears the page cursor, and starts a new read. Review and Check status choices are sent as `review:<value>` and `status:<value>` qualifiers. Author and Base branch follow them as `author:<value>` and `base:<value>`, in a fixed order after review and check status and before labels. Labels are repeated as bounded label values; the preset is sent as `user-review-requested:@me`.
+Changing state, page size, labels, Awaiting review from you, Review state, Check status, Author, or Base branch updates the requested filter, persists the profile-scoped presentation choice, clears the page cursor, and starts a new read. Review and Check status choices are sent as `review:<value>` and `status:<value>` qualifiers. Author and Base branch follow them as `author:"<value>"` and `base:"<value>"`, in a fixed order after review and check status and before labels. Labels are repeated as bounded label values; the preset is sent as `user-review-requested:@me`.
 
 An Author or Base branch value reaches GitHub when the maintainer presses Enter or leaves the field, not on every keystroke. Emptying the field and applying it again removes that qualifier.
 
 The maintainer can clear one active chip on its own. Clear all in More filters clears all four of those fields together in one new read. It preserves the Selected repository, Open or Merged state, rows per page, labels, and Awaiting review from you preference.
+
+#### The search length limit
+
+GitHub refuses a search longer than 256 characters. Patchdesk measures the whole search it would send, including the Selected repository's `owner/repository` name, before it asks GitHub, and refuses at the control that would break the limit:
+
+- In the label menu, a label that would make the search too long cannot be ticked, and neither can a sixth label. Its checkbox is disabled, and the line `This filter is full. Clear a selected label to choose another.` appears below the label list. A label already ticked can always be cleared, because clearing only shortens the search.
+- In More filters, an Author or Base branch value that fits its own limit but not the whole search is refused with `Too long alongside the other filters`. The value is not saved and no read starts.
+
+A saved label choice that no longer fits once the Selected repository is known is dropped when the screen loads, because the repository name is part of the length. The other saved filters stay.
+
+> Technical note: The main process measures the same composed search and refuses a request past 256 characters as an invalid request. The renderer check exists so the maintainer sees the reason at the control; a refusal from GitHub would arrive as an unreadable command failure.
 
 Next stores the current opaque token in a bounded Previous stack and requests the returned next token. Previous pops that stack and requests the earlier token. Refresh repeats the current repository, filter, size, and page request without changing those choices.
 
@@ -47,7 +58,7 @@ Next stores the current opaque token in a bounded Previous stack and requests th
 
 The filter control reflects the requested state immediately. The More filters badge and active chips reflect all four requested fields. An applied Author or Base branch appears in the filter bar as an `Author: <value>` or `Base: <value>` chip that clears only that field. The row list, row count, and review details show loading placeholders instead of old rows under the new filter. Previous and Next are disabled during refresh. A lazy label read shows Loading labels…, then labels, an empty-label message, or a repository-specific failure.
 
-The main process validates state, page size, repository, labels, preset, Review state, Check status, Author, Base branch, and opaque token. An Author longer than 39 characters, a Base branch longer than 100, or either value carrying spaces, quotes, or control characters is refused as an invalid request, the same way an invalid Review state is. A page token is valid only for the same repository, state, page size, sorted labels, Awaiting review from you, Review state, Check status, Author, and Base branch values. Any mismatch is an invalid page request rather than a silent reuse of a cursor from another search.
+The main process validates state, page size, repository, labels, preset, Review state, Check status, Author, Base branch, and opaque token. An Author longer than 39 characters, a Base branch longer than 100, or either value carrying spaces, quotes, or control characters is refused as an invalid request, the same way an invalid Review state is. A request whose composed search is longer than 256 characters is refused the same way. A page token is valid only for the same repository, state, page size, sorted labels, Awaiting review from you, Review state, Check status, Author, and Base branch values. Any mismatch is an invalid page request rather than a silent reuse of a cursor from another search.
 
 Only an unfiltered, open, complete first-page fresh read is saved as the reusable inbox cache. Reads with Review state, Check status, Author, or Base branch, like other filtered or merged results, are not written into that cache because a later offline read could mistake them for the whole open listing.
 
@@ -112,7 +123,10 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 - A typed Author or Base branch applies on Enter or when the field loses focus, not on every keystroke, because every applied value is a new GitHub read. Escape restores the last applied value. Clearing the field and applying it removes the qualifier.
 - More filters counts all four active fields and exposes chips that clear one field at a time. Clear all clears the four fields in one action while preserving the repository, state, page size, labels, and Awaiting review from you.
 - Labels are fetched lazily from the whole repository, not inferred from the loaded page.
-- Up to five labels are accepted, each no longer than 50 characters; labels containing quotes or control characters are rejected.
+- Up to five labels are accepted, each no longer than 50 characters; labels containing quotes or control characters are rejected. The label menu disables every unticked label once five are ticked, or sooner when a label would push the search past 256 characters.
+- The `This filter is full` line sits after the last label, so in a long label list it comes into view only after scrolling.
+- The label menu reads up to 100 repository labels. When the repository has more, it says `Showing 100 of <total> labels. Some repository labels aren't shown.`
+- Author and Base branch at their own maximum lengths fit together inside the search limit; `Too long alongside the other filters` needs labels or a long repository name in the same search.
 - Awaiting review from you composes with state and labels and carries across repository changes.
 - Changing state, size, repository, labels, or the preset clears the current page cursor.
 - A page token longer than 16,384 characters or a repository cursor longer than 4,096 characters is invalid.
@@ -124,12 +138,15 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 ## Open questions and verification
 
 - Live desktop verification on 2026-09-02 covered the new Review state and Check status surface only. With Approved and Failing selected, one successful 200 inbox request contained `reviewState=approved&checkStatus=failure`. Clearing the Review chip left Failing active. Clear all produced one unqualified inbox request while the Selected repository, Open state, and 25-row size remained. Renderer reload restored both selected filters, and the final clear left the state unfiltered. No browser errors appeared. Evidence: `/private/tmp/patchdesk-review-check-filters.png`.
-- Pagination behavior from a later page, page-token invalidation for the new qualifiers, and the reusable-cache exclusion remain unproven by live verification. The source and tests define those rules, but this pass did not observe them in the running app.
-- Confirm Enter, blur, and Escape behavior of the Author and Base branch fields in a real window.
-- GitHub's documented 256-character search limit is still not enforced, on a single field or on the composed query. Four More filters fields, labels, and the preset can compose past it.
+- Pagination behavior from a later page, page-token invalidation for the new qualifiers, and the reusable-cache exclusion remain unproven by live verification; the 2026-09-14 repository had a single page. The source and tests define those rules, but this pass did not observe them in the running app.
+- Live pass on 2026-09-14 against a profile watching one repository with 13 labels and two open pull requests confirmed: the More filters fields and their `login or @me` and `main` placeholders; `No spaces or quotes` under Author for `bad name` with the value kept and no listing change; Escape restoring the last applied Author and keeping the popover open; a 39-character Author with a 100-character Base branch applying normally; and, with five labels ticked, the other eight checkboxes disabled, the button reading `5 labels`, and the `This filter is full` line present. Evidence: `/tmp/pd-ux/shots/pull-requests/08-author-invalid-space.png`, `09-escape-restore-check.png`, `11-base-branch-100char-composed.png`, `18-filter-full-message-visible.png`.
+- `Too long alongside the other filters` and a label disabled by length before the five-label cap were not reproduced live; the repository's labels were too short to reach 256 characters.
+- The live pass inferred from the screen that a refused value sends no request; no network panel was open.
+- Confirm Enter versus blur for applying Author and Base branch in a real window.
+- Suspected gap: the Awaiting review from you toggle, Review state, Check status, a change from Open to Merged, and a change of Selected repository can all lengthen the search, and none is measured at its control. With a search near 256 characters, the main process refuses the resulting read as an invalid request. Confirm what the listing shows in that case.
 - Confirm the visual difference between Current, Aged, Partial, Cached after refresh failure, Stale, and Unavailable in the running app.
 - Confirm keyboard focus after label selection, page changes, and freshness-badge refresh.
 - Confirm whether a stale cache should remain actionable for opening Reviews while merge-oriented actions are disabled.
 - Confirm the behavior when a page token expires remotely even though its local shape still validates.
 
-Baseline drafted from Patchdesk application source commit `3100615`; scoped Review state and Check status filter behavior updated and live-verified through `359770f`; scoped Author and Base branch filter behavior drafted from PR #65 and not yet live-verified.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`, including the search length limit.
