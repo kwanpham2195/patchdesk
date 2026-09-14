@@ -4,27 +4,27 @@ This file records places where Patchdesk works as built but costs the maintainer
 
 The items come from four read-only live passes and one independent review on 2026-09-14, run over CDP 9233 against the maintainer's running `pnpm dev` app at `5fe7df3b`. That commit is the pinned `dd613996` plus renderer failure copy for comment and Finding actions. The passes covered the Pull requests and cross-cutting pages, the foundations, first-run, and Settings pages, the Review workbench core pages, and the Insights pages, in the maintainer's Personal workspace watching one repository. Three items (UX-10 to UX-12) were raised from source by the page revisions and were not reachable live, because no Review in that workspace had a retained Insight. Screenshots from the passes were temporary and are described in words here.
 
-Every item carries one disposition: fix now, a named follow-up issue, or rejected with evidence. No issue has been filed yet; each follow-up names the issue it proposes.
+Every item carries one disposition: fix now, a named follow-up issue, or rejected with evidence. UX-01 to UX-12 are filed as #190 to #201; the rejected items are not filed.
 
 ## Summary
 
 Medium:
 
-- [UX-01](#ux-01-tab-walks-every-visited-row-before-the-screen): Tab walks every Visited row before the screen. Named follow-up.
-- [UX-02](#ux-02-keyboard-navigation-does-nothing-in-selected-with-no-hint): Keyboard navigation does nothing in Selected, with no hint. Named follow-up.
-- [UX-03](#ux-03-the-filter-is-full-line-sits-below-the-label-list): The filter-is-full line sits below the label list. Named follow-up.
-- [UX-04](#ux-04-the-insight-run-dialog-gives-no-cost-signal): The Insight run dialog gives no cost signal. Named follow-up.
-- [UX-05](#ux-05-two-all-files-controls-sit-side-by-side-in-the-diff-toolbar): Two All files controls sit side by side in the diff toolbar. Named follow-up.
+- [UX-01](#ux-01-tab-walks-every-visited-row-before-the-screen): Tab walks every Visited row before the screen. Named follow-up. [#190](https://github.com/kwanpham2195/patchdesk/issues/190)
+- [UX-02](#ux-02-keyboard-navigation-does-nothing-in-selected-with-no-hint): Keyboard navigation does nothing in Selected, with no hint. Named follow-up. [#191](https://github.com/kwanpham2195/patchdesk/issues/191)
+- [UX-03](#ux-03-the-filter-is-full-line-sits-below-the-label-list): The filter-is-full line sits below the label list. Named follow-up. [#192](https://github.com/kwanpham2195/patchdesk/issues/192)
+- [UX-04](#ux-04-the-insight-run-dialog-gives-no-cost-signal): The Insight run dialog gives no cost signal. Named follow-up. [#193](https://github.com/kwanpham2195/patchdesk/issues/193)
+- [UX-05](#ux-05-two-all-files-controls-sit-side-by-side-in-the-diff-toolbar): Two All files controls sit side by side in the diff toolbar. Named follow-up. [#194](https://github.com/kwanpham2195/patchdesk/issues/194)
 
 Low:
 
-- [UX-06](#ux-06-disabled-label-checkboxes-look-almost-enabled): Disabled label checkboxes look almost enabled. Named follow-up.
-- [UX-07](#ux-07-the-visited-pull-requests-column-toggle-has-no-tooltip): The Visited pull requests column toggle has no tooltip. Named follow-up.
-- [UX-08](#ux-08-the-logs-tail-is-filled-by-its-own-polling): The Logs tail is filled by its own polling. Named follow-up.
-- [UX-09](#ux-09-the-pressed-scope-bucket-row-looks-unpressed): The pressed Scope bucket row looks unpressed. Named follow-up.
-- [UX-10](#ux-10-verification-ticks-are-lost-without-warning): Verification ticks are lost without warning. Named follow-up.
-- [UX-11](#ux-11-walkthrough-j-and-k-run-opposite-to-the-vim-convention): Walkthrough `j` and `k` run opposite to the Vim convention. Named follow-up.
-- [UX-12](#ux-12-the-inline-discussion-notice-does-not-say-what-failed): The inline-discussion notice does not say what failed. Named follow-up.
+- [UX-06](#ux-06-disabled-label-checkboxes-look-almost-enabled): Disabled label checkboxes look almost enabled. Named follow-up. [#195](https://github.com/kwanpham2195/patchdesk/issues/195)
+- [UX-07](#ux-07-the-visited-pull-requests-column-toggle-has-no-tooltip): The Visited pull requests column toggle has no tooltip. Named follow-up. [#196](https://github.com/kwanpham2195/patchdesk/issues/196)
+- [UX-08](#ux-08-the-logs-tail-is-filled-by-its-own-polling): The Logs tail is filled by its own polling. Named follow-up. [#197](https://github.com/kwanpham2195/patchdesk/issues/197)
+- [UX-09](#ux-09-the-pressed-scope-bucket-row-looks-unpressed): The pressed Scope bucket row looks unpressed. Named follow-up. [#198](https://github.com/kwanpham2195/patchdesk/issues/198)
+- [UX-10](#ux-10-verification-ticks-are-lost-without-warning): Verification ticks are lost without warning. Named follow-up. [#199](https://github.com/kwanpham2195/patchdesk/issues/199)
+- [UX-11](#ux-11-walkthrough-j-and-k-run-opposite-to-the-vim-convention): Walkthrough `j` and `k` run opposite to the Vim convention. Named follow-up. [#200](https://github.com/kwanpham2195/patchdesk/issues/200)
+- [UX-12](#ux-12-the-inline-discussion-notice-does-not-say-what-failed): The inline-discussion notice does not say what failed. Named follow-up. [#201](https://github.com/kwanpham2195/patchdesk/issues/201)
 - [UX-13](#ux-13-the-open-reviews-visited-row-does-nothing-on-enter): The open Review's Visited row does nothing on Enter. Rejected with evidence.
 - [UX-14](#ux-14-skip-to-content-leaves-main-content-in-the-address): Skip to content leaves `#main-content` in the address. Rejected with evidence.
 - [UX-15](#ux-15-the-merge-conflicts-notice-asks-for-a-push-patchdesk-cannot-make): The Merge conflicts notice asks for a push Patchdesk cannot make. Rejected with evidence.
@@ -51,7 +51,8 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Why it hurts:** A keyboard user pays up to 20 extra key presses every time they tab past the titlebar. Skip to content helps only from the top of the page.
 - **Suggested improvement:** Make the column one Tab stop with arrow-key movement between rows (a roving tab index), so every row stays reachable and the walk costs one press.
 - **Severity:** medium.
-- **Disposition:** named follow-up, from the independent review. Proposed issue: "Visited pull requests column: one Tab stop with arrow-key row movement".
+- **Disposition:** named follow-up, from the independent review.
+- **Issue:** [#190](https://github.com/kwanpham2195/patchdesk/issues/190)
 - **Page:** [Keyboard, focus, and desktop](cross-cutting/keyboard-focus-and-desktop.md#arrive), [Visited pull requests](foundations/visited-pull-requests.md#variants).
 
 ### UX-02: Keyboard navigation does nothing in Selected, with no hint
@@ -60,9 +61,10 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **What the maintainer does:** Presses a file, hunk, or unresolved-comment key such as `]`.
 - **What they see:** Nothing: no movement, no status message, no boundary message. The same key with All files chosen shows "Already at the last hunk." at the boundary.
 - **Why it hurts:** The commands look broken. A profile that last used Selected opens every Review that way, so the maintainer meets the silence on each new Review with no clue that All files is required.
-- **Suggested improvement:** Show the existing status message in Selected, such as "Keyboard navigation works in All files", or allow file movement (`,` and `.`) there, since it only changes the selection.
+- **Suggested improvement:** Show a hint in Selected that keyboard navigation works in All files; [#191](https://github.com/kwanpham2195/patchdesk/issues/191) owns the details.
 - **Severity:** medium.
-- **Disposition:** named follow-up, from the independent review. The gating itself is intended since `14b47d13` and test-asserted. Proposed issue: "Diff: explain or enable keyboard navigation in Selected".
+- **Disposition:** named follow-up, from the independent review. The gating itself is intended since `14b47d13` and test-asserted.
+- **Issue:** [#191](https://github.com/kwanpham2195/patchdesk/issues/191)
 - **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#leave-unchanged).
 
 ### UX-03: The filter-is-full line sits below the label list
@@ -73,7 +75,8 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Why it hurts:** The one line that explains the disabled rows is the line least likely to be on screen when the maintainer needs it.
 - **Suggested improvement:** Pin the line near the top of the menu, beside its search field, while the cap is reached, or scroll it into view when the cap is first reached.
 - **Severity:** medium.
-- **Disposition:** named follow-up. Proposed issue: "Label filter: keep the filter-is-full message in view".
+- **Disposition:** named follow-up.
+- **Issue:** [#192](https://github.com/kwanpham2195/patchdesk/issues/192)
 - **Page:** [Filters, pagination, and refresh](pull-requests/filters-pagination-and-refresh.md#begin-an-action).
 
 ### UX-04: The Insight run dialog gives no cost signal
@@ -82,9 +85,10 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **What the maintainer does:** Opens the Model list to choose a model for a billed run.
 - **What they see:** A long list of model identifiers, from the smallest to the largest, as plain text. Neither the list nor the confirmation line says anything about relative cost.
 - **Why it hurts:** Model choice is the main cost decision of a run, and the dialog offers no basis for it; the maintainer must know provider pricing by heart.
-- **Suggested improvement:** Annotate each model with a relative cost tier, or add a cost note to the confirmation line.
+- **Suggested improvement:** Show each model's list price in the dialog; [#193](https://github.com/kwanpham2195/patchdesk/issues/193) owns the details.
 - **Severity:** medium.
-- **Disposition:** named follow-up. Proposed issue: "Insight run dialog: show a relative cost signal per model".
+- **Disposition:** named follow-up.
+- **Issue:** [#193](https://github.com/kwanpham2195/patchdesk/issues/193)
 - **Page:** [Brief](review-workbench/brief.md#begin-an-action).
 
 ### UX-05: Two All files controls sit side by side in the diff toolbar
@@ -95,7 +99,8 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Why it hurts:** The same words do two different things in one toolbar, so choosing one when the other was meant leaves the pane unchanged and the maintainer unsure why.
 - **Suggested improvement:** Rename the Scope picker entry, for example "All buckets" or "Clear scope".
 - **Severity:** medium.
-- **Disposition:** named follow-up. Proposed issue: "Diff toolbar: give the Scope picker's clear entry a distinct name".
+- **Disposition:** named follow-up.
+- **Issue:** [#194](https://github.com/kwanpham2195/patchdesk/issues/194)
 - **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#edge-cases).
 
 ## Low
@@ -108,7 +113,8 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Why it hurts:** A maintainer clicks a disabled row, nothing happens, and the explanation is out of view (UX-03).
 - **Suggested improvement:** Dim the whole disabled row, dot and text included, to the weight disabled controls carry elsewhere.
 - **Severity:** low.
-- **Disposition:** named follow-up. Proposed issue: "Label filter: make disabled rows read as disabled".
+- **Disposition:** named follow-up.
+- **Issue:** [#195](https://github.com/kwanpham2195/patchdesk/issues/195)
 - **Page:** [Filters, pagination, and refresh](pull-requests/filters-pagination-and-refresh.md#begin-an-action).
 
 ### UX-07: The Visited pull requests column toggle has no tooltip
@@ -119,7 +125,8 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Why it hurts:** A mouse user learns what the panel icon does only by pressing it, unlike its neighbours.
 - **Suggested improvement:** Give the toggle and Back the same tooltip the Settings and Navigate buttons use, with the toggle's existing accessible name as the text.
 - **Severity:** low.
-- **Disposition:** named follow-up. Proposed issue: "Titlebar: tooltips for the Visited pull requests column toggle and Back".
+- **Disposition:** named follow-up.
+- **Issue:** [#196](https://github.com/kwanpham2195/patchdesk/issues/196)
 - **Page:** [Keyboard, focus, and desktop](cross-cutting/keyboard-focus-and-desktop.md#edge-cases).
 
 ### UX-08: The Logs tail is filled by its own polling
@@ -128,9 +135,10 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **What the maintainer does:** Watches the tail for about 30 seconds in an idle session.
 - **What they see:** A pair of main and renderer debug entries for the panel's own `GET /v1/logs` request every two seconds, outnumbering everything else.
 - **Why it hurts:** A maintainer looking for a real problem first filters out the panel's heartbeat by eye.
-- **Suggested improvement:** Leave the panel's own log requests out of the tail it draws, keeping them in the log file.
+- **Suggested improvement:** Treat this as a bug in the renderer's `skipLogging` check at `src/renderer/src/api-client.ts:49`, which compares the full path, query string included, with `/v1/logs` and so logs the panel's own requests; [#197](https://github.com/kwanpham2195/patchdesk/issues/197) owns the details.
 - **Severity:** low.
-- **Disposition:** named follow-up. Proposed issue: "Settings Logs: hide the panel's own polling from the tail".
+- **Disposition:** named follow-up.
+- **Issue:** [#197](https://github.com/kwanpham2195/patchdesk/issues/197)
 - **Page:** [Logs and diagnostics](settings/logs-and-diagnostics.md#arrive).
 
 ### UX-09: The pressed Scope bucket row looks unpressed
@@ -141,7 +149,8 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Why it hurts:** The page promises the pressed row as the way to see which bucket filters the Diff; by eye there is no such signal.
 - **Suggested improvement:** Draw the pressed row with the bucket's colour or a border, as the Diff toolbar's Scope picker shows the active bucket.
 - **Severity:** low.
-- **Disposition:** named follow-up. Proposed issue: "Scope card: make the active bucket visible".
+- **Disposition:** named follow-up.
+- **Issue:** [#198](https://github.com/kwanpham2195/patchdesk/issues/198)
 - **Page:** [Insights overview](review-workbench/insights-overview.md#settle).
 
 ### UX-10: Verification ticks are lost without warning
@@ -150,9 +159,10 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **What the maintainer does:** Ticks several verification steps, checks something in Brief, and comes back.
 - **What they see:** Every tick is gone. The only hint that they were temporary is "in this view" in the count.
 - **Why it hurts:** The checklist invites progress tracking and then drops it on the most ordinary move between Insight tabs.
-- **Suggested improvement:** Save the ticks with the retained Analysis, or say plainly beside the checklist that ticks are not kept.
+- **Suggested improvement:** Label the ticks beside the checklist as temporary; [#199](https://github.com/kwanpham2195/patchdesk/issues/199) owns the details.
 - **Severity:** low. Raised from source; not reachable live.
-- **Disposition:** named follow-up. Proposed issue: "Analysis: keep Verification ticks or label them temporary".
+- **Disposition:** named follow-up.
+- **Issue:** [#199](https://github.com/kwanpham2195/patchdesk/issues/199)
 - **Page:** [Analysis](review-workbench/analysis.md#leave-unchanged).
 
 ### UX-11: Walkthrough `j` and `k` run opposite to the Vim convention
@@ -161,9 +171,10 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **What the maintainer does:** Presses `j` to go to the next section, as in Vim and many readers.
 - **What they see:** `j` moves to the previous section and `k` to the next, matching Left and Right.
 - **Why it hurts:** Maintainers with Vim habits move the wrong way on the first press, every time.
-- **Suggested improvement:** Swap the keys so `j` moves forward, or drop the letter aliases and keep the arrows.
+- **Suggested improvement:** Treat the direction as a bug and swap the keys so `j` moves forward, updating the test that asserts the current direction; [#200](https://github.com/kwanpham2195/patchdesk/issues/200) owns the details.
 - **Severity:** low. Raised from source; not reachable live.
-- **Disposition:** named follow-up. Proposed issue: "Walkthrough: decide the `j` and `k` direction".
+- **Disposition:** named follow-up.
+- **Issue:** [#200](https://github.com/kwanpham2195/patchdesk/issues/200)
 - **Page:** [Walkthrough](review-workbench/walkthrough.md#begin-an-action).
 
 ### UX-12: The inline-discussion notice does not say what failed
@@ -174,7 +185,8 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Why it hurts:** Refresh helps only some of those causes, so the maintainer may refresh repeatedly with no change.
 - **Suggested improvement:** Name the failing condition, for example "This Walkthrough is for an older revision", and offer Refresh only when it can help.
 - **Severity:** low. Raised from source; not reachable live.
-- **Disposition:** named follow-up. Proposed issue: "Walkthrough: say why inline discussion is unavailable".
+- **Disposition:** named follow-up.
+- **Issue:** [#201](https://github.com/kwanpham2195/patchdesk/issues/201)
 - **Page:** [Walkthrough](review-workbench/walkthrough.md#arrive).
 
 ### UX-13: The open Review's Visited row does nothing on Enter
