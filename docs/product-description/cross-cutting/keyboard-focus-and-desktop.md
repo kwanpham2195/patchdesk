@@ -119,7 +119,8 @@ After an explicit Discard, the draft guard clears and the requested destination 
 ## Open questions and verification
 
 - Live pass on 2026-09-14 confirmed the Tab order above with 14 Visited rows, Skip to content moving focus into the main content, the toggle's alternating accessible name, the collapsed column surviving a renderer reload, no tooltip on the toggle beside `Open Settings` on Settings, and focus returning to the Settings button when Settings closes. Evidence: `/tmp/pd-ux/shots/pull-requests/01-collapse-toggle-hover.png`, `02-settings-hover-tooltip.png`, `03-visited-column-collapsed.png`, `04-after-reload-collapsed-check.png`.
-- Under independent check: whether a destination change moves focus to the new screen's first `h1`, and whether the Visited row for the Review already on screen stays in the Tab order.
+- Heading focus after a destination change was not confirmed live: the check ran in a hidden CDP window where animation frames do not run. [Navigation and overlays](../foundations/navigation-and-overlays.md#open-questions-and-verification) records the result and the latent defect [B-14](../bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change).
+- Confirmed live and by an independent review: the Visited pull requests row for the Review on screen stays in the Tab order, is announced as the current page, and does nothing on Enter. That is intended and test-covered. Making the column one Tab stop with arrow-key movement is a named follow-up in [UX friction](../ux-friction.md#ux-01-tab-walks-every-visited-row-before-the-screen).
 - Confirm in the running app that the collapsed column preference carries across a workspace switch; the live pass did not switch workspace.
 - The `#main-content` address fragment has no visible effect in the desktop window; confirm nothing reads it.
 - Confirm focus placement after destination changes, Settings close, profile switch, guard Cancel, and native window close.

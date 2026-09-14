@@ -103,7 +103,7 @@ After a switch failure, the prior profile remains active. After a rejected field
 
 **Concurrent operations and locking.** Latest-request ownership protects profile switching. Config mutation serialization prevents selection and preference updates from overwriting each other.
 
-**Feedback, errors, and diagnostics.** Reviewing as distinguishes checking, missing CLI, unauthenticated, multiple accounts, and configured-account mismatch. Failed profile selection records a retryable recovery diagnostic.
+**Feedback, errors, and diagnostics.** Reviewing as distinguishes checking, missing CLI, unauthenticated, multiple accounts, and configured-account mismatch. Its unauthenticated state follows the exit status of `gh auth status`, so one stale account among several reads as unauthenticated; [Workspace settings](../settings/workspace-profile-editor.md#arrive) describes it. Failed profile selection records a retryable recovery diagnostic.
 
 **Preferences, keyboard commands, and desktop integration.** The active profile selector appears in the titlebar and Workspace settings. A successful switch restores the Pull requests destination with that profile's view preference baseline.
 

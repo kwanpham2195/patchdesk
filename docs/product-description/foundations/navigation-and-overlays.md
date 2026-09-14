@@ -135,7 +135,8 @@ Navigate accepts a plain GitHub pull-request URL, a URL with trailing path, quer
 ## Open questions and verification
 
 - A read-only live pass on 2026-09-14 confirmed that Settings opened from the titlebar or from Navigate returns focus to that opener on Close or Escape, and that Escape closes Settings.
-- The same pass read focus after three destination changes and did not find it on the new `h1`. The result is inconclusive and under independent check; the claim above is unchanged until then.
+- The same pass read focus after three destination changes and did not find it on the new `h1`. An independent review found that result inconclusive: the CDP window reported `document.visibilityState` as hidden and ran no animation frames, and Patchdesk moves heading focus in the next animation frame. The claim above stands on source until a pass runs in a visible window.
+- Latent defect: a re-render that hands the shell a new destination value before that frame runs cancels the scheduled focus, and the shell never schedules it again, because it recorded the destination as focused when it scheduled the frame. The heavy first paint of a Review workbench makes that re-render plausible. No test covers heading focus. See [B-14](../bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change).
 - Confirm focus after leave-guard cancellation and native close cancellation.
 - Confirm that Escape and clicking outside Settings clear the restore marker on a clean close.
 - Confirm the exact visible restore after a renderer reload from each workbench tab, navigator section, and selected file.

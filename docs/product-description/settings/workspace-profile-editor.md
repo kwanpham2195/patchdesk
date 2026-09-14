@@ -31,6 +31,10 @@ Settings opens on the requested section, or on General when no section was reque
 
 Reviewing as checks the GitHub CLI while the section is open. One authenticated account appears as a resolved statement; several appear in an Account selector. If the CLI is missing, unauthenticated, or cannot be checked, the card explains the failure and shows the manual GitHub account and GitHub host fields directly. Otherwise those fields sit behind Use a different account.
 
+The unauthenticated state follows the exit status of `gh auth status`, which fails when any account signed in to the GitHub CLI has an invalid token. On a machine with several accounts, one stale account is enough: the card shows `GitHub authentication required` and "Not authenticated. Run `gh auth login`, then re-check." even while the active account works and the rest of Patchdesk reads GitHub normally. Working accounts in the CLI's account list do not clear this state.
+
+> Technical note: the environment route maps a nonzero `gh auth status` exit to `authentication_required`, and the card treats that value as failed whatever accounts are listed. Patchdesk's GitHub reads resolve the account with `gh api` instead, because the same exit status is known not to prove an authentication failure.
+
 Repositories shows the folder rows under the legend `Folders`, each with Choose folder and a remove button, plus Add folder below them. Every saved folder shows its scan status and, when the scan found something, a checkbox per repository. Watched repositories whose local path is under no saved folder are grouped under `Watched outside these folders`.
 
 Advanced and Workspace are closed. Advanced opens by itself when the workspace already has a rule path. Workspace opens by itself while a workspace switch started here is pending or has failed, because that status is reported inside it. Both stay closable afterwards.
@@ -117,6 +121,7 @@ After an interrupt the maintainer stays in Settings with the values the server l
 - A text field is trimmed when it commits; the text stays as typed while editing.
 - One authenticated GitHub account is adopted into a workspace with no account. With several accounts, only the account `gh` marks active is adopted, and only once.
 - A configured account that matches no account `gh` reports stays saved and raises the `Configured account not authenticated` warning instead of being replaced.
+- One invalid token among several `gh` accounts shows `GitHub authentication required`, even when the active account authenticates.
 - Manual GitHub account and host fields stay visible whenever the probe is checking or failed, and whenever either field's own value was rejected.
 - A 39-character GitHub login is valid. A longer login, or one with invalid characters, is rejected and reported beside the field.
 - A folder is scanned as soon as it is saved; there is no state in which a folder waits for a separate save.
@@ -129,6 +134,7 @@ After an interrupt the maintainer stays in Settings with the values the server l
 ## Open questions and verification
 
 - Live desktop verification of the reworked cards is pending; the checklists in `verification/` still describe the previous editor. A read-only pass on 2026-09-14 confirmed that Advanced and Workspace expand in place without changing a value; it changed no value, so saving, rejection, and switching were not observed.
+- Suspected defect, confirmed live and by an independent review: Reviewing as showed `GitHub authentication required` while the Personal workspace's account read GitHub normally. The machine had three github.com accounts, one with an invalid token; the environment check returned `authentication_required` together with the two working accounts. See [B-09](../bug-triage.md#b-09-workspace-settings-reports-github-authentication-required-while-the-active-account-works).
 - Confirm focus after the folder picker returns and after a rejected value is reported.
 - Confirm what the maintainer sees when a save is still in flight as Settings closes.
 - Confirm that a workspace created from the dialog appears in the Active workspace selector without a reload.

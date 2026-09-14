@@ -132,9 +132,9 @@ A failed run shows a warning that names the failure category, such as a timeout,
 ## Open questions and verification
 
 - The 2026-09-14 live pass confirmed landing on Brief, the empty state, the disabled Generate brief on merged Reviews and the enabled one on an open Review, and the run dialog's Provider (API key, Codex CLI account), Model, and Reasoning controls, its confirmation line, and Cancel. No retained Brief existed in the live workspace, so the reader layout, Provenance card, and both Regenerate buttons were checked from source only.
-- A disabled Generate brief or Regenerate on a merged or closed Review shows no reason on screen. Confirm whether that needs an explanation; the rule itself is confirmed.
-- Try again, Run for latest revision, and Start here's Generate walkthrough are not disabled on a merged or closed Review, while the service rejects a run for such a Review. Confirm what the maintainer sees when Start run is pressed there.
-- The running state shows the run's start time as a raw machine timestamp rather than a relative or local time. Confirm whether that is intended.
+- Suspected defect, confirmed live and by an independent review: a disabled Generate brief or Regenerate on a merged or closed Review shows no reason on screen, while the header tells the maintainer the Review remains readable. The open-only rule is intended. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
+- Suspected defect: Try again, Run for latest revision, and Start here's Generate walkthrough are not disabled on a merged or closed Review, while the service rejects a run for such a Review. What the maintainer sees after Start run there is unconfirmed. See [B-19](../bug-triage.md#b-19-try-again-and-related-run-controls-stay-enabled-on-a-merged-or-closed-review).
+- Suspected defect: the running state shows the run's start time as a raw machine timestamp rather than a relative or local time. See [B-22](../bug-triage.md#b-22-the-running-insight-state-shows-a-raw-start-timestamp).
 - Confirm the visible distinction between Cancel requested, cancelled, failed, and timed out runs.
 - Confirm whether switching to another Insight reader while Brief runs keeps its progress discoverable.
 - Confirm focus after closing the run dialog.

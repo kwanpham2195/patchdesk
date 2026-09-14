@@ -26,7 +26,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The Review header shows separate Checks and Merge status controls; either opens PR overview, and the Merge control opens it with the Merge readiness row expanded and focused. PR overview is a drawer on the right titled "PR overview", with the repository, pull-request number, and title beneath. It has four collapsible rows, in this order:
+The Review header shows separate Checks and Merge status controls. Both open PR overview in the same state: Revision, Review status, and Merge readiness expanded, and Checks collapsed. The Merge control also moves focus to the Merge readiness row. The Checks control neither expands nor focuses the Checks row; focus lands on the first row, Revision, and the maintainer expands Checks by hand. PR overview is a drawer on the right titled "PR overview", with the repository, pull-request number, and title beneath. It has four collapsible rows, in this order:
 
 - **Revision.** Its label states freshness: Current, Updates available, Remote state unavailable, Not refreshed, or Unavailable. Expanded, it shows base ← head branches, "Refreshed" with a relative time, and the commit and changed-file counts. When GitHub reports a newer head than the represented one, it also shows the Reviewed and Current short SHAs. Without revision data it reads "Revision details unavailable." [Review session and revision](../foundations/review-session-and-revision.md) owns what each freshness state means.
 - **Checks.** Its label states the overall check result, such as Passing or Failing, and its body lists the checks.
@@ -118,7 +118,7 @@ If the receipt is confirmed but terminal refresh fails, Patchdesk shows Merged p
 ## Open questions and verification
 
 - Confirmed live on 2026-09-14: PR overview shows the Revision, Checks, Review status, and Merge readiness rows in that order with the content described above; the Merge control opens it with Merge readiness expanded and focused; closing it with Escape or Close returns focus to the Merge or Checks control that opened it. Merge was not pressed.
-- Under independent verification, not stated as behavior here: whether opening PR overview from the Checks control shows the same view as the Merge control, with the Checks row neither expanded nor focused.
+- Suspected defect, confirmed live and by an independent review: the Checks control opens PR overview exactly as the Merge control does, with the Checks row collapsed and not focused, so a maintainer who asked for checks is shown Merge readiness. See [B-12](../bug-triage.md#b-12-the-checks-control-opens-pr-overview-on-merge-readiness).
 - Not checked live: the unconfirmed-approval wording, a Revision row with a newer head, warning acknowledgement, method grouping, external-link handoff, and recovery feedback. No pull request in the workspace reached those states, and merging is a GitHub write.
 - Confirm close and quit behavior while GitHub is still processing a merge.
 - Confirm visible readiness messages for each current GitHub policy and permission reason.

@@ -35,7 +35,7 @@ Markdown in the description, comments, review summaries, and threads is rendered
 - **Links** to `https` addresses open in the default browser. A relative link resolves against the pull request's GitHub page. A link with another scheme, a port, or credentials renders as plain text.
 - **Mermaid diagrams** render as diagrams with their source in a collapsed Mermaid source section, and open a full-size view when clicked.
 
-The metadata rail shows current labels, assignees, and requested reviewers. Each management control loads its current candidates on demand. Suggested reviewers are grouped before other candidates. GitHub eligibility, current membership, and limits determine which entries can be changed.
+The metadata rail shows current labels, assignees, and requested reviewers. Each management control loads its current candidates on demand. On a merged or closed Review, the Reviewers control never loads: it shows a spinner and "Loading reviewers…" for as long as it is on screen, with no picker, while Assignees and Labels show their stored values. Suggested reviewers are grouped before other candidates. GitHub eligibility, current membership, and limits determine which entries can be changed.
 
 > Technical note: images are fetched by the main process, not the window. It checks every address and every redirect against the workspace's GitHub host, sends the GitHub token only to that host, gives each request 10 seconds, refuses images larger than 4 MiB, and caches each image per workspace. The camo address GitHub records for an off-site image replaces the author's address before the request.
 
@@ -66,7 +66,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 | Variant | Before the action runs | While the action runs |
 | --- | --- | --- |
 | Workspace profile and GitHub account | Candidate lists and self-assignment use the active profile's host and configured viewer identity. Images load with that profile's GitHub host and account. | Changing profile leaves the Review only after the normal navigation guard permits it. A receipt for another viewer cannot confirm Assign self. |
-| Pull request and Review state | Open represented Reviews can expose writes. Merged or closed Reviews remain readable, images included, but hide write controls. | A remote terminal transition discovered before the write prevents it; one discovered afterward is reconciled as new represented state. |
+| Pull request and Review state | Open represented Reviews can expose writes. Merged or closed Reviews remain readable, images included, but hide write controls; their Reviewers control stays on "Loading reviewers…". | A remote terminal transition discovered before the write prevents it; one discovered afterward is reconciled as new represented state. |
 | GitHub permissions and merge readiness | Each control depends on GitHub eligibility and permission. Merge readiness does not itself block metadata writes. | A permission failure is shown for the action and does not imply that another metadata category is writable. |
 | Network, local tool, and Insight provider availability | Conversation reading uses saved and refreshed GitHub data. An image that cannot be downloaded stays as `[Image: alt]`. Insight providers are unrelated. | Network or `gh` failure can block candidate loading, mutation, or reconciliation. A confirmed write remains confirmed when later observation fails. |
 | Input path: mouse, keyboard, or desktop menu | Tabs, buttons, pickers, text fields, zoomable images, and dialogs support mouse and keyboard. | Submit and cancel controls keep the same action guard for either input path. The desktop menu does not directly write conversation data. |
@@ -112,6 +112,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 - Comment-only cards explain why thread controls are unavailable. They can still expose comment-level actions when confirmed.
 - A failed cached avatar falls back to initials and can retry when the cached data URI changes.
 - A stale or terminal Review hides direct conversation writers without hiding its represented content.
+- A merged or closed Review never finishes loading its Reviewers control, while Assignees and Labels render.
 - A pull request whose only discussion is one plain issue comment shows that comment in the timeline.
 - An HTML `<img>` with no `src` renders as `[Image: alt]` without a request.
 - Two screenshots that look the same can behave differently on click: the one written as an HTML tag zooms, the one written in Markdown syntax does not.
@@ -119,8 +120,8 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 ## Open questions and verification
 
 - Confirmed live on 2026-09-14: on a pull request built to test images, a Markdown-syntax image and an HTML `<img>` both render as screenshots, and a Markdown link and a bare URL both render as links. Only the HTML image opens the full-size view, which Escape closes.
-- Suspected defect: a Markdown-syntax screenshot on its own line has no zoom while an HTML screenshot does. The Markdown renderer marks every Markdown image as sitting in a line of text, which removes zoom.
-- Under independent verification: whether the Reviewers control on the metadata rail stays on "Loading reviewers…" indefinitely. The live pass saw it on four Reviews while Assignees and Labels resolved.
+- Suspected defect: a Markdown-syntax screenshot on its own line has no zoom while an HTML screenshot does. The Markdown renderer marks every Markdown image as sitting in a line of text, which removes zoom. See [B-18](../bug-triage.md#b-18-a-markdown-syntax-image-never-opens-the-full-size-view).
+- Suspected defect, confirmed live and by an independent review: on merged or closed Reviews the Reviewers control stays on "Loading reviewers…" indefinitely while Assignees and Labels render. Open Reviews load their reviewers normally. See [B-10](../bug-triage.md#b-10-the-reviewers-control-never-loads-on-a-merged-or-closed-review).
 - Not checked live: a pull request whose only discussion is a plain issue comment, off-site badge images, the metadata picker popovers, and every failure sentence, which each need a fixture or a rejected GitHub write.
 - Confirm focus return after closing metadata pickers, failed editors, delete confirmation, review dismissal, and the full-size image view.
 - Confirm which transient row editors survive switching among Conversation, Diff, and Insights.

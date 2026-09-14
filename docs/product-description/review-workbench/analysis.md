@@ -136,8 +136,8 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 ## Open questions and verification
 
 - The 2026-09-14 live pass confirmed the empty state and the disabled Generate analysis on a merged Review. No retained Analysis existed in the live workspace, so the verdict card, severity grouping, Verification checklist, and Finding actions were checked from source only.
-- Verification ticks are lost when the maintainer switches Insight tabs, leaves Insights, or reloads, and nothing on screen says they are temporary beyond "in this view". Confirm whether that is intended.
-- A disabled Generate analysis or Regenerate on a merged or closed Review shows no reason on screen. Confirm whether that needs an explanation; the rule itself is confirmed.
+- Verification ticks are lost when the maintainer switches Insight tabs, leaves Insights, or reloads, and nothing on screen says they are temporary beyond "in this view". Recorded as [UX-10](../ux-friction.md#ux-10-verification-ticks-are-lost-without-warning).
+- Suspected defect, confirmed live and by an independent review: a disabled Generate analysis or Regenerate on a merged or closed Review shows no reason on screen. The open-only rule is intended. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
 - Confirm evidence expansion, highlighted range, row focus after Open in Analysis, and error placement.
 - Confirm whether a non-empty dismissal reason is guarded when switching Insights readers or leaving the Review.
 - Confirm progress and Cancel presentation for provider timeout versus explicit cancellation.
