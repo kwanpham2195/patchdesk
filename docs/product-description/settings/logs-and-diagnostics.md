@@ -112,7 +112,7 @@ If the app log request fails, Logs shows `Logs unavailable` and keeps any entrie
 ## Open questions and verification
 
 - A read-only live pass on 2026-09-14 confirmed the live tail row layout, Pause holding the tail still and Resume restoring updates, the level filter choices All levels, Error, Warn, Info, and Debug, the process filter choices All processes, Main, and Renderer, and Load activity returning redacted `Retention_sweep` cleanup events.
-- Suspected defect: hyphen-named phases read as title-cased words, but underscore-named phases keep their raw name, such as `Retention_sweep`.
+- Suspected defect: hyphen-named phases read as title-cased words, but underscore-named phases keep their raw name, such as `Retention_sweep`. See [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
 - Confirm log tail focus and scroll behavior in a real window.
 - Confirm the visible distinction between app logs and Review activity when both contain the same lifecycle failure.
 - Confirm the exact number of entries shown after a long-running tail exceeds its display bound.

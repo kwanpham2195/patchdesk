@@ -19,7 +19,7 @@ Medium:
 Low:
 
 - [UX-06](#ux-06-disabled-label-checkboxes-look-almost-enabled): Disabled label checkboxes look almost enabled. Named follow-up.
-- [UX-07](#ux-07-the-visited-column-toggle-has-no-tooltip): The Visited column toggle has no tooltip. Named follow-up.
+- [UX-07](#ux-07-the-visited-pull-requests-column-toggle-has-no-tooltip): The Visited pull requests column toggle has no tooltip. Named follow-up.
 - [UX-08](#ux-08-the-logs-tail-is-filled-by-its-own-polling): The Logs tail is filled by its own polling. Named follow-up.
 - [UX-09](#ux-09-the-pressed-scope-bucket-row-looks-unpressed): The pressed Scope bucket row looks unpressed. Named follow-up.
 - [UX-10](#ux-10-verification-ticks-are-lost-without-warning): Verification ticks are lost without warning. Named follow-up.
@@ -112,7 +112,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Disposition:** named follow-up. Proposed issue: "Label filter: make disabled rows read as disabled".
 - **Page:** [Filters, pagination, and refresh](pull-requests/filters-pagination-and-refresh.md#begin-an-action).
 
-### UX-07: The Visited column toggle has no tooltip
+### UX-07: The Visited pull requests column toggle has no tooltip
 
 - **Screen:** The titlebar, on any screen.
 - **What the maintainer does:** Hovers the icon-only collapse toggle, then the Settings button beside it.
@@ -120,7 +120,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Why it hurts:** A mouse user learns what the panel icon does only by pressing it, unlike its neighbours.
 - **Suggested improvement:** Give the toggle and Back the same tooltip the Settings and Navigate buttons use, with the toggle's existing accessible name as the text.
 - **Severity:** low.
-- **Disposition:** named follow-up. Proposed issue: "Titlebar: tooltips for the Visited column toggle and Back".
+- **Disposition:** named follow-up. Proposed issue: "Titlebar: tooltips for the Visited pull requests column toggle and Back".
 - **Page:** [Keyboard, focus, and desktop](cross-cutting/keyboard-focus-and-desktop.md#edge-cases).
 
 ### UX-08: The Logs tail is filled by its own polling

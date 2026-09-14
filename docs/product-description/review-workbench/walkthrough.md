@@ -132,9 +132,9 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 
 - The 2026-09-14 live pass confirmed only the empty state. No retained Walkthrough existed in the live workspace, so the docked and focused layouts, Regenerate, inline conversation threads, and keyboard movement were checked from source only.
 - `j` moves backward and `k` forward, the reverse of the Vim convention. Recorded as [UX-11](../ux-friction.md#ux-11-walkthrough-j-and-k-run-opposite-to-the-vim-convention).
-- Suspected defect: the reading surface ends with "Each section maps to one part of the patch. Use Back to files when you're done." The Walkthrough has no Back to files control. See [B-23](../bug-triage.md#b-23-the-walkthrough-ready-line-names-a-back-to-files-control-that-does-not-exist).
+- Suspected defect: the reading surface ends with "Each section maps to one part of the patch. Use Back to files when you're done." The Walkthrough has no Back to files control. See [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
 - The inline-discussion notice does not say which condition failed, so an outdated Walkthrough and an inline conversation that has not finished loading read the same. Recorded as [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed).
-- Suspected defect: arrow keys, `j`, and `k` do not check modifier keys, so a Command or Control combination with those keys may also move sections. See [B-26](../bug-triage.md#b-26-walkthrough-section-keys-ignore-modifier-keys).
+- Suspected defect: arrow keys, `j`, and `k` do not check modifier keys, so a Command or Control combination with those keys may also move sections. See [B-23](../bug-triage.md#b-23-walkthrough-section-keys-ignore-modifier-keys).
 - Suspected defect, confirmed by an independent review: a disabled Regenerate on a merged or closed Review shows no reason on screen. The open-only rule is intended. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
 - Confirm the layout fade, scroll ownership, and focus return after leaving the focused layout in the built app.
 - Confirm persistence of the current section and reviewed markers across app quit, not only rerender.

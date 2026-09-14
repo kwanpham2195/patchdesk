@@ -128,7 +128,7 @@ A pending-review command settles only from its returned pending-review projectio
 ## Open questions and verification
 
 - Confirmed live on 2026-09-14: the composer's Start a review, Comment now, and Cancel labels; the hint "Press ⌘/Ctrl+Enter to comment. Escape cancels."; disabled submit buttons for an empty draft; Cancel closing an empty composer with no write.
-- Suspected defect: the hint says ⌘/Ctrl+Enter comments, but with no pending review the shortcut runs Start a review, which creates a GitHub pending review instead of publishing the comment.
+- Suspected defect: the hint says ⌘/Ctrl+Enter comments, but with no pending review the shortcut runs Start a review, which creates a GitHub pending review instead of publishing the comment. See [B-17](../bug-triage.md#b-17-the-inline-composer-shortcut-starts-a-review-while-its-hint-says-comment).
 - Not checked live: image and link rendering inside inline cards, thread states, replies, and failure wording. No Review in the workspace had an inline thread, and each failure needs a rejected GitHub write.
 - Confirm line-selection affordance, composer placement, focus, and the transition among publishing, pending, and published cards.
 - Confirm Escape and the discard question in the plain-text diff composer as well as the enhanced diff.

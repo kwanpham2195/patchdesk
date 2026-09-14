@@ -114,7 +114,7 @@ If the provider catalog fails, Settings shows the no-eligible-model guidance and
 
 - A read-only live pass on 2026-09-14 confirmed the section description, `Codex CLI account: available`, and the Default model and Default reasoning selectors, on a Patchdesk started from a terminal. It changed no value.
 - Not observed live: the unavailable wording, the no-eligible-model guidance, a Dock or Finder launch, and a profile switch.
-- The no-eligible-model guidance says to reload the screen, but a key added to the login shell after launch needs a relaunch. Confirm whether reloading Settings can pick up any credential source the guidance means, or whether the copy should say relaunch.
+- The no-eligible-model guidance says to reload the screen, but a key added to the login shell after launch needs a relaunch. Confirm whether reloading Settings can pick up any credential source the guidance means, or whether the copy should say relaunch. See [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
 - Confirm the visible fallback when a saved API-key model disappears from the provider catalog.
 - Confirm whether a failed preference write has visible feedback outside the current tests.
 - Confirm the exact handoff from Settings defaults to the Analysis run dialog.

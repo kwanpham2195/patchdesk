@@ -126,8 +126,8 @@ The filter is a way of reading this diff now, not a place to return to. It is se
 ## Open questions and verification
 
 - The 2026-09-14 live pass confirmed the Scope card layout, the dimmed empty rows with a long dash, the closing line, the sliver for a small bucket, bucket navigation to Diff → Browse with the toolbar Scope picker, clearing through All files, clearing on Commits, and landing on Brief when Insights opens (three pull requests).
-- The pressed bucket row carries the pressed state, but in the live pass it was not visibly distinguishable from unpressed rows. Confirm whether the pressed marker is visible enough to tell which bucket filters the Diff.
-- `.gitattributes`-marked generated files are ignored by the Scope card even though the domain rule accepts them. Confirm whether leaving that input unwired is intended.
+- The pressed bucket row carries the pressed state, but in the live pass it was not visibly distinguishable from unpressed rows. Recorded as [UX-09](../ux-friction.md#ux-09-the-pressed-scope-bucket-row-looks-unpressed).
+- `.gitattributes`-marked generated files are ignored by the Scope card even though the domain rule accepts them. Filed as a product call in [B-24](../bug-triage.md#b-24-repository-marked-generated-files-do-not-reach-the-scope-gauge).
 - No retained Insight existed in the live workspace. Card headlines, retained-time wording, and the Current to Outdated change on a moved revision remain unchecked.
 - Confirm where focus lands after choosing a bucket sends the maintainer to the Diff.
 - Confirm what the Diff shows when a bucket's files are all hidden by another active view state.

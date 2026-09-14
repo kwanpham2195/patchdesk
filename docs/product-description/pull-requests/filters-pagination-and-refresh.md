@@ -143,7 +143,7 @@ After a failed refresh, cached rows remain inspectable but carry a non-current f
 - `Too long alongside the other filters` and a label disabled by length before the five-label cap were not reproduced live; the repository's labels were too short to reach 256 characters.
 - The live pass inferred from the screen that a refused value sends no request; no network panel was open.
 - Confirm Enter versus blur for applying Author and Base branch in a real window.
-- Suspected gap: the Awaiting review from you toggle, Review state, Check status, a change from Open to Merged, and a change of Selected repository can all lengthen the search, and none is measured at its control. With a search near 256 characters, the main process refuses the resulting read as an invalid request. Confirm what the listing shows in that case.
+- Suspected gap: the Awaiting review from you toggle, Review state, Check status, a change from Open to Merged, and a change of Selected repository can all lengthen the search, and none is measured at its control. With a search near 256 characters, the main process refuses the resulting read as an invalid request. Confirm what the listing shows in that case. See [B-20](../bug-triage.md#b-20-some-pull-requests-filters-are-not-measured-against-the-search-length-limit).
 - Confirm the visual difference between Current, Aged, Partial, Cached after refresh failure, Stale, and Unavailable in the running app.
 - Confirm keyboard focus after label selection, page changes, and freshness-badge refresh.
 - Confirm whether a stale cache should remain actionable for opening Reviews while merge-oriented actions are disabled.
