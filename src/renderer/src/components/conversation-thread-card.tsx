@@ -1,7 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { GitHubThreadId } from "../../../domain/ids";
-import { PatchdeskApiError } from "../api-client";
+import { PatchdeskApiError, contextualMessage } from "../api-client";
+import {
+  COMMENT_DELETE_MESSAGES,
+  COMMENT_EDIT_MESSAGES,
+  THREAD_REPLY_MESSAGES,
+} from "../review-copy";
 import {
   EMPTY_BODY_CONTEXT,
   PullRequestDescriptionPreview,
@@ -152,8 +157,8 @@ function ConversationCommentRow({
                   try {
                     await onEdit(comment.id, editBody);
                     setEditing(false);
-                  } catch {
-                    setError("Patchdesk could not edit this comment.");
+                  } catch (cause) {
+                    setError(contextualMessage(cause, COMMENT_EDIT_MESSAGES));
                   } finally {
                     savingRef.current = false;
                     setSaving(false);
@@ -219,8 +224,8 @@ function ConversationCommentRow({
                   setError(undefined);
                   try {
                     await onDelete(comment.id);
-                  } catch {
-                    setError("Patchdesk could not delete this comment.");
+                  } catch (cause) {
+                    setError(contextualMessage(cause, COMMENT_DELETE_MESSAGES));
                   } finally {
                     deletingRef.current = false;
                     setDeleting(false);
@@ -510,8 +515,10 @@ export function ConversationThreadCard({
                       },
                     ]);
                   }
-                } catch {
-                  setReplyError("Patchdesk could not publish this reply.");
+                } catch (cause) {
+                  setReplyError(
+                    contextualMessage(cause, THREAD_REPLY_MESSAGES),
+                  );
                 } finally {
                   replyingRef.current = false;
                   setReplying(false);

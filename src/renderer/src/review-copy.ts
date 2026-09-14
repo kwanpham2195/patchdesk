@@ -189,3 +189,66 @@ export const DIRECT_SUMMARY_MESSAGES: ContextualMessages = {
   forbidden:
     "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
 };
+
+// Conversation and Finding write failures. The unconfirmed-write sentences
+// never say "try again": GitHub may already have applied the write.
+
+const UNCONFIRMED_COMMENT_EDIT =
+  "GitHub could not confirm the edit. Check GitHub again before editing again.";
+
+/** Saving an edit to a published comment from its row controls. */
+export const COMMENT_EDIT_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not edit this comment.",
+  outcome_unknown: UNCONFIRMED_COMMENT_EDIT,
+  ambiguous_write: UNCONFIRMED_COMMENT_EDIT,
+  timeout: UNCONFIRMED_COMMENT_EDIT,
+  rate_limited:
+    "GitHub rate-limited this edit. Wait a moment, then save again.",
+  forbidden:
+    "GitHub blocked this edit: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_COMMENT_DELETE =
+  "GitHub could not confirm the deletion. Check GitHub again before deleting again.";
+
+/** Deleting a published comment from its row controls. */
+export const COMMENT_DELETE_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not delete this comment.",
+  outcome_unknown: UNCONFIRMED_COMMENT_DELETE,
+  ambiguous_write: UNCONFIRMED_COMMENT_DELETE,
+  timeout: UNCONFIRMED_COMMENT_DELETE,
+  rate_limited:
+    "GitHub rate-limited this deletion. Wait a moment, then delete again.",
+  forbidden:
+    "GitHub blocked this deletion: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_THREAD_REPLY =
+  "GitHub could not confirm the reply. Check GitHub again before replying again.";
+
+/** Publishing a reply from a conversation thread card. */
+export const THREAD_REPLY_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not publish this reply.",
+  outcome_unknown: UNCONFIRMED_THREAD_REPLY,
+  ambiguous_write: UNCONFIRMED_THREAD_REPLY,
+  timeout: UNCONFIRMED_THREAD_REPLY,
+  rate_limited:
+    "GitHub rate-limited this reply. Wait a moment, then reply again.",
+  forbidden:
+    "GitHub blocked this reply: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_FINDING_ACTION =
+  "GitHub could not confirm the Finding action. Check GitHub again before repeating it.";
+
+/** Adding a Finding to the review, or dismissing it, from the Analysis reader. */
+export const FINDING_ACTION_MESSAGES: ContextualMessages = {
+  fallback: "The Finding action could not be saved. Try again.",
+  outcome_unknown: UNCONFIRMED_FINDING_ACTION,
+  ambiguous_write: UNCONFIRMED_FINDING_ACTION,
+  timeout: UNCONFIRMED_FINDING_ACTION,
+  rate_limited:
+    "GitHub rate-limited this Finding action. Wait a moment, then try again.",
+  forbidden:
+    "GitHub blocked this Finding action: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};

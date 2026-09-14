@@ -516,6 +516,36 @@ describe("ConversationThreadCard", () => {
     expect(onEditComment).toHaveBeenCalledWith("c-reply", "Edited reply");
   });
 
+  it("tells the maintainer to check GitHub when an edit's outcome is unknown", async () => {
+    const user = userEvent.setup();
+    const onEditComment = vi.fn(async () => {
+      throw new PatchdeskApiError(
+        "outcome_unknown",
+        502,
+        true,
+        "outcome-unknown",
+        "raw provider failure",
+      );
+    });
+    render(<ConversationThreadCard thread={thread({ onEditComment })} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Edit comment" }),
+      " Edited",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText(
+        "GitHub could not confirm the edit. Check GitHub again before editing again.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("Patchdesk could not edit this comment."),
+    ).toBeNull();
+  });
+
   it("explains why Reply and Resolve are unavailable on a comment-only card", () => {
     render(
       <ConversationThreadCard
