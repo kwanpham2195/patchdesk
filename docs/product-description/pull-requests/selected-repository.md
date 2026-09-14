@@ -110,7 +110,7 @@ After a failed or superseded read, the active scope remains the last requested w
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed that a profile with one watched repository shows the picker. Evidence: `/tmp/pd-ux/shots/pull-requests/20-repository-picker.png`. Trigger truncation, the empty-watchlist setup card, and opening a Visited row from a different repository were not checkable with that profile.
+- Live pass on 2026-09-14 confirmed that a profile with one watched repository shows the picker. Trigger truncation, the empty-watchlist setup card, and opening a Visited row from a different repository were not checkable with that profile.
 - Confirm picker focus and the visible loading transition when changing between two watched repositories.
 - Confirm the exact restore when a selected repository is removed in Settings while Pull requests is visible.
 - Confirm whether a failed new-repository read should retain the requested picker value or visibly revert to the previous confirmed value.

@@ -117,7 +117,7 @@ After a row-open failure, the row remains inspectable and can be activated again
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed the inspector's Insights line, its Request Brief, Request Analysis, and Request Walkthrough buttons, and the Scope gauge with bucket counts. No Request button was pressed. Evidence: `/tmp/pd-ux/shots/pull-requests/06-pull-requests-screen.png`.
+- Live pass on 2026-09-14 confirmed the inspector's Insights line, its Request Brief, Request Analysis, and Request Walkthrough buttons, and the Scope gauge with bucket counts. No Request button was pressed.
 - Confirm row selection, inspector focus, and Arrow key wrapping in a real window.
 - Confirm the exact visible behavior when a selected row disappears during refresh.
 - Confirm which cached listing actions remain available in the running workbench.

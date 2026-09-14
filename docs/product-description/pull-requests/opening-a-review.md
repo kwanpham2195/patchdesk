@@ -126,7 +126,7 @@ After failure, no partially prepared session is presented as current. Recovery r
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed that a Visited pull requests row opens its Review on one click (#94, #109, #120) and on Enter, and that no row-local busy state appeared; each transition finished before the next screenshot. Evidence: `/tmp/pd-ux/shots/pull-requests/21-visited-click-immediate.png`, `24-check-current-state.png`. Opening from the listing row, inspector, and palette was not exercised.
+- Live pass on 2026-09-14 confirmed that a Visited pull requests row opens its Review on one click (#94, #109, #120) and on Enter, and that no row-local busy state appeared; each transition finished before the next screenshot. Opening from the listing row, inspector, and palette was not exercised.
 - The Pull requests screen showing between two workbenches while a saved Review loads is source behavior; the live pass could not observe it because every Review it opened loaded at once.
 - After a failed load from the Visited pull requests column, the destination stays on the requested Review workbench: the titlebar says Review workbench and shows Back while the Pull requests screen and its failure card fill the window. Filed as suspected defect [B-15](../bug-triage.md#b-15-a-failed-load-from-a-visited-row-leaves-the-destination-on-the-missing-review).
 - Confirm duplicate protection when a Visited row is double-clicked, and that a pull request opened from the palette then appears in the column.

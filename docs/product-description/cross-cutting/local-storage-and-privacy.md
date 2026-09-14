@@ -112,7 +112,7 @@ Clear cache removes rebuildable children while durable Review history remains. C
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed that opening a pull request moves it to the top of the Visited pull requests column with a fresh open time (#94, #109, #120, #95, #96). Settings → Data & recovery describes the manual actions only; retention removing records with sessions is source behavior and has no visible copy to check. Evidence: `/tmp/pd-ux/shots/pull-requests/21-visited-click-immediate.png`, `26-settings-data-recovery.png`.
+- Live pass on 2026-09-14 confirmed that opening a pull request moves it to the top of the Visited pull requests column with a fresh open time (#94, #109, #120, #95, #96). Settings → Data & recovery describes the manual actions only; retention removing records with sessions is source behavior and has no visible copy to check.
 - The skipped-record Diagnostic needs a corrupted Review file and was not live-checked.
 - Confirm that the collapsed column preference is shared across workspaces in the running app; the live pass did not switch workspace.
 - Confirm the visible error and retry path for unreadable Config, Local data, Cache, Logs, and Diagnostics.

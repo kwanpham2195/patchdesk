@@ -123,6 +123,7 @@ verification/
   pull-requests.md                 first-run and Pull requests checklists
   review-workbench.md              workbench and GitHub-write checklists
   insights-and-cross-cutting.md    Insight and cross-cutting checklists
+  unblocking-notes.md              notes on blocked rows from the 2026-08-31 pass
 
 foundations/
   task-lifecycle-and-interruption.md  task phases, variants, interrupts, and operation states
@@ -176,7 +177,7 @@ Status is one of `not started`, `drafted`, or `verified`. A document is `verifie
 | glossary.md                                     | drafted |
 | bug-triage.md                                   | drafted |
 | ux-friction.md                                  | drafted |
-| verification/ (4 checklists)                    | drafted |
+| verification/ (4 checklists + notes)            | drafted |
 | foundations/task-lifecycle-and-interruption.md  | drafted |
 | foundations/navigation-and-overlays.md          | drafted |
 | foundations/workspace-profile-and-identity.md   | drafted |

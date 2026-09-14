@@ -28,9 +28,8 @@ Low:
 - [UX-13](#ux-13-the-open-reviews-visited-row-does-nothing-on-enter): The open Review's Visited row does nothing on Enter. Rejected with evidence.
 - [UX-14](#ux-14-skip-to-content-leaves-main-content-in-the-address): Skip to content leaves `#main-content` in the address. Rejected with evidence.
 - [UX-15](#ux-15-the-merge-conflicts-notice-asks-for-a-push-patchdesk-cannot-make): The Merge conflicts notice asks for a push Patchdesk cannot make. Rejected with evidence.
-- [UX-16](#ux-16-the-context-control-was-not-documented): The Context control was not documented. Rejected with evidence.
 
-Count: 16 items, 5 medium and 11 low; 12 named follow-ups, 4 rejected with evidence, none fix now.
+Count: 15 items, 5 medium and 10 low; 12 named follow-ups, 3 rejected with evidence, none fix now.
 
 Friction the passes reported that is a defect, with the independent review's disposition, is tracked in bug-triage.md:
 
@@ -210,16 +209,5 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low.
 - **Disposition:** rejected with evidence. The live pass on #113 read the notice as clearly describing work outside Patchdesk: it says "in your own local checkout" and names both branches.
 - **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#edge-cases).
-
-### UX-16: The Context control was not documented
-
-- **Screen:** Review workbench, Diff tab toolbar.
-- **What the maintainer does:** Looks up what Context does and why it is disabled.
-- **What they see:** No product description page named the control when the pass ran.
-- **Why it hurts:** A maintainer meeting Context unavailable had nothing to read.
-- **Suggested improvement:** Document the control and its reasons.
-- **Severity:** low.
-- **Disposition:** rejected with evidence. This was a documentation gap, and the page now describes the control, its states, and its reasons; the always-disabled state the pass saw is the defect [B-13](bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).
-- **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#begin-an-action).
 
 Drafted from the 2026-09-14 live passes at `5fe7df3b` and the independent review; source citations are from application commit `dd613996`.
