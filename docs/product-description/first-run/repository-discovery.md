@@ -39,7 +39,7 @@ A watched repository that is not returned by the current scan remains visible. I
 
 A root row commits on blur and on Enter, and a folder chosen through the picker commits at once. The commit validates and writes the whole profile; after the workspace reload returns the saved profile, discovery requests its suggestions. Cancelling the picker leaves the typed root unchanged.
 
-Checking a candidate begins a watchlist add with its host, owner, repository name, and discovered local path. Unchecking a watched row begins a watchlist removal. The checkbox state changes optimistically for that row and its control becomes unavailable while its request is pending.
+Checking a candidate begins a watchlist add with its host, owner, repository name, and discovered local path, for the workspace whose repositories the card is showing. Unchecking a watched row begins a watchlist removal. The checkbox state changes optimistically for that row and its control becomes unavailable while its request is pending.
 
 ### While the action runs
 
@@ -95,7 +95,7 @@ After a failed scan, the saved root and prior watchlist remain. After a failed r
 
 **Network, local tools, and Insight providers.** The main process scans with bounded local `find` and `git config` commands. The renderer receives only validated host, owner, repository, and absolute local path values. Insight providers do not participate.
 
-**Concurrent operations and locking.** Root scans are bounded concurrently. Repository mutations use per-repository pending guards, while profile/config writes use their own serialization. A slow row does not block a different row.
+**Concurrent operations and locking.** Root scans are bounded concurrently. Repository mutations use per-repository pending guards, while profile/config writes use their own serialization. A slow row does not block a different row. Each watchlist write names its workspace, so a checkbox used while a workspace switch loads changes the workspace still on screen.
 
 **Feedback, errors, and diagnostics.** Root rows distinguish scanning, found, zero-found, and scan-failed states, and the folder list reports its own `Saving…`, `Saved`, or rejection message. Repository mutations show a spinner, success feedback, or an inline error; raw command output is not shown.
 
@@ -120,10 +120,10 @@ After a failed scan, the saved root and prior watchlist remain. After a failed r
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no dev app or CDP pass was run for this document.
+- A read-only live pass on 2026-09-14 saw a saved folder report `2 repositories found · 1 watched` with matching checkbox states in Settings → Workspace. The zero-found, scan-failed, and multi-root cases were not reachable without adding a folder.
 - Confirm the exact folder-picker focus return and where focus lands after a root is saved.
 - Confirm the live desktop presentation and recovery timing when one of several roots fails.
 - Confirm the intended behavior when a watched repository's checkout is moved or its remote origin changes after it was saved.
 - Confirm that an in-flight watchlist mutation is allowed to settle during a Settings close and how the close guard presents that state.
 
-Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`; per-control saving described from `883fad2`.
+Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`; revised and verified against `dd613996`.

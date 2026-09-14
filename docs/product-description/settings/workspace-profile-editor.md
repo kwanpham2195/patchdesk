@@ -53,7 +53,7 @@ New workspace opens the New workspace dialog. It asks for a Name and an Account,
 
 ### While the action runs
 
-The control that committed says `Saving…` beneath itself. Every other control stays usable. Patchdesk merges each change into the last body it sent, so two saves started close together compose instead of the second one undoing the first, and only the newest response is allowed to replace the displayed values.
+The control that committed says `Saving…` beneath itself. Every other control stays usable. Patchdesk merges each change into the last body it sent, so two saves started close together compose instead of the second one undoing the first, and only the newest response is allowed to replace the displayed values or set the control to `Saved`. An older save that answers late changes neither.
 
 The New workspace dialog shows `Creating workspace…` on its confirm button and disables Cancel and the close button while the request runs. Patchdesk derives the new workspace's ID from the name — lowercased, with every run of other characters replaced by `-`, and `-2`, `-3`, and so on appended if that ID is taken — then selects the new workspace and reloads.
 
@@ -103,7 +103,7 @@ After an interrupt the maintainer stays in Settings with the values the server l
 
 **Network, local tools, and Insight providers.** The GitHub CLI supplies Reviewing as and the New workspace account list. Folder selection uses macOS. Insight-provider availability does not affect saving.
 
-**Concurrent operations and locking.** Workspace-selection and global-settings config writes are serialized in the main process. The renderer applies only the newest save response and ignores an obsolete workspace-switch response.
+**Concurrent operations and locking.** Workspace-selection and global-settings config writes are serialized in the main process. The renderer applies only the newest save response and ignores an obsolete workspace-switch response. Each repository checkbox write names the workspace the card is showing, so a checkbox used while a switch is still loading changes that workspace rather than the one arriving.
 
 **Feedback, errors, and diagnostics.** Each control reports `Saving…`, `Saved`, or its own failure message. There is no card-level save alert. A failed workspace selection records a retryable recovery diagnostic.
 
@@ -123,13 +123,14 @@ After an interrupt the maintainer stays in Settings with the values the server l
 - New workspace derives its ID from the name, so two workspaces named the same get `-2`, `-3`, and so on. A blank Name is rejected with `Name cannot be blank.` before any request.
 - A failed workspace switch keeps the previous workspace active and leaves every value as saved.
 - Two rapid workspace selections can settle out of order. Only the latest requested target is applied.
+- A save that creates the workspace keeps the identifier it derived even when a newer save answers first, so the next save updates that workspace instead of creating a second one.
 - A workspace with no folder keeps one blank folder row, so Choose folder is always present.
 
 ## Open questions and verification
 
-- Live desktop verification of the reworked cards is pending; the checklists in `verification/` still describe the previous editor.
+- Live desktop verification of the reworked cards is pending; the checklists in `verification/` still describe the previous editor. A read-only pass on 2026-09-14 confirmed that Advanced and Workspace expand in place without changing a value; it changed no value, so saving, rejection, and switching were not observed.
 - Confirm focus after the folder picker returns and after a rejected value is reported.
 - Confirm what the maintainer sees when a save is still in flight as Settings closes.
 - Confirm that a workspace created from the dialog appears in the Active workspace selector without a reload.
 
-Baseline drafted from Patchdesk application source commit `3100615`; workspace settings rework described from `883fad2`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.

@@ -6,9 +6,9 @@ Data & recovery is a Settings section for removing rebuildable Cache or non-runn
 
 ## The simple case
 
-The maintainer opens Settings > Data & recovery and sees the two cleanup actions. They choose Clear cache, read the confirmation, and confirm. Patchdesk removes rebuildable files, reloads workspace data, and closes Settings after success.
+The maintainer opens Settings > Data & recovery and sees the two cleanup actions. They choose Clear cache, read the confirmation, and confirm. Patchdesk removes rebuildable files, reloads workspace data, and closes Settings after success, leaving the screen underneath in place.
 
-If they choose Clear local review data, the stronger confirmation says that completed and failed local Reviews are removed while an active Review and Diagnostic records stay. A failed cleanup leaves its confirmation open with the action-specific error so the maintainer can try again or cancel.
+If they choose Clear local review data, the stronger confirmation says that completed and failed local Reviews are removed while an active Review and Diagnostic records stay. Its success also returns the app to the Pull requests screen. A failed cleanup leaves its confirmation open with the action-specific error so the maintainer can try again or cancel.
 
 ## The task, event by event
 
@@ -25,11 +25,11 @@ stateDiagram-v2
 
 ### Arrive
 
-The active workspace profile is the target. With no active profile, both cleanup buttons are disabled and the section says to choose a workspace profile first.
+The active workspace profile is the target. With no active profile, both cleanup buttons and Load activity are disabled, and the section shows `No active workspace` with `Choose a workspace before clearing its local data.`
 
-Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay.
+The Local review data card states the boundary once: `Stored reviews stay readable` over `Clear cache keeps review history. Clear local review data removes completed and failed local reviews; an active review and diagnostic reports stay.` Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. The Review activity card below it is described in [Logs and diagnostics](logs-and-diagnostics.md).
 
-The section does not present a storage browser, per-session delete list, or quarantine list. Retention cleanup also runs in the background: terminal or orphaned Review sessions older than 14 days and quarantine entries older than 30 days are eligible for removal.
+The section does not present a storage browser, per-session delete list, or quarantine list. Retention cleanup also runs in the background: a terminal Review older than 14 days is removed with its record and session, orphaned sessions older than 14 days and quarantine entries older than 30 days are removed, as [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) describes.
 
 ### Leave unchanged
 
@@ -37,7 +37,7 @@ Opening the section, reading its explanation, or closing a confirmation leaves l
 
 ### Begin an action
 
-Choosing Clear cache or Clear local review data opens its own confirmation. The stronger action uses a destructive confirmation label, while both dialogs name what remains.
+Choosing Clear cache or Clear local review data opens its own confirmation. `Clear cache?` says `This removes rebuildable local files. Your saved reviews and diagnostic reports stay.` and confirms with Clear cache. `Clear local review data?` says `This removes completed and failed local reviews. An active review and diagnostic reports stay.` and confirms with a destructive Clear local data button.
 
 Confirming sends the action for the active profile. The dialog becomes busy and its controls are disabled. Clear local review data first protects active work and moves invalid entries to quarantine before removing eligible session data.
 
@@ -49,9 +49,9 @@ Cleanup does not ask GitHub to delete anything. It does not remove Diagnostic re
 
 ### Settle
 
-A successful cleanup reloads workspace data and closes Settings. Saved Review history remains after Clear cache. After Clear local review data, removed completed or failed Reviews are no longer available locally, while protected active work and Diagnostic records remain.
+A successful cleanup reloads workspace data and closes Settings. Saved Review history remains after Clear cache, and the destination underneath is unchanged. After Clear local review data, the app returns to Pull requests; removed completed or failed Reviews are no longer available locally, while protected active work and Diagnostic records remain.
 
-If cleanup fails, the confirmation stays open, the relevant error is shown, and the same action remains available for an explicit retry. A missing profile or unavailable storage is reported as a failure; Patchdesk does not silently broaden the target.
+If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could not clear cache. Try again.` or `Could not clear local review data. Try again.`, the same alert appears in the card, and the same action remains available for an explicit retry. A missing profile or unavailable storage is reported as a failure; Patchdesk does not silently broaden the target.
 
 ## Variants
 
@@ -102,17 +102,19 @@ If cleanup fails, the confirmation stays open, the relevant error is shown, and 
 - Clear local review data keeps active Review work and Diagnostic records.
 - Invalid session entries are quarantined before eligible local Review data is removed.
 - A session with an active preparation journal, active Insight, protected pending review, direct summary, or unresolved merge is not removed.
-- A terminal or orphaned session is eligible for automatic retention removal only when older than 14 days.
+- A terminal or orphaned session is eligible for automatic retention removal only when older than 14 days. A terminal session's Review record goes with it, unless the record holds an unreconciled GitHub write operation.
 - A quarantine entry is eligible for automatic removal only when older than 30 days.
 - Retention sweep runs at startup and every 24 hours while the app runs; per-item failures do not stop the sweep.
-- Cleanup success reloads workspace data and closes Settings; cleanup failure keeps the confirmation context.
+- Cleanup success reloads workspace data and closes Settings; Clear local review data also returns to Pull requests. Cleanup failure keeps the confirmation context.
+- Neither cleanup makes the [Visited pull requests column](../foundations/visited-pull-requests.md) read its list again, so rows for removed Reviews stay until the next Review open or workspace switch.
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
-- Confirm the exact visible confirmation text and focus behavior for both cleanup actions.
+- A read-only live pass on 2026-09-14 confirmed the Local review data and Review activity card copy and that both cleanup buttons are enabled with an active workspace. It pressed neither, so the confirmations, success, and failure were not observed, and the no-active-workspace state was not reachable.
+- Confirm focus behavior for both cleanup confirmations and after Settings closes on success.
 - Confirm what the maintainer sees if a protected session becomes active after the confirmation opens.
-- Confirm the post-cleanup Pull requests and Review screens when cached or session data was removed.
+- Confirm the Review workbench a maintainer reaches after Clear cache when its represented-review worktree was removed.
+- Suspected defect: after Clear local review data, a Visited pull requests row for a removed Review stays listed and fails when clicked; see [Visited pull requests](../foundations/visited-pull-requests.md#open-questions-and-verification).
 - Confirm whether a failed retention sweep has any visible Settings indication beyond redacted activity.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.

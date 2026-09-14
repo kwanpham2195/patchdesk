@@ -10,7 +10,7 @@ On first run, Patchdesk tries to build a Default profile from the active GitHub 
 
 The maintainer edits profiles in Settings → Workspace and creates them from its New workspace dialog, which asks for a name and an account and derives the identifier from the name. Saved workspace roots are scanned for repositories with GitHub remotes. The maintainer explicitly checks which discovered repositories to watch.
 
-The active profile scopes the Pull requests screen, local Reviews, represented-review worktrees, diagnostics, GitHub identity, and per-profile Insight preferences.
+The active profile scopes the Pull requests screen, the [Visited pull requests column](visited-pull-requests.md), local Reviews, represented-review worktrees, diagnostics, GitHub identity, and per-profile Insight preferences.
 
 ## The task, event by event
 
@@ -43,7 +43,7 @@ Closing a clean profile editor, cancelling a folder picker, and choosing the alr
 
 Saving validates the full profile at the main-process boundary. Identifiers, host, account, roots, rule paths, repository identity, and optional local paths must satisfy their domain formats. A creating request may omit the identifier, and the main process derives it from the name. [Workspace settings](../settings/workspace-profile-editor.md) owns control behavior and per-control save status.
 
-Checking an unwatched repository requests a watchlist add with host, owner, repository name, and optional local path. Unchecking a watched repository requests removal. Discovery itself never performs either action.
+Checking an unwatched repository requests a watchlist add with host, owner, repository name, and optional local path. Unchecking a watched repository requests removal. Each request names the workspace whose repositories the card is showing, so a checkbox used while a workspace switch is still loading changes the workspace on screen, not the one arriving. A request naming a workspace that no longer exists fails. Discovery itself never performs either action.
 
 Choosing a different active profile saves only that profile ID to global config. The renderer marks the target and entry point as pending.
 
@@ -81,7 +81,7 @@ Profile identity is stable local configuration, not a credential snapshot. Patch
 | --- | --- | --- |
 | Cancel, Stop, or Escape | There is nothing to cancel in profile editing: each control has already saved. Discovery has no side effect to cancel. | Profile and watchlist requests have no Stop control. A failure preserves prior confirmed state. |
 | Navigate to another Patchdesk screen, Review, Settings section, or workspace profile | Navigation always proceeds; no profile draft guards switching or Settings close. | A second profile target can supersede an earlier response. Applying the winner returns to Pull requests. |
-| Start another action or request a refresh | Discovery, account re-check, and listing refresh are independent reads. | Config mutations serialize. Per-repository watchlist state prevents one row's result from settling another row. |
+| Start another action or request a refresh | Discovery, account re-check, and listing refresh are independent reads. | Config mutations serialize. Per-repository watchlist state prevents one row's result from settling another row, and each watchlist write names its workspace, so a switch in flight cannot redirect it. |
 | GitHub, the network, a local tool, or an Insight provider fails or times out | Missing or unauthenticated `gh` leaves first-run identity neutral and gives corrective copy. | Selection and save storage failures keep the previous active state. Discovery failure shows a scan error without changing the watchlist. |
 | Close Settings, reload the renderer, close the window, or quit Patchdesk | Settings closes without a question, because every control has saved itself. | Saved profile and active selection survive restart. Text typed but never committed is dropped. |
 | The pull request, represented revision, pending review, permission, or other target changes elsewhere | Review changes do not alter profile configuration. Another app instance is normally prevented. | Watchlist or profile storage changed outside Patchdesk is not merged with the in-memory draft. The next reload becomes authoritative. |
@@ -120,13 +120,15 @@ After a switch failure, the prior profile remains active. After a rejected field
 - Two workspaces created with the same name get distinct identifiers: the derived slug, then `-2`, `-3`, and so on.
 - Updating a watched repository's local path does not change its GitHub identity.
 - Profile field updates preserve the watchlist; watchlist updates preserve other profile fields.
+- A repository checkbox used before a workspace has loaded reports `Patchdesk has not finished loading this workspace.` and sends nothing.
+- The first save on a fresh install, before any workspace is stored, creates the workspace with the label Default when no name was given.
 
 ## Open questions and verification
 
-- Live desktop verification is pending because this task did not run with the required herdr dev and log panes.
+- A read-only live pass on 2026-09-14 could not check this document: the workspace-switch timing, New workspace, and first-run detection all need a workspace change or an empty workspace.
 - Confirm the exact first-run transition when `gh auth login` completes while Patchdesk remains open and the maintainer presses Re-check.
 - Confirm profile-switch focus and titlebar feedback from both the header selector and Settings selector.
 - Confirm root grouping and watched-outside-roots presentation against real repositories, including a repository with no saved local path.
 - Cross-process edits to profile files are not described as a supported workflow. Confirm whether the next reload should warn or silently adopt them.
 
-Verified against Patchdesk application source commit `3100615`; workspace creation, per-control saving, and in-place setup described from `883fad2`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.

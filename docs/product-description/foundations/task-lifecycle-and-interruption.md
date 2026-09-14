@@ -45,7 +45,7 @@ If the surface holds an unsaved draft or owns a write whose final result has not
 
 The action owner checks local prerequisites before starting. It can reject empty input, malformed values, missing provider configuration, an unavailable Review, absent permissions, stale revision evidence, or an existing conflicting operation without sending the requested work.
 
-Accepted actions expose a pending state. Feature controls use labels such as Saving…, Switching…, Opening Review…, Starting…, Cancelling…, or Checking GitHub again…. Some tracked loading actions also start the thin indeterminate bar at the bottom of the titlebar.
+Accepted actions expose a pending state. Feature controls use labels such as Saving…, Switching…, Opening Review…, Loading review…, Starting…, Cancelling…, or Checking GitHub again…. Some tracked loading actions also start the thin indeterminate bar at the bottom of the titlebar.
 
 The titlebar bar counts overlapping tracked actions. The first action supplies its accessible label, and the bar stays until the last tracked action settles. It does not mean every control in the app is locked.
 
@@ -75,7 +75,7 @@ An uncertain GitHub write settles differently from a failure. Patchdesk locks re
 | Pull request and Review state | Freshness, represented revision, and terminal state decide whether revision-bound actions are available. | A remote change can turn the action into cancellation, supersession, readonly evidence, or recovery depending on its owner. |
 | GitHub permissions and merge readiness | Reads can remain available without write permission. Each write checks its narrower permission and current preconditions. | Permission or readiness can change before the write completes; post-write or recovery reads determine the settled state. |
 | Network, local tool, and Insight provider availability | Missing tools, credentials, catalog entries, or network access can prevent an action from starting. | Timeout, process exit, loss of network, or malformed output settles as a typed failure unless the action's outcome is genuinely uncertain. |
-| Input path: mouse, keyboard, or desktop menu | Different controls can request the same action owner. Navigation and Settings commands share the same blocked-state checks. | Input path does not change ownership. Duplicate commands are ignored, coalesced, queued, or rejected by the owning feature. |
+| Input path: mouse, keyboard, or desktop menu | Different controls can request the same action owner. Navigation commands, including a Visited pull requests row, and Settings commands share the same blocked-state checks. | Input path does not change ownership. Duplicate commands are ignored, coalesced, queued, or rejected by the owning feature. |
 
 Variant values are read at the boundary that needs them. A run configuration is captured when the run starts. Freshness and write permission are rechecked when a GitHub write needs current proof. View preferences can update independently.
 
@@ -123,13 +123,14 @@ After an interrupt, Patchdesk stays on the current surface unless navigation was
 - A status-read failure does not prove that a long-running child or GitHub action failed.
 - A confirmed request failure can be retryable; an uncertain GitHub write must not be retried.
 - Closing or reloading can discard renderer-only drafts even when durable Review state remains safe.
+- No surface in the default app reports an unsaved draft to the navigation guard. The Review workbench reports only a pending GitHub write or a clear state, so the draft branch of the leave dialog is not reachable.
 
 ## Open questions and verification
 
-- Live desktop verification is pending because this task did not run with the required herdr dev and log panes.
+- A read-only live pass on 2026-09-14 could not check this document's claims: overlapping tracked reads settled too fast to observe, and the write-pending and uncertain-outcome states need a GitHub write. Navigate was observed only in its normal enabled state.
 - Confirm which tracked operations expose the titlebar bar and whether the first action's label remains understandable when a second action outlives it.
-- Confirm the visible and focus behavior of navigation commands while the `write_pending` guard is active. In the current source the Review workbench is the only surface that reports navigation state, and it reports only `write_pending` or `clear`; confirm whether any surface still reports `dirty_draft`.
+- Confirm the visible and focus behavior of navigation commands while the `write_pending` guard is active.
 - Feature documents must verify their own Escape behavior. This foundation defines the required categories but does not assume every Base UI dialog routes Escape through the same owner.
 - Confirm app shutdown messaging while an Insight cancellation is in progress; the durable cancellation path is documented in code, but the visible shutdown timing is not.
 
-Verified against Patchdesk application source commit `3100615`; the removal of the workspace draft guard described from `883fad2`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.

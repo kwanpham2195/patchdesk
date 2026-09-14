@@ -106,13 +106,16 @@ If the app log request fails, Logs shows `Logs unavailable` and keeps any entrie
 - Review Diagnostics redact paths, diff text, PR text, stack details, prompts, tokens, provider output, and credentials before persistence and support export.
 - A malformed activity event is skipped individually; a malformed whole response shows the activity error.
 - The current Settings UI loads activity but does not expose the support-bundle export route.
+- A phase name is made readable by capitalising each hyphen-separated word, so an underscore-named phase shows as recorded: the retention sweep appears as `Retention_sweep`.
+- When a Review listing skips unreadable records, Review activity gains a `Sidebar Listing Unreadable` recovery event that gives only the count.
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
-- Confirm log tail focus, pause/resume feedback, and scroll behavior in a real window.
+- A read-only live pass on 2026-09-14 confirmed the live tail row layout, Pause holding the tail still and Resume restoring updates, the level filter choices All levels, Error, Warn, Info, and Debug, the process filter choices All processes, Main, and Renderer, and Load activity returning redacted `Retention_sweep` cleanup events.
+- Suspected defect: hyphen-named phases read as title-cased words, but underscore-named phases keep their raw name, such as `Retention_sweep`.
+- Confirm log tail focus and scroll behavior in a real window.
 - Confirm the visible distinction between app logs and Review activity when both contain the same lifecycle failure.
 - Confirm the exact number of entries shown after a long-running tail exceeds its display bound.
 - Confirm the user-facing recovery path when local app logs or profile Diagnostics cannot be read.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.

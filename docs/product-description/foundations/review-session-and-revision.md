@@ -126,14 +126,17 @@ After an interrupted refresh, the previous represented snapshot remains the last
 - A pull request that changes during remote reads returns head changed and does not adopt the mixed snapshot.
 - Closed does not automatically mean merged. Authoritative merge outcome distinguishes merged from closed unmerged.
 - Terminal transition is one-way; later terminal observations are harmless.
+- Recovery clears leftover merge evidence on a Review that is already terminal. Check GitHub again then settles instead of being refused on every press, and the retention sweep no longer treats that Review as running.
+- A background observation that loses a race with another save discards its own recovery journal. The Review stays openable, and a Review already stuck this way heals at the next recovery.
+- An observation that starts while a GitHub write holds the Review lock reads the recent-write journal only after it takes the lock. A just-confirmed write therefore stays on screen instead of briefly showing the pre-write state until a later poll.
 - Refresh clears recent own-write observation baselines only after it fully re-baselines the represented remote state.
 
 ## Open questions and verification
 
-- Live desktop verification is pending because this task did not run with the required herdr dev and log panes.
+- A read-only live pass on 2026-09-14 could not check this document: the refresh-after-write race and a mid-session revision change need a GitHub write or an upstream push, and Check GitHub again was not present on the Review inspected.
 - Confirm the exact copy and available actions for Fresh, Revision changed, Remote state unavailable reasons, and terminal merged or closed states.
 - Confirm preparation progress and retry behavior for missing local path, unavailable local checkout, GitHub authentication failure, storage failure, and head change.
 - Confirm that older Insights and diffs remain readable after a new session becomes current and are labeled with their represented revision.
 - Confirm the visible boundary between same-revision remote reconciliation and new-revision preparation.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
