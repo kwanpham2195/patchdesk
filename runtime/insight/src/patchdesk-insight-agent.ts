@@ -342,7 +342,7 @@ function inspectorTools(
   operations: InspectorOperations,
   state: SubmissionState,
 ): Array<AgentTool> {
-  const budget = `The four inspectors share a budget of ${MAX_ANALYSIS_INSPECTION_CALLS} calls per run; a call past the budget, or one that breaks a rule above, returns {"denied":true} with no other detail.`;
+  const budget = `The four inspectors share a budget of ${MAX_ANALYSIS_INSPECTION_CALLS} calls per run. A call past the budget, or one that names a file or revision outside the rules above, returns {"denied":true} with no other detail; an argument that fails the parameter schema returns a tool error naming the field instead.`;
   /** An inspector never ends a run of its own; it only follows a submission. */
   function inspectorResult(output: InspectorOutcome) {
     return {
@@ -355,7 +355,7 @@ function inspectorTools(
     {
       name: "list_changed_files",
       label: "List changed files",
-      description: `List the repository-relative path of every file this pull request changes. These are the only files search_files and read_file_range can see. ${budget}`,
+      description: `List the repository-relative path of every changed file this run can read: the regular text files at the prepared review head that fit the snapshot size limits. A changed file missing from the list (binary, oversized, or unreadable) is represented only by the patch. These are the only files search_files and read_file_range can see. ${budget}`,
       parameters: jsonSchemaFor(listChangedFilesInput),
       async execute() {
         return inspectorResult(await operations.listChangedFiles());
