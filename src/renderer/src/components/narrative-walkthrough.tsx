@@ -223,12 +223,12 @@ export function NarrativeWalkthrough({
           return;
         }
       }
-      if (event.key === "ArrowLeft" || event.key === "j") {
+      if (event.key === "ArrowLeft" || event.key === "k") {
         event.preventDefault();
         if (canGoPrev) goToOffset(-1);
         return;
       }
-      if (event.key === "ArrowRight" || event.key === "k") {
+      if (event.key === "ArrowRight" || event.key === "j") {
         event.preventDefault();
         if (canGoNext) goToOffset(1);
         return;
