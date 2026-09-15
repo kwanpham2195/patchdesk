@@ -115,7 +115,7 @@ function press(key: string): void {
 async function expectStatus(input: {
   kind: string;
   state: string;
-  total: number;
+  total?: number;
   position?: number;
   path?: string;
   line?: number;
@@ -126,7 +126,9 @@ async function expectStatus(input: {
     });
     expect(status.dataset.navigationKind).toBe(input.kind);
     expect(status.dataset.navigationState).toBe(input.state);
-    expect(status.dataset.navigationTotal).toBe(String(input.total));
+    expect(status.dataset.navigationTotal).toBe(
+      input.total === undefined ? undefined : String(input.total),
+    );
     expect(status.dataset.navigationPosition).toBe(
       input.position === undefined ? undefined : String(input.position),
     );
@@ -314,6 +316,33 @@ describe("ReviewDiffView navigation feedback", () => {
       total: 2,
       path: "src/b.ts",
     });
+  });
+
+  it("says navigation needs All files when a navigation key is pressed in Selected", async () => {
+    enablePierre();
+    const parsed = parseReviewDiff(patch);
+    const view = (fileMode: "all" | "selected"): React.JSX.Element => (
+      <ReviewDiffView
+        patch={patch}
+        parsedFiles={parsed.files}
+        fileStatsByPath={parsed.statsByPath}
+        selectedPath="src/a.ts"
+        annotations={annotations}
+        preferences={{ ...DEFAULT_REVIEW_VIEW_PREFERENCES, fileMode }}
+        collapsedPaths={new Set()}
+        onPreferencesChange={() => undefined}
+        onCollapsedPathsChange={() => undefined}
+      />
+    );
+    const { rerender } = render(view("selected"));
+
+    press("]");
+    await expectStatus({ kind: "hunk", state: "unavailable" });
+
+    rerender(view("all"));
+    expect(
+      screen.queryByRole("status", { name: "Diff navigation status" }),
+    ).toBeNull();
   });
 
   it("stops file and hunk navigation while the Markdown preview is active", async () => {

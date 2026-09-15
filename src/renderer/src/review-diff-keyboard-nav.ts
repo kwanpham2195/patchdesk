@@ -76,6 +76,11 @@ export type ReviewDiffNavigationStatus =
       readonly message: string;
     }
   | {
+      readonly kind: "file" | "hunk" | "comment";
+      readonly state: "unavailable";
+      readonly message: string;
+    }
+  | {
       readonly kind: "file";
       readonly state: "target";
       readonly position: number;

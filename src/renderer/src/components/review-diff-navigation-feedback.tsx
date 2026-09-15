@@ -16,7 +16,9 @@ export function ReviewDiffNavigationFeedback({
       data-navigation-kind={status.kind}
       data-navigation-state={status.state}
       data-navigation-position={target?.position}
-      data-navigation-total={status.total}
+      data-navigation-total={
+        status.state === "unavailable" ? undefined : status.total
+      }
       data-navigation-path={target?.path}
       data-navigation-line={
         target === undefined || target.kind === "file" ? undefined : target.line
