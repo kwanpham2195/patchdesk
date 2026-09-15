@@ -715,8 +715,10 @@ describe("narrative walkthrough takeover", () => {
       "[data-walkthrough-takeover]",
     ) as HTMLElement;
     takeover.focus();
+    await userEvent.keyboard("{j}");
+    expect(onSelectSection).toHaveBeenLastCalledWith("section-2");
     await userEvent.keyboard("{k}");
-    expect(onSelectSection).toHaveBeenCalledWith("section-2");
+    expect(onSelectSection).toHaveBeenLastCalledWith("section-1");
 
     const editor = document.createElement("textarea");
     editor.setAttribute("aria-label", "Walkthrough editor");
