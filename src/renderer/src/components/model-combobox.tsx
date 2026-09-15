@@ -76,7 +76,7 @@ export function ModelCombobox({
         <Combobox.Positioner className="z-50 outline-none" sideOffset={4}>
           <Combobox.Popup
             data-slot="model-combobox-content"
-            className="w-[var(--anchor-width)] max-w-[var(--available-width)] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md"
+            className="w-max min-w-[var(--anchor-width)] max-w-[var(--available-width)] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md"
           >
             <Combobox.Empty className="px-3 py-4 text-center text-sm text-muted-foreground">
               No models found.
