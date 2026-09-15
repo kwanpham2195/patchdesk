@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -76,5 +83,39 @@ describe("PullRequestMetadataRail assign yourself", () => {
         screen.getByRole("button", { name: "Assign yourself" }),
       ).not.toBeNull(),
     );
+  });
+});
+
+describe("PullRequestMetadataRail reviewers on a terminal Review", () => {
+  function renderTerminalRail(requestedReviewers: ReadonlyArray<string>) {
+    return render(
+      <PullRequestMetadataRail
+        labels={[]}
+        assignees={[]}
+        requestedReviewers={requestedReviewers}
+        freshness="fresh"
+        refreshedAt="2026-01-01T00:00:00.000Z"
+        terminal
+      />,
+    );
+  }
+
+  it("shows the stored requested reviewers without loading", () => {
+    renderTerminalRail(["octocat", "hubot"]);
+    const reviewers = screen.getByRole("region", { name: "Reviewers" });
+    expect(within(reviewers).queryByRole("status")).toBeNull();
+    const list = within(reviewers).getByRole("list", {
+      name: "Pull request reviewers",
+    });
+    expect(within(list).getByText("octocat")).not.toBeNull();
+    expect(within(list).getByText("hubot")).not.toBeNull();
+    expect(within(reviewers).queryByRole("button")).toBeNull();
+  });
+
+  it("shows no loading state when nobody was requested", () => {
+    renderTerminalRail([]);
+    const reviewers = screen.getByRole("region", { name: "Reviewers" });
+    expect(within(reviewers).queryByRole("status")).toBeNull();
+    expect(within(reviewers).queryByRole("list")).toBeNull();
   });
 });
