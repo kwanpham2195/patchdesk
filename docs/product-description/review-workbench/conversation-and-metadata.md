@@ -26,7 +26,7 @@ stateDiagram-v2
 
 Conversation opens inside the represented Review without changing the Review revision. A non-empty pull request description counts as conversation content even when the timeline has no entries. Markdown is rendered through Patchdesk's safe shared renderer. Authors use cached avatars when available and initials otherwise.
 
-The metadata rail shows current labels, assignees, and requested reviewers. Each management control loads its current candidates on demand. Suggested reviewers are grouped before other candidates. GitHub eligibility, current membership, and limits determine which entries can be changed.
+The metadata rail shows current labels, assignees, and requested reviewers. Each management control loads its current candidates on demand. Suggested reviewers are grouped before other candidates. GitHub eligibility, current membership, and limits determine which entries can be changed. On a merged or closed Review, or while GitHub writes are locked, Reviewers lists the requested reviewers from the last refresh as read-only rows, without verdicts or a picker.
 
 ### Leave unchanged
 

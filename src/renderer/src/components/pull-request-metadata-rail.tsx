@@ -292,10 +292,7 @@ function ReviewersSection({
   });
 
   useEffect(() => {
-    if (actions === undefined) {
-      setReadState({ _tag: "loading" });
-      return;
-    }
+    if (actions === undefined) return;
     let cancelled = false;
     setReadState({ _tag: "loading" });
     actions
@@ -314,6 +311,17 @@ function ReviewersSection({
     // it is intentionally in the dependency list purely as a re-fetch key.
   }, [actions, refreshedAt]);
 
+  // Without reviewer actions (a terminal Review or locked writes) nothing is fetched, so the stored request list is shown as-is.
+  const bodyReadState: ReviewerSectionReadState =
+    actions === undefined
+      ? {
+          _tag: "ready",
+          reviewers: requestedReviewers.map((login) => ({
+            login,
+            outdated: false,
+          })),
+        }
+      : readState;
   const pendingCount =
     pendingReview?.state === "pending" ? pendingReview.count : undefined;
 
@@ -331,7 +339,7 @@ function ReviewersSection({
       })}
     >
       <div className="flex flex-col gap-1.5">
-        <ReviewersSectionBody readState={readState} />
+        <ReviewersSectionBody readState={bodyReadState} />
         {pendingCount === undefined ? null : (
           <PendingReviewRow count={pendingCount} />
         )}
