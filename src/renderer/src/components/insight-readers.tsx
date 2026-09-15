@@ -32,6 +32,41 @@ type InsightReaderBuilderInput = {
   /** Opens the Diff tab at a mapped finding's lines; absent outside the workbench. */
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
 };
+/**
+ * Says whether a retained Walkthrough can show inline discussion, and if not,
+ * whether regenerating ("stale") or refreshing ("loading") is what can help.
+ */
+export function walkthroughDiscussionState(
+  workbench: WorkbenchResponse,
+  snapshot: {
+    readonly profileId: string;
+    readonly sessionId: string;
+    readonly headSha: string;
+    readonly patchHash: string;
+  },
+): "available" | "stale" | "loading" {
+  const walkthrough = workbench.insights.walkthrough;
+  if (
+    walkthrough.status !== "current" ||
+    walkthrough.artifactStatus !== "verified" ||
+    snapshot.profileId !== workbench.session.key.profileId ||
+    snapshot.sessionId !== workbench.session.id ||
+    snapshot.headSha !== workbench.revision.reviewedHeadSha ||
+    // A patch hash that has not loaded yet is a loading case, not a mismatch.
+    (workbench.revision.patchHash !== undefined &&
+      snapshot.patchHash !== workbench.revision.patchHash)
+  )
+    return "stale";
+  if (
+    workbench.revision.freshness !== "fresh" ||
+    workbench.fullPatch === undefined ||
+    workbench.revision.patchHash === undefined ||
+    workbench.conversation.inline?.complete !== true
+  )
+    return "loading";
+  return "available";
+}
+
 export function buildInsightReaders({
   workbench,
   selectedInsight,
@@ -127,23 +162,15 @@ export function buildInsightReaders({
       />
     ) : null;
   const walkthroughRetained = workbench.insights.walkthrough.retained;
-  const walkthroughDiscussionAvailable =
-    walkthroughRetained !== undefined &&
-    workbench.insights.walkthrough.status === "current" &&
-    workbench.insights.walkthrough.artifactStatus === "verified" &&
-    workbench.revision.freshness === "fresh" &&
-    workbench.fullPatch !== undefined &&
-    workbench.revision.patchHash !== undefined &&
-    workbench.conversation.inline?.complete === true &&
-    walkthroughRetained.value.snapshot.profileId ===
-      workbench.session.key.profileId &&
-    walkthroughRetained.value.snapshot.sessionId === workbench.session.id &&
-    walkthroughRetained.value.snapshot.headSha ===
-      workbench.revision.reviewedHeadSha &&
-    walkthroughRetained.value.snapshot.patchHash ===
-      workbench.revision.patchHash;
+  const walkthroughDiscussion =
+    walkthroughRetained === undefined
+      ? undefined
+      : walkthroughDiscussionState(
+          workbench,
+          walkthroughRetained.value.snapshot,
+        );
   const walkthroughAnnotations =
-    walkthroughDiscussionAvailable && workbench.fullPatch !== undefined
+    walkthroughDiscussion === "available" && workbench.fullPatch !== undefined
       ? projectReadOnlyConversationAnnotations(
           parseUnifiedPatch(workbench.fullPatch),
           workbench.conversation.inline?.threads ?? [],
@@ -171,9 +198,10 @@ export function buildInsightReaders({
         {...(walkthroughAnnotations === undefined
           ? {}
           : { annotations: walkthroughAnnotations })}
-        {...(walkthroughDiscussionAvailable
+        {...(walkthroughDiscussion === undefined ||
+        walkthroughDiscussion === "available"
           ? {}
-          : { discussionUnavailable: true })}
+          : { discussionUnavailable: walkthroughDiscussion })}
         focused={walkthroughFocused}
         onFocusedChange={setWalkthroughFocused}
       />
