@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.9 - 2026-09-15
+
 - Added each API key model's list price to the Insight run dialog. The **Model** list shows input and output price per million tokens beside every model that has one, such as `$0.04 / $0.14` for Nova Micro and `$5.00 / $25.00` for Claude Opus 4.6, and the confirmation line names the selected model's price with a note that your account's billing may differ. Codex CLI account models and routers without a fixed price, such as OpenRouter Auto Router, show none. #193
 - Fixed **Settings** → **Workspace** and Workspace setup on Pull requests saying GitHub authentication is required when the GitHub CLI holds an account with an invalid token beside one that works. Reviewing as now offers the working accounts. #185
 - Fixed **Generate** and **Regenerate** in Brief, Walkthrough, and Analysis sitting disabled on a merged or closed Review with no reason, which read as a broken provider setup. Each reader now says generating an Insight needs an open Review, and that retained Insights stay readable. #187
