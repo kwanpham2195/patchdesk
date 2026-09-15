@@ -2,11 +2,6 @@ import { expect, test } from "playwright/test";
 import { closeServer, serveRenderer, serverOrigin } from "./renderer-server";
 import { timingBudget } from "./timing-budget";
 
-// A single renderer scheduling pause can contaminate one timing sample when
-// the full browser suite has just exercised many heavy fixtures. Retries keep
-// the strict per-attempt ceiling intact without accepting a slow measurement.
-test.describe.configure({ retries: 2 });
-
 test("1,000-file and approximately 10 MB patch remains responsive", async ({
   page,
 }) => {
@@ -25,6 +20,39 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
         );
         sample.previous = current;
       }, 25);
+
+      // Selection is timed in the page because Playwright's click retries
+      // while the tree's scroll container intercepts the hit point, which
+      // measures the harness instead of the app.
+      const selectionTrace: Array<{ path: string | null; latencyMs: number }> =
+        [];
+      Object.defineProperty(window, "__patchdeskSelectionTrace", {
+        value: selectionTrace,
+      });
+      let pointerDownAt = Number.NaN;
+      document.addEventListener(
+        "pointerdown",
+        () => {
+          pointerDownAt = performance.now();
+        },
+        true,
+      );
+      // An observer on `documentElement` recorded nothing here, since the init
+      // script runs before the page's own <html> exists, so observe `document`.
+      new MutationObserver((records) => {
+        const committedAt = performance.now();
+        for (const record of records) {
+          if (!(record.target instanceof Element)) continue;
+          selectionTrace.push({
+            path: record.target.getAttribute("data-selected-path"),
+            latencyMs: committedAt - pointerDownAt,
+          });
+        }
+      }).observe(document, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-selected-path"],
+      });
     });
     await page.goto(`${serverOrigin(server)}/#performance-fixture`);
     const workbench = page.getByRole("region", { name: "Diff workbench" });
@@ -45,6 +73,8 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
     for (let index = 995; index < 1_000; index += 1) {
       const suffix = String(index).padStart(4, "0");
       const path = `src/generated/file-${suffix}.ts`;
+      // Filter stays timed from Node: `fill` does no actionability retries,
+      // so its round trip is a fair upper bound on the app's work.
       const filterStarted = performance.now();
       await page
         .locator("[data-file-tree-search-input]")
@@ -55,12 +85,28 @@ test("1,000-file and approximately 10 MB patch remains responsive", async ({
       await expect(treeItem).toBeVisible();
       filterDurations.push(performance.now() - filterStarted);
 
-      const selectionStarted = performance.now();
       await treeItem.click();
       await expect(
         page.getByRole("region", { name: "Review diff" }),
       ).toHaveAttribute("data-selected-path", path);
-      selectionDurations.push(performance.now() - selectionStarted);
+      const latencyMs = await page.evaluate((selectedPath) => {
+        // SAFETY: the addInitScript above always installs
+        // `__patchdeskSelectionTrace` on `window` before any other script
+        // runs on this page, so the property carries this shape.
+        const trace = (
+          window as Window & {
+            readonly __patchdeskSelectionTrace?: ReadonlyArray<{
+              readonly path: string | null;
+              readonly latencyMs: number;
+            }>;
+          }
+        ).__patchdeskSelectionTrace;
+        return trace?.filter((entry) => entry.path === selectedPath).at(-1)
+          ?.latencyMs;
+      }, path);
+      if (latencyMs === undefined || Number.isNaN(latencyMs))
+        throw new Error(`No in-page selection timing was recorded for ${path}`);
+      selectionDurations.push(latencyMs);
     }
     const maximumGap = await page.evaluate(() => {
       // SAFETY: the addInitScript above always installs
