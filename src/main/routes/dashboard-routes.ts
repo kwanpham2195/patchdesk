@@ -239,8 +239,9 @@ export function registerDashboardRoutes(
       }),
       git: git._tag === "ok" ? "ready" : "missing",
       gh: gh._tag === "ok" ? "ready" : "missing",
+      // Plain `gh auth status` exits nonzero when any listed account is invalid, so a working account decides readiness first.
       githubAuth:
-        ghAuth._tag === "ok"
+        githubAccounts.length > 0 || ghAuth._tag === "ok"
           ? "ready"
           : ghAuth.error._tag === "CommandAuthenticationRequired"
             ? "authentication_required"
