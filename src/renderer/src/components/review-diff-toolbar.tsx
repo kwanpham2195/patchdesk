@@ -82,7 +82,7 @@ function ReviewDiffScopePicker({
             closeOnClick
             onClick={onClear}
           >
-            All files
+            Clear scope
           </DropdownMenuRadioItem>
           {buckets.map(({ bucket, files }) => (
             <DropdownMenuRadioItem
