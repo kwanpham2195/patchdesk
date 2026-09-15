@@ -108,8 +108,8 @@ export type CanonicalReviewOverview = {
   readonly terminalState?: "merged" | "closed";
 };
 
-/** The row the sheet lands focus on when it opens; the header's Merge chip asks for readiness. */
-export type OverviewFocusSection = "merge_readiness";
+/** The row the sheet opens and lands focus on; the header's Checks and Merge chips each ask for their own. */
+export type OverviewFocusSection = "checks" | "merge_readiness";
 
 type OverviewMergeWarning =
   CanonicalReviewOverview["mergeReadiness"]["warnings"][number];
@@ -139,6 +139,7 @@ export function CanonicalReviewOverviewSheet({
   const freshness = overview.revision?.freshness;
   const checkFreshness = checksFreshness(freshness);
   const CheckIcon = checks.Icon;
+  const checksTriggerRef = useRef<HTMLButtonElement>(null);
   const readinessTriggerRef = useRef<HTMLButtonElement>(null);
   // Review findings hands its ids over only after the close finishes, and
   // tells the dialog not to return focus, so the Analysis row keeps focus.
@@ -166,9 +167,11 @@ export function CanonicalReviewOverviewSheet({
       <SheetContent
         side="right"
         className="w-[370px] max-w-[calc(100vw-24px)] gap-0 sm:max-w-[370px]"
-        {...(focusSection === "merge_readiness"
-          ? { initialFocus: readinessTriggerRef }
-          : {})}
+        {...(focusSection === "checks"
+          ? { initialFocus: checksTriggerRef }
+          : focusSection === "merge_readiness"
+            ? { initialFocus: readinessTriggerRef }
+            : {})}
         finalFocus={() => reviewFindingsRef.current === undefined}
       >
         <SheetHeader className="border-b px-5 py-4 pr-12">
@@ -192,6 +195,8 @@ export function CanonicalReviewOverviewSheet({
           <Separator />
           <OverviewRow
             title="Checks"
+            defaultOpen={focusSection === "checks"}
+            triggerRef={checksTriggerRef}
             icon={<CheckIcon className="size-3.5" />}
             trailing={checks.label}
             trailingTone={checks.treatment}

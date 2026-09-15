@@ -302,6 +302,20 @@ describe("pr overview sheet merge readiness", () => {
     expect(row.getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("opens and lands focus on the Checks row when asked to", async () => {
+    render(
+      <CanonicalReviewOverviewSheet
+        open
+        onOpenChange={() => undefined}
+        overview={baseOverview()}
+        focusSection="checks"
+      />,
+    );
+    const row = screen.getByRole("button", { name: "Checks" });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("keeps Open on GitHub on the unconfirmed approval card", () => {
     renderOverview(
       baseOverview({

@@ -82,7 +82,7 @@ export function ReviewWorkbenchHeader({
               "hover:bg-status-success/20 hover:text-status-success",
               checksPillColor(model.checks.overall),
             )}
-            onClick={() => openOverview()}
+            onClick={() => openOverview("checks")}
             aria-label={`Open PR overview: checks ${checksLabel.toLowerCase()}`}
           >
             {checksIcon(model.checks.overall)}
