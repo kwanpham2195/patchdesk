@@ -12,6 +12,7 @@
 - Fixed the header's collapse toggle for the column of pull requests you have opened, and the **Back** button in a Review, showing nothing on hover. Each now shows what it does, as **Settings** and **Navigate** beside them already did. #196
 - Fixed the **Scope** picker on the Diff toolbar labelling its first entry **All files**, the same name as the file display button a few buttons to its left, which does something unrelated. The entry that removes the Scope filter is now **Clear scope**. #194
 - Fixed the bucket row you chose on the Insights **Scope** card looking the same as the rows beside it. The row filtering the Diff is now tinted and set in a heavier weight, and no longer matches a row under the pointer. #198
+- Fixed the **Pull requests** label menu hiding its "This filter is full" line below the list once you had chosen five labels, so the greyed rows had no visible reason unless you scrolled to the bottom. The line now sits above the list and stays in view however far you scroll. #192
 
 ## 0.0.8 - 2026-09-12
 
