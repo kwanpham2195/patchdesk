@@ -65,6 +65,9 @@ export const briefOwnershipOutputSchema = v.optional(
         }),
       ),
       v.maxLength(MAX_OWNERSHIP_NOTES),
+      v.description(
+        "One short note for each changed file, keyed by its exact path from the patch, saying what that file is responsible for after the change.",
+      ),
     ),
   }),
 );

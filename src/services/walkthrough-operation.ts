@@ -139,22 +139,15 @@ export async function prepareWalkthroughPrompt(input: {
   const patch = patchRead.value;
   const manifest = narrativeHunkManifest(patch);
   if (manifest._tag === "err") return err({ reason: "patch_not_indexable" });
-  const targetChapters = Math.min(
-    MAX_CHAPTERS,
-    Math.max(
-      1,
-      Math.ceil(Math.max(1, (patch.match(/^@@ /gm) ?? []).length) / 3),
-    ),
-  );
   return ok(
     [
       "Generate a read-only walkthrough for the supplied immutable patch.",
       insightOutputGuidance("walkthrough"),
       "The persistent reader shows the chapters in order on a rail and their sections on one continuous reading surface.",
-      "Write the top-level focus as one or two concise sentences summarizing what the patch does; keep hunk aliases and paths out of it.",
-      "Explain behavior before consequences and validation; use aliases exactly, and route only mechanical or low-signal changes to Support.",
-      `Create at most ${targetChapters} chapters. Each chapter cites the coherent cluster of hunks that establishes its behavior; an isolated one-hunk change is the only exception.`,
-      "Set citationVersion to 2. Write each section's prose as one concise sentence, or at most two very short sentences: state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
+      "Write the top-level focus as a summary of what the patch does; keep hunk aliases and paths out of it.",
+      "Cite every hunk that carries behavior. Patchdesk collects the hunks you leave uncited into a Support group the reader sees last, so leaving a mechanical or low-signal hunk uncited is how it reaches Support.",
+      "Each chapter cites the coherent cluster of hunks that establishes one behavior; a chapter for a single isolated hunk is the exception.",
+      "Set citationVersion to 2. In each section's prose, state only the behavior change and name the exact repo-relative path of every cited hunk. Use only the supplied alias manifest; never invent aliases, paths, lines, or actions.",
       `Use at most ${MAX_CHAPTERS} chapters and at most ${MAX_TOTAL_SECTIONS} sections in total. Keep the title within ${MAX_TITLE_LENGTH} characters, the focus within ${MAX_FOCUS_LENGTH}, each chapter title within ${MAX_CHAPTER_TITLE_LENGTH}, each section title within ${MAX_SECTION_TITLE_LENGTH}, and each section's prose within ${MAX_PROSE_LENGTH}.`,
       "HUNK ALIAS MANIFEST:",
       manifest.value

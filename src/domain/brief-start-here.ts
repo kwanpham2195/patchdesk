@@ -51,6 +51,9 @@ export const briefStartHereOutputSchema = v.optional(
       v.string(),
       v.minLength(1),
       v.maxLength(MAX_START_HERE_INPUT_TEXT_LENGTH),
+      v.description(
+        "One sentence of reading advice: which file to read first, and why the rest follow from it.",
+      ),
     ),
     order: v.pipe(
       v.array(
@@ -70,6 +73,9 @@ export const briefStartHereOutputSchema = v.optional(
         }),
       ),
       v.maxLength(MAX_START_HERE_INPUT_FILES),
+      v.description(
+        "The first 3 to 5 files to read, in the order to read them, each by its exact path from the patch and with a short why.",
+      ),
     ),
   }),
 );
