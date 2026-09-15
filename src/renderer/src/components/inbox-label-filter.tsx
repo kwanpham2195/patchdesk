@@ -177,9 +177,7 @@ function LabelFilterList({
                 <label
                   className={cn(
                     "flex items-center gap-2 rounded-md px-1 py-1 text-xs",
-                    fits
-                      ? "cursor-pointer hover:bg-muted/50"
-                      : "text-muted-foreground",
+                    fits && "cursor-pointer hover:bg-muted/50",
                   )}
                 >
                   <Checkbox
@@ -193,8 +191,16 @@ function LabelFilterList({
                       )
                     }
                   />
-                  <LabelColorDot color={label.color} />
-                  {label.name}
+                  {/* Dimmed beside the checkbox, not on the label, because opacity compounds and the checkbox already dims itself. */}
+                  <span
+                    className={cn(
+                      "flex items-center gap-2",
+                      !fits && "opacity-50",
+                    )}
+                  >
+                    <LabelColorDot color={label.color} />
+                    {label.name}
+                  </span>
                 </label>
               </li>
             );
