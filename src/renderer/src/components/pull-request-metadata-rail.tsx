@@ -74,6 +74,7 @@ type ReviewerSectionReadState =
   | { readonly _tag: "github_read" }
   | { readonly _tag: "github_auth" }
   | { readonly _tag: "ready"; readonly reviewers: ReadonlyArray<ReviewerRow> }
+  | { readonly _tag: "stored"; readonly reviewers: ReadonlyArray<ReviewerRow> }
   | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
   | {
       readonly _tag: "github_forbidden";
@@ -209,7 +210,7 @@ function PendingReviewRow({
   );
 }
 
-/** The Reviewers section's fetched body: the read state's failure/loading copy, or its list of reviewer rows plus the empty state. */
+/** The Reviewers section's body: the read state's failure/loading copy, or its list of reviewer rows plus the empty state. */
 function ReviewersSectionBody({
   readState,
 }: {
@@ -250,7 +251,9 @@ function ReviewersSectionBody({
   if (readState.reviewers.length === 0)
     return (
       <p className="text-xs text-muted-foreground">
-        No review has been requested, and none has been submitted.
+        {readState._tag === "stored"
+          ? "No reviewer is requested."
+          : "No review has been requested, and none has been submitted."}
       </p>
     );
   return (
@@ -311,11 +314,11 @@ function ReviewersSection({
     // it is intentionally in the dependency list purely as a re-fetch key.
   }, [actions, refreshedAt]);
 
-  // Without reviewer actions (a terminal Review or locked writes) nothing is fetched, so the stored request list is shown as-is.
+  // Without reviewer actions (a terminal Review or locked writes) nothing is fetched, and the stored list only knows who is still requested.
   const bodyReadState: ReviewerSectionReadState =
     actions === undefined
       ? {
-          _tag: "ready",
+          _tag: "stored",
           reviewers: requestedReviewers.map((login) => ({
             login,
             outdated: false,
