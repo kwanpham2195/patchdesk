@@ -333,8 +333,8 @@ export function AnalysisReader({
           <CardHeader>
             <CardTitle>Verification</CardTitle>
             <CardDescription>
-              {verifiedSteps.size} of {result.validationPlan.length} checked in
-              this view
+              {verifiedSteps.size} of {result.validationPlan.length} checked.
+              Ticks are not saved and reset when you leave Analysis.
             </CardDescription>
           </CardHeader>
           <CardContent>
