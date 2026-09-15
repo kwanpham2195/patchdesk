@@ -48,6 +48,12 @@ export const insightProviderModelSchema = v.strictObject({
   defaultReasoning: v.optional(
     v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
   ),
+  cost: v.optional(
+    v.strictObject({
+      input: v.pipe(v.number(), v.finite(), v.minValue(0)),
+      output: v.pipe(v.number(), v.finite(), v.minValue(0)),
+    }),
+  ),
 });
 
 export type InsightProviderCatalogModel = v.InferOutput<

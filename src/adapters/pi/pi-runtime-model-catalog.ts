@@ -14,10 +14,18 @@ import {
   type PiProviderStatus,
 } from "./pi-provider-catalog";
 
+/** USD per million tokens, as published by pi-ai; account billing may differ. */
+export type ModelListPrice = {
+  readonly input: number;
+  readonly output: number;
+};
+
 /** A renderer-safe description of an eligible Pi model enabled for this local runtime. */
 type PiRuntimeModel = {
   readonly id: string;
   readonly label: string;
+  /** Absent when pi-ai publishes no fixed price, as for openrouter/auto. */
+  readonly cost?: ModelListPrice;
 };
 
 export type PiRuntimeModelCatalog = {
@@ -148,7 +156,7 @@ function projectModels(
   // Pi settings are preferences, not an inclusion gate. The installed pi-ai catalog is
   // authoritative for the complete static model set; only configured allowlisted providers
   // survive the final projection.
-  const catalog: Array<{ readonly id: string; readonly label: string }> = [];
+  const catalog: Array<PiRuntimeModel> = [];
   for (const definition of PI_AI_CATALOG) {
     if (
       !providerCatalog().some((provider) => provider.id === definition.provider)
@@ -157,7 +165,11 @@ function projectModels(
     for (const model of definition.models) {
       const id = canonicalModelId(`${model.provider}/${model.id}`);
       if (id !== undefined)
-        catalog.push({ id, label: `${model.provider}/${model.id}` });
+        catalog.push({
+          id,
+          label: `${model.provider}/${model.id}`,
+          ...definedProps({ cost: model.cost }),
+        });
     }
   }
   const eligible = catalog.filter((model) =>

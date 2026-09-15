@@ -11,591 +11,1063 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "amazon.nova-2-lite-v1:0",
           name: "Nova 2 Lite",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.33,
+            output: 2.75,
+          },
         },
         {
           id: "amazon.nova-lite-v1:0",
           name: "Nova Lite",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.06,
+            output: 0.24,
+          },
         },
         {
           id: "amazon.nova-micro-v1:0",
           name: "Nova Micro",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.035,
+            output: 0.14,
+          },
         },
         {
           id: "amazon.nova-pro-v1:0",
           name: "Nova Pro",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.8,
+            output: 3.2,
+          },
         },
         {
           id: "anthropic.claude-fable-5",
           name: "Claude Fable 5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "anthropic.claude-haiku-4-5-20251001-v1:0",
           name: "Claude Haiku 4.5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "anthropic.claude-opus-4-1-20250805-v1:0",
           name: "Claude Opus 4.1",
           provider: "amazon-bedrock",
+          cost: {
+            input: 15,
+            output: 75,
+          },
         },
         {
           id: "anthropic.claude-opus-4-5-20251101-v1:0",
           name: "Claude Opus 4.5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic.claude-opus-4-6-v1",
           name: "Claude Opus 4.6",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic.claude-opus-4-7",
           name: "Claude Opus 4.7",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic.claude-opus-4-8",
           name: "Claude Opus 4.8",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic.claude-sonnet-4-5-20250929-v1:0",
           name: "Claude Sonnet 4.5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "anthropic.claude-sonnet-4-6",
           name: "Claude Sonnet 4.6",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "anthropic.claude-sonnet-5",
           name: "Claude Sonnet 5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "au.anthropic.claude-haiku-4-5-20251001-v1:0",
           name: "Claude Haiku 4.5 (AU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "au.anthropic.claude-opus-4-6-v1",
           name: "AU Anthropic Claude Opus 4.6",
           provider: "amazon-bedrock",
+          cost: {
+            input: 16.5,
+            output: 82.5,
+          },
         },
         {
           id: "au.anthropic.claude-opus-4-8",
           name: "Claude Opus 4.8 (AU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "au.anthropic.claude-opus-5",
           name: "Claude Opus 5 (AU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "au.anthropic.claude-sonnet-4-5-20250929-v1:0",
           name: "Claude Sonnet 4.5 (AU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "au.anthropic.claude-sonnet-4-6",
           name: "AU Anthropic Claude Sonnet 4.6",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3.3,
+            output: 16.5,
+          },
         },
         {
           id: "au.anthropic.claude-sonnet-5",
           name: "Claude Sonnet 5 (AU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "deepseek.r1-v1:0",
           name: "DeepSeek-R1",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1.35,
+            output: 5.4,
+          },
         },
         {
           id: "deepseek.v3-v1:0",
           name: "DeepSeek-V3.1",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.58,
+            output: 1.68,
+          },
         },
         {
           id: "deepseek.v3.2",
           name: "DeepSeek-V3.2",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.62,
+            output: 1.85,
+          },
         },
         {
           id: "eu.anthropic.claude-fable-5",
           name: "Claude Fable 5 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 11,
+            output: 55,
+          },
         },
         {
           id: "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
           name: "Claude Haiku 4.5 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1.1,
+            output: 5.5,
+          },
         },
         {
           id: "eu.anthropic.claude-opus-4-5-20251101-v1:0",
           name: "Claude Opus 4.5 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5.5,
+            output: 27.5,
+          },
         },
         {
           id: "eu.anthropic.claude-opus-4-6-v1",
           name: "Claude Opus 4.6 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5.5,
+            output: 27.5,
+          },
         },
         {
           id: "eu.anthropic.claude-opus-4-7",
           name: "Claude Opus 4.7 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5.5,
+            output: 27.5,
+          },
         },
         {
           id: "eu.anthropic.claude-opus-4-8",
           name: "Claude Opus 4.8 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5.5,
+            output: 27.5,
+          },
         },
         {
           id: "eu.anthropic.claude-opus-5",
           name: "Claude Opus 5 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5.5,
+            output: 27.5,
+          },
         },
         {
           id: "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
           name: "Claude Sonnet 4.5 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3.3,
+            output: 16.5,
+          },
         },
         {
           id: "eu.anthropic.claude-sonnet-4-6",
           name: "Claude Sonnet 4.6 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3.3,
+            output: 16.5,
+          },
         },
         {
           id: "eu.anthropic.claude-sonnet-5",
           name: "Claude Sonnet 5 (EU)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2.2,
+            output: 11,
+          },
         },
         {
           id: "global.anthropic.claude-fable-5",
           name: "Claude Fable 5 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
           name: "Claude Haiku 4.5 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "global.anthropic.claude-opus-4-5-20251101-v1:0",
           name: "Claude Opus 4.5 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "global.anthropic.claude-opus-4-6-v1",
           name: "Claude Opus 4.6 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "global.anthropic.claude-opus-4-7",
           name: "Claude Opus 4.7 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "global.anthropic.claude-opus-4-8",
           name: "Claude Opus 4.8 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "global.anthropic.claude-opus-5",
           name: "Claude Opus 5 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
           name: "Claude Sonnet 4.5 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "global.anthropic.claude-sonnet-4-6",
           name: "Claude Sonnet 4.6 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "global.anthropic.claude-sonnet-5",
           name: "Claude Sonnet 5 (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "global.openai.gpt-5.6-luna",
           name: "GPT-5.6 Luna (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "global.openai.gpt-5.6-sol",
           name: "GPT-5.6 Sol (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 4,
+            output: 20,
+          },
         },
         {
           id: "global.openai.gpt-5.6-terra",
           name: "GPT-5.6 Terra (Global)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "google.gemma-3-27b-it",
           name: "Google Gemma 3 27B Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.12,
+            output: 0.2,
+          },
         },
         {
           id: "google.gemma-3-4b-it",
           name: "Gemma 3 4B IT",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.04,
+            output: 0.08,
+          },
         },
         {
           id: "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
           name: "Claude Haiku 4.5 (JP)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "jp.anthropic.claude-opus-4-7",
           name: "Claude Opus 4.7 (JP)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "jp.anthropic.claude-opus-4-8",
           name: "Claude Opus 4.8 (JP)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "jp.anthropic.claude-opus-5",
           name: "Claude Opus 5 (JP)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "jp.anthropic.claude-sonnet-4-5-20250929-v1:0",
           name: "Claude Sonnet 4.5 (JP)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "jp.anthropic.claude-sonnet-4-6",
           name: "Claude Sonnet 4.6 (JP)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "jp.anthropic.claude-sonnet-5",
           name: "Claude Sonnet 5 (JP)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "meta.llama3-1-70b-instruct-v1:0",
           name: "Llama 3.1 70B Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.72,
+            output: 0.72,
+          },
         },
         {
           id: "meta.llama3-1-8b-instruct-v1:0",
           name: "Llama 3.1 8B Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.22,
+            output: 0.22,
+          },
         },
         {
           id: "meta.llama3-3-70b-instruct-v1:0",
           name: "Llama 3.3 70B Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.72,
+            output: 0.72,
+          },
         },
         {
           id: "meta.llama4-maverick-17b-instruct-v1:0",
           name: "Llama 4 Maverick 17B Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.24,
+            output: 0.97,
+          },
         },
         {
           id: "meta.llama4-scout-17b-instruct-v1:0",
           name: "Llama 4 Scout 17B Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.17,
+            output: 0.66,
+          },
         },
         {
           id: "minimax.minimax-m2",
           name: "MiniMax M2",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax.minimax-m2.1",
           name: "MiniMax M2.1",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax.minimax-m2.5",
           name: "MiniMax M2.5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "mistral.devstral-2-123b",
           name: "Devstral 2 123B",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "mistral.magistral-small-2509",
           name: "Magistral Small 1.2",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "mistral.ministral-3-14b-instruct",
           name: "Ministral 14B 3.0",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.2,
+            output: 0.2,
+          },
         },
         {
           id: "mistral.ministral-3-3b-instruct",
           name: "Ministral 3 3B",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.1,
+            output: 0.1,
+          },
         },
         {
           id: "mistral.ministral-3-8b-instruct",
           name: "Ministral 3 8B",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "mistral.mistral-large-3-675b-instruct",
           name: "Mistral Large 3",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "mistral.pixtral-large-2502-v1:0",
           name: "Pixtral Large (25.02)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "mistral.voxtral-mini-3b-2507",
           name: "Voxtral Mini 3B 2507",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.04,
+            output: 0.04,
+          },
         },
         {
           id: "mistral.voxtral-small-24b-2507",
           name: "Voxtral Small 24B 2507",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.15,
+            output: 0.35,
+          },
         },
         {
           id: "moonshot.kimi-k2-thinking",
           name: "Kimi K2 Thinking",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "moonshotai.kimi-k2.5",
           name: "Kimi K2.5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.6,
+            output: 3,
+          },
         },
         {
           id: "nvidia.nemotron-nano-12b-v2",
           name: "NVIDIA Nemotron Nano 12B v2 VL BF16",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.2,
+            output: 0.6,
+          },
         },
         {
           id: "nvidia.nemotron-nano-3-30b",
           name: "NVIDIA Nemotron Nano 3 30B",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.06,
+            output: 0.24,
+          },
         },
         {
           id: "nvidia.nemotron-nano-9b-v2",
           name: "NVIDIA Nemotron Nano 9B v2",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.06,
+            output: 0.23,
+          },
         },
         {
           id: "nvidia.nemotron-super-3-120b",
           name: "NVIDIA Nemotron 3 Super 120B A12B",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.15,
+            output: 0.65,
+          },
         },
         {
           id: "openai.gpt-5.4",
           name: "GPT-5.4",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2.75,
+            output: 16.5,
+          },
         },
         {
           id: "openai.gpt-5.5",
           name: "GPT-5.5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5.5,
+            output: 33,
+          },
         },
         {
           id: "openai.gpt-5.6-luna",
           name: "GPT-5.6 Luna",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.22,
+            output: 1.32,
+          },
         },
         {
           id: "openai.gpt-5.6-sol",
           name: "GPT-5.6 Sol",
           provider: "amazon-bedrock",
+          cost: {
+            input: 4.4,
+            output: 22,
+          },
         },
         {
           id: "openai.gpt-5.6-terra",
           name: "GPT-5.6 Terra",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2.2,
+            output: 13.2,
+          },
         },
         {
           id: "openai.gpt-oss-120b",
           name: "gpt-oss-120b",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai.gpt-oss-120b-1:0",
           name: "gpt-oss-120b",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai.gpt-oss-20b",
           name: "gpt-oss-20b",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.07,
+            output: 0.3,
+          },
         },
         {
           id: "openai.gpt-oss-20b-1:0",
           name: "gpt-oss-20b",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.07,
+            output: 0.3,
+          },
         },
         {
           id: "openai.gpt-oss-safeguard-120b",
           name: "GPT OSS Safeguard 120B",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai.gpt-oss-safeguard-20b",
           name: "GPT OSS Safeguard 20B",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.07,
+            output: 0.2,
+          },
         },
         {
           id: "qwen.qwen3-235b-a22b-2507-v1:0",
           name: "Qwen3 235B A22B 2507",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.22,
+            output: 0.88,
+          },
         },
         {
           id: "qwen.qwen3-32b-v1:0",
           name: "Qwen3 32B (dense)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "qwen.qwen3-coder-30b-a3b-v1:0",
           name: "Qwen3 Coder 30B A3B Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "qwen.qwen3-coder-480b-a35b-v1:0",
           name: "Qwen3 Coder 480B A35B Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.22,
+            output: 1.8,
+          },
         },
         {
           id: "qwen.qwen3-coder-next",
           name: "Qwen3 Coder Next",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.22,
+            output: 1.8,
+          },
         },
         {
           id: "qwen.qwen3-next-80b-a3b",
           name: "Qwen/Qwen3-Next-80B-A3B-Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.14,
+            output: 1.4,
+          },
         },
         {
           id: "qwen.qwen3-vl-235b-a22b",
           name: "Qwen/Qwen3-VL-235B-A22B-Instruct",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.3,
+            output: 1.5,
+          },
         },
         {
           id: "us.anthropic.claude-fable-5",
           name: "Claude Fable 5 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
           name: "Claude Haiku 4.5 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "us.anthropic.claude-opus-4-1-20250805-v1:0",
           name: "Claude Opus 4.1 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 15,
+            output: 75,
+          },
         },
         {
           id: "us.anthropic.claude-opus-4-5-20251101-v1:0",
           name: "Claude Opus 4.5 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "us.anthropic.claude-opus-4-6-v1",
           name: "Claude Opus 4.6 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "us.anthropic.claude-opus-4-7",
           name: "Claude Opus 4.7 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "us.anthropic.claude-opus-4-8",
           name: "Claude Opus 4.8 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "us.anthropic.claude-opus-5",
           name: "Claude Opus 5 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
           name: "Claude Sonnet 4.5 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "us.anthropic.claude-sonnet-4-6",
           name: "Claude Sonnet 4.6 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "us.anthropic.claude-sonnet-5",
           name: "Claude Sonnet 5 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "us.deepseek.r1-v1:0",
           name: "DeepSeek-R1 (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1.35,
+            output: 5.4,
+          },
         },
         {
           id: "us.meta.llama4-maverick-17b-instruct-v1:0",
           name: "Llama 4 Maverick 17B Instruct (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.24,
+            output: 0.97,
+          },
         },
         {
           id: "us.meta.llama4-scout-17b-instruct-v1:0",
           name: "Llama 4 Scout 17B Instruct (US)",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.17,
+            output: 0.66,
+          },
         },
         {
           id: "writer.palmyra-x4-v1:0",
           name: "Palmyra X4",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "writer.palmyra-x5-v1:0",
           name: "Palmyra X5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.6,
+            output: 6,
+          },
         },
         {
           id: "xai.grok-4.3",
           name: "Grok 4.3",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "xai.grok-4.6",
           name: "Grok 4.6",
           provider: "amazon-bedrock",
+          cost: {
+            input: 2.2,
+            output: 6.6,
+          },
         },
         {
           id: "zai.glm-4.7",
           name: "GLM-4.7",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "zai.glm-4.7-flash",
           name: "GLM-4.7-Flash",
           provider: "amazon-bedrock",
+          cost: {
+            input: 0.07,
+            output: 0.4,
+          },
         },
         {
           id: "zai.glm-5",
           name: "GLM-5",
           provider: "amazon-bedrock",
+          cost: {
+            input: 1,
+            output: 3.2,
+          },
         },
       ],
     },
@@ -606,16 +1078,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "Ling-2.6-1T",
           name: "Ling 2.6 1T",
           provider: "ant-ling",
+          cost: {
+            input: 0.06,
+            output: 0.25,
+          },
         },
         {
           id: "Ling-2.6-flash",
           name: "Ling 2.6 Flash",
           provider: "ant-ling",
+          cost: {
+            input: 0.01,
+            output: 0.02,
+          },
         },
         {
           id: "Ring-2.6-1T",
           name: "Ring 2.6 1T",
           provider: "ant-ling",
+          cost: {
+            input: 0.06,
+            output: 0.25,
+          },
         },
       ],
     },
@@ -626,66 +1110,118 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "claude-fable-5",
           name: "Claude Fable 5",
           provider: "anthropic",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "claude-haiku-4-5",
           name: "Claude Haiku 4.5 (latest)",
           provider: "anthropic",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "claude-haiku-4-5-20251001",
           name: "Claude Haiku 4.5",
           provider: "anthropic",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "claude-opus-4-5",
           name: "Claude Opus 4.5 (latest)",
           provider: "anthropic",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4-5-20251101",
           name: "Claude Opus 4.5",
           provider: "anthropic",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4-6",
           name: "Claude Opus 4.6",
           provider: "anthropic",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4-7",
           name: "Claude Opus 4.7",
           provider: "anthropic",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4-8",
           name: "Claude Opus 4.8",
           provider: "anthropic",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-5",
           name: "Claude Opus 5",
           provider: "anthropic",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-sonnet-4-5",
           name: "Claude Sonnet 4.5 (latest)",
           provider: "anthropic",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "claude-sonnet-4-5-20250929",
           name: "Claude Sonnet 4.5",
           provider: "anthropic",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "claude-sonnet-4-6",
           name: "Claude Sonnet 4.6",
           provider: "anthropic",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "claude-sonnet-5",
           name: "Claude Sonnet 5",
           provider: "anthropic",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
       ],
     },
@@ -696,191 +1232,343 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "gpt-4",
           name: "GPT-4",
           provider: "azure-openai-responses",
+          cost: {
+            input: 30,
+            output: 60,
+          },
         },
         {
           id: "gpt-4-turbo",
           name: "GPT-4 Turbo",
           provider: "azure-openai-responses",
+          cost: {
+            input: 10,
+            output: 30,
+          },
         },
         {
           id: "gpt-4.1",
           name: "GPT-4.1",
           provider: "azure-openai-responses",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "gpt-4.1-mini",
           name: "GPT-4.1 mini",
           provider: "azure-openai-responses",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "gpt-4.1-nano",
           name: "GPT-4.1 nano",
           provider: "azure-openai-responses",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "gpt-4o",
           name: "GPT-4o",
           provider: "azure-openai-responses",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "gpt-4o-2024-05-13",
           name: "GPT-4o (2024-05-13)",
           provider: "azure-openai-responses",
+          cost: {
+            input: 5,
+            output: 15,
+          },
         },
         {
           id: "gpt-4o-2024-08-06",
           name: "GPT-4o (2024-08-06)",
           provider: "azure-openai-responses",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "gpt-4o-2024-11-20",
           name: "GPT-4o (2024-11-20)",
           provider: "azure-openai-responses",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "gpt-4o-mini",
           name: "GPT-4o mini",
           provider: "azure-openai-responses",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "gpt-5",
           name: "GPT-5",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5-chat-latest",
           name: "GPT-5 Chat Latest",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5-mini",
           name: "GPT-5 Mini",
           provider: "azure-openai-responses",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "gpt-5-nano",
           name: "GPT-5 Nano",
           provider: "azure-openai-responses",
+          cost: {
+            input: 0.05,
+            output: 0.4,
+          },
         },
         {
           id: "gpt-5-pro",
           name: "GPT-5 Pro",
           provider: "azure-openai-responses",
+          cost: {
+            input: 15,
+            output: 120,
+          },
         },
         {
           id: "gpt-5.1",
           name: "GPT-5.1",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5.2",
           name: "GPT-5.2",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.2-chat-latest",
           name: "GPT-5.2 Chat",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.2-pro",
           name: "GPT-5.2 Pro",
           provider: "azure-openai-responses",
+          cost: {
+            input: 21,
+            output: 168,
+          },
         },
         {
           id: "gpt-5.3-chat-latest",
           name: "GPT-5.3 Chat (latest)",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.3-codex",
           name: "GPT-5.3 Codex",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.3-codex-spark",
           name: "GPT-5.3 Codex Spark",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.4",
           name: "GPT-5.4",
           provider: "azure-openai-responses",
+          cost: {
+            input: 2.5,
+            output: 15,
+          },
         },
         {
           id: "gpt-5.4-mini",
           name: "GPT-5.4 mini",
           provider: "azure-openai-responses",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "gpt-5.4-nano",
           name: "GPT-5.4 nano",
           provider: "azure-openai-responses",
+          cost: {
+            input: 0.2,
+            output: 1.25,
+          },
         },
         {
           id: "gpt-5.4-pro",
           name: "GPT-5.4 Pro",
           provider: "azure-openai-responses",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "gpt-5.5",
           name: "GPT-5.5",
           provider: "azure-openai-responses",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "gpt-5.5-pro",
           name: "GPT-5.5 Pro",
           provider: "azure-openai-responses",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "gpt-5.6-luna",
           name: "GPT-5.6 Luna",
           provider: "azure-openai-responses",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "gpt-5.6-sol",
           name: "GPT-5.6 Sol",
           provider: "azure-openai-responses",
+          cost: {
+            input: 4,
+            output: 20,
+          },
         },
         {
           id: "gpt-5.6-terra",
           name: "GPT-5.6 Terra",
           provider: "azure-openai-responses",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "gpt-realtime-2.1",
           name: "GPT-Realtime-2.1",
           provider: "azure-openai-responses",
+          cost: {
+            input: 4,
+            output: 24,
+          },
         },
         {
           id: "o1",
           name: "o1",
           provider: "azure-openai-responses",
+          cost: {
+            input: 15,
+            output: 60,
+          },
         },
         {
           id: "o1-pro",
           name: "o1-pro",
           provider: "azure-openai-responses",
+          cost: {
+            input: 150,
+            output: 600,
+          },
         },
         {
           id: "o3",
           name: "o3",
           provider: "azure-openai-responses",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "o3-mini",
           name: "o3-mini",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "o3-pro",
           name: "o3-pro",
           provider: "azure-openai-responses",
+          cost: {
+            input: 20,
+            output: 80,
+          },
         },
         {
           id: "o4-mini",
           name: "o4-mini",
           provider: "azure-openai-responses",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
       ],
     },
@@ -891,11 +1579,19 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "gemma-4-31b",
           name: "Gemma 4 31B IT",
           provider: "cerebras",
+          cost: {
+            input: 0.99,
+            output: 1.49,
+          },
         },
         {
           id: "gpt-oss-120b",
           name: "GPT OSS 120B",
           provider: "cerebras",
+          cost: {
+            input: 0.35,
+            output: 0.75,
+          },
         },
       ],
     },
@@ -906,246 +1602,442 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "claude-fable-5",
           name: "Claude Fable 5",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "claude-haiku-4.5",
           name: "Claude Haiku 4.5 (latest)",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "claude-opus-4.5",
           name: "Claude Opus 4.5 (latest)",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4.6",
           name: "Claude Opus 4.6",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4.7",
           name: "Claude Opus 4.7",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4.8",
           name: "Claude Opus 4.8",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-5",
           name: "Claude Opus 5",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-sonnet-4.5",
           name: "Claude Sonnet 4.5 (latest)",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "claude-sonnet-4.6",
           name: "Claude Sonnet 4.6",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "claude-sonnet-5",
           name: "Claude Sonnet 5",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "gpt-4.1",
           name: "GPT-4.1",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "gpt-4.1-mini",
           name: "GPT-4.1 mini",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "gpt-4.1-nano",
           name: "GPT-4.1 nano",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "gpt-4o",
           name: "GPT-4o",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 5,
+          },
         },
         {
           id: "gpt-4o-mini",
           name: "GPT-4o mini",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.075,
+            output: 0.3,
+          },
         },
         {
           id: "gpt-5",
           name: "GPT-5",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5-mini",
           name: "GPT-5 Mini",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "gpt-5-nano",
           name: "GPT-5 Nano",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.05,
+            output: 0.4,
+          },
         },
         {
           id: "gpt-5.1",
           name: "GPT-5.1",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5.4",
           name: "GPT-5.4",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 2.5,
+            output: 15,
+          },
         },
         {
           id: "gpt-5.4-mini",
           name: "GPT-5.4 mini",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "gpt-5.4-nano",
           name: "GPT-5.4 nano",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 1.25,
+          },
         },
         {
           id: "gpt-5.4-pro",
           name: "GPT-5.4 Pro",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "gpt-5.5",
           name: "GPT-5.5",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "gpt-5.5-pro",
           name: "GPT-5.5 Pro",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "gpt-5.6-luna",
           name: "GPT-5.6 Luna",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "gpt-5.6-sol",
           name: "GPT-5.6 Sol",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "gpt-5.6-terra",
           name: "GPT-5.6 Terra",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "o3",
           name: "o3",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "o3-mini",
           name: "o3-mini",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "o4-mini",
           name: "o4-mini",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "workers-ai/@cf/deepseek-ai/deepseek-v4-flash-0731",
           name: "DeepSeek V4 Flash 0731",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.44,
+            output: 1.32,
+          },
         },
         {
           id: "workers-ai/@cf/deepseek-ai/deepseek-v4-pro-0813",
           name: "DeepSeek V4 Pro 0813",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1.32,
+            output: 3.96,
+          },
         },
         {
           id: "workers-ai/@cf/google/gemma-4-26b-a4b-it",
           name: "Gemma 4 26B A4B IT",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "workers-ai/@cf/ibm-granite/granite-4.0-h-micro",
           name: "Granite 4.0 H Micro",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.017,
+            output: 0.112,
+          },
         },
         {
           id: "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
           name: "Llama 3.3 70B Instruct fp8 Fast",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.293,
+            output: 2.253,
+          },
         },
         {
           id: "workers-ai/@cf/meta/llama-4-scout-17b-16e-instruct",
           name: "Llama 4 Scout 17B 16E Instruct",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.27,
+            output: 0.85,
+          },
         },
         {
           id: "workers-ai/@cf/mistralai/mistral-small-3.1-24b-instruct",
           name: "Mistral Small 3.1 24B Instruct",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.351,
+            output: 0.555,
+          },
         },
         {
           id: "workers-ai/@cf/moonshotai/kimi-k2.6",
           name: "Kimi K2.6",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "workers-ai/@cf/moonshotai/kimi-k2.7-code",
           name: "Kimi K2.7 Code",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "workers-ai/@cf/nvidia/nemotron-3-120b-a12b",
           name: "Nemotron 3 Super 120B",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "workers-ai/@cf/openai/gpt-oss-120b",
           name: "GPT OSS 120B",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.35,
+            output: 0.75,
+          },
         },
         {
           id: "workers-ai/@cf/openai/gpt-oss-20b",
           name: "GPT OSS 20B",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 0.3,
+          },
         },
         {
           id: "workers-ai/@cf/qwen/qwen3-30b-a3b-fp8",
           name: "Qwen3 30B A3b fp8",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.0509,
+            output: 0.335,
+          },
         },
         {
           id: "workers-ai/@cf/qwen/qwen3.8-27b",
           name: "Qwen3.8 27B",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.45,
+            output: 3.2,
+          },
         },
         {
           id: "workers-ai/@cf/zai-org/glm-4.7-flash",
           name: "GLM-4.7-Flash",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.0605,
+            output: 0.4,
+          },
         },
         {
           id: "workers-ai/@cf/zai-org/glm-5.2",
           name: "Glm 5.2",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "workers-ai/@cf/zai-org/glm-5.3",
           name: "Glm 5.3",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "workers-ai/@cf/zai-org/glm-5.3-flash",
           name: "Glm 5.3 Flash",
           provider: "cloudflare-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.5,
+          },
         },
       ],
     },
@@ -1156,16 +2048,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "deepseek-v4-flash",
           name: "DeepSeek V4 Flash",
           provider: "deepseek",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "deepseek-v4-flash-vision-exp",
           name: "DeepSeek V4 Flash Vision Exp",
           provider: "deepseek",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "deepseek-v4-pro",
           name: "DeepSeek V4 Pro",
           provider: "deepseek",
+          cost: {
+            input: 0.435,
+            output: 0.87,
+          },
         },
       ],
     },
@@ -1176,86 +2080,154 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "accounts/fireworks/models/deepseek-v4-flash",
           name: "DeepSeek V4 Flash",
           provider: "fireworks",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "accounts/fireworks/models/deepseek-v4-flash-0731",
           name: "DeepSeek V4 Flash 0731",
           provider: "fireworks",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "accounts/fireworks/models/deepseek-v4-pro-0813",
           name: "DeepSeek V4 Pro 0813",
           provider: "fireworks",
+          cost: {
+            input: 1.32,
+            output: 3.96,
+          },
         },
         {
           id: "accounts/fireworks/models/glm-5p2",
           name: "GLM 5.2",
           provider: "fireworks",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "accounts/fireworks/models/gpt-oss-120b",
           name: "GPT OSS 120B",
           provider: "fireworks",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "accounts/fireworks/models/inkling",
           name: "Inkling",
           provider: "fireworks",
+          cost: {
+            input: 1,
+            output: 4.05,
+          },
         },
         {
           id: "accounts/fireworks/models/kimi-k2p6",
           name: "Kimi K2.6",
           provider: "fireworks",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "accounts/fireworks/models/kimi-k2p7-code",
           name: "Kimi K2.7 Code",
           provider: "fireworks",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "accounts/fireworks/models/kimi-k3",
           name: "Kimi K3",
           provider: "fireworks",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "accounts/fireworks/models/minimax-m3",
           name: "MiniMax-M3",
           provider: "fireworks",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "accounts/fireworks/models/muse-glimmer-30b",
           name: "Muse Glimmer 30B",
           provider: "fireworks",
+          cost: {
+            input: 0.35,
+            output: 1.5,
+          },
         },
         {
           id: "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
           name: "Nemotron 3 Ultra 550B A55B",
           provider: "fireworks",
+          cost: {
+            input: 0.6,
+            output: 2.4,
+          },
         },
         {
           id: "accounts/fireworks/models/nemotron-lightning-3p5-30b-a3b",
           name: "Nemotron 3.5 Lightning 30B A3B",
           provider: "fireworks",
+          cost: {
+            input: 0.05,
+            output: 0.2,
+          },
         },
         {
           id: "accounts/fireworks/models/qwen3p7-plus",
           name: "Qwen 3.7 Plus",
           provider: "fireworks",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "accounts/fireworks/models/qwen3p8-max",
           name: "Qwen3.8 Max",
           provider: "fireworks",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "accounts/fireworks/routers/glm-5p2-fast",
           name: "GLM 5.2 Fast",
           provider: "fireworks",
+          cost: {
+            input: 2.1,
+            output: 6.6,
+          },
         },
         {
           id: "accounts/fireworks/routers/kimi-k3-fast",
           name: "Kimi K3 Fast",
           provider: "fireworks",
+          cost: {
+            input: 4.5,
+            output: 22.5,
+          },
         },
       ],
     },
@@ -1266,111 +2238,199 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "deep-research-max-preview-04-2026",
           name: "Deep Research Max Preview (Apr-21-2026)",
           provider: "google",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "deep-research-preview-04-2026",
           name: "Deep Research Preview (Apr-21-2026)",
           provider: "google",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "gemini-2.5-computer-use-preview-10-2025",
           name: "Gemini 2.5 Computer Use Preview 10-2025",
           provider: "google",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gemini-2.5-flash",
           name: "Gemini 2.5 Flash",
           provider: "google",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "gemini-2.5-flash-lite",
           name: "Gemini 2.5 Flash-Lite",
           provider: "google",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "gemini-2.5-pro",
           name: "Gemini 2.5 Pro",
           provider: "google",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gemini-3-flash-preview",
           name: "Gemini 3 Flash Preview",
           provider: "google",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "gemini-3.1-flash-lite",
           name: "Gemini 3.1 Flash Lite",
           provider: "google",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
         {
           id: "gemini-3.1-flash-lite-image",
           name: "Nano Banana 2 Lite",
           provider: "google",
+          cost: {
+            input: 0.25,
+            output: 30,
+          },
         },
         {
           id: "gemini-3.1-flash-lite-preview",
           name: "Gemini 3.1 Flash Lite Preview",
           provider: "google",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
         {
           id: "gemini-3.1-flash-live-preview",
           name: "Gemini 3.1 Flash Live Preview",
           provider: "google",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "gemini-3.1-pro-preview",
           name: "Gemini 3.1 Pro Preview",
           provider: "google",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "gemini-3.1-pro-preview-customtools",
           name: "Gemini 3.1 Pro Preview Custom Tools",
           provider: "google",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "gemini-3.5-flash",
           name: "Gemini 3.5 Flash",
           provider: "google",
+          cost: {
+            input: 1.5,
+            output: 9,
+          },
         },
         {
           id: "gemini-3.5-flash-lite",
           name: "Gemini 3.5 Flash Lite",
           provider: "google",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "gemini-3.6-flash",
           name: "Gemini 3.6 Flash",
           provider: "google",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "gemini-3.7-flash",
           name: "Gemini 3.7 Flash",
           provider: "google",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "gemini-flash-latest",
           name: "Gemini Flash Latest",
           provider: "google",
+          cost: {
+            input: 1.5,
+            output: 9,
+          },
         },
         {
           id: "gemini-flash-lite-latest",
           name: "Gemini Flash-Lite Latest",
           provider: "google",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
         {
           id: "gemini-robotics-er-1.6-preview",
           name: "Gemini Robotics-ER 1.6 Preview",
           provider: "google",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "gemma-4-26b-a4b-it",
           name: "Gemma 4 26B A4B IT",
           provider: "google",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "gemma-4-31b-it",
           name: "Gemma 4 31B IT",
           provider: "google",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
       ],
     },
@@ -1381,66 +2441,118 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "gemini-2.5-flash",
           name: "Gemini 2.5 Flash",
           provider: "google-vertex",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "gemini-2.5-flash-lite",
           name: "Gemini 2.5 Flash-Lite",
           provider: "google-vertex",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "gemini-2.5-pro",
           name: "Gemini 2.5 Pro",
           provider: "google-vertex",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gemini-3-flash-preview",
           name: "Gemini 3 Flash Preview",
           provider: "google-vertex",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "gemini-3.1-flash-lite",
           name: "Gemini 3.1 Flash Lite",
           provider: "google-vertex",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
         {
           id: "gemini-3.1-pro-preview",
           name: "Gemini 3.1 Pro Preview",
           provider: "google-vertex",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "gemini-3.1-pro-preview-customtools",
           name: "Gemini 3.1 Pro Preview Custom Tools",
           provider: "google-vertex",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "gemini-3.5-flash",
           name: "Gemini 3.5 Flash",
           provider: "google-vertex",
+          cost: {
+            input: 1.5,
+            output: 9,
+          },
         },
         {
           id: "gemini-3.5-flash-lite",
           name: "Gemini 3.5 Flash Lite",
           provider: "google-vertex",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "gemini-3.6-flash",
           name: "Gemini 3.6 Flash",
           provider: "google-vertex",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "gemini-3.7-flash",
           name: "Gemini 3.7 Flash",
           provider: "google-vertex",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "gemini-flash-latest",
           name: "Gemini Flash Latest",
           provider: "google-vertex",
+          cost: {
+            input: 1.5,
+            output: 9,
+          },
         },
         {
           id: "gemini-flash-lite-latest",
           name: "Gemini Flash-Lite Latest",
           provider: "google-vertex",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
       ],
     },
@@ -1451,31 +2563,55 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "llama-3.1-8b-instant",
           name: "Llama 3.1 8B",
           provider: "groq",
+          cost: {
+            input: 0.05,
+            output: 0.08,
+          },
         },
         {
           id: "llama-3.3-70b-versatile",
           name: "Llama 3.3 70B",
           provider: "groq",
+          cost: {
+            input: 0.59,
+            output: 0.79,
+          },
         },
         {
           id: "openai/gpt-oss-120b",
           name: "GPT OSS 120B",
           provider: "groq",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai/gpt-oss-20b",
           name: "GPT OSS 20B",
           provider: "groq",
+          cost: {
+            input: 0.075,
+            output: 0.3,
+          },
         },
         {
           id: "openai/gpt-oss-safeguard-20b",
           name: "Safety GPT OSS 20B",
           provider: "groq",
+          cost: {
+            input: 0.075,
+            output: 0.3,
+          },
         },
         {
           id: "qwen/qwen3.6-27b",
           name: "Qwen3.6 27B",
           provider: "groq",
+          cost: {
+            input: 0.6,
+            output: 3,
+          },
         },
       ],
     },
@@ -1486,346 +2622,622 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "deepseek-ai/DeepSeek-R1",
           name: "DeepSeek-R1",
           provider: "huggingface",
+          cost: {
+            input: 0.7,
+            output: 2.5,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-R1-0528",
           name: "DeepSeek-R1-0528",
           provider: "huggingface",
+          cost: {
+            input: 3,
+            output: 5,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V3",
           name: "DeepSeek-V3",
           provider: "huggingface",
+          cost: {
+            input: 0.4,
+            output: 1.3,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V3-0324",
           name: "DeepSeek V3 0324",
           provider: "huggingface",
+          cost: {
+            input: 0.27,
+            output: 1.12,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V3.1",
           name: "DeepSeek-V3.1",
           provider: "huggingface",
+          cost: {
+            input: 0.27,
+            output: 1,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V3.2",
           name: "DeepSeek-V3.2",
           provider: "huggingface",
+          cost: {
+            input: 0.28,
+            output: 0.4,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V4-Flash",
           name: "DeepSeek V4 Flash",
           provider: "huggingface",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V4-Flash-0731",
           name: "DeepSeek V4 Flash 0731",
           provider: "huggingface",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V4-Pro",
           name: "DeepSeek V4 Pro",
           provider: "huggingface",
+          cost: {
+            input: 0.435,
+            output: 0.87,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V4-Pro-0813",
           name: "DeepSeek V4 Pro 0813",
           provider: "huggingface",
+          cost: {
+            input: 1.32,
+            output: 3.96,
+          },
         },
         {
           id: "google/gemma-4-26B-A4B-it",
           name: "Gemma 4 26B A4B IT",
           provider: "huggingface",
+          cost: {
+            input: 0.13,
+            output: 0.4,
+          },
         },
         {
           id: "google/gemma-4-31B-it",
           name: "Gemma 4 31B IT",
           provider: "huggingface",
+          cost: {
+            input: 0.14,
+            output: 0.4,
+          },
         },
         {
           id: "meta-llama/Llama-3.1-8B-Instruct",
           name: "Llama-3.1-8B-Instruct",
           provider: "huggingface",
+          cost: {
+            input: 0.06,
+            output: 0.06,
+          },
         },
         {
           id: "meta-llama/Llama-3.3-70B-Instruct",
           name: "Llama-3.3-70B-Instruct",
           provider: "huggingface",
+          cost: {
+            input: 0.59,
+            output: 0.79,
+          },
         },
         {
           id: "MiniMaxAI/MiniMax-M2",
           name: "MiniMax-M2",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "MiniMaxAI/MiniMax-M2.1",
           name: "MiniMax-M2.1",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "MiniMaxAI/MiniMax-M2.5",
           name: "MiniMax-M2.5",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "MiniMaxAI/MiniMax-M2.7",
           name: "MiniMax-M2.7",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "MiniMaxAI/MiniMax-M3",
           name: "MiniMax-M3",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "moonshotai/Kimi-K2-Instruct",
           name: "Kimi-K2-Instruct",
           provider: "huggingface",
+          cost: {
+            input: 1,
+            output: 3,
+          },
         },
         {
           id: "moonshotai/Kimi-K2-Instruct-0905",
           name: "Kimi-K2-Instruct-0905",
           provider: "huggingface",
+          cost: {
+            input: 1,
+            output: 3,
+          },
         },
         {
           id: "moonshotai/Kimi-K2-Thinking",
           name: "Kimi-K2-Thinking",
           provider: "huggingface",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "moonshotai/Kimi-K2.5",
           name: "Kimi-K2.5",
           provider: "huggingface",
+          cost: {
+            input: 0.6,
+            output: 3,
+          },
         },
         {
           id: "moonshotai/Kimi-K2.6",
           name: "Kimi-K2.6",
           provider: "huggingface",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "moonshotai/Kimi-K2.7-Code",
           name: "Kimi K2.7 Code",
           provider: "huggingface",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "moonshotai/Kimi-K3",
           name: "Kimi K3",
           provider: "huggingface",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "openai/gpt-oss-120b",
           name: "GPT OSS 120B",
           provider: "huggingface",
+          cost: {
+            input: 0.25,
+            output: 0.69,
+          },
         },
         {
           id: "openai/gpt-oss-20b",
           name: "GPT OSS 20B",
           provider: "huggingface",
+          cost: {
+            input: 0.1,
+            output: 0.5,
+          },
         },
         {
           id: "Qwen/Qwen2.5-Coder-32B-Instruct",
           name: "Qwen2.5-Coder-32B-Instruct",
           provider: "huggingface",
+          cost: {
+            input: 0.06,
+            output: 0.2,
+          },
         },
         {
           id: "Qwen/Qwen3-235B-A22B",
           name: "Qwen3 235B-A22B",
           provider: "huggingface",
+          cost: {
+            input: 0.2,
+            output: 0.8,
+          },
         },
         {
           id: "Qwen/Qwen3-235B-A22B-Instruct-2507",
           name: "Qwen3 235B-A22B Instruct 2507",
           provider: "huggingface",
+          cost: {
+            input: 0.855,
+            output: 2.565,
+          },
         },
         {
           id: "Qwen/Qwen3-235B-A22B-Thinking-2507",
           name: "Qwen3-235B-A22B-Thinking-2507",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 3,
+          },
         },
         {
           id: "Qwen/Qwen3-30B-A3B",
           name: "Qwen3 30B A3B",
           provider: "huggingface",
+          cost: {
+            input: 0.12,
+            output: 0.5,
+          },
         },
         {
           id: "Qwen/Qwen3-32B",
           name: "Qwen3 32B",
           provider: "huggingface",
+          cost: {
+            input: 0.29,
+            output: 0.59,
+          },
         },
         {
           id: "Qwen/Qwen3-Coder-30B-A3B-Instruct",
           name: "Qwen3-Coder 30B-A3B Instruct",
           provider: "huggingface",
+          cost: {
+            input: 0.07,
+            output: 0.26,
+          },
         },
         {
           id: "Qwen/Qwen3-Coder-480B-A35B-Instruct",
           name: "Qwen3-Coder-480B-A35B-Instruct",
           provider: "huggingface",
+          cost: {
+            input: 2,
+            output: 2,
+          },
         },
         {
           id: "Qwen/Qwen3-Coder-Next",
           name: "Qwen3-Coder-Next",
           provider: "huggingface",
+          cost: {
+            input: 0.2,
+            output: 1.5,
+          },
         },
         {
           id: "Qwen/Qwen3-Next-80B-A3B-Instruct",
           name: "Qwen3-Next-80B-A3B-Instruct",
           provider: "huggingface",
+          cost: {
+            input: 0.25,
+            output: 1,
+          },
         },
         {
           id: "Qwen/Qwen3-Next-80B-A3B-Thinking",
           name: "Qwen3-Next-80B-A3B-Thinking",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 2,
+          },
         },
         {
           id: "Qwen/Qwen3-VL-235B-A22B-Instruct",
           name: "Qwen3 VL 235B A22B Instruct",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 1.5,
+          },
         },
         {
           id: "Qwen/Qwen3-VL-235B-A22B-Thinking",
           name: "Qwen3 VL 235B A22B Thinking",
           provider: "huggingface",
+          cost: {
+            input: 0.98,
+            output: 3.95,
+          },
         },
         {
           id: "Qwen/Qwen3.5-122B-A10B",
           name: "Qwen3.5 122B-A10B",
           provider: "huggingface",
+          cost: {
+            input: 0.4,
+            output: 3.2,
+          },
         },
         {
           id: "Qwen/Qwen3.5-27B",
           name: "Qwen3.5 27B",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 2.4,
+          },
         },
         {
           id: "Qwen/Qwen3.5-35B-A3B",
           name: "Qwen3.5 35B-A3B",
           provider: "huggingface",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "Qwen/Qwen3.5-397B-A17B",
           name: "Qwen3.5-397B-A17B",
           provider: "huggingface",
+          cost: {
+            input: 0.6,
+            output: 3.6,
+          },
         },
         {
           id: "Qwen/Qwen3.5-9B",
           name: "Qwen3.5 9B",
           provider: "huggingface",
+          cost: {
+            input: 0.17,
+            output: 0.25,
+          },
         },
         {
           id: "Qwen/Qwen3.6-27B",
           name: "Qwen3.6 27B",
           provider: "huggingface",
+          cost: {
+            input: 0.47,
+            output: 3.19,
+          },
         },
         {
           id: "Qwen/Qwen3.6-35B-A3B",
           name: "Qwen3.6 35B-A3B",
           provider: "huggingface",
+          cost: {
+            input: 0.15,
+            output: 0.95,
+          },
         },
         {
           id: "Qwen/Qwen3.8-2.4T-A95B",
           name: "Qwen3.8 2.4T A95B",
           provider: "huggingface",
+          cost: {
+            input: 2.5,
+            output: 6.25,
+          },
         },
         {
           id: "Qwen/Qwen3.8-27B",
           name: "Qwen3.8 27B",
           provider: "huggingface",
+          cost: {
+            input: 0.4,
+            output: 3,
+          },
         },
         {
           id: "stepfun-ai/Step-3.5-Flash",
           name: "Step 3.5 Flash",
           provider: "huggingface",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "stepfun-ai/Step-3.7-Flash",
           name: "Step 3.7 Flash",
           provider: "huggingface",
+          cost: {
+            input: 0.2,
+            output: 1.15,
+          },
         },
         {
           id: "tencent/Hy3",
           name: "Hy3",
           provider: "huggingface",
+          cost: {
+            input: 0.14,
+            output: 0.58,
+          },
         },
         {
           id: "thinkingmachines/Inkling",
           name: "Inkling",
           provider: "huggingface",
+          cost: {
+            input: 1,
+            output: 4.05,
+          },
         },
         {
           id: "thinkingmachines/Inkling-Small",
           name: "Inkling Small",
           provider: "huggingface",
+          cost: {
+            input: 0.5,
+            output: 1.2,
+          },
         },
         {
           id: "XiaomiMiMo/MiMo-V2-Flash",
           name: "MiMo-V2-Flash",
           provider: "huggingface",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "XiaomiMiMo/MiMo-V2.5",
           name: "MiMo-V2.5",
           provider: "huggingface",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "XiaomiMiMo/MiMo-V2.5-Pro",
           name: "MiMo-V2.5-Pro",
           provider: "huggingface",
+          cost: {
+            input: 1,
+            output: 3,
+          },
         },
         {
           id: "zai-org/GLM-4.5",
           name: "GLM-4.5",
           provider: "huggingface",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "zai-org/GLM-4.5-Air",
           name: "GLM-4.5-Air",
           provider: "huggingface",
+          cost: {
+            input: 0.13,
+            output: 0.85,
+          },
         },
         {
           id: "zai-org/GLM-4.5V",
           name: "GLM-4.5V",
           provider: "huggingface",
+          cost: {
+            input: 0.6,
+            output: 1.8,
+          },
         },
         {
           id: "zai-org/GLM-4.6",
           name: "GLM-4.6",
           provider: "huggingface",
+          cost: {
+            input: 0.55,
+            output: 2.2,
+          },
         },
         {
           id: "zai-org/GLM-4.6V-Flash",
           name: "GLM-4.6V-Flash",
           provider: "huggingface",
+          cost: {
+            input: 0.3,
+            output: 0.9,
+          },
         },
         {
           id: "zai-org/GLM-4.7",
           name: "GLM-4.7",
           provider: "huggingface",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "zai-org/GLM-4.7-Flash",
           name: "GLM-4.7-Flash",
           provider: "huggingface",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "zai-org/GLM-5",
           name: "GLM-5",
           provider: "huggingface",
+          cost: {
+            input: 1,
+            output: 3.2,
+          },
         },
         {
           id: "zai-org/GLM-5.1",
           name: "GLM-5.1",
           provider: "huggingface",
+          cost: {
+            input: 1,
+            output: 3.2,
+          },
         },
         {
           id: "zai-org/GLM-5.2",
           name: "GLM-5.2",
           provider: "huggingface",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "zai-org/GLM-5.3-Flash",
           name: "GLM-5.3-Flash",
           provider: "huggingface",
+          cost: {
+            input: 0.15,
+            output: 0.5,
+          },
         },
       ],
     },
@@ -1836,21 +3248,37 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "k3",
           name: "Kimi K3",
           provider: "kimi-coding",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "k3-256k",
           name: "Kimi K3-256K",
           provider: "kimi-coding",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "kimi-for-coding",
           name: "Kimi K2.7 Code",
           provider: "kimi-coding",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-for-coding-highspeed",
           name: "Kimi For Coding HighSpeed",
           provider: "kimi-coding",
+          cost: {
+            input: 1.9,
+            output: 8,
+          },
         },
       ],
     },
@@ -1861,16 +3289,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "MiniMax-M2.7",
           name: "MiniMax-M2.7",
           provider: "minimax",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "MiniMax-M2.7-highspeed",
           name: "MiniMax-M2.7-highspeed",
           provider: "minimax",
+          cost: {
+            input: 0.6,
+            output: 2.4,
+          },
         },
         {
           id: "MiniMax-M3",
           name: "MiniMax-M3",
           provider: "minimax",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
       ],
     },
@@ -1881,16 +3321,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "MiniMax-M2.7",
           name: "MiniMax-M2.7",
           provider: "minimax-cn",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "MiniMax-M2.7-highspeed",
           name: "MiniMax-M2.7-highspeed",
           provider: "minimax-cn",
+          cost: {
+            input: 0.6,
+            output: 2.4,
+          },
         },
         {
           id: "MiniMax-M3",
           name: "MiniMax-M3",
           provider: "minimax-cn",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
       ],
     },
@@ -1901,161 +3353,289 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "codestral-latest",
           name: "Codestral (latest)",
           provider: "mistral",
+          cost: {
+            input: 0.3,
+            output: 0.9,
+          },
         },
         {
           id: "devstral-2512",
           name: "Devstral 2",
           provider: "mistral",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "devstral-latest",
           name: "Devstral 2",
           provider: "mistral",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "devstral-medium-2507",
           name: "Devstral Medium",
           provider: "mistral",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "devstral-medium-latest",
           name: "Devstral 2 (latest)",
           provider: "mistral",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "devstral-small-2505",
           name: "Devstral Small 2505",
           provider: "mistral",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "devstral-small-2507",
           name: "Devstral Small",
           provider: "mistral",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "labs-devstral-small-2512",
           name: "Devstral Small 2",
           provider: "mistral",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "magistral-medium-latest",
           name: "Magistral Medium (latest)",
           provider: "mistral",
+          cost: {
+            input: 2,
+            output: 5,
+          },
         },
         {
           id: "magistral-small",
           name: "Magistral Small",
           provider: "mistral",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "ministral-3b-latest",
           name: "Ministral 3B (latest)",
           provider: "mistral",
+          cost: {
+            input: 0.04,
+            output: 0.04,
+          },
         },
         {
           id: "ministral-8b-latest",
           name: "Ministral 8B (latest)",
           provider: "mistral",
+          cost: {
+            input: 0.1,
+            output: 0.1,
+          },
         },
         {
           id: "mistral-large-2411",
           name: "Mistral Large 2.1",
           provider: "mistral",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "mistral-large-2512",
           name: "Mistral Large 3",
           provider: "mistral",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "mistral-large-latest",
           name: "Mistral Large (latest)",
           provider: "mistral",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "mistral-medium-2505",
           name: "Mistral Medium 3",
           provider: "mistral",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "mistral-medium-2508",
           name: "Mistral Medium 3.1",
           provider: "mistral",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "mistral-medium-2604",
           name: "Mistral Medium 3.5",
           provider: "mistral",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "mistral-medium-3.5",
           name: "Mistral Medium 3.5",
           provider: "mistral",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "mistral-medium-latest",
           name: "Mistral Medium (latest)",
           provider: "mistral",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "mistral-nemo",
           name: "Mistral Nemo",
           provider: "mistral",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "mistral-small-2506",
           name: "Mistral Small 3.2",
           provider: "mistral",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "mistral-small-2603",
           name: "Mistral Small 4",
           provider: "mistral",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "mistral-small-latest",
           name: "Mistral Small (latest)",
           provider: "mistral",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "open-mistral-7b",
           name: "Mistral 7B",
           provider: "mistral",
+          cost: {
+            input: 0.25,
+            output: 0.25,
+          },
         },
         {
           id: "open-mistral-nemo",
           name: "Open Mistral Nemo",
           provider: "mistral",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "open-mixtral-8x22b",
           name: "Mixtral 8x22B",
           provider: "mistral",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "open-mixtral-8x7b",
           name: "Mixtral 8x7B",
           provider: "mistral",
+          cost: {
+            input: 0.7,
+            output: 0.7,
+          },
         },
         {
           id: "pixtral-12b",
           name: "Pixtral 12B",
           provider: "mistral",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "pixtral-large-latest",
           name: "Pixtral Large (latest)",
           provider: "mistral",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "voxtral-small-latest",
           name: "Voxtral Small (latest)",
           provider: "mistral",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "zai-glm-5-2",
           name: "GLM-5.2",
           provider: "mistral",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
       ],
     },
@@ -2066,51 +3646,91 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "kimi-k2-0711-preview",
           name: "Kimi K2 0711",
           provider: "moonshotai",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "kimi-k2-0905-preview",
           name: "Kimi K2 0905",
           provider: "moonshotai",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "kimi-k2-thinking",
           name: "Kimi K2 Thinking",
           provider: "moonshotai",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "kimi-k2-thinking-turbo",
           name: "Kimi K2 Thinking Turbo",
           provider: "moonshotai",
+          cost: {
+            input: 1.15,
+            output: 8,
+          },
         },
         {
           id: "kimi-k2-turbo-preview",
           name: "Kimi K2 Turbo",
           provider: "moonshotai",
+          cost: {
+            input: 2.4,
+            output: 10,
+          },
         },
         {
           id: "kimi-k2.5",
           name: "Kimi K2.5",
           provider: "moonshotai",
+          cost: {
+            input: 0.6,
+            output: 3,
+          },
         },
         {
           id: "kimi-k2.6",
           name: "Kimi K2.6",
           provider: "moonshotai",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-k2.7-code",
           name: "Kimi K2.7 Code",
           provider: "moonshotai",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-k2.7-code-highspeed",
           name: "Kimi K2.7 Code HighSpeed",
           provider: "moonshotai",
+          cost: {
+            input: 1.9,
+            output: 8,
+          },
         },
         {
           id: "kimi-k3",
           name: "Kimi K3",
           provider: "moonshotai",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
       ],
     },
@@ -2121,51 +3741,91 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "kimi-k2-0711-preview",
           name: "Kimi K2 0711",
           provider: "moonshotai-cn",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "kimi-k2-0905-preview",
           name: "Kimi K2 0905",
           provider: "moonshotai-cn",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "kimi-k2-thinking",
           name: "Kimi K2 Thinking",
           provider: "moonshotai-cn",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "kimi-k2-thinking-turbo",
           name: "Kimi K2 Thinking Turbo",
           provider: "moonshotai-cn",
+          cost: {
+            input: 1.15,
+            output: 8,
+          },
         },
         {
           id: "kimi-k2-turbo-preview",
           name: "Kimi K2 Turbo",
           provider: "moonshotai-cn",
+          cost: {
+            input: 2.4,
+            output: 10,
+          },
         },
         {
           id: "kimi-k2.5",
           name: "Kimi K2.5",
           provider: "moonshotai-cn",
+          cost: {
+            input: 0.6,
+            output: 3,
+          },
         },
         {
           id: "kimi-k2.6",
           name: "Kimi K2.6",
           provider: "moonshotai-cn",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-k2.7-code",
           name: "Kimi K2.7 Code",
           provider: "moonshotai-cn",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-k2.7-code-highspeed",
           name: "Kimi K2.7 Code HighSpeed",
           provider: "moonshotai-cn",
+          cost: {
+            input: 1.9,
+            output: 8,
+          },
         },
         {
           id: "kimi-k3",
           name: "Kimi K3",
           provider: "moonshotai-cn",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
       ],
     },
@@ -2176,111 +3836,199 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "deepseek-ai/deepseek-v4-flash-0731",
           name: "DeepSeek V4 Flash 0731",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "deepseek-ai/deepseek-v4-pro-0813",
           name: "DeepSeek V4 Pro 0813",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "google/gemma-3-12b-it",
           name: "Gemma 3 12B IT",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "google/gemma-3-4b-it",
           name: "Gemma 3 4B IT",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "meta/llama-3.2-11b-vision-instruct",
           name: "Llama 3.2 11b Vision Instruct",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "meta/llama-3.2-90b-vision-instruct",
           name: "Llama-3.2-90B-Vision-Instruct",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "meta/muse-glimmer-30b",
           name: "Muse Glimmer 30B",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "minimaxai/minimax-m3",
           name: "MiniMax-M3",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "mistralai/mistral-7b-instruct-v0.3",
           name: "Mistral-7B-Instruct-v0.3",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "moonshotai/kimi-k2.6",
           name: "Kimi K2.6",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "moonshotai/kimi-k3",
           name: "Kimi K3",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/cosmos-reason2-8b",
           name: "Cosmos Reason2 8B",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/llama-3.1-nemotron-70b-instruct",
           name: "Llama 3.1 Nemotron 70B Instruct",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
           name: "Llama 3.1 Nemotron Ultra 253B",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/nemotron-3-nano-30b-a3b",
           name: "nemotron-3-nano-30b-a3b",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
           name: "Nemotron 3 Nano Omni",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/nemotron-3-super-120b-a12b",
           name: "Nemotron 3 Super",
           provider: "nvidia",
+          cost: {
+            input: 0.2,
+            output: 0.8,
+          },
         },
         {
           id: "nvidia/nemotron-3-ultra-550b-a55b",
           name: "Nemotron 3 Ultra 550B A55B",
           provider: "nvidia",
+          cost: {
+            input: 0.5,
+            output: 2.5,
+          },
         },
         {
           id: "nvidia/nemotron-3.5-lightning-30b-a3b",
           name: "Nemotron 3.5 Lightning 30B A3B",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "openai/gpt-oss-120b",
           name: "GPT-OSS-120B",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "openai/gpt-oss-20b",
           name: "GPT OSS 20B",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "poolside/laguna-xs-2.1",
           name: "Laguna XS 2.1",
           provider: "nvidia",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
       ],
     },
@@ -2291,191 +4039,343 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "gpt-4",
           name: "GPT-4",
           provider: "openai",
+          cost: {
+            input: 30,
+            output: 60,
+          },
         },
         {
           id: "gpt-4-turbo",
           name: "GPT-4 Turbo",
           provider: "openai",
+          cost: {
+            input: 10,
+            output: 30,
+          },
         },
         {
           id: "gpt-4.1",
           name: "GPT-4.1",
           provider: "openai",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "gpt-4.1-mini",
           name: "GPT-4.1 mini",
           provider: "openai",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "gpt-4.1-nano",
           name: "GPT-4.1 nano",
           provider: "openai",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "gpt-4o",
           name: "GPT-4o",
           provider: "openai",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "gpt-4o-2024-05-13",
           name: "GPT-4o (2024-05-13)",
           provider: "openai",
+          cost: {
+            input: 5,
+            output: 15,
+          },
         },
         {
           id: "gpt-4o-2024-08-06",
           name: "GPT-4o (2024-08-06)",
           provider: "openai",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "gpt-4o-2024-11-20",
           name: "GPT-4o (2024-11-20)",
           provider: "openai",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "gpt-4o-mini",
           name: "GPT-4o mini",
           provider: "openai",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "gpt-5",
           name: "GPT-5",
           provider: "openai",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5-chat-latest",
           name: "GPT-5 Chat Latest",
           provider: "openai",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5-mini",
           name: "GPT-5 Mini",
           provider: "openai",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "gpt-5-nano",
           name: "GPT-5 Nano",
           provider: "openai",
+          cost: {
+            input: 0.05,
+            output: 0.4,
+          },
         },
         {
           id: "gpt-5-pro",
           name: "GPT-5 Pro",
           provider: "openai",
+          cost: {
+            input: 15,
+            output: 120,
+          },
         },
         {
           id: "gpt-5.1",
           name: "GPT-5.1",
           provider: "openai",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5.2",
           name: "GPT-5.2",
           provider: "openai",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.2-chat-latest",
           name: "GPT-5.2 Chat",
           provider: "openai",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.2-pro",
           name: "GPT-5.2 Pro",
           provider: "openai",
+          cost: {
+            input: 21,
+            output: 168,
+          },
         },
         {
           id: "gpt-5.3-chat-latest",
           name: "GPT-5.3 Chat (latest)",
           provider: "openai",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.3-codex",
           name: "GPT-5.3 Codex",
           provider: "openai",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.3-codex-spark",
           name: "GPT-5.3 Codex Spark",
           provider: "openai",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.4",
           name: "GPT-5.4",
           provider: "openai",
+          cost: {
+            input: 2.5,
+            output: 15,
+          },
         },
         {
           id: "gpt-5.4-mini",
           name: "GPT-5.4 mini",
           provider: "openai",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "gpt-5.4-nano",
           name: "GPT-5.4 nano",
           provider: "openai",
+          cost: {
+            input: 0.2,
+            output: 1.25,
+          },
         },
         {
           id: "gpt-5.4-pro",
           name: "GPT-5.4 Pro",
           provider: "openai",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "gpt-5.5",
           name: "GPT-5.5",
           provider: "openai",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "gpt-5.5-pro",
           name: "GPT-5.5 Pro",
           provider: "openai",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "gpt-5.6-luna",
           name: "GPT-5.6 Luna",
           provider: "openai",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "gpt-5.6-sol",
           name: "GPT-5.6 Sol",
           provider: "openai",
+          cost: {
+            input: 4,
+            output: 20,
+          },
         },
         {
           id: "gpt-5.6-terra",
           name: "GPT-5.6 Terra",
           provider: "openai",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "gpt-realtime-2.1",
           name: "GPT-Realtime-2.1",
           provider: "openai",
+          cost: {
+            input: 4,
+            output: 24,
+          },
         },
         {
           id: "o1",
           name: "o1",
           provider: "openai",
+          cost: {
+            input: 15,
+            output: 60,
+          },
         },
         {
           id: "o1-pro",
           name: "o1-pro",
           provider: "openai",
+          cost: {
+            input: 150,
+            output: 600,
+          },
         },
         {
           id: "o3",
           name: "o3",
           provider: "openai",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "o3-mini",
           name: "o3-mini",
           provider: "openai",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "o3-pro",
           name: "o3-pro",
           provider: "openai",
+          cost: {
+            input: 20,
+            output: 80,
+          },
         },
         {
           id: "o4-mini",
           name: "o4-mini",
           provider: "openai",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
       ],
     },
@@ -2486,306 +4386,550 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "big-pickle",
           name: "Big Pickle",
           provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "claude-fable-5",
           name: "Claude Fable 5",
           provider: "opencode",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "claude-haiku-4-5",
           name: "Claude Haiku 4.5",
           provider: "opencode",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "claude-opus-4-5",
           name: "Claude Opus 4.5",
           provider: "opencode",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4-6",
           name: "Claude Opus 4.6",
           provider: "opencode",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4-7",
           name: "Claude Opus 4.7",
           provider: "opencode",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-4-8",
           name: "Claude Opus 4.8",
           provider: "opencode",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-opus-5",
           name: "Claude Opus 5",
           provider: "opencode",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "claude-sonnet-4",
           name: "Claude Sonnet 4",
           provider: "opencode",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "claude-sonnet-4-5",
           name: "Claude Sonnet 4.5",
           provider: "opencode",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "claude-sonnet-4-6",
           name: "Claude Sonnet 4.6",
           provider: "opencode",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "claude-sonnet-5",
           name: "Claude Sonnet 5",
           provider: "opencode",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "deepseek-v4-flash",
           name: "DeepSeek V4 Flash",
           provider: "opencode",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "deepseek-v4-pro",
           name: "DeepSeek V4 Pro",
           provider: "opencode",
+          cost: {
+            input: 1.74,
+            output: 3.84,
+          },
         },
         {
           id: "gemini-3-flash",
           name: "Gemini 3 Flash",
           provider: "opencode",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "gemini-3.1-pro",
           name: "Gemini 3.1 Pro Preview",
           provider: "opencode",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "gemini-3.5-flash",
           name: "Gemini 3.5 Flash",
           provider: "opencode",
+          cost: {
+            input: 1.5,
+            output: 9,
+          },
         },
         {
           id: "gemini-3.5-flash-lite",
           name: "Gemini 3.5 Flash Lite",
           provider: "opencode",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "gemini-3.6-flash",
           name: "Gemini 3.6 Flash",
           provider: "opencode",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "gemini-3.7-flash",
           name: "Gemini 3.7 Flash",
           provider: "opencode",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "glm-5",
           name: "GLM-5",
           provider: "opencode",
+          cost: {
+            input: 1,
+            output: 3.2,
+          },
         },
         {
           id: "glm-5.1",
           name: "GLM-5.1",
           provider: "opencode",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.2",
           name: "GLM-5.2",
           provider: "opencode",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "gpt-5",
           name: "GPT-5",
           provider: "opencode",
+          cost: {
+            input: 1.07,
+            output: 8.5,
+          },
         },
         {
           id: "gpt-5-codex",
           name: "GPT-5 Codex",
           provider: "opencode",
+          cost: {
+            input: 1.07,
+            output: 8.5,
+          },
         },
         {
           id: "gpt-5-nano",
           name: "GPT-5 Nano",
           provider: "opencode",
+          cost: {
+            input: 0.05,
+            output: 0.4,
+          },
         },
         {
           id: "gpt-5.1",
           name: "GPT-5.1",
           provider: "opencode",
+          cost: {
+            input: 1.07,
+            output: 8.5,
+          },
         },
         {
           id: "gpt-5.1-codex",
           name: "GPT-5.1 Codex",
           provider: "opencode",
+          cost: {
+            input: 1.07,
+            output: 8.5,
+          },
         },
         {
           id: "gpt-5.1-codex-max",
           name: "GPT-5.1 Codex Max",
           provider: "opencode",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "gpt-5.1-codex-mini",
           name: "GPT-5.1 Codex Mini",
           provider: "opencode",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "gpt-5.2",
           name: "GPT-5.2",
           provider: "opencode",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.2-codex",
           name: "GPT-5.2 Codex",
           provider: "opencode",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.3-codex",
           name: "GPT-5.3 Codex",
           provider: "opencode",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "gpt-5.4",
           name: "GPT-5.4",
           provider: "opencode",
+          cost: {
+            input: 2.5,
+            output: 15,
+          },
         },
         {
           id: "gpt-5.4-mini",
           name: "GPT-5.4 Mini",
           provider: "opencode",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "gpt-5.4-nano",
           name: "GPT-5.4 Nano",
           provider: "opencode",
+          cost: {
+            input: 0.2,
+            output: 1.25,
+          },
         },
         {
           id: "gpt-5.4-pro",
           name: "GPT-5.4 Pro",
           provider: "opencode",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "gpt-5.5",
           name: "GPT-5.5",
           provider: "opencode",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "gpt-5.5-pro",
           name: "GPT-5.5 Pro",
           provider: "opencode",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "gpt-5.6-luna",
           name: "GPT-5.6 Luna",
           provider: "opencode",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "gpt-5.6-sol",
           name: "GPT-5.6 Sol (50% Off)",
           provider: "opencode",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "gpt-5.6-terra",
           name: "GPT-5.6 Terra",
           provider: "opencode",
+          cost: {
+            input: 2.5,
+            output: 15,
+          },
         },
         {
           id: "grok-4.5",
           name: "Grok 4.5",
           provider: "opencode",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "grok-4.6",
           name: "Grok 4.6",
           provider: "opencode",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "grok-build-0.1",
           name: "Grok Build 0.1",
           provider: "opencode",
+          cost: {
+            input: 1,
+            output: 2,
+          },
         },
         {
           id: "hy3-free",
           name: "Hy3 Free",
           provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "kimi-k2.5",
           name: "Kimi K2.5",
           provider: "opencode",
+          cost: {
+            input: 0.6,
+            output: 3,
+          },
         },
         {
           id: "kimi-k2.6",
           name: "Kimi K2.6",
           provider: "opencode",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-k2.7-code",
           name: "Kimi K2.7 Code",
           provider: "opencode",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-k3",
           name: "Kimi K3",
           provider: "opencode",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "ling-3.0-flash-fin-free",
           name: "Ling 3.0 Flash Fin Free",
           provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "mimo-v2.5-free",
           name: "MiMo V2.5 Free",
           provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "minimax-m2.5",
           name: "MiniMax-M2.5",
           provider: "opencode",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax-m2.7",
           name: "MiniMax-M2.7",
           provider: "opencode",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax-m3",
           name: "MiniMax-M3",
           provider: "opencode",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "muse-spark-1.2",
           name: "Muse Spark 1.2",
           provider: "opencode",
+          cost: {
+            input: 1.25,
+            output: 4.25,
+          },
         },
         {
           id: "muse-spark-1.2-contributor-free",
           name: "Muse Spark 1.2 Free",
           provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nemotron-3-ultra-free",
           name: "Nemotron 3 Ultra Free",
           provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nemotron-3.5-lightning-free",
           name: "Nemotron 3.5 Lightning Free",
           provider: "opencode",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "qwen3.5-plus",
           name: "Qwen3.5 Plus",
           provider: "opencode",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "qwen3.6-plus",
           name: "Qwen3.6 Plus",
           provider: "opencode",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
       ],
     },
@@ -2796,126 +4940,226 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "deepseek-v4-flash",
           name: "DeepSeek V4 Flash",
           provider: "opencode-go",
+          cost: {
+            input: 0.22,
+            output: 0.66,
+          },
         },
         {
           id: "deepseek-v4-flash-vision-exp",
           name: "DeepSeek V4 Flash Vision Exp",
           provider: "opencode-go",
+          cost: {
+            input: 0.22,
+            output: 0.66,
+          },
         },
         {
           id: "deepseek-v4-pro",
           name: "DeepSeek V4 Pro (New)",
           provider: "opencode-go",
+          cost: {
+            input: 0.66,
+            output: 1.98,
+          },
         },
         {
           id: "glm-5.1",
           name: "GLM-5.1",
           provider: "opencode-go",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.2",
           name: "GLM-5.2",
           provider: "opencode-go",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.3",
           name: "GLM-5.3",
           provider: "opencode-go",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.3-flash",
           name: "GLM-5.3-Flash (2x usage)",
           provider: "opencode-go",
+          cost: {
+            input: 0.075,
+            output: 0.25,
+          },
         },
         {
           id: "gpt-5.6-luna",
           name: "GPT-5.6 Luna",
           provider: "opencode-go",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "grok-4.6",
           name: "Grok 4.6",
           provider: "opencode-go",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "hy3",
           name: "Hy3 (8x usage)",
           provider: "opencode-go",
+          cost: {
+            input: 0.0175,
+            output: 0.0725,
+          },
         },
         {
           id: "hy4-preview",
           name: "Hy4 preview",
           provider: "opencode-go",
+          cost: {
+            input: 0.834,
+            output: 2.501,
+          },
         },
         {
           id: "kimi-k2.6",
           name: "Kimi K2.6",
           provider: "opencode-go",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-k2.7-code",
           name: "Kimi K2.7 Code",
           provider: "opencode-go",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "kimi-k3",
           name: "Kimi K3",
           provider: "opencode-go",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "longcat-2.0",
           name: "LongCat-2.0",
           provider: "opencode-go",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "mimo-v2.5",
           name: "MiMo V2.5",
           provider: "opencode-go",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "mimo-v2.5-pro",
           name: "MiMo V2.5 Pro",
           provider: "opencode-go",
+          cost: {
+            input: 0.435,
+            output: 0.87,
+          },
         },
         {
           id: "minimax-m2.7",
           name: "MiniMax-M2.7",
           provider: "opencode-go",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax-m3",
           name: "MiniMax-M3",
           provider: "opencode-go",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "muse-spark-1.2-contributor",
           name: "Muse Spark 1.2 Contributor",
           provider: "opencode-go",
+          cost: {
+            input: 0.1,
+            output: 0.2,
+          },
         },
         {
           id: "qwen3.6-plus",
           name: "Qwen3.6 Plus",
           provider: "opencode-go",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "qwen3.7-max",
           name: "Qwen3.7 Max",
           provider: "opencode-go",
+          cost: {
+            input: 2.5,
+            output: 7.5,
+          },
         },
         {
           id: "qwen3.7-plus",
           name: "Qwen3.7 Plus",
           provider: "opencode-go",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "qwen3.8-flash",
           name: "Qwen3.8 Flash",
           provider: "opencode-go",
+          cost: {
+            input: 0.15,
+            output: 0.47,
+          },
         },
         {
           id: "qwen3.8-max",
           name: "Qwen3.8 Max",
           provider: "opencode-go",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
       ],
     },
@@ -2926,1161 +5170,2089 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "~anthropic/claude-fable-latest",
           name: "Anthropic: Claude Fable Latest",
           provider: "openrouter",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "~anthropic/claude-haiku-latest",
           name: "Anthropic Claude Haiku Latest",
           provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "~anthropic/claude-opus-latest",
           name: "Anthropic: Claude Opus Latest",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "~anthropic/claude-sonnet-latest",
           name: "Anthropic Claude Sonnet Latest",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "~deepseek/deepseek-v4-flash-latest",
           name: "DeepSeek V4 Flash Latest",
           provider: "openrouter",
+          cost: {
+            input: 0.03,
+            output: 0.1,
+          },
         },
         {
           id: "~google/gemini-flash-latest",
           name: "Google Gemini Flash Latest",
           provider: "openrouter",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "~google/gemini-pro-latest",
           name: "Google Gemini Pro Latest",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "~moonshotai/kimi-latest",
           name: "MoonshotAI Kimi Latest",
           provider: "openrouter",
+          cost: {
+            input: 2.55,
+            output: 12.75,
+          },
         },
         {
           id: "~openai/gpt-latest",
           name: "OpenAI GPT Latest",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "~openai/gpt-mini-latest",
           name: "OpenAI GPT Mini Latest",
           provider: "openrouter",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "~x-ai/grok-latest",
           name: "xAI: Grok Latest",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "~z-ai/glm-latest",
           name: "Z.ai: GLM Latest",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 4.4,
+          },
         },
         {
           id: "aion-labs/aion-2.0",
           name: "AionLabs: Aion-2.0",
           provider: "openrouter",
+          cost: {
+            input: 0.8,
+            output: 1.6,
+          },
         },
         {
           id: "aion-labs/aion-3.0",
           name: "AionLabs: Aion-3.0",
           provider: "openrouter",
+          cost: {
+            input: 3,
+            output: 6,
+          },
         },
         {
           id: "aion-labs/aion-3.0-mini",
           name: "AionLabs: Aion-3.0-Mini",
           provider: "openrouter",
+          cost: {
+            input: 0.7,
+            output: 1.4,
+          },
         },
         {
           id: "amazon/nova-2-lite-v1",
           name: "Amazon: Nova 2 Lite",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "amazon/nova-lite-v1",
           name: "Amazon: Nova Lite 1.0",
           provider: "openrouter",
+          cost: {
+            input: 0.06,
+            output: 0.24,
+          },
         },
         {
           id: "amazon/nova-micro-v1",
           name: "Amazon: Nova Micro 1.0",
           provider: "openrouter",
+          cost: {
+            input: 0.035,
+            output: 0.14,
+          },
         },
         {
           id: "amazon/nova-premier-v1",
           name: "Amazon: Nova Premier 1.0",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 12.5,
+          },
         },
         {
           id: "amazon/nova-pro-v1",
           name: "Amazon: Nova Pro 1.0",
           provider: "openrouter",
+          cost: {
+            input: 0.8,
+            output: 3.2,
+          },
         },
         {
           id: "anthropic/claude-3-haiku",
           name: "Anthropic: Claude 3 Haiku",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 1.25,
+          },
         },
         {
           id: "anthropic/claude-fable-5",
           name: "Anthropic: Claude Fable 5",
           provider: "openrouter",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "anthropic/claude-fable-5:batch",
           name: "Anthropic: Claude Fable 5 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-haiku-4.5",
           name: "Anthropic: Claude Haiku 4.5",
           provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "anthropic/claude-haiku-4.5:batch",
           name: "Anthropic: Claude Haiku 4.5 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 2.5,
+          },
         },
         {
           id: "anthropic/claude-opus-4",
           name: "Anthropic: Claude Opus 4",
           provider: "openrouter",
+          cost: {
+            input: 15,
+            output: 75,
+          },
         },
         {
           id: "anthropic/claude-opus-4.1",
           name: "Anthropic: Claude Opus 4.1",
           provider: "openrouter",
+          cost: {
+            input: 15,
+            output: 75,
+          },
         },
         {
           id: "anthropic/claude-opus-4.1:batch",
           name: "Anthropic: Claude Opus 4.1 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 7.5,
+            output: 37.5,
+          },
         },
         {
           id: "anthropic/claude-opus-4.5",
           name: "Anthropic: Claude Opus 4.5",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-4.5:batch",
           name: "Anthropic: Claude Opus 4.5 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 12.5,
+          },
         },
         {
           id: "anthropic/claude-opus-4.6",
           name: "Anthropic: Claude Opus 4.6",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-4.6:batch",
           name: "Anthropic: Claude Opus 4.6 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 12.5,
+          },
         },
         {
           id: "anthropic/claude-opus-4.7",
           name: "Anthropic: Claude Opus 4.7",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-4.7-fast",
           name: "Anthropic: Claude Opus 4.7 (Fast)",
           provider: "openrouter",
+          cost: {
+            input: 30,
+            output: 150,
+          },
         },
         {
           id: "anthropic/claude-opus-4.7:batch",
           name: "Anthropic: Claude Opus 4.7 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 12.5,
+          },
         },
         {
           id: "anthropic/claude-opus-4.8",
           name: "Anthropic: Claude Opus 4.8",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-4.8-fast",
           name: "Anthropic: Claude Opus 4.8 (Fast)",
           provider: "openrouter",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "anthropic/claude-opus-4.8:batch",
           name: "Anthropic: Claude Opus 4.8 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 12.5,
+          },
         },
         {
           id: "anthropic/claude-opus-5",
           name: "Claude Opus 5",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-5-fast",
           name: "Claude Opus 5 (Fast)",
           provider: "openrouter",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "anthropic/claude-opus-5:batch",
           name: "Claude Opus 5 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 12.5,
+          },
         },
         {
           id: "anthropic/claude-sonnet-4",
           name: "Anthropic: Claude Sonnet 4",
           provider: "openrouter",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "anthropic/claude-sonnet-4.5",
           name: "Anthropic: Claude Sonnet 4.5",
           provider: "openrouter",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "anthropic/claude-sonnet-4.5:batch",
           name: "Anthropic: Claude Sonnet 4.5 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "anthropic/claude-sonnet-4.6",
           name: "Anthropic: Claude Sonnet 4.6",
           provider: "openrouter",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "anthropic/claude-sonnet-4.6:batch",
           name: "Anthropic: Claude Sonnet 4.6 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "anthropic/claude-sonnet-5",
           name: "Anthropic: Claude Sonnet 5",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "anthropic/claude-sonnet-5:batch",
           name: "Anthropic: Claude Sonnet 5 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "arcee-ai/trinity-large-thinking",
           name: "Arcee AI: Trinity Large Thinking",
           provider: "openrouter",
+          cost: {
+            input: 0.22,
+            output: 0.85,
+          },
         },
         {
           id: "arcee-ai/virtuoso-large",
           name: "Arcee AI: Virtuoso Large",
           provider: "openrouter",
+          cost: {
+            input: 0.75,
+            output: 1.2,
+          },
         },
         {
           id: "auto",
           name: "Auto",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "bytedance-seed/seed-1.6",
           name: "ByteDance Seed: Seed 1.6",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "bytedance-seed/seed-1.6-flash",
           name: "ByteDance Seed: Seed 1.6 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.075,
+            output: 0.3,
+          },
         },
         {
           id: "bytedance-seed/seed-2-1-turbo",
           name: "ByteDance Seed: Seed 2.1 Turbo",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 2.5,
+          },
         },
         {
           id: "bytedance-seed/seed-2.0-code",
           name: "ByteDance Seed: Seed-2.0-Code",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "bytedance-seed/seed-2.0-lite",
           name: "ByteDance Seed: Seed-2.0-Lite",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "bytedance-seed/seed-2.0-mini",
           name: "ByteDance Seed: Seed-2.0-Mini",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "cohere/command-r-08-2024",
           name: "Cohere: Command R (08-2024)",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "cohere/command-r-plus-08-2024",
           name: "Cohere: Command R+ (08-2024)",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "cohere/north-mini-code:free",
           name: "Cohere: North Mini Code (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "deepseek/deepseek-chat",
           name: "DeepSeek: DeepSeek V3",
           provider: "openrouter",
+          cost: {
+            input: 0.2574,
+            output: 1.0287,
+          },
         },
         {
           id: "deepseek/deepseek-chat-v3-0324",
           name: "DeepSeek: DeepSeek V3 0324",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 1,
+          },
         },
         {
           id: "deepseek/deepseek-chat-v3.1",
           name: "DeepSeek: DeepSeek V3.1",
           provider: "openrouter",
+          cost: {
+            input: 0.55,
+            output: 1.65,
+          },
         },
         {
           id: "deepseek/deepseek-r1",
           name: "DeepSeek: R1",
           provider: "openrouter",
+          cost: {
+            input: 0.7,
+            output: 2.5,
+          },
         },
         {
           id: "deepseek/deepseek-r1-0528",
           name: "DeepSeek: R1 0528",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 2.15,
+          },
         },
         {
           id: "deepseek/deepseek-v3.1-terminus",
           name: "DeepSeek: DeepSeek V3.1 Terminus",
           provider: "openrouter",
+          cost: {
+            input: 0.27,
+            output: 1,
+          },
         },
         {
           id: "deepseek/deepseek-v3.2",
           name: "DeepSeek: DeepSeek V3.2",
           provider: "openrouter",
+          cost: {
+            input: 0.269,
+            output: 0.4,
+          },
         },
         {
           id: "deepseek/deepseek-v3.2-exp",
           name: "DeepSeek: DeepSeek V3.2 Exp",
           provider: "openrouter",
+          cost: {
+            input: 0.27,
+            output: 0.41,
+          },
         },
         {
           id: "deepseek/deepseek-v4-flash",
           name: "DeepSeek: DeepSeek V4 Flash 0423",
           provider: "openrouter",
+          cost: {
+            input: 0.0868,
+            output: 0.1736,
+          },
         },
         {
           id: "deepseek/deepseek-v4-flash-0731",
           name: "DeepSeek: DeepSeek V4 Flash 0731",
           provider: "openrouter",
+          cost: {
+            input: 0.05,
+            output: 0.1,
+          },
         },
         {
           id: "deepseek/deepseek-v4-flash-0731:batch",
           name: "DeepSeek: DeepSeek V4 Flash 0731 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "deepseek/deepseek-v4-flash-vision-exp",
           name: "DeepSeek: DeepSeek V4 Flash Vision Exp",
           provider: "openrouter",
+          cost: {
+            input: 0.22,
+            output: 0.66,
+          },
         },
         {
           id: "deepseek/deepseek-v4-pro",
           name: "DeepSeek: DeepSeek V4 Pro 0423",
           provider: "openrouter",
+          cost: {
+            input: 0.741588,
+            output: 1.483176,
+          },
         },
         {
           id: "deepseek/deepseek-v4-pro-0813",
           name: "DeepSeek: DeepSeek V4 Pro 0813",
           provider: "openrouter",
+          cost: {
+            input: 0.66,
+            output: 1.98,
+          },
         },
         {
           id: "deepseek/deepseek-v4-pro-0813:batch",
           name: "DeepSeek: DeepSeek V4 Pro 0813 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 1.32,
+            output: 3.96,
+          },
         },
         {
           id: "dots-studio/dots-3-note-preview:free",
           name: "Dots Studio: Dots3-Note Preview (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "google/gemini-2.5-flash",
           name: "Google: Gemini 2.5 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "google/gemini-2.5-flash-lite",
           name: "Google: Gemini 2.5 Flash Lite",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "google/gemini-2.5-flash-lite:batch",
           name: "Google: Gemini 2.5 Flash Lite (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.05,
+            output: 0.2,
+          },
         },
         {
           id: "google/gemini-2.5-flash:batch",
           name: "Google: Gemini 2.5 Flash (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 1.25,
+          },
         },
         {
           id: "google/gemini-2.5-pro",
           name: "Google: Gemini 2.5 Pro",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "google/gemini-2.5-pro-preview",
           name: "Google: Gemini 2.5 Pro Preview 06-05",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "google/gemini-2.5-pro-preview-05-06",
           name: "Google: Gemini 2.5 Pro Preview 05-06",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "google/gemini-2.5-pro:batch",
           name: "Google: Gemini 2.5 Pro (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.625,
+            output: 5,
+          },
         },
         {
           id: "google/gemini-3-flash-preview",
           name: "Google: Gemini 3 Flash Preview",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "google/gemini-3-flash-preview:batch",
           name: "Google: Gemini 3 Flash Preview (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
         {
           id: "google/gemini-3-pro-image",
           name: "Google: Nano Banana Pro (Gemini 3 Pro Image)",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "google/gemini-3.1-flash-lite",
           name: "Google: Gemini 3.1 Flash Lite",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
         {
           id: "google/gemini-3.1-flash-lite-preview",
           name: "Google: Gemini 3.1 Flash Lite Preview",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
         {
           id: "google/gemini-3.1-flash-lite:batch",
           name: "Google: Gemini 3.1 Flash Lite (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.125,
+            output: 0.75,
+          },
         },
         {
           id: "google/gemini-3.1-pro-preview",
           name: "Google: Gemini 3.1 Pro Preview",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "google/gemini-3.1-pro-preview-customtools",
           name: "Google: Gemini 3.1 Pro Preview Custom Tools",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "google/gemini-3.1-pro-preview:batch",
           name: "Google: Gemini 3.1 Pro Preview (batch)",
           provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 6,
+          },
         },
         {
           id: "google/gemini-3.5-flash",
           name: "Google: Gemini 3.5 Flash",
           provider: "openrouter",
+          cost: {
+            input: 1.5,
+            output: 9,
+          },
         },
         {
           id: "google/gemini-3.5-flash-lite",
           name: "Google: Gemini 3.5 Flash Lite",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "google/gemini-3.5-flash-lite:batch",
           name: "Google: Gemini 3.5 Flash Lite (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 1.25,
+          },
         },
         {
           id: "google/gemini-3.5-flash:batch",
           name: "Google: Gemini 3.5 Flash (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "google/gemini-3.6-flash",
           name: "Google: Gemini 3.6 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "google/gemini-3.6-flash:batch",
           name: "Google: Gemini 3.6 Flash (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.375,
+            output: 1.875,
+          },
         },
         {
           id: "google/gemini-3.7-flash",
           name: "Google: Gemini 3.7 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "google/gemini-3.7-flash:batch",
           name: "Google: Gemini 3.7 Flash (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.1875,
+            output: 0.9375,
+          },
         },
         {
           id: "google/gemma-3-12b-it",
           name: "Google: Gemma 3 12B",
           provider: "openrouter",
+          cost: {
+            input: 0.05,
+            output: 0.15,
+          },
         },
         {
           id: "google/gemma-3-27b-it",
           name: "Google: Gemma 3 27B",
           provider: "openrouter",
+          cost: {
+            input: 0.08,
+            output: 0.45,
+          },
         },
         {
           id: "google/gemma-4-26b-a4b-it",
           name: "Google: Gemma 4 26B A4B ",
           provider: "openrouter",
+          cost: {
+            input: 0.07,
+            output: 0.34,
+          },
         },
         {
           id: "google/gemma-4-26b-a4b-it:free",
           name: "Google: Gemma 4 26B A4B  (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "google/gemma-4-31b-it",
           name: "Google: Gemma 4 31B",
           provider: "openrouter",
+          cost: {
+            input: 0.09,
+            output: 0.34,
+          },
         },
         {
           id: "google/gemma-4-31b-it:batch",
           name: "Google: Gemma 4 31B (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.39,
+            output: 0.97,
+          },
         },
         {
           id: "google/gemma-4-31b-it:free",
           name: "Google: Gemma 4 31B (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "ibm-granite/granite-4.1-8b",
           name: "IBM: Granite 4.1 8B",
           provider: "openrouter",
+          cost: {
+            input: 0.05,
+            output: 0.1,
+          },
         },
         {
           id: "inception/mercury-2",
           name: "Inception: Mercury 2",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 0.75,
+          },
         },
         {
           id: "inclusionai/ling-3.0-flash",
           name: "Ling-3.0-flash",
           provider: "openrouter",
+          cost: {
+            input: 0.021,
+            output: 0.063,
+          },
         },
         {
           id: "inclusionai/ling-3.0-flash-fin:free",
           name: "Ling 3.0 Flash Fin (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "kwaipilot/kat-coder-air-v2.5",
           name: "Kwaipilot: KAT-Coder-Air V2.5",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "kwaipilot/kat-coder-pro-v2",
           name: "Kwaipilot: KAT-Coder-Pro V2",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "kwaipilot/kat-coder-pro-v2.5",
           name: "Kwaipilot: KAT-Coder-Pro V2.5",
           provider: "openrouter",
+          cost: {
+            input: 0.74,
+            output: 2.96,
+          },
         },
         {
           id: "liquid/lfm-2.5-2.6b:free",
           name: "LiquidAI: LFM2.5-2.6B (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "meituan/longcat-2.0",
           name: "Meituan: LongCat 2.0",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "meta-llama/llama-3.1-70b-instruct",
           name: "Meta: Llama 3.1 70B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.4,
+            output: 0.4,
+          },
         },
         {
           id: "meta-llama/llama-3.1-8b-instruct",
           name: "Meta: Llama 3.1 8B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.05,
+            output: 0.08,
+          },
         },
         {
           id: "meta-llama/llama-3.3-70b-instruct",
           name: "Meta: Llama 3.3 70B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.71,
+            output: 0.71,
+          },
         },
         {
           id: "meta-llama/llama-4-maverick",
           name: "Meta: Llama 4 Maverick",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 0.8,
+          },
         },
         {
           id: "meta-llama/llama-4-scout",
           name: "Meta: Llama 4 Scout",
           provider: "openrouter",
+          cost: {
+            input: 0.11,
+            output: 0.34,
+          },
         },
         {
           id: "meta/muse-glimmer-30b",
           name: "Meta: Muse Glimmer 30B",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "meta/muse-glimmer-30b:batch",
           name: "Meta: Muse Glimmer 30B (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.35,
+            output: 1.5,
+          },
         },
         {
           id: "meta/muse-spark-1.1",
           name: "Meta: Muse Spark 1.1",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 4.25,
+          },
         },
         {
           id: "meta/muse-spark-1.2",
           name: "Meta: Muse Spark 1.2",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 4.25,
+          },
         },
         {
           id: "meta/muse-spark-1.2-contributor",
           name: "Meta: Muse Spark 1.2 Contributor",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.2,
+          },
         },
         {
           id: "minimax/minimax-m1",
           name: "MiniMax: MiniMax M1",
           provider: "openrouter",
+          cost: {
+            input: 0.55,
+            output: 2.2,
+          },
         },
         {
           id: "minimax/minimax-m2",
           name: "MiniMax: MiniMax M2",
           provider: "openrouter",
+          cost: {
+            input: 0.255,
+            output: 1.02,
+          },
         },
         {
           id: "minimax/minimax-m2.1",
           name: "MiniMax: MiniMax M2.1",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m2.5",
           name: "MiniMax: MiniMax M2.5",
           provider: "openrouter",
+          cost: {
+            input: 0.27,
+            output: 1.08,
+          },
         },
         {
           id: "minimax/minimax-m2.7",
           name: "MiniMax: MiniMax M2.7",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m2.7:free",
           name: "MiniMax: MiniMax M2.7 (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "minimax/minimax-m3",
           name: "MiniMax: MiniMax M3",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m3:batch",
           name: "MiniMax: MiniMax M3 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m3:free",
           name: "MiniMax: MiniMax M3 (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "mistralai/codestral-2508",
           name: "Mistral: Codestral 2508",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 0.9,
+          },
         },
         {
           id: "mistralai/codestral-2508:batch",
           name: "Mistral: Codestral 2508 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 0.9,
+          },
         },
         {
           id: "mistralai/devstral-2512",
           name: "Mistral: Devstral 2 2512",
           provider: "openrouter",
+          cost: {
+            input: 0.44,
+            output: 2.2,
+          },
         },
         {
           id: "mistralai/ministral-14b-2512",
           name: "Mistral: Ministral 3 14B 2512",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 0.2,
+          },
         },
         {
           id: "mistralai/ministral-3b-2512",
           name: "Mistral: Ministral 3 3B 2512",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.1,
+          },
         },
         {
           id: "mistralai/ministral-8b-2512",
           name: "Mistral: Ministral 3 8B 2512",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "mistralai/ministral-8b-2512:batch",
           name: "Mistral: Ministral 3 8B 2512 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "mistralai/mistral-large",
           name: "Mistral Large",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "mistralai/mistral-large-2407",
           name: "Mistral Large 2407",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "mistralai/mistral-large-2512",
           name: "Mistral: Mistral Large 3 2512",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "mistralai/mistral-large-2512:batch",
           name: "Mistral: Mistral Large 3 2512 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "mistralai/mistral-medium-3",
           name: "Mistral: Mistral Medium 3",
           provider: "openrouter",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "mistralai/mistral-medium-3-5",
           name: "Mistral: Mistral Medium 3.5",
           provider: "openrouter",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "mistralai/mistral-medium-3-5:batch",
           name: "Mistral: Mistral Medium 3.5 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "mistralai/mistral-medium-3.1",
           name: "Mistral: Mistral Medium 3.1",
           provider: "openrouter",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "mistralai/mistral-medium-3.1:batch",
           name: "Mistral: Mistral Medium 3.1 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "mistralai/mistral-nemo",
           name: "Mistral: Mistral Nemo",
           provider: "openrouter",
+          cost: {
+            input: 0.019,
+            output: 0.03,
+          },
         },
         {
           id: "mistralai/mistral-saba",
           name: "Mistral: Saba",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 0.6,
+          },
         },
         {
           id: "mistralai/mistral-small-2603",
           name: "Mistral: Mistral Small 4",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "mistralai/mistral-small-2603:batch",
           name: "Mistral: Mistral Small 4 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "mistralai/mistral-small-3.2-24b-instruct",
           name: "Mistral: Mistral Small 3.2 24B",
           provider: "openrouter",
+          cost: {
+            input: 0.075,
+            output: 0.2,
+          },
         },
         {
           id: "mistralai/mixtral-8x22b-instruct",
           name: "Mistral: Mixtral 8x22B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "mistralai/voxtral-small-24b-2507",
           name: "Mistral: Voxtral Small 24B 2507",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "moonshotai/kimi-k2",
           name: "MoonshotAI: Kimi K2 0711",
           provider: "openrouter",
+          cost: {
+            input: 0.57,
+            output: 2.3,
+          },
         },
         {
           id: "moonshotai/kimi-k2-0905",
           name: "MoonshotAI: Kimi K2 0905",
           provider: "openrouter",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "moonshotai/kimi-k2-thinking",
           name: "MoonshotAI: Kimi K2 Thinking",
           provider: "openrouter",
+          cost: {
+            input: 0.6,
+            output: 2.5,
+          },
         },
         {
           id: "moonshotai/kimi-k2.5",
           name: "MoonshotAI: Kimi K2.5",
           provider: "openrouter",
+          cost: {
+            input: 0.41,
+            output: 2.06,
+          },
         },
         {
           id: "moonshotai/kimi-k2.6",
           name: "MoonshotAI: Kimi K2.6",
           provider: "openrouter",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "moonshotai/kimi-k2.7-code",
           name: "MoonshotAI: Kimi K2.7 Code",
           provider: "openrouter",
+          cost: {
+            input: 0.66,
+            output: 3.4,
+          },
         },
         {
           id: "moonshotai/kimi-k3",
           name: "MoonshotAI: Kimi K3",
           provider: "openrouter",
+          cost: {
+            input: 2.55,
+            output: 12.75,
+          },
         },
         {
           id: "moonshotai/kimi-k3:batch",
           name: "MoonshotAI: Kimi K3 (batch)",
           provider: "openrouter",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "nex-agi/nex-n2-mini",
           name: "Nex AGI: Nex-N2-Mini",
           provider: "openrouter",
+          cost: {
+            input: 0.025,
+            output: 0.1,
+          },
         },
         {
           id: "nex-agi/nex-n2-pro",
           name: "Nex AGI: Nex-N2-Pro",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 1,
+          },
         },
         {
           id: "nvidia/nemotron-3-nano-30b-a3b",
           name: "NVIDIA: Nemotron 3 Nano 30B A3B",
           provider: "openrouter",
+          cost: {
+            input: 0.05,
+            output: 0.2,
+          },
         },
         {
           id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
           name: "NVIDIA: Nemotron 3 Nano Omni (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/nemotron-3-super-120b-a12b",
           name: "NVIDIA: Nemotron 3 Super",
           provider: "openrouter",
+          cost: {
+            input: 0.085,
+            output: 0.4,
+          },
         },
         {
           id: "nvidia/nemotron-3-super-120b-a12b:free",
           name: "NVIDIA: Nemotron 3 Super (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/nemotron-3-ultra-550b-a55b",
           name: "NVIDIA: Nemotron 3 Ultra",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 2.2,
+          },
         },
         {
           id: "nvidia/nemotron-3-ultra-550b-a55b:batch",
           name: "NVIDIA: Nemotron 3 Ultra (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.6,
+            output: 3.6,
+          },
         },
         {
           id: "nvidia/nemotron-3-ultra-550b-a55b:free",
           name: "NVIDIA: Nemotron 3 Ultra (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "nvidia/nemotron-3.5-lightning",
           name: "NVIDIA: Nemotron 3.5 Lightning",
           provider: "openrouter",
+          cost: {
+            input: 0.08,
+            output: 0.2,
+          },
         },
         {
           id: "nvidia/nemotron-3.5-lightning:free",
           name: "NVIDIA: Nemotron 3.5 Lightning (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "openai/gpt-3.5-turbo",
           name: "OpenAI: GPT-3.5 Turbo",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "openai/gpt-3.5-turbo-0613",
           name: "OpenAI: GPT-3.5 Turbo (older v0613)",
           provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 2,
+          },
         },
         {
           id: "openai/gpt-3.5-turbo-16k",
           name: "OpenAI: GPT-3.5 Turbo 16k",
           provider: "openrouter",
+          cost: {
+            input: 3,
+            output: 4,
+          },
         },
         {
           id: "openai/gpt-4",
           name: "OpenAI: GPT-4",
           provider: "openrouter",
+          cost: {
+            input: 30,
+            output: 60,
+          },
         },
         {
           id: "openai/gpt-4-turbo",
           name: "OpenAI: GPT-4 Turbo",
           provider: "openrouter",
+          cost: {
+            input: 10,
+            output: 30,
+          },
         },
         {
           id: "openai/gpt-4-turbo-preview",
           name: "OpenAI: GPT-4 Turbo Preview",
           provider: "openrouter",
+          cost: {
+            input: 10,
+            output: 30,
+          },
         },
         {
           id: "openai/gpt-4.1",
           name: "OpenAI: GPT-4.1",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "openai/gpt-4.1-mini",
           name: "OpenAI: GPT-4.1 Mini",
           provider: "openrouter",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "openai/gpt-4.1-nano",
           name: "OpenAI: GPT-4.1 Nano",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "openai/gpt-4o",
           name: "OpenAI: GPT-4o",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-4o-2024-05-13",
           name: "OpenAI: GPT-4o (2024-05-13)",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 15,
+          },
         },
         {
           id: "openai/gpt-4o-2024-08-06",
           name: "OpenAI: GPT-4o (2024-08-06)",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-4o-2024-11-20",
           name: "OpenAI: GPT-4o (2024-11-20)",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-4o-mini",
           name: "OpenAI: GPT-4o-mini",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai/gpt-4o-mini-2024-07-18",
           name: "OpenAI: GPT-4o-mini (2024-07-18)",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai/gpt-5",
           name: "OpenAI: GPT-5",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5-mini",
           name: "OpenAI: GPT-5 Mini",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "openai/gpt-5-nano",
           name: "OpenAI: GPT-5 Nano",
           provider: "openrouter",
+          cost: {
+            input: 0.05,
+            output: 0.4,
+          },
         },
         {
           id: "openai/gpt-5-pro",
           name: "OpenAI: GPT-5 Pro",
           provider: "openrouter",
+          cost: {
+            input: 15,
+            output: 120,
+          },
         },
         {
           id: "openai/gpt-5.1",
           name: "OpenAI: GPT-5.1",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.1-codex",
           name: "OpenAI: GPT-5.1-Codex",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.1-codex-max",
           name: "OpenAI: GPT-5.1-Codex-Max",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.1-codex-mini",
           name: "OpenAI: GPT-5.1-Codex-Mini",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "openai/gpt-5.2",
           name: "OpenAI: GPT-5.2",
           provider: "openrouter",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "openai/gpt-5.2-chat",
           name: "OpenAI: GPT-5.2 Chat",
           provider: "openrouter",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "openai/gpt-5.2-codex",
           name: "OpenAI: GPT-5.2-Codex",
           provider: "openrouter",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "openai/gpt-5.2-pro",
           name: "OpenAI: GPT-5.2 Pro",
           provider: "openrouter",
+          cost: {
+            input: 21,
+            output: 168,
+          },
         },
         {
           id: "openai/gpt-5.3-codex",
           name: "OpenAI: GPT-5.3-Codex",
           provider: "openrouter",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "openai/gpt-5.4",
           name: "OpenAI: GPT-5.4",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 15,
+          },
         },
         {
           id: "openai/gpt-5.4-mini",
           name: "OpenAI: GPT-5.4 Mini",
           provider: "openrouter",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "openai/gpt-5.4-nano",
           name: "OpenAI: GPT-5.4 Nano",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 1.25,
+          },
         },
         {
           id: "openai/gpt-5.4-pro",
           name: "OpenAI: GPT-5.4 Pro",
           provider: "openrouter",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "openai/gpt-5.5",
           name: "OpenAI: GPT-5.5",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "openai/gpt-5.5-pro",
           name: "OpenAI: GPT-5.5 Pro",
           provider: "openrouter",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "openai/gpt-5.6-luna",
           name: "OpenAI: GPT-5.6 Luna",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "openai/gpt-5.6-luna-pro",
           name: "OpenAI: GPT-5.6 Luna Pro",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "openai/gpt-5.6-sol",
           name: "OpenAI: GPT-5.6 Sol",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.6-sol-pro",
           name: "OpenAI: GPT-5.6 Sol Pro",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.6-terra",
           name: "OpenAI: GPT-5.6 Terra",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "openai/gpt-5.6-terra-pro",
           name: "OpenAI: GPT-5.6 Terra Pro",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "openai/gpt-audio",
           name: "OpenAI: GPT Audio",
           provider: "openrouter",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-audio-mini",
           name: "OpenAI: GPT Audio Mini",
           provider: "openrouter",
+          cost: {
+            input: 0.6,
+            output: 2.4,
+          },
         },
         {
           id: "openai/gpt-chat-latest",
           name: "OpenAI: GPT Chat Latest",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "openai/gpt-oss-120b",
           name: "OpenAI: gpt-oss-120b",
           provider: "openrouter",
+          cost: {
+            input: 0.037,
+            output: 0.17,
+          },
         },
         {
           id: "openai/gpt-oss-120b:batch",
           name: "OpenAI: gpt-oss-120b (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai/gpt-oss-20b",
           name: "OpenAI: gpt-oss-20b",
           provider: "openrouter",
+          cost: {
+            input: 0.03,
+            output: 0.13,
+          },
         },
         {
           id: "openai/gpt-oss-safeguard-20b",
           name: "OpenAI: gpt-oss-safeguard-20b",
           provider: "openrouter",
+          cost: {
+            input: 0.075,
+            output: 0.3,
+          },
         },
         {
           id: "openai/o1",
           name: "OpenAI: o1",
           provider: "openrouter",
+          cost: {
+            input: 15,
+            output: 60,
+          },
         },
         {
           id: "openai/o3",
           name: "OpenAI: o3",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "openai/o3-mini",
           name: "OpenAI: o3 Mini",
           provider: "openrouter",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "openai/o3-mini-high",
           name: "OpenAI: o3 Mini High",
           provider: "openrouter",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "openai/o3-pro",
           name: "OpenAI: o3 Pro",
           provider: "openrouter",
+          cost: {
+            input: 20,
+            output: 80,
+          },
         },
         {
           id: "openai/o4-mini",
           name: "OpenAI: o4 Mini",
           provider: "openrouter",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "openai/o4-mini-high",
           name: "OpenAI: o4 Mini High",
           provider: "openrouter",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "openrouter/auto",
@@ -4096,496 +7268,892 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "openrouter/free",
           name: "Free Models Router",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "openrouter/fusion",
           name: "OpenRouter: Fusion",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "poolside/laguna-s-2.1",
           name: "Poolside: Laguna S 2.1",
           provider: "openrouter",
+          cost: {
+            input: 0.09,
+            output: 0.18,
+          },
         },
         {
           id: "poolside/laguna-s-2.1:free",
           name: "Poolside: Laguna S 2.1 (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "poolside/laguna-xs-2.1",
           name: "Poolside: Laguna XS 2.1",
           provider: "openrouter",
+          cost: {
+            input: 0.06,
+            output: 0.12,
+          },
         },
         {
           id: "poolside/laguna-xs-2.1:free",
           name: "Poolside: Laguna XS 2.1 (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "qwen/qwen-2.5-72b-instruct",
           name: "Qwen2.5 72B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.36,
+            output: 0.4,
+          },
         },
         {
           id: "qwen/qwen-2.5-7b-instruct",
           name: "Qwen: Qwen2.5 7B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.2,
+          },
         },
         {
           id: "qwen/qwen-plus",
           name: "Qwen: Qwen-Plus",
           provider: "openrouter",
+          cost: {
+            input: 0.26,
+            output: 0.78,
+          },
         },
         {
           id: "qwen/qwen-plus-2025-07-28",
           name: "Qwen: Qwen Plus 0728",
           provider: "openrouter",
+          cost: {
+            input: 0.26,
+            output: 0.78,
+          },
         },
         {
           id: "qwen/qwen3-14b",
           name: "Qwen: Qwen3 14B",
           provider: "openrouter",
+          cost: {
+            input: 0.12,
+            output: 0.24,
+          },
         },
         {
           id: "qwen/qwen3-235b-a22b",
           name: "Qwen: Qwen3 235B A22B",
           provider: "openrouter",
+          cost: {
+            input: 0.455,
+            output: 1.82,
+          },
         },
         {
           id: "qwen/qwen3-235b-a22b-2507",
           name: "Qwen: Qwen3 235B A22B Instruct 2507",
           provider: "openrouter",
+          cost: {
+            input: 0.0875,
+            output: 0.35,
+          },
         },
         {
           id: "qwen/qwen3-235b-a22b-thinking-2507",
           name: "Qwen: Qwen3 235B A22B Thinking 2507",
           provider: "openrouter",
+          cost: {
+            input: 0.23,
+            output: 2.3,
+          },
         },
         {
           id: "qwen/qwen3-30b-a3b",
           name: "Qwen: Qwen3 30B A3B",
           provider: "openrouter",
+          cost: {
+            input: 0.12,
+            output: 0.5,
+          },
         },
         {
           id: "qwen/qwen3-30b-a3b-instruct-2507",
           name: "Qwen: Qwen3 30B A3B Instruct 2507",
           provider: "openrouter",
+          cost: {
+            input: 0.04815,
+            output: 0.19305,
+          },
         },
         {
           id: "qwen/qwen3-30b-a3b-thinking-2507",
           name: "Qwen: Qwen3 30B A3B Thinking 2507",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 2.4,
+          },
         },
         {
           id: "qwen/qwen3-32b",
           name: "Qwen: Qwen3 32B",
           provider: "openrouter",
+          cost: {
+            input: 0.08,
+            output: 0.28,
+          },
         },
         {
           id: "qwen/qwen3-8b",
           name: "Qwen: Qwen3 8B",
           provider: "openrouter",
+          cost: {
+            input: 0.117,
+            output: 0.455,
+          },
         },
         {
           id: "qwen/qwen3-coder",
           name: "Qwen: Qwen3 Coder 480B A35B",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1,
+          },
         },
         {
           id: "qwen/qwen3-coder-30b-a3b-instruct",
           name: "Qwen: Qwen3 Coder 30B A3B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.07,
+            output: 0.28,
+          },
         },
         {
           id: "qwen/qwen3-coder-flash",
           name: "Qwen: Qwen3 Coder Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.195,
+            output: 0.975,
+          },
         },
         {
           id: "qwen/qwen3-coder-next",
           name: "Qwen: Qwen3 Coder Next",
           provider: "openrouter",
+          cost: {
+            input: 0.12,
+            output: 0.8,
+          },
         },
         {
           id: "qwen/qwen3-coder-plus",
           name: "Qwen: Qwen3 Coder Plus",
           provider: "openrouter",
+          cost: {
+            input: 0.65,
+            output: 3.25,
+          },
         },
         {
           id: "qwen/qwen3-max",
           name: "Qwen: Qwen3 Max",
           provider: "openrouter",
+          cost: {
+            input: 0.78,
+            output: 3.9,
+          },
         },
         {
           id: "qwen/qwen3-max-thinking",
           name: "Qwen: Qwen3 Max Thinking",
           provider: "openrouter",
+          cost: {
+            input: 0.78,
+            output: 3.9,
+          },
         },
         {
           id: "qwen/qwen3-next-80b-a3b-instruct",
           name: "Qwen: Qwen3 Next 80B A3B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 1.1,
+          },
         },
         {
           id: "qwen/qwen3-next-80b-a3b-thinking",
           name: "Qwen: Qwen3 Next 80B A3B Thinking",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 1.2,
+          },
         },
         {
           id: "qwen/qwen3-vl-235b-a22b-instruct",
           name: "Qwen: Qwen3 VL 235B A22B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.21,
+            output: 1.9,
+          },
         },
         {
           id: "qwen/qwen3-vl-235b-a22b-thinking",
           name: "Qwen: Qwen3 VL 235B A22B Thinking",
           provider: "openrouter",
+          cost: {
+            input: 0.4,
+            output: 4,
+          },
         },
         {
           id: "qwen/qwen3-vl-30b-a3b-instruct",
           name: "Qwen: Qwen3 VL 30B A3B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "qwen/qwen3-vl-30b-a3b-thinking",
           name: "Qwen: Qwen3 VL 30B A3B Thinking",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 2.4,
+          },
         },
         {
           id: "qwen/qwen3-vl-32b-instruct",
           name: "Qwen: Qwen3 VL 32B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.104,
+            output: 0.416,
+          },
         },
         {
           id: "qwen/qwen3-vl-8b-instruct",
           name: "Qwen: Qwen3 VL 8B Instruct",
           provider: "openrouter",
+          cost: {
+            input: 0.117,
+            output: 0.455,
+          },
         },
         {
           id: "qwen/qwen3-vl-8b-thinking",
           name: "Qwen: Qwen3 VL 8B Thinking",
           provider: "openrouter",
+          cost: {
+            input: 0.18,
+            output: 2.1,
+          },
         },
         {
           id: "qwen/qwen3.5-122b-a10b",
           name: "Qwen: Qwen3.5-122B-A10B",
           provider: "openrouter",
+          cost: {
+            input: 0.29,
+            output: 2.4,
+          },
         },
         {
           id: "qwen/qwen3.5-27b",
           name: "Qwen: Qwen3.5-27B",
           provider: "openrouter",
+          cost: {
+            input: 0.195,
+            output: 1.56,
+          },
         },
         {
           id: "qwen/qwen3.5-35b-a3b",
           name: "Qwen: Qwen3.5-35B-A3B",
           provider: "openrouter",
+          cost: {
+            input: 0.25,
+            output: 1.25,
+          },
         },
         {
           id: "qwen/qwen3.5-397b-a17b",
           name: "Qwen: Qwen3.5 397B A17B",
           provider: "openrouter",
+          cost: {
+            input: 0.39,
+            output: 2.34,
+          },
         },
         {
           id: "qwen/qwen3.5-9b",
           name: "Qwen: Qwen3.5-9B",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.15,
+          },
         },
         {
           id: "qwen/qwen3.5-9b:batch",
           name: "Qwen: Qwen3.5-9B (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.17,
+            output: 0.25,
+          },
         },
         {
           id: "qwen/qwen3.5-flash-02-23",
           name: "Qwen: Qwen3.5-Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.065,
+            output: 0.26,
+          },
         },
         {
           id: "qwen/qwen3.5-plus-02-15",
           name: "Qwen: Qwen3.5 Plus 2026-02-15",
           provider: "openrouter",
+          cost: {
+            input: 0.26,
+            output: 1.56,
+          },
         },
         {
           id: "qwen/qwen3.5-plus-20260420",
           name: "Qwen: Qwen3.5 Plus 2026-04-20",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 1.8,
+          },
         },
         {
           id: "qwen/qwen3.6-27b",
           name: "Qwen: Qwen3.6 27B",
           provider: "openrouter",
+          cost: {
+            input: 0.6,
+            output: 3.6,
+          },
         },
         {
           id: "qwen/qwen3.6-35b-a3b",
           name: "Qwen: Qwen3.6 35B A3B",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.9,
+          },
         },
         {
           id: "qwen/qwen3.6-flash",
           name: "Qwen: Qwen3.6 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.1875,
+            output: 1.125,
+          },
         },
         {
           id: "qwen/qwen3.6-max-preview",
           name: "Qwen: Qwen3.6 Max Preview",
           provider: "openrouter",
+          cost: {
+            input: 1.027,
+            output: 6.162,
+          },
         },
         {
           id: "qwen/qwen3.6-plus",
           name: "Qwen: Qwen3.6 Plus",
           provider: "openrouter",
+          cost: {
+            input: 0.325,
+            output: 1.95,
+          },
         },
         {
           id: "qwen/qwen3.7-flash",
           name: "Qwen: Qwen3.7 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.03,
+            output: 0.13,
+          },
         },
         {
           id: "qwen/qwen3.7-max",
           name: "Qwen: Qwen3.7 Max",
           provider: "openrouter",
+          cost: {
+            input: 1.475,
+            output: 4.425,
+          },
         },
         {
           id: "qwen/qwen3.7-plus",
           name: "Qwen: Qwen3.7 Plus",
           provider: "openrouter",
+          cost: {
+            input: 0.32,
+            output: 1.28,
+          },
         },
         {
           id: "qwen/qwen3.8-2.4t-a95b",
           name: "Qwen: Qwen3.8 2.4T A95B",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "qwen/qwen3.8-2.4t-a95b:batch",
           name: "Qwen: Qwen3.8 2.4T A95B (batch)",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "qwen/qwen3.8-27b",
           name: "Qwen: Qwen3.8 27B",
           provider: "openrouter",
+          cost: {
+            input: 0.425,
+            output: 2.55,
+          },
         },
         {
           id: "qwen/qwen3.8-flash",
           name: "Qwen: Qwen3.8 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.47,
+          },
         },
         {
           id: "qwen/qwen3.8-max",
           name: "Qwen: Qwen3.8 Max",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "rekaai/reka-edge",
           name: "Reka Edge",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.1,
+          },
         },
         {
           id: "relace/relace-search",
           name: "Relace: Relace Search",
           provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 3,
+          },
         },
         {
           id: "sakana/fugu-ultra",
           name: "Sakana: Fugu Ultra",
           provider: "openrouter",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "sakana/sakana-namazu",
           name: "Sakana: Sakana Namazu",
           provider: "openrouter",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "sao10k/l3.1-euryale-70b",
           name: "Sao10K: Llama 3.1 Euryale 70B v2.2",
           provider: "openrouter",
+          cost: {
+            input: 0.85,
+            output: 0.85,
+          },
         },
         {
           id: "stepfun/step-3.5-flash",
           name: "StepFun: Step 3.5 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "stepfun/step-3.7-flash",
           name: "StepFun: Step 3.7 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.2,
+            output: 1.15,
+          },
         },
         {
           id: "tencent/hy3",
           name: "Tencent: Hy3",
           provider: "openrouter",
+          cost: {
+            input: 0.0825,
+            output: 0.33,
+          },
         },
         {
           id: "tencent/hy3-preview",
           name: "Tencent: Hy3 preview",
           provider: "openrouter",
+          cost: {
+            input: 0.18,
+            output: 0.6,
+          },
         },
         {
           id: "tencent/hy4-preview",
           name: "Tencent: Hy4 preview",
           provider: "openrouter",
+          cost: {
+            input: 0.834,
+            output: 2.501,
+          },
         },
         {
           id: "thedrummer/unslopnemo-12b",
           name: "TheDrummer: UnslopNemo 12B",
           provider: "openrouter",
+          cost: {
+            input: 0.4,
+            output: 0.4,
+          },
         },
         {
           id: "thinkingmachines/inkling",
           name: "Thinking Machines: Inkling",
           provider: "openrouter",
+          cost: {
+            input: 0.95,
+            output: 4.05,
+          },
         },
         {
           id: "thinkingmachines/inkling-small",
           name: "Thinking Machines: Inkling Small",
           provider: "openrouter",
+          cost: {
+            input: 0.45,
+            output: 1.2,
+          },
         },
         {
           id: "thinkingmachines/inkling-small:batch",
           name: "Thinking Machines: Inkling Small (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.5,
+            output: 1.2,
+          },
         },
         {
           id: "thinkingmachines/inkling-small:free",
           name: "Thinking Machines: Inkling Small (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "thinkingmachines/inkling:batch",
           name: "Thinking Machines: Inkling (batch)",
           provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 4.05,
+          },
         },
         {
           id: "thinkingmachines/inkling:free",
           name: "Thinking Machines: Inkling (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "upstage/solar-pro-3",
           name: "Upstage: Solar Pro 3",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "upstage/solar-pro4",
           name: "Upstage: Solar Pro 4",
           provider: "openrouter",
+          cost: {
+            input: 0.03,
+            output: 0.12,
+          },
         },
         {
           id: "x-ai/grok-4.20",
           name: "SpaceXAI: Grok 4.20",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "x-ai/grok-4.3",
           name: "SpaceXAI: Grok 4.3",
           provider: "openrouter",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "x-ai/grok-4.5",
           name: "SpaceXAI: Grok 4.5",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "x-ai/grok-4.6",
           name: "SpaceXAI: Grok 4.6",
           provider: "openrouter",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "x-ai/grok-build-0.1",
           name: "SpaceXAI: Grok Build 0.1",
           provider: "openrouter",
+          cost: {
+            input: 1,
+            output: 2,
+          },
         },
         {
           id: "xiaomi/mimo-v2.5",
           name: "Xiaomi: MiMo-V2.5",
           provider: "openrouter",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "xiaomi/mimo-v2.5-pro",
           name: "Xiaomi: MiMo-V2.5-Pro",
           provider: "openrouter",
+          cost: {
+            input: 0.435,
+            output: 0.87,
+          },
         },
         {
           id: "z-ai/glm-4.5",
           name: "Z.ai: GLM 4.5",
           provider: "openrouter",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "z-ai/glm-4.5-air",
           name: "Z.ai: GLM 4.5 Air",
           provider: "openrouter",
+          cost: {
+            input: 0.13,
+            output: 0.85,
+          },
         },
         {
           id: "z-ai/glm-4.5v",
           name: "Z.ai: GLM 4.5V",
           provider: "openrouter",
+          cost: {
+            input: 0.6,
+            output: 1.8,
+          },
         },
         {
           id: "z-ai/glm-4.6",
           name: "Z.ai: GLM 4.6",
           provider: "openrouter",
+          cost: {
+            input: 0.43,
+            output: 1.75,
+          },
         },
         {
           id: "z-ai/glm-4.6v",
           name: "Z.ai: GLM 4.6V",
           provider: "openrouter",
+          cost: {
+            input: 0.3,
+            output: 0.9,
+          },
         },
         {
           id: "z-ai/glm-4.7",
           name: "Z.ai: GLM 4.7",
           provider: "openrouter",
+          cost: {
+            input: 0.4,
+            output: 1.75,
+          },
         },
         {
           id: "z-ai/glm-4.7-flash",
           name: "Z.ai: GLM 4.7 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.06,
+            output: 0.4,
+          },
         },
         {
           id: "z-ai/glm-5",
           name: "Z.ai: GLM 5",
           provider: "openrouter",
+          cost: {
+            input: 0.6,
+            output: 1.9,
+          },
         },
         {
           id: "z-ai/glm-5-turbo",
           name: "Z.ai: GLM 5 Turbo",
           provider: "openrouter",
+          cost: {
+            input: 1.2,
+            output: 4,
+          },
         },
         {
           id: "z-ai/glm-5.1",
           name: "Z.ai: GLM 5.1",
           provider: "openrouter",
+          cost: {
+            input: 1.26,
+            output: 3.96,
+          },
         },
         {
           id: "z-ai/glm-5.2",
           name: "Z.ai: GLM 5.2",
           provider: "openrouter",
+          cost: {
+            input: 1.19,
+            output: 3.74,
+          },
         },
         {
           id: "z-ai/glm-5.2:free",
           name: "Z.ai: GLM 5.2 (free)",
           provider: "openrouter",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "z-ai/glm-5.3",
           name: "Z.ai: GLM 5.3",
           provider: "openrouter",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "z-ai/glm-5.3-flash",
           name: "Z.ai: GLM 5.3 Flash",
           provider: "openrouter",
+          cost: {
+            input: 0.075,
+            output: 0.25,
+          },
         },
         {
           id: "z-ai/glm-5.3-flash:batch",
           name: "Z.ai: GLM 5.3 Flash (batch)",
           provider: "openrouter",
+          cost: {
+            input: 0.15,
+            output: 0.5,
+          },
         },
         {
           id: "z-ai/glm-5v-turbo",
           name: "Z.ai: GLM 5V Turbo",
           provider: "openrouter",
+          cost: {
+            input: 1.2,
+            output: 4,
+          },
         },
       ],
     },
@@ -4596,101 +8164,181 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "deepseek-ai/DeepSeek-V4-Flash-0731",
           name: "DeepSeek V4 Flash 0731",
           provider: "together",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V4-Pro",
           name: "DeepSeek V4 Pro",
           provider: "together",
+          cost: {
+            input: 1.74,
+            output: 3.48,
+          },
         },
         {
           id: "deepseek-ai/DeepSeek-V4-Pro-0813",
           name: "DeepSeek V4 Pro 0813",
           provider: "together",
+          cost: {
+            input: 1.32,
+            output: 3.96,
+          },
         },
         {
           id: "google/gemma-4-31B-it",
           name: "Gemma 4 31B Instruct",
           provider: "together",
+          cost: {
+            input: 0.39,
+            output: 0.97,
+          },
         },
         {
           id: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
           name: "Llama 3.3 70B",
           provider: "together",
+          cost: {
+            input: 1.04,
+            output: 1.04,
+          },
         },
         {
           id: "MiniMaxAI/MiniMax-M2.7",
           name: "MiniMax-M2.7",
           provider: "together",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "MiniMaxAI/MiniMax-M3",
           name: "MiniMax-M3",
           provider: "together",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "moonshotai/Kimi-K2.6",
           name: "Kimi K2.6",
           provider: "together",
+          cost: {
+            input: 1.2,
+            output: 4.5,
+          },
         },
         {
           id: "moonshotai/Kimi-K2.7-Code",
           name: "Kimi K2.7 Code",
           provider: "together",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "moonshotai/Kimi-K3",
           name: "Kimi K3",
           provider: "together",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "nvidia/nemotron-3-ultra-550b-a55b",
           name: "Nemotron 3 Ultra 550B A55B",
           provider: "together",
+          cost: {
+            input: 0.6,
+            output: 3.6,
+          },
         },
         {
           id: "openai/gpt-oss-120b",
           name: "GPT OSS 120B",
           provider: "together",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai/gpt-oss-20b",
           name: "GPT OSS 20B",
           provider: "together",
+          cost: {
+            input: 0.05,
+            output: 0.2,
+          },
         },
         {
           id: "Qwen/Qwen2.5-7B-Instruct-Turbo",
           name: "Qwen 2.5 7B Instruct Turbo",
           provider: "together",
+          cost: {
+            input: 0.3,
+            output: 0.3,
+          },
         },
         {
           id: "Qwen/Qwen3.5-9B",
           name: "Qwen3.5 9B",
           provider: "together",
+          cost: {
+            input: 0.17,
+            output: 0.25,
+          },
         },
         {
           id: "Qwen/Qwen3.6-Plus",
           name: "Qwen3.6 Plus",
           provider: "together",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "Qwen/Qwen3.7-Max",
           name: "Qwen3.7 Max",
           provider: "together",
+          cost: {
+            input: 1.25,
+            output: 3.75,
+          },
         },
         {
           id: "thinkingmachines/Inkling",
           name: "Inkling",
           provider: "together",
+          cost: {
+            input: 1,
+            output: 4.05,
+          },
         },
         {
           id: "zai-org/GLM-5.2",
           name: "GLM-5.2",
           provider: "together",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "zai-org/GLM-5.3-Flash",
           name: "GLM-5.3-Flash",
           provider: "together",
+          cost: {
+            input: 0.15,
+            output: 0.5,
+          },
         },
       ],
     },
@@ -4701,1126 +8349,2026 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "alibaba/qwen-3-14b",
           name: "Qwen3-14B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.12,
+            output: 0.24,
+          },
         },
         {
           id: "alibaba/qwen-3-235b",
           name: "Qwen3 235B A22B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.22,
+            output: 0.88,
+          },
         },
         {
           id: "alibaba/qwen-3-30b",
           name: "Qwen3-30B-A3B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.12,
+            output: 0.5,
+          },
         },
         {
           id: "alibaba/qwen-3-32b",
           name: "Qwen 3 32B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.16,
+            output: 0.64,
+          },
         },
         {
           id: "alibaba/qwen-3.6-max-preview",
           name: "Qwen 3.6 Max Preview",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.3,
+            output: 7.8,
+          },
         },
         {
           id: "alibaba/qwen3-235b-a22b-thinking",
           name: "Qwen3 VL 235B A22B Thinking",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 4,
+          },
         },
         {
           id: "alibaba/qwen3-coder",
           name: "Qwen3 Coder 480B A35B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "alibaba/qwen3-coder-30b-a3b",
           name: "Qwen 3 Coder 30B A3B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "alibaba/qwen3-coder-next",
           name: "Qwen3 Coder Next",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.5,
+            output: 1.2,
+          },
         },
         {
           id: "alibaba/qwen3-coder-plus",
           name: "Qwen3 Coder Plus",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "alibaba/qwen3-max",
           name: "Qwen3 Max",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.2,
+            output: 6,
+          },
         },
         {
           id: "alibaba/qwen3-max-preview",
           name: "Qwen3 Max Preview",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.2,
+            output: 6,
+          },
         },
         {
           id: "alibaba/qwen3-max-thinking",
           name: "Qwen 3 Max Thinking",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.2,
+            output: 6,
+          },
         },
         {
           id: "alibaba/qwen3-next-80b-a3b-instruct",
           name: "Qwen3 Next 80B A3B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 1.2,
+          },
         },
         {
           id: "alibaba/qwen3-next-80b-a3b-thinking",
           name: "Qwen3 Next 80B A3B Thinking",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 1.2,
+          },
         },
         {
           id: "alibaba/qwen3-vl-235b-a22b-instruct",
           name: "Qwen3 VL 235B A22B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "alibaba/qwen3-vl-instruct",
           name: "Qwen3 VL 235B A22B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "alibaba/qwen3-vl-thinking",
           name: "Qwen3 VL 235B A22B Thinking",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 4,
+          },
         },
         {
           id: "alibaba/qwen3.5-flash",
           name: "Qwen 3.5 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "alibaba/qwen3.5-plus",
           name: "Qwen 3.5 Plus",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 2.4,
+          },
         },
         {
           id: "alibaba/qwen3.6-27b",
           name: "Qwen 3.6 27B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 3.6,
+          },
         },
         {
           id: "alibaba/qwen3.6-plus",
           name: "Qwen 3.6 Plus",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "alibaba/qwen3.7-flash",
           name: "Qwen 3.7 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.03,
+            output: 0.13,
+          },
         },
         {
           id: "alibaba/qwen3.7-max",
           name: "Qwen 3.7 Max",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2.5,
+            output: 7.5,
+          },
         },
         {
           id: "alibaba/qwen3.7-plus",
           name: "Qwen 3.7 Plus",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "alibaba/qwen3.8-2.4t-a95b",
           name: "Qwen3.8 2.4T A95B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "alibaba/qwen3.8-27b",
           name: "Qwen3.8 27B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.55,
+            output: 3.3,
+          },
         },
         {
           id: "alibaba/qwen3.8-flash",
           name: "Qwen 3.8 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.16,
+            output: 0.47,
+          },
         },
         {
           id: "alibaba/qwen3.8-max",
           name: "Qwen 3.8 Max",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "amazon/nova-2-lite",
           name: "Nova 2 Lite",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "amazon/nova-lite",
           name: "Nova Lite",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.06,
+            output: 0.24,
+          },
         },
         {
           id: "amazon/nova-micro",
           name: "Nova Micro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.035,
+            output: 0.14,
+          },
         },
         {
           id: "amazon/nova-pro",
           name: "Nova Pro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.8,
+            output: 3.2,
+          },
         },
         {
           id: "anthropic/claude-3-haiku",
           name: "Claude 3 Haiku",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 1.25,
+          },
         },
         {
           id: "anthropic/claude-fable-5",
           name: "Claude Fable 5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "anthropic/claude-haiku-4.5",
           name: "Claude Haiku 4.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1,
+            output: 5,
+          },
         },
         {
           id: "anthropic/claude-opus-4",
           name: "Claude Opus 4",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 15,
+            output: 75,
+          },
         },
         {
           id: "anthropic/claude-opus-4.5",
           name: "Claude Opus 4.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-4.6",
           name: "Claude Opus 4.6",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-4.7",
           name: "Claude Opus 4.7",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-4.8",
           name: "Claude Opus 4.8",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-4.8-fast",
           name: "Claude Opus 4.8 (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "anthropic/claude-opus-5",
           name: "Claude Opus 5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 5,
+            output: 25,
+          },
         },
         {
           id: "anthropic/claude-opus-5-fast",
           name: "Claude Opus 5 (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 10,
+            output: 50,
+          },
         },
         {
           id: "anthropic/claude-sonnet-4",
           name: "Claude Sonnet 4",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "anthropic/claude-sonnet-4.5",
           name: "Claude Sonnet 4.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "anthropic/claude-sonnet-4.6",
           name: "Claude Sonnet 4.6",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "anthropic/claude-sonnet-5",
           name: "Claude Sonnet 5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "arcee-ai/trinity-large-thinking",
           name: "Trinity Large Thinking",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 0.9,
+          },
         },
         {
           id: "bytedance/seed-1.6",
           name: "Seed 1.6",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "bytedance/seed-1.8",
           name: "Bytedance Seed 1.8",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "cohere/command-a",
           name: "Command A",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "deepseek/deepseek-r1",
           name: "DeepSeek-R1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.35,
+            output: 5.4,
+          },
         },
         {
           id: "deepseek/deepseek-v3",
           name: "DeepSeek V3 0324",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.27,
+            output: 1.12,
+          },
         },
         {
           id: "deepseek/deepseek-v3.1",
           name: "DeepSeek V3.1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 0.95,
+          },
         },
         {
           id: "deepseek/deepseek-v3.1-terminus",
           name: "DeepSeek V3.1 Terminus",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.27,
+            output: 1,
+          },
         },
         {
           id: "deepseek/deepseek-v3.2",
           name: "DeepSeek V3.2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.28,
+            output: 0.42,
+          },
         },
         {
           id: "deepseek/deepseek-v3.2-thinking",
           name: "DeepSeek V3.2 Thinking",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.62,
+            output: 1.85,
+          },
         },
         {
           id: "deepseek/deepseek-v4-flash",
           name: "DeepSeek V4 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.13,
+            output: 0.26,
+          },
         },
         {
           id: "deepseek/deepseek-v4-flash-0731",
           name: "DeepSeek V4 Flash 0731",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.076,
+            output: 0.153,
+          },
         },
         {
           id: "deepseek/deepseek-v4-flash-vision-exp",
           name: "DeepSeek V4 Flash Vision Exp",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.22,
+            output: 0.66,
+          },
         },
         {
           id: "deepseek/deepseek-v4-pro",
           name: "DeepSeek V4 Pro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.66,
+            output: 1.98,
+          },
         },
         {
           id: "deepseek/deepseek-v4-pro-0813",
           name: "DeepSeek V4 Pro 0813",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.66,
+            output: 1.98,
+          },
         },
         {
           id: "google/gemini-2.5-flash",
           name: "Gemini 2.5 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "google/gemini-2.5-flash-lite",
           name: "Gemini 2.5 Flash Lite",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "google/gemini-2.5-pro",
           name: "Gemini 2.5 Pro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "google/gemini-3-flash",
           name: "Gemini 3 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.5,
+            output: 3,
+          },
         },
         {
           id: "google/gemini-3.1-flash-lite",
           name: "Gemini 3.1 Flash Lite",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 1.5,
+          },
         },
         {
           id: "google/gemini-3.1-pro-preview",
           name: "Gemini 3.1 Pro Preview",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "google/gemini-3.5-flash",
           name: "Gemini 3.5 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.5,
+            output: 9,
+          },
         },
         {
           id: "google/gemini-3.5-flash-lite",
           name: "Gemini 3.5 Flash Lite",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 2.5,
+          },
         },
         {
           id: "google/gemini-3.6-flash",
           name: "Gemini 3.6 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "google/gemini-3.7-flash",
           name: "Gemini 3.7 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.75,
+            output: 3.75,
+          },
         },
         {
           id: "google/gemma-4-26b-a4b-it",
           name: "Google Gemma 4 26B A4B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "google/gemma-4-31b-it",
           name: "Gemma 4 31B IT",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.14,
+            output: 0.4,
+          },
         },
         {
           id: "inception/mercury-2",
           name: "Mercury 2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 0.75,
+          },
         },
         {
           id: "inception/mercury-coder-small",
           name: "Mercury Coder Small Beta",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 1,
+          },
         },
         {
           id: "inclusionai/ling-3.0-flash",
           name: "Ling 3.0 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.06,
+            output: 0.18,
+          },
         },
         {
           id: "inclusionai/ling-3.0-flash-fin",
           name: "Ling 3.0 Flash Fin",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "inclusionai/ling-3.0-flash-fin-free",
           name: "Ling 3.0 Flash Fin (Free)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "interfaze/interfaze-beta",
           name: "Interfaze Beta",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.5,
+            output: 3.5,
+          },
         },
         {
           id: "kwaipilot/kat-coder-air-v2.5",
           name: "Kat Coder Air V2.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "kwaipilot/kat-coder-pro-v1",
           name: "KAT-Coder-Pro V1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "kwaipilot/kat-coder-pro-v2",
           name: "Kat Coder Pro V2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "kwaipilot/kat-coder-pro-v2.5",
           name: "Kat Coder Pro V2.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.74,
+            output: 2.96,
+          },
         },
         {
           id: "meta/llama-3.1-70b",
           name: "Llama 3.1 70B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.72,
+            output: 0.72,
+          },
         },
         {
           id: "meta/llama-3.1-8b",
           name: "Llama 3.1 8B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.22,
+            output: 0.22,
+          },
         },
         {
           id: "meta/llama-3.3-70b",
           name: "Llama 3.3 70B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.72,
+            output: 0.72,
+          },
         },
         {
           id: "meta/llama-4-maverick",
           name: "Llama 4 Maverick 17B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.24,
+            output: 0.97,
+          },
         },
         {
           id: "meta/llama-4-scout",
           name: "Llama 4 Scout 17B Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.17,
+            output: 0.66,
+          },
         },
         {
           id: "meta/muse-glimmer-30b",
           name: "Muse Glimmer 30B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.35,
+            output: 1.5,
+          },
         },
         {
           id: "meta/muse-spark-1.1",
           name: "Muse Spark 1.1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 4.25,
+          },
         },
         {
           id: "meta/muse-spark-1.2",
           name: "Muse Spark 1.2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 4.25,
+          },
         },
         {
           id: "meta/muse-spark-1.2-contributor",
           name: "Muse Spark 1.2 Contributor",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.2,
+          },
         },
         {
           id: "minimax/minimax-m2",
           name: "MiniMax M2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m2.1",
           name: "MiniMax M2.1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m2.1-lightning",
           name: "MiniMax M2.1 Lightning",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 2.4,
+          },
         },
         {
           id: "minimax/minimax-m2.5",
           name: "MiniMax M2.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m2.5-highspeed",
           name: "MiniMax M2.5 High Speed",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 2.4,
+          },
         },
         {
           id: "minimax/minimax-m2.7",
           name: "MiniMax M2.7",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m2.7-free",
           name: "MiniMax M2.7 (Free)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "minimax/minimax-m2.7-highspeed",
           name: "MiniMax M2.7 High Speed",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 2.4,
+          },
         },
         {
           id: "minimax/minimax-m3",
           name: "MiniMax M3",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 1.2,
+          },
         },
         {
           id: "minimax/minimax-m3-free",
           name: "MiniMax M3 (Free)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "mistral/codestral",
           name: "Mistral Codestral",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.3,
+            output: 0.9,
+          },
         },
         {
           id: "mistral/devstral-2",
           name: "Devstral 2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "mistral/devstral-small-2",
           name: "Devstral Small 2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "mistral/ministral-14b",
           name: "Ministral 14B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 0.2,
+          },
         },
         {
           id: "mistral/ministral-3b",
           name: "Ministral 3B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.1,
+          },
         },
         {
           id: "mistral/ministral-8b",
           name: "Ministral 8B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "mistral/mistral-large-3",
           name: "Mistral Large 3",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "mistral/mistral-medium",
           name: "Mistral Medium 3.1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 2,
+          },
         },
         {
           id: "mistral/mistral-medium-3.5",
           name: "Mistral Medium Latest",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.5,
+            output: 7.5,
+          },
         },
         {
           id: "mistral/mistral-nemo",
           name: "Mistral Nemo 12B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "mistral/mistral-small",
           name: "Mistral Small",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.3,
+          },
         },
         {
           id: "mistral/pixtral-12b",
           name: "Pixtral 12B 2409",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.15,
+          },
         },
         {
           id: "moonshotai/kimi-k2",
           name: "Kimi K2 Instruct",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.57,
+            output: 2.3,
+          },
         },
         {
           id: "moonshotai/kimi-k2-thinking",
           name: "Kimi K2 Thinking",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.47,
+            output: 2,
+          },
         },
         {
           id: "moonshotai/kimi-k2.5",
           name: "Kimi K2.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 3,
+          },
         },
         {
           id: "moonshotai/kimi-k2.6",
           name: "Kimi K2.6",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "moonshotai/kimi-k2.7-code",
           name: "Kimi K2.7 Code",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "moonshotai/kimi-k2.7-code-highspeed",
           name: "Kimi K2.7 Code High Speed",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.9,
+            output: 8,
+          },
         },
         {
           id: "moonshotai/kimi-k3",
           name: "Kimi K3",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 3,
+            output: 15,
+          },
         },
         {
           id: "moonshotai/kimi-k3-fast",
           name: "Kimi K3 Fast",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 4.5,
+            output: 22.5,
+          },
         },
         {
           id: "nvidia/nemotron-3-nano-30b-a3b",
           name: "Nemotron 3 Nano 30B A3B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.05,
+            output: 0.24,
+          },
         },
         {
           id: "nvidia/nemotron-3-super-120b-a12b",
           name: "NVIDIA Nemotron 3 Super 120B A12B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.65,
+          },
         },
         {
           id: "nvidia/nemotron-3-ultra-550b-a55b",
           name: "Nemotron 3 Ultra",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 2.4,
+          },
         },
         {
           id: "nvidia/nemotron-3.5-lightning",
           name: "Nemotron 3.5 Lightning 30B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.05,
+            output: 0.2,
+          },
         },
         {
           id: "nvidia/nemotron-nano-12b-v2-vl",
           name: "Nvidia Nemotron Nano 12B V2 VL",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 0.6,
+          },
         },
         {
           id: "nvidia/nemotron-nano-9b-v2",
           name: "Nvidia Nemotron Nano 9B V2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.06,
+            output: 0.23,
+          },
         },
         {
           id: "openai/gpt-3.5-turbo",
           name: "GPT-3.5 Turbo",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.5,
+            output: 1.5,
+          },
         },
         {
           id: "openai/gpt-4-turbo",
           name: "GPT-4 Turbo",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 10,
+            output: 30,
+          },
         },
         {
           id: "openai/gpt-4.1",
           name: "GPT-4.1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "openai/gpt-4.1-fast",
           name: "GPT-4.1 (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 3.5,
+            output: 14,
+          },
         },
         {
           id: "openai/gpt-4.1-mini",
           name: "GPT-4.1 mini",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 1.6,
+          },
         },
         {
           id: "openai/gpt-4.1-mini-fast",
           name: "GPT-4.1 mini (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.7,
+            output: 2.8,
+          },
         },
         {
           id: "openai/gpt-4.1-nano",
           name: "GPT-4.1 nano",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.4,
+          },
         },
         {
           id: "openai/gpt-4.1-nano-fast",
           name: "GPT-4.1 nano (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 0.8,
+          },
         },
         {
           id: "openai/gpt-4o",
           name: "GPT-4o",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2.5,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-4o-fast",
           name: "GPT-4o (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 4.25,
+            output: 17,
+          },
         },
         {
           id: "openai/gpt-4o-mini",
           name: "GPT-4o mini",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai/gpt-4o-mini-fast",
           name: "GPT-4o mini (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 1,
+          },
         },
         {
           id: "openai/gpt-5",
           name: "GPT-5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5-codex",
           name: "GPT-5-Codex",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5-fast",
           name: "GPT-5 (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2.5,
+            output: 20,
+          },
         },
         {
           id: "openai/gpt-5-mini",
           name: "GPT-5 mini",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "openai/gpt-5-mini-fast",
           name: "GPT-5 mini (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.45,
+            output: 3.6,
+          },
         },
         {
           id: "openai/gpt-5-nano",
           name: "GPT-5 nano",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.05,
+            output: 0.4,
+          },
         },
         {
           id: "openai/gpt-5-pro",
           name: "GPT-5 pro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 15,
+            output: 120,
+          },
         },
         {
           id: "openai/gpt-5.1-codex",
           name: "GPT-5.1-Codex",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.1-codex-max",
           name: "GPT 5.1 Codex Max",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.1-codex-mini",
           name: "GPT 5.1 Codex Mini",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.25,
+            output: 2,
+          },
         },
         {
           id: "openai/gpt-5.1-thinking",
           name: "GPT 5.1 Thinking",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.1-thinking-fast",
           name: "GPT 5.1 Thinking (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2.5,
+            output: 20,
+          },
         },
         {
           id: "openai/gpt-5.2",
           name: "GPT 5.2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "openai/gpt-5.2-codex",
           name: "GPT 5.2 Codex",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "openai/gpt-5.2-fast",
           name: "GPT 5.2 (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 3.5,
+            output: 28,
+          },
         },
         {
           id: "openai/gpt-5.2-pro",
           name: "GPT 5.2 ",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 21,
+            output: 168,
+          },
         },
         {
           id: "openai/gpt-5.3-codex",
           name: "GPT 5.3 Codex",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.75,
+            output: 14,
+          },
         },
         {
           id: "openai/gpt-5.3-codex-fast",
           name: "GPT 5.3 Codex (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 3.5,
+            output: 28,
+          },
         },
         {
           id: "openai/gpt-5.4",
           name: "GPT 5.4",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2.5,
+            output: 15,
+          },
         },
         {
           id: "openai/gpt-5.4-fast",
           name: "GPT 5.4 (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "openai/gpt-5.4-mini",
           name: "GPT 5.4 Mini",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.75,
+            output: 4.5,
+          },
         },
         {
           id: "openai/gpt-5.4-mini-fast",
           name: "GPT 5.4 Mini (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.5,
+            output: 9,
+          },
         },
         {
           id: "openai/gpt-5.4-nano",
           name: "GPT 5.4 Nano",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 1.25,
+          },
         },
         {
           id: "openai/gpt-5.4-pro",
           name: "GPT 5.4 Pro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "openai/gpt-5.5",
           name: "GPT 5.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "openai/gpt-5.5-fast",
           name: "GPT 5.5 (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 12.5,
+            output: 75,
+          },
         },
         {
           id: "openai/gpt-5.5-pro",
           name: "GPT 5.5 Pro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 30,
+            output: 180,
+          },
         },
         {
           id: "openai/gpt-5.6-luna",
           name: "GPT 5.6 Luna",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 1.2,
+          },
         },
         {
           id: "openai/gpt-5.6-luna-fast",
           name: "GPT 5.6 Luna (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.4,
+            output: 2.4,
+          },
         },
         {
           id: "openai/gpt-5.6-sol",
           name: "GPT 5.6 Sol",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 10,
+          },
         },
         {
           id: "openai/gpt-5.6-sol-fast",
           name: "GPT 5.6 Sol (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 4,
+            output: 20,
+          },
         },
         {
           id: "openai/gpt-5.6-terra",
           name: "GPT 5.6 Terra",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 12,
+          },
         },
         {
           id: "openai/gpt-5.6-terra-fast",
           name: "GPT 5.6 Terra (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 4,
+            output: 24,
+          },
         },
         {
           id: "openai/gpt-oss-120b",
           name: "GPT OSS 120B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.5,
+          },
         },
         {
           id: "openai/gpt-oss-20b",
           name: "GPT OSS 20B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.05,
+            output: 0.2,
+          },
         },
         {
           id: "openai/gpt-oss-safeguard-120b",
           name: "GPT OSS Safeguard 120B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.6,
+          },
         },
         {
           id: "openai/gpt-oss-safeguard-20b",
           name: "GPT OSS Safeguard 20B",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.07,
+            output: 0.2,
+          },
         },
         {
           id: "openai/o1",
           name: "o1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 15,
+            output: 60,
+          },
         },
         {
           id: "openai/o3",
           name: "o3",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "openai/o3-fast",
           name: "o3 (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 3.5,
+            output: 14,
+          },
         },
         {
           id: "openai/o3-mini",
           name: "o3-mini",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "openai/o3-pro",
           name: "o3 Pro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 20,
+            output: 80,
+          },
         },
         {
           id: "openai/o4-mini",
           name: "o4-mini",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.1,
+            output: 4.4,
+          },
         },
         {
           id: "openai/o4-mini-fast",
           name: "o4-mini (Fast)",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 8,
+          },
         },
         {
           id: "poolside/laguna-s-2.1",
           name: "Laguna S 2.1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.1,
+            output: 0.2,
+          },
         },
         {
           id: "poolside/laguna-s-2.1-free",
           name: "Laguna S 2.1 Free",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "sakana/fugu-ultra",
           name: "Fugu Ultra",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 5,
+            output: 30,
+          },
         },
         {
           id: "sakana/namazu",
           name: "Sakana Namazu",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.95,
+            output: 4,
+          },
         },
         {
           id: "spacexai/grok-4.1-fast-non-reasoning",
           name: "Grok 4.1 Fast Non-Reasoning",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 0.5,
+          },
         },
         {
           id: "spacexai/grok-4.1-fast-reasoning",
           name: "Grok 4.1 Fast Reasoning",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 0.5,
+          },
         },
         {
           id: "spacexai/grok-4.20-multi-agent",
           name: "Grok 4.20 Multi-Agent",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "spacexai/grok-4.20-multi-agent-beta",
           name: "Grok 4.20 Multi Agent Beta",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "spacexai/grok-4.20-non-reasoning",
           name: "Grok 4.20 Non-Reasoning",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "spacexai/grok-4.20-non-reasoning-beta",
           name: "Grok 4.20 Beta Non-Reasoning",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "spacexai/grok-4.20-reasoning",
           name: "Grok 4.20 Reasoning",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "spacexai/grok-4.20-reasoning-beta",
           name: "Grok 4.20 Beta Reasoning",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "spacexai/grok-4.3",
           name: "Grok 4.3",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "spacexai/grok-4.5",
           name: "Grok 4.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "spacexai/grok-4.6",
           name: "Grok 4.6",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "spacexai/grok-build-0.1",
           name: "Grok Build 0.1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1,
+            output: 2,
+          },
         },
         {
           id: "stepfun/step-3.5-flash",
           name: "StepFun 3.5 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.09,
+            output: 0.3,
+          },
         },
         {
           id: "stepfun/step-3.7-flash",
           name: "Step 3.7 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 1.15,
+          },
         },
         {
           id: "tencent/hy3",
           name: "Hy3",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.14,
+            output: 0.58,
+          },
         },
         {
           id: "tencent/hy4-preview",
           name: "Tencent Hy4 Preview",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.834,
+            output: 2.501,
+          },
         },
         {
           id: "thinkingmachines/inkling",
           name: "Inkling",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1,
+            output: 4.05,
+          },
         },
         {
           id: "thinkingmachines/inkling-small",
           name: "Inkling Small",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.5,
+            output: 1.2,
+          },
         },
         {
           id: "xiaomi/mimo-v2.5",
           name: "MiMo M2.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "xiaomi/mimo-v2.5-pro",
           name: "MiMo V2.5 Pro",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.435,
+            output: 0.87,
+          },
         },
         {
           id: "zai/glm-4.5",
           name: "GLM 4.5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "zai/glm-4.5-air",
           name: "GLM 4.5 Air",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.2,
+            output: 1.1,
+          },
         },
         {
           id: "zai/glm-4.5v",
           name: "GLM 4.5V",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 1.8,
+          },
         },
         {
           id: "zai/glm-4.6",
           name: "GLM 4.6",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "zai/glm-4.7",
           name: "GLM 4.7",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "zai/glm-4.7-flash",
           name: "GLM 4.7 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.07,
+            output: 0.4,
+          },
         },
         {
           id: "zai/glm-4.7-flashx",
           name: "GLM 4.7 FlashX",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.06,
+            output: 0.4,
+          },
         },
         {
           id: "zai/glm-5",
           name: "GLM 5",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1,
+            output: 3.2,
+          },
         },
         {
           id: "zai/glm-5-turbo",
           name: "GLM 5 Turbo",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.2,
+            output: 4,
+          },
         },
         {
           id: "zai/glm-5.1",
           name: "GLM 5.1",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "zai/glm-5.2",
           name: "GLM 5.2",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.8,
+            output: 2.55,
+          },
         },
         {
           id: "zai/glm-5.2-fast",
           name: "GLM 5.2 Fast",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 2.1,
+            output: 6.6,
+          },
         },
         {
           id: "zai/glm-5.3",
           name: "GLM 5.3",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "zai/glm-5.3-flash",
           name: "GLM 5.3 Flash",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 0.15,
+            output: 0.5,
+          },
         },
         {
           id: "zai/glm-5v-turbo",
           name: "GLM 5V Turbo",
           provider: "vercel-ai-gateway",
+          cost: {
+            input: 1.2,
+            output: 4,
+          },
         },
       ],
     },
@@ -5831,21 +10379,37 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "grok-4.3",
           name: "Grok 4.3",
           provider: "xai",
+          cost: {
+            input: 1.25,
+            output: 2.5,
+          },
         },
         {
           id: "grok-4.5",
           name: "Grok 4.5",
           provider: "xai",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "grok-4.6",
           name: "Grok 4.6",
           provider: "xai",
+          cost: {
+            input: 2,
+            output: 6,
+          },
         },
         {
           id: "grok-build-0.1",
           name: "Grok Build 0.1",
           provider: "xai",
+          cost: {
+            input: 1,
+            output: 2,
+          },
         },
       ],
     },
@@ -5856,16 +10420,28 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "mimo-v2.5",
           name: "MiMo-V2.5",
           provider: "xiaomi",
+          cost: {
+            input: 0.14,
+            output: 0.28,
+          },
         },
         {
           id: "mimo-v2.5-pro",
           name: "MiMo-V2.5-Pro",
           provider: "xiaomi",
+          cost: {
+            input: 0.435,
+            output: 0.87,
+          },
         },
         {
           id: "mimo-v2.5-pro-ultraspeed",
           name: "MiMo-V2.5-Pro-UltraSpeed",
           provider: "xiaomi",
+          cost: {
+            input: 1.305,
+            output: 2.61,
+          },
         },
       ],
     },
@@ -5876,11 +10452,19 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "mimo-v2.5",
           name: "MiMo-V2.5",
           provider: "xiaomi-token-plan-ams",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "mimo-v2.5-pro",
           name: "MiMo-V2.5-Pro",
           provider: "xiaomi-token-plan-ams",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
       ],
     },
@@ -5891,11 +10475,19 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "mimo-v2.5",
           name: "MiMo-V2.5",
           provider: "xiaomi-token-plan-cn",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "mimo-v2.5-pro",
           name: "MiMo-V2.5-Pro",
           provider: "xiaomi-token-plan-cn",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
       ],
     },
@@ -5906,11 +10498,19 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "mimo-v2.5",
           name: "MiMo-V2.5",
           provider: "xiaomi-token-plan-sgp",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "mimo-v2.5-pro",
           name: "MiMo-V2.5-Pro",
           provider: "xiaomi-token-plan-sgp",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
       ],
     },
@@ -5921,36 +10521,64 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "glm-4.7",
           name: "GLM-4.7",
           provider: "zai",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "glm-5-turbo",
           name: "GLM-5-Turbo",
           provider: "zai",
+          cost: {
+            input: 1.2,
+            output: 4,
+          },
         },
         {
           id: "glm-5.2",
           name: "GLM-5.2",
           provider: "zai",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.2-highspeed",
           name: "GLM-5.2 Highspeed",
           provider: "zai",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "glm-5.3",
           name: "GLM-5.3",
           provider: "zai",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.3-flash",
           name: "GLM-5.3-Flash",
           provider: "zai",
+          cost: {
+            input: 0.075,
+            output: 0.25,
+          },
         },
         {
           id: "glm-5.3-highspeed",
           name: "GLM-5.3 Highspeed",
           provider: "zai",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
       ],
     },
@@ -5961,54 +10589,94 @@ export const generatedPiAiCatalog: RawJsonValue = {
           id: "glm-4.6v",
           name: "GLM-4.6V",
           provider: "zai-coding-cn",
+          cost: {
+            input: 0.3,
+            output: 0.9,
+          },
         },
         {
           id: "glm-4.7",
           name: "GLM-4.7",
           provider: "zai-coding-cn",
+          cost: {
+            input: 0.6,
+            output: 2.2,
+          },
         },
         {
           id: "glm-5-turbo",
           name: "GLM-5-Turbo",
           provider: "zai-coding-cn",
+          cost: {
+            input: 1.2,
+            output: 4,
+          },
         },
         {
           id: "glm-5.1",
           name: "GLM-5.1",
           provider: "zai-coding-cn",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.2",
           name: "GLM-5.2",
           provider: "zai-coding-cn",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.2-highspeed",
           name: "GLM-5.2 Highspeed",
           provider: "zai-coding-cn",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "glm-5.3",
           name: "GLM-5.3",
           provider: "zai-coding-cn",
+          cost: {
+            input: 1.4,
+            output: 4.4,
+          },
         },
         {
           id: "glm-5.3-flash",
           name: "GLM-5.3-Flash",
           provider: "zai-coding-cn",
+          cost: {
+            input: 0.075,
+            output: 0.25,
+          },
         },
         {
           id: "glm-5.3-highspeed",
           name: "GLM-5.3 Highspeed",
           provider: "zai-coding-cn",
+          cost: {
+            input: 0,
+            output: 0,
+          },
         },
         {
           id: "glm-5v-turbo",
           name: "GLM-5V-Turbo",
           provider: "zai-coding-cn",
+          cost: {
+            input: 1.2,
+            output: 4,
+          },
         },
       ],
     },
   ],
-  digest: "93c58f2edf999494024512aaa7beec1020933d871f62d87bd59a0578019a3ebb",
+  digest: "f71ade477f6ff270dfc553057fecbff2ebf225e2a609bb2796080c0e3eb119e2",
 };

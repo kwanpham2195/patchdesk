@@ -2,6 +2,7 @@ export type GeneratedPiModel = {
   readonly id: string;
   readonly name: string;
   readonly provider: string;
+  readonly cost?: { readonly input: number; readonly output: number };
 };
 export type GeneratedPiCatalog = {
   readonly piVersion: "0.84.4";

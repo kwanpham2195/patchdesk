@@ -251,6 +251,23 @@ describe("parseRepositoryLabelListResponse", () => {
 });
 
 describe("commit diff response", () => {
+  it("parses a provider catalog model with and without a list price", () => {
+    const model = {
+      provider: "pi",
+      id: "openai/gpt",
+      label: "openai/gpt",
+      reasoning: ["low"],
+    };
+    const parsed = parseInsightProviderCatalog({
+      providers: [],
+      models: [model, { ...model, cost: { input: 0.035, output: 0.14 } }],
+    });
+    expect(parsed?.models.map((entry) => entry.cost)).toEqual([
+      undefined,
+      { input: 0.035, output: 0.14 },
+    ]);
+  });
+
   it("parses provider catalogs and rejects paths or raw diagnostics", () => {
     expect(
       parseInsightProviderCatalog({

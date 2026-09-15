@@ -90,18 +90,26 @@ export function generateModelCatalog() {
   };
 }
 
-/** The three fields Patchdesk keeps out of one Pi model catalog entry. */
+/** The fields Patchdesk keeps out of one Pi model catalog entry; cost is USD per million tokens. */
 const catalogModelSchema = v.looseObject({
   id: v.pipe(v.string(), v.minLength(1)),
   name: v.pipe(v.string(), v.minLength(1)),
   provider: v.string(),
+  cost: v.looseObject({
+    input: v.pipe(v.number(), v.finite()),
+    output: v.pipe(v.number(), v.finite()),
+  }),
 });
 
 function projectModel(provider, value) {
   const parsed = v.safeParse(catalogModelSchema, value);
   if (!parsed.success || parsed.output.provider !== provider)
     throw new Error(`Invalid ${provider} model catalog value`);
-  return { id: parsed.output.id, name: parsed.output.name, provider };
+  const { id, name, cost } = parsed.output;
+  // Routers such as openrouter/auto publish a negative sentinel because their price varies per request.
+  return cost.input < 0 || cost.output < 0
+    ? { id, name, provider }
+    : { id, name, provider, cost: { input: cost.input, output: cost.output } };
 }
 
 export async function writeModelCatalog(

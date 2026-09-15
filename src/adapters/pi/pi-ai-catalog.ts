@@ -6,10 +6,14 @@ import type { RawJsonValue } from "../../domain/json";
 
 import { generatedPiAiCatalog } from "./pi-ai-catalog.generated";
 
+const listPriceSchema = v.pipe(v.number(), v.finite(), v.minValue(0));
 const modelSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
   name: v.pipe(v.string(), v.minLength(1)),
   provider: v.pipe(v.string(), v.minLength(1)),
+  cost: v.optional(
+    v.strictObject({ input: listPriceSchema, output: listPriceSchema }),
+  ),
 });
 const providerSchema = v.strictObject({
   provider: v.pipe(v.string(), v.minLength(1)),
