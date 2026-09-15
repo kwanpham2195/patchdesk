@@ -46,7 +46,9 @@ export async function requestJson(
   init: Omit<LocalApiDesktopRequest, "path"> = {},
 ): Promise<RawJsonValue | undefined> {
   const startedAt = performance.now();
-  const skipLogging = path === "/v1/logs" || path === "/health";
+  // Compare the pathname so the Logs panel's query-string poll is skipped too.
+  const pathname = path.split("?", 1)[0];
+  const skipLogging = pathname === "/v1/logs" || pathname === "/health";
   if (globalThis.window === undefined || !("patchdesk" in window)) {
     throw new PatchdeskApiError(
       "unavailable",

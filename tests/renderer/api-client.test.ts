@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import * as v from "valibot";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   PatchdeskApiError,
   requestJson,
 } from "../../src/renderer/src/api-client";
-import { installDesktopDouble } from "./fake-desktop-response";
+import { installDesktopDouble, success } from "./fake-desktop-response";
 
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 
 afterEach(() => {
+  vi.useRealTimers();
   desktop?.restore();
   desktop = undefined;
 });
@@ -140,5 +142,37 @@ describe("renderer API boundary", () => {
     if (!(thrown instanceof PatchdeskApiError)) return;
     expect(thrown.kind).toBe("assignee_cap_exceeded");
     expect(thrown.message).toContain("ten");
+  });
+});
+
+const LogBatch = v.object({
+  entries: v.array(v.object({ message: v.string() })),
+});
+
+describe("renderer API request logging", () => {
+  it("does not log the Logs panel's query-string poll of /v1/logs", async () => {
+    vi.useFakeTimers();
+    // A fresh module graph gives this test its own logger queue and flush timer.
+    vi.resetModules();
+    const { requestJson: freshRequestJson } =
+      await import("../../src/renderer/src/api-client");
+    const loggedMessages: string[] = [];
+    desktop = installDesktopDouble({
+      "/v1/logs": (input) => {
+        if (input.method === "POST")
+          loggedMessages.push(
+            ...v.parse(LogBatch, input.body).entries.map((e) => e.message),
+          );
+        return success({ entries: [] });
+      },
+      "/v1/inbox": () => success({ rows: [] }),
+    });
+
+    await freshRequestJson("/v1/logs?after=5&limit=500");
+    await freshRequestJson("/v1/inbox?state=open");
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(loggedMessages).toContain("GET /v1/inbox?state=open");
+    expect(loggedMessages.filter((m) => m.includes("/v1/logs"))).toEqual([]);
   });
 });
