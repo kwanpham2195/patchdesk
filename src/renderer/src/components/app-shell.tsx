@@ -101,6 +101,10 @@ export function AppShell({
   const activeProfileLabel = profiles?.find(
     (profile) => profile.id === activeProfileId,
   )?.label;
+  const visitedToggleLabel = visitedCollapsed
+    ? "Expand the pull requests you have opened"
+    : "Collapse the pull requests you have opened";
+  const backLabel = "Back to pending pull requests";
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -147,33 +151,43 @@ export function AppShell({
         data-window-full-screen={windowFullScreen}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={
-              visitedCollapsed
-                ? "Expand the pull requests you have opened"
-                : "Collapse the pull requests you have opened"
-            }
-            aria-controls="visited-pull-requests"
-            aria-expanded={!visitedCollapsed}
-            onClick={() => {
-              const next = !visitedCollapsed;
-              setVisitedCollapsed(next);
-              saveVisitedPullRequestsCollapsed(next);
-            }}
-          >
-            {visitedCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-          </Button>
-          {destination.kind === "workbench" ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Back to pending pull requests"
-              onClick={() => onNavigate({ kind: "dashboard" })}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={visitedToggleLabel}
+                  aria-controls="visited-pull-requests"
+                  aria-expanded={!visitedCollapsed}
+                  onClick={() => {
+                    const next = !visitedCollapsed;
+                    setVisitedCollapsed(next);
+                    saveVisitedPullRequestsCollapsed(next);
+                  }}
+                />
+              }
             >
-              <ArrowLeft />
-            </Button>
+              {visitedCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+            </TooltipTrigger>
+            <TooltipContent>{visitedToggleLabel}</TooltipContent>
+          </Tooltip>
+          {destination.kind === "workbench" ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={backLabel}
+                    onClick={() => onNavigate({ kind: "dashboard" })}
+                  />
+                }
+              >
+                <ArrowLeft />
+              </TooltipTrigger>
+              <TooltipContent>{backLabel}</TooltipContent>
+            </Tooltip>
           ) : null}
           <BrandMark size={26} />
           <span className="text-[13px] font-semibold tracking-tight">
