@@ -531,7 +531,9 @@ describe("SettingsModal", () => {
     });
     await user.click(model);
     await user.clear(model);
-    await user.type(model, "MODEL-492");
+    // Typing re-filters all 493 options once per keystroke, which pushed this
+    // test past its 5 s timeout under load (#145); one paste filters once.
+    await user.paste("MODEL-492");
     expect(
       await screen.findByRole("option", { name: "Model 492" }),
     ).toBeTruthy();
