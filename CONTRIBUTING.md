@@ -369,12 +369,16 @@ The browser suite carries two timing budgets, both stated in
 `tests/browser/timing-budget.ts`. A local run holds the performance proof to
 a 200 ms worst interaction, a 300 ms main-thread gap during filtering and
 selection, a 100 ms gap during scrolling, and Playwright's default 5 s expect
-timeout for visibility waits. When `CI` is set to anything non-empty, the same
-proof allows 400 ms, 600 ms, 200 ms, and a 15 s expect timeout. The two sets
-differ because on 2026-09-02 the `macos-14` runner measured 205 to 302 ms
-against the 200 ms ceiling with code that passed at 70 to 121 ms locally; about
-double the local numbers still fails a regression of the size that matters
-while leaving the local budget where it is. Set `CI=1` when running the
+timeout for visibility waits. Selection is timed in the page from pointerdown
+to the `data-selected-path` commit, and filtering is timed from Node, from
+`fill` until the matching tree item is visible; on 2026-09-15 an Apple M2 Pro
+at load1 3.4 to 4.3 measured worst selections of 23 to 31 ms and worst filters
+of 20 to 54 ms. When `CI` is set to anything non-empty, the same proof allows
+400 ms, 600 ms, 200 ms, and a 15 s expect timeout. Those numbers date from
+2026-09-02, when the `macos-14` runner measured 205 to 302 ms for selection
+timed from Node across Playwright's click retries; that figure is not
+comparable with the in-page number, and the CI budget stays until a `CI=1` run
+records in-page numbers. Set `CI=1` when running the
 browser suite as the merge gate so the wider budget applies, as the `CI=1`
 line above does.
 
