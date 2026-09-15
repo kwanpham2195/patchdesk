@@ -25,7 +25,11 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "../../src/main/local-api";
-import type { CommandRequest } from "../../src/adapters/github/command-runner";
+import {
+  NodeCommandExecutor,
+  type CommandExecution,
+  type CommandRequest,
+} from "../../src/adapters/github/command-runner";
 import { ok } from "../../src/domain/result";
 import { StorageManagementService } from "../../src/services/storage-management-service";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
@@ -882,6 +886,62 @@ describe("GET /v1/inbox/labels", () => {
         },
       }),
     );
+  });
+});
+
+describe("GET /v1/environment GitHub authentication", () => {
+  // Plain `gh auth status` fails on any invalid listed account; the JSON probe reports each account's own state.
+  function fakeGhAuthStatus(accountStates: ReadonlyArray<string>): void {
+    const hosts = {
+      "github.com": accountStates.map((state, index) => ({
+        active: index === 0,
+        host: "github.com",
+        login: `account-${index}`,
+        state,
+      })),
+    };
+    vi.spyOn(NodeCommandExecutor.prototype, "execute").mockImplementation(
+      async (input): Promise<CommandExecution> => {
+        const json = input.argv.includes("--json");
+        return {
+          _tag: "Exited",
+          exitCode: json ? 0 : 1,
+          stdout: json ? JSON.stringify({ hosts }) : "",
+          stderr: json
+            ? ""
+            : "X Failed to log in to github.com account stale (keyring)\n  - To re-authenticate, run: gh auth login -h github.com",
+        };
+      },
+    );
+  }
+
+  async function environment() {
+    const api = await start();
+    const response = await fetch(new URL("v1/environment", api.url), {
+      headers: headers(),
+    });
+    expect(response.status).toBe(200);
+    return response.json();
+  }
+
+  it("reports ready when one account works though another has an invalid token", async () => {
+    fakeGhAuthStatus(["success", "invalid token"]);
+
+    await expect(environment()).resolves.toMatchObject({
+      githubAuth: "ready",
+      githubAccounts: [
+        { host: "github.com", login: "account-0", active: true },
+      ],
+    });
+  });
+
+  it("reports authentication required when no account works", async () => {
+    fakeGhAuthStatus(["invalid token"]);
+
+    await expect(environment()).resolves.toMatchObject({
+      githubAuth: "authentication_required",
+      githubAccounts: [],
+    });
   });
 });
 

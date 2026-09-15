@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed **Settings** → **Workspace** and Workspace setup on Pull requests saying GitHub authentication is required when the GitHub CLI holds an account with an invalid token beside one that works. Reviewing as now offers the working accounts. #185
 - Fixed **Generate** and **Regenerate** in Brief, Walkthrough, and Analysis sitting disabled on a merged or closed Review with no reason, which read as a broken provider setup. Each reader now says generating an Insight needs an open Review, and that retained Insights stay readable. #187
 - Fixed **Reviewers** on a merged or closed Review showing "Loading reviewers…" forever. It now lists the reviewers requested as of your last refresh, read-only, as **Assignees** and **Labels** already do. #186
 - Fixed the **Checks** control in the Review header opening PR overview on Merge readiness. It now opens with the Checks row expanded and focused, as the **Merge** control does for Merge readiness. #188
