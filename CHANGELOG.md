@@ -15,6 +15,7 @@
 - Fixed the **Pull requests** label menu hiding its "This filter is full" line below the list once you had chosen five labels, so the greyed rows had no visible reason unless you scrolled to the bottom. The line now sits above the list and stays in view however far you scroll. #192
 - Fixed the **Pull requests** label menu's greyed rows keeping their full-colour dot and name once you had chosen five labels, so only the checkbox showed they could not be chosen. The dot and name now dim with the checkbox. #195
 - Fixed the Diff's keyboard navigation keys doing nothing, with no message, while the file display is set to **Selected**. Pressing `,` `.` `[` `]` `{` or `}` there now says "Keyboard navigation works in All files." #191
+- Fixed Tab stepping through every row of the column of pull requests you have opened before reaching the screen beside it, up to 20 presses on every screen. The column is now one Tab stop, landing on the pull request you are reading or else the top row, and the Up and Down arrow keys move between its rows. #190
 
 ## 0.0.8 - 2026-09-12
 
