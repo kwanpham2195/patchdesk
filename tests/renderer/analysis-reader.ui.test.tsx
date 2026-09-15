@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AnalysisReader } from "../../src/renderer/src/components/analysis-reader";
 import { renderAnalysisFixPrompt } from "../../src/renderer/src/analysis-fix-prompt";
+import {
+  PatchdeskApiError,
+  contextualMessage,
+} from "../../src/renderer/src/api-client";
+import { FINDING_ACTION_MESSAGES } from "../../src/renderer/src/review-copy";
 
 const result: Parameters<typeof AnalysisReader>[0]["result"] = {
   changeSummary: "Analysis of the `currentChange`",
@@ -459,6 +464,44 @@ describe("AnalysisReader", () => {
       await within(firstRow).findByRole("button", { name: "Add to review" }),
     ).toBeTruthy();
     expect(within(secondRow).getByRole("alert")).toBeTruthy();
+  });
+
+  async function findAddFailureAlert(cause: Error): Promise<HTMLElement> {
+    const user = userEvent.setup();
+    render(
+      <AnalysisReader
+        result={result}
+        findingStatuses={{ "finding-1": "actionable" }}
+        onAddFinding={vi.fn(async () => {
+          throw cause;
+        })}
+      />,
+    );
+    const [row] = screen.getAllByRole("listitem");
+    if (row === undefined) throw new Error("missing Finding row");
+    await user.click(
+      within(row).getByRole("button", { name: "Add to review" }),
+    );
+    return within(row).findByRole("alert");
+  }
+
+  it("words a Finding action failure by its cause", async () => {
+    const cause = new PatchdeskApiError(
+      "outcome_unknown",
+      502,
+      true,
+      "outcome-unknown",
+      "raw provider failure",
+    );
+    const alert = await findAddFailureAlert(cause);
+    expect(alert.textContent).toBe(
+      contextualMessage(cause, FINDING_ACTION_MESSAGES),
+    );
+  });
+
+  it("falls back to the Finding action message for an unrecognised error", async () => {
+    const alert = await findAddFailureAlert(new Error("x"));
+    expect(alert.textContent).toBe(FINDING_ACTION_MESSAGES.fallback);
   });
 });
 
