@@ -1,3 +1,4 @@
+import { definedProps } from "../../../domain/defined-props";
 import { parseUnifiedPatch } from "../../../domain/patch";
 import { BriefReader } from "./brief-reader";
 import { renderAnalysisReviewSummary } from "../analysis-review-summary";
@@ -26,6 +27,8 @@ type InsightReaderBuilderInput = {
   /** Drives the Brief "Start here" card's Walkthrough link: open the one that exists, or run one. */
   readonly onOpenWalkthrough: () => void;
   readonly runEnabled: boolean;
+  /** Id of the reason a run is unavailable, for the disabled Regenerate to point at. */
+  readonly runDisabledReasonId?: string;
   /** Opens the Diff tab at a mapped finding's lines; absent outside the workbench. */
   readonly onOpenFindingInDiff?: (finding: AnalysisFinding) => void;
 };
@@ -43,6 +46,7 @@ export function buildInsightReaders({
   onRegenerateBrief,
   onOpenWalkthrough,
   runEnabled,
+  runDisabledReasonId,
 }: InsightReaderBuilderInput): React.ReactNode {
   const analysisSummaryScope = {
     baseShort: (workbench.pullRequest?.baseSha ?? "unknown").slice(0, 7),
@@ -182,6 +186,7 @@ export function buildInsightReaders({
         {...(workbench.scope === undefined ? {} : { scope: workbench.scope })}
         onRegenerate={onRegenerateBrief}
         regenerateDisabled={!runEnabled}
+        {...definedProps({ regenerateDescribedBy: runDisabledReasonId })}
         walkthroughStatus={workbench.insights.walkthrough.status}
         onOpenWalkthrough={onOpenWalkthrough}
       />

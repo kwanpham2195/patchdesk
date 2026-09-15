@@ -129,6 +129,7 @@ export function BriefReader({
   scope,
   onRegenerate,
   regenerateDisabled = false,
+  regenerateDescribedBy,
   walkthroughStatus,
   onOpenWalkthrough,
 }: {
@@ -137,6 +138,7 @@ export function BriefReader({
   readonly scope?: ChangeScope;
   readonly onRegenerate: () => void;
   readonly regenerateDisabled?: boolean;
+  readonly regenerateDescribedBy?: string;
   /** The workbench's Walkthrough status; decides whether the card offers to open one or to generate one. */
   readonly walkthroughStatus: BriefInsight["status"];
   readonly onOpenWalkthrough: () => void;
@@ -199,6 +201,7 @@ export function BriefReader({
             className="self-start"
             onClick={onRegenerate}
             disabled={regenerateDisabled}
+            aria-describedby={regenerateDescribedBy}
           >
             Regenerate
           </Button>
