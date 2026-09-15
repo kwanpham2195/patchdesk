@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed **Settings** → **Logs** filling with its own polling requests every two seconds. The panel's poll of the log stream was logging itself, burying other activity in the tail and writing a row to the log file on every poll; those requests are no longer logged. #197
 - Fixed j and k moving the wrong way in the Walkthrough. j now moves to the next section and k to the previous one, matching Vim; they were reversed. #200
 - Fixed editing, deleting, or replying to a comment, and adding or dismissing a Finding, reporting the same sentence whatever went wrong. A failure now says what happened: GitHub rate-limiting you, GitHub blocking the write, or GitHub not confirming it. That last case used to say to try again, when the write may already have gone through, so repeating it could post a reply or apply an edit twice; it now tells you to check GitHub first. #167
 
