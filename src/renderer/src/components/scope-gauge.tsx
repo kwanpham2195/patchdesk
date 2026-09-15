@@ -147,7 +147,7 @@ export function ScopeGauge({
                   onClick={() => onBucketSelect(bucket)}
                   className={cn(
                     rowClassName,
-                    "-mx-1 rounded px-1 py-0.5 hover:bg-accent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground",
+                    "-mx-1 rounded px-1 py-0.5 hover:bg-accent hover:text-foreground aria-pressed:bg-primary/10 aria-pressed:font-medium aria-pressed:text-foreground",
                   )}
                 >
                   {row}

@@ -11,6 +11,7 @@
 - Fixed editing, deleting, or replying to a comment, and adding or dismissing a Finding, reporting the same sentence whatever went wrong. A failure now says what happened: GitHub rate-limiting you, GitHub blocking the write, or GitHub not confirming it. That last case used to say to try again, when the write may already have gone through, so repeating it could post a reply or apply an edit twice; it now tells you to check GitHub first. #167
 - Fixed the header's collapse toggle for the column of pull requests you have opened, and the **Back** button in a Review, showing nothing on hover. Each now shows what it does, as **Settings** and **Navigate** beside them already did. #196
 - Fixed the **Scope** picker on the Diff toolbar labelling its first entry **All files**, the same name as the file display button a few buttons to its left, which does something unrelated. The entry that removes the Scope filter is now **Clear scope**. #194
+- Fixed the bucket row you chose on the Insights **Scope** card looking the same as the rows beside it. The row filtering the Diff is now tinted and set in a heavier weight, and no longer matches a row under the pointer. #198
 
 ## 0.0.8 - 2026-09-12
 
