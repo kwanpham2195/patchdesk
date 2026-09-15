@@ -25,7 +25,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Analysis opens in the Insights tab for the represented Review session. Generated Markdown keeps its original structure while the reader applies safe rendering. When generation returns zero Findings, Analysis shows an explicit No findings status and explains that there is nothing to add to review or dismiss. Each Finding can show title, severity, explanation, suggested comment, mapped file and line range, disposition, and supporting details grouped by reviewer purpose.
+Analysis opens in the Insights tab for the represented Review session. Generated Markdown keeps its original structure while the reader applies safe rendering. When generation returns zero Findings, Analysis shows an explicit No findings status and explains that there is nothing to add to review or dismiss. Each Finding can show title, severity, explanation, suggested comment, mapped file and line range, disposition, and supporting details grouped by reviewer purpose. When the result carries verification steps, a Verification card lists each as a checkbox under a count of checked steps. The card says the ticks are not saved: they reset when the maintainer leaves Analysis, whether by switching Insight tabs or reloading the renderer.
 
 Evidence detail stays collapsed until requested. Expanding it reveals the complete containing hunk and highlights the mapped Finding range. Duplicate supporting details are removed before grouping.
 
