@@ -36,6 +36,8 @@ Reading, expanding the file skeleton, inspecting evidence, and leaving the tab d
 
 Generate brief or Regenerate opens the Insight run dialog. The maintainer chooses an available provider, model, and supported reasoning level. Saved Brief preferences seed the dialog where available.
 
+Each API key model in the Model list shows its pi-ai list price as input and output USD per million tokens, for example `$5.00 / $25.00`. The confirmation line repeats the selected model's price and says account billing may differ. A Codex CLI account model, or a router such as `openrouter/auto` whose price varies per request, shows no price.
+
 Starting the run binds it to the current profile, Review session, represented head, and patch. Regeneration does not erase the retained Brief before a replacement completes.
 
 ### While the action runs

@@ -97,6 +97,20 @@ describe("LocalPiRuntimeModelCatalog", () => {
     ).toBe(true);
   });
 
+  it("carries each model's list price from the generated catalog", async () => {
+    const catalog = await fixture({}, { OPENAI_API_KEY: "secret" });
+    const result = await catalog.get();
+    expect(
+      result._tag === "ok"
+        ? result.value.models.find((model) => model.id === "openai/gpt-4-turbo")
+        : undefined,
+    ).toEqual({
+      id: "openai/gpt-4-turbo",
+      label: "openai/gpt-4-turbo",
+      cost: { input: 10, output: 30 },
+    });
+  });
+
   it("enumerates the catalog when Pi settings are absent", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-pi-catalog-"));
     roots.push(root);

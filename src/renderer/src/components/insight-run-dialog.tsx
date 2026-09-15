@@ -3,7 +3,7 @@ import type {
   InsightReasoning,
 } from "../../../domain/insight-provider";
 
-import { ModelCombobox } from "./model-combobox";
+import { ModelCombobox, type ModelComboboxOption } from "./model-combobox";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
@@ -35,6 +35,7 @@ export type InsightModelOption = {
   readonly id: string;
   readonly label: string;
   readonly reasoning?: ReadonlyArray<InsightReasoning>;
+  readonly cost?: ModelComboboxOption["cost"];
 };
 
 /** Collects the provider choice and final disclosure before one Insight starts. */
@@ -253,6 +254,9 @@ export function InsightRunDialog({
               : ""}
             . Patchdesk retains all validation, Finding, publication, and merge
             authority.
+            {selectedModel?.cost === undefined
+              ? null
+              : ` List price $${selectedModel.cost.input.toFixed(2)} input / $${selectedModel.cost.output.toFixed(2)} output per million tokens; your account's billing may differ.`}
           </p>
         </div>
         <DialogFooter>

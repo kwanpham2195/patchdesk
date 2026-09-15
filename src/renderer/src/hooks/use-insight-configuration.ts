@@ -23,6 +23,7 @@ type InsightModelOption = {
   readonly id: string;
   readonly label: string;
   readonly reasoning?: ReadonlyArray<InsightReasoning>;
+  readonly cost?: InsightProviderCatalogModel["cost"];
 };
 export type InsightRunConfiguration = {
   readonly catalog?: ReturnType<typeof parseInsightProviderCatalog>;

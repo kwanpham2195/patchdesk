@@ -71,8 +71,10 @@ describe("generated Pi catalog", () => {
     expect(
       first.catalog
         .flatMap((entry) => entry.models)
-        .every(
-          (model) => Object.keys(model).sort().join(",") === "id,name,provider",
+        .every((model) =>
+          ["id,name,provider", "cost,id,name,provider"].includes(
+            Object.keys(model).sort().join(","),
+          ),
         ),
     ).toBe(true);
     expect(first.digest).toMatch(/^[a-f0-9]{64}$/);

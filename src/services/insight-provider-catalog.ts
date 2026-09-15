@@ -1,4 +1,5 @@
 import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
+import { definedProps } from "../domain/defined-props";
 import type {
   InsightProvider,
   InsightReasoning,
@@ -10,7 +11,10 @@ import type {
   CodexAppServerFailure,
   CodexModel,
 } from "../adapters/codex/codex-app-server-client";
-import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
+import type {
+  ModelListPrice,
+  PiRuntimeModelCatalog,
+} from "../adapters/pi/pi-runtime-model-catalog";
 
 /** Renderer-safe provider availability. It never contains a path or account detail. */
 type InsightProviderStatus = {
@@ -27,6 +31,8 @@ type InsightProviderModel = {
   readonly label: string;
   readonly reasoning: ReadonlyArray<InsightReasoning>;
   readonly defaultReasoning?: InsightReasoning;
+  /** Absent for Codex CLI account models and Pi models without a fixed list price. */
+  readonly cost?: ModelListPrice;
 };
 
 /** Complete passive or activated Insight provider catalog. */
@@ -154,6 +160,7 @@ function piModelSource(pi: PiRuntimeModelCatalog): ProviderModelSource {
               label: model.label,
               reasoning: ["low", "medium", "high"] as const,
               defaultReasoning: "medium" as const,
+              ...definedProps({ cost: model.cost }),
             }))
           : [],
     };
