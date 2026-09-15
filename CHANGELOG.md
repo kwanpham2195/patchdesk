@@ -16,6 +16,7 @@
 - Fixed the **Pull requests** label menu's greyed rows keeping their full-colour dot and name once you had chosen five labels, so only the checkbox showed they could not be chosen. The dot and name now dim with the checkbox. #195
 - Fixed the Diff's keyboard navigation keys doing nothing, with no message, while the file display is set to **Selected**. Pressing `,` `.` `[` `]` `{` or `}` there now says "Keyboard navigation works in All files." #191
 - Fixed Tab stepping through every row of the column of pull requests you have opened before reaching the screen beside it, up to 20 presses on every screen. The column is now one Tab stop, landing on the pull request you are reading or else the top row, and the Up and Down arrow keys move between its rows. #190
+- Fixed the Walkthrough telling you to refresh GitHub state when inline discussion was missing because the Walkthrough was generated for an older revision, where refreshing changes nothing. It now says to regenerate the Walkthrough in that case, and keeps the refresh message for a Review that is still loading. #201
 
 ## 0.0.8 - 2026-09-12
 
