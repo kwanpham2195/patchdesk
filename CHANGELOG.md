@@ -14,6 +14,7 @@
 - Fixed the bucket row you chose on the Insights **Scope** card looking the same as the rows beside it. The row filtering the Diff is now tinted and set in a heavier weight, and no longer matches a row under the pointer. #198
 - Fixed the **Pull requests** label menu hiding its "This filter is full" line below the list once you had chosen five labels, so the greyed rows had no visible reason unless you scrolled to the bottom. The line now sits above the list and stays in view however far you scroll. #192
 - Fixed the **Pull requests** label menu's greyed rows keeping their full-colour dot and name once you had chosen five labels, so only the checkbox showed they could not be chosen. The dot and name now dim with the checkbox. #195
+- Fixed the Diff's keyboard navigation keys doing nothing, with no message, while the file display is set to **Selected**. Pressing `,` `.` `[` `]` `{` or `}` there now says "Keyboard navigation works in All files." #191
 
 ## 0.0.8 - 2026-09-12
 
