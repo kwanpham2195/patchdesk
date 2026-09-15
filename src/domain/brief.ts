@@ -152,6 +152,9 @@ export const briefOutputSchema = v.strictObject({
         ),
       ),
       v.maxLength(MAX_REACH_SYMBOLS),
+      v.description(
+        "The exact exported identifiers whose signature or meaning this patch changes. Patchdesk counts their callers itself.",
+      ),
     ),
   ),
 });

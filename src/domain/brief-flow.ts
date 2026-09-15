@@ -209,6 +209,9 @@ export const briefFlowOutputSchema = v.optional(
       }),
     ),
     v.maxLength(MAX_FLOW_TREES_INPUT),
+    v.description(
+      "At most one tree of each kind the patch changes. Every node is marked added, removed, or unchanged, and cites the h aliases of the hunks that show it.",
+    ),
   ),
 );
 
