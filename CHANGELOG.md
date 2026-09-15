@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed **Generate** and **Regenerate** in Brief, Walkthrough, and Analysis sitting disabled on a merged or closed Review with no reason, which read as a broken provider setup. Each reader now says generating an Insight needs an open Review, and that retained Insights stay readable. #187
 - Fixed **Reviewers** on a merged or closed Review showing "Loading reviewers…" forever. It now lists the reviewers requested as of your last refresh, read-only, as **Assignees** and **Labels** already do. #186
 - Fixed the **Checks** control in the Review header opening PR overview on Merge readiness. It now opens with the Checks row expanded and focused, as the **Merge** control does for Merge readiness. #188
 - Fixed **Settings** → **Logs** filling with its own polling requests every two seconds. The panel's poll of the log stream was logging itself, burying other activity in the tail and writing a row to the log file on every poll; those requests are no longer logged. #197
