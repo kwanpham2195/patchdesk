@@ -97,6 +97,15 @@ export function ReviewWorkbenchFlow({
     workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
   const canWriteReviewers =
     workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
+  // The draft toggle is the author's own control, and repository permission
+  // is not projected here, so this gates on author-is-viewer. The narrowing is
+  // that a non-author maintainer is not offered it; DraftStateService still
+  // resolves permission on every write.
+  const canWriteDraftState =
+    workbench.review.status === "open" &&
+    !writeRecovery.githubWritesLocked &&
+    workbench.pullRequest?.author.toLowerCase() ===
+      workbench.viewerLogin.toLowerCase();
   const {
     fetchLabels,
     addLabels,
@@ -108,6 +117,7 @@ export function ReviewWorkbenchFlow({
     fetchReviewers,
     requestReviewers,
     removeReviewers,
+    setDraftState,
   } = useReviewMetadataActions({
     workbench,
     runDirectCommand,
@@ -176,6 +186,7 @@ export function ReviewWorkbenchFlow({
   const reviewerActions: ReviewerPickerActions | undefined = canWriteReviewers
     ? { fetchReviewers, requestReviewers, removeReviewers }
     : undefined;
+  const draftStateAction = canWriteDraftState ? setDraftState : undefined;
 
   const workbenchActionsBase = {
     detectUpdates: runDetect,
@@ -237,10 +248,14 @@ export function ReviewWorkbenchFlow({
     reviewerActions === undefined
       ? workbenchActionsWithAssignees
       : { ...workbenchActionsWithAssignees, reviewers: reviewerActions };
+  const workbenchActionsWithDraftState =
+    draftStateAction === undefined
+      ? workbenchActionsWithReviewers
+      : { ...workbenchActionsWithReviewers, setDraftState: draftStateAction };
   const workbenchActions =
     conversationActions === undefined
-      ? workbenchActionsWithReviewers
-      : { ...workbenchActionsWithReviewers, ...conversationActions };
+      ? workbenchActionsWithDraftState
+      : { ...workbenchActionsWithDraftState, ...conversationActions };
 
   return (
     <>

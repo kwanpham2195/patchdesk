@@ -36,6 +36,7 @@ function baseOverview(
     summary: "",
     checks: { overall: "passing", checks: [] },
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+    isDraft: false,
     mergeReasons: [],
     insights: {
       brief: { status: "not_generated" },

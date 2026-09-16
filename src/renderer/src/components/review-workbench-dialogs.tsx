@@ -46,6 +46,9 @@ export function ReviewWorkbenchDialogs({
           : { focusSection: overviewFocusSection })}
         onReviewFindings={onReviewFindings}
         {...(actions.merge === undefined ? {} : { merge: actions.merge })}
+        {...(actions.setDraftState === undefined
+          ? {}
+          : { onSetDraftState: actions.setDraftState })}
       />
       {actions.pendingReview === undefined ||
       actions.pendingReview.projection?.state !== "pending" ? null : (

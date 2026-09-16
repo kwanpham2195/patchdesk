@@ -57,6 +57,7 @@ export function buildOverview({
     // this renderer seam. Runtime validation already ran on `model.checks`.
     checks: model.checks as CheckSummary,
     mergeReadiness: model.mergeReadiness,
+    isDraft: model.pullRequest?.isDraft ?? false,
     mergeReasons: model.mergeReasons ?? [],
     revision: overviewRevision,
     insights: {
