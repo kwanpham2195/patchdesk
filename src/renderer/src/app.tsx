@@ -287,6 +287,7 @@ function AppContent({
         profileSwitchState={profileSwitchState}
         visitedReloadKey={visitedReloadKey}
         onInboxStateChange={changeInboxState}
+        onInboxPresetChange={changeInboxPreset}
         {...(parsedProfileHost._tag === "ok"
           ? {
               pullRequestDefaultHost: parsedProfileHost.value,

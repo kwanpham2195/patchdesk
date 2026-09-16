@@ -158,6 +158,41 @@ describe("AppShell Navigate shortcut", () => {
   });
 });
 
+describe("AppShell preset commands", () => {
+  it.each([
+    ["Awaiting review from you", "awaiting_my_review"],
+    ["Your pull requests", "my_pull_requests"],
+  ])(
+    "sets the %s preset and returns to Pull requests",
+    async (label, preset) => {
+      const user = userEvent.setup();
+      const onInboxPresetChange = vi.fn();
+      const onNavigate = vi.fn();
+      render(
+        <BusyProvider>
+          <AppShell
+            destination={{ kind: "dashboard" }}
+            onNavigate={onNavigate}
+            visitedReloadKey={0}
+            onOpenSettings={() => undefined}
+            onInboxPresetChange={onInboxPresetChange}
+          >
+            <div>Inbox content</div>
+          </AppShell>
+        </BusyProvider>,
+      );
+
+      await user.click(screen.getByRole("button", { name: /^Navigate/ }));
+      await user.click(screen.getByRole("option", { name: label }));
+
+      // The command sets the preset rather than toggling it, so choosing the
+      // same one twice leaves it on.
+      expect(onInboxPresetChange).toHaveBeenCalledWith(preset);
+      expect(onNavigate).toHaveBeenCalledWith({ kind: "dashboard" });
+    },
+  );
+});
+
 describe("AppShell pull-request command", () => {
   it.each([
     "https://github.com/acme/widgets/pull/42",
