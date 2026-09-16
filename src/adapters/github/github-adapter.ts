@@ -689,6 +689,14 @@ export class GitHubAdapter
     return this.collaborators.removeRequestedReviewers(input);
   }
 
+  async setPullRequestDraftState(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly draft: boolean;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    return this.collaborators.setPullRequestDraftState(input);
+  }
+
   async updateThreadComment(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly commentId: string;

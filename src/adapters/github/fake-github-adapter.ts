@@ -457,6 +457,21 @@ export class FakeGitHubAdapter
       : ok(undefined);
   }
 
+  async setPullRequestDraftState(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly draft: boolean;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.setPullRequestDraftState === undefined
+      ? err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "set_draft_state",
+        })
+      : ok(undefined);
+  }
+
   async updateThreadComment(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly commentId: string;
@@ -734,4 +749,5 @@ export type FakeGitHubAdapterValues = {
   readonly removeAssigneesFromAssignable?: Record<string, never>;
   readonly requestReviews?: Record<string, never>;
   readonly removeRequestedReviewers?: Record<string, never>;
+  readonly setPullRequestDraftState?: Record<string, never>;
 };
