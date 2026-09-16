@@ -10,7 +10,10 @@ import {
 
 import type { AppDestination } from "@/routes";
 import { destinationKey, destinationTitle } from "@/routes";
-import type { InboxStateFilter } from "../../../domain/maintainer-inbox";
+import type {
+  InboxPreset,
+  InboxStateFilter,
+} from "../../../domain/maintainer-inbox";
 import type { GitHubHost } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
 import { AppCommandDialog } from "@/components/app-command-dialog";
@@ -58,6 +61,7 @@ export function AppShell({
   profileSwitchState,
   onProfileSwitch,
   onInboxStateChange,
+  onInboxPresetChange,
   pullRequestDefaultHost,
   onOpenPullRequest,
   visitedReloadKey,
@@ -80,6 +84,8 @@ export function AppShell({
    * "Pull requests" command group hides itself in that case rather than
    * dispatching into nothing. */
   readonly onInboxStateChange?: (state: InboxStateFilter) => void;
+  /** Sets the Pull requests screen's one-click preset from the palette; absent for the same reason `onInboxStateChange` is. */
+  readonly onInboxPresetChange?: (preset: InboxPreset) => void;
   /** Parses compact references against the active profile's GitHub host. */
   readonly pullRequestDefaultHost?: GitHubHost;
   /** Opens a parsed pull request through the root Review-opening owner. */
@@ -332,6 +338,7 @@ export function AppShell({
         onNavigate={onNavigate}
         onOpenSettings={onOpenSettings}
         {...(onInboxStateChange === undefined ? {} : { onInboxStateChange })}
+        {...(onInboxPresetChange === undefined ? {} : { onInboxPresetChange })}
         {...(onOpenPullRequest === undefined ? {} : { onOpenPullRequest })}
       />
     </div>

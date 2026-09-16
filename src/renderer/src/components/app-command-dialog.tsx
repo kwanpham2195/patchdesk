@@ -2,7 +2,9 @@ import type { RefObject } from "react";
 import { ArrowLeft, GitPullRequest, Settings } from "lucide-react";
 
 import {
+  INBOX_PRESET_FILTERS,
   INBOX_STATE_FILTERS,
+  type InboxPreset,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
 import type { GitHubHost } from "../../../domain/ids";
@@ -41,6 +43,7 @@ export function AppCommandDialog({
   onNavigate,
   onOpenSettings,
   onInboxStateChange,
+  onInboxPresetChange,
   onOpenPullRequest,
 }: {
   readonly open: boolean;
@@ -54,6 +57,9 @@ export function AppCommandDialog({
   readonly onNavigate: (destination: AppDestination) => void;
   readonly onOpenSettings: (opener?: HTMLElement) => void;
   readonly onInboxStateChange?: (state: InboxStateFilter) => void;
+  /** Sets the one-click preset rather than toggling it, the way the state
+   * commands set the state; the filter bar's toggles are the off switch. */
+  readonly onInboxPresetChange?: (preset: InboxPreset) => void;
   readonly onOpenPullRequest?: (ref: PullRequestRef) => void;
 }): React.JSX.Element {
   const parsedPullRequest = parsePullRequestInput(
@@ -73,6 +79,11 @@ export function AppCommandDialog({
     close();
     onNavigate({ kind: "dashboard" });
     onInboxStateChange?.(state);
+  };
+  const chooseInboxPreset = (preset: InboxPreset): void => {
+    close();
+    onNavigate({ kind: "dashboard" });
+    onInboxPresetChange?.(preset);
   };
   const openSelectedInboxAction = (): void => {
     close();
@@ -160,6 +171,16 @@ export function AppCommandDialog({
                 key={option.state}
                 value={option.label}
                 onSelect={() => chooseInboxState(option.state)}
+              >
+                <GitPullRequest />
+                {option.label}
+              </CommandItem>
+            ))}
+            {INBOX_PRESET_FILTERS.map((option) => (
+              <CommandItem
+                key={option.preset}
+                value={option.label}
+                onSelect={() => chooseInboxPreset(option.preset)}
               >
                 <GitPullRequest />
                 {option.label}
