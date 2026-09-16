@@ -23,6 +23,7 @@ import {
   type InboxFilterTextFailure,
   type InboxPageSize,
   type InboxDataFreshness,
+  type InboxPreset,
   type InboxReviewStateFilter,
   type InboxSnapshotState,
   type InboxStateFilter,
@@ -105,11 +106,11 @@ type MaintainerInboxProps = {
   /** Re-reads GitHub. Refresh stays explicit under ADR 0032 — this is the
    * in-screen affordance for it, beside the View menu's Refresh command. */
   readonly onRefresh?: () => void;
-  /** The "Awaiting review from you" preset (ADR 0031), sent to GitHub as
-   * `user-review-requested:@me` — a filter preset that composes with the
-   * state and label filters, never a separate queue. */
-  readonly awaitingMyReview?: boolean;
-  readonly onAwaitingMyReviewChange?: (value: boolean) => void;
+  /** The one-click preset (ADR 0031), sent to GitHub as its own qualifier —
+   * a filter preset that composes with the state and label filters, never a
+   * separate queue. */
+  readonly preset?: InboxPreset;
+  readonly onPresetChange?: (value: InboxPreset | undefined) => void;
   readonly reviewState?: InboxReviewStateFilter;
   readonly onReviewStateChange?: (
     value: InboxReviewStateFilter | undefined,
@@ -178,8 +179,8 @@ export function MaintainerInbox({
   selectedLabels = NO_LABELS,
   onLabelsChange = () => undefined,
   labelFits = () => true,
-  awaitingMyReview = false,
-  onAwaitingMyReviewChange = () => undefined,
+  preset,
+  onPresetChange = () => undefined,
   reviewState,
   onReviewStateChange = () => undefined,
   checkStatus,
@@ -255,8 +256,8 @@ export function MaintainerInbox({
             />
           )
         }
-        awaitingMyReview={awaitingMyReview}
-        onAwaitingMyReviewChange={onAwaitingMyReviewChange}
+        {...(preset === undefined ? {} : { preset })}
+        onPresetChange={onPresetChange}
         {...(reviewState === undefined ? {} : { reviewState })}
         onReviewStateChange={onReviewStateChange}
         {...(checkStatus === undefined ? {} : { checkStatus })}

@@ -183,7 +183,7 @@ function AppContent({
     changeInboxPageSize,
     changeInboxLabels,
     labelFits,
-    changeInboxAwaitingMyReview,
+    changeInboxPreset,
     changeInboxReviewState,
     changeInboxCheckStatus,
     changeInboxAuthor,
@@ -482,8 +482,10 @@ function AppContent({
         selectedLabels={inboxRequest.selectedLabels}
         onInboxLabelsChange={changeInboxLabels}
         labelFits={labelFits}
-        awaitingMyReview={inboxRequest.awaitingMyReview}
-        onInboxAwaitingMyReviewChange={changeInboxAwaitingMyReview}
+        {...(inboxRequest.preset === undefined
+          ? {}
+          : { preset: inboxRequest.preset })}
+        onInboxPresetChange={changeInboxPreset}
         {...(inboxRequest.reviewState === undefined
           ? {}
           : { reviewState: inboxRequest.reviewState })}

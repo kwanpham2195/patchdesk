@@ -7,15 +7,18 @@ import {
   ListFilter,
   User,
   UserRoundCheck,
+  type LucideIcon,
 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import {
+  INBOX_PRESET_FILTERS,
   INBOX_STATE_FILTERS,
   MAX_INBOX_FILTER_AUTHOR_LENGTH,
   MAX_INBOX_FILTER_BASE_BRANCH_LENGTH,
   type InboxCheckStatusFilter,
   type InboxFilterTextFailure,
+  type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
@@ -52,8 +55,8 @@ export function InboxFiltersBar({
   state,
   onStateChange,
   labelFilter,
-  awaitingMyReview,
-  onAwaitingMyReviewChange,
+  preset,
+  onPresetChange,
   reviewState,
   onReviewStateChange,
   checkStatus,
@@ -72,8 +75,8 @@ export function InboxFiltersBar({
   readonly state: InboxStateFilter;
   readonly onStateChange: (state: InboxStateFilter) => void;
   readonly labelFilter?: ReactNode;
-  readonly awaitingMyReview: boolean;
-  readonly onAwaitingMyReviewChange: (value: boolean) => void;
+  readonly preset?: InboxPreset;
+  readonly onPresetChange: (value: InboxPreset | undefined) => void;
   readonly reviewState?: InboxReviewStateFilter;
   readonly onReviewStateChange: (
     value: InboxReviewStateFilter | undefined,
@@ -136,16 +139,24 @@ export function InboxFiltersBar({
           </SelectGroup>
         </SelectContent>
       </Select>
-      <Toggle
-        pressed={awaitingMyReview}
-        onPressedChange={onAwaitingMyReviewChange}
-        size="sm"
-        variant="outline"
-        className="h-7 gap-1.5 px-2 text-xs"
-      >
-        <UserRoundCheck className="size-3.5" aria-hidden="true" />
-        Awaiting review from you
-      </Toggle>
+      {INBOX_PRESET_FILTERS.map((option) => {
+        const Icon = PRESET_FILTER_ICONS[option.preset];
+        return (
+          <Toggle
+            key={option.preset}
+            pressed={preset === option.preset}
+            onPressedChange={(pressed) =>
+              onPresetChange(pressed ? option.preset : undefined)
+            }
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            <Icon className="size-3.5" aria-hidden="true" />
+            {option.label}
+          </Toggle>
+        );
+      })}
       {labelFilter}
       <MoreFiltersPopover
         {...(reviewState === undefined ? {} : { reviewState })}
@@ -179,6 +190,12 @@ export function InboxFiltersBar({
     </section>
   );
 }
+
+/** The glyph each preset toggle carries; the labels and their order come from `INBOX_PRESET_FILTERS` so the command palette shows the same two. */
+const PRESET_FILTER_ICONS = {
+  awaiting_my_review: UserRoundCheck,
+  my_pull_requests: User,
+} satisfies Record<InboxPreset, LucideIcon>;
 
 const REVIEW_STATE_FILTERS: ReadonlyArray<{
   readonly value: InboxReviewStateFilter;

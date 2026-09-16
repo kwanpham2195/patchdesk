@@ -107,7 +107,7 @@ describe("MaintainerInboxService review and check filters", () => {
       filter: {
         state: "open",
         labels: ["bug"],
-        awaitingMyReview: true,
+        preset: "awaiting_my_review",
         reviewState: "approved",
         checkStatus: "failure",
       },
@@ -181,7 +181,7 @@ describe("MaintainerInboxService author and base branch filters", () => {
       filter: {
         state: "open",
         labels: ["bug"],
-        awaitingMyReview: true,
+        preset: "awaiting_my_review",
         reviewState: "approved",
         checkStatus: "failure",
         author: "octocat",

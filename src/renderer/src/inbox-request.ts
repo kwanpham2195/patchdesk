@@ -7,6 +7,7 @@ import {
   DEFAULT_INBOX_PAGE_SIZE,
   type InboxCheckStatusFilter,
   type InboxPageSize,
+  type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
@@ -32,10 +33,10 @@ export type InboxRequestState = {
    * Repository-scoped: `changeInboxRepository` always resets it to `[]`,
    * since a label chosen in one repository may not exist in the next. */
   readonly selectedLabels: ReadonlyArray<string>;
-  /** The "Awaiting review from you" preset (ADR 0031), sent as
-   * `awaitingMyReview=1`. Unlike `selectedLabels` it is not
-   * repository-scoped, so `changeInboxRepository` carries it over. */
-  readonly awaitingMyReview: boolean;
+  /** The one-click preset (ADR 0031), sent as `preset=<value>`. Unlike
+   * `selectedLabels` it is not repository-scoped, so
+   * `changeInboxRepository` carries it over. */
+  readonly preset?: InboxPreset;
   /** The optional GitHub `review:<value>` qualifier. Portable across repositories. */
   readonly reviewState?: InboxReviewStateFilter;
   /** The optional GitHub `status:<value>` qualifier. Portable across repositories. */
@@ -82,8 +83,9 @@ export function resolveInboxRepository(
  * `repository` is honoured by key presence rather than by value: passing
  * `{ repository: undefined }` clears it, which the bootstrap request and an
  * emptied watchlist both need, while omitting the key keeps the current one.
- * The four optional filters — `reviewState`, `checkStatus`, `author`, and
- * `baseBranch` — are honoured the same way, so each can be cleared explicitly.
+ * The five optional filters — `preset`, `reviewState`, `checkStatus`,
+ * `author`, and `baseBranch` — are honoured the same way, so each can be
+ * cleared explicitly.
  */
 export function nextInboxRequest(
   current: InboxRequestState,
@@ -92,7 +94,7 @@ export function nextInboxRequest(
     readonly state?: InboxStateFilter;
     readonly pageSize?: InboxPageSize;
     readonly selectedLabels?: ReadonlyArray<string>;
-    readonly awaitingMyReview?: boolean;
+    readonly preset?: InboxPreset | undefined;
     readonly reviewState?: InboxReviewStateFilter | undefined;
     readonly checkStatus?: InboxCheckStatusFilter | undefined;
     readonly author?: string | undefined;
@@ -107,6 +109,10 @@ export function nextInboxRequest(
   const repositoryField = repository === undefined ? {} : { repository };
   const pageTokenField =
     overrides.pageToken === undefined ? {} : { pageToken: overrides.pageToken };
+  const preset = Object.hasOwn(overrides, "preset")
+    ? overrides.preset
+    : current.preset;
+  const presetField = preset === undefined ? {} : { preset };
   const reviewState = Object.hasOwn(overrides, "reviewState")
     ? overrides.reviewState
     : current.reviewState;
@@ -129,7 +135,7 @@ export function nextInboxRequest(
     state: overrides.state ?? current.state,
     pageSize: overrides.pageSize ?? current.pageSize,
     selectedLabels: overrides.selectedLabels ?? current.selectedLabels,
-    awaitingMyReview: overrides.awaitingMyReview ?? current.awaitingMyReview,
+    ...presetField,
     ...reviewStateField,
     ...checkStatusField,
     ...authorField,
@@ -145,8 +151,8 @@ export function nextInboxRequest(
  * leaves the displayed rows describing the previous request until the new
  * one lands. Comparing the response instead cannot work: it echoes only the
  * state filter and the page size, and says nothing about the label filter,
- * the "Awaiting review from you" preset, review state, check status, author,
- * or base branch, so a label change looked identical to no change at all.
+ * the one-click preset, review state, check status, author, or base branch,
+ * so a label change looked identical to no change at all.
  */
 export function sameInboxRows(
   left: InboxRequestState,
@@ -156,7 +162,7 @@ export function sameInboxRows(
     sameRepositoryIdentity(left.repository, right.repository) &&
     left.state === right.state &&
     left.pageSize === right.pageSize &&
-    left.awaitingMyReview === right.awaitingMyReview &&
+    left.preset === right.preset &&
     left.reviewState === right.reviewState &&
     left.checkStatus === right.checkStatus &&
     left.author === right.author &&
@@ -173,7 +179,6 @@ export const firstInboxRequest: InboxRequestState = {
   state: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
   selectedLabels: [],
-  awaitingMyReview: false,
   previousPageTokens: [],
 };
 
@@ -200,12 +205,13 @@ export function firstInboxRequestFor(
     state,
     pageSize,
     selectedLabels,
-    awaitingMyReview,
+    preset,
     reviewState,
     checkStatus,
     author,
     baseBranch,
   } = loadInboxViewPreferences(profileId);
+  const presetField = preset === undefined ? {} : { preset };
   const reviewStateField = reviewState === undefined ? {} : { reviewState };
   const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
   const authorField = author === undefined ? {} : { author };
@@ -214,7 +220,7 @@ export function firstInboxRequestFor(
     state,
     pageSize,
     selectedLabels,
-    awaitingMyReview,
+    ...presetField,
     ...reviewStateField,
     ...checkStatusField,
     ...authorField,
@@ -235,7 +241,7 @@ export function inboxRequestPath(request: InboxRequestState): string {
     query.set("repo", request.repository.repo);
   }
   for (const label of request.selectedLabels) query.append("label", label);
-  if (request.awaitingMyReview) query.set("awaitingMyReview", "1");
+  if (request.preset !== undefined) query.set("preset", request.preset);
   if (request.reviewState !== undefined)
     query.set("reviewState", request.reviewState);
   if (request.checkStatus !== undefined)

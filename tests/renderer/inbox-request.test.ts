@@ -62,12 +62,13 @@ describe("inboxRequestPath", () => {
     );
   });
 
-  it("omits the awaitingMyReview qualifier unless the preset is on (ADR 0031)", () => {
+  it("names the chosen preset, and omits the param when none is chosen (ADR 0031)", () => {
+    expect(inboxRequestPath(request())).not.toContain("preset");
     expect(
-      inboxRequestPath(request({ awaitingMyReview: false })),
-    ).not.toContain("awaitingMyReview");
-    expect(inboxRequestPath(request({ awaitingMyReview: true }))).toContain(
-      "awaitingMyReview=1",
+      inboxRequestPath(request({ preset: "awaiting_my_review" })),
+    ).toContain("preset=awaiting_my_review");
+    expect(inboxRequestPath(request({ preset: "my_pull_requests" }))).toContain(
+      "preset=my_pull_requests",
     );
   });
 
@@ -114,16 +115,29 @@ describe("nextInboxRequest", () => {
       state: "merged",
       pageSize: 10,
       selectedLabels: ["bug"],
-      awaitingMyReview: true,
+      preset: "awaiting_my_review",
     });
     expect(nextInboxRequest(current)).toEqual({
       repository: repoA,
       state: "merged",
       pageSize: 10,
       selectedLabels: ["bug"],
-      awaitingMyReview: true,
+      preset: "awaiting_my_review",
       previousPageTokens: [],
     });
+  });
+
+  it("replaces one preset with the other, and clears it only when the override key is present", () => {
+    const current = request({ preset: "awaiting_my_review" });
+    expect(nextInboxRequest(current, { state: "merged" })).toMatchObject({
+      preset: "awaiting_my_review",
+    });
+    expect(
+      nextInboxRequest(current, { preset: "my_pull_requests" }),
+    ).toMatchObject({ preset: "my_pull_requests" });
+    expect(nextInboxRequest(current, { preset: undefined })).not.toHaveProperty(
+      "preset",
+    );
   });
 
   it("clears review and check filters only when their override keys are present", () => {
@@ -175,7 +189,7 @@ describe("nextInboxRequest", () => {
       { state: "merged" as const },
       { pageSize: 10 as const },
       { selectedLabels: ["bug"] },
-      { awaitingMyReview: true },
+      { preset: "awaiting_my_review" as const },
       { reviewState: "approved" as const },
       { checkStatus: "failure" as const },
       { author: "octocat" },
@@ -223,7 +237,7 @@ describe("sameInboxRows", () => {
       { repository: repoB },
       { state: "merged" },
       { pageSize: 10 },
-      { awaitingMyReview: true },
+      { preset: "awaiting_my_review" },
       { reviewState: "approved" },
       { checkStatus: "failure" },
       { author: "octocat" },
@@ -265,7 +279,7 @@ describe("firstInboxRequestFor", () => {
       state: "merged",
       pageSize: 10,
       selectedLabels: ["bug"],
-      awaitingMyReview: true,
+      preset: "awaiting_my_review",
       reviewState: "approved",
       checkStatus: "failure",
       author: "octocat",
@@ -275,7 +289,7 @@ describe("firstInboxRequestFor", () => {
       state: "merged",
       pageSize: 10,
       selectedLabels: ["bug"],
-      awaitingMyReview: true,
+      preset: "awaiting_my_review",
       reviewState: "approved",
       checkStatus: "failure",
       author: "octocat",

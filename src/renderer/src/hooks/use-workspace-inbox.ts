@@ -46,6 +46,7 @@ import {
   type InboxFilter,
   type InboxFilterTextFailure,
   type InboxPageSize,
+  type InboxPreset,
   type InboxReviewStateFilter,
 } from "../../../domain/maintainer-inbox";
 import { definedProps } from "../../../domain/defined-props";
@@ -88,7 +89,7 @@ export type WorkspaceInbox = {
   readonly changeInboxLabels: (selectedLabels: ReadonlyArray<string>) => void;
   /** Whether selecting this label would still leave a query GitHub accepts, so the menu can refuse the row that would breach rather than the read that follows it. Deselecting always fits. */
   readonly labelFits: (name: string) => boolean;
-  readonly changeInboxAwaitingMyReview: (awaitingMyReview: boolean) => void;
+  readonly changeInboxPreset: (preset: InboxPreset | undefined) => void;
   readonly changeInboxReviewState: (
     reviewState: InboxReviewStateFilter | undefined,
   ) => void;
@@ -127,8 +128,8 @@ function filterFor(request: InboxRequestState): InboxFilter {
   return {
     state: request.state,
     labels: request.selectedLabels,
-    awaitingMyReview: request.awaitingMyReview,
     ...definedProps({
+      preset: request.preset,
       reviewState: request.reviewState,
       checkStatus: request.checkStatus,
       author: request.author,
@@ -351,7 +352,7 @@ export function useWorkspaceInbox({
       state: preferences.state,
       pageSize: preferences.pageSize,
       selectedLabels: repositoryChanged ? [] : preferences.selectedLabels,
-      awaitingMyReview: preferences.awaitingMyReview,
+      preset: preferences.preset,
       reviewState: preferences.reviewState,
       checkStatus: preferences.checkStatus,
       author: preferences.author,
@@ -435,20 +436,19 @@ export function useWorkspaceInbox({
     );
   }, []);
   /**
-   * Toggles the "Awaiting review from you" preset (ADR 0031) — GitHub's
-   * `user-review-requested:@me` qualifier, which composes with the state and
-   * label filters rather than replacing the listing. Resets the page cursor
-   * for the same reason a label change does: the cursor was minted under a
-   * different search query.
+   * Selects the one-click preset (ADR 0031), or clears it with `undefined`.
+   * Its qualifier composes with the state and label filters rather than
+   * replacing the listing. Resets the page cursor for the same reason a label
+   * change does: the cursor was minted under a different search query.
    */
-  const changeInboxAwaitingMyReview = useCallback(
-    (awaitingMyReview: boolean): void => {
+  const changeInboxPreset = useCallback(
+    (preset: InboxPreset | undefined): void => {
       const request = nextInboxRequest(inboxRequestRef.current, {
-        awaitingMyReview,
+        preset,
       });
       const profileId = activeInboxProfileId.current;
       if (profileId !== undefined)
-        saveInboxViewPreferences(profileId, { awaitingMyReview });
+        saveInboxViewPreferences(profileId, { preset });
       updateInboxRequest(request);
       void refreshInbox(request);
     },
@@ -608,7 +608,7 @@ export function useWorkspaceInbox({
     changeInboxPageSize,
     changeInboxLabels,
     labelFits,
-    changeInboxAwaitingMyReview,
+    changeInboxPreset,
     changeInboxReviewState,
     changeInboxCheckStatus,
     changeInboxAuthor,
