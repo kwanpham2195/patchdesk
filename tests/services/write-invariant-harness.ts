@@ -54,6 +54,7 @@ export const GATEWAY_WRITES: ReadonlySet<string> = new Set([
   "removeAssigneesFromAssignable",
   "requestReviews",
   "removeRequestedReviewers",
+  "setPullRequestDraftState",
   "mergePullRequest",
 ]);
 

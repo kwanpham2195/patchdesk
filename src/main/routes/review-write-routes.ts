@@ -38,6 +38,10 @@ import type {
 import type { LabelCommand, LabelService } from "../../services/label-service";
 import type { ReviewWriteRecoveryFailure } from "../../services/review-write-recovery-service";
 import type {
+  DraftStateCommand,
+  DraftStateService,
+} from "../../services/draft-state-service";
+import type {
   ReviewerCommand,
   ReviewerService,
 } from "../../services/reviewer-service";
@@ -57,6 +61,7 @@ export function registerReviewWriteRoutes(
 ): void {
   const {
     assigneeWrites,
+    draftStateWrites,
     inlineConversations,
     labelWrites,
     logs,
@@ -162,6 +167,9 @@ export function registerReviewWriteRoutes(
       }),
     );
   });
+  app.post("/v1/reviews/draft-state/command", async (context) =>
+    draftStateResponse(context, draftStateWrites, await jsonBody(context)),
+  );
 }
 
 const reviewWriteRecoverySchema = strictObject({
@@ -233,6 +241,14 @@ const reviewerCommandSchema = strictObject({
       reviewers: pipe(array(reviewerRefSchema), minLength(1)),
     }),
   ]),
+});
+const draftStateCommandSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  command: strictObject({
+    _tag: picklist(["SetDraftState"] as const),
+    draft: boolean(),
+  }),
 });
 
 async function inlineConversationResponse(
@@ -434,6 +450,32 @@ async function reviewerResponse(
   if (result._tag === "ok") return context.json(result.value);
   // `ReviewerWriteFailure` is exactly the shared eight: no reviewer cap
   // exists to enforce, so unlike assignees there is nothing to override.
+  return context.json(
+    { error: result.error },
+    mapReviewWriteFailureStatus(result.error, {}),
+  );
+}
+
+async function draftStateResponse(
+  context: Context,
+  service: DraftStateService,
+  body: RawJsonValue | undefined,
+): Promise<Response> {
+  const parsed = safeParse(draftStateCommandSchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  if (profileId._tag === "err" || reviewId._tag === "err")
+    return context.json({ error: "invalid_input" }, 400);
+  const command: DraftStateCommand = parsed.output.command;
+  const result = await service.execute({
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    command,
+  });
+  if (result._tag === "ok") return context.json(result.value);
+  // `DraftStateWriteFailure` is exactly the shared eight; the no-op refusal
+  // reuses `invalid_input`, which already answers 400.
   return context.json(
     { error: result.error },
     mapReviewWriteFailureStatus(result.error, {}),

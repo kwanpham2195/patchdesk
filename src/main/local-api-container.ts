@@ -24,6 +24,7 @@ import { InlineConversationService } from "../services/inline-conversation-servi
 import { LabelService } from "../services/label-service";
 import { AssigneeService } from "../services/assignee-service";
 import { ReviewerService } from "../services/reviewer-service";
+import { DraftStateService } from "../services/draft-state-service";
 import { PendingReviewService } from "../services/pending-review-service";
 import { PullRequestImageService } from "../services/pull-request-image-service";
 import { DirectSummaryReviewService } from "../services/direct-summary-review-service";
@@ -70,6 +71,7 @@ export type LocalApiContainer = {
   readonly labelWrites: LabelService;
   readonly assigneeWrites: AssigneeService;
   readonly reviewerWrites: ReviewerService;
+  readonly draftStateWrites: DraftStateService;
   readonly pendingReviews: PendingReviewService;
   readonly directSummaryReviews: DirectSummaryReviewService | undefined;
   readonly publishedFeedback: PublishedFeedbackService;
@@ -230,6 +232,14 @@ export async function buildLocalApiContainer(
     recentWriteJournals,
     reviewWriteOperations,
     avatarRailDependencies,
+  );
+  const draftStateWrites = new DraftStateService(
+    reviewWriteGate,
+    github,
+    reviewOperations,
+    systemNow,
+    recentWriteJournals,
+    reviewWriteOperations,
   );
   const pendingReviewGateway = isGitHubPendingReviewGateway(github)
     ? github
@@ -431,6 +441,7 @@ export async function buildLocalApiContainer(
       labelWrites,
       assigneeWrites,
       reviewerWrites,
+      draftStateWrites,
       pendingReviews,
       directSummaryReviews,
       publishedFeedback,

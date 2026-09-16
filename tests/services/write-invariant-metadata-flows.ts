@@ -1,6 +1,7 @@
 import type { GitHubReviewWriter } from "../../src/adapters/github/github-adapter";
 import { err, ok, type Result } from "../../src/domain/result";
 import { AssigneeService } from "../../src/services/assignee-service";
+import { DraftStateService } from "../../src/services/draft-state-service";
 import { LabelService } from "../../src/services/label-service";
 import { ReviewerService } from "../../src/services/reviewer-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
@@ -40,7 +41,8 @@ type MetadataWriteName =
   | "addAssigneesToAssignable"
   | "removeAssigneesFromAssignable"
   | "requestReviews"
-  | "removeRequestedReviewers";
+  | "removeRequestedReviewers"
+  | "setPullRequestDraftState";
 
 type MetadataGateway = typeof reads &
   Required<Pick<GitHubReviewWriter, MetadataWriteName>>;
@@ -54,6 +56,7 @@ function unavailableGateway(): MetadataGateway {
     removeAssigneesFromAssignable: async () => err(unavailable),
     requestReviews: async () => err(unavailable),
     removeRequestedReviewers: async () => err(unavailable),
+    setPullRequestDraftState: async () => err(unavailable),
   };
 }
 
@@ -108,6 +111,14 @@ function services(
       durability,
     ),
     reviewers: new ReviewerService(
+      gate,
+      gateway,
+      coordinator,
+      now,
+      durability,
+      durability,
+    ),
+    draftState: new DraftStateService(
       gate,
       gateway,
       coordinator,
@@ -200,6 +211,20 @@ export const metadataFlows: ReadonlyArray<MetadataFlow> = [
             _tag: "RequestReviewers",
             reviewers: [{ id: "U_1", login: "fixture" }],
           },
+        });
+    }),
+  },
+  {
+    // The fixture pull request is not a draft, so only the convert-to-draft
+    // direction is a real write rather than the refused no-op.
+    name: "draft state: convert to draft",
+    run: buildRun((trace, github, durability) => {
+      const service = services(trace, github, durability).draftState;
+      return () =>
+        service.execute({
+          profileId,
+          reviewId,
+          command: { _tag: "SetDraftState", draft: true },
         });
     }),
   },
