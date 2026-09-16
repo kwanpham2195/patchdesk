@@ -2,7 +2,7 @@
 
 ## Summary
 
-The Conversation view presents the pull request description, issue comments, review summaries, general review threads, and the pull request's labels, assignees, and requested reviewers. The maintainer reaches it from the Conversation tab of an open Review. Reading remains available for represented terminal Reviews and during write recovery; GitHub controls appear only when the current Review and the exact action are writable.
+The Conversation view presents the pull request description, issue comments, review summaries, general review threads, and the pull request's labels, assignees, and requested reviewers. The maintainer reaches it from the Conversation tab of an open Review. Reading remains available for represented terminal Reviews and during write recovery; GitHub controls appear only when the current Review and the exact action are writable. The pull request's own author additionally finds a draft toggle in the PR overview's Merge readiness row.
 
 ## The simple case
 
@@ -36,7 +36,7 @@ Reading, expanding content, opening and closing a picker, or changing tabs recor
 
 Reply and edit require non-blank text. Deleting a published comment uses a separate confirmation. Resolving toggles an eligible thread between open and resolved. Dismissing a review requires a reason and explicit confirmation.
 
-Metadata actions are exact: add or remove named labels, add or remove named assignees, assign the configured viewer, request reviewers, or remove reviewers. A reviewer who has already answered carries a re-request control on their own row, which asks that one person for another review without disturbing anyone else's request. Patchdesk accepts only a receipt that confirms the requested action and resulting membership.
+Metadata actions are exact: add or remove named labels, add or remove named assignees, assign the configured viewer, request reviewers, or remove reviewers. A reviewer who has already answered carries a re-request control on their own row, which asks that one person for another review without disturbing anyone else's request. The author's draft toggle names the state it moves to: Ready for review publishes a draft, and Convert to draft returns a published pull request to draft. Patchdesk accepts only a receipt that confirms the requested action and resulting membership.
 
 ### While the action runs
 
@@ -54,7 +54,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 | --- | --- | --- |
 | Workspace profile and GitHub account | Candidate lists and self-assignment use the active profile's host and configured viewer identity. | Changing profile leaves the Review only after the normal navigation guard permits it. A receipt for another viewer cannot confirm Assign self. |
 | Pull request and Review state | Open represented Reviews can expose writes. Merged or closed Reviews remain readable but hide write controls. | A remote terminal transition discovered before the write prevents it; one discovered afterward is reconciled as new represented state. |
-| GitHub permissions and merge readiness | Each control depends on GitHub eligibility and permission. Re-request appears only when the reviewer read reports write permission on this pull request. Merge readiness does not itself block metadata writes. | A permission failure is shown for the action and does not imply that another metadata category is writable. |
+| GitHub permissions and merge readiness | Each control depends on GitHub eligibility and permission. Re-request appears only when the reviewer read reports write permission on this pull request. The draft toggle appears only for the viewer who opened the pull request, and GitHub's repository permission is still resolved on the write itself. Merge readiness does not itself block metadata writes. | A permission failure is shown for the action and does not imply that another metadata category is writable. |
 | Network, local tool, and Insight provider availability | Conversation reading uses saved and refreshed GitHub data. Insight providers are unrelated. | Network or `gh` failure can block candidate loading, mutation, or reconciliation. A confirmed write remains confirmed when later observation fails. |
 | Input path: mouse, keyboard, or desktop menu | Tabs, buttons, pickers, text fields, and dialogs support mouse and keyboard. | Submit and cancel controls keep the same action guard for either input path. The desktop menu does not directly write conversation data. |
 
@@ -100,6 +100,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 - A failed cached avatar falls back to initials and can retry when the cached data URI changes.
 - A stale or terminal Review hides direct conversation writers without hiding its represented content.
 - Re-request is hidden for a reviewer the candidate read did not return, because the request GitHub accepts names a person by identifier rather than by login.
+- A draft change the pull request has already made is refused rather than sent, because neither GitHub draft mutation is idempotent and its refusal cannot be told apart from a permission denial.
 
 ## Open questions and verification
 
@@ -108,4 +109,4 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 - Confirm that the dirty-navigation guard covers every non-empty reply and edit form, not only inline diff authoring.
 - Confirm visible ordering when a metadata write is confirmed while a slower candidate-list request is still pending.
 
-Verified against Patchdesk application source commit `3100615`.
+Verified against Patchdesk application source commit `3100615`; reviewer re-request and the author's draft toggle updated for issue #230.
