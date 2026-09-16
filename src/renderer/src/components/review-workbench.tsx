@@ -9,7 +9,6 @@ import {
 
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
-import type { ChangeScopeBucket } from "../../../domain/change-scope";
 import { definedProps } from "../../../domain/defined-props";
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import {
@@ -25,30 +24,19 @@ import {
   parseRepoRelativePath,
 } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
-import type { AssigneesSectionActions } from "./assignee-picker";
-import type { LabelPickerActions } from "./label-picker";
 import { PullRequestMetadataRail } from "./pull-request-metadata-rail";
-import type { ReviewerPickerActions } from "./reviewer-picker";
 
-import type {
-  CommitDiffResponse,
-  DirectSummaryReviewProjection,
-  WorkbenchResponse,
-} from "../renderer-contracts";
+import type { WorkbenchResponse } from "../renderer-contracts";
 import { Conversation } from "./conversation";
 import { DiffWorkbench } from "./diff-workbench";
 import { ReviewDiffPane } from "./review-diff-pane";
 import type {
   LocalCommentAuthoring,
   LocalCommentLocation,
-  PendingReviewComposerActions,
   ReviewInlineAnnotation,
 } from "./review-diff-view";
 import type { ReviewConversationActions } from "./conversation-thread-card";
-import type {
-  OverviewFocusSection,
-  PullRequestOverviewMerge,
-} from "./pr-overview-sheet";
+import type { OverviewFocusSection } from "./pr-overview-sheet";
 import {
   ReviewNavigator,
   type ReviewNavigatorSection,
@@ -60,6 +48,11 @@ import {
   buildReadOnlyConversationAnnotations,
   type MappedFinding,
 } from "./review-workbench-annotations";
+import type {
+  ReviewWorkbenchActions,
+  ReviewWorkbenchInitialState,
+  ReviewWorkbenchSlots,
+} from "./review-workbench-contracts";
 import {
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
@@ -91,11 +84,9 @@ import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import type { GitHubReviewEvent } from "../../../domain/pending-review";
 import type {
   WorkbenchActiveTab,
   WorkbenchPosition,
-  WorkbenchSection,
 } from "../lib/screen-restore";
 
 /** The subset of `Conversation`'s props built conditionally, so the
@@ -245,94 +236,12 @@ function createCommitCommentAuthoring(
   };
 }
 
-export type ReviewWorkbenchActions = {
-  readonly detectUpdates: () => Promise<void>;
-  readonly merge?: PullRequestOverviewMerge;
-  readonly refresh: () => Promise<void>;
-  /** True while an explicit refresh request is pending; disables refresh actions. */
-  readonly refreshing?: boolean;
-  /** True when the last explicit refresh failed; surfaces bounded error copy. */
-  readonly refreshError?: boolean;
-  readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
-  readonly localCommentAuthoring?: LocalCommentAuthoring;
-  readonly pendingReviewComposer?: PendingReviewComposerActions;
-  readonly directSummary?: {
-    readonly busy: boolean;
-    readonly state: DirectSummaryReviewProjection["state"];
-    readonly receipt?: Extract<
-      DirectSummaryReviewProjection,
-      { readonly state: "confirmed" }
-    >["receipt"];
-    readonly recoveryResolution?: Extract<
-      DirectSummaryReviewProjection,
-      { readonly state: "recovery_required" }
-    >["resolution"];
-    readonly approvalCapability: "allowed" | "blocked_author" | "unknown";
-    readonly error?: string;
-    readonly onSubmit: (
-      event: GitHubReviewEvent,
-      body: string,
-    ) => Promise<DirectSummaryReviewProjection>;
-    readonly onRecover: () => Promise<DirectSummaryReviewProjection>;
-  };
-  /** GitHub pending-review header action, Finish modal, and recovery. */
-  readonly pendingReview?: {
-    readonly projection: WorkbenchResponse["pendingReview"];
-    readonly busy: boolean;
-    readonly finishDialogOpen: boolean;
-    readonly finishDialogInitialSummary?: string;
-    readonly onOpenFinishDialog: () => void;
-    readonly onCloseFinishDialog: () => void;
-    readonly onSubmit: (
-      event: GitHubReviewEvent,
-      summaryBody: string,
-    ) => Promise<void>;
-    readonly onDiscard: () => Promise<void>;
-    readonly onCheckGitHubAgain: () => Promise<void>;
-    readonly finishDialogError?: string;
-    readonly recoveryError?: string;
-  };
-  readonly setThreadState?: (
-    threadId: string,
-    state: "open" | "resolved",
-  ) => Promise<void>;
-  readonly replyToThread?: (
-    threadId: string,
-    body: string,
-  ) => Promise<string | void>;
-  readonly editComment?: (commentId: string, body: string) => Promise<void>;
-  readonly deleteComment?: (commentId: string) => Promise<void>;
-  readonly dismissReview?: (
-    publishedReviewId: string,
-    message: string,
-  ) => Promise<void>;
-  readonly labels?: LabelPickerActions;
-  readonly assignees?: AssigneesSectionActions;
-  readonly reviewers?: ReviewerPickerActions;
-  readonly reportNavigationState: (
-    state: "clear" | "dirty_draft" | "write_pending",
-  ) => void;
-};
-
-export type ReviewWorkbenchSlots = {
-  /** Called with what the Insights slot needs to draw and drive the Scope card's filter. */
-  readonly insights: (context: {
-    readonly activeScopeBucket: ChangeScopeBucket | undefined;
-    readonly onSelectScopeBucket: (bucket: ChangeScopeBucket) => void;
-  }) => React.ReactNode;
-  readonly conversation: React.ReactNode;
-  readonly mergeAction: React.ReactNode;
-};
-
-export type ReviewWorkbenchInitialState = {
-  readonly activeTab?: WorkbenchActiveTab;
-  readonly section?: WorkbenchSection;
-  readonly selectedPath?: string;
-  readonly selectedCommitSha?: string;
-  readonly overviewOpen?: boolean;
-  readonly draftExpanded?: boolean;
-  readonly insightDetail?: "analysis" | "walkthrough";
-};
+/** The workbench prop contracts, re-exported for this component's callers. */
+export type {
+  ReviewWorkbenchActions,
+  ReviewWorkbenchSlots,
+  ReviewWorkbenchInitialState,
+} from "./review-workbench-contracts";
 
 const PublishedFeedbackNavigationContext = createContext<
   (() => void) | undefined
