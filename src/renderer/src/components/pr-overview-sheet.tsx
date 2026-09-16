@@ -34,6 +34,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Sheet,
   SheetContent,
@@ -84,6 +85,7 @@ export type CanonicalReviewOverview = {
   readonly summary: string;
   readonly checks: CheckSummary;
   readonly mergeReadiness: WorkbenchResponse["mergeReadiness"];
+  readonly isDraft: boolean;
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
   readonly pullRequest?: PullRequestRef;
   readonly revision?: {
@@ -122,6 +124,7 @@ export function CanonicalReviewOverviewSheet({
   merge,
   focusSection,
   onReviewFindings,
+  onSetDraftState,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -130,6 +133,8 @@ export function CanonicalReviewOverviewSheet({
   readonly focusSection?: OverviewFocusSection;
   /** Called with the findings card's ids once the sheet has closed. */
   readonly onReviewFindings?: (findingIds: ReadonlyArray<string>) => void;
+  /** The author's draft toggle; absent when the viewer may not write it. */
+  readonly onSetDraftState?: (draft: boolean) => Promise<void>;
 }): React.JSX.Element {
   const terminal = overview.terminalState !== undefined;
   const checks = presentOverallCheckResult(
@@ -254,6 +259,14 @@ export function CanonicalReviewOverviewSheet({
                 ? {}
                 : { onReviewFindings: requestReviewFindings })}
             />
+            {onSetDraftState === undefined ? null : (
+              <div className="mt-3 border-t pt-3">
+                <DraftStateCommand
+                  isDraft={overview.isDraft}
+                  onSetDraftState={onSetDraftState}
+                />
+              </div>
+            )}
             {merge === undefined ||
             terminal ||
             overview.mergeReadiness._tag === "Blocked" ? null : (
@@ -398,6 +411,36 @@ function StatusRow({
       </span>
       <span className={cn("shrink-0 text-xs font-medium", tone)}>{text}</span>
     </div>
+  );
+}
+
+/**
+ * The author's draft toggle. It sits in the Merge readiness body rather than
+ * beside the merge command because a draft pull request is always
+ * `Blocked`, which suppresses that command entirely.
+ */
+function DraftStateCommand({
+  isDraft,
+  onSetDraftState,
+}: {
+  readonly isDraft: boolean;
+  readonly onSetDraftState: (draft: boolean) => Promise<void>;
+}): React.JSX.Element {
+  const [writing, setWriting] = useState(false);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="w-full"
+      disabled={writing}
+      onClick={() => {
+        setWriting(true);
+        void onSetDraftState(!isDraft).finally(() => setWriting(false));
+      }}
+    >
+      {writing ? <Spinner data-icon="inline-start" /> : null}
+      {isDraft ? "Ready for review" : "Convert to draft"}
+    </Button>
   );
 }
 

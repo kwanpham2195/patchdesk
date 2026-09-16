@@ -82,6 +82,8 @@ export type ReviewWorkbenchActions = {
   readonly labels?: LabelPickerActions;
   readonly assignees?: AssigneesSectionActions;
   readonly reviewers?: ReviewerPickerActions;
+  /** The author's own draft toggle; `draft: false` publishes for review. Absent unless the viewer authored this pull request. */
+  readonly setDraftState?: (draft: boolean) => Promise<void>;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;
