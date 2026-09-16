@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed every Analysis finding's **View evidence** card standing at half the window's height whatever it held, so a six-line hunk showed its lines and then some 300 pixels of empty card, and a list of short findings read as mostly whitespace. A card now ends just below its last line, still stops at three quarters of the window and scrolls when the hunk is longer than that, and still drags to a height of your own. #224
 - Fixed the Brief prompt telling the model to reply with a JSON object when the result has to arrive through a tool, which could end a Brief run on an API key provider with an invalid-result failure. The Brief, Walkthrough, and Analysis prompts also drop instructions the output schema already enforces, and the Analysis inspectors now describe what they really accept and return, so a finding is no longer raised against a tool description that did not match the code. #222
 
 ## 0.0.9 - 2026-09-15
