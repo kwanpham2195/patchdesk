@@ -34,7 +34,8 @@ export type RecentReviewWrite =
       readonly _tag: "ReviewerChange";
       readonly requested: ReadonlyArray<string>;
       readonly removed: ReadonlyArray<string>;
-    };
+    }
+  | { readonly _tag: "DraftStateChange"; readonly draft: boolean };
 
 /**
  * Combine the durable own-write journal with a caller-supplied array (a
@@ -79,5 +80,9 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       // Mirrors AssigneeChange: two reviewer writes are the same write only
       // if they touched the exact same logins.
       return `ReviewerChange:${[...entry.requested].sort().join(",")}:${[...entry.removed].sort().join(",")}`;
+    case "DraftStateChange":
+      // The whole write is the state it left behind, so two toggles to the
+      // same state are the same write.
+      return `DraftStateChange:${entry.draft}`;
   }
 }

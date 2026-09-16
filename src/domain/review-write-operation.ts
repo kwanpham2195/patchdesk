@@ -110,7 +110,8 @@ export type ReviewWriteIntent =
   | {
       readonly _tag: "RemoveReviewers";
       readonly logins: ReadonlyArray<string>;
-    };
+    }
+  | { readonly _tag: "SetDraftState"; readonly draft: boolean };
 
 /** One durable, per-Review direct-conversation write and its recovery state. */
 export type ReviewWriteOperation = {
@@ -215,6 +216,7 @@ const intentSchema = v.variant("_tag", [
     _tag: v.literal("RemoveReviewers"),
     logins: v.pipe(v.array(v.string()), v.minLength(1)),
   }),
+  v.strictObject({ _tag: v.literal("SetDraftState"), draft: v.boolean() }),
 ]);
 const recentWriteSchema = v.variant("_tag", [
   v.strictObject({
@@ -242,6 +244,7 @@ const recentWriteSchema = v.variant("_tag", [
     requested: v.array(v.string()),
     removed: v.array(v.string()),
   }),
+  v.strictObject({ _tag: v.literal("DraftStateChange"), draft: v.boolean() }),
 ]);
 const operationSchema = v.strictObject({
   schemaVersion: v.literal(1),
@@ -384,6 +387,8 @@ function parseIntent(
       if (logins.some((login) => login._tag === "err")) return invalid();
       return ok(intent);
     }
+    case "SetDraftState":
+      return ok(intent);
   }
 }
 
