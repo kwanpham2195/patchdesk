@@ -165,6 +165,20 @@ export function parseReviewerReceipt(
   return parsed.success ? parsed.output : undefined;
 }
 
+const draftStateReceiptSchema = v.strictObject({
+  _tag: v.literal("DraftStateChanged"),
+  draft: v.boolean(),
+});
+
+export type DraftStateReceipt = v.InferOutput<typeof draftStateReceiptSchema>;
+
+export function parseDraftStateReceipt(
+  value: RawJsonValue | undefined,
+): DraftStateReceipt | undefined {
+  const parsed = v.safeParse(draftStateReceiptSchema, value);
+  return parsed.success ? parsed.output : undefined;
+}
+
 export type PublishedFeedbackReceipt =
   | {
       readonly _tag: "PublishedCommentEdited";

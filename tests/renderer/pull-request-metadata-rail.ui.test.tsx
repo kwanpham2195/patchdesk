@@ -119,3 +119,70 @@ describe("PullRequestMetadataRail reviewers on a terminal Review", () => {
     expect(within(reviewers).queryByRole("list")).toBeNull();
   });
 });
+
+describe("PullRequestMetadataRail re-request review", () => {
+  function renderReviewers(
+    requestReviewers: (
+      reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
+    ) => Promise<void>,
+    permission: "permitted" | "denied" = "permitted",
+  ) {
+    return render(
+      <PullRequestMetadataRail
+        labels={[]}
+        assignees={[]}
+        requestedReviewers={[]}
+        freshness="fresh"
+        refreshedAt="2026-01-01T00:00:00.000Z"
+        terminal={false}
+        reviewerActions={{
+          fetchReviewers: async () => ({
+            state: "ready",
+            reviewers: [
+              { login: "octocat", verdict: "approved", outdated: true },
+              { login: "hubot", outdated: false },
+            ],
+            candidates: [{ id: "U_1", login: "octocat" }],
+            candidatesTotalCount: 1,
+            permission,
+          }),
+          requestReviewers,
+          removeReviewers: async () => undefined,
+        }}
+      />,
+    );
+  }
+
+  it("re-requests the reviewer who already answered, by node id", async () => {
+    const user = userEvent.setup();
+    const requestReviewers = vi.fn(async () => undefined);
+    renderReviewers(requestReviewers);
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Re-request review from octocat",
+      }),
+    );
+    expect(requestReviewers).toHaveBeenCalledExactlyOnceWith([
+      { id: "U_1", login: "octocat" },
+    ]);
+  });
+
+  it("offers no re-request to a reviewer who has not answered", async () => {
+    renderReviewers(async () => undefined);
+    await screen.findByRole("button", {
+      name: "Re-request review from octocat",
+    });
+    expect(
+      screen.queryByRole("button", { name: "Re-request review from hubot" }),
+    ).toBeNull();
+  });
+
+  it("offers no re-request without write permission", async () => {
+    renderReviewers(async () => undefined, "denied");
+    const reviewers = screen.getByRole("region", { name: "Reviewers" });
+    await within(reviewers).findByText("octocat");
+    expect(
+      screen.queryByRole("button", { name: "Re-request review from octocat" }),
+    ).toBeNull();
+  });
+});

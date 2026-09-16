@@ -18,6 +18,7 @@ import type { ReviewWorkbenchActions } from "./review-workbench";
 import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
 import { cn } from "@/lib/utils";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
 
@@ -67,6 +68,11 @@ export function ReviewWorkbenchHeader({
           className="flex flex-wrap items-center gap-2"
           aria-label="Pull request status and actions"
         >
+          {model.pullRequest?.isDraft === true ? (
+            <Badge variant="outline" className="h-6 px-2 text-[10px]">
+              Draft
+            </Badge>
+          ) : null}
           {model.scope === undefined ? null : (
             // The Checks and Merge chips beside it are outline `xs` buttons;
             // the Scope chip carries no action, so it borrows their geometry
