@@ -101,6 +101,16 @@ export const pullRequestReviewersQuery =
 // (`GitHubAdapter.removeRequestedReviewers`) rather than this mutation.
 export const requestReviewsMutation =
   "mutation($pullRequestId: ID!, $userIds: [ID!]!) { requestReviews(input: { pullRequestId: $pullRequestId, userIds: $userIds, union: true }) { clientMutationId } }";
+// GitHub splits the draft toggle over two fields taking one identical input,
+// so the requested state picks the mutation rather than a variable — the same
+// shape `reviewThreadStateMutation` uses. Neither field is idempotent:
+// `markPullRequestReadyForReview` fails on a pull request that is already not
+// a draft, which is why `DraftStateService` refuses a no-op on fresh evidence
+// instead of letting the mutation answer for it.
+export const markPullRequestReadyForReviewMutation =
+  "mutation($pullRequestId: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) { clientMutationId } }";
+export const convertPullRequestToDraftMutation =
+  "mutation($pullRequestId: ID!) { convertPullRequestToDraft(input: { pullRequestId: $pullRequestId }) { clientMutationId } }";
 export const mergePolicyQuery =
   "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefOid baseRefName mergeable mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 export const maxMergePolicyPages = 3;

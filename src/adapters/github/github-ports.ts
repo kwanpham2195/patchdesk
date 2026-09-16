@@ -307,6 +307,12 @@ export interface GitHubReviewWriter {
     readonly pr: PullRequestRef;
     readonly logins: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>>;
+  /** Toggles a pull request between draft and ready for review by GraphQL node ID; `draft: false` marks it ready. */
+  setPullRequestDraftState?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly draft: boolean;
+  }): Promise<Result<void, GitHubWriteFailure>>;
   updateThreadComment?(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly commentId: string;
