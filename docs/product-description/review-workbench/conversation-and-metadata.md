@@ -26,7 +26,7 @@ stateDiagram-v2
 
 Conversation opens inside the represented Review without changing the Review revision. A non-empty pull request description counts as conversation content even when the timeline has no entries. Markdown is rendered through Patchdesk's safe shared renderer. Authors use cached avatars when available and initials otherwise.
 
-The metadata rail shows current labels, assignees, and requested reviewers. Each management control loads its current candidates on demand. Suggested reviewers are grouped before other candidates. GitHub eligibility, current membership, and limits determine which entries can be changed. On a merged or closed Review, or while GitHub writes are locked, Reviewers lists the requested reviewers from the last refresh as read-only rows, without verdicts or a picker.
+The metadata rail shows current labels, assignees, and requested reviewers. Each management control loads its current candidates on demand. Suggested reviewers are grouped before other candidates. Each reviewer who has already approved, requested changes, commented, or been dismissed shows a re-request control beside their verdict; reviewers still waiting to answer show none. GitHub eligibility, current membership, and limits determine which entries can be changed. On a merged or closed Review, or while GitHub writes are locked, Reviewers lists the requested reviewers from the last refresh as read-only rows, without verdicts or a picker.
 
 ### Leave unchanged
 
@@ -36,7 +36,7 @@ Reading, expanding content, opening and closing a picker, or changing tabs recor
 
 Reply and edit require non-blank text. Deleting a published comment uses a separate confirmation. Resolving toggles an eligible thread between open and resolved. Dismissing a review requires a reason and explicit confirmation.
 
-Metadata actions are exact: add or remove named labels, add or remove named assignees, assign the configured viewer, request reviewers, or remove reviewers. Patchdesk accepts only a receipt that confirms the requested action and resulting membership.
+Metadata actions are exact: add or remove named labels, add or remove named assignees, assign the configured viewer, request reviewers, or remove reviewers. A reviewer who has already answered carries a re-request control on their own row, which asks that one person for another review without disturbing anyone else's request. Patchdesk accepts only a receipt that confirms the requested action and resulting membership.
 
 ### While the action runs
 
@@ -54,7 +54,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 | --- | --- | --- |
 | Workspace profile and GitHub account | Candidate lists and self-assignment use the active profile's host and configured viewer identity. | Changing profile leaves the Review only after the normal navigation guard permits it. A receipt for another viewer cannot confirm Assign self. |
 | Pull request and Review state | Open represented Reviews can expose writes. Merged or closed Reviews remain readable but hide write controls. | A remote terminal transition discovered before the write prevents it; one discovered afterward is reconciled as new represented state. |
-| GitHub permissions and merge readiness | Each control depends on GitHub eligibility and permission. Merge readiness does not itself block metadata writes. | A permission failure is shown for the action and does not imply that another metadata category is writable. |
+| GitHub permissions and merge readiness | Each control depends on GitHub eligibility and permission. Re-request appears only when the reviewer read reports write permission on this pull request. Merge readiness does not itself block metadata writes. | A permission failure is shown for the action and does not imply that another metadata category is writable. |
 | Network, local tool, and Insight provider availability | Conversation reading uses saved and refreshed GitHub data. Insight providers are unrelated. | Network or `gh` failure can block candidate loading, mutation, or reconciliation. A confirmed write remains confirmed when later observation fails. |
 | Input path: mouse, keyboard, or desktop menu | Tabs, buttons, pickers, text fields, and dialogs support mouse and keyboard. | Submit and cancel controls keep the same action guard for either input path. The desktop menu does not directly write conversation data. |
 
@@ -99,6 +99,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 - Comment-only cards explain why thread controls are unavailable. They can still expose comment-level actions when confirmed.
 - A failed cached avatar falls back to initials and can retry when the cached data URI changes.
 - A stale or terminal Review hides direct conversation writers without hiding its represented content.
+- Re-request is hidden for a reviewer the candidate read did not return, because the request GitHub accepts names a person by identifier rather than by login.
 
 ## Open questions and verification
 
