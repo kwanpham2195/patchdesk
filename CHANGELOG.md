@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the Brief prompt telling the model to reply with a JSON object when the result has to arrive through a tool, which could end a Brief run on an API key provider with an invalid-result failure. The Brief, Walkthrough, and Analysis prompts also drop instructions the output schema already enforces, and the Analysis inspectors now describe what they really accept and return, so a finding is no longer raised against a tool description that did not match the code. #222
+
 ## 0.0.9 - 2026-09-15
 
 - Added each API key model's list price to the Insight run dialog. The **Model** list shows input and output price per million tokens beside every model that has one, such as `$0.04 / $0.14` for Nova Micro and `$5.00 / $25.00` for Claude Opus 4.6, and the confirmation line names the selected model's price with a note that your account's billing may differ. Codex CLI account models and routers without a fixed price, such as OpenRouter Auto Router, show none. #193
