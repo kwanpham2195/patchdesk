@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { DiffWorkbench } from "../components/diff-workbench";
 import { CompactMergeCommand } from "../components/compact-merge-command";
 import { PullRequestDescriptionPreview } from "../components/pull-request-description";
@@ -22,6 +24,7 @@ import {
 import { WalkthroughFixture } from "./fixtures/walkthrough-fixture";
 import {
   activeFollowFixtureData,
+  canonicalWorkbenchModel,
   fixturePatch,
   longConversationFixtureEntries,
   longWorkbenchFixtureData,
@@ -236,6 +239,11 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
         }}
       />
     ),
+    "#workbench-draft-fixture": (onNavigationStateChange) => (
+      <DraftStateFixtureWorkbench
+        onNavigationStateChange={onNavigationStateChange}
+      />
+    ),
     "#blocked-merge-fixture": (onNavigationStateChange) =>
       renderMergeReadinessFixture(
         "#blocked-merge-fixture",
@@ -289,6 +297,30 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
     ),
   } satisfies Record<string, FixtureRenderer>),
 );
+
+// The toggle's label follows `pullRequest.isDraft`, which a real write
+// changes by re-reading the pull request, so the fixture holds that one field
+// in state and both labels are reachable from this single route.
+function DraftStateFixtureWorkbench({
+  onNavigationStateChange,
+}: {
+  readonly onNavigationStateChange: (state: NavigationState) => void;
+}): React.JSX.Element {
+  const [isDraft, setIsDraft] = useState(true);
+  const pullRequest = canonicalWorkbenchModel(workbenchFixtureData).pullRequest;
+  return (
+    <CanonicalFixtureWorkbench
+      data={workbenchFixtureData}
+      onNavigationStateChange={onNavigationStateChange}
+      {...(pullRequest === undefined
+        ? {}
+        : { modelOverrides: { pullRequest: { ...pullRequest, isDraft } } })}
+      setDraftState={async (draft) => {
+        setIsDraft(draft);
+      }}
+    />
+  );
+}
 
 // `#blocked-merge-fixture`, `#acknowledgement-merge-fixture`, and
 // `#overview-detail-fixture` share one merge-readiness model shaped three

@@ -25,6 +25,7 @@ export function CanonicalFixtureWorkbench({
   mergeAction,
   assigneeActions,
   reviewerActions,
+  setDraftState,
 }: {
   readonly data: typeof workbenchFixtureData;
   readonly onNavigationStateChange: (state: NavigationState) => void;
@@ -36,12 +37,14 @@ export function CanonicalFixtureWorkbench({
       | "conversation"
       | "review"
       | "pendingReview"
+      | "pullRequest"
       | "revision"
     >
   >;
   readonly mergeAction?: PullRequestOverviewMerge;
   readonly assigneeActions?: AssigneesSectionActions;
   readonly reviewerActions?: ReviewerPickerActions;
+  readonly setDraftState?: (draft: boolean) => Promise<void>;
 }): React.JSX.Element {
   const model = canonicalWorkbenchModel(data);
   const merged =
@@ -61,7 +64,7 @@ export function CanonicalFixtureWorkbench({
     },
     assignees: assigneeActions ?? fixtureAssigneeActions,
     reviewers: reviewerActions ?? fixtureReviewerActions,
-    ...definedProps({ merge: mergeAction }),
+    ...definedProps({ merge: mergeAction, setDraftState }),
   };
   return (
     <ReviewWorkbench
