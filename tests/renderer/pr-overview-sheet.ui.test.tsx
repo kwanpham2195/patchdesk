@@ -371,6 +371,35 @@ describe("pr overview sheet merge readiness", () => {
   });
 });
 
+describe("pr overview sheet draft toggle", () => {
+  it("keeps the toggle usable and shows a local error after rejection", async () => {
+    const user = userEvent.setup();
+    render(
+      <CanonicalReviewOverviewSheet
+        open
+        onOpenChange={() => undefined}
+        overview={baseOverview()}
+        onSetDraftState={async () => {
+          throw new Error("rejected");
+        }}
+      />,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Convert to draft" }),
+    );
+    expect((await screen.findByRole("alert")).getAttribute("data-slot")).toBe(
+      "inline-error",
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Convert to draft" })
+          .getAttribute("disabled"),
+      ).toBeNull(),
+    );
+  });
+});
+
 describe("pr overview sheet review status", () => {
   it("lists Brief beside Analysis and Walkthrough with its own state", () => {
     renderOverview(

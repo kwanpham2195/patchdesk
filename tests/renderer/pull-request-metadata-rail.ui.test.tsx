@@ -177,6 +177,28 @@ describe("PullRequestMetadataRail re-request review", () => {
     ).toBeNull();
   });
 
+  it("keeps the control usable and shows a local error after rejection", async () => {
+    const user = userEvent.setup();
+    renderReviewers(async () => {
+      throw new Error("rejected");
+    });
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Re-request review from octocat",
+      }),
+    );
+    expect((await screen.findByRole("alert")).getAttribute("data-slot")).toBe(
+      "inline-error",
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Re-request review from octocat" })
+          .getAttribute("disabled"),
+      ).toBeNull(),
+    );
+  });
+
   it("offers no re-request without write permission", async () => {
     renderReviewers(async () => undefined, "denied");
     const reviewers = screen.getByRole("region", { name: "Reviewers" });
