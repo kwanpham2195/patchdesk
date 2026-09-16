@@ -26,7 +26,8 @@ type ActionCase = {
     | "AddAssignees"
     | "RemoveAssignees"
     | "RequestReviewers"
-    | "RemoveReviewers";
+    | "RemoveReviewers"
+    | "SetDraftState";
   readonly invoke: (
     actions: ReviewMetadataActions,
   ) => Promise<void | ReadonlyArray<string>>;
@@ -98,6 +99,15 @@ const cases: ReadonlyArray<ActionCase> = [
     receipt: { _tag: "ReviewersRemoved", removed: ["hubot"] },
     wrongReceipt: { _tag: "ReviewersRemoved", removed: ["other"] },
     evidence: { _tag: "ReviewerChange", requested: [], removed: ["hubot"] },
+  },
+  {
+    name: "SetDraftState",
+    path: "/v1/reviews/draft-state/command",
+    operation: "SetDraftState",
+    invoke: (a) => a.setDraftState(false),
+    receipt: { _tag: "DraftStateChanged", draft: false },
+    wrongReceipt: { _tag: "DraftStateChanged", draft: true },
+    evidence: { _tag: "DraftStateChange", draft: false },
   },
 ];
 

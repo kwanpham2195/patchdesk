@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { History, PenLine } from "lucide-react";
+import { History, PenLine, RotateCcw } from "lucide-react";
 
 import type {
   GitHubLabel,
@@ -73,7 +73,13 @@ type ReviewerSectionReadState =
   | { readonly _tag: "loading" }
   | { readonly _tag: "github_read" }
   | { readonly _tag: "github_auth" }
-  | { readonly _tag: "ready"; readonly reviewers: ReadonlyArray<ReviewerRow> }
+  | {
+      readonly _tag: "ready";
+      readonly reviewers: ReadonlyArray<ReviewerRow>;
+      /** Node ids for the re-request write, keyed by login; `ReviewerRow` carries no id of its own, and the candidate roster this same read returns is the only place one is available. */
+      readonly reviewerIdByLogin: ReadonlyMap<string, string>;
+      readonly permitted: boolean;
+    }
   | { readonly _tag: "stored"; readonly reviewers: ReadonlyArray<ReviewerRow> }
   | { readonly _tag: "github_rate_limited"; readonly resumeAt?: string }
   | {
@@ -86,7 +92,17 @@ function projectReviewerSectionReadState(
 ): ReviewerSectionReadState {
   if (response === undefined) return { _tag: "github_read" };
   if (response.state === "ready")
-    return { _tag: "ready", reviewers: response.reviewers ?? [] };
+    return {
+      _tag: "ready",
+      reviewers: response.reviewers ?? [],
+      reviewerIdByLogin: new Map(
+        (response.candidates ?? []).map((candidate) => [
+          candidate.login,
+          candidate.id,
+        ]),
+      ),
+      permitted: response.permission === "permitted",
+    };
   if (response.state === "github_rate_limited") {
     const resumeAtField =
       response.resumeAt === undefined ? {} : { resumeAt: response.resumeAt };
@@ -148,9 +164,13 @@ function reviewVerdictLabel(verdict: ReviewVerdictState): string {
  */
 function ReviewerListRow({
   reviewer,
+  onReRequest,
 }: {
   readonly reviewer: ReviewerRow;
+  /** Absent unless this person has already answered and Patchdesk holds both the write permission and their node id. */
+  readonly onReRequest?: () => Promise<void>;
 }): React.JSX.Element {
+  const [reRequesting, setReRequesting] = useState(false);
   return (
     <li className="flex items-center gap-2">
       <Avatar
@@ -176,6 +196,24 @@ function ReviewerListRow({
               Outdated
             </Badge>
           ) : null}
+          {onReRequest === undefined ? null : (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Re-request review from ${reviewer.login}`}
+              disabled={reRequesting}
+              onClick={() => {
+                setReRequesting(true);
+                void onReRequest().finally(() => setReRequesting(false));
+              }}
+            >
+              {reRequesting ? (
+                <Spinner className="size-3" />
+              ) : (
+                <RotateCcw className="size-3" />
+              )}
+            </Button>
+          )}
         </span>
       )}
     </li>
@@ -213,8 +251,13 @@ function PendingReviewRow({
 /** The Reviewers section's body: the read state's failure/loading copy, or its list of reviewer rows plus the empty state. */
 function ReviewersSectionBody({
   readState,
+  onReRequest,
 }: {
   readonly readState: ReviewerSectionReadState;
+  readonly onReRequest?: (reviewer: {
+    readonly id: string;
+    readonly login: string;
+  }) => Promise<void>;
 }): React.JSX.Element {
   if (readState._tag === "loading")
     return (
@@ -258,9 +301,27 @@ function ReviewersSectionBody({
     );
   return (
     <ul className="flex flex-col gap-1.5" aria-label="Pull request reviewers">
-      {readState.reviewers.map((reviewer) => (
-        <ReviewerListRow key={reviewer.login} reviewer={reviewer} />
-      ))}
+      {readState.reviewers.map((reviewer) => {
+        // A re-request needs a node id, which only the candidate roster
+        // carries, and it only means anything once someone has answered.
+        const id =
+          readState._tag === "ready" && readState.permitted
+            ? readState.reviewerIdByLogin.get(reviewer.login)
+            : undefined;
+        return (
+          <ReviewerListRow
+            key={reviewer.login}
+            reviewer={reviewer}
+            {...(onReRequest === undefined ||
+            id === undefined ||
+            reviewer.verdict === undefined
+              ? {}
+              : {
+                  onReRequest: () => onReRequest({ id, login: reviewer.login }),
+                })}
+          />
+        );
+      })}
     </ul>
   );
 }
@@ -327,6 +388,18 @@ function ReviewersSection({
       : readState;
   const pendingCount =
     pendingReview?.state === "pending" ? pendingReview.count : undefined;
+  // Re-requesting is the same additive `requestReviews` write the picker
+  // makes (`union: true`), so it needs no intent of its own.
+  const requestReviewers = actions?.requestReviewers;
+  const onReRequest =
+    requestReviewers === undefined
+      ? undefined
+      : async (reviewer: {
+          readonly id: string;
+          readonly login: string;
+        }): Promise<void> => {
+          await requestReviewers([reviewer]);
+        };
 
   return (
     <RailSection
@@ -342,7 +415,10 @@ function ReviewersSection({
       })}
     >
       <div className="flex flex-col gap-1.5">
-        <ReviewersSectionBody readState={bodyReadState} />
+        <ReviewersSectionBody
+          readState={bodyReadState}
+          {...definedProps({ onReRequest })}
+        />
         {pendingCount === undefined ? null : (
           <PendingReviewRow count={pendingCount} />
         )}

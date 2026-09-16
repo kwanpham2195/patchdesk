@@ -18,6 +18,7 @@ import {
 } from "../renderer-contracts";
 import {
   parseAssigneeReceipt,
+  parseDraftStateReceipt,
   parseLabelReceipt,
   parseReviewerReceipt,
 } from "./review-workbench-receipts";
@@ -53,6 +54,8 @@ export type ReviewMetadataActions = {
   readonly removeReviewers: (
     reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
   ) => Promise<void>;
+  /** `draft: false` publishes a draft for review; `true` takes it back to draft. */
+  readonly setDraftState: (draft: boolean) => Promise<void>;
 };
 
 export type ReviewMetadataActionsInput = {
@@ -296,6 +299,19 @@ export function useReviewMetadataActions({
     },
     [runConfirmed],
   );
+  const setDraftState = useCallback(
+    async (draft: boolean) => {
+      await runConfirmed({
+        path: "/v1/reviews/draft-state/command",
+        command: { _tag: "SetDraftState", draft },
+        operation: "SetDraftState",
+        parse: parseDraftStateReceipt,
+        matches: (receipt) => receipt.draft === draft,
+        recentWrite: () => ({ _tag: "DraftStateChange", draft }),
+      });
+    },
+    [runConfirmed],
+  );
 
   return {
     fetchLabels,
@@ -308,6 +324,7 @@ export function useReviewMetadataActions({
     fetchReviewers,
     requestReviewers,
     removeReviewers,
+    setDraftState,
   };
 }
 
