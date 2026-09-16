@@ -49,7 +49,7 @@ export function FindingEvidenceHunk({
       </p>
       <div
         aria-label="Resizable code evidence"
-        className="h-[50vh] min-h-96 max-h-[75vh] resize-y overflow-auto"
+        className="max-h-[75vh] resize-y overflow-auto"
       >
         <ReviewDiffView
           patch={evidence.patch}
