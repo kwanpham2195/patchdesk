@@ -16,10 +16,12 @@ import type {
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { contextualMessage } from "../api-client";
 import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
 } from "../external-links";
+import { DRAFT_STATE_MESSAGES } from "../review-copy";
 import {
   CompactMergeCommand,
   type MergeCommandResult,
@@ -33,6 +35,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { InlineError } from "@/components/ui/inline-error";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -427,20 +430,31 @@ function DraftStateCommand({
   readonly onSetDraftState: (draft: boolean) => Promise<void>;
 }): React.JSX.Element {
   const [writing, setWriting] = useState(false);
+  const [writeError, setWriteError] = useState<string>();
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="w-full"
-      disabled={writing}
-      onClick={() => {
-        setWriting(true);
-        void onSetDraftState(!isDraft).finally(() => setWriting(false));
-      }}
-    >
-      {writing ? <Spinner data-icon="inline-start" /> : null}
-      {isDraft ? "Ready for review" : "Convert to draft"}
-    </Button>
+    <div className="flex flex-col gap-1.5">
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full"
+        disabled={writing}
+        onClick={() => {
+          setWriteError(undefined);
+          setWriting(true);
+          onSetDraftState(!isDraft)
+            .catch((cause: unknown) => {
+              setWriteError(contextualMessage(cause, DRAFT_STATE_MESSAGES));
+            })
+            .finally(() => setWriting(false));
+        }}
+      >
+        {writing ? <Spinner data-icon="inline-start" /> : null}
+        {isDraft ? "Ready for review" : "Convert to draft"}
+      </Button>
+      {writeError === undefined ? null : (
+        <InlineError className="text-xs">{writeError}</InlineError>
+      )}
+    </div>
   );
 }
 

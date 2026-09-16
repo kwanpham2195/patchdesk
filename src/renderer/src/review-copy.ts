@@ -238,6 +238,40 @@ export const THREAD_REPLY_MESSAGES: ContextualMessages = {
     "GitHub blocked this reply: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
 };
 
+const UNCONFIRMED_DRAFT_STATE =
+  "GitHub could not confirm the draft change. Check GitHub again before changing it again.";
+
+/** The author's draft toggle in the PR overview sheet. */
+export const DRAFT_STATE_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not change this pull request's draft state.",
+  outcome_unknown: UNCONFIRMED_DRAFT_STATE,
+  ambiguous_write: UNCONFIRMED_DRAFT_STATE,
+  timeout: UNCONFIRMED_DRAFT_STATE,
+  rejected: "GitHub rejected the draft change.",
+  github_rejected: "GitHub rejected the draft change.",
+  rate_limited:
+    "GitHub rate-limited this draft change. Wait a moment, then try again.",
+  forbidden:
+    "GitHub blocked this draft change: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_REVIEW_REQUEST =
+  "GitHub could not confirm the review request. Check GitHub again before requesting it again.";
+
+/** Re-requesting a review from the metadata rail's Reviewers section. */
+export const RE_REQUEST_REVIEW_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not request this review again.",
+  outcome_unknown: UNCONFIRMED_REVIEW_REQUEST,
+  ambiguous_write: UNCONFIRMED_REVIEW_REQUEST,
+  timeout: UNCONFIRMED_REVIEW_REQUEST,
+  rejected: "GitHub rejected the review request.",
+  github_rejected: "GitHub rejected the review request.",
+  rate_limited:
+    "GitHub rate-limited this review request. Wait a moment, then try again.",
+  forbidden:
+    "GitHub blocked this review request: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
 const UNCONFIRMED_FINDING_ACTION =
   "GitHub could not confirm the Finding action. Check GitHub again before repeating it.";
 

@@ -7,8 +7,9 @@ import type {
 } from "../../../domain/github-context";
 import { definedProps } from "../../../domain/defined-props";
 import type { ReviewVerdictState } from "../../../domain/review-verdicts";
-import { PatchdeskApiError } from "../api-client";
+import { PatchdeskApiError, contextualMessage } from "../api-client";
 import { forbiddenCopy, rateLimitedCopy } from "../github-read-failure-copy";
+import { RE_REQUEST_REVIEW_MESSAGES } from "../review-copy";
 import { freshnessCopy, type RevisionFreshness } from "../rail-freshness";
 import type {
   AssignableUserListResponse,
@@ -171,50 +172,65 @@ function ReviewerListRow({
   readonly onReRequest?: () => Promise<void>;
 }): React.JSX.Element {
   const [reRequesting, setReRequesting] = useState(false);
+  const [reRequestError, setReRequestError] = useState<string>();
   return (
-    <li className="flex items-center gap-2">
-      <Avatar
-        name={reviewer.name ?? reviewer.login}
-        dataUri={reviewer.avatarDataUri}
-        className="size-5 text-[10px]"
-      />
-      <span className="min-w-0 flex-1 truncate text-xs">{reviewer.login}</span>
-      {reviewer.verdict === undefined ? (
-        <span className="text-[10px] text-muted-foreground">Requested</span>
-      ) : (
-        <span className="flex shrink-0 items-center gap-1">
-          <Badge variant="outline" className="gap-1 text-[10px]">
-            <ReviewVerdictIcon verdict={reviewer.verdict} />
-            {reviewVerdictLabel(reviewer.verdict)}
-          </Badge>
-          {reviewer.outdated ? (
-            <Badge
-              variant="outline"
-              className="gap-1 text-[10px] text-muted-foreground"
-            >
-              <History className="size-3" />
-              Outdated
-            </Badge>
-          ) : null}
-          {onReRequest === undefined ? null : (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Re-request review from ${reviewer.login}`}
-              disabled={reRequesting}
-              onClick={() => {
-                setReRequesting(true);
-                void onReRequest().finally(() => setReRequesting(false));
-              }}
-            >
-              {reRequesting ? (
-                <Spinner className="size-3" />
-              ) : (
-                <RotateCcw className="size-3" />
-              )}
-            </Button>
-          )}
+    <li className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <Avatar
+          name={reviewer.name ?? reviewer.login}
+          dataUri={reviewer.avatarDataUri}
+          className="size-5 text-[10px]"
+        />
+        <span className="min-w-0 flex-1 truncate text-xs">
+          {reviewer.login}
         </span>
+        {reviewer.verdict === undefined ? (
+          <span className="text-[10px] text-muted-foreground">Requested</span>
+        ) : (
+          <span className="flex shrink-0 items-center gap-1">
+            <Badge variant="outline" className="gap-1 text-[10px]">
+              <ReviewVerdictIcon verdict={reviewer.verdict} />
+              {reviewVerdictLabel(reviewer.verdict)}
+            </Badge>
+            {reviewer.outdated ? (
+              <Badge
+                variant="outline"
+                className="gap-1 text-[10px] text-muted-foreground"
+              >
+                <History className="size-3" />
+                Outdated
+              </Badge>
+            ) : null}
+            {onReRequest === undefined ? null : (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Re-request review from ${reviewer.login}`}
+                disabled={reRequesting}
+                onClick={() => {
+                  setReRequestError(undefined);
+                  setReRequesting(true);
+                  onReRequest()
+                    .catch((cause: unknown) => {
+                      setReRequestError(
+                        contextualMessage(cause, RE_REQUEST_REVIEW_MESSAGES),
+                      );
+                    })
+                    .finally(() => setReRequesting(false));
+                }}
+              >
+                {reRequesting ? (
+                  <Spinner className="size-3" />
+                ) : (
+                  <RotateCcw className="size-3" />
+                )}
+              </Button>
+            )}
+          </span>
+        )}
+      </div>
+      {reRequestError === undefined ? null : (
+        <InlineError className="text-xs">{reRequestError}</InlineError>
       )}
     </li>
   );
