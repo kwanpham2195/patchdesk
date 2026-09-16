@@ -388,6 +388,14 @@ export function classifyMetadataIntent(
       ? { _tag: "ReviewerChange", requested: intent.logins, removed: [] }
       : { _tag: "ReviewerChange", requested: [], removed: intent.logins };
   }
+  if (intent._tag === "SetDraftState") {
+    // `isDraft` is a required field on every pull request read, so an
+    // unconfirmed toggle is real evidence the write did not land, unlike the
+    // optional assignee and reviewer fields above.
+    return pullRequest.isDraft === intent.draft
+      ? { _tag: "DraftStateChange", draft: intent.draft }
+      : undefined;
+  }
   return undefined;
 }
 

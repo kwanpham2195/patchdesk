@@ -753,6 +753,8 @@ function containsRecentWrites(
         write.removed.every((login) => !assigneeLogins.has(login))
       );
     }
+    if (write._tag === "DraftStateChange")
+      return snapshot.pullRequest.isDraft === write.draft;
     if (write._tag === "ReviewerChange") {
       if (snapshot.pullRequest.requestedReviewers === undefined) return false;
       const requestedLogins = new Set(snapshot.pullRequest.requestedReviewers);

@@ -104,6 +104,7 @@ type RemoteWriteRecoveryProjection = {
     | "RemoveAssignees"
     | "RequestReviewers"
     | "RemoveReviewers"
+    | "SetDraftState"
     | "EditPublishedComment"
     | "DeletePublishedComment"
     | "DismissPublishedReview";

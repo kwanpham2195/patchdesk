@@ -48,6 +48,7 @@ export const remoteWriteRecoverySchema = v.strictObject({
     "RemoveAssignees",
     "RequestReviewers",
     "RemoveReviewers",
+    "SetDraftState",
     "EditPublishedComment",
     "DeletePublishedComment",
     "DismissPublishedReview",

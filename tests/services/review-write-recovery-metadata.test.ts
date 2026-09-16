@@ -28,7 +28,8 @@ describe("metadata recovery evidence", () => {
           | "AddAssignees"
           | "RemoveAssignees"
           | "RequestReviewers"
-          | "RemoveReviewers";
+          | "RemoveReviewers"
+          | "SetDraftState";
       }
     >,
   ): ReviewWriteOperation => {
@@ -77,6 +78,16 @@ describe("metadata recovery evidence", () => {
       { labels: [], requestedReviewers: [] },
       { _tag: "ReviewerChange", requested: [], removed: ["hubot"] },
     ],
+    [
+      { _tag: "SetDraftState", draft: false },
+      { labels: [], isDraft: false },
+      { _tag: "DraftStateChange", draft: false },
+    ],
+    [
+      { _tag: "SetDraftState", draft: true },
+      { labels: [], isDraft: true },
+      { _tag: "DraftStateChange", draft: true },
+    ],
   ] as const)(
     "confirms exact membership for %s",
     (intent, summary, receipt) => {
@@ -107,6 +118,14 @@ describe("metadata recovery evidence", () => {
     [
       { _tag: "RemoveReviewers", logins: ["hubot"] },
       { labels: [], requestedReviewers: ["hubot"] },
+    ],
+    [
+      { _tag: "SetDraftState", draft: false },
+      { labels: [], isDraft: true },
+    ],
+    [
+      { _tag: "SetDraftState", draft: true },
+      { labels: [], isDraft: false },
     ],
   ] as const)(
     "keeps %s check-required when membership disagrees",
