@@ -13,4 +13,19 @@ describe("unionRecentWrites", () => {
       ),
     ).toEqual([{ _tag: "LabelChange", added: ["bug"], removed: [] }]);
   });
+
+  it("keys a DraftStateChange by the state it left behind", () => {
+    expect(
+      unionRecentWrites(
+        [{ _tag: "DraftStateChange", draft: false }],
+        [
+          { _tag: "DraftStateChange", draft: false },
+          { _tag: "DraftStateChange", draft: true },
+        ],
+      ),
+    ).toEqual([
+      { _tag: "DraftStateChange", draft: false },
+      { _tag: "DraftStateChange", draft: true },
+    ]);
+  });
 });

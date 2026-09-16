@@ -171,3 +171,24 @@ it("rejects a persisted dismissal that uses a GraphQL node id instead of the RES
     error: { _tag: "InvalidReviewWriteOperation" },
   });
 });
+
+it.each([true, false])(
+  "parses a SetDraftState intent for draft %s and round-trips its receipt",
+  (draft) => {
+    const parsed = parseReviewWriteOperation({
+      ...stored,
+      intent: { _tag: "SetDraftState", draft },
+      state: {
+        _tag: "Confirmed",
+        receipt: { _tag: "DraftStateChange", draft },
+      },
+    });
+    expect(parsed._tag).toBe("ok");
+    if (parsed._tag === "err") return;
+    expect(parsed.value.intent).toEqual({ _tag: "SetDraftState", draft });
+    expect(parsed.value.state).toEqual({
+      _tag: "Confirmed",
+      receipt: { _tag: "DraftStateChange", draft },
+    });
+  },
+);
