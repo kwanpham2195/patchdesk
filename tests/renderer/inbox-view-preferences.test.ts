@@ -12,7 +12,6 @@ const DEFAULTS = {
   state: "open",
   pageSize: 25,
   selectedLabels: [],
-  awaitingMyReview: false,
   inspectorOpen: true,
 };
 
@@ -120,6 +119,24 @@ describe("inbox view preferences", () => {
       "bug",
       "enhancement",
     ]);
+  });
+
+  it("round-trips the chosen preset, clears it, and falls back when a stored blob has none", () => {
+    saveInboxViewPreferences("profile-1", { preset: "my_pull_requests" });
+    expect(loadInboxViewPreferences("profile-1")).toMatchObject({
+      preset: "my_pull_requests",
+    });
+
+    saveInboxViewPreferences("profile-1", { preset: undefined });
+    expect(loadInboxViewPreferences("profile-1")).not.toHaveProperty("preset");
+
+    // A v6 blob written before the presets became a union carries no
+    // `preset` key at all; the field falls back rather than failing the read.
+    store({ state: "merged" });
+    expect(loadInboxViewPreferences("profile-1")).toEqual({
+      ...DEFAULTS,
+      state: "merged",
+    });
   });
 
   it("round-trips selected review state and check status", () => {

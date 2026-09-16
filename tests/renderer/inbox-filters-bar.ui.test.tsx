@@ -15,8 +15,7 @@ function renderFiltersBar(
     <InboxFiltersBar
       state="open"
       onStateChange={vi.fn()}
-      awaitingMyReview={false}
-      onAwaitingMyReviewChange={vi.fn()}
+      onPresetChange={vi.fn()}
       onReviewStateChange={vi.fn()}
       onCheckStatusChange={vi.fn()}
       onAuthorChange={vi.fn()}

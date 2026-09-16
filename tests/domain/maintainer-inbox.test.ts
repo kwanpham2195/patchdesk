@@ -269,7 +269,7 @@ describe("inbox search query budget", () => {
     // repository, the longer state, and all three enumerated qualifiers.
     const widest: InboxFilter = {
       state: "merged",
-      awaitingMyReview: true,
+      preset: "awaiting_my_review",
       reviewState: "changes_requested",
       checkStatus: "pending",
     };
@@ -303,5 +303,32 @@ describe("inbox search query budget", () => {
     expect(
       inboxSearchQueryExcess([repository, longestRepository], filter),
     ).toBe(inboxSearchQueryExcess([longestRepository], filter));
+  });
+});
+
+describe("inbox preset qualifiers", () => {
+  const repository = { host: "github.com", owner: "owner", repo: "repo" };
+
+  it("sends the qualifier the chosen preset names, and none when no preset is chosen", () => {
+    const query = (filter: InboxFilter): string =>
+      composeInboxSearchQuery([repository], filter);
+
+    expect(query({ state: "open", preset: "awaiting_my_review" })).toBe(
+      "repo:owner/repo is:pr is:open user-review-requested:@me",
+    );
+    expect(query({ state: "open", preset: "my_pull_requests" })).toBe(
+      "repo:owner/repo is:pr is:open author:@me",
+    );
+    expect(query({ state: "open" })).toBe("repo:owner/repo is:pr is:open");
+  });
+
+  it("composes the my_pull_requests preset with a typed author rather than replacing it", () => {
+    expect(
+      composeInboxSearchQuery([repository], {
+        state: "open",
+        preset: "my_pull_requests",
+        author: "octocat",
+      }),
+    ).toBe('repo:owner/repo is:pr is:open author:@me author:"octocat"');
   });
 });

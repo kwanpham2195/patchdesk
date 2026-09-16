@@ -567,52 +567,55 @@ describe("GET /v1/inbox request boundaries", () => {
     );
   });
 
-  it("forwards the Awaiting review from you preset to GitHub as a search qualifier", async () => {
+  it("forwards each preset to GitHub as its own search qualifier", async () => {
     const { api, searchMaintainerPullRequests } =
       await startWithWatchedProfile();
 
-    const response = await fetch(
-      new URL("v1/inbox?awaitingMyReview=1", api.url),
-      { headers: headers() },
-    );
-
-    expect(response.status).toBe(200);
     // The renderer sends a bounded, enumerated value; the route is the only
     // place it becomes GitHub search-qualifier text.
+    for (const [preset, qualifier] of [
+      ["awaiting_my_review", "user-review-requested:@me"],
+      ["my_pull_requests", "author:@me"],
+    ]) {
+      const response = await fetch(
+        new URL(`v1/inbox?preset=${preset}`, api.url),
+        { headers: headers() },
+      );
+
+      expect(response.status, preset).toBe(200);
+      expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+        expect.objectContaining({
+          searchQuery: `repo:centraldigital/patchdesk is:pr is:open ${qualifier}`,
+        }),
+      );
+    }
+  });
+
+  it("omits every preset qualifier when the param is absent", async () => {
+    const { api, searchMaintainerPullRequests } =
+      await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(200);
     expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
       expect.objectContaining({
-        searchQuery:
-          "repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me",
+        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
       }),
     );
   });
 
-  it("omits the Awaiting review from you qualifier when the param is absent or off", async () => {
+  it("rejects an unparseable preset value with no GitHub read", async () => {
     const { api, searchMaintainerPullRequests } =
       await startWithWatchedProfile();
 
-    for (const query of ["v1/inbox", "v1/inbox?awaitingMyReview=0"]) {
-      const response = await fetch(new URL(query, api.url), {
-        headers: headers(),
-      });
-      expect(response.status, query).toBe(200);
-    }
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        searchQuery: expect.stringContaining("user-review-requested"),
-      }),
-    );
-  });
-
-  it("rejects an unparseable awaitingMyReview value with no GitHub read", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
-
-    // A typo must be reported, not silently read as off — that would widen
-    // the listing without the maintainer noticing.
-    for (const value of ["yes", "2", ""]) {
+    // A typo must be reported, not silently read as no preset — that would
+    // widen the listing without the maintainer noticing.
+    for (const value of ["1", "awaiting", ""]) {
       const response = await fetch(
-        new URL(`v1/inbox?awaitingMyReview=${value}`, api.url),
+        new URL(`v1/inbox?preset=${value}`, api.url),
         { headers: headers() },
       );
       expect(response.status, value).toBe(400);

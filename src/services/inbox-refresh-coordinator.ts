@@ -40,12 +40,12 @@ export class InboxRefreshCoordinator {
     // `["a","b"]` — the same GitHub search, and the same page token — share a
     // key rather than issuing two reads.
     const labels = normalizeInboxLabels(page.filter.labels).join(",");
-    const awaitingMyReview = page.filter.awaitingMyReview === true ? "1" : "0";
+    const preset = page.filter.preset ?? "any";
     const reviewState = page.filter.reviewState ?? "any";
     const checkStatus = page.filter.checkStatus ?? "any";
     const author = filterTextSegment(page.filter.author);
     const baseBranch = filterTextSegment(page.filter.baseBranch);
-    const key = `${profile.id}:${repository.host}/${repository.owner}/${repository.repo}:${page.filter.state}:${labels}:${awaitingMyReview}:${reviewState}:${checkStatus}:${author}:${baseBranch}:${page.pageSize}:${page.pageToken ?? "first"}`;
+    const key = `${profile.id}:${repository.host}/${repository.owner}/${repository.repo}:${page.filter.state}:${labels}:${preset}:${reviewState}:${checkStatus}:${author}:${baseBranch}:${page.pageSize}:${page.pageToken ?? "first"}`;
     const existing = this.inFlight.get(key);
     if (existing !== undefined) return existing;
     const request = this.inbox.list(profile, repository, page).finally(() => {
