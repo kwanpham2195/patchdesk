@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added **Your pull requests** to the **Pull requests** filter bar, beside **Awaiting review from you**. It asks GitHub for the pull requests you opened, composes with the state, label, and **More filters** choices the way the other preset does, and carries across a repository change. Only one of the two applies at a time: choosing one turns the other off, and pressing the active one clears it. Both are also in the **Navigate** palette under Pull requests, where choosing one sets it rather than toggling it. If you had **Awaiting review from you** switched on before this release, it comes back off once; switch it on again and it stays. #229
 - Fixed every Analysis finding's **View evidence** card standing at half the window's height whatever it held, so a six-line hunk showed its lines and then some 300 pixels of empty card, and a list of short findings read as mostly whitespace. A card now ends just below its last line, still stops at three quarters of the window and scrolls when the hunk is longer than that, and still drags to a height of your own. #224
 - Fixed the Brief prompt telling the model to reply with a JSON object when the result has to arrive through a tool, which could end a Brief run on an API key provider with an invalid-result failure. The Brief, Walkthrough, and Analysis prompts also drop instructions the output schema already enforces, and the Analysis inspectors now describe what they really accept and return, so a finding is no longer raised against a tool description that did not match the code. #222
 

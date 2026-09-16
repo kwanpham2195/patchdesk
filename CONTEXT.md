@@ -23,7 +23,7 @@ _Avoid_: My reviews queue, saved reviews, session cache
 **Pull request filter**:
 The maintainer's chosen constraints on the Repository listing, expressed in GitHub's own search vocabulary — open or merged state, author, label, assignee, milestone, project, review state, check status, branch, and date. Patchdesk adds no filter GitHub cannot express, and applies none of them itself.
 
-Built so far: state, label, review state, and check status, plus the "Awaiting review from you" preset (`user-review-requested:@me`). The remaining six fields — author, assignee, milestone, project, branch, and date — are specified but not built; they remain scheduled in their own plan rather than being dropped from the vocabulary.
+Built so far: state, label, review state, check status, author, and base branch, plus two one-click presets: "Awaiting review from you" (`user-review-requested:@me`) and "Your pull requests" (`author:@me`). A filter carries at most one preset, so the two can never both apply. The remaining four fields — assignee, milestone, project, and date — are specified but not built; they remain scheduled in their own plan rather than being dropped from the vocabulary.
 _Avoid_: Inbox filter, queue, saved view, facet
 
 **Review indicator**:
