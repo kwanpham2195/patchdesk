@@ -68,6 +68,21 @@ describe("RecentWriteJournalStore", () => {
     });
   });
 
+  it("round-trips a DraftStateChange entry", async () => {
+    const { store } = await tempStore();
+    const appended = await store.append(
+      profileId,
+      reviewId,
+      { _tag: "DraftStateChange", draft: true },
+      writtenAt,
+    );
+    expect(appended._tag).toBe("ok");
+    await expect(store.load(profileId, reviewId)).resolves.toEqual({
+      _tag: "ok",
+      value: [{ _tag: "DraftStateChange", draft: true }],
+    });
+  });
+
   it("still loads an old journal file written before LabelChange existed", async () => {
     // Simulates a journal on disk from before this change: only the four
     // pre-existing variants, no LabelChange anywhere. Widening the schema by

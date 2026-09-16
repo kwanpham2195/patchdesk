@@ -77,6 +77,11 @@ const entrySchema = v.variant("_tag", [
     removed: v.array(v.string()),
     writtenAt: v.string(),
   }),
+  v.strictObject({
+    _tag: v.literal("DraftStateChange"),
+    draft: v.boolean(),
+    writtenAt: v.string(),
+  }),
 ]);
 const journalSchema = v.strictObject({
   schemaVersion: v.literal(1),
@@ -195,77 +200,86 @@ function parseRecentWriteEntries(
 ): Result<ReadonlyArray<DurableRecentReviewWrite>, StorageFailure> {
   const entries: Array<DurableRecentReviewWrite> = [];
   for (const entry of raw) {
-    const writtenAt = parseIsoTimestamp(entry.writtenAt);
-    if (writtenAt._tag === "err") return invalidRead();
-    if (entry._tag === "Comment") {
-      entries.push(
+    const decoded = parseRecentWriteEntry(entry);
+    if (decoded._tag === "err") return decoded;
+    entries.push(decoded.value);
+  }
+  return ok(entries);
+}
+
+/**
+ * The declared return type makes TypeScript reject a schema member without a
+ * branch, so an entry tag added later cannot be silently read as another one.
+ */
+function parseRecentWriteEntry(
+  entry: RawJournalEntry,
+): Result<DurableRecentReviewWrite, StorageFailure> {
+  const parsedWrittenAt = parseIsoTimestamp(entry.writtenAt);
+  if (parsedWrittenAt._tag === "err") return invalidRead();
+  const writtenAt = parsedWrittenAt.value;
+  switch (entry._tag) {
+    case "Comment":
+      return ok(
         entry.reviewId === undefined
-          ? {
-              _tag: "Comment",
-              commentId: entry.commentId,
-              writtenAt: writtenAt.value,
-            }
+          ? { _tag: "Comment", commentId: entry.commentId, writtenAt }
           : {
               _tag: "Comment",
               commentId: entry.commentId,
               reviewId: entry.reviewId,
-              writtenAt: writtenAt.value,
+              writtenAt,
             },
       );
-    } else if (entry._tag === "ThreadState") {
+    case "ThreadState": {
       const threadId = parseGitHubThreadId(entry.threadId);
-      if (threadId._tag === "err") return invalidRead();
-      entries.push({
-        _tag: "ThreadState",
-        threadId: threadId.value,
-        state: entry.state,
-        writtenAt: writtenAt.value,
-      });
-    } else if (entry._tag === "PendingThread") {
+      return threadId._tag === "err"
+        ? invalidRead()
+        : ok({
+            _tag: "ThreadState",
+            threadId: threadId.value,
+            state: entry.state,
+            writtenAt,
+          });
+    }
+    case "PendingThread": {
       const threadId = parseGitHubThreadId(entry.threadId);
-      if (threadId._tag === "err") return invalidRead();
-      entries.push({
-        _tag: "PendingThread",
-        threadId: threadId.value,
-        writtenAt: writtenAt.value,
-      });
-    } else if (entry._tag === "DirectSummaryReview") {
-      entries.push({
+      return threadId._tag === "err"
+        ? invalidRead()
+        : ok({
+            _tag: "PendingThread",
+            threadId: threadId.value,
+            writtenAt,
+          });
+    }
+    case "DirectSummaryReview":
+      return ok({
         _tag: "DirectSummaryReview",
         reviewId: entry.reviewId,
-        writtenAt: writtenAt.value,
+        writtenAt,
       });
-    } else if (entry._tag === "LabelChange") {
-      entries.push({
+    case "LabelChange":
+      return ok({
         _tag: "LabelChange",
         added: entry.added,
         removed: entry.removed,
-        writtenAt: writtenAt.value,
+        writtenAt,
       });
-    } else if (entry._tag === "AssigneeChange") {
-      // Pre-existing bug fixed here: this branch previously fell into the
-      // final `else` below and was stamped `_tag: "LabelChange"` on read,
-      // silently reclassifying every persisted assignee-change entry. Since
-      // consumers key off `entry._tag === "AssigneeChange"`, a reloaded
-      // assignee write would never be recognized as one, and would instead
-      // have been read back as (and stripped like) a label change with the
-      // wrong names.
-      entries.push({
+    case "AssigneeChange":
+      return ok({
         _tag: "AssigneeChange",
         added: entry.added,
         removed: entry.removed,
-        writtenAt: writtenAt.value,
+        writtenAt,
       });
-    } else {
-      entries.push({
+    case "ReviewerChange":
+      return ok({
         _tag: "ReviewerChange",
         requested: entry.requested,
         removed: entry.removed,
-        writtenAt: writtenAt.value,
+        writtenAt,
       });
-    }
+    case "DraftStateChange":
+      return ok({ _tag: "DraftStateChange", draft: entry.draft, writtenAt });
   }
-  return ok(entries);
 }
 
 function stripWrittenAt(entry: DurableRecentReviewWrite): RecentReviewWrite {
