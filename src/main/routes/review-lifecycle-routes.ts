@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import {
   array,
   boolean,
+  type InferOutput,
   integer,
   minLength,
   minValue,
@@ -22,6 +23,7 @@ import {
   parseWorkspaceProfileId,
 } from "../../domain/ids";
 import type { RecentReviewWrite } from "../../domain/recent-review-write";
+import { err, ok, type Result } from "../../domain/result";
 import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
@@ -77,45 +79,10 @@ export function registerReviewLifecycleRoutes(
       return context.json({ error: "invalid_input" }, 400);
     const recentWrites: Array<RecentReviewWrite> = [];
     for (const entry of parsed.output.recentWrites ?? []) {
-      if (entry._tag === "Comment") {
-        recentWrites.push(
-          entry.reviewId === undefined
-            ? { _tag: "Comment", commentId: entry.commentId }
-            : {
-                _tag: "Comment",
-                commentId: entry.commentId,
-                reviewId: entry.reviewId,
-              },
-        );
-      } else if (entry._tag === "PendingThread") {
-        const parsedThreadId = parseGitHubThreadId(entry.threadId);
-        if (parsedThreadId._tag === "err")
-          return context.json({ error: "invalid_input" }, 400);
-        recentWrites.push({
-          _tag: "PendingThread",
-          threadId: parsedThreadId.value,
-        });
-      } else if (entry._tag === "ThreadState") {
-        const parsedThreadId = parseGitHubThreadId(entry.threadId);
-        if (parsedThreadId._tag === "err")
-          return context.json({ error: "invalid_input" }, 400);
-        recentWrites.push({
-          _tag: "ThreadState",
-          threadId: parsedThreadId.value,
-          state: entry.state,
-        });
-      } else if (entry._tag === "DirectSummaryReview") {
-        recentWrites.push({
-          _tag: "DirectSummaryReview",
-          reviewId: entry.reviewId,
-        });
-      } else {
-        recentWrites.push({
-          _tag: "LabelChange",
-          added: entry.added,
-          removed: entry.removed,
-        });
-      }
+      const write = parseRecentReviewWrite(entry);
+      if (write._tag === "err")
+        return context.json({ error: "invalid_input" }, 400);
+      recentWrites.push(write.value);
     }
     const detectUpdatesInput = {
       profileId: profileId.value,
@@ -196,6 +163,20 @@ const recentReviewWriteSchema = variant("_tag", [
     added: array(string()),
     removed: array(string()),
   }),
+  strictObject({
+    _tag: picklist(["AssigneeChange"] as const),
+    added: array(string()),
+    removed: array(string()),
+  }),
+  strictObject({
+    _tag: picklist(["ReviewerChange"] as const),
+    requested: array(string()),
+    removed: array(string()),
+  }),
+  strictObject({
+    _tag: picklist(["DraftStateChange"] as const),
+    draft: boolean(),
+  }),
 ]);
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
@@ -207,3 +188,62 @@ const reviewCommitDiffSchema = strictObject({
   reviewId: pipe(string(), minLength(1)),
   commitSha: pipe(string(), minLength(7)),
 });
+
+/**
+ * The declared return type makes TypeScript reject a schema member without a
+ * branch, so a receipt tag added later cannot be silently read as another one.
+ */
+function parseRecentReviewWrite(
+  entry: InferOutput<typeof recentReviewWriteSchema>,
+): Result<RecentReviewWrite, "invalid_input"> {
+  switch (entry._tag) {
+    case "Comment":
+      return ok(
+        entry.reviewId === undefined
+          ? { _tag: "Comment", commentId: entry.commentId }
+          : {
+              _tag: "Comment",
+              commentId: entry.commentId,
+              reviewId: entry.reviewId,
+            },
+      );
+    case "ThreadState": {
+      const threadId = parseGitHubThreadId(entry.threadId);
+      return threadId._tag === "err"
+        ? err("invalid_input")
+        : ok({
+            _tag: "ThreadState",
+            threadId: threadId.value,
+            state: entry.state,
+          });
+    }
+    case "PendingThread": {
+      const threadId = parseGitHubThreadId(entry.threadId);
+      return threadId._tag === "err"
+        ? err("invalid_input")
+        : ok({ _tag: "PendingThread", threadId: threadId.value });
+    }
+    case "DirectSummaryReview":
+      return ok({ _tag: "DirectSummaryReview", reviewId: entry.reviewId });
+    case "LabelChange":
+      return ok({
+        _tag: "LabelChange",
+        added: entry.added,
+        removed: entry.removed,
+      });
+    case "AssigneeChange":
+      return ok({
+        _tag: "AssigneeChange",
+        added: entry.added,
+        removed: entry.removed,
+      });
+    case "ReviewerChange":
+      return ok({
+        _tag: "ReviewerChange",
+        requested: entry.requested,
+        removed: entry.removed,
+      });
+    case "DraftStateChange":
+      return ok({ _tag: "DraftStateChange", draft: entry.draft });
+  }
+}
