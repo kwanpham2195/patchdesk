@@ -58,6 +58,22 @@ export class ReviewPreconditionError extends Error {
   }
 }
 
+/**
+ * A 2xx response Patchdesk could not trust after a write. Status `200` and a
+ * site-naming `correlationId` let the Logs panel tell it from an API failure.
+ */
+export function untrustedWriteResponseError(
+  correlationId: string,
+): PatchdeskApiError {
+  return new PatchdeskApiError(
+    "outcome_unknown",
+    200,
+    false,
+    correlationId,
+    safeMessage("outcome_unknown"),
+  );
+}
+
 export async function requestJson(
   path: string,
   init: Omit<LocalApiDesktopRequest, "path"> = {},

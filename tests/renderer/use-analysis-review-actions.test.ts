@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
+import {
+  PatchdeskApiError,
+  ReviewPreconditionError,
+} from "../../src/renderer/src/api-client";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import { useAnalysisReviewActions } from "../../src/renderer/src/flows/use-analysis-review-actions";
 import type { RunDirectCommand } from "../../src/renderer/src/flows/use-review-observation";
@@ -320,6 +324,44 @@ describe("useAnalysisReviewActions", () => {
     },
   );
 
+  it.each([
+    [
+      "the Finding file is not in the diff",
+      withAnalysis("actionable"),
+      { file: "src/missing.ts" },
+    ],
+    [
+      "the pending review needs recovery",
+      {
+        ...withAnalysis("actionable"),
+        pendingReview: pending("recovery_required"),
+      },
+      {},
+    ],
+  ] as const)(
+    "refuses with stale Finding evidence when %s",
+    async (_name, workbench, findingOverrides) => {
+      const double = installDesktopDouble({});
+      restore = double.restore;
+      const { result, onWorkbenchReplace } = renderActions(workbench);
+      const finding = analysisResult.findings[0];
+      if (finding === undefined) throw new Error("missing Finding fixture");
+
+      await act(async () => {
+        const request = result.current.addFindingToPendingReview({
+          ...finding,
+          ...findingOverrides,
+        });
+        await expect(request).rejects.toBeInstanceOf(ReviewPreconditionError);
+        await expect(request).rejects.toMatchObject({
+          reason: "stale_finding_evidence",
+        });
+      });
+      expect(double.request).not.toHaveBeenCalled();
+      expect(onWorkbenchReplace).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps an optimistic locked Finding across a same-scope, same-run rerender", async () => {
     const double = installDesktopDouble({
       [COMMAND]: () => success({ pendingReview: pending("pending") }),
@@ -344,9 +386,13 @@ describe("useAnalysisReviewActions", () => {
     const finding = analysisResult.findings[0];
     if (finding === undefined) throw new Error("missing Finding fixture");
     await act(async () => {
-      await expect(
-        rendered.result.current.addFindingToPendingReview(finding),
-      ).rejects.toThrow(/stale Finding evidence/i);
+      const request =
+        rendered.result.current.addFindingToPendingReview(finding);
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "stale-finding-projection",
+      });
     });
 
     rendered.rerender({ workbench: { ...initial } });
@@ -422,9 +468,12 @@ describe("useAnalysisReviewActions", () => {
     const { result, onWorkbenchReplace } = renderActions(initial);
     await act(async () => {
       await result.current.addFindingToPendingReview(first);
-      await expect(
-        result.current.addFindingToPendingReview(second),
-      ).rejects.toThrow(/stale Finding evidence/i);
+      const request = result.current.addFindingToPendingReview(second);
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "stale-finding-projection",
+      });
     });
     const final = onWorkbenchReplace.mock.calls.at(
       -1,
@@ -489,9 +538,12 @@ describe("useAnalysisReviewActions", () => {
     if (finding === undefined) throw new Error("missing Finding fixture");
 
     await act(async () => {
-      await expect(
-        result.current.addFindingToPendingReview(finding),
-      ).rejects.toThrow(/could not confirm/i);
+      const request = result.current.addFindingToPendingReview(finding);
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-finding-projection",
+      });
     });
 
     expect(onWorkbenchReplace).toHaveBeenCalledWith({
@@ -610,9 +662,12 @@ describe("useAnalysisReviewActions", () => {
     if (finding === undefined) throw new Error("missing Finding fixture");
 
     await act(async () => {
-      await expect(
-        result.current.addFindingToPendingReview(finding),
-      ).rejects.toThrow(/could not confirm/i);
+      const request = result.current.addFindingToPendingReview(finding);
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-finding-projection",
+      });
     });
 
     expect(onWorkbenchReplace).toHaveBeenLastCalledWith({

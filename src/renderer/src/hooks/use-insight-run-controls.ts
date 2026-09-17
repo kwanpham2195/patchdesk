@@ -3,7 +3,8 @@ import * as v from "valibot";
 
 import { definedProps } from "../../../domain/defined-props";
 import type { InsightProvider } from "../../../domain/insight-provider";
-import { requestJson } from "../api-client";
+import { requestJson, untrustedWriteResponseError } from "../api-client";
+import { appLog } from "../lib/logger";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { saveInsightRunPreference } from "../insight-run-preferences";
 import {
@@ -126,17 +127,28 @@ export function useInsightRunControls({
     reason: string,
   ): Promise<void> => {
     const runId = workbench.insights.analysis.retained?.runId;
-    if (runId === undefined) throw new Error("Analysis run is unavailable");
+    // The reader offers Dismiss only for a retained Analysis, so a missing run is a defect.
+    if (runId === undefined) {
+      appLog.error("finding-action", "Analysis run is unavailable", {
+        findingId: finding.id,
+      });
+      throw new Error("Analysis run is unavailable");
+    }
     const value = await requestJson(
       `/v1/reviews/insights/analysis/findings/${encodeURIComponent(finding.id)}/dismiss`,
       { method: "POST", body: { profileId, reviewId, runId, reason } },
     );
     const parsed = v.safeParse(dismissedFindingResponseSchema, value);
     if (!parsed.success || parsed.output.findingId !== finding.id)
-      throw new Error("Invalid dismissed Finding response");
+      throw untrustedWriteResponseError("invalid-dismissed-finding-response");
     const analysis = workbench.insights.analysis;
     const retained = analysis.retained;
-    if (retained === undefined) throw new Error("Analysis run is unavailable");
+    if (retained === undefined) {
+      appLog.error("finding-action", "Analysis run is unavailable", {
+        findingId: finding.id,
+      });
+      throw new Error("Analysis run is unavailable");
+    }
     onInsightPatch("analysis", {
       ...analysis,
       retained: {
