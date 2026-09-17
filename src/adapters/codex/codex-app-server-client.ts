@@ -359,7 +359,7 @@ export class CodexAppServerClient {
     input: CodexRunInput,
     options: {
       readonly signal?: AbortSignal;
-      readonly onActivity?: InsightActivitySink;
+      readonly onActivity?: InsightActivitySink | undefined;
     } = {},
   ): Promise<Result<unknown, CodexAppServerFailure>> {
     const maxPromptBytes = input.maxPromptBytes ?? MAX_PROMPT_BYTES;

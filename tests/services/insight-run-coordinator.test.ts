@@ -26,6 +26,7 @@ import type {
   BriefReachComputer,
   BriefReachRequest,
 } from "../../src/services/brief-reach-service";
+import { InsightProviderCatalog } from "../../src/services/insight-provider-catalog";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import {
   InsightRunCoordinator,
@@ -61,6 +62,7 @@ async function fixture(
   invoker: InsightInvoker,
   operations = new ReviewOperationCoordinator(),
   reach?: BriefReachComputer,
+  providerCatalog?: InsightProviderCatalog,
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-current-"));
   roots.push(root);
@@ -150,7 +152,7 @@ async function fixture(
     operations,
     () => now,
     undefined,
-    undefined,
+    providerCatalog,
     reach,
   );
   return {
@@ -551,6 +553,66 @@ describe("InsightRunCoordinator current lifecycle", () => {
         },
       },
     });
+  });
+
+  it("observes a Codex run's activity and keeps it after the run ends", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const codexCatalog = new InsightProviderCatalog(
+      { get: async () => ok({ models: [] }) },
+      () => ({
+        listModels: async () =>
+          ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
+      }),
+      async () => "/usr/local/bin/codex",
+    );
+    const value = await fixture(
+      {
+        async invoke(_input, options) {
+          options.onActivity?.({ _tag: "turn_started" });
+          options.onActivity?.({
+            _tag: "command_started",
+            id: "cmd-1",
+            command: "git diff",
+          });
+          await wait;
+          return ok(analysisResult);
+        },
+      },
+      undefined,
+      undefined,
+      codexCatalog,
+    );
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      provider: "codex-cli-account",
+      model: "model",
+      reasoning: "medium",
+    });
+    if (started._tag === "err") throw new Error("expected run");
+    const trace = {
+      phase: "turn",
+      commands: [{ id: "cmd-1", command: "git diff", status: "in_progress" }],
+    };
+    await expect(
+      value.coordinator.observe({
+        profileId,
+        reviewId: value.review.id,
+        type: "analysis",
+        runId: started.value.runId,
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { status: "queued", activity: trace },
+    });
+    release();
+    expect(
+      await settled(value.coordinator, value.review.id, started.value.runId),
+    ).toMatchObject({ status: "completed", activity: trace });
   });
 
   it("persists cancellation before aborting and does not retain a late success", async () => {

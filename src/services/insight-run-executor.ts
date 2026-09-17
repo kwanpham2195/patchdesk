@@ -18,6 +18,7 @@ import {
 } from "../domain/insight-record";
 import { rawJsonValueSchema } from "../domain/json";
 import { err, type Result } from "../domain/result";
+import type { InsightActivitySink } from "../adapters/codex/codex-activity";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
@@ -66,10 +67,12 @@ export class InsightRunExecutor {
     runId: InsightRunId,
     startedHash: ContentHash,
     controller: AbortController,
+    onActivity: InsightActivitySink | undefined,
   ): Promise<void> {
     try {
       const invocation = await this.invokers[type].invoke(input, {
         signal: controller.signal,
+        onActivity,
       });
       const latestReview = await this.reviews.load(
         input.profileId,

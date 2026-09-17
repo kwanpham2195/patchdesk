@@ -19,6 +19,22 @@ import {
 const capability = "cap";
 const origin = "http://patchdesk.test";
 const runId = "insight-brief-1-aaaaaaaaaaaa-review";
+const reviewId =
+  "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa";
+const activity = {
+  phase: "turn",
+  reasoningLine: "Checking how citations resolve",
+  commands: [
+    {
+      id: "cmd-1",
+      command: "git diff HEAD~1",
+      status: "completed",
+      exitCode: 0,
+      durationMs: 400,
+    },
+    { id: "cmd-2", command: "git log --oneline -20", status: "in_progress" },
+  ],
+};
 let server: LocalApiServer | undefined;
 let root: string | undefined;
 
@@ -43,7 +59,7 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
     capability,
     paths: PatchdeskPaths.forTest(root),
     github: new FakeGitHubAdapter({}),
-    // SAFETY: the Insight routes call only `start` and `cancel` here; casting
+    // SAFETY: the Insight routes call only `start`, `cancel`, and `observe` here; casting
     // to `never` stands in for the full coordinator interface the
     // configuration declares.
     insights: {
@@ -54,6 +70,9 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
       async cancel(input: { readonly type: string }) {
         calls.push(`cancel:${input.type}`);
         return ok({ runId, type: input.type, status: "cancelling" });
+      },
+      async observe(input: { readonly type: string }) {
+        return ok({ runId, type: input.type, status: "queued", activity });
       },
     } as never,
   });
@@ -95,6 +114,21 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
       reasoning: "medium",
     }),
   ).toBe(400);
+
+  const polled = await fetch(
+    new URL(
+      `v1/reviews/insights/runs/${runId}?profileId=cfw&reviewId=${reviewId}&type=brief`,
+      server.url,
+    ),
+    { headers: { Origin: origin, "X-Patchdesk-Capability": capability } },
+  );
+  expect(polled.status).toBe(200);
+  expect(await polled.json()).toEqual({
+    runId,
+    type: "brief",
+    status: "queued",
+    activity,
+  });
 });
 
 async function call(
