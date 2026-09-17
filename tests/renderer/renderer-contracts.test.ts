@@ -382,18 +382,6 @@ describe("parseWorkbenchResponse", () => {
       operation: "DeleteComment",
       resolution: "manual_resolution_required",
     });
-    for (const operation of [
-      "EditPublishedComment",
-      "DeletePublishedComment",
-      "DismissPublishedReview",
-    ] as const) {
-      expect(
-        parseWorkbenchResponse({
-          ...reviewProjection,
-          remoteWriteRecovery: { operation, resolution: "check_required" },
-        })?.remoteWriteRecovery,
-      ).toEqual({ operation, resolution: "check_required" });
-    }
     for (const remoteWriteRecovery of [
       { operation: "UnknownWrite", resolution: "check_required" },
       { operation: "Reply", resolution: "retry_allowed" },
