@@ -1,3 +1,4 @@
+import type { ReviewId } from "../domain/ids";
 import type { LogEntryInput } from "../domain/log-entry";
 import { loggableMetaValue } from "../domain/log-entry";
 import { casesHandled } from "../domain/result";
@@ -19,7 +20,34 @@ type DesktopNotificationText = {
   readonly body: string;
 };
 
+/** The screen the renderer last reported, with its Review id already parsed. */
+export type NotificationDestination =
+  | { readonly kind: "dashboard" }
+  | { readonly kind: "workbench"; readonly reviewId: ReviewId };
+
+type DesktopNotificationDecision =
+  | { readonly _tag: "show" }
+  | { readonly _tag: "skip"; readonly reason: "focused_on_review" };
+
+/**
+ * The one silence rule (ADR 0044): an event about the Review the focused
+ * window is showing needs no notification. Anything else is shown.
+ */
+export function decideDesktopNotification(input: {
+  readonly focused: boolean;
+  readonly destination: NotificationDestination;
+  readonly event: DesktopNotificationEvent;
+}): DesktopNotificationDecision {
+  return input.focused &&
+    input.destination.kind === "workbench" &&
+    input.destination.reviewId === input.event.reviewId
+    ? { _tag: "skip", reason: "focused_on_review" }
+    : { _tag: "show" };
+}
+
 type DesktopNotifierDependencies = {
+  readonly windowFocused: () => boolean;
+  readonly destination: () => NotificationDestination;
   readonly createNotification: (
     options: DesktopNotificationText,
   ) => ShownNotification;
@@ -40,6 +68,18 @@ export function createDesktopNotifier(
   return {
     notify(event) {
       try {
+        const decision = decideDesktopNotification({
+          focused: dependencies.windowFocused(),
+          destination: dependencies.destination(),
+          event,
+        });
+        if (decision._tag === "skip") {
+          log(dependencies, "skipped", {
+            kind: event._tag,
+            reason: decision.reason,
+          });
+          return;
+        }
         const notification = dependencies.createNotification(
           desktopNotificationText(event),
         );
@@ -73,8 +113,11 @@ export function createDesktopNotifier(
 
 function log(
   dependencies: DesktopNotifierDependencies,
-  message: "shown" | "clicked",
-  meta: { readonly kind: string; readonly reviewId: string },
+  message: "shown" | "clicked" | "skipped",
+  meta: { readonly kind: string } & (
+    | { readonly reviewId: string }
+    | { readonly reason: string }
+  ),
 ): void {
   dependencies.logs.write({
     process: "main",

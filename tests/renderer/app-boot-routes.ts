@@ -2,7 +2,7 @@ import { success, type DesktopRoute } from "./fake-desktop-response";
 
 /**
  * The paths `App` requests on every boot that no test asserts on, plus the
- * navigation-state operation it reports after each destination change.
+ * navigation-state and destination operations it reports after each change.
  * Naming them keeps the double strict about the ones a test is about.
  */
 export const APP_BOOT_ROUTES = {
@@ -15,4 +15,5 @@ export const APP_BOOT_ROUTES = {
 
 export const APP_BOOT_OPERATIONS = {
   setNavigationState: () => success({}),
+  setNavigationDestination: () => success({}),
 } as const;

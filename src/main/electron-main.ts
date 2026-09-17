@@ -33,7 +33,10 @@ import {
 import { createAppCapability } from "./app-capability";
 import { sendMenuAction } from "./desktop-menu-channel";
 import { sendNotificationClick } from "./desktop-notification-channel";
-import { createDesktopNotifier } from "./desktop-notifier";
+import {
+  createDesktopNotifier,
+  type NotificationDestination,
+} from "./desktop-notifier";
 import type { DesktopMenuAction } from "./ipc-contract";
 import {
   healthCheckLocalApi,
@@ -82,6 +85,7 @@ let mainWindow: BrowserWindow | undefined;
 let openingWindow: Promise<BrowserWindow> | undefined;
 let stopping = false;
 let rendererNavigationState: DesktopNavigationState = "clear";
+let rendererDestination: NotificationDestination = { kind: "dashboard" };
 let allowWindowClose = false;
 let closePromptOpen = false;
 /**
@@ -145,6 +149,11 @@ const diagnostics = new ReviewDiagnosticService(
 );
 /** Clicking a notification raises the window before the renderer routes to its Review. */
 const desktopNotifier = createDesktopNotifier({
+  windowFocused: () =>
+    mainWindow !== undefined &&
+    !mainWindow.isDestroyed() &&
+    mainWindow.isFocused(),
+  destination: () => rendererDestination,
   createNotification: (options) => new Notification(options),
   onClick(click) {
     const window = mainWindow;
@@ -534,6 +543,9 @@ async function createWorkbenchWindow(
       setNavigationState(state) {
         rendererNavigationState = state;
       },
+      setNavigationDestination(destination) {
+        rendererDestination = destination;
+      },
       // The renderer only reaches this after the user clicked a link, so it
       // allows any HTTPS host. `installWebContentsSecurity` below keeps the
       // allowlist for navigation the page starts by itself.
@@ -604,6 +616,7 @@ async function createWorkbenchWindow(
     if (mainWindow === window) {
       mainWindow = undefined;
       rendererNavigationState = "clear";
+      rendererDestination = { kind: "dashboard" };
       allowWindowClose = false;
     }
   });
