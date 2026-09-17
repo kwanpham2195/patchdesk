@@ -3,7 +3,13 @@ import * as v from "valibot";
 
 import { mapFindingLocation, parseUnifiedPatch } from "../../../domain/patch";
 import { parseRepoRelativePath } from "../../../domain/ids";
-import { isOutcomeUnknownRetry, requestJson } from "../api-client";
+import {
+  ReviewPreconditionError,
+  isOutcomeUnknownRetry,
+  requestJson,
+  untrustedWriteResponseError,
+} from "../api-client";
+import { appLog } from "../lib/logger";
 import {
   parsePendingReviewProjection,
   type PendingReviewProjection,
@@ -178,10 +184,24 @@ export function useAnalysisReviewActions({
         finding.file === undefined ||
         finding.lineStart === undefined ||
         currentWorkbench.fullPatch === undefined
-      )
+      ) {
+        // The reader offers Add only for an actionable Finding, so reaching this is a defect.
+        appLog.error(
+          "finding-action",
+          "This Finding is not actionable on the current Review.",
+          {
+            findingId: finding.id,
+            hasRunId: runId !== undefined,
+            hasPatchHash: patchHash !== undefined,
+            hasFullPatch: currentWorkbench.fullPatch !== undefined,
+            status: status ?? null,
+            mappingStatus: finding.mappingStatus,
+          },
+        );
         throw new Error(
           "This Finding is not actionable on the current Review.",
         );
+      }
       const findingLocation: FindingLocation = {
         file: finding.file,
         lineStart: finding.lineStart,
@@ -202,10 +222,13 @@ export function useAnalysisReviewActions({
         path?._tag !== "ok" ||
         mapped.line === undefined ||
         mapped.side === undefined
-      )
-        throw new Error(
-          "Patchdesk could not verify this Finding's diff anchor.",
-        );
+      ) {
+        appLog.warn("finding-action", "Finding diff anchor is unverifiable", {
+          findingId: finding.id,
+          mappingStatus: mapped.mappingStatus,
+        });
+        throw new ReviewPreconditionError("stale_finding_evidence");
+      }
       const expected = {
         sessionId: currentWorkbench.session.id,
         headSha: currentWorkbench.revision.reviewedHeadSha,
@@ -246,7 +269,7 @@ export function useAnalysisReviewActions({
               }
             : undefined;
       if (command === undefined)
-        throw new Error("Check GitHub again before changing this Finding.");
+        throw new ReviewPreconditionError("stale_finding_evidence");
 
       const retainUnconfirmedFinding = (): void => {
         const latest = latestWorkbenchRef.current;
@@ -370,14 +393,10 @@ export function useAnalysisReviewActions({
       }
       if (retainedNewerProjection) {
         retainUnconfirmedFinding();
-        throw new Error(
-          "Patchdesk received stale Finding evidence. Check GitHub again before trying again.",
-        );
+        throw untrustedWriteResponseError("stale-finding-projection");
       }
       requirePendingReviewRecovery();
-      throw new Error(
-        "Patchdesk could not confirm this Finding write. Check GitHub again before trying again.",
-      );
+      throw untrustedWriteResponseError("invalid-finding-projection");
     },
     [onWorkbenchReplace, runDirectCommand],
   );
