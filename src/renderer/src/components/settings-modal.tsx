@@ -82,7 +82,11 @@ export function SettingsModal({
         showCloseButton={false}
         className={cn(
           "flex w-[min(96vw,1200px)] max-w-[min(96vw,1200px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,1200px)]",
-          section === "workspace" || section === "data" || section === "logs"
+          // Sections that can outgrow the viewport need a definite height so the scroll region scrolls instead of painting over the footer.
+          section === "general" ||
+            section === "workspace" ||
+            section === "data" ||
+            section === "logs"
             ? "h-[min(90vh,960px)] max-h-[90vh]"
             : "max-h-[90vh]",
         )}
