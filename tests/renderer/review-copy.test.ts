@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   PatchdeskApiError,
+  ReviewPreconditionError,
   contextualMessage,
   isOutcomeUnknownRetry,
   type ApiFailureKind,
+  type ReviewPreconditionReason,
 } from "../../src/renderer/src/api-client";
 import {
   DIRECT_SUMMARY_MESSAGES,
@@ -189,6 +191,44 @@ describe("review write failure copy", () => {
         "Patchdesk could not reconcile this pending review. Try again or refresh.",
       );
     }
+  });
+});
+
+describe("review precondition copy", () => {
+  const surface = { fallback: "The surface's own fallback." };
+
+  it("words every precondition reason", () => {
+    const expected = {
+      diff_unreadable:
+        "Patchdesk could not read the current diff for this review. Refresh, then try again.",
+      diff_anchor_unverifiable:
+        "Patchdesk could not verify this pending review against the current diff. Refresh, then try again.",
+      stale_finding_evidence:
+        "This Finding no longer matches the current diff or pending review. Check GitHub again or refresh before changing it.",
+    } satisfies Record<ReviewPreconditionReason, string>;
+    for (const reason of [
+      "diff_unreadable",
+      "diff_anchor_unverifiable",
+      "stale_finding_evidence",
+    ] as const)
+      expect(
+        contextualMessage(new ReviewPreconditionError(reason), surface),
+      ).toBe(expected[reason]);
+  });
+
+  it("lets a surface word a reason itself", () => {
+    expect(
+      contextualMessage(new ReviewPreconditionError("diff_unreadable"), {
+        ...surface,
+        precondition: { diff_unreadable: "Refresh to reply." },
+      }),
+    ).toBe("Refresh to reply.");
+  });
+
+  it("keeps the fallback for a plain error", () => {
+    expect(contextualMessage(new Error("boom"), surface)).toBe(
+      surface.fallback,
+    );
   });
 });
 
