@@ -194,7 +194,10 @@ const turnCompletedParamsSchema = v.looseObject({
 const agentMessageDeltaParamsSchema = v.looseObject({
   delta: v.optional(v.string()),
 });
+// `proposedExecpolicyAmendment` is not read: upstream proposes one on every `untrusted` prompt, and only `acceptWithExecpolicyAmendment` applies it.
 const commandApprovalParamsSchema = v.looseObject({
+  kind: v.optional(v.string()),
+  networkApprovalContext: v.optional(v.unknown()),
   cwd: v.optional(v.string()),
   command: v.optional(v.string()),
 });
@@ -396,7 +399,13 @@ export class CodexAppServerClient {
       return err({ reason: "runtime_unavailable", phase: "model_list" });
     const thread = await child.request(
       "thread/start",
-      { model: input.model, cwd: input.worktreePath, sandbox: "read-only" },
+      // `untrusted` sends every command without an exec-policy Allow rule to `handleRequest`.
+      {
+        model: input.model,
+        cwd: input.worktreePath,
+        sandbox: "read-only",
+        approvalPolicy: "untrusted",
+      },
       signal,
     );
     if (thread._tag === "err")
@@ -808,6 +817,7 @@ class RpcChild {
     commandParams: CommandApprovalParams | undefined,
   ): Promise<void> {
     if (method === PERMISSIONS_APPROVAL_METHOD) {
+      // An empty profile grants no filesystem root or network, which is the denial; the response has no `decision` field.
       this.send({ id, result: { permissions: {}, scope: "turn" } });
       return;
     }
@@ -819,6 +829,8 @@ class RpcChild {
       const worktreePath = commandParams?.cwd;
       const command = commandParams?.command;
       const allowed =
+        (commandParams?.kind ?? "command") === "command" &&
+        commandParams?.networkApprovalContext === undefined &&
         worktreePath !== undefined &&
         command !== undefined &&
         this.approvalWorktreePath !== undefined &&

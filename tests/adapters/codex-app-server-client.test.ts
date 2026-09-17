@@ -476,6 +476,118 @@ describe("CodexAppServerClient", () => {
   });
 });
 
+describe("CodexAppServerClient approval requests", () => {
+  async function runWithRequests(
+    requests: ReadonlyArray<{
+      readonly id: string;
+      readonly method: string;
+      readonly params: {
+        readonly kind?: string;
+        readonly networkApprovalContext?: {
+          readonly host: string;
+          readonly protocol: string;
+        };
+        readonly proposedExecpolicyAmendment?: ReadonlyArray<string>;
+      };
+    }>,
+  ): Promise<FakeCodexProcess> {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
+    roots.push(root);
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+    const child = new FakeCodexProcess(
+      root,
+      "cat src/a.ts",
+      true,
+      [JSON.stringify({ title: "Fixture" })],
+      undefined,
+      false,
+      requests.map((request) => ({
+        ...request,
+        params: { cwd: root, command: "cat src/a.ts", ...request.params },
+      })),
+    );
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () => asChildProcess(child),
+    });
+    await expect(
+      client.run({
+        worktreePath: representedWorktree(root),
+        expectedHeadSha: "a".repeat(40),
+        model: "fixture-codex",
+        reasoning: "low",
+        prompt: "Return JSON.",
+      }),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    return child;
+  }
+
+  it("starts the thread with the untrusted approval policy", async () => {
+    const child = await runWithRequests([]);
+    expect(
+      child.received.find((message) => message.method === "thread/start")
+        ?.params,
+    ).toMatchObject({ sandbox: "read-only", approvalPolicy: "untrusted" });
+  });
+
+  it("declines a stdin write and a network approval even for an allowlisted command", async () => {
+    const child = await runWithRequests([
+      {
+        id: "stdin",
+        method: "item/commandExecution/requestApproval",
+        params: { kind: "writeStdin" },
+      },
+      {
+        id: "network",
+        method: "item/commandExecution/requestApproval",
+        params: {
+          networkApprovalContext: { host: "example.com", protocol: "https" },
+        },
+      },
+    ]);
+    expect(child.received).toContainEqual({
+      id: "stdin",
+      result: { decision: "decline" },
+    });
+    expect(child.received).toContainEqual({
+      id: "network",
+      result: { decision: "decline" },
+    });
+  });
+
+  // Upstream proposes an amendment on every `untrusted` prompt; a plain `accept` never applies it.
+  it("answers an allowlisted command that carries a proposed amendment with a plain accept", async () => {
+    const child = await runWithRequests([
+      {
+        id: "amendment",
+        method: "item/commandExecution/requestApproval",
+        params: {
+          kind: "command",
+          proposedExecpolicyAmendment: ["cat", "src/a.ts"],
+        },
+      },
+    ]);
+    expect(child.received).toContainEqual({
+      id: "amendment",
+      result: { decision: "accept" },
+    });
+  });
+
+  it("answers a permissions request with an empty profile, which grants nothing", async () => {
+    const child = await runWithRequests([
+      {
+        id: "permissions",
+        method: "item/permissions/requestApproval",
+        params: {},
+      },
+    ]);
+    expect(child.received).toContainEqual({
+      id: "permissions",
+      result: { permissions: {}, scope: "turn" },
+    });
+  });
+});
+
 describe("buildCodexAnalysisPrompt", () => {
   const analysisPrompt = [
     "Review the complete represented pull request.",
