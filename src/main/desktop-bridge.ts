@@ -68,6 +68,8 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/reviewers/command",
   "GET /v1/reviews/reviewers",
   "POST /v1/reviews/draft-state/command",
+  "POST /v1/reviews/base-branch/command",
+  "GET /v1/reviews/base-branch",
   "POST /v1/reviews/pending-review/command",
   "POST /v1/reviews/pending-review/recover",
   "POST /v1/reviews/direct-summary/submit",

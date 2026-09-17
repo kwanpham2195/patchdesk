@@ -394,6 +394,11 @@ export function classifyMetadataIntent(
       ? { _tag: "DraftStateChange", draft: intent.draft }
       : undefined;
   }
+  if (intent._tag === "SetBaseBranch") {
+    return pullRequest.baseBranch === intent.branch
+      ? { _tag: "BaseBranchChange", branch: intent.branch }
+      : undefined;
+  }
   return undefined;
 }
 

@@ -44,7 +44,8 @@ describe("metadata recovery evidence", () => {
           | "RemoveAssignees"
           | "RequestReviewers"
           | "RemoveReviewers"
-          | "SetDraftState";
+          | "SetDraftState"
+          | "SetBaseBranch";
       }
     >,
   ): ReviewWriteOperation => {
@@ -103,6 +104,11 @@ describe("metadata recovery evidence", () => {
       { labels: [], isDraft: true },
       { _tag: "DraftStateChange", draft: true },
     ],
+    [
+      { _tag: "SetBaseBranch", branch: "release/1.2" },
+      { labels: [], baseBranch: "release/1.2" },
+      { _tag: "BaseBranchChange", branch: "release/1.2" },
+    ],
   ] as const)(
     "confirms exact membership for %s",
     (intent, summary, receipt) => {
@@ -141,6 +147,10 @@ describe("metadata recovery evidence", () => {
     [
       { _tag: "SetDraftState", draft: true },
       { labels: [], isDraft: false },
+    ],
+    [
+      { _tag: "SetBaseBranch", branch: "release/1.2" },
+      { labels: [], baseBranch: "main" },
     ],
   ] as const)(
     "keeps %s check-required when membership disagrees",
