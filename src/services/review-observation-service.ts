@@ -716,62 +716,65 @@ function containsRecentWrites(
   snapshot: ReviewRemoteSnapshot,
   writes: ReadonlyArray<RecentReviewWrite>,
 ): boolean {
-  return writes.every((write) => {
-    if (write._tag === "PendingThread") {
-      return snapshot.comments.threads.some(
-        (thread) => thread.id === write.threadId,
-      );
+  return writes.every((write): boolean => {
+    switch (write._tag) {
+      case "Comment":
+        return (
+          snapshot.comments.threads.some((thread) =>
+            thread.comments.some((comment) => comment.id === write.commentId),
+          ) ||
+          snapshot.publishedFeedback?.comments.some(
+            (comment) =>
+              comment.id === write.commentId ||
+              comment.nodeId === write.commentId,
+          ) === true
+        );
+      case "PendingThread":
+        return snapshot.comments.threads.some(
+          (thread) => thread.id === write.threadId,
+        );
+      case "ThreadState":
+        return snapshot.comments.threads.some(
+          (thread) =>
+            thread.id === write.threadId && thread.state === write.state,
+        );
+      case "DirectSummaryReview":
+        return (
+          snapshot.publishedFeedback?.reviews.some(
+            (review) =>
+              review.id === write.reviewId || review.nodeId === write.reviewId,
+          ) === true
+        );
+      case "LabelChange": {
+        const labelNames = new Set(
+          snapshot.pullRequest.labels.map((label) => label.name),
+        );
+        return (
+          write.added.every((name) => labelNames.has(name)) &&
+          write.removed.every((name) => !labelNames.has(name))
+        );
+      }
+      case "AssigneeChange": {
+        if (snapshot.pullRequest.assignees === undefined) return false;
+        const assigneeLogins = new Set(snapshot.pullRequest.assignees);
+        return (
+          write.added.every((login) => assigneeLogins.has(login)) &&
+          write.removed.every((login) => !assigneeLogins.has(login))
+        );
+      }
+      case "ReviewerChange": {
+        if (snapshot.pullRequest.requestedReviewers === undefined) return false;
+        const requestedLogins = new Set(
+          snapshot.pullRequest.requestedReviewers,
+        );
+        return (
+          write.requested.every((login) => requestedLogins.has(login)) &&
+          write.removed.every((login) => !requestedLogins.has(login))
+        );
+      }
+      case "DraftStateChange":
+        return snapshot.pullRequest.isDraft === write.draft;
     }
-    if (write._tag === "ThreadState") {
-      return snapshot.comments.threads.some(
-        (thread) =>
-          thread.id === write.threadId && thread.state === write.state,
-      );
-    }
-    if (write._tag === "DirectSummaryReview") {
-      return (
-        snapshot.publishedFeedback?.reviews.some(
-          (review) =>
-            review.id === write.reviewId || review.nodeId === write.reviewId,
-        ) === true
-      );
-    }
-    if (write._tag === "LabelChange") {
-      const labelNames = new Set(
-        snapshot.pullRequest.labels.map((label) => label.name),
-      );
-      return (
-        write.added.every((name) => labelNames.has(name)) &&
-        write.removed.every((name) => !labelNames.has(name))
-      );
-    }
-    if (write._tag === "AssigneeChange") {
-      if (snapshot.pullRequest.assignees === undefined) return false;
-      const assigneeLogins = new Set(snapshot.pullRequest.assignees);
-      return (
-        write.added.every((login) => assigneeLogins.has(login)) &&
-        write.removed.every((login) => !assigneeLogins.has(login))
-      );
-    }
-    if (write._tag === "DraftStateChange")
-      return snapshot.pullRequest.isDraft === write.draft;
-    if (write._tag === "ReviewerChange") {
-      if (snapshot.pullRequest.requestedReviewers === undefined) return false;
-      const requestedLogins = new Set(snapshot.pullRequest.requestedReviewers);
-      return (
-        write.requested.every((login) => requestedLogins.has(login)) &&
-        write.removed.every((login) => !requestedLogins.has(login))
-      );
-    }
-    return (
-      snapshot.comments.threads.some((thread) =>
-        thread.comments.some((comment) => comment.id === write.commentId),
-      ) ||
-      snapshot.publishedFeedback?.comments.some(
-        (comment) =>
-          comment.id === write.commentId || comment.nodeId === write.commentId,
-      ) === true
-    );
   });
 }
 
