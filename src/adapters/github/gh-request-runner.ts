@@ -44,6 +44,7 @@ export type GitHubReadOperation =
   | "search_maintainer_prs"
   | "list_repository_labels"
   | "list_assignable_users"
+  | "list_repository_branches"
   | "get_pull_request_reviewers"
   | "get_pr"
   | "get_merge_policy"

@@ -107,6 +107,12 @@ export const requestReviewsMutation =
 // `markPullRequestReadyForReview` fails on a pull request that is already not
 // a draft, which is why `DraftStateService` refuses a no-op on fresh evidence
 // instead of letting the mutation answer for it.
+// `refs(query:)` filters branch names by substring (checked live 2026-09-17);
+// `$search` avoids gh's reserved `query` key, as `assignableUsersQuery` does.
+export const repositoryBranchesQuery =
+  'query RepositoryBranches($owner: String!, $name: String!, $search: String) { rateLimit { remaining resetAt } repository(owner: $owner, name: $name) { refs(refPrefix: "refs/heads/", first: 100, query: $search, orderBy: { field: ALPHABETICAL, direction: ASC }) { totalCount nodes { name } } } }';
+export const updatePullRequestBaseBranchMutation =
+  "mutation($pullRequestId: ID!, $baseRefName: String!) { updatePullRequest(input: { pullRequestId: $pullRequestId, baseRefName: $baseRefName }) { clientMutationId } }";
 export const markPullRequestReadyForReviewMutation =
   "mutation($pullRequestId: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) { clientMutationId } }";
 export const convertPullRequestToDraftMutation =

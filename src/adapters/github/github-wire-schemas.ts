@@ -547,6 +547,26 @@ const mergePolicyContextSchema = v.looseObject({
 });
 export type MergePolicyContext = v.InferOutput<typeof mergePolicyContextSchema>;
 
+/** Response shape for `repositoryBranchesQuery`: branch names plus the total that reveals truncation past 100. */
+export const repositoryBranchesResponseSchema = v.looseObject({
+  data: v.looseObject({
+    rateLimit: v.optional(
+      v.looseObject({
+        remaining: v.pipe(v.number(), v.integer(), v.minValue(0)),
+        resetAt: v.string(),
+      }),
+    ),
+    repository: v.looseObject({
+      refs: v.looseObject({
+        totalCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+        nodes: v.array(
+          v.looseObject({ name: v.pipe(v.string(), v.minLength(1)) }),
+        ),
+      }),
+    }),
+  }),
+});
+
 export const repositoryLabelsResponseSchema = v.looseObject({
   data: v.looseObject({
     repository: v.looseObject({

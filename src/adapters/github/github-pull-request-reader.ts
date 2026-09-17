@@ -26,6 +26,7 @@ import {
   maintainerInboxQuery,
   maintainerInboxSearchQuery,
   maxPullRequestCommits,
+  repositoryBranchesQuery,
 } from "./github-graphql-queries";
 import { parseMaintainerPullRequestPage } from "./github-maintainer-inbox-projections";
 import {
@@ -35,6 +36,7 @@ import {
   mergeOutcomeSchema,
   pullRequestCommitSchema,
   pullRequestSchema,
+  repositoryBranchesResponseSchema,
 } from "./github-wire-schemas";
 import {
   parseGitHubTimestamp,
@@ -42,7 +44,7 @@ import {
   parsePullRequest,
 } from "./github-wire-projections";
 import { invalid } from "./github-write-failures";
-import type { MergeOutcome } from "./github-adapter";
+import type { MergeOutcome, RepositoryBranchListing } from "./github-adapter";
 
 function graphqlPullRequestState(state: InboxStateFilter): "OPEN" | "MERGED" {
   return state === "merged" ? "MERGED" : "OPEN";
@@ -209,6 +211,52 @@ export class GitHubPullRequestReader {
     return page === undefined
       ? invalid("search_maintainer_prs")
       : ok({ ...page, issueCount: connection.issueCount });
+  }
+
+  /** Reads up to 100 branch names of one repository; a non-empty `query` filters by name substring. */
+  async listRepositoryBranches(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly query?: string;
+  }): Promise<Result<RepositoryBranchListing, GitHubReadFailure>> {
+    const host = input.profile.githubHost;
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${repositoryBranchesQuery}`,
+        "-F",
+        `owner=${input.repo.owner}`,
+        "-F",
+        `name=${input.repo.repo}`,
+        // `-f` keeps a numeric-looking search a GraphQL String.
+        ...(input.query !== undefined && input.query.length > 0
+          ? ["-f", `search=${input.query}`]
+          : []),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure(
+        "list_repository_branches",
+        response.error,
+        host,
+      );
+    const parsed = v.safeParse(
+      repositoryBranchesResponseSchema,
+      response.value,
+    );
+    if (!parsed.success) return invalid("list_repository_branches");
+    this.recordRateLimit(host, parsed.output.data.rateLimit);
+    const refs = parsed.output.data.repository.refs;
+    return ok({
+      branches: refs.nodes.map((node) => node.name),
+      totalCount: refs.totalCount,
+    });
   }
 
   /**
