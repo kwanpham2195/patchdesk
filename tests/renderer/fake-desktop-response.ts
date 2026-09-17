@@ -3,6 +3,7 @@ import { onTestFinished, vi, type Mock } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
 import type {
   DesktopMenuAction,
+  DesktopNotificationClick,
   DesktopRequest,
   DesktopResponse,
   LocalApiDesktopRequest,
@@ -58,7 +59,10 @@ export type DesktopOperationRoute = (
  * `sendWindowFullScreen` fire.
  */
 export type DesktopDoubleExtras = Partial<
-  Omit<PatchdeskDesktopApi, "request" | "onMenuAction" | "onWindowFullScreen">
+  Omit<
+    PatchdeskDesktopApi,
+    "request" | "onMenuAction" | "onWindowFullScreen" | "onNotificationClick"
+  >
 > & {
   /** Routes for privileged operations, keyed by `operation`. */
   readonly operations?: Readonly<
@@ -81,6 +85,8 @@ export type DesktopDouble = {
    * native full screen. A no-op when nothing has subscribed.
    */
   readonly sendWindowFullScreen: (fullScreen: boolean) => void;
+  /** Fires the listener registered through `onNotificationClick`, as the main process does after a click. */
+  readonly sendNotificationClick: (click: DesktopNotificationClick) => void;
   /**
    * Whether a full-screen listener is currently registered, so a test can
    * assert that a hook released its subscription instead of only asserting
@@ -129,6 +135,9 @@ export function installDesktopDouble(
 ): DesktopDouble {
   let menuActionListener: ((action: DesktopMenuAction) => void) | undefined;
   let windowFullScreenListener: ((fullScreen: boolean) => void) | undefined;
+  let notificationClickListener:
+    | ((click: DesktopNotificationClick) => void)
+    | undefined;
   const unrouted: string[] = [];
   const refuse = (description: string, remedy: string): never => {
     unrouted.push(description);
@@ -163,6 +172,14 @@ export function installDesktopDouble(
         windowFullScreenListener = undefined;
       };
     },
+    onNotificationClick: (
+      listener: (click: DesktopNotificationClick) => void,
+    ) => {
+      notificationClickListener = listener;
+      return () => {
+        notificationClickListener = undefined;
+      };
+    },
     windowFullScreenAtLoad: extras.windowFullScreenAtLoad ?? false,
     appearanceAtLoad: extras.appearanceAtLoad ?? "system",
     setWindowAppearance: extras.setWindowAppearance ?? (() => undefined),
@@ -177,6 +194,7 @@ export function installDesktopDouble(
     sendMenuAction: (action) => menuActionListener?.(action),
     sendWindowFullScreen: (fullScreen) =>
       windowFullScreenListener?.(fullScreen),
+    sendNotificationClick: (click) => notificationClickListener?.(click),
     hasWindowFullScreenListener: () => windowFullScreenListener !== undefined,
     takeUnroutedCalls: () => unrouted.splice(0),
     restore: () => {

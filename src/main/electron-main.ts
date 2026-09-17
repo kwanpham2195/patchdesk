@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  Notification,
   screen,
   shell,
 } from "electron";
@@ -31,6 +32,8 @@ import {
 } from "./external-navigation";
 import { createAppCapability } from "./app-capability";
 import { sendMenuAction } from "./desktop-menu-channel";
+import { sendNotificationClick } from "./desktop-notification-channel";
+import { createDesktopNotifier } from "./desktop-notifier";
 import type { DesktopMenuAction } from "./ipc-contract";
 import {
   healthCheckLocalApi,
@@ -140,6 +143,17 @@ const diagnostics = new ReviewDiagnosticService(
     },
   },
 );
+/** Clicking a notification raises the window before the renderer routes to its Review. */
+const desktopNotifier = createDesktopNotifier({
+  createNotification: (options) => new Notification(options),
+  onClick(click) {
+    const window = mainWindow;
+    if (window === undefined || window.isDestroyed()) return;
+    focusWindow(window);
+    sendNotificationClick(window.webContents, click);
+  },
+  logs,
+});
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
     async start() {
@@ -170,6 +184,7 @@ const desktopLifecycle = createDesktopLifecycle({
         reviewOperations,
         diagnostics,
         logs,
+        desktopNotifier,
         modelCatalog: runtimeModelCatalog,
         trash: {
           async move(path) {
