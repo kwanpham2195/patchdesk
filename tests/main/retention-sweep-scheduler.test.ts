@@ -110,6 +110,7 @@ describe("retention sweep scheduler", () => {
   });
 
   it("unrefs the interval handle", async () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `startRetentionSweepScheduler` calls global `setInterval` with no timer port, and the returned handle is the only way to observe that it was unref'd.
     const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
     const sweepRetained = vi.fn(async (): Promise<SweepResult> =>
       ok(undefined),

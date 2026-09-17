@@ -358,6 +358,7 @@ describe("local API current Review capability boundary", () => {
   });
 
   it("accepts a LabelChange recent write and passes it through to the workbench controller unchanged", async () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiContainer` builds its own `ReviewWorkbenchController` and `LocalApiConfiguration` exposes no workbench seam, so this route test observes the forwarded write through a spy; follow-up: add reviewWorkbench to LocalApiConfiguration.
     const detectUpdates = vi
       .spyOn(ReviewWorkbenchController.prototype, "detectUpdates")
       .mockResolvedValue(ok(undefined));
@@ -384,9 +385,11 @@ describe("local API current Review capability boundary", () => {
   });
 
   it("delegates cache and full local-data cleanup to distinct operations", async () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiStores` builds its own `StorageManagementService` and `LocalApiConfiguration` exposes no storage-management seam, so this route test tells the two operations apart through spies; follow-up: add storageManagement to LocalApiConfiguration.
     const clearCache = vi
       .spyOn(StorageManagementService.prototype, "clearCache")
       .mockResolvedValue(ok(undefined));
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiStores` builds its own `StorageManagementService` and `LocalApiConfiguration` exposes no storage-management seam, so this route test tells the two operations apart through spies; follow-up: add storageManagement to LocalApiConfiguration.
     const clearLocalData = vi
       .spyOn(StorageManagementService.prototype, "clearLocalData")
       .mockResolvedValue(ok(undefined));
@@ -881,6 +884,7 @@ describe("GET /v1/environment GitHub authentication", () => {
         state,
       })),
     };
+    // oxlint-disable-next-line patchdesk/no-method-spying -- LocalApiConfiguration exposes no executor seam, so the GET /v1/environment path builds its own CommandRunner; follow-up: add commands to LocalApiConfiguration.
     vi.spyOn(NodeCommandExecutor.prototype, "execute").mockImplementation(
       async (input): Promise<CommandExecution> => {
         const json = input.argv.includes("--json");

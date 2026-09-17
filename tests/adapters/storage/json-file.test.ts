@@ -124,12 +124,14 @@ describe("writeAtomicFile", () => {
     await rm(probePath);
     const realSync = fileHandlePrototype.sync;
     const directoryAtEachSync: string[][] = [];
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `writeAtomicFile` calls `FileHandle.sync` from `node:fs/promises` with no injectable seam, and recording the directory at each sync is how this test proves fsync ordering around the rename.
     const syncSpy = vi
       .spyOn(fileHandlePrototype, "sync")
       .mockImplementation(async function (this: SyncableHandle): Promise<void> {
         directoryAtEachSync.push((await readdir(directory)).sort());
         await realSync.call(this);
       });
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `writeAtomicFile` opens its handles through `node:fs/promises` with no injectable seam, so this spy is how the test identifies the one handle that received the bytes.
     const writeFileSpy = vi.spyOn(fileHandlePrototype, "writeFile");
     const target = join(directory, "artifact.bin");
 
