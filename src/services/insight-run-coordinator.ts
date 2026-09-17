@@ -1,5 +1,6 @@
 import type { GitSha } from "../domain/ids";
 
+import type { InsightActivitySink } from "../adapters/codex/codex-activity";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import {
@@ -72,10 +73,15 @@ type InsightInvocationFailure = {
   /** The provider's bounded, redacted account of the failure, when it gave one. */
   readonly stderr?: string;
 };
+/** Per-invocation options; Pi has no incremental boundary and never calls `onActivity`. */
+export type InsightInvocationOptions = {
+  readonly signal: AbortSignal;
+  readonly onActivity?: InsightActivitySink;
+};
 export type InsightInvoker = {
   invoke(
     input: InsightInvocationInput,
-    options: { readonly signal: AbortSignal },
+    options: InsightInvocationOptions,
   ): Promise<Result<unknown, InsightInvocationFailure>>;
 };
 export type InsightRunResponse = {

@@ -19,6 +19,7 @@ import {
 } from "./child-invocation";
 import type {
   InsightInvocationInput,
+  InsightInvocationOptions,
   InsightInvoker,
 } from "./insight-run-coordinator";
 import { readObjectField } from "./read-object-field";
@@ -108,7 +109,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
    */
   async invoke(
     input: InsightInvocationInput,
-    options: { readonly signal: AbortSignal },
+    options: InsightInvocationOptions,
   ): Promise<Result<unknown, PiInsightChildFailure>> {
     if (input.provider !== "pi") return err({ reason: "execution_failed" });
     const reasoning = input.reasoning;

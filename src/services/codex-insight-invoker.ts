@@ -15,6 +15,7 @@ import {
 import type { RepresentedReviewWorktree } from "../domain/represented-review-worktree";
 import type {
   InsightInvocationInput,
+  InsightInvocationOptions,
   InsightInvoker,
 } from "./insight-run-coordinator";
 import { casesHandled, err } from "../domain/result";
@@ -48,7 +49,7 @@ export class CodexInsightInvoker implements InsightInvoker {
 
   async invoke(
     input: InsightInvocationInput,
-    options: { readonly signal: AbortSignal },
+    options: InsightInvocationOptions,
   ) {
     if (input.provider !== "codex-cli-account")
       return err({ reason: "execution_failed" as const });

@@ -14,6 +14,8 @@ import type { RepresentedReviewWorktree } from "../../domain/represented-review-
 import type { InsightFailureCategory } from "../../domain/insight-record";
 import { isNotFound } from "../storage/json-file";
 import { isPathContained } from "../storage/path-containment";
+import { createCodexActivityEmitter } from "./codex-activity";
+import type { InsightActivitySink } from "./codex-activity";
 
 const CLIENT_NAME = "patchdesk";
 const CLIENT_VERSION = "0.1.0";
@@ -352,10 +354,13 @@ export class CodexAppServerClient {
     }
   }
 
-  /** Runs one strict Analysis or Walkthrough response in a fresh Codex thread. */
+  /** Runs one strict Insight response in a fresh Codex thread; `onActivity` observes its commands and reasoning. */
   async run(
     input: CodexRunInput,
-    options: { readonly signal?: AbortSignal } = {},
+    options: {
+      readonly signal?: AbortSignal;
+      readonly onActivity?: InsightActivitySink;
+    } = {},
   ): Promise<Result<unknown, CodexAppServerFailure>> {
     const maxPromptBytes = input.maxPromptBytes ?? MAX_PROMPT_BYTES;
     if (Buffer.byteLength(input.prompt, "utf8") > maxPromptBytes)
@@ -382,7 +387,7 @@ export class CodexAppServerClient {
     try {
       return await Promise.race([
         timeout,
-        this.runTurn(child, input, options.signal),
+        this.runTurn(child, input, options.signal, options.onActivity),
       ]);
     } finally {
       clearTimeout(timer);
@@ -394,6 +399,7 @@ export class CodexAppServerClient {
     child: RpcChild,
     input: CodexRunInput,
     signal?: AbortSignal,
+    onActivity?: InsightActivitySink,
   ): Promise<Result<unknown, CodexAppServerFailure>> {
     const models = await paginateModelList(child, signal);
     if (models._tag === "err") return models;
@@ -425,6 +431,7 @@ export class CodexAppServerClient {
       input.reasoning,
       input.worktreePath,
       signal,
+      onActivity,
     );
   }
 }
@@ -620,8 +627,10 @@ class RpcChild {
     reasoning: InsightReasoning,
     worktreePath: string,
     signal?: AbortSignal,
+    onActivity?: InsightActivitySink,
   ): Promise<Result<unknown, CodexAppServerFailure>> {
     this.threadId = threadId;
+    const activity = createCodexActivityEmitter(onActivity, worktreePath);
     this.approvalWorktreePath = worktreePath;
     let text = "";
     let resolveTurn: (
@@ -635,6 +644,7 @@ class RpcChild {
     const onMessage = (message: CodexRpcMessage): void => {
       const { method, params } = message;
       if (method === undefined || !v.is(plainObjectSchema, params)) return;
+      activity.notification(message);
       if (method === "item/agentMessage/delta") {
         const deltaParsed = v.safeParse(agentMessageDeltaParamsSchema, params);
         const delta = deltaParsed.success
@@ -673,6 +683,7 @@ class RpcChild {
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     try {
+      activity.turnStarted();
       const started = await this.request(
         "turn/start",
         {
