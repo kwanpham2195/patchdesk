@@ -129,6 +129,17 @@ export class PatchdeskPaths {
       "recent-writes.json",
     );
   }
+
+  /** Fixed-name sibling an unreadable journal moves to, so at most one copy is kept per Review. */
+  recentWriteJournalQuarantineFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "recent-writes.quarantine.json",
+    );
+  }
   /** One active GitHub-write intent for a Review, retained until recovery proves its outcome. */
   reviewWriteOperationFile(
     profileId: WorkspaceProfileId,
