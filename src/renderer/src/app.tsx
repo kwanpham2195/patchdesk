@@ -42,6 +42,7 @@ import {
 import { useSettingsOverlay } from "./hooks/use-settings-overlay";
 import { useWorkspaceInbox } from "./hooks/use-workspace-inbox";
 import { useProfileSwitch } from "./hooks/use-profile-switch";
+import { WatchedPullRequestsProvider } from "./hooks/use-watched-pull-requests";
 import type { AppDestination } from "./routes";
 import {
   clearSettingsRestore,
@@ -285,29 +286,33 @@ function AppContent({
     next: AppDestination = destination,
   ): React.JSX.Element => (
     <TooltipProvider>
-      <AppShell
-        destination={next}
-        navigationBlocked={navigationState !== "clear"}
-        onNavigate={navigate}
-        onOpenSettings={openSettings}
-        profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
-        activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
-        profileSwitchState={profileSwitchState}
-        visitedReloadKey={visitedReloadKey}
-        onInboxStateChange={changeInboxState}
-        onInboxPresetChange={changeInboxPreset}
-        {...(parsedProfileHost._tag === "ok"
-          ? {
-              pullRequestDefaultHost: parsedProfileHost.value,
-              onOpenPullRequest: openPullRequestFromPalette,
-            }
-          : {})}
-        onProfileSwitch={(id) => {
-          void switchProfile(id, "header");
-        }}
+      <WatchedPullRequestsProvider
+        profileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
       >
-        {content}
-      </AppShell>
+        <AppShell
+          destination={next}
+          navigationBlocked={navigationState !== "clear"}
+          onNavigate={navigate}
+          onOpenSettings={openSettings}
+          profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
+          activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
+          profileSwitchState={profileSwitchState}
+          visitedReloadKey={visitedReloadKey}
+          onInboxStateChange={changeInboxState}
+          onInboxPresetChange={changeInboxPreset}
+          {...(parsedProfileHost._tag === "ok"
+            ? {
+                pullRequestDefaultHost: parsedProfileHost.value,
+                onOpenPullRequest: openPullRequestFromPalette,
+              }
+            : {})}
+          onProfileSwitch={(id) => {
+            void switchProfile(id, "header");
+          }}
+        >
+          {content}
+        </AppShell>
+      </WatchedPullRequestsProvider>
       <SettingsModal
         open={settingsOpen}
         onOpenChange={(open) => {

@@ -22,6 +22,8 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { parseWatchedPullRequests } from "../../src/domain/watched-pull-request";
+import { WatchedPullRequestStore } from "../../src/adapters/storage/watched-pull-request-store";
 import {
   startLocalApiServer,
   type LocalApiServer,
@@ -53,6 +55,21 @@ test("desktop bridge opens the canonical represented workbench without removed R
         pullRequest: summary() as never,
         comments: { threads: [] },
         checks: { overall: "passing", checks: [] },
+        watchedPullRequests: must(
+          parseWatchedPullRequests([
+            {
+              ref: summary().ref,
+              snapshot: {
+                updatedAt: "2026-08-01T00:00:00.000Z",
+                headSha: summary().headSha,
+                reviewState: "none",
+                checks: "passing",
+                state: "open",
+              },
+              watchedAt: "2026-08-01T00:00:00.000Z",
+            },
+          ]),
+        ),
       }),
     });
     if (started._tag !== "started") throw new Error("local API did not start");
@@ -78,6 +95,21 @@ test("desktop bridge opens the canonical represented workbench without removed R
     await expect(
       page.getByRole("tab", { name: "Conversation", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
+
+    // Watch is a local write through the loopback API; the stored list is the proof.
+    await page
+      .getByRole("region", { name: "Review workbench" })
+      .getByRole("button", { name: "Watch", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Unwatch", exact: true }),
+    ).toBeVisible();
+    const watched = await new WatchedPullRequestStore(paths).load(
+      must(parseWorkspaceProfileId("cfw")),
+    );
+    expect(
+      watched._tag === "ok" && watched.value.map((entry) => entry.ref.number),
+    ).toEqual([1]);
   } finally {
     if (api !== undefined) await api.stop();
     await closeServer(renderer);

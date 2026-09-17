@@ -313,6 +313,9 @@ export function AppShell({
             onNavigate={onNavigate}
             reloadKey={visitedReloadKey}
             workspaceLabel={activeProfileLabel}
+            {...(pullRequestDefaultHost === undefined
+              ? {}
+              : { host: pullRequestDefaultHost })}
           />
         )}
         <main
