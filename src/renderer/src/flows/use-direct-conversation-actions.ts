@@ -7,6 +7,8 @@ import {
   isOutcomeUnknownRetry,
   PatchdeskApiError,
   requestJson,
+  ReviewPreconditionError,
+  untrustedWriteResponseError,
 } from "../api-client";
 import type { LocalCommentAuthoringSaveInput } from "../components/review-diff-view";
 import {
@@ -95,7 +97,9 @@ export function useDirectConversationActions({
         const receipt = parseReceipt(value);
         if (receipt === undefined || !receiptMatches(receipt)) {
           requireRecovery(operation);
-          throw new Error("The direct-conversation response was malformed.");
+          throw untrustedWriteResponseError(
+            "invalid-direct-conversation-receipt",
+          );
         }
         return receipt;
       } finally {
@@ -217,7 +221,7 @@ export function useDirectConversationActions({
     async (threadId: string, body: string): Promise<string | void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
-        throw new Error("The current Diff cannot accept replies.");
+        throw new ReviewPreconditionError("diff_unreadable");
       const receipt = await runCommand(
         "Reply",
         () =>
@@ -260,7 +264,7 @@ export function useDirectConversationActions({
     async (commentId: string, body: string): Promise<void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
-        throw new Error("The current Diff cannot edit comments.");
+        throw new ReviewPreconditionError("diff_unreadable");
       const receipt = await runCommand(
         "EditPublishedComment",
         () =>
@@ -286,7 +290,7 @@ export function useDirectConversationActions({
     async (commentId: string): Promise<void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
-        throw new Error("The current Diff cannot delete comments.");
+        throw new ReviewPreconditionError("diff_unreadable");
       const receipt = await runCommand(
         "DeletePublishedComment",
         () =>
