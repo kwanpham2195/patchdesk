@@ -8,28 +8,10 @@ import {
   parseReviewWriteOperation,
   setReviewWriteResolution,
 } from "../../src/domain/review-write-operation";
-
-const stored = {
-  schemaVersion: 1,
-  profileId: "cfw",
-  reviewId: "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
-  sessionId:
-    "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
-  intent: {
-    _tag: "Reply",
-    expected: {
-      sessionId:
-        "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
-      headSha: "1".repeat(40),
-      patchHash: "a".repeat(64),
-    },
-    actor: "reviewer",
-    threadId: "PRRT_thread",
-    body: "reply",
-  },
-  state: { _tag: "Requested" },
-  startedAt: "2026-01-01T00:00:00.000Z",
-};
+import {
+  reviewWriteIntents,
+  storedReviewWriteOperation as stored,
+} from "./review-write-operation-fixture";
 
 describe("review write operation", () => {
   it("parses a valid persisted operation and applies legal recovery transitions", () => {
@@ -116,46 +98,14 @@ describe("review write operation", () => {
   });
 });
 
-it.each([
-  ["AddLabels", "names", ["bug"]],
-  ["RemoveLabels", "names", ["bug"]],
-  ["AddAssignees", "logins", ["OctoCat"]],
-  ["RemoveAssignees", "logins", ["OctoCat"]],
-  ["RequestReviewers", "logins", ["hubot"]],
-  ["RemoveReviewers", "logins", ["hubot"]],
-] as const)(
-  "parses PR-level %s intent without revision evidence",
-  (tag, field, values) => {
-    const parsed = parseReviewWriteOperation({
-      ...stored,
-      intent: { _tag: tag, [field]: values },
-    });
+it.each(Object.entries(reviewWriteIntents))(
+  "round-trips a persisted %s intent",
+  (_tag, intent) => {
+    const parsed = parseReviewWriteOperation({ ...stored, intent });
     expect(parsed._tag).toBe("ok");
-    if (parsed._tag === "ok")
-      expect(parsed.value.intent).toEqual({ _tag: tag, [field]: values });
+    if (parsed._tag === "ok") expect(parsed.value.intent).toEqual(intent);
   },
 );
-
-it.each([
-  ["EditPublishedComment", { commentId: "201", body: "edited" }],
-  ["DeletePublishedComment", { commentId: "201" }],
-  [
-    "DismissPublishedReview",
-    { publishedReviewId: "101", message: "stale approval" },
-  ],
-] as const)("parses revision-bound %s intent", (tag, evidence) => {
-  const parsed = parseReviewWriteOperation({
-    ...stored,
-    intent: { _tag: tag, expected: stored.intent.expected, ...evidence },
-  });
-  expect(parsed._tag).toBe("ok");
-  if (parsed._tag === "ok")
-    expect(parsed.value.intent).toEqual({
-      _tag: tag,
-      expected: stored.intent.expected,
-      ...evidence,
-    });
-});
 
 it("rejects a persisted dismissal that uses a GraphQL node id instead of the REST review id", () => {
   expect(
@@ -173,27 +123,6 @@ it("rejects a persisted dismissal that uses a GraphQL node id instead of the RES
     error: { _tag: "InvalidReviewWriteOperation" },
   });
 });
-
-it.each([true, false])(
-  "parses a SetDraftState intent for draft %s and round-trips its receipt",
-  (draft) => {
-    const parsed = parseReviewWriteOperation({
-      ...stored,
-      intent: { _tag: "SetDraftState", draft },
-      state: {
-        _tag: "Confirmed",
-        receipt: { _tag: "DraftStateChange", draft },
-      },
-    });
-    expect(parsed._tag).toBe("ok");
-    if (parsed._tag === "err") return;
-    expect(parsed.value.intent).toEqual({ _tag: "SetDraftState", draft });
-    expect(parsed.value.state).toEqual({
-      _tag: "Confirmed",
-      receipt: { _tag: "DraftStateChange", draft },
-    });
-  },
-);
 
 const receiptThreadId = parseGitHubThreadId("PRRT_thread");
 if (receiptThreadId._tag === "err") throw new Error("invalid fixture");
