@@ -124,6 +124,7 @@ function containsAllComments(
   return current.review.comments.every((comment) => ids.has(comment.threadId));
 }
 
+// The Analysis run id is part of the scope because a new run invalidates every Finding state the ref holds.
 function sameWorkbenchScope(
   left: WorkbenchResponse,
   right: WorkbenchResponse,
@@ -132,7 +133,9 @@ function sameWorkbenchScope(
     left.review.id === right.review.id &&
     left.session.id === right.session.id &&
     left.revision.reviewedHeadSha === right.revision.reviewedHeadSha &&
-    left.revision.patchHash === right.revision.patchHash
+    left.revision.patchHash === right.revision.patchHash &&
+    left.insights.analysis.retained?.runId ===
+      right.insights.analysis.retained?.runId
   );
 }
 

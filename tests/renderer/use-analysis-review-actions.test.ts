@@ -17,6 +17,7 @@ import {
   callPath,
   patchHash,
   pending,
+  projection,
   sha,
   withAnalysis,
 } from "./review-workbench-fixtures";
@@ -176,6 +177,16 @@ describe("useAnalysisReviewActions", () => {
       "patch hash",
       failure({ error: "outcome_unknown" }, 500),
     ],
+    [
+      "malformed success",
+      "analysis run",
+      success({ pendingReview: { state: "none" } }),
+    ],
+    [
+      "outcome-unknown failure",
+      "analysis run",
+      failure({ error: "outcome_unknown" }, 500),
+    ],
   ] as const)(
     "ignores obsolete %s after a %s change",
     async (_name, changedScope, response) => {
@@ -190,16 +201,29 @@ describe("useAnalysisReviewActions", () => {
       });
       restore = double.restore;
       const initial = withAnalysis("actionable");
+      const retained = initial.insights.analysis.retained;
+      if (retained === undefined) throw new Error("missing analysis fixture");
       const next: WorkbenchResponse =
         changedScope === "session"
           ? { ...initial, session: { ...initial.session, id: "session-b" } }
-          : {
-              ...initial,
-              revision: {
-                ...initial.revision,
-                patchHash: "c".repeat(64),
-              },
-            };
+          : changedScope === "patch hash"
+            ? {
+                ...initial,
+                revision: {
+                  ...initial.revision,
+                  patchHash: "c".repeat(64),
+                },
+              }
+            : {
+                ...initial,
+                insights: {
+                  ...initial.insights,
+                  analysis: {
+                    ...initial.insights.analysis,
+                    retained: { ...retained, runId: "insight-analysis-2" },
+                  },
+                },
+              };
       const onWorkbenchReplace = vi.fn();
       const runDirectCommand: RunDirectCommand = async (operation) =>
         await operation();
@@ -225,6 +249,115 @@ describe("useAnalysisReviewActions", () => {
       expect(onWorkbenchReplace).not.toHaveBeenCalled();
     },
   );
+
+  it.each(["none", "pending"] as const)(
+    "adds a Finding from an Analysis that completed after the Review opened, with pending review %s",
+    async (pendingState) => {
+      const receiptComment = confirmedProjection().review.comments[0];
+      const openComment = pending("pending");
+      if (receiptComment === undefined || openComment.state !== "pending")
+        throw new Error("missing comment fixture");
+      const receipt =
+        pendingState === "none"
+          ? confirmedProjection()
+          : {
+              ...confirmedProjection(),
+              count: 2,
+              review: {
+                ...confirmedProjection().review,
+                comments: [...openComment.review.comments, receiptComment],
+              },
+            };
+      const double = installDesktopDouble({
+        [COMMAND]: () => success({ pendingReview: receipt }),
+      });
+      restore = double.restore;
+      const beforeRun = projection({
+        analysisReviewActions: {
+          findings: {},
+          canFinishWithAnalysisSummary: false,
+        },
+        pendingReview: pending(pendingState),
+      });
+      const afterRun: WorkbenchResponse = {
+        ...withAnalysis("actionable"),
+        pendingReview: pending(pendingState),
+      };
+      const onWorkbenchReplace = vi.fn();
+      const runDirectCommand: RunDirectCommand = async (operation) =>
+        await operation();
+      const rendered = renderHook(
+        ({ workbench }: { readonly workbench: WorkbenchResponse }) =>
+          useAnalysisReviewActions({
+            workbench,
+            onWorkbenchReplace,
+            runDirectCommand,
+          }),
+        { initialProps: { workbench: beforeRun } },
+      );
+      rendered.rerender({ workbench: afterRun });
+      const finding = analysisResult.findings[0];
+      if (finding === undefined) throw new Error("missing Finding fixture");
+
+      await act(async () => {
+        await expect(
+          rendered.result.current.addFindingToPendingReview(finding),
+        ).resolves.toBeUndefined();
+      });
+
+      expect(double.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: COMMAND,
+          body: expect.objectContaining({
+            command: expect.objectContaining({
+              finding: expect.objectContaining({
+                analysisRunId: "insight-analysis-1-fixture",
+              }),
+            }),
+          }),
+        }),
+      );
+    },
+  );
+
+  it("keeps an optimistic locked Finding across a same-scope, same-run rerender", async () => {
+    const double = installDesktopDouble({
+      [COMMAND]: () => success({ pendingReview: pending("pending") }),
+    });
+    restore = double.restore;
+    const initial: WorkbenchResponse = {
+      ...withAnalysis("actionable"),
+      pendingReview: pending("pending"),
+    };
+    const onWorkbenchReplace = vi.fn();
+    const runDirectCommand: RunDirectCommand = async (operation) =>
+      await operation();
+    const rendered = renderHook(
+      ({ workbench }: { readonly workbench: WorkbenchResponse }) =>
+        useAnalysisReviewActions({
+          workbench,
+          onWorkbenchReplace,
+          runDirectCommand,
+        }),
+      { initialProps: { workbench: initial } },
+    );
+    const finding = analysisResult.findings[0];
+    if (finding === undefined) throw new Error("missing Finding fixture");
+    await act(async () => {
+      await expect(
+        rendered.result.current.addFindingToPendingReview(finding),
+      ).rejects.toThrow(/stale Finding evidence/i);
+    });
+
+    rendered.rerender({ workbench: { ...initial } });
+
+    await act(async () => {
+      await expect(
+        rendered.result.current.addFindingToPendingReview(finding),
+      ).rejects.toThrow(/not actionable/i);
+    });
+    expect(double.request).toHaveBeenCalledTimes(1);
+  });
 
   it("does not overwrite a newer pending projection with a stale lower receipt missing its target", async () => {
     const first = analysisResult.findings[0];
