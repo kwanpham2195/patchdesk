@@ -64,6 +64,16 @@ export class FakeGitHubAdapter
 {
   constructor(private readonly values: Partial<FakeGitHubAdapterValues>) {}
 
+  private readonly searchMaintainerPullRequestsCalls: SearchMaintainerPullRequestsInput[] =
+    [];
+  private readonly listRepositoryLabelsCalls: ListRepositoryLabelsInput[] = [];
+
+  /** Inputs of the reads tests assert GitHub was or was not asked for, in call order. */
+  readonly calls: FakeGitHubAdapterCalls = {
+    searchMaintainerPullRequests: this.searchMaintainerPullRequestsCalls,
+    listRepositoryLabels: this.listRepositoryLabelsCalls,
+  };
+
   async listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
@@ -106,7 +116,7 @@ export class FakeGitHubAdapter
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
-    void input;
+    this.searchMaintainerPullRequestsCalls.push(input);
     if (this.values.maintainerPullRequestsSearch !== undefined)
       return ok(this.values.maintainerPullRequestsSearch);
     if (this.values.listOpenPullRequests === undefined)
@@ -131,7 +141,7 @@ export class FakeGitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
-    void input;
+    this.listRepositoryLabelsCalls.push(input);
     return this.values.repositoryLabels === undefined
       ? missing("list_repository_labels")
       : ok(this.values.repositoryLabels);
@@ -676,6 +686,18 @@ export class FakeGitHubAdapter
     });
   }
 }
+
+type SearchMaintainerPullRequestsInput = Parameters<
+  FakeGitHubAdapter["searchMaintainerPullRequests"]
+>[0];
+type ListRepositoryLabelsInput = Parameters<
+  FakeGitHubAdapter["listRepositoryLabels"]
+>[0];
+
+type FakeGitHubAdapterCalls = {
+  readonly searchMaintainerPullRequests: ReadonlyArray<SearchMaintainerPullRequestsInput>;
+  readonly listRepositoryLabels: ReadonlyArray<ListRepositoryLabelsInput>;
+};
 
 /** Fixture values accepted by FakeGitHubAdapter. */
 export type FakeGitHubAdapterValues = {
