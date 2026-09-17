@@ -113,6 +113,28 @@ export function WatchedPullRequestsProvider({
   const changedAt =
     changed?.profileId === profileId ? changed.value : undefined;
 
+  // Also re-read when a poll reports a change, because a merged or closed pull request leaves the list.
+  const load = useCallback(async (): Promise<void> => {
+    const owner = generation.current;
+    if (profileId === "") return;
+    try {
+      const list = readList(
+        await requestJson(
+          `/v1/watched-pull-requests?profileId=${encodeURIComponent(profileId)}`,
+        ),
+      );
+      if (generation.current === owner)
+        setLoaded({ profileId, value: new Set(list.map(refKey)) });
+    } catch {
+      // An unreadable list hides the toggles rather than showing every pull request as unwatched.
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    generation.current += 1;
+    void load();
+  }, [load]);
+
   useEffect(() => {
     if (
       profileId === "" ||
@@ -120,29 +142,11 @@ export function WatchedPullRequestsProvider({
     )
       return;
     return window.patchdesk.onWatchedPullRequestChange((changedProfileId) => {
-      if (changedProfileId === profileId)
-        setChanged({ profileId, value: new Date().toISOString() });
+      if (changedProfileId !== profileId) return;
+      setChanged({ profileId, value: new Date().toISOString() });
+      void load();
     });
-  }, [profileId]);
-
-  useEffect(() => {
-    const owner = ++generation.current;
-    if (profileId === "") return;
-    const load = async (): Promise<void> => {
-      try {
-        const list = readList(
-          await requestJson(
-            `/v1/watched-pull-requests?profileId=${encodeURIComponent(profileId)}`,
-          ),
-        );
-        if (generation.current === owner)
-          setLoaded({ profileId, value: new Set(list.map(refKey)) });
-      } catch {
-        // An unreadable list hides the toggles rather than showing every pull request as unwatched.
-      }
-    };
-    void load();
-  }, [profileId]);
+  }, [load, profileId]);
 
   const toggle = useCallback(
     async (ref: WatchedPullRequestRef): Promise<void> => {
