@@ -615,6 +615,73 @@ describe("InsightRunCoordinator current lifecycle", () => {
     ).toMatchObject({ status: "completed", activity: trace });
   });
 
+  it("never answers one run's poll with another run's trace", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const codexCatalog = new InsightProviderCatalog(
+      { get: async () => ok({ models: [] }) },
+      () => ({
+        listModels: async () =>
+          ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
+      }),
+      async () => "/usr/local/bin/codex",
+    );
+    let invocations = 0;
+    const value = await fixture(
+      {
+        async invoke(_input, options) {
+          invocations += 1;
+          const id = `cmd-${String(invocations)}`;
+          options.onActivity?.({ _tag: "command_started", id, command: "pwd" });
+          if (invocations > 1) await wait;
+          return ok(analysisResult);
+        },
+      },
+      undefined,
+      undefined,
+      codexCatalog,
+    );
+    const startInput = {
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      provider: "codex-cli-account",
+      model: "model",
+      reasoning: "medium",
+    } as const;
+    const first = await value.coordinator.start(startInput);
+    if (first._tag === "err") throw new Error("expected first run");
+    await settled(value.coordinator, value.review.id, first.value.runId);
+    const second = await value.coordinator.start(startInput);
+    if (second._tag === "err") throw new Error("expected second run");
+
+    const observed = (runId: typeof first.value.runId) =>
+      value.coordinator.observe({
+        profileId,
+        reviewId: value.review.id,
+        type: "analysis",
+        runId,
+      });
+    const firstPoll = await observed(first.value.runId);
+    expect(firstPoll).toMatchObject({
+      _tag: "ok",
+      value: { status: "completed" },
+    });
+    expect(firstPoll._tag === "ok" && firstPoll.value.activity).toBe(undefined);
+    await expect(observed(second.value.runId)).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        activity: {
+          commands: [{ id: "cmd-2", command: "pwd", status: "in_progress" }],
+        },
+      },
+    });
+    release();
+    await settled(value.coordinator, value.review.id, second.value.runId);
+  });
+
   it("persists cancellation before aborting and does not retain a late success", async () => {
     let release!: () => void;
     let signal: AbortSignal | undefined;
