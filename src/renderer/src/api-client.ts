@@ -70,7 +70,7 @@ export function untrustedWriteResponseError(
     200,
     false,
     correlationId,
-    safeMessage("outcome_unknown"),
+    "GitHub could not confirm this write. Check GitHub again before trying again.",
   );
 }
 
