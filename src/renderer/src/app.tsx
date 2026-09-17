@@ -265,10 +265,11 @@ function AppContent({
     },
     [dashboard?.profile.repos, navigate, openPullRequestByRef, reportOpenError],
   );
-  useDesktopNotificationClicks({
+  const notificationFocus = useDesktopNotificationClicks({
     enabled: !fixtureMode,
+    destination,
+    navigationState,
     navigate,
-    restoredWorkbenchUi,
   });
   const parsedProfileHost = parseGitHubHost(dashboard?.profile.githubHost);
   useDesktopMenuBridge({
@@ -412,11 +413,19 @@ function AppContent({
           fallback={<RouteLoadingFallback label="Loading review workbench" />}
         >
           <LazyReviewWorkbench
+            // A clicked Insight notification remounts its Review on that Insight.
+            key={
+              notificationFocus?.reviewId === workbench.review.id
+                ? notificationFocus.generation
+                : 0
+            }
             workbench={workbench}
-            {...(restoredWorkbenchUi.current !== undefined &&
-            restoredWorkbenchUi.current.reviewId === workbench.review.id
-              ? { initialUiState: restoredWorkbenchUi.current.state }
-              : {})}
+            {...(notificationFocus?.reviewId === workbench.review.id
+              ? { initialUiState: notificationFocus.state }
+              : restoredWorkbenchUi.current !== undefined &&
+                  restoredWorkbenchUi.current.reviewId === workbench.review.id
+                ? { initialUiState: restoredWorkbenchUi.current.state }
+                : {})}
             onUiStateChange={(state) =>
               saveWorkbenchUiState(workbench.review.id, state)
             }
