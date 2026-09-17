@@ -135,7 +135,7 @@ export function sessionStore(track: Recorder) {
 
 export function recentWrites(track: Recorder) {
   return {
-    append: track.stub("recentWrites.append", ok(undefined)),
+    appendConfirmed: track.stub("recentWrites.appendConfirmed", undefined),
     clear: track.stub("recentWrites.clear", ok(undefined)),
     prune: track.stub("recentWrites.prune", ok(undefined)),
     load: track.stub("recentWrites.load", ok([])),

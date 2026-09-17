@@ -18,6 +18,7 @@ import {
 import { err, ok, type Result } from "../../src/domain/result";
 import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
@@ -53,7 +54,7 @@ const expected = { sessionId: "session-a", headSha, patchHash: "patch-hash" };
 // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
 // branded IsoTimestamp contract the service's `now` dependency expects.
 const now = () => "2026-01-01T00:00:00.000Z" as never;
-const makeRecentWrites = () => ({ append: vi.fn(async () => ok(undefined)) });
+const makeRecentWrites = () => confirmedWriteJournal();
 
 function makeOperations() {
   let current: ReviewWriteOperation | undefined;
@@ -644,7 +645,7 @@ describe("InlineConversationService durable write lifecycle", () => {
 
   it("confirms a delete without appending a misleading comment-exists receipt", async () => {
     const operations = makeOperations();
-    const append = vi.fn(async () => ok(undefined));
+    const recentWrites = confirmedWriteJournal();
     const deleteThreadComment = vi.fn(async () => ok(undefined));
     const service = new InlineConversationService(
       makeGate(),
@@ -652,7 +653,7 @@ describe("InlineConversationService durable write lifecycle", () => {
       makeGateway({ deleteThreadComment }) as never,
       new ReviewOperationCoordinator(),
       now,
-      { append },
+      recentWrites,
       operations,
     );
     await expect(
@@ -672,12 +673,12 @@ describe("InlineConversationService durable write lifecycle", () => {
     expect(operations.confirm).toHaveBeenCalledWith(
       expect.objectContaining({ state: { _tag: "Confirmed" } }),
     );
-    expect(append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
   });
 
   it("persists confirmation and the recent-write receipt before clearing the operation", async () => {
     const operations = makeOperations();
-    const append = vi.fn(async () => ok(undefined));
+    const recentWrites = confirmedWriteJournal();
     const createThreadReply = vi.fn(async () =>
       ok({ commentId: "PRRC_reply", reviewId: "PRR_review" }),
     );
@@ -687,7 +688,7 @@ describe("InlineConversationService durable write lifecycle", () => {
       makeGateway({ createThreadReply }) as never,
       new ReviewOperationCoordinator(),
       now,
-      { append },
+      recentWrites,
       operations,
     );
     await expect(
@@ -716,7 +717,7 @@ describe("InlineConversationService durable write lifecycle", () => {
         },
       }),
     );
-    expect(append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       {

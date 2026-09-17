@@ -5,7 +5,7 @@ import type {
   GitHubPendingReviewGateway,
   GitHubReader,
 } from "../adapters/github/github-adapter";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { DirectSummaryReviewState } from "../domain/direct-summary-review";
 import {
@@ -77,7 +77,7 @@ export class DirectSummaryReviewService {
     private readonly github: Gateway,
     private readonly now: () => IsoTimestamp,
     private readonly writeCoordinator: ReviewOperationCoordinator,
-    private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly recentWrites: ConfirmedWriteJournal,
   ) {}
 
   async submit(input: {
@@ -222,9 +222,7 @@ export class DirectSummaryReviewService {
         });
         return err("outcome_unknown");
       }
-      // Best effort: the GitHub write already succeeded, so a durable
-      // journal failure here must not fail the confirmed command.
-      await this.recentWrites.append(
+      await this.recentWrites.appendConfirmed(
         input.profileId,
         input.reviewId,
         { _tag: "DirectSummaryReview", reviewId: confirmed.receipt.reviewId },
@@ -320,9 +318,7 @@ export class DirectSummaryReviewService {
       if (!(await this.save(current.value.session, next)))
         return err("unavailable");
       if (next?._tag === "Confirmed") {
-        // Best effort: the GitHub write already succeeded, so a durable
-        // journal failure here must not fail the confirmed reconciliation.
-        await this.recentWrites.append(
+        await this.recentWrites.appendConfirmed(
           input.profileId,
           input.reviewId,
           { _tag: "DirectSummaryReview", reviewId: next.receipt.reviewId },

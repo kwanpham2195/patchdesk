@@ -16,6 +16,7 @@ import {
   ReviewWriteRecoveryService,
 } from "../../src/services/review-write-recovery-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 type ConversationIntentTag =
   | "CreateComment"
@@ -336,7 +337,7 @@ describe("ReviewWriteRecoveryService", () => {
 
   it("recovers a confirmed delete without journaling comment existence", async () => {
     const value = operation("DeleteComment");
-    const append = vi.fn(async () => ok(undefined));
+    const recentWrites = confirmedWriteJournal();
     const service = new ReviewWriteRecoveryService(
       {
         requireCurrentSession: vi.fn(),
@@ -369,14 +370,14 @@ describe("ReviewWriteRecoveryService", () => {
         confirm: vi.fn(async () => ok(undefined)),
         remove: vi.fn(async () => ok(undefined)),
       },
-      { append },
+      recentWrites,
       new ReviewOperationCoordinator(),
       () => createdAt,
     );
     await expect(
       service.recover({ profileId: value.profileId, reviewId: value.reviewId }),
     ).resolves.toEqual({ _tag: "ok", value: { _tag: "Confirmed" } });
-    expect(append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
   });
 
   it("retains the durable lock when GitHub evidence is incomplete", async () => {
@@ -414,7 +415,7 @@ describe("ReviewWriteRecoveryService", () => {
         confirm: vi.fn(async () => ok(undefined)),
         remove: vi.fn(async () => ok(undefined)),
       },
-      { append: vi.fn(async () => ok(undefined)) },
+      confirmedWriteJournal(),
       new ReviewOperationCoordinator(),
       () => createdAt,
     );

@@ -2,7 +2,7 @@ import type {
   GitHubReader,
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
 import type { GitHubPublishedFeedback } from "../domain/github-context";
@@ -91,7 +91,7 @@ export class PublishedFeedbackService {
     private readonly github: FeedbackReader & FeedbackWriter,
     private readonly coordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
-    private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly recentWrites: ConfirmedWriteJournal,
     private readonly operations: Pick<
       ReviewWriteOperationStore,
       "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
@@ -401,15 +401,13 @@ export class PublishedFeedbackService {
     if (transitioned._tag === "err") return err("outcome_unknown");
     const confirmed = await this.operations.confirm(transitioned.value);
     if (confirmed._tag === "err") return err("outcome_unknown");
-    if (journalEntry !== undefined) {
-      const appended = await this.recentWrites.append(
+    if (journalEntry !== undefined)
+      await this.recentWrites.appendConfirmed(
         input.profileId,
         input.reviewId,
         journalEntry,
         this.now(),
       );
-      if (appended._tag === "err") return err("outcome_unknown");
-    }
     const removed = await this.operations.remove(
       input.profileId,
       input.reviewId,

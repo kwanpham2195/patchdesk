@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,6 +6,7 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
 import { writeAtomicJson } from "../../src/adapters/storage/json-file";
 import { createReviewId } from "../../src/domain/ids";
+import type { LogEntryInput } from "../../src/domain/log-entry";
 import {
   parseGitHubHost,
   parseGitHubThreadId,
@@ -45,11 +46,14 @@ afterEach(async () => {
 async function tempStore(): Promise<{
   readonly store: RecentWriteJournalStore;
   readonly paths: PatchdeskPaths;
+  readonly logged: ReadonlyArray<LogEntryInput>;
 }> {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-recent-write-"));
   roots.push(root);
   const paths = PatchdeskPaths.forTest(root);
-  return { store: new RecentWriteJournalStore(paths), paths };
+  const logged: Array<LogEntryInput> = [];
+  const log = { write: (entry: LogEntryInput) => logged.push(entry) };
+  return { store: new RecentWriteJournalStore(paths, log), paths, logged };
 }
 
 describe("RecentWriteJournalStore", () => {
@@ -138,5 +142,28 @@ describe("RecentWriteJournalStore", () => {
         reason: "invalid_stored_value",
       },
     });
+  });
+
+  it("logs a failed append of a confirmed write and resolves", async () => {
+    const { store, paths, logged } = await tempStore();
+    await mkdir(paths.recentWriteJournalFile(profileId, reviewId), {
+      recursive: true,
+    });
+    await store.appendConfirmed(
+      profileId,
+      reviewId,
+      { _tag: "Comment", commentId: "PRRC_1" },
+      writtenAt,
+    );
+    expect(logged).toEqual([
+      {
+        process: "main",
+        level: "warn",
+        topic: "recent-write-journal",
+        message: "journal append failed; write already confirmed, continuing",
+        profileId,
+        meta: { reason: "io", reviewId },
+      },
+    ]);
   });
 });

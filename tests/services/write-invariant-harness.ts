@@ -1,5 +1,8 @@
+import { vi } from "vitest";
+
 import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
+import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
 import type { StorageFailure } from "../../src/adapters/storage/json-file";
 import type { MergeOperation } from "../../src/domain/merge-operation";
 import type { PendingReviewState } from "../../src/domain/pending-review";
@@ -78,6 +81,39 @@ export const unavailable = {
   category: "unavailable",
   message: "fixture timeout",
 } as const;
+
+/** What a row's gateway write answers: a lost response or a confirmed success. */
+export type GatewayWriteOutcome = "unavailable" | "confirmed";
+
+/** What the own-write journal's `append` answers after a confirmed write. */
+export type JournalAppendOutcome = "stored" | "failed";
+
+/** The two fixtures every row constructor takes instead of hard-coding them. */
+export type WriteFlowFixture = {
+  readonly gateway: GatewayWriteOutcome;
+  readonly journal: JournalAppendOutcome;
+};
+
+/** The fixture the intent and lock invariants run under. */
+export const unavailableWrite: WriteFlowFixture = {
+  gateway: "unavailable",
+  journal: "stored",
+};
+
+/** The fixture the confirmed-write invariant runs under. */
+export const confirmedWriteFailingJournal: WriteFlowFixture = {
+  gateway: "confirmed",
+  journal: "failed",
+};
+
+/** One gateway write answering `unavailable` or the given success value. */
+export function gatewayWrite<T>(
+  fixture: WriteFlowFixture,
+  confirmed: T,
+): () => Promise<Result<T, typeof unavailable>> {
+  return async () =>
+    fixture.gateway === "unavailable" ? err(unavailable) : ok(confirmed);
+}
 
 /** One gateway method, in the only shape this file calls one. */
 export type GatewayCall = (input: never) => Promise<Result<unknown, unknown>>;
@@ -191,43 +227,65 @@ export class TracingMergeOperationStore extends MergeOperationStore {
   }
 }
 
-/** One run of one write entry point against an unavailable gateway write. */
+/** One run of one write entry point under one `WriteFlowFixture`. */
 export type FlowRun = {
   readonly trace: Trace;
+  /** What the first issue of the command answered. */
+  readonly result: Result<unknown, unknown>;
   /** Reissues the identical command against the same durable state. */
   readonly again: () => Promise<Result<unknown, unknown>>;
   /** The durable intent tag left behind, or `undefined` when none was stored. */
   readonly intentTag: () => string | undefined;
+  /** The durable state still refusing this Review's next write, if any. */
+  readonly writeLock: () => string | undefined;
 };
 
 export type WriteFlow = {
   readonly name: string;
-  /** Issues the command once; the gateway's write answers `unavailable`. */
+  /** Issues the command once under the fixture its row was built with. */
   readonly run: () => Promise<FlowRun>;
   /** Set when the row fails on `main`; names the program item that fixes it. */
   readonly todo?: string;
 };
 
 /**
- * The own-write journal, as a recording seam. `runGuardedMetadataWrite` and
- * the pending-review flows append here only AFTER a confirmed write, so a
- * `journal:append` entry is never durable intent — but it is now VISIBLE in
- * the trace, which it was not before. Invariant 1 is still stated over
- * `intent:` entries alone, deliberately: an append that happens after the
- * gateway confirms cannot precede the gateway write it describes. An
- * implementation that moved the append BEFORE the write, to use the journal
- * as durable intent, would now show up here as `journal:append` ahead of
- * `write:…` — visible to a reader and to a debugger, and the row would then
- * need `IN_FLIGHT_TAGS` widened to accept it rather than failing silently
- * invisible.
+ * The own-write journal, as a recording seam over the real store, so the
+ * store's own failure policy runs. Every flow appends only AFTER a confirmed
+ * write, so `journal:append` is never durable intent; it is visible in the
+ * trace so an append moved ahead of `write:…` would show up there.
  */
-export function recentWritesJournal(trace: Trace) {
-  let operation: ReviewWriteOperation | undefined;
+export class TracingRecentWriteJournal extends RecentWriteJournalStore {
+  constructor(
+    private readonly trace: Trace,
+    private readonly outcome: JournalAppendOutcome,
+  ) {
+    super(PatchdeskPaths.forTest("/tmp/patchdesk-write-invariants"), {
+      write: () => undefined,
+    });
+  }
+
+  override async append(): Promise<
+    Awaited<ReturnType<RecentWriteJournalStore["append"]>>
+  > {
+    this.trace.push("journal:append");
+    return this.outcome === "stored"
+      ? ok(undefined)
+      : err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+  }
+}
+
+/** The journal double service tests hand in; `appendConfirmed` records its calls. */
+export function confirmedWriteJournal() {
+  return { appendConfirmed: vi.fn(async () => undefined) };
+}
+
+/** In-memory `ReviewWriteOperationStore` that traces every intent it stores. */
+export function recordingWriteOperations(
+  trace: Trace,
+  initial?: ReviewWriteOperation,
+) {
+  let operation = initial;
   return {
-    append: async () => {
-      trace.push("journal:append");
-      return ok(undefined);
-    },
     load: async () => ok(operation),
     begin: async (next: ReviewWriteOperation) => {
       trace.push(`intent:${next.state._tag}`);
@@ -254,6 +312,23 @@ export function recentWritesJournal(trace: Trace) {
     },
     current: () => operation,
   };
+}
+
+/** Issues a command once and describes the run through its operation store. */
+export async function recordedWriteFlowRun(
+  trace: Trace,
+  issue: () => Promise<Result<unknown, unknown>>,
+  operations: { readonly current: () => ReviewWriteOperation | undefined },
+): Promise<FlowRun> {
+  const result = await issue();
+  const tag = () => operations.current()?.state._tag;
+  return { trace, result, again: issue, intentTag: tag, writeLock: tag };
+}
+
+/** A session's intent tag, but only while it still refuses the next write. */
+export function sessionWriteLock(session: ReviewSession): string | undefined {
+  const tag = sessionIntentTag(session);
+  return tag !== undefined && IN_FLIGHT_TAGS.has(tag) ? tag : undefined;
 }
 
 const now = () => at;
@@ -292,7 +367,10 @@ export function freshGate(sessions: { current: () => ReviewSession }) {
 }
 
 /** A session carrying an already-open pending review, for add/submit/discard. */
-export function pendingOwner(): PendingReviewState {
+export function pendingOwner(): Extract<
+  PendingReviewState,
+  { _tag: "Pending" }
+> {
   return {
     _tag: "Pending",
     review: {
@@ -321,7 +399,14 @@ export function pendingOwner(): PendingReviewState {
   };
 }
 
+/** A confirmed start or add-thread answer: the open pending review and its new thread. */
+const pendingThreadWrite = {
+  review: pendingOwner().review,
+  createdThreadId: threadId,
+};
+
 export function pendingReviewFlow(
+  fixture: WriteFlowFixture,
   state: PendingReviewState,
   command: (service: PendingReviewService) => Promise<Result<unknown, unknown>>,
 ): () => Promise<FlowRun> {
@@ -331,6 +416,13 @@ export function pendingReviewFlow(
       ...values.session,
       pendingReview: state,
     });
+    const gateway = {
+      getPullRequest: async () => ok(values.snapshot.pullRequest),
+      startPendingReviewWithThread: gatewayWrite(fixture, pendingThreadWrite),
+      addPendingReviewThread: gatewayWrite(fixture, pendingThreadWrite),
+      submitPendingReview: gatewayWrite(fixture, { reviewId: reviewRestId }),
+      discardPendingReview: gatewayWrite(fixture, undefined),
+    };
     const service = new PendingReviewService(
       // SAFETY: this fixture gate answers with the parsed fixture Review and
       // the store's current session; the service reads no other gate field.
@@ -338,22 +430,18 @@ export function pendingReviewFlow(
       sessions,
       // SAFETY: the recorded gateway implements exactly the reads and the one
       // write this flow performs; no other gateway method is reached.
-      recorded(trace, {
-        getPullRequest: async () => ok(values.snapshot.pullRequest),
-        startPendingReviewWithThread: async () => err(unavailable),
-        addPendingReviewThread: async () => err(unavailable),
-        submitPendingReview: async () => err(unavailable),
-        discardPendingReview: async () => err(unavailable),
-      }) as never,
+      recorded(trace, gateway) as never,
       now,
       new ReviewOperationCoordinator(),
-      recentWritesJournal(trace),
+      new TracingRecentWriteJournal(trace, fixture.journal),
     );
-    await command(service);
+    const result = await command(service);
     return {
       trace,
+      result,
       again: () => command(service),
       intentTag: () => sessionIntentTag(sessions.current()),
+      writeLock: () => sessionWriteLock(sessions.current()),
     };
   };
 }

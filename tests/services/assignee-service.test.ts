@@ -118,8 +118,8 @@ describe("AssigneeService", () => {
         assigneeIds: ["MDQ6VXNlcjE="],
       }),
     );
-    expect(recentWrites.append).toHaveBeenCalledOnce();
-    expect(recentWrites.append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledOnce();
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       { _tag: "AssigneeChange", added: ["octocat"], removed: [] },
@@ -154,8 +154,8 @@ describe("AssigneeService", () => {
       value: { _tag: "AssigneesRemoved", removed: ["octocat"] },
     });
     expect(removeAssigneesFromAssignable).toHaveBeenCalledOnce();
-    expect(recentWrites.append).toHaveBeenCalledOnce();
-    expect(recentWrites.append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledOnce();
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       { _tag: "AssigneeChange", added: [], removed: ["octocat"] },
@@ -195,7 +195,7 @@ describe("AssigneeService", () => {
       service.execute({ profileId, reviewId, command: command() }),
     ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
     expect(addAssigneesToAssignable).toHaveBeenCalledOnce();
-    expect(recentWrites.append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
   });
 
   it("refuses a write when permission is explicitly denied", async () => {
@@ -503,7 +503,7 @@ describe("AssigneeService", () => {
           assigneeIds: ["MDQ6VXNlcjE="],
         }),
       );
-      expect(recentWrites.append).toHaveBeenCalledWith(
+      expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
         profileId,
         reviewId,
         { _tag: "AssigneeChange", added: ["octocat"], removed: [] },

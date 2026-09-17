@@ -11,6 +11,7 @@ import {
   ReviewWriteRecoveryService,
 } from "../../src/services/review-write-recovery-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 type ConversationIntentTag =
   | "CreateComment"
@@ -229,7 +230,7 @@ describe("published-feedback recovery evidence", () => {
     });
     const trace: string[] = [];
     const getPullRequestComments = vi.fn();
-    const append = vi.fn(async () => ok(undefined));
+    const recentWrites = confirmedWriteJournal();
     const service = new ReviewWriteRecoveryService(
       {
         requireCurrentSession: vi.fn(),
@@ -269,7 +270,7 @@ describe("published-feedback recovery evidence", () => {
           return ok(undefined);
         }),
       },
-      { append },
+      recentWrites,
       new ReviewOperationCoordinator(),
       () => createdAt,
     );
@@ -280,7 +281,7 @@ describe("published-feedback recovery evidence", () => {
       value: { _tag: "Confirmed" },
     });
     expect(getPullRequestComments).not.toHaveBeenCalled();
-    expect(append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
     expect(trace).toEqual(["confirm", "remove"]);
   });
 
@@ -325,7 +326,7 @@ describe("published-feedback recovery evidence", () => {
         confirm,
         remove,
       },
-      { append: vi.fn(async () => ok(undefined)) },
+      confirmedWriteJournal(),
       new ReviewOperationCoordinator(),
       () => createdAt,
     );
