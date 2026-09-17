@@ -61,6 +61,7 @@ export function ReviewWorkbenchFlow({
     refreshError,
     runDetect,
     refresh,
+    requestRefresh,
     replaceWorkbench,
     runDirectCommand,
     observeConfirmedReviewWrite,
@@ -124,6 +125,7 @@ export function ReviewWorkbenchFlow({
     appendRecentWrites,
     observeConfirmedReviewWrite,
     requireRecovery: writeRecovery.requireRecovery,
+    requestRefresh,
   });
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
