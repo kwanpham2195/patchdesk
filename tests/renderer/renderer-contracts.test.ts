@@ -746,6 +746,7 @@ describe("parseInsightRunResponse activity", () => {
     durationMs: 400,
   };
   const poll = { runId: "run-a", type: "analysis", status: "running" };
+  const approvals = { accepted: 1, declined: 0 };
 
   it("accepts a bounded trace", () => {
     expect(
@@ -755,9 +756,10 @@ describe("parseInsightRunResponse activity", () => {
           phase: "turn",
           reasoningLine: "Checking",
           commands: [command],
+          approvals,
         },
       }),
-    ).toMatchObject({ activity: { commands: [command] } });
+    ).toMatchObject({ activity: { commands: [command], approvals } });
   });
 
   it.each([
@@ -782,11 +784,19 @@ describe("parseInsightRunResponse activity", () => {
       "command output",
       { commands: [{ ...command, aggregatedOutput: "secret" }] },
     ],
+    [
+      "command text beside the approval counts",
+      { commands: [], approvals: { ...approvals, command: "pwd" } },
+    ],
+    [
+      "a negative approval count",
+      { commands: [], approvals: { accepted: -1, declined: 0 } },
+    ],
   ])("fails closed on %s", (_name, fields) => {
     expect(
       parseInsightRunResponse({
         ...poll,
-        activity: { phase: "turn", ...fields },
+        activity: { phase: "turn", approvals, ...fields },
       }),
     ).toBeUndefined();
   });

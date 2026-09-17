@@ -34,6 +34,7 @@ const activity = {
     },
     { id: "cmd-2", command: "git log --oneline -20", status: "in_progress" },
   ],
+  approvals: { accepted: 2, declined: 0 },
 };
 let server: LocalApiServer | undefined;
 let root: string | undefined;
