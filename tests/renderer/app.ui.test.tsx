@@ -675,6 +675,7 @@ function installDesktop(
       "/v1/profiles": () => success([profile]),
       "/v1/reviews/load": () => success(asJsonBody(projection())),
       "/v1/reviews/open": () => success(asJsonBody(projection())),
+      "/v1/reviews/leave": () => success(null),
       "/v1/inbox": async () => {
         inboxRequests += 1;
         if (options.failInboxRefresh && inboxRequests > 1) {

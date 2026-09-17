@@ -10,7 +10,12 @@ import {
   createReviewId,
   parseWorkspaceProfileId,
 } from "../domain/ids";
-import { createReview, markReviewOpened } from "../domain/review";
+import {
+  createReview,
+  markReviewLeft,
+  markReviewOpened,
+} from "../domain/review";
+import { newestConversationTimestamp } from "../domain/conversation-entry-timestamp";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
@@ -557,6 +562,52 @@ export class ReviewWorkbenchController {
       reviewId,
     });
     return recovered._tag === "ok" ? ok(undefined) : err({ reason: "storage" });
+  }
+
+  /**
+   * Stamps the last-looked cursor from the snapshot the Review represents,
+   * which is what the maintainer was shown. A Review with no represented
+   * snapshot showed nothing, so leaving it records nothing.
+   */
+  async leave(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+  }): Promise<Result<null, ReviewWorkbenchFailure>> {
+    return this.lifecycle.coordinator.withReviewLock(
+      input.profileId,
+      input.reviewId,
+      async () => {
+        const review = await this.lifecycle.reviews.load(
+          input.profileId,
+          input.reviewId,
+        );
+        if (review._tag === "err")
+          return err({
+            reason:
+              review.error.reason === "not_found" ? "not_found" : "storage",
+          });
+        const represented = review.value.representedRemote;
+        if (represented === undefined) return ok(null);
+        const snapshot = await this.lifecycle.remote.load({
+          profileId: input.profileId,
+          reviewId: input.reviewId,
+          snapshotHash: represented.snapshotHash,
+        });
+        if (snapshot._tag === "err") return err({ reason: "storage" });
+        const left = markReviewLeft(review.value, {
+          headSha: represented.headSha,
+          seenThrough: newestConversationTimestamp(
+            snapshot.value.conversation.entries,
+          ),
+          now: this.now(),
+        });
+        const saved = await this.lifecycle.reviews.save(
+          left,
+          review.value.updatedAt,
+        );
+        return saved._tag === "ok" ? ok(null) : err({ reason: "storage" });
+      },
+    );
   }
 
   async commitDiff(

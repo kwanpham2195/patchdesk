@@ -58,6 +58,21 @@ export function registerReviewLifecycleRoutes(
       ? response(context, await reviewWorkbench.load(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
+  app.post("/v1/reviews/leave", async (context) => {
+    const parsed = safeParse(reviewRecoverySchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await reviewWorkbench.leave({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+      }),
+    );
+  });
   app.post("/v1/reviews/merge/recover", async (context) => {
     const parsed = safeParse(reviewRecoverySchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);

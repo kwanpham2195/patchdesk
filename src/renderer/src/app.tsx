@@ -30,6 +30,7 @@ import { BusyProvider } from "./hooks/use-busy";
 import { PullRequestImageCacheProvider } from "./hooks/use-pull-request-image";
 import {
   useAppNavigation,
+  type LeftWorkbench,
   type NavigationState,
 } from "./hooks/use-app-navigation";
 import { useDesktopMenuBridge } from "./hooks/use-desktop-menu-bridge";
@@ -57,6 +58,8 @@ import { parseGitHubHost } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { sameRepositoryIdentity } from "../../domain/repository-identity";
 import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
+import { requestJson } from "./api-client";
+import { appLog } from "./lib/logger";
 
 export type { ReviewWorkbenchLoader };
 
@@ -128,9 +131,27 @@ function AppContent({
     () => lazy(performanceFixtureLoader),
     [performanceFixtureLoader],
   );
+  const leaveWorkbench = useCallback(
+    (left: LeftWorkbench): void => {
+      if (fixtureMode) return;
+      // A lost cursor write only costs the next visit's marks, so it is logged rather than shown.
+      void requestJson("/v1/reviews/leave", {
+        method: "POST",
+        body: left,
+      }).catch(() =>
+        appLog.warn(
+          "review-workbench",
+          "recording the last-looked cursor failed",
+          {
+            reviewId: left.reviewId,
+          },
+        ),
+      );
+    },
+    [fixtureMode],
+  );
   const {
     destination,
-    setDestination,
     workbench,
     setWorkbench,
     navigationState,
@@ -140,7 +161,7 @@ function AppContent({
     setPendingDestination,
     performNavigation,
     navigate,
-  } = useAppNavigation();
+  } = useAppNavigation(leaveWorkbench);
   const {
     LazyReviewWorkbench,
     restoredWorkbenchUi,
@@ -202,13 +223,12 @@ function AppContent({
     async (id: string): Promise<void> => {
       saveInboxViewPreferences(id, { state: "open" });
       resetInboxStateOnProfileLoad.current = true;
-      setWorkbench(undefined);
+      // Leaves a held Review, so the switch records its cursor like any other leave.
+      performNavigation({ kind: "dashboard" });
       dispatchWorkspace({ _tag: "cleared" });
       activeInboxProfileId.current = undefined;
       inboxRefreshGeneration.current += 1;
       updateInboxRequest(firstInboxRequest);
-      setDestination({ kind: "dashboard" });
-      window.localStorage.setItem("patchdesk.destination", "dashboard");
       await loadWorkspace();
     },
     [
@@ -216,9 +236,8 @@ function AppContent({
       dispatchWorkspace,
       inboxRefreshGeneration,
       loadWorkspace,
+      performNavigation,
       resetInboxStateOnProfileLoad,
-      setDestination,
-      setWorkbench,
       updateInboxRequest,
     ],
   );
