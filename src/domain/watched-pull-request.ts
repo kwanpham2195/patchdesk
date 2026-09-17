@@ -48,7 +48,8 @@ export type WatchedPullRequestChange =
   | "merged"
   | "closed";
 
-function sameWatchedPullRequest(
+/** True when both references name the same pull request. */
+export function sameWatchedPullRequest(
   left: PullRequestRef,
   right: PullRequestRef,
 ): boolean {

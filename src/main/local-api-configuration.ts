@@ -110,6 +110,8 @@ export type LocalApiConfiguration = {
    * Main-process-only; local integration tests keep it off.
    */
   readonly retentionSweep?: boolean;
+  /** Polls watched pull requests while the app runs (ADR 0045). Main-process-only; tests keep it off. */
+  readonly watchedPullRequestPolling?: boolean;
 };
 
 /** The subset of the configuration the loopback API validates before it binds. */

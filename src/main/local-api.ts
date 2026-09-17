@@ -7,6 +7,7 @@ import type { LocalApiStartupResult } from "./app-lifecycle";
 import { buildLocalApiContainer, type LogWriter } from "./local-api-container";
 import type { LocalApiConfiguration } from "./local-api-configuration";
 import { startRetentionSweepScheduler } from "./retention-sweep-scheduler";
+import { startWatchedPullRequestScheduler } from "./watched-pull-request-scheduler";
 import { registerDashboardRoutes } from "./routes/dashboard-routes";
 import { registerInsightRoutes } from "./routes/insight-routes";
 import { registerPendingReviewRoutes } from "./routes/pending-review-routes";
@@ -64,6 +65,14 @@ export async function startLocalApiServer(
     enabled: configuration.retentionSweep ?? false,
     diagnostics: container.diagnostics,
   });
+  const watchedPullRequestScheduler = startWatchedPullRequestScheduler({
+    profiles: container.configuredProfiles,
+    watched: container.watchedPullRequests,
+    coordinator: container.reviewOperations,
+    intervalMinutes: 3,
+    enabled: configuration.watchedPullRequestPolling ?? false,
+    logs,
+  });
 
   return {
     _tag: "started",
@@ -72,6 +81,7 @@ export async function startLocalApiServer(
       url,
       async stop(): Promise<void> {
         await retentionScheduler.stop();
+        await watchedPullRequestScheduler.stop();
         await closeServer(server);
       },
     },

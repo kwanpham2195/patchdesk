@@ -81,6 +81,7 @@ export type LocalApiContainer = {
   readonly pullRequestImages: PullRequestImageService;
   readonly sidebarListing: SidebarListingService;
   readonly watchedPullRequests: WatchedPullRequestService;
+  readonly reviewOperations: ReviewOperationCoordinator;
 };
 
 /** Either the built container, or the startup refusal that stopped it. */
@@ -474,7 +475,9 @@ export async function buildLocalApiContainer(
         store: watchedPullRequests,
         github,
         now: systemNow,
+        notifier: configuration.desktopNotifier,
       }),
+      reviewOperations,
     },
   };
 }
