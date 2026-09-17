@@ -116,8 +116,28 @@ describe("createDesktopNotifier", () => {
     await flush();
     notifications.shown[0]?.click();
 
-    expect(clicks).toEqual([{ reviewId, insightType: "analysis" }]);
+    expect(clicks).toEqual([
+      { kind: "review", reviewId, insightType: "analysis" },
+    ]);
     expect(logs.map((entry) => entry.message)).toEqual(["shown", "clicked"]);
+  });
+
+  it("names a watched pull request's change and routes its click to the pull request", async () => {
+    const { notifier, notifications, clicks } = harness();
+
+    notifier.notify({
+      _tag: "WatchedPullRequestChanged",
+      reviewId,
+      pullRequest,
+      change: "pushed",
+    });
+    await flush();
+    notifications.shown[0]?.click();
+
+    expect(notifications.shown).toMatchObject([
+      { body: "centraldigital/patchdesk#42" },
+    ]);
+    expect(clicks).toEqual([{ kind: "pullRequest", pullRequest }]);
   });
 
   it.each([
@@ -175,6 +195,32 @@ describe("createDesktopNotifier", () => {
 });
 
 describe("decideDesktopNotification", () => {
+  it.each([
+    { focused: false, on: "workbench", expected: "open_in_workbench" },
+    { focused: true, on: "workbench", expected: "open_in_workbench" },
+    { focused: true, on: "dashboard", expected: "show" },
+  ] as const)(
+    "a watched pull request change while focused=$focused on the $on: $expected",
+    ({ focused, on, expected }) => {
+      const decision = decideDesktopNotification({
+        focused,
+        destination:
+          on === "workbench" ? { kind: "workbench", reviewId } : { kind: on },
+        settings: defaults,
+        event: {
+          _tag: "WatchedPullRequestChanged",
+          reviewId,
+          pullRequest,
+          change: "commented",
+        },
+      });
+
+      expect(decision._tag === "show" ? "show" : decision.reason).toBe(
+        expected,
+      );
+    },
+  );
+
   const preparationFinished: DesktopNotificationEvent = {
     _tag: "PreparationFinished",
     reviewId,

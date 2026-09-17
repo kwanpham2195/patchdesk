@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
+import {
+  parsePullRequestRef,
+  type PullRequestRef,
+} from "../../../domain/pull-request";
 import type { ReviewWorkbenchInitialState } from "../components/review-workbench-contracts";
 import { destinationKey, type AppDestination } from "../routes";
 import type { NavigationState } from "./use-app-navigation";
@@ -21,18 +25,21 @@ export type NotificationWorkbenchFocus = {
  * an unsaved draft or a pending write still holds the maintainer in place.
  * An Insight click also returns the workbench focus to mount with, but only
  * when the click actually moves the screen: a parked navigation or a held
- * Review leaves nothing behind for a later open.
+ * Review leaves nothing behind for a later open. A watched pull request
+ * click goes to `openPullRequest`, the palette's open path.
  */
 export function useDesktopNotificationClicks({
   enabled,
   destination,
   navigationState,
   navigate,
+  openPullRequest,
 }: {
   readonly enabled: boolean;
   readonly destination: AppDestination;
   readonly navigationState: NavigationState;
   readonly navigate: (next: AppDestination) => void;
+  readonly openPullRequest: (ref: PullRequestRef) => void;
 }): NotificationWorkbenchFocus | undefined {
   const [focus, setFocus] = useState<NotificationWorkbenchFocus>();
   const generation = useRef(0);
@@ -56,6 +63,11 @@ export function useDesktopNotificationClicks({
   useEffect(() => {
     if (!enabled || window.patchdesk?.onNotificationClick === undefined) return;
     return window.patchdesk.onNotificationClick((click) => {
+      if (click.kind === "pullRequest") {
+        const ref = parsePullRequestRef(click.pullRequest);
+        if (ref._tag === "ok") openPullRequest(ref.value);
+        return;
+      }
       const onScreen =
         destinationKey(latestDestination.current) ===
         destinationKey({ kind: "workbench", reviewId: click.reviewId });
@@ -75,7 +87,13 @@ export function useDesktopNotificationClicks({
       }
       if (!onScreen) navigate({ kind: "workbench", reviewId: click.reviewId });
     });
-  }, [enabled, latestDestination, latestNavigationState, navigate]);
+  }, [
+    enabled,
+    latestDestination,
+    latestNavigationState,
+    navigate,
+    openPullRequest,
+  ]);
 
   return focus;
 }

@@ -42,13 +42,25 @@ export const DESKTOP_NOTIFICATION_CLICK_CHANNEL =
   "patchdesk:notification-click";
 
 /**
- * Where a clicked notification lands: the Review, and the Insight reader when
- * the notification was about an Insight run.
+ * Where a clicked notification lands: a Review, with the Insight reader when
+ * the notification was about an Insight run, or a watched pull request, which
+ * opens the way a pull request pasted into the palette does.
  */
-export type DesktopNotificationClick = {
-  readonly reviewId: string;
-  readonly insightType?: "analysis" | "walkthrough" | "brief";
-};
+export type DesktopNotificationClick =
+  | {
+      readonly kind: "review";
+      readonly reviewId: string;
+      readonly insightType?: "analysis" | "walkthrough" | "brief";
+    }
+  | {
+      readonly kind: "pullRequest";
+      readonly pullRequest: {
+        readonly host: string;
+        readonly owner: string;
+        readonly repo: string;
+        readonly number: number;
+      };
+    };
 
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {

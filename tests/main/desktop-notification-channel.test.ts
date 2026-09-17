@@ -35,10 +35,16 @@ describe("desktop notification-click channel", () => {
     const stop = subscribeToNotificationClicks(bus, (click) =>
       received.push(click),
     );
-    sendNotificationClick(bus, { reviewId: "r1", insightType: "analysis" });
+    sendNotificationClick(bus, {
+      kind: "review",
+      reviewId: "r1",
+      insightType: "analysis",
+    });
     stop();
-    sendNotificationClick(bus, { reviewId: "r2" });
+    sendNotificationClick(bus, { kind: "review", reviewId: "r2" });
 
-    expect(received).toEqual([{ reviewId: "r1", insightType: "analysis" }]);
+    expect(received).toEqual([
+      { kind: "review", reviewId: "r1", insightType: "analysis" },
+    ]);
   });
 });

@@ -271,6 +271,7 @@ function AppContent({
     destination,
     navigationState,
     navigate,
+    openPullRequest: openPullRequestFromPalette,
   });
   const parsedProfileHost = parseGitHubHost(dashboard?.profile.githubHost);
   useDesktopMenuBridge({

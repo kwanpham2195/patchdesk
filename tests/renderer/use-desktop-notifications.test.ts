@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { PullRequestRef } from "../../src/domain/pull-request";
 import type { NavigationState } from "../../src/renderer/src/hooks/use-app-navigation";
 import { useDesktopNotificationClicks } from "../../src/renderer/src/hooks/use-desktop-notifications";
 import type { AppDestination } from "../../src/renderer/src/routes";
@@ -27,12 +28,18 @@ function render(initialProps: Props) {
   const double = installDesktopDouble({});
   installed = double;
   const navigate = vi.fn<(next: AppDestination) => void>();
+  const openPullRequest = vi.fn<(ref: PullRequestRef) => void>();
   const hook = renderHook(
     (props: Props) =>
-      useDesktopNotificationClicks({ enabled: true, navigate, ...props }),
+      useDesktopNotificationClicks({
+        enabled: true,
+        navigate,
+        openPullRequest,
+        ...props,
+      }),
     { initialProps },
   );
-  return { double, navigate, hook };
+  return { double, navigate, openPullRequest, hook };
 }
 
 const onReview = (reviewId: string): AppDestination => ({
@@ -48,7 +55,11 @@ describe("useDesktopNotificationClicks", () => {
     });
 
     act(() =>
-      double.sendNotificationClick({ reviewId: "r1", insightType: "analysis" }),
+      double.sendNotificationClick({
+        kind: "review",
+        reviewId: "r1",
+        insightType: "analysis",
+      }),
     );
 
     expect(hook.result.current).toMatchObject({
@@ -66,6 +77,7 @@ describe("useDesktopNotificationClicks", () => {
 
     act(() =>
       double.sendNotificationClick({
+        kind: "review",
         reviewId: "r1",
         insightType: "walkthrough",
       }),
@@ -73,6 +85,7 @@ describe("useDesktopNotificationClicks", () => {
     const first = hook.result.current;
     act(() =>
       double.sendNotificationClick({
+        kind: "review",
         reviewId: "r1",
         insightType: "walkthrough",
       }),
@@ -93,7 +106,11 @@ describe("useDesktopNotificationClicks", () => {
     });
 
     act(() =>
-      double.sendNotificationClick({ reviewId: "r1", insightType: "analysis" }),
+      double.sendNotificationClick({
+        kind: "review",
+        reviewId: "r1",
+        insightType: "analysis",
+      }),
     );
 
     expect(hook.result.current).toBeUndefined();
@@ -106,7 +123,11 @@ describe("useDesktopNotificationClicks", () => {
     });
 
     act(() =>
-      double.sendNotificationClick({ reviewId: "r1", insightType: "analysis" }),
+      double.sendNotificationClick({
+        kind: "review",
+        reviewId: "r1",
+        insightType: "analysis",
+      }),
     );
 
     expect(navigate).toHaveBeenCalledWith(onReview("r1"));
@@ -119,7 +140,11 @@ describe("useDesktopNotificationClicks", () => {
       navigationState: "clear",
     });
     act(() =>
-      double.sendNotificationClick({ reviewId: "r1", insightType: "analysis" }),
+      double.sendNotificationClick({
+        kind: "review",
+        reviewId: "r1",
+        insightType: "analysis",
+      }),
     );
     hook.rerender({ destination: onReview("r1"), navigationState: "clear" });
     expect(hook.result.current?.reviewId).toBe("r1");
@@ -138,9 +163,30 @@ describe("useDesktopNotificationClicks", () => {
       navigationState: "clear",
     });
 
-    act(() => double.sendNotificationClick({ reviewId: "r2" }));
+    act(() => double.sendNotificationClick({ kind: "review", reviewId: "r2" }));
 
     expect(hook.result.current).toBeUndefined();
     expect(navigate).toHaveBeenCalledWith(onReview("r2"));
+  });
+
+  it("opens a watched pull request's notification through the palette's open path", () => {
+    const { double, navigate, openPullRequest, hook } = render({
+      destination: onReview("r1"),
+      navigationState: "clear",
+    });
+    const pullRequest = {
+      host: "github.com",
+      owner: "acme",
+      repo: "widgets",
+      number: 7,
+    };
+
+    act(() =>
+      double.sendNotificationClick({ kind: "pullRequest", pullRequest }),
+    );
+
+    expect(openPullRequest).toHaveBeenCalledWith(pullRequest);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(hook.result.current).toBeUndefined();
   });
 });
