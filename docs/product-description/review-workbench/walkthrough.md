@@ -44,6 +44,10 @@ Section movement updates the active prose and focused diff together. The filtere
 
 Reviewed-marker writes are local and fast. Generated Walkthrough creation, when needed, follows the separate Insight run lifecycle and keeps any retained Walkthrough until a replacement succeeds.
 
+A Codex CLI account run also shows what it is doing. The panel reads **Preparing a bounded run…** until Codex starts the turn, then how long ago the run started. Below that it shows the last line of the model's reasoning summary, when the model sends one, and a **Commands** list with one row per command Codex ran: its exit status, **declined**, or a spinner while it runs; the command as plain text; and its duration. An API key run shows only the spinner and start time. When the run fails, times out, or is stopped, the failure notice keeps the last command list until another run starts or the renderer reloads.
+
+> Technical note: commands are shortened to 200 characters, with paths inside the represented worktree made relative and the home directory shown as `~`, before they leave the main process. Command output is never shown. The trace is held in memory only; see [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md).
+
 ### Settle
 
 After movement, focus can move to the selected section heading and progress reflects the new position. At boundaries, movement stops instead of wrapping. Escape from a focused reader control returns focus to the current section heading; closing the takeover restores the original trigger when it still exists.

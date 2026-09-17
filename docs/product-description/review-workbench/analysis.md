@@ -47,6 +47,10 @@ Each Finding owns its pending and error state. Add or Dismiss is admitted once s
 
 Add to review passes through the detect-before-write gate and pending-review coordinator. A malformed success or unknown outcome never marks the Finding confirmed. Dismissal applies only the exact returned Finding ID and status.
 
+While an Analysis run is in progress, the running panel stands in for the reader. A Codex CLI account run also shows what it is doing. The panel reads **Preparing a bounded run…** until Codex starts the turn, then how long ago the run started. Below that it shows the last line of the model's reasoning summary, when the model sends one, and a **Commands** list with one row per command Codex ran: its exit status, **declined**, or a spinner while it runs; the command as plain text; and its duration. An API key run shows only the spinner and start time. When the run fails, times out, or is stopped, the failure notice keeps the last command list until another run starts or the renderer reloads.
+
+> Technical note: commands are shortened to 200 characters, with paths inside the represented worktree made relative and the home directory shown as `~`, before they leave the main process. Command output is never shown. The trace is held in memory only; see [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md).
+
 ### Settle
 
 An exact pending-review projection updates the canonical workbench immediately without an advisory full Review load. A Finding becomes pending review only when the projection's unresolved Finding identity matches the run, Finding, session, head, patch, and pending-review node. It becomes published only from matching recent-write evidence.
@@ -91,7 +95,7 @@ A Finding that no longer maps to the represented diff, or an Add while the pendi
 
 **Concurrent operations and locking.** Row-local guards, cumulative projection checks, and the Review coordinator prevent duplicate or out-of-order confirmation.
 
-**Feedback, errors, and diagnostics.** Pending, pending review, published, dismissed, failed, and recovery-required are distinct. Raw prompts, provider events, and unbounded errors do not enter the renderer projection.
+**Feedback, errors, and diagnostics.** Pending, pending review, published, dismissed, failed, and recovery-required are distinct. A Codex CLI account run's command trace and one reasoning line enter the renderer projection, bounded as [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md) records; raw prompts, command output, raw provider events, and unbounded errors do not.
 
 **Preferences, keyboard commands, and desktop integration.** Analysis remembers provider, model, and reasoning defaults. No desktop menu shortcut accepts a Finding.
 
