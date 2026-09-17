@@ -10,7 +10,7 @@ import { parseBriefOutput } from "../domain/brief";
 import { definedProps } from "../domain/defined-props";
 import { parseAbsolutePath, type AbsolutePath } from "../domain/ids";
 import { parseModelReviewResult } from "../domain/review-result";
-import { err, ok, type Result } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "../domain/result";
 import type { BriefInput } from "./brief-operation";
 import {
   ANALYSIS_RUN_TIMEOUT_MS,
@@ -334,7 +334,16 @@ function childFailureReason(
       return "runtime_unavailable";
     case "CommandTimedOut":
       return "timed_out";
-    default:
+    case "CommandForbidden":
+    case "CommandUnsupported":
+    case "CommandPendingReview":
+    case "CommandFailed":
+    case "CommandInvalidJson":
       return "execution_failed";
+    // The runner cut the child short because the request was abandoned, which is not an execution failure.
+    case "CommandAborted":
+      return "cancelled";
+    default:
+      return casesHandled(failure);
   }
 }

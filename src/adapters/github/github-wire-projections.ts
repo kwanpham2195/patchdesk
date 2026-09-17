@@ -35,7 +35,7 @@ import {
 } from "../../domain/ids";
 import { definedProps } from "../../domain/defined-props";
 import type { PullRequestRef } from "../../domain/pull-request";
-import { err, ok, type Result } from "../../domain/result";
+import { casesHandled, err, ok, type Result } from "../../domain/result";
 import type { PendingReviewAnchor } from "../../domain/pending-review";
 import type { GitHubReviewEvent } from "../../domain/pending-review";
 import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
@@ -951,9 +951,8 @@ export function assembleConversationEntries(
 }
 
 /**
- * The timestamp each entry kind is stamped with. A `GeneralThread` with no
- * comments, and the `PrDescription` entry this assembly never produces, both
- * sort as `""` — ahead of everything dated.
+ * The timestamp each entry kind is stamped with; an undated entry sorts as
+ * `""`, ahead of everything dated.
  */
 function conversationEntryOrder(entry: ConversationEntry): string {
   switch (entry._tag) {
@@ -964,7 +963,9 @@ function conversationEntryOrder(entry: ConversationEntry): string {
       return entry.comment.createdAt;
     case "GeneralThread":
       return entry.thread.comments[0]?.createdAt ?? "";
-    default:
+    case "PrDescription":
       return "";
+    default:
+      return casesHandled(entry);
   }
 }

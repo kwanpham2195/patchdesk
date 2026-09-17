@@ -34,7 +34,7 @@ import {
   type RevisionUnavailableReason,
 } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
-import { err, ok, type Result } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "../domain/result";
 import type {
   ReviewWorkbenchProjection,
   WorkbenchProjectionFailure,
@@ -774,6 +774,8 @@ function containsRecentWrites(
       }
       case "DraftStateChange":
         return snapshot.pullRequest.isDraft === write.draft;
+      default:
+        return casesHandled(write);
     }
   });
 }

@@ -5,7 +5,7 @@ import type {
   InsightReasoning,
   InsightSelection,
 } from "../domain/insight-provider";
-import { err, ok, type Result } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "../domain/result";
 import type {
   CodexAppServerClient,
   CodexAppServerFailure,
@@ -249,7 +249,13 @@ function mapCodexFailure(
       return "timed_out";
     case "invalid_result":
       return "invalid_result";
-    default:
+    // The catalog vocabulary has no cancelled state, so a cancelled model-list fetch reads as an unavailable runtime (#256).
+    case "cancelled":
+    case "execution_failed":
+    case "runtime_unavailable":
+    case "unexpected_failure":
       return "runtime_unavailable";
+    default:
+      return casesHandled(failure.reason);
   }
 }
