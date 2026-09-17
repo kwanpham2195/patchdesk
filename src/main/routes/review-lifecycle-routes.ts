@@ -59,17 +59,29 @@ export function registerReviewLifecycleRoutes(
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/leave", async (context) => {
-    const parsed = safeParse(reviewRecoverySchema, await jsonBody(context));
+    const parsed = safeParse(reviewLeaveSchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
-    if (profileId._tag === "err" || reviewId._tag === "err")
+    const headSha = parseGitSha(parsed.output.headSha);
+    const seenThrough =
+      parsed.output.seenThrough === undefined
+        ? undefined
+        : parseIsoTimestamp(parsed.output.seenThrough);
+    if (
+      profileId._tag === "err" ||
+      reviewId._tag === "err" ||
+      headSha._tag === "err" ||
+      seenThrough?._tag === "err"
+    )
       return context.json({ error: "invalid_input" }, 400);
     return response(
       context,
       await reviewWorkbench.leave({
         profileId: profileId.value,
         reviewId: reviewId.value,
+        headSha: headSha.value,
+        seenThrough: seenThrough?.value,
       }),
     );
   });
@@ -186,6 +198,13 @@ const reviewLoadSchema = strictObject({
   reviewId: pipe(string(), minLength(1)),
   /** Set only by the maintainer's own open; see `ReviewWorkbenchController.load`. */
   recordOpen: optional(boolean()),
+});
+/** What the renderer showed as the maintainer left; see `ReviewWorkbenchController.leave`. */
+const reviewLeaveSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  headSha: pipe(string(), minLength(1)),
+  seenThrough: optional(pipe(string(), minLength(1))),
 });
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
