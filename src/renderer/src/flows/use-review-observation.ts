@@ -36,6 +36,8 @@ export type ReviewObservationResult = {
   readonly refreshError: boolean;
   readonly runDetect: () => Promise<void>;
   readonly refresh: () => Promise<void>;
+  /** Adopts the pull request's current revision; rejects when the refresh fails. */
+  readonly requestRefresh: () => Promise<WorkbenchResponse>;
   readonly replaceWorkbench: (workbench: WorkbenchResponse) => void;
   readonly runDirectCommand: RunDirectCommand;
   readonly observeConfirmedReviewWrite: (
@@ -356,6 +358,7 @@ export function useReviewObservation({
     refreshError,
     runDetect,
     refresh,
+    requestRefresh,
     replaceWorkbench,
     runDirectCommand,
     observeConfirmedReviewWrite,

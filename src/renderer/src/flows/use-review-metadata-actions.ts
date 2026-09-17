@@ -19,6 +19,7 @@ import {
 } from "../renderer-contracts";
 import {
   parseAssigneeReceipt,
+  parseBaseBranchReceipt,
   parseDraftStateReceipt,
   parseLabelReceipt,
   parseReviewerReceipt,
@@ -57,7 +58,17 @@ export type ReviewMetadataActions = {
   ) => Promise<void>;
   /** `draft: false` publishes a draft for review; `true` takes it back to draft. */
   readonly setDraftState: (draft: boolean) => Promise<void>;
+  /** Changes the base branch, then rebuilds the Review against the new base. */
+  readonly setBaseBranch: (branch: string) => Promise<BaseBranchChangeOutcome>;
 };
+
+/**
+ * `RefreshFailed` means GitHub confirmed the base change but the Review still
+ * represents the old base; the maintainer refreshes, and the write is never retried.
+ */
+export type BaseBranchChangeOutcome =
+  | { readonly _tag: "Refreshed" }
+  | { readonly _tag: "RefreshFailed"; readonly branch: string };
 
 export type ReviewMetadataActionsInput = {
   readonly workbench: WorkbenchResponse;
@@ -69,6 +80,7 @@ export type ReviewMetadataActionsInput = {
   readonly requireRecovery: (
     operation: RemoteWriteRecovery["operation"],
   ) => void;
+  readonly requestRefresh: () => Promise<WorkbenchResponse>;
 };
 
 /** Owns pull request metadata reads and strict confirmation handling. */
@@ -78,6 +90,7 @@ export function useReviewMetadataActions({
   appendRecentWrites,
   observeConfirmedReviewWrite,
   requireRecovery,
+  requestRefresh,
 }: ReviewMetadataActionsInput): ReviewMetadataActions {
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
@@ -314,6 +327,26 @@ export function useReviewMetadataActions({
     },
     [runConfirmed],
   );
+  const setBaseBranch = useCallback(
+    async (branch: string): Promise<BaseBranchChangeOutcome> => {
+      await runConfirmed({
+        path: "/v1/reviews/base-branch/command",
+        command: { _tag: "SetBaseBranch", branch },
+        operation: "SetBaseBranch",
+        parse: parseBaseBranchReceipt,
+        matches: (receipt) => receipt.branch === branch,
+        recentWrite: () => ({ _tag: "BaseBranchChange", branch }),
+      });
+      // A new base moves the revision identity, so only Refresh can adopt it (ADR 0017).
+      try {
+        await requestRefresh();
+        return { _tag: "Refreshed" };
+      } catch {
+        return { _tag: "RefreshFailed", branch };
+      }
+    },
+    [requestRefresh, runConfirmed],
+  );
 
   return {
     fetchLabels,
@@ -327,6 +360,7 @@ export function useReviewMetadataActions({
     requestReviewers,
     removeReviewers,
     setDraftState,
+    setBaseBranch,
   };
 }
 
