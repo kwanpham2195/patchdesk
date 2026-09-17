@@ -44,6 +44,10 @@ Starting the run binds it to the current profile, Review session, represented he
 
 Patchdesk polls the run by its durable identity. The reader keeps the retained Brief visible where one exists and presents progress separately. Stop requests cancellation, but final state still comes from the run status. A transient status-read failure does not discard run identity; polling can retry.
 
+A Codex CLI account run also shows what it is doing. The panel reads **Preparing a bounded run…** until Codex starts the turn, then how long ago the run started. Below that it shows the last line of the model's reasoning summary, when the model sends one, and a **Commands** list with one row per command Codex ran: its exit status, **declined**, or a spinner while it runs; the command as plain text; and its duration. An API key run shows only the spinner and start time. When the run fails, times out, or is stopped, the failure notice keeps the last command list until another run starts or the renderer reloads.
+
+> Technical note: commands are shortened to 200 characters, with paths inside the represented worktree made relative and the home directory shown as `~`, before they leave the main process. Command output is never shown. The trace is held in memory only; see [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md).
+
 Provider unavailability, invocation failure, timeout, invalid output, or cancellation settles as a failed or stopped run without replacing the retained Brief. The generated content itself is not used to authorize GitHub writes.
 
 ### Settle
@@ -90,7 +94,7 @@ Shape groups files by directory and collapses a directory after twelve files int
 
 **Concurrent operations and locking.** One run identity owns its Insight slot. Provider polling and Stop settle through the coordinator rather than competing component state.
 
-**Feedback, errors, and diagnostics.** Progress, retained result, unavailable provider, failed run, stopped run, timeout, and invalid result are separate outcomes. Raw provider events and prompts are not projected into the renderer.
+**Feedback, errors, and diagnostics.** Progress, retained result, unavailable provider, failed run, stopped run, timeout, and invalid result are separate outcomes. A Codex CLI account run projects its command trace and one reasoning line into the renderer; prompts, command output, and raw provider events are not projected ([ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md)).
 
 **Preferences, keyboard commands, and desktop integration.** Saved provider, model, and reasoning values seed later Brief runs. No desktop menu shortcut generates Brief.
 
