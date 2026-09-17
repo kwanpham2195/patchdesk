@@ -13,7 +13,25 @@ export type PatchdeskConfigFile = {
   readonly lastSelectedProfileId?: WorkspaceProfileId;
   readonly appearance?: Appearance;
   readonly diffTheme?: DiffTheme;
+  readonly notifications?: NotificationSettings;
 };
+
+/**
+ * The desktop notification toggles (ADR 0044). `enabled` gates every
+ * notification; `preparationAndMerge` additionally gates the two
+ * lower-value ones. Stored and patched as a pair.
+ */
+export type NotificationSettings = {
+  readonly enabled: boolean;
+  readonly preparationAndMerge: boolean;
+};
+
+/** The toggles a config that never saved them runs with. */
+export function notificationSettingsOf(
+  config: PatchdeskConfigFile,
+): NotificationSettings {
+  return config.notifications ?? { enabled: true, preparationAndMerge: false };
+}
 
 /** The stored appearance choice; "system" follows the OS preference. */
 export type Appearance = "system" | "light" | "dark";
@@ -26,7 +44,14 @@ type DiffTheme = {
 export type PatchdeskSettingsPatch = {
   readonly appearance?: Appearance;
   readonly diffTheme?: DiffTheme;
+  readonly notifications?: NotificationSettings;
 };
+
+// Strict like the rest of the file rather than ADR 0022's per-field fallback: config.json already fails closed as a whole.
+const notificationSettingsSchema = v.strictObject({
+  enabled: v.boolean(),
+  preparationAndMerge: v.boolean(),
+});
 
 /** Valibot schema for the global Patchdesk config file. */
 const patchdeskConfigSchema = v.strictObject({
@@ -38,6 +63,7 @@ const patchdeskConfigSchema = v.strictObject({
       dark: v.pipe(v.string(), v.minLength(1)),
     }),
   ),
+  notifications: v.optional(notificationSettingsSchema),
 });
 
 /** Valibot schema for the mutable, file-backed settings exposed by the desktop API. */
@@ -49,6 +75,7 @@ const patchdeskSettingsPatchSchema = v.strictObject({
       dark: v.pipe(v.string(), v.minLength(1)),
     }),
   ),
+  notifications: v.optional(notificationSettingsSchema),
 });
 
 /** Parse the global config boundary into profile IDs that core code can trust. */
@@ -69,7 +96,8 @@ export function parsePatchdeskSettingsPatch(
   if (
     !parsed.success ||
     (parsed.output.appearance === undefined &&
-      parsed.output.diffTheme === undefined)
+      parsed.output.diffTheme === undefined &&
+      parsed.output.notifications === undefined)
   ) {
     return invalid("config");
   }
@@ -78,6 +106,7 @@ export function parsePatchdeskSettingsPatch(
     definedProps({
       appearance: parsed.output.appearance,
       diffTheme: parsed.output.diffTheme,
+      notifications: parsed.output.notifications,
     }),
   );
 }
@@ -86,12 +115,14 @@ function parsePatchdeskConfigFields(input: {
   readonly lastSelectedProfileId?: string | undefined;
   readonly appearance?: Appearance | undefined;
   readonly diffTheme?: DiffTheme | undefined;
+  readonly notifications?: NotificationSettings | undefined;
 }): Result<PatchdeskConfigFile, InvalidDomainContract> {
   if (input.lastSelectedProfileId === undefined) {
     return ok(
       definedProps({
         appearance: input.appearance,
         diffTheme: input.diffTheme,
+        notifications: input.notifications,
       }),
     );
   }
@@ -103,6 +134,7 @@ function parsePatchdeskConfigFields(input: {
     ...definedProps({
       appearance: input.appearance,
       diffTheme: input.diffTheme,
+      notifications: input.notifications,
     }),
   });
 }
