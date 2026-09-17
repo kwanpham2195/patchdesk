@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { Eye } from "lucide-react";
 
 import { requestJson } from "@/api-client";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -7,6 +8,7 @@ import {
   formatExactTime,
 } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
+import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import {
   parseSidebarReviewsResponse,
   type SidebarReviewRow,
@@ -32,6 +34,7 @@ export function VisitedPullRequests({
   onNavigate,
   reloadKey,
   workspaceLabel,
+  host,
 }: {
   /** Empty while a workspace switch is in flight, which draws the frame alone. */
   readonly profileId: string;
@@ -41,8 +44,11 @@ export function VisitedPullRequests({
   readonly reloadKey: number;
   /** The active workspace's label for the header strip; undefined while a switch is in flight. */
   readonly workspaceLabel: string | undefined;
+  /** The workspace's GitHub host; the rows carry none, and a watched mark needs it. */
+  readonly host?: string;
 }): React.JSX.Element {
   const [state, setState] = useState<ListState>({ kind: "idle" });
+  const watch = useWatchedPullRequests();
   const [activeReviewId, setActiveReviewId] = useState<string | undefined>();
 
   useEffect(() => {
@@ -150,6 +156,10 @@ export function VisitedPullRequests({
                       selected={row.reviewId === openReviewId}
                       tabStop={row.reviewId === tabStopReviewId}
                       scope={scope}
+                      watched={
+                        host !== undefined &&
+                        watch?.isWatched({ ...row, host }) === true
+                      }
                       onFocus={() => setActiveReviewId(row.reviewId)}
                       onOpen={() =>
                         onNavigate({
@@ -245,6 +255,7 @@ function VisitedRow({
   selected,
   tabStop,
   scope,
+  watched,
   onOpen,
   onFocus,
 }: {
@@ -252,6 +263,8 @@ function VisitedRow({
   readonly selected: boolean;
   readonly tabStop: boolean;
   readonly scope: VisitedLabelScope;
+  /** Marks a pull request the maintainer watches (ADR 0045). */
+  readonly watched: boolean;
   readonly onOpen: () => void;
   readonly onFocus: () => void;
 }): React.JSX.Element {
@@ -300,6 +313,15 @@ function VisitedRow({
               </time>
             )}
           </span>
+          {watched ? (
+            <span
+              className="ml-auto inline-flex shrink-0 self-center"
+              title="Watched"
+            >
+              <Eye className="size-3" aria-hidden="true" />
+              <span className="sr-only">Watched</span>
+            </span>
+          ) : null}
           {row.terminal === undefined ? null : (
             <TerminalMarker terminal={row.terminal} />
           )}

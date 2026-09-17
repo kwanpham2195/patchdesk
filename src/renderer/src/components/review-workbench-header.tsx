@@ -17,6 +17,7 @@ import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
+import { WatchPullRequestButton } from "./watch-pull-request-button";
 import { cn } from "@/lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -121,6 +122,9 @@ export function ReviewWorkbenchHeader({
           >
             <ExternalLink data-icon="inline-start" /> Open on GitHub
           </Button>
+          {externalPullRequest === undefined || terminal ? null : (
+            <WatchPullRequestButton pullRequest={externalPullRequest} />
+          )}
           {actions.pendingReview === undefined || terminal ? null : (
             <PendingReviewHeaderAction
               pendingReview={actions.pendingReview}

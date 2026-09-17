@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { ArrowLeft, GitPullRequest, Settings } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, GitPullRequest, Settings } from "lucide-react";
 
 import {
   INBOX_PRESET_FILTERS,
@@ -25,6 +25,7 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
+import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 
 const icons = {
   dashboard: GitPullRequest,
@@ -66,6 +67,7 @@ export function AppCommandDialog({
     query.trim(),
     pullRequestDefaultHost,
   );
+  const watch = useWatchedPullRequests();
 
   const close = (): void => {
     onQueryChange("");
@@ -193,9 +195,42 @@ export function AppCommandDialog({
               <ArrowLeft className="rotate-180" />
               Open selected pull request
             </CommandItem>
+            {parsedPullRequest._tag === "ok" && watch !== undefined ? (
+              <WatchCommand
+                pullRequest={parsedPullRequest.value}
+                watched={watch.isWatched(parsedPullRequest.value)}
+                query={query}
+                onSelect={() => {
+                  close();
+                  void watch.toggle(parsedPullRequest.value);
+                }}
+              />
+            ) : null}
           </CommandGroup>
         </CommandList>
       </Command>
     </CommandDialog>
+  );
+}
+
+/** Watch or Unwatch the pull request the query names; a refusal shows where the toggle is next seen. */
+function WatchCommand({
+  pullRequest,
+  watched,
+  query,
+  onSelect,
+}: {
+  readonly pullRequest: PullRequestRef;
+  readonly watched: boolean;
+  readonly query: string;
+  readonly onSelect: () => void;
+}): React.JSX.Element {
+  const Icon = watched ? EyeOff : Eye;
+  const label = `${watched ? "Unwatch" : "Watch"} ${pullRequest.owner}/${pullRequest.repo}#${pullRequest.number}`;
+  return (
+    <CommandItem value={`${query} ${label}`} onSelect={onSelect}>
+      <Icon />
+      {label}
+    </CommandItem>
   );
 }
