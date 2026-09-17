@@ -102,9 +102,11 @@ async function harness() {
       enabled: true,
       logs: { write: (entry) => logs.push(entry) },
     });
-  /** Waits for the scheduler to finish the tick that logged line number `count`. */
-  const ticks = (count: number) =>
-    vi.waitFor(() => expect(logs.length).toBeGreaterThanOrEqual(count));
+  /** Waits for the tick that logged line number `count`, then for the scheduler to release it. */
+  const ticks = async (count: number) => {
+    await vi.waitFor(() => expect(logs.length).toBeGreaterThanOrEqual(count));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
   return {
     store,
     github,
