@@ -5,6 +5,7 @@ import {
   PatchdeskApiError,
   isOutcomeUnknownRetry,
   requestJson,
+  untrustedWriteResponseError,
 } from "../api-client";
 import {
   parseAssignableUserListResponse,
@@ -99,10 +100,11 @@ export function useReviewMetadataActions({
           }),
         );
         const receipt = input.parse(value);
-        if (receipt === undefined || !input.matches(receipt)) {
-          requireRecovery(input.operation);
-          throw new Error("Invalid metadata confirmation response");
-        }
+        // The catch below requires recovery for every unconfirmed write.
+        if (receipt === undefined || !input.matches(receipt))
+          throw untrustedWriteResponseError(
+            "invalid-metadata-confirmation-response",
+          );
         const recentWrite = input.recentWrite(receipt);
         appendRecentWrites(recentWrite);
         void observeConfirmedReviewWrite([recentWrite]).catch(() => undefined);

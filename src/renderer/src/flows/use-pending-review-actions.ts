@@ -3,10 +3,11 @@ import * as v from "valibot";
 
 import { parseGitHubThreadId, type GitHubThreadId } from "../../../domain/ids";
 import {
-  PatchdeskApiError,
+  ReviewPreconditionError,
   contextualMessage,
   isOutcomeUnknownRetry,
   requestJson,
+  untrustedWriteResponseError,
 } from "../api-client";
 import {
   FINISH_REVIEW_MESSAGES,
@@ -139,7 +140,7 @@ export function usePendingReviewActions({
     async (command: PendingReviewCommand): Promise<void> => {
       const patchHash = workbench.revision.patchHash;
       if (patchHash === undefined)
-        throw new Error("The current Diff cannot accept review comments.");
+        throw new ReviewPreconditionError("diff_anchor_unverifiable");
       const priorThreadIds =
         command._tag === "Start" ||
         command._tag === "AddThread" ||
@@ -202,12 +203,8 @@ export function usePendingReviewActions({
               action: recoveryAction,
             },
           });
-          throw new PatchdeskApiError(
-            "outcome_unknown",
-            200,
-            false,
+          throw untrustedWriteResponseError(
             "invalid-pending-review-projection",
-            "GitHub could not confirm this write. Check GitHub again before trying again.",
           );
         }
         setFinishDialogError(undefined);
@@ -291,7 +288,7 @@ export function usePendingReviewActions({
         });
         const next = parseWorkbenchResponse(loaded);
         if (next === undefined)
-          throw new Error("Invalid Review projection response");
+          throw untrustedWriteResponseError("invalid-review-load-response");
         onWorkbenchReplace(next);
         setFinishDialogError(undefined);
       }

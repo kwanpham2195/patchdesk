@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
 import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import {
   useReviewMetadataActions,
   type ReviewMetadataActions,
@@ -150,7 +151,12 @@ describe("useReviewMetadataActions", () => {
     it(`${row.name} sends wrong tag or membership to its exact recovery operation`, async () => {
       const rendered = renderActions(row.path, success(row.wrongReceipt));
       await act(async () => {
-        await expect(row.invoke(rendered.result.current)).rejects.toThrow();
+        const request = row.invoke(rendered.result.current);
+        await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+        await expect(request).rejects.toMatchObject({
+          kind: "outcome_unknown",
+          correlationId: "invalid-metadata-confirmation-response",
+        });
       });
       expect(rendered.requireRecovery).toHaveBeenCalledExactlyOnceWith(
         row.operation,
@@ -166,9 +172,14 @@ describe("useReviewMetadataActions", () => {
       success({ _tag: "LabelsAdded", added: ["bug"], extra: true }),
     );
     await act(async () => {
-      await expect(
-        rendered.result.current.addLabels([{ id: "LA_bug", name: "bug" }]),
-      ).rejects.toThrow();
+      const request = rendered.result.current.addLabels([
+        { id: "LA_bug", name: "bug" },
+      ]);
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-metadata-confirmation-response",
+      });
     });
     expect(rendered.requireRecovery).toHaveBeenCalledExactlyOnceWith(
       "AddLabels",
