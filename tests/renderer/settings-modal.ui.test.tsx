@@ -56,7 +56,7 @@ describe("SettingsModal", () => {
       "field-label",
     );
     expect(document.querySelectorAll('[data-slot="field-group"]').length).toBe(
-      2,
+      3,
     );
     expect(screen.getByRole("combobox", { name: "Appearance" })).toBeTruthy();
     expect(
@@ -73,6 +73,39 @@ describe("SettingsModal", () => {
       document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')
         ?.dataset.motion,
     ).toBe("standard");
+  });
+
+  it("saves the Notifications toggles from General", async () => {
+    const desktopApi = installDesktopApi();
+    const user = userEvent.setup();
+    renderModal(vi.fn());
+
+    const enabled = await screen.findByRole("switch", {
+      name: "Notifications",
+    });
+    await waitFor(() =>
+      expect(enabled.getAttribute("aria-checked")).toBe("true"),
+    );
+    await user.click(enabled);
+
+    await waitFor(() =>
+      expect(
+        desktopApi.request.mock.calls.some(
+          ([input]) =>
+            "path" in input &&
+            input.path === "/v1/settings" &&
+            input.method === "PATCH",
+        ),
+      ).toBe(true),
+    );
+    expect(
+      screen
+        .getByRole("switch", { name: "Review ready and merge completed" })
+        .hasAttribute("disabled") ||
+        screen
+          .getByRole("switch", { name: "Review ready and merge completed" })
+          .getAttribute("aria-disabled") === "true",
+    ).toBe(true);
   });
 
   it("opens on General and exposes only the two local-data controls", async () => {
@@ -637,6 +670,12 @@ function installDesktopApi(
         ? failure({ error: "diagnostics_unavailable" })
         : success(options.activity ?? { events: [] }),
     "/v1/profiles": () => success({}),
+    "/v1/settings": (input) =>
+      success(
+        input.method === "PATCH"
+          ? { notifications: { enabled: false, preparationAndMerge: false } }
+          : {},
+      ),
     "/v1/storage/clear-local-data": () =>
       options.clearLocalDataFails === true
         ? failure({ error: "storage_unavailable" })

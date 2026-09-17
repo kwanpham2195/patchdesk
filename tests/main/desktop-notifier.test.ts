@@ -6,7 +6,9 @@ import {
   type NotificationDestination,
 } from "../../src/main/desktop-notifier";
 import type { DesktopNotificationClick } from "../../src/main/ipc-contract";
+import type { NotificationSettings } from "../../src/domain/contracts";
 import type { LogEntryInput } from "../../src/domain/log-entry";
+import { ok } from "../../src/domain/result";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import {
   reviewId,
@@ -27,6 +29,14 @@ const analysisFinished: DesktopNotificationEvent = {
   insightType: "analysis",
   outcome: "completed",
 };
+
+const defaults: NotificationSettings = {
+  enabled: true,
+  preparationAndMerge: false,
+};
+
+/** Lets the notifier's settings read settle. */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** A stand-in for Electron's `Notification` that records what was shown. */
 function fakeNotifications() {
@@ -55,19 +65,23 @@ function fakeNotifications() {
 }
 
 function harness(
-  createNotification?: ReturnType<typeof fakeNotifications>["create"],
-  window: {
-    readonly focused: boolean;
-    readonly destination: NotificationDestination;
-  } = { focused: false, destination: { kind: "dashboard" } },
+  options: {
+    readonly createNotification?: ReturnType<
+      typeof fakeNotifications
+    >["create"];
+    readonly focused?: boolean;
+    readonly destination?: NotificationDestination;
+    readonly settings?: NotificationSettings;
+  } = {},
 ) {
   const notifications = fakeNotifications();
   const logs: LogEntryInput[] = [];
   const clicks: DesktopNotificationClick[] = [];
   const notifier = createDesktopNotifier({
-    windowFocused: () => window.focused,
-    destination: () => window.destination,
-    createNotification: createNotification ?? notifications.create,
+    windowFocused: () => options.focused ?? false,
+    destination: () => options.destination ?? { kind: "dashboard" },
+    settings: async () => ok(options.settings ?? defaults),
+    createNotification: options.createNotification ?? notifications.create,
     onClick: (click) => clicks.push(click),
     logs: { write: (entry) => logs.push(entry) },
   });
@@ -75,10 +89,11 @@ function harness(
 }
 
 describe("createDesktopNotifier", () => {
-  it("shows the pull request reference and logs the event tag and Review id only", () => {
+  it("shows the pull request reference and logs the event tag and Review id only", async () => {
     const { notifier, notifications, logs } = harness();
 
     notifier.notify(analysisFinished);
+    await flush();
 
     expect(notifications.shown).toMatchObject([
       { title: "Analysis finished", body: "centraldigital/patchdesk#42" },
@@ -94,42 +109,61 @@ describe("createDesktopNotifier", () => {
     ]);
   });
 
-  it("routes a click to the Insight reader of that Review", () => {
+  it("routes a click to the Insight reader of that Review", async () => {
     const { notifier, notifications, logs, clicks } = harness();
 
     notifier.notify(analysisFinished);
+    await flush();
     notifications.shown[0]?.click();
 
     expect(clicks).toEqual([{ reviewId, insightType: "analysis" }]);
     expect(logs.map((entry) => entry.message)).toEqual(["shown", "clicked"]);
   });
 
-  it("stays silent and logs why while the window is focused on the event's Review", () => {
-    const { notifier, notifications, logs } = harness(undefined, {
-      focused: true,
-      destination: { kind: "workbench", reviewId },
-    });
-
-    notifier.notify(analysisFinished);
-
-    expect(notifications.shown).toEqual([]);
-    expect(logs).toMatchObject([
+  it.each([
+    [
+      "focused on the event's Review",
       {
-        level: "debug",
-        message: "skipped",
-        meta: { kind: "InsightSettled", reason: "focused_on_review" },
+        focused: true,
+        destination: { kind: "workbench", reviewId } as const,
       },
-    ]);
-  });
+      "focused_on_review",
+    ],
+    [
+      "with Notifications off",
+      { settings: { enabled: false, preparationAndMerge: true } },
+      "disabled",
+    ],
+  ] as const)(
+    "stays silent and logs why %s",
+    async (_label, options, reason) => {
+      const { notifier, notifications, logs } = harness(options);
 
-  it("logs a notification the platform refused instead of throwing into the caller", () => {
-    const { notifier, logs } = harness(() => {
-      throw new Error("notification center unavailable");
+      notifier.notify(analysisFinished);
+      await flush();
+
+      expect(notifications.shown).toEqual([]);
+      expect(logs).toMatchObject([
+        {
+          level: "debug",
+          message: "skipped",
+          meta: { kind: "InsightSettled", reason },
+        },
+      ]);
+    },
+  );
+
+  it("logs a notification the platform refused instead of throwing into the caller", async () => {
+    const { notifier, logs } = harness({
+      createNotification: () => {
+        throw new Error("notification center unavailable");
+      },
     });
 
     expect(() =>
       notifier.notify({ _tag: "WriteNeedsRecovery", reviewId, pullRequest }),
     ).not.toThrow();
+    await flush();
     expect(logs).toMatchObject([
       {
         level: "warn",
@@ -167,6 +201,7 @@ describe("decideDesktopNotification", () => {
       const decision = decideDesktopNotification({
         focused,
         destination,
+        settings: defaults,
         event: analysisFinished,
       });
 
@@ -175,4 +210,47 @@ describe("decideDesktopNotification", () => {
       );
     },
   );
+
+  it.each([
+    [
+      { enabled: false, preparationAndMerge: true },
+      "InsightSettled",
+      "disabled",
+    ],
+    [
+      { enabled: true, preparationAndMerge: false },
+      "WriteNeedsRecovery",
+      "show",
+    ],
+    [
+      { enabled: true, preparationAndMerge: false },
+      "PreparationFinished",
+      "disabled",
+    ],
+    [
+      { enabled: true, preparationAndMerge: false },
+      "MergeCompleted",
+      "disabled",
+    ],
+    [{ enabled: true, preparationAndMerge: true }, "MergeCompleted", "show"],
+    [
+      { enabled: false, preparationAndMerge: true },
+      "MergeCompleted",
+      "disabled",
+    ],
+  ] as const)("settings %o for %s: %s", (settings, tag, expected) => {
+    const event: DesktopNotificationEvent =
+      tag === "InsightSettled"
+        ? analysisFinished
+        : { _tag: tag, reviewId, pullRequest };
+
+    const decision = decideDesktopNotification({
+      focused: false,
+      destination: { kind: "dashboard" },
+      settings,
+      event,
+    });
+
+    expect(decision._tag === "show" ? "show" : decision.reason).toBe(expected);
+  });
 });

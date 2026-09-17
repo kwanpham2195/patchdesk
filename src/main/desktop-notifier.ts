@@ -1,7 +1,8 @@
+import type { NotificationSettings } from "../domain/contracts";
 import type { ReviewId } from "../domain/ids";
 import type { LogEntryInput } from "../domain/log-entry";
 import { loggableMetaValue } from "../domain/log-entry";
-import { casesHandled } from "../domain/result";
+import { casesHandled, type Result } from "../domain/result";
 import type {
   DesktopNotificationEvent,
   DesktopNotifier,
@@ -27,17 +28,29 @@ export type NotificationDestination =
 
 type DesktopNotificationDecision =
   | { readonly _tag: "show" }
-  | { readonly _tag: "skip"; readonly reason: "focused_on_review" };
+  | {
+      readonly _tag: "skip";
+      readonly reason: "disabled" | "focused_on_review";
+    };
 
 /**
- * The one silence rule (ADR 0044): an event about the Review the focused
- * window is showing needs no notification. Anything else is shown.
+ * Whether one event is shown (ADR 0044): the toggles decide first, then the
+ * one silence rule, which spares the Review the focused window is showing.
  */
 export function decideDesktopNotification(input: {
   readonly focused: boolean;
   readonly destination: NotificationDestination;
+  readonly settings: NotificationSettings;
   readonly event: DesktopNotificationEvent;
 }): DesktopNotificationDecision {
+  const lowerValue =
+    input.event._tag === "PreparationFinished" ||
+    input.event._tag === "MergeCompleted";
+  if (
+    !input.settings.enabled ||
+    (lowerValue && !input.settings.preparationAndMerge)
+  )
+    return { _tag: "skip", reason: "disabled" };
   return input.focused &&
     input.destination.kind === "workbench" &&
     input.destination.reviewId === input.event.reviewId
@@ -48,6 +61,10 @@ export function decideDesktopNotification(input: {
 type DesktopNotifierDependencies = {
   readonly windowFocused: () => boolean;
   readonly destination: () => NotificationDestination;
+  /** Read per event, so a toggle changed in Settings applies to the next one. */
+  readonly settings: () => Promise<
+    Result<NotificationSettings, "config_unreadable">
+  >;
   readonly createNotification: (
     options: DesktopNotificationText,
   ) => ShownNotification;
@@ -67,48 +84,62 @@ export function createDesktopNotifier(
   const live = new Set<ShownNotification>();
   return {
     notify(event) {
-      try {
-        const decision = decideDesktopNotification({
-          focused: dependencies.windowFocused(),
-          destination: dependencies.destination(),
-          event,
-        });
-        if (decision._tag === "skip") {
-          log(dependencies, "skipped", {
-            kind: event._tag,
-            reason: decision.reason,
-          });
-          return;
-        }
-        const notification = dependencies.createNotification(
-          desktopNotificationText(event),
-        );
-        live.add(notification);
-        notification.on("close", () => live.delete(notification));
-        notification.on("click", () => {
-          live.delete(notification);
-          log(dependencies, "clicked", {
-            kind: event._tag,
-            reviewId: event.reviewId,
-          });
-          dependencies.onClick(desktopNotificationClick(event));
-        });
-        notification.show();
-        log(dependencies, "shown", {
-          kind: event._tag,
-          reviewId: event.reviewId,
-        });
-      } catch (cause: unknown) {
-        dependencies.logs.write({
-          process: "main",
-          level: "warn",
-          topic: "desktop-notification",
-          message: "failed",
-          meta: { kind: event._tag, error: loggableMetaValue(cause) },
-        });
-      }
+      void dependencies
+        .settings()
+        .then((settings) => {
+          if (settings._tag === "ok") show(event, settings.value);
+          else fail(event, settings.error);
+        })
+        .catch((cause: unknown) => fail(event, loggableMetaValue(cause)));
     },
   };
+
+  function fail(
+    event: DesktopNotificationEvent,
+    error: ReturnType<typeof loggableMetaValue>,
+  ): void {
+    dependencies.logs.write({
+      process: "main",
+      level: "warn",
+      topic: "desktop-notification",
+      message: "failed",
+      meta: { kind: event._tag, error },
+    });
+  }
+
+  function show(
+    event: DesktopNotificationEvent,
+    settings: NotificationSettings,
+  ): void {
+    const decision = decideDesktopNotification({
+      focused: dependencies.windowFocused(),
+      destination: dependencies.destination(),
+      settings,
+      event,
+    });
+    if (decision._tag === "skip") {
+      log(dependencies, "skipped", {
+        kind: event._tag,
+        reason: decision.reason,
+      });
+      return;
+    }
+    const notification = dependencies.createNotification(
+      desktopNotificationText(event),
+    );
+    live.add(notification);
+    notification.on("close", () => live.delete(notification));
+    notification.on("click", () => {
+      live.delete(notification);
+      log(dependencies, "clicked", {
+        kind: event._tag,
+        reviewId: event.reviewId,
+      });
+      dependencies.onClick(desktopNotificationClick(event));
+    });
+    notification.show();
+    log(dependencies, "shown", { kind: event._tag, reviewId: event.reviewId });
+  }
 }
 
 function log(

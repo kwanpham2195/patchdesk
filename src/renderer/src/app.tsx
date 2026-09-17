@@ -33,6 +33,7 @@ import {
   type NavigationState,
 } from "./hooks/use-app-navigation";
 import { useDesktopMenuBridge } from "./hooks/use-desktop-menu-bridge";
+import { useDesktopNotificationClicks } from "./hooks/use-desktop-notifications";
 import { useGlobalPreferences } from "./hooks/use-global-preferences";
 import {
   useReviewWorkbenchRoute,
@@ -264,6 +265,11 @@ function AppContent({
     },
     [dashboard?.profile.repos, navigate, openPullRequestByRef, reportOpenError],
   );
+  useDesktopNotificationClicks({
+    enabled: !fixtureMode,
+    navigate,
+    restoredWorkbenchUi,
+  });
   const parsedProfileHost = parseGitHubHost(dashboard?.profile.githubHost);
   useDesktopMenuBridge({
     fixtureMode,

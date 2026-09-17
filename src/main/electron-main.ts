@@ -49,11 +49,15 @@ import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
-import type { Appearance } from "../domain/contracts";
+import {
+  notificationSettingsOf,
+  type Appearance,
+  type NotificationSettings,
+} from "../domain/contracts";
 import { parseGitSha } from "../domain/ids";
 import type { InsightProvider } from "../domain/insight-provider";
 import { loggableMetaValue } from "../domain/log-entry";
-import { err } from "../domain/result";
+import { err, ok, type Result } from "../domain/result";
 import {
   PiInsightChildInvoker,
   unavailablePiInsightInvoker,
@@ -154,6 +158,7 @@ const desktopNotifier = createDesktopNotifier({
     !mainWindow.isDestroyed() &&
     mainWindow.isFocused(),
   destination: () => rendererDestination,
+  settings: loadNotificationSettings,
   createNotification: (options) => new Notification(options),
   onClick(click) {
     const window = mainWindow;
@@ -688,6 +693,17 @@ async function loadStoredAppearance(): Promise<Appearance> {
   return config._tag === "ok"
     ? (config.value.appearance ?? "system")
     : "system";
+}
+
+/** The stored notification toggles; a missing config file is a first run with the defaults. */
+async function loadNotificationSettings(): Promise<
+  Result<NotificationSettings, "config_unreadable">
+> {
+  const config = await new ProfileStore(PatchdeskPaths.default()).loadConfig();
+  if (config._tag === "ok") return ok(notificationSettingsOf(config.value));
+  return config.error.reason === "not_found"
+    ? ok(notificationSettingsOf({}))
+    : err("config_unreadable");
 }
 
 async function loadAllowedExternalHosts(): Promise<ReadonlySet<string>> {
