@@ -340,7 +340,7 @@ function childFailureReason(
     case "CommandFailed":
     case "CommandInvalidJson":
       return "execution_failed";
-    // The runner cut the child short because the request was abandoned, which is not an execution failure.
+    // An aborted child is a cancellation; `runChild` already reports the run's own abort before this runs.
     case "CommandAborted":
       return "cancelled";
     default:
