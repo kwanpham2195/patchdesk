@@ -3,9 +3,6 @@ import {
   type ChildProcess,
   type SpawnOptions,
 } from "node:child_process";
-import { realpath } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
-
 import * as v from "valibot";
 
 import { err, ok, type Result } from "../../domain/result";
@@ -13,9 +10,12 @@ import type { InsightReasoning } from "../../domain/insight-provider";
 import type { RepresentedReviewWorktree } from "../../domain/represented-review-worktree";
 import type { InsightFailureCategory } from "../../domain/insight-record";
 import { isNotFound } from "../storage/json-file";
-import { isPathContained } from "../storage/path-containment";
 import { createCodexActivityEmitter } from "./codex-activity";
 import type { InsightActivitySink } from "./codex-activity";
+import {
+  isPathInsideWorktree,
+  isReadOnlyCommand,
+} from "./codex-command-allowlist";
 
 const CLIENT_NAME = "patchdesk";
 const CLIENT_VERSION = "0.1.0";
@@ -211,21 +211,6 @@ function allowlistedCodexEnvironment(
     if (value !== undefined) result[name] = value;
   }
   return result;
-}
-
-/** Validates that a path is inside the represented worktree without following an escape. */
-async function isPathInsideWorktree(
-  worktreePath: string,
-  candidatePath: string,
-): Promise<boolean> {
-  if (isAbsolute(candidatePath) === false && candidatePath.includes(".."))
-    return false;
-  const [worktree, candidate] = await Promise.all([
-    realpath(worktreePath),
-    realpath(candidatePath),
-  ]).catch(() => ["", ""] as const);
-  if (worktree.length === 0 || candidate.length === 0) return false;
-  return isPathContained(worktree, candidate);
 }
 
 /** The Analysis result contract Codex must return, kept faithful to modelReviewResultSchema. */
@@ -838,67 +823,11 @@ class RpcChild {
         command !== undefined &&
         this.approvalWorktreePath !== undefined &&
         (await isPathInsideWorktree(this.approvalWorktreePath, worktreePath)) &&
-        (await this.isReadOnlyCommand(command, this.approvalWorktreePath));
+        (await isReadOnlyCommand(command, this.approvalWorktreePath));
       this.send({ id, result: { decision: allowed ? "accept" : "decline" } });
       return;
     }
     this.send({ id, error: { code: -32601, message: "unsupported_request" } });
-  }
-
-  private async isReadOnlyCommand(
-    command: string,
-    worktreePath: string,
-  ): Promise<boolean> {
-    if (
-      command.length === 0 ||
-      command.length > 4_096 ||
-      /[;&|><`$\n\r]/.test(command)
-    )
-      return false;
-    const tokens = command.trim().split(/\s+/u);
-    const executable = tokens[0];
-    if (
-      executable === undefined ||
-      executable.includes("/") ||
-      ![
-        "cat",
-        "head",
-        "tail",
-        "sed",
-        "grep",
-        "rg",
-        "find",
-        "git",
-        "pwd",
-        "wc",
-      ].includes(executable)
-    )
-      return false;
-    if (
-      tokens.some(
-        (token) =>
-          token.startsWith("-") ||
-          token.startsWith("/") ||
-          token.split("/").includes(".."),
-      )
-    )
-      return false;
-    if (
-      executable === "git" &&
-      !["show", "diff", "status", "log", "ls-files", "rev-parse"].includes(
-        tokens[1] ?? "",
-      )
-    )
-      return false;
-    if (executable === "git" && tokens.length > 2) return false;
-    if (executable === "pwd" && tokens.length !== 1) return false;
-    for (const token of tokens.slice(executable === "git" ? 2 : 1)) {
-      if (
-        !(await isPathInsideWorktree(worktreePath, join(worktreePath, token)))
-      )
-        return false;
-    }
-    return true;
   }
 
   private failPending(): void {
