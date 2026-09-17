@@ -1,5 +1,10 @@
 import type { Review, ReviewIdentity } from "../domain/review";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type {
+  GitSha,
+  IsoTimestamp,
+  ReviewId,
+  WorkspaceProfileId,
+} from "../domain/ids";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -15,7 +20,6 @@ import {
   markReviewLeft,
   markReviewOpened,
 } from "../domain/review";
-import { newestConversationTimestamp } from "../domain/conversation-entry-timestamp";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
@@ -565,13 +569,15 @@ export class ReviewWorkbenchController {
   }
 
   /**
-   * Stamps the last-looked cursor from the snapshot the Review represents,
-   * which is what the maintainer was shown. A Review with no represented
-   * snapshot showed nothing, so leaving it records nothing.
+   * Stamps the last-looked cursor from what the renderer showed. The stored
+   * snapshot is not a substitute: a Refresh can save a newer one while the
+   * maintainer navigates away before seeing it.
    */
   async leave(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
+    readonly headSha: GitSha;
+    readonly seenThrough: IsoTimestamp | undefined;
   }): Promise<Result<null, ReviewWorkbenchFailure>> {
     return this.lifecycle.coordinator.withReviewLock(
       input.profileId,
@@ -586,19 +592,9 @@ export class ReviewWorkbenchController {
             reason:
               review.error.reason === "not_found" ? "not_found" : "storage",
           });
-        const represented = review.value.representedRemote;
-        if (represented === undefined) return ok(null);
-        const snapshot = await this.lifecycle.remote.load({
-          profileId: input.profileId,
-          reviewId: input.reviewId,
-          snapshotHash: represented.snapshotHash,
-        });
-        if (snapshot._tag === "err") return err({ reason: "storage" });
         const left = markReviewLeft(review.value, {
-          headSha: represented.headSha,
-          seenThrough: newestConversationTimestamp(
-            snapshot.value.conversation.entries,
-          ),
+          headSha: input.headSha,
+          seenThrough: input.seenThrough,
           now: this.now(),
         });
         const saved = await this.lifecycle.reviews.save(

@@ -8,13 +8,18 @@ import type { WorkbenchPayload } from "../renderer-models";
 import type { AppDestination } from "../routes";
 import { destinationKey, parseDestination } from "../routes";
 import { useLatestCommitted } from "./use-latest-committed";
+import { newestConversationTimestamp } from "../../../domain/conversation-entry-timestamp";
+import { definedProps } from "../../../domain/defined-props";
 
 export type NavigationState = "clear" | "dirty_draft" | "write_pending";
 
-/** The Review the maintainer is navigating away from, as the leave route names it. */
+/** The Review the maintainer is navigating away from, and what it showed them. */
 export type LeftWorkbench = {
   readonly profileId: string;
   readonly reviewId: string;
+  readonly headSha: string;
+  /** GitHub's time on the newest Conversation entry shown; absent when none was dated. */
+  readonly seenThrough?: string;
 };
 
 /**
@@ -86,6 +91,12 @@ export function useAppNavigation(
         committedOnLeave.current({
           profileId: shown.session.key.profileId,
           reviewId: shown.review.id,
+          headSha: shown.revision.reviewedHeadSha,
+          ...definedProps({
+            seenThrough: newestConversationTimestamp(
+              shown.conversation.entries,
+            ),
+          }),
         });
       setWorkbench((held) => {
         if (next.kind !== "workbench" || held === undefined) return undefined;

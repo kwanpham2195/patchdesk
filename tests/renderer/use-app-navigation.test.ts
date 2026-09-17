@@ -119,7 +119,7 @@ describe("useAppNavigation", () => {
     });
   });
 
-  it("reports one leave per workbench left, and none between dashboards or back to the same Review", () => {
+  it("reports one leave per workbench left with the head and newest entry it showed, and none between dashboards or back to the same Review", () => {
     const left: LeftWorkbench[] = [];
     const { result } = renderHook(() =>
       useAppNavigation((workbench) => left.push(workbench)),
@@ -127,7 +127,24 @@ describe("useAppNavigation", () => {
     act(() => {
       result.current.performNavigation({ kind: "dashboard" });
     });
-    openWorkbench(result, projection({ review: { id: "a", status: "open" } }));
+    const shown = projection({
+      review: { id: "a", status: "open" },
+      conversation: {
+        prDescription: "",
+        entries: [
+          {
+            _tag: "IssueComment",
+            comment: {
+              id: "c",
+              author: "reviewer",
+              body: "shown",
+              createdAt: "2026-08-02T00:00:00.000Z",
+            },
+          },
+        ],
+      },
+    });
+    openWorkbench(result, shown);
     act(() => {
       result.current.performNavigation({ kind: "workbench", reviewId: "a" });
     });
@@ -140,7 +157,14 @@ describe("useAppNavigation", () => {
       result.current.performNavigation({ kind: "dashboard" });
     });
 
-    expect(left).toEqual([{ profileId: expect.any(String), reviewId: "a" }]);
+    expect(left).toEqual([
+      {
+        profileId: shown.session.key.profileId,
+        reviewId: "a",
+        headSha: shown.revision.reviewedHeadSha,
+        seenThrough: "2026-08-02T00:00:00.000Z",
+      },
+    ]);
   });
 
   it("reports no leave for a workbench destination whose Review never loaded", () => {
