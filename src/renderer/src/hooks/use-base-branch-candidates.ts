@@ -8,7 +8,7 @@ import {
 import { SEARCH_DEBOUNCE_MS } from "./use-github-item-picker";
 
 /** What a ready base-branch read carries on top of the shared permission. */
-export type BaseBranchCandidates = {
+type BaseBranchCandidates = {
   readonly current: string | undefined;
   readonly branches: ReadonlyArray<string>;
   readonly totalCount: number;
