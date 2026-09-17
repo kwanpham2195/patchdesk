@@ -334,8 +334,9 @@ export function commentNavAnnouncement(
  * item -- just enough of Pierre's `CodeViewDiffItem`/`DiffLineAnnotation` to
  * build the `{`/`}` order without this module depending on `@pierre/diffs`
  * types. `metadata` mirrors the parts of `ReviewInlineAnnotation` this needs:
- * its own stable id, and (when the annotation is a comment thread, not a
- * finding or a pending write) that thread's state and comments.
+ * its own stable id, its first line `start` (Pierre's `lineNumber` is the
+ * annotation's last line), and (when the annotation is a comment thread, not
+ * a finding or a pending write) that thread's state and comments.
  */
 export type CommentOrderItem = {
   readonly id: string;
@@ -345,6 +346,7 @@ export type CommentOrderItem = {
     readonly metadata?:
       | {
           readonly id: string;
+          readonly start: number;
           readonly conversationThread?: Parameters<typeof threadNeedsReply>[0];
         }
       | undefined;
@@ -355,7 +357,7 @@ export type CommentOrderItem = {
  * Builds the `{`/`}` navigation order from `items` (already in document file
  * order -- the same order `[`/`]`'s hunk-flattening relies on): every
  * unresolved comment thread's anchor, threads that need the viewer's reply
- * first, then file order and line order within each group -- the order
+ * first, then file order and first line within each group -- the order
  * `projectConversationThreadRows` gives the Threads navigator. Excludes any
  * annotation that isn't a comment thread (a finding, a pending write, a
  * local composer draft, ...) and any `"resolved"` thread, because the point
@@ -380,11 +382,15 @@ export function buildCommentOrder(
                   lineNumber: entry.lineNumber,
                   side: entry.side,
                 },
+                start: entry.metadata.start,
                 needsReply: threadNeedsReply(entry.metadata.conversationThread),
               },
             ],
       )
-      .sort((a, b) => a.anchor.lineNumber - b.anchor.lineNumber),
+      .sort(
+        (a, b) =>
+          a.start - b.start || a.anchor.lineNumber - b.anchor.lineNumber,
+      ),
   );
   return [
     ...documentOrder.filter((entry) => entry.needsReply),
