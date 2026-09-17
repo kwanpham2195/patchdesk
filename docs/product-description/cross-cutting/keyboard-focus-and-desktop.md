@@ -54,9 +54,9 @@ Settings itself holds nothing back: its sections save their own values, so closi
 
 Patchdesk posts a macOS notification when a Brief, Walkthrough, or Analysis finishes or fails, and when a GitHub write leaves the Review waiting for **Check GitHub again**. With **Review ready and merge completed** switched on in Settings → General → Notifications, it also posts one when a Review finishes preparing and when a merge completes. A cancelled or superseded Insight run posts nothing. The notification names the pull request as `owner/repo#number`.
 
-No notification is posted for the Review the focused window is showing, or while **Notifications** is off. Clicking a notification brings the window forward and navigates to its Review with the same guards as any navigation; an Insight notification lands on the Insights tab with that Insight selected.
+No notification is posted for the Review the focused window is showing, for a Review that finishes preparing while the window is focused, or while **Notifications** is off. Refresh that adopts a new head prepares the Review again, so it can post **Review ready** too. Clicking a notification brings the window forward and navigates to its Review with the same guards as any navigation; an Insight notification lands on the Insights tab with that Insight selected.
 
-> Technical note: the main process writes a `desktop-notification` debug log line for each event: `shown`, `skipped` with `focused_on_review` or `disabled`, and `clicked`. ADR 0044 records the decision.
+> Technical note: the main process writes a `desktop-notification` debug log line for each event: `shown`, `skipped` with `focused_on_review`, `focused`, or `disabled`, and `clicked`. ADR 0044 records the decision.
 
 ### Settle
 
@@ -116,7 +116,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - A Review workbench position belongs to its Review ID, not to the next Review opened in the same window.
 - A native window close uses desktop warning behavior because renderer state may not remain visible during shutdown.
 - Keyboard row selection and Enter activation share the same action owner as mouse selection.
-- A clicked notification for the Review already on screen focuses the window and keeps the current tab.
+- A clicked Insight notification for the Review already on screen reopens that Review on the Insight, unless an unsaved draft or pending write holds it; then the window is only focused.
 - A write that GitHub rejected, or one refused because an earlier write already holds the lock, posts no notification.
 
 ## Open questions and verification
