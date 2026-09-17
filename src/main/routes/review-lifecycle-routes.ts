@@ -7,6 +7,7 @@ import {
   minValue,
   number,
   optional,
+  picklist,
   pipe,
   safeParse,
   strictObject,
@@ -14,7 +15,14 @@ import {
 } from "valibot";
 
 import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
-import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
+import {
+  parseContentHash,
+  parseGitSha,
+  parseIsoTimestamp,
+  parseReviewId,
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+} from "../../domain/ids";
 import {
   parseRecentReviewWrite,
   recentReviewWriteRecordSchema,
@@ -110,11 +118,44 @@ export function registerReviewLifecycleRoutes(
   app.post("/v1/reviews/diff-file", async (context) =>
     response(context, await reviewDiffSources.load(await jsonBody(context))),
   );
-  app.post("/v1/reviews/merge", async (context) =>
-    mergeWrites === undefined
-      ? context.json({ error: "merge_unavailable" }, 503)
-      : response(context, await mergeWrites.merge(await jsonBody(context))),
-  );
+  app.post("/v1/reviews/merge", async (context) => {
+    if (mergeWrites === undefined)
+      return context.json({ error: "merge_unavailable" }, 503);
+    const parsed = safeParse(mergeCommandSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const body = parsed.output;
+    const profileId = parseWorkspaceProfileId(body.profileId);
+    const reviewId = parseReviewId(body.reviewId);
+    const sessionId = parseReviewSessionId(body.sessionId);
+    const expectedHeadSha = parseGitSha(body.expectedHeadSha);
+    const expectedBaseSha = parseGitSha(body.expectedBaseSha);
+    const expectedPatchHash = parseContentHash(body.expectedPatchHash);
+    const expectedRevision = parseIsoTimestamp(body.expectedRevision);
+    if (
+      profileId._tag === "err" ||
+      reviewId._tag === "err" ||
+      sessionId._tag === "err" ||
+      expectedHeadSha._tag === "err" ||
+      expectedBaseSha._tag === "err" ||
+      expectedPatchHash._tag === "err" ||
+      expectedRevision._tag === "err"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await mergeWrites.merge({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        sessionId: sessionId.value,
+        expectedHeadSha: expectedHeadSha.value,
+        expectedBaseSha: expectedBaseSha.value,
+        expectedPatchHash: expectedPatchHash.value,
+        expectedRevision: expectedRevision.value,
+        method: body.method,
+        acknowledgedWarnings: body.acknowledgedWarnings,
+      }),
+    );
+  });
 }
 
 const reviewOpenSchema = strictObject({
@@ -144,4 +185,25 @@ const reviewCommitDiffSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
   commitSha: pipe(string(), minLength(7)),
+});
+/** Mirrors the renderer's merge payload in `use-review-merge-action.ts`; a new field changes both. */
+const mergeCommandSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  sessionId: pipe(string(), minLength(1)),
+  expectedHeadSha: pipe(string(), minLength(1)),
+  expectedBaseSha: pipe(string(), minLength(1)),
+  expectedPatchHash: pipe(string(), minLength(1)),
+  expectedRevision: pipe(string(), minLength(1)),
+  method: picklist(["merge", "squash", "rebase"]),
+  acknowledgedWarnings: strictObject({
+    revision: strictObject({
+      headSha: string(),
+      baseSha: string(),
+      patchHash: string(),
+    }),
+    warningCodes: array(
+      picklist(["request_changes", "findings_need_acknowledgement"]),
+    ),
+  }),
 });
