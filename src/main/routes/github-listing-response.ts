@@ -4,6 +4,10 @@ import type { GitHubReadFailure } from "../../adapters/github/github-adapter";
 import type { RepositoryLabelListing } from "../../domain/github-context";
 import type { Result } from "../../domain/result";
 import type {
+  BaseBranchListFailure,
+  BaseBranchListOutcome,
+} from "../../services/base-branch-service";
+import type {
   AssigneeListFailure,
   AssigneeListOutcome,
 } from "../../services/assignee-service";
@@ -151,6 +155,38 @@ export function reviewerListResponse(
       suggested: outcome.suggested,
       candidates: outcome.candidates,
       candidatesTotalCount: outcome.candidatesTotalCount,
+      permission: outcome.permission,
+    });
+  if (outcome._tag === "github_rate_limited") {
+    const resumeAtField =
+      outcome.resumeAt === undefined ? {} : { resumeAt: outcome.resumeAt };
+    return context.json({ state: "github_rate_limited", ...resumeAtField });
+  }
+  if (outcome._tag === "github_forbidden")
+    return context.json({
+      state: "github_forbidden",
+      forbiddenReason: outcome.reason,
+    });
+  return context.json({ state: outcome._tag });
+}
+
+/** Shapes the base-branch picker read the way `reviewerListResponse` shapes its listing. */
+export function baseBranchListResponse(
+  context: Context,
+  result: Result<BaseBranchListOutcome, BaseBranchListFailure>,
+): Response {
+  if (result._tag === "err")
+    return context.json(
+      { error: result.error },
+      result.error === "not_found" ? 404 : 409,
+    );
+  const outcome = result.value;
+  if (outcome._tag === "ready")
+    return context.json({
+      state: "ready",
+      current: outcome.current,
+      branches: outcome.branches,
+      branchesTotalCount: outcome.branchesTotalCount,
       permission: outcome.permission,
     });
   if (outcome._tag === "github_rate_limited") {

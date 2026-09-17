@@ -36,6 +36,10 @@ import type {
 import type { LabelCommand, LabelService } from "../../services/label-service";
 import type { ReviewWriteRecoveryFailure } from "../../services/review-write-recovery-service";
 import type {
+  BaseBranchCommand,
+  BaseBranchService,
+} from "../../services/base-branch-service";
+import type {
   DraftStateCommand,
   DraftStateService,
 } from "../../services/draft-state-service";
@@ -46,6 +50,7 @@ import type {
 import type { LocalApiContainer, LogWriter } from "../local-api-container";
 import {
   assigneeListResponse,
+  baseBranchListResponse,
   labelListResponse,
   reviewerListResponse,
 } from "./github-listing-response";
@@ -60,6 +65,7 @@ export function registerReviewWriteRoutes(
 ): void {
   const {
     assigneeWrites,
+    baseBranchWrites,
     draftStateWrites,
     inlineConversations,
     labelWrites,
@@ -166,6 +172,26 @@ export function registerReviewWriteRoutes(
   app.post("/v1/reviews/draft-state/command", async (context) =>
     draftStateResponse(context, draftStateWrites, await jsonBody(context)),
   );
+  app.post("/v1/reviews/base-branch/command", async (context) =>
+    baseBranchResponse(context, baseBranchWrites, await jsonBody(context)),
+  );
+  app.get("/v1/reviews/base-branch", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    const reviewId = parseReviewId(context.req.query("reviewId"));
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const rawQuery = context.req.query("query");
+    const queryField =
+      rawQuery !== undefined && rawQuery.length > 0 ? { query: rawQuery } : {};
+    return baseBranchListResponse(
+      context,
+      await baseBranchWrites.list({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        ...queryField,
+      }),
+    );
+  });
 }
 
 function reviewWriteRecoveryFailureStatus(
@@ -240,6 +266,15 @@ const draftStateCommandSchema = strictObject({
   command: strictObject({
     _tag: picklist(["SetDraftState"] as const),
     draft: boolean(),
+  }),
+});
+
+const baseBranchCommandSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  command: strictObject({
+    _tag: picklist(["SetBaseBranch"] as const),
+    branch: pipe(string(), minLength(1)),
   }),
 });
 
@@ -493,6 +528,30 @@ async function draftStateResponse(
   if (result._tag === "ok") return context.json(result.value);
   // `DraftStateWriteFailure` is exactly the shared eight; the no-op refusal
   // reuses `invalid_input`, which already answers 400.
+  return context.json(
+    { error: result.error },
+    mapReviewWriteFailureStatus(result.error, {}),
+  );
+}
+
+async function baseBranchResponse(
+  context: Context,
+  service: BaseBranchService,
+  body: RawJsonValue | undefined,
+): Promise<Response> {
+  const parsed = safeParse(baseBranchCommandSchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
+  if (profileId._tag === "err" || reviewId._tag === "err")
+    return context.json({ error: "invalid_input" }, 400);
+  const command: BaseBranchCommand = parsed.output.command;
+  const result = await service.execute({
+    profileId: profileId.value,
+    reviewId: reviewId.value,
+    command,
+  });
+  if (result._tag === "ok") return context.json(result.value);
   return context.json(
     { error: result.error },
     mapReviewWriteFailureStatus(result.error, {}),

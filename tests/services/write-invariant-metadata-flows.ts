@@ -1,6 +1,7 @@
 import type { GitHubReviewWriter } from "../../src/adapters/github/github-adapter";
 import { ok, type Result } from "../../src/domain/result";
 import { AssigneeService } from "../../src/services/assignee-service";
+import { BaseBranchService } from "../../src/services/base-branch-service";
 import { DraftStateService } from "../../src/services/draft-state-service";
 import { LabelService } from "../../src/services/label-service";
 import { ReviewerService } from "../../src/services/reviewer-service";
@@ -36,6 +37,8 @@ const reads = {
   getPullRequestReviewers: async () =>
     ok({ requested: [], latestReviews: [], reviews: [], suggested: [] }),
   listRepositoryLabels: async () => ok({ labels: [], totalCount: 0 }),
+  listRepositoryBranches: async () =>
+    ok({ branches: ["release/1.2"], totalCount: 1 }),
 };
 
 type MetadataWriteName =
@@ -45,7 +48,8 @@ type MetadataWriteName =
   | "removeAssigneesFromAssignable"
   | "requestReviews"
   | "removeRequestedReviewers"
-  | "setPullRequestDraftState";
+  | "setPullRequestDraftState"
+  | "setPullRequestBaseBranch";
 
 type MetadataGateway = typeof reads &
   Required<Pick<GitHubReviewWriter, MetadataWriteName>>;
@@ -60,6 +64,7 @@ function metadataGateway(fixture: WriteFlowFixture): MetadataGateway {
     requestReviews: gatewayWrite(fixture, undefined),
     removeRequestedReviewers: gatewayWrite(fixture, undefined),
     setPullRequestDraftState: gatewayWrite(fixture, undefined),
+    setPullRequestBaseBranch: gatewayWrite(fixture, undefined),
   };
 }
 
@@ -123,6 +128,14 @@ function services(
       operations,
     ),
     draftState: new DraftStateService(
+      gate,
+      gateway,
+      coordinator,
+      now,
+      journal,
+      operations,
+    ),
+    baseBranch: new BaseBranchService(
       gate,
       gateway,
       coordinator,
@@ -235,6 +248,19 @@ export const metadataFlows = (
           profileId,
           reviewId,
           command: { _tag: "SetDraftState", draft: true },
+        });
+    }),
+  },
+  {
+    // The fixture pull request targets `sit`, so another branch is a real write.
+    name: "base branch: change",
+    run: buildRun(fixture, (built) => {
+      const service = built.baseBranch;
+      return () =>
+        service.execute({
+          profileId,
+          reviewId,
+          command: { _tag: "SetBaseBranch", branch: "release/1.2" },
         });
     }),
   },
