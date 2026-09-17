@@ -177,6 +177,7 @@ export async function buildLocalApiContainer(
     artifacts: new ReviewArtifactStorage(paths, systemNow),
     lifecycleGate,
     diagnostics,
+    notifier: configuration.desktopNotifier,
   });
   const reviewProjection = new ReviewWorkbenchProjectionService(
     profiles,
@@ -432,6 +433,7 @@ export async function buildLocalApiContainer(
           reviewWriteGate,
           { reviews, insights },
           reviewOperations,
+          configuration.desktopNotifier,
         );
 
   return {

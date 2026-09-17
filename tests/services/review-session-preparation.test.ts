@@ -20,6 +20,7 @@ import { ProfileStore } from "../../src/adapters/storage/profile-store";
 import { ReviewArtifactStorage } from "../../src/adapters/storage/review-artifact-storage";
 import { ReviewSessionStore } from "../../src/adapters/storage/review-session-store";
 import {
+  createReviewId,
   createReviewSessionId,
   parseContentHash,
   parseGitSha,
@@ -31,6 +32,7 @@ import { err, ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { hashReviewArtifactContent } from "../../src/services/review-artifact-hash";
 import { ReviewContextService } from "../../src/services/review-context-service";
+import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import { ReviewSessionPreparation } from "../../src/services/review-session-preparation";
 import type { GitReadExecutor } from "../../src/services/review-worktree-service";
 import { ReviewWorktreeService } from "../../src/services/review-worktree-service";
@@ -243,7 +245,9 @@ async function setup(
   if (options.diffResult !== undefined)
     readerOptions.diffResult = options.diffResult;
   const reader = github(options.heads ?? [headSha], readerOptions);
+  const notifications: DesktopNotificationEvent[] = [];
   const preparation = new ReviewSessionPreparation({
+    notifier: { notify: (event) => notifications.push(event) },
     profiles,
     sessions,
     github: reader,
@@ -264,7 +268,7 @@ async function setup(
     context: new ReviewContextService(),
     artifacts: new ReviewArtifactStorage(paths, () => now),
   });
-  return { paths, sessions, preparation, reader };
+  return { paths, sessions, preparation, reader, notifications };
 }
 
 async function present(path: string): Promise<boolean> {
@@ -565,6 +569,27 @@ describe("ReviewSessionPreparation", () => {
     if (first._tag === "err" || second._tag === "err") return;
     expect(second.value.session.id).toBe(first.value.session.id);
     expect(fixture.reader.counts.diffs).toBe(1);
+  });
+
+  it("posts preparation finished once for a prepared session and not for a resumed one", async () => {
+    const fixture = await setup();
+
+    await fixture.preparation.prepare({ profileId, pullRequest });
+    await fixture.preparation.prepare({ profileId, pullRequest });
+
+    expect(fixture.notifications).toEqual([
+      {
+        _tag: "PreparationFinished",
+        reviewId: createReviewId({
+          profileId,
+          host: pullRequest.host,
+          owner: pullRequest.owner,
+          repo: pullRequest.repo,
+          prNumber: pullRequest.number,
+        }),
+        pullRequest,
+      },
+    ]);
   });
 
   it("serializes concurrent preparation for one deterministic session", async () => {

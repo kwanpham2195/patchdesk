@@ -31,6 +31,10 @@ import { markReviewTerminal, type Review } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
 import { parseReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
+import {
+  postDesktopNotification,
+  type DesktopNotifier,
+} from "./desktop-notifier";
 import { mergePullRequest, type MergeMethod } from "./merge-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type {
@@ -102,6 +106,7 @@ export class MergeWriteController {
       readonly insights: Pick<InsightStore, "loadTyped">;
     },
     private readonly writeCoordinator: ReviewOperationCoordinator,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   /** Merges once the gate, the represented revision, and the acknowledgement all match what the maintainer confirmed. */
@@ -237,9 +242,14 @@ export class MergeWriteController {
         profileId,
         sessionId,
       );
-      return removed._tag === "ok"
-        ? ok({ readiness: merged.value.readiness, review: terminalReview })
-        : err({ reason: "merge_outcome_unknown" });
+      if (removed._tag === "err")
+        return err({ reason: "merge_outcome_unknown" });
+      postDesktopNotification(this.notifier, {
+        _tag: "MergeCompleted",
+        reviewId,
+        pullRequest: requested.value.pr,
+      });
+      return ok({ readiness: merged.value.readiness, review: terminalReview });
     } finally {
       this.writeCoordinator.release(key);
     }

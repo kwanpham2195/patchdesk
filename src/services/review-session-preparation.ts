@@ -10,6 +10,7 @@ import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
+  createReviewId,
   createReviewSessionId,
   parseAbsolutePath,
   parseContentHash,
@@ -33,6 +34,10 @@ import { err, ok, type Result } from "../domain/result";
 import { tokenizeUnifiedPatch } from "../domain/unified-patch";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewContextService } from "./review-context-service";
+import {
+  postDesktopNotification,
+  type DesktopNotifier,
+} from "./desktop-notifier";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
@@ -102,6 +107,8 @@ type PreparationDependencies = {
   readonly artifacts: ReviewArtifactStorage;
   readonly lifecycleGate?: ReviewLifecycleGate;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
+  /** Announces a newly prepared session outside the window (ADR 0044). */
+  readonly notifier?: DesktopNotifier | undefined;
 };
 
 /** Prepares one full revision and never adopts prior local draft or comparison state. */
@@ -365,6 +372,17 @@ export class ReviewSessionPreparation {
     if (saved._tag === "err")
       return await this.abort(journal, { _tag: "SessionStorageUnavailable" });
     await journal.complete();
+    postDesktopNotification(this.dependencies.notifier, {
+      _tag: "PreparationFinished",
+      reviewId: createReviewId({
+        profileId: input.profileId,
+        host: input.pullRequest.host,
+        owner: input.pullRequest.owner,
+        repo: input.pullRequest.repo,
+        prNumber: input.pullRequest.number,
+      }),
+      pullRequest: input.pullRequest,
+    });
     return ok({ session, disposition: "prepared" });
   }
 
