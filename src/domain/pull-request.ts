@@ -69,6 +69,16 @@ export function parsePullRequestInput(
   return err({ _tag: "InvalidPullRequestInput" });
 }
 
+/** Parses a structured pull request reference from a local API body. */
+export function parsePullRequestRef(input: {
+  readonly host: string;
+  readonly owner: string;
+  readonly repo: string;
+  readonly number: number;
+}): Result<PullRequestRef, InvalidPullRequestInput> {
+  return parseReference(input.host, input.owner, input.repo, input.number);
+}
+
 function parseReference(
   hostInput: string | undefined,
   ownerInput: string | undefined,

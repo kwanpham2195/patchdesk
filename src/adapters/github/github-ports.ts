@@ -30,6 +30,7 @@ import type {
   RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
+import type { WatchedSnapshot } from "../../domain/watched-pull-request";
 import type {
   InboxPageSize,
   InboxStateFilter,
@@ -107,6 +108,13 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestSummary, GitHubReadFailure>>;
+  /** One aliased read of every watched pull request of a profile; refs all share the profile's host. */
+  readWatchedPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly refs: ReadonlyArray<PullRequestRef>;
+    /** Compared against the host's cached rate-limit reset, so a spent limit skips the call. */
+    readonly now: IsoTimestamp;
+  }): Promise<Result<ReadonlyArray<WatchedPullRequestRead>, GitHubReadFailure>>;
   getMergePolicy(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -185,6 +193,12 @@ export interface GitHubReader {
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>>;
 }
+
+/** One watched pull request as GitHub reports it now; `undefined` when GitHub no longer resolves it. */
+export type WatchedPullRequestRead = {
+  readonly ref: PullRequestRef;
+  readonly snapshot: WatchedSnapshot | undefined;
+};
 
 /** One bounded page of branch names; compare `totalCount` against `branches.length` to detect truncation. */
 export type RepositoryBranchListing = {

@@ -52,7 +52,9 @@ import {
   type PendingReviewComment,
   type RepositoryBranchListing,
   type RepositoryPermissionEvidence,
+  type WatchedPullRequestRead,
 } from "./github-adapter";
+import type { WatchedSnapshot } from "../../domain/watched-pull-request";
 import {
   assembleConversationEntries,
   samePullRequest,
@@ -72,6 +74,8 @@ export class FakeGitHubAdapter
     [];
   private readonly setPullRequestBaseBranchCalls: SetPullRequestBaseBranchInput[] =
     [];
+  private readonly readWatchedPullRequestsCalls: ReadWatchedPullRequestsInput[] =
+    [];
 
   /** Inputs of the calls tests assert GitHub was or was not asked for, in call order. */
   readonly calls: FakeGitHubAdapterCalls = {
@@ -79,6 +83,7 @@ export class FakeGitHubAdapter
     listRepositoryLabels: this.listRepositoryLabelsCalls,
     listRepositoryBranches: this.listRepositoryBranchesCalls,
     setPullRequestBaseBranch: this.setPullRequestBaseBranchCalls,
+    readWatchedPullRequests: this.readWatchedPullRequestsCalls,
   };
 
   async listOpenPullRequests(input: {
@@ -194,6 +199,21 @@ export class FakeGitHubAdapter
     return this.values.pullRequest === undefined
       ? missing("get_pr")
       : ok(this.values.pullRequest);
+  }
+
+  async readWatchedPullRequests(
+    input: ReadWatchedPullRequestsInput,
+  ): Promise<Result<ReadonlyArray<WatchedPullRequestRead>, GitHubReadFailure>> {
+    this.readWatchedPullRequestsCalls.push(input);
+    const current = this.values.watchedPullRequests;
+    if (current === undefined) return missing("get_watched_prs");
+    return ok(
+      input.refs.map((ref) => ({
+        ref,
+        snapshot: current.find((entry) => samePullRequest(entry.ref, ref))
+          ?.snapshot,
+      })),
+    );
   }
 
   async getMergePolicy(input: {
@@ -736,11 +756,16 @@ type SetPullRequestBaseBranchInput = Parameters<
   FakeGitHubAdapter["setPullRequestBaseBranch"]
 >[0];
 
+type ReadWatchedPullRequestsInput = Parameters<
+  GitHubReader["readWatchedPullRequests"]
+>[0];
+
 type FakeGitHubAdapterCalls = {
   readonly searchMaintainerPullRequests: ReadonlyArray<SearchMaintainerPullRequestsInput>;
   readonly listRepositoryLabels: ReadonlyArray<ListRepositoryLabelsInput>;
   readonly listRepositoryBranches: ReadonlyArray<ListRepositoryBranchesInput>;
   readonly setPullRequestBaseBranch: ReadonlyArray<SetPullRequestBaseBranchInput>;
+  readonly readWatchedPullRequests: ReadonlyArray<ReadWatchedPullRequestsInput>;
 };
 
 /** Fixture values accepted by FakeGitHubAdapter. */
@@ -754,6 +779,11 @@ export type FakeGitHubAdapterValues = {
   readonly assignableUsers: AssignableUserListing;
   readonly pullRequestReviewers: PullRequestReviewerListing;
   readonly pullRequest: PullRequestSummary;
+  /** What GitHub reports for each watched pull request; a ref not listed no longer resolves. A getter lets a test move it between polls. */
+  readonly watchedPullRequests: ReadonlyArray<{
+    readonly ref: PullRequestRef;
+    readonly snapshot: WatchedSnapshot;
+  }>;
   readonly mergePolicy: MergePolicySnapshot;
   readonly mergePolicyEvidence: GitHubMergePolicyEvidence;
   readonly mergeOutcome: MergeOutcome;
