@@ -9,6 +9,7 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import {
   parseContentHash,
   parseGitSha,
+  parseIsoTimestamp,
   type InvalidDomainValue,
   type WorkspaceProfileId,
 } from "../../src/domain/ids";
@@ -27,7 +28,10 @@ import type {
 } from "../../src/domain/workspace-profile";
 import type { StorageFailure } from "../../src/adapters/storage/json-file";
 import { MergeOperationStore } from "../../src/adapters/storage/merge-operation-store";
-import { MergeWriteController } from "../../src/services/merge-write-controller";
+import {
+  MergeWriteController,
+  type MergeCommand,
+} from "../../src/services/merge-write-controller";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import type { ReviewStore } from "../../src/adapters/storage/review-store";
 import { ReviewWriteGate } from "../../src/services/review-write-gate";
@@ -213,7 +217,7 @@ function createMergePolicy(
   };
 }
 
-function request() {
+function request(): MergeCommand {
   return {
     profileId,
     reviewId,
@@ -426,16 +430,6 @@ function fixture(
 }
 
 describe("MergeWriteController", () => {
-  it("rejects malformed input before acquiring the shared write boundary", async () => {
-    const current = fixture();
-    await expect(
-      current.controller.merge({ method: "delete" }),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "invalid_input" } });
-    expect(current.writeGate.requireFreshCalls).toBe(0);
-    expect(current.operations.begun).toHaveLength(0);
-    expect(current.gateway.mergeRequests).toHaveLength(0);
-  });
-
   it("binds acknowledgement to the exact represented base, head, and patch", async () => {
     const current = fixture();
     const invalid = {
@@ -453,6 +447,7 @@ describe("MergeWriteController", () => {
       _tag: "err",
       error: { reason: "invalid_input" },
     });
+    expect(current.writeGate.requireFreshCalls).toBe(0);
     expect(current.operations.begun).toHaveLength(0);
     expect(current.gateway.mergeRequests).toHaveLength(0);
   });
@@ -462,7 +457,7 @@ describe("MergeWriteController", () => {
     await expect(
       current.controller.merge({
         ...request(),
-        expectedRevision: "2026-08-01T00:01:00.000Z",
+        expectedRevision: value(parseIsoTimestamp("2026-08-01T00:01:00.000Z")),
       }),
     ).resolves.toEqual({ _tag: "err", error: { reason: "stale" } });
     expect(current.operations.begun).toHaveLength(0);
