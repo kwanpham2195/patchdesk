@@ -4,7 +4,12 @@ import { AssigneeService } from "../../src/services/assignee-service";
 import { LabelService } from "../../src/services/label-service";
 import { ReviewerService } from "../../src/services/reviewer-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
-import { ok } from "../../src/domain/result";
+import type { GitHubWriteFailure } from "../../src/domain/github-write";
+import { err, ok, type Result } from "../../src/domain/result";
+import type {
+  DesktopNotificationEvent,
+  DesktopNotifier,
+} from "../../src/services/desktop-notifier";
 import {
   makeGate,
   makeRecentWrites,
@@ -59,7 +64,10 @@ const throwingWrite = vi.fn(async () => {
 const services = [
   {
     name: "LabelService",
-    build: (coordinator: ReviewOperationCoordinator) =>
+    build: (
+      coordinator: ReviewOperationCoordinator,
+      notifier?: DesktopNotifier,
+    ) =>
       new LabelService(
         makeGate(),
         // SAFETY: the mock implements only the Gateway methods the exercised
@@ -69,13 +77,17 @@ const services = [
         now,
         makeRecentWrites(),
         makeReviewWriteOperations(),
+        notifier,
       ),
     valid: { _tag: "AddLabels", labels: [{ id: "LA_bug", name: "bug" }] },
     empty: { _tag: "AddLabels", labels: [] },
   },
   {
     name: "AssigneeService",
-    build: (coordinator: ReviewOperationCoordinator) =>
+    build: (
+      coordinator: ReviewOperationCoordinator,
+      notifier?: DesktopNotifier,
+    ) =>
       new AssigneeService(
         makeGate(),
         // SAFETY: the gateway supplies every method reached by this assignee-write scenario.
@@ -84,6 +96,8 @@ const services = [
         now,
         makeRecentWrites(),
         makeReviewWriteOperations(),
+        undefined,
+        notifier,
       ),
     valid: {
       _tag: "AddAssignees",
@@ -93,7 +107,10 @@ const services = [
   },
   {
     name: "ReviewerService",
-    build: (coordinator: ReviewOperationCoordinator) =>
+    build: (
+      coordinator: ReviewOperationCoordinator,
+      notifier?: DesktopNotifier,
+    ) =>
       new ReviewerService(
         makeGate(),
         // SAFETY: the gateway supplies every method reached by this reviewer-write scenario.
@@ -102,6 +119,8 @@ const services = [
         now,
         makeRecentWrites(),
         makeReviewWriteOperations(),
+        undefined,
+        notifier,
       ),
     valid: {
       _tag: "RequestReviewers",
@@ -132,6 +151,31 @@ describe.each(services)(
       expect(throwingWrite).toHaveBeenCalledOnce();
     });
 
+    it("posts one recovery notification when the write leaves the Review locked, and none for the refused retry", async () => {
+      const events: DesktopNotificationEvent[] = [];
+      const service = build(new ReviewOperationCoordinator(), {
+        notify: (event) => events.push(event),
+      });
+
+      // SAFETY: each valid command comes from the same table row as its owning service.
+      await service.execute({ profileId, reviewId, command: valid as never });
+      // SAFETY: as above.
+      await service.execute({ profileId, reviewId, command: valid as never });
+
+      expect(events).toEqual([
+        {
+          _tag: "WriteNeedsRecovery",
+          reviewId,
+          pullRequest: {
+            host: "github.com",
+            owner: "centraldigital",
+            repo: "patchdesk",
+            number: 42,
+          },
+        },
+      ]);
+    });
+
     it("refuses an invalid command ahead of the lock, not behind it", async () => {
       const coordinator = new ReviewOperationCoordinator();
       const service = build(coordinator);
@@ -147,3 +191,60 @@ describe.each(services)(
     });
   },
 );
+
+describe("guarded metadata write recovery notification", () => {
+  function labelService(
+    write: () => Promise<Result<void, GitHubWriteFailure>>,
+    notifier: DesktopNotifier,
+  ) {
+    return new LabelService(
+      makeGate(),
+      // SAFETY: the gateway supplies every method reached by the label-write path.
+      { ...baseGateway(), addLabelsToLabelable: write } as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+      makeReviewWriteOperations(),
+      notifier,
+    );
+  }
+  const command = {
+    _tag: "AddLabels",
+    labels: [{ id: "LA_bug", name: "bug" }],
+  } as const;
+
+  const rejected: GitHubWriteFailure = {
+    _tag: "GitHubWriteFailure",
+    category: "rejected",
+    message: "rejected",
+  };
+  it.each([
+    ["ok", async () => ok(undefined)],
+    ["err", async () => err(rejected)],
+  ] as const)("posts nothing for a write that ends %s", async (tag, write) => {
+    const events: DesktopNotificationEvent[] = [];
+    const service = labelService(write, {
+      notify: (event) => events.push(event),
+    });
+
+    const result = await service.execute({ profileId, reviewId, command });
+
+    expect(result._tag).toBe(tag);
+    expect(events).toEqual([]);
+  });
+
+  it("returns the write's own result when the notifier throws", async () => {
+    const service = labelService(
+      async () => err({ ...rejected, category: "unavailable" }),
+      {
+        notify() {
+          throw new Error("notifier defect");
+        },
+      },
+    );
+
+    await expect(
+      service.execute({ profileId, reviewId, command }),
+    ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
+  });
+});

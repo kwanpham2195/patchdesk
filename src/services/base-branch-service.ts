@@ -13,6 +13,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { DesktopNotifier } from "./desktop-notifier";
 import {
   mapGitHubReadFailure,
   mapGitHubWriteFailure,
@@ -87,6 +88,7 @@ export class BaseBranchService {
       ReviewWriteOperationStore,
       "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
     >,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   /** Change the base branch through the guarded metadata-write path. */
@@ -110,6 +112,7 @@ export class BaseBranchService {
           ? err("invalid_input")
           : ok(undefined),
       prepare: () => this.prepareWrite(input),
+      notifier: this.notifier,
       journalEntry: (receipt) => ({
         _tag: "BaseBranchChange",
         branch: receipt.branch,
@@ -200,6 +203,7 @@ export class BaseBranchService {
     const writer = this.github.setPullRequestBaseBranch.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      pullRequest: pr,
       intent: { _tag: "SetBaseBranch" as const, branch },
       write: async (): Promise<
         Result<BaseBranchReceipt, BaseBranchWriteFailure>

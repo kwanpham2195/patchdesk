@@ -18,6 +18,7 @@ import {
 import { err, ok, type Result } from "../../src/domain/result";
 import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import { confirmedWriteJournal } from "./write-invariant-harness";
 
 const must = <T>(result: Result<T, unknown>): T => {
@@ -813,5 +814,81 @@ describe("FakeGitHubAdapter ownership parity", () => {
       command: command({ _tag: "Reply", threadId: "PRRT_thread" }),
     });
     expect(result).toEqual({ _tag: "err", error: "not_found" });
+  });
+});
+
+describe("InlineConversationService recovery notification", () => {
+  function reply(
+    createThreadReply: ReturnType<typeof vi.fn>,
+    events: DesktopNotificationEvent[],
+  ) {
+    const service = new InlineConversationService(
+      makeGate(),
+      // SAFETY: this gateway fixture implements every method a reply reaches.
+      makeGateway({ createThreadReply }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+      makeOperations(),
+      { notify: (event) => events.push(event) },
+    );
+    return () =>
+      service.execute({
+        profileId,
+        reviewId,
+        command: command({ _tag: "Reply", threadId: "PRRT_thread" }),
+      });
+  }
+
+  it("posts one event for a reply left outcome-unknown and none for the refused retry", async () => {
+    const events: DesktopNotificationEvent[] = [];
+    const execute = reply(
+      vi.fn(async () =>
+        err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "lost",
+        }),
+      ),
+      events,
+    );
+
+    await execute();
+    await execute();
+
+    expect(events).toEqual([
+      {
+        _tag: "WriteNeedsRecovery",
+        reviewId,
+        pullRequest: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          number: 42,
+        },
+      },
+    ]);
+  });
+
+  it("posts nothing for a rejected reply or a confirmed one", async () => {
+    const events: DesktopNotificationEvent[] = [];
+    const execute = reply(
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          err({
+            _tag: "GitHubWriteFailure",
+            category: "forbidden",
+            message: "no",
+          }),
+        )
+        .mockResolvedValueOnce(ok({ commentId: "PRRC_ok" })),
+      events,
+    );
+
+    await execute();
+    await execute();
+
+    expect(events).toEqual([]);
   });
 });

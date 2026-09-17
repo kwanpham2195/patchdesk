@@ -193,6 +193,7 @@ export async function buildLocalApiContainer(
     systemNow,
     recentWriteJournals,
     reviewWriteOperations,
+    configuration.desktopNotifier,
   );
   const reviewWriteRecovery = new ReviewWriteRecoveryService(
     reviewWriteGate,
@@ -209,6 +210,7 @@ export async function buildLocalApiContainer(
     systemNow,
     recentWriteJournals,
     reviewWriteOperations,
+    configuration.desktopNotifier,
   );
   const pullRequestImages = new PullRequestImageService({
     paths,
@@ -225,6 +227,7 @@ export async function buildLocalApiContainer(
     recentWriteJournals,
     reviewWriteOperations,
     avatarRailDependencies,
+    configuration.desktopNotifier,
   );
   const reviewerWrites = new ReviewerService(
     reviewWriteGate,
@@ -234,6 +237,7 @@ export async function buildLocalApiContainer(
     recentWriteJournals,
     reviewWriteOperations,
     avatarRailDependencies,
+    configuration.desktopNotifier,
   );
   const draftStateWrites = new DraftStateService(
     reviewWriteGate,
@@ -242,6 +246,7 @@ export async function buildLocalApiContainer(
     systemNow,
     recentWriteJournals,
     reviewWriteOperations,
+    configuration.desktopNotifier,
   );
   const baseBranchWrites = new BaseBranchService(
     reviewWriteGate,
@@ -250,6 +255,7 @@ export async function buildLocalApiContainer(
     systemNow,
     recentWriteJournals,
     reviewWriteOperations,
+    configuration.desktopNotifier,
   );
   const pendingReviewGateway = isGitHubPendingReviewGateway(github)
     ? github

@@ -36,6 +36,7 @@ import {
   canonicalModelId,
   type PiRuntimeModelCatalog,
 } from "../adapters/pi/pi-runtime-model-catalog";
+import type { DesktopNotifier } from "./desktop-notifier";
 import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightProviderCatalog } from "./insight-provider-catalog";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
@@ -158,6 +159,8 @@ export class InsightRunCoordinator {
      * Absent leaves the block off: every other Insight type ignores it.
      */
     private readonly reach?: BriefReachComputer,
+    /** Announces a settled run outside the window (ADR 0044). */
+    private readonly notifier?: DesktopNotifier,
   ) {
     this.recovery = new InsightRecovery(
       this.reviews,
@@ -179,6 +182,7 @@ export class InsightRunCoordinator {
       (input) => this.recovery.recover(input),
       this.diagnostics,
       this.reach,
+      this.notifier,
     );
   }
 
