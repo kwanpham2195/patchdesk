@@ -1,3 +1,7 @@
+import {
+  threadNeedsReply,
+  type GitHubConversationThread,
+} from "./github-context";
 import type { ContentHash } from "./ids";
 import type { InsightProjection } from "./insight";
 import {
@@ -22,7 +26,11 @@ export type WorkbenchRevisionFreshness =
 type AnalysisFindingReviewStatus =
   | { readonly state: "actionable" }
   | { readonly state: "pending_review" }
-  | { readonly state: "published" }
+  | {
+      readonly state: "published";
+      /** The Finding's published thread waits on the viewer's reply; see `threadNeedsReply`. */
+      readonly needsReply: boolean;
+    }
   | { readonly state: "locked" };
 
 export type AnalysisReviewActionsProjection = {
@@ -36,6 +44,8 @@ export function projectAnalysisReviewActions(input: {
   readonly freshness: WorkbenchRevisionFreshness;
   readonly patchHash: ContentHash | undefined;
   readonly pendingReview: PendingReviewState | undefined;
+  /** The represented inline threads a published Finding receipt points at. */
+  readonly threads: ReadonlyArray<GitHubConversationThread>;
 }): AnalysisReviewActionsProjection {
   const retained = input.analysis.retained;
   const current =
@@ -82,7 +92,13 @@ export function projectAnalysisReviewActions(input: {
           : { state: "actionable" }
         : receipt.state === "pending"
           ? { state: "pending_review" }
-          : { state: "published" };
+          : {
+              state: "published",
+              needsReply: input.threads.some(
+                (thread) =>
+                  thread.id === receipt.threadId && threadNeedsReply(thread),
+              ),
+            };
   }
   const pendingReviewNodeId =
     input.pendingReview?._tag === "Pending"

@@ -127,6 +127,15 @@ export function buildInsightReaders({
             ([id, status]) => [id, status.state],
           ),
         )}
+        needsReplyFindingIds={
+          new Set(
+            Object.entries(
+              workbench.analysisReviewActions?.findings ?? {},
+            ).flatMap(([id, status]) =>
+              status.state === "published" && status.needsReply ? [id] : [],
+            ),
+          )
+        }
         {...(workbench.insights.analysis.status === "current" &&
         workbench.fullPatch !== undefined
           ? { evidencePatch: workbench.fullPatch }

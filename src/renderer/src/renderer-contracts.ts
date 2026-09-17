@@ -795,7 +795,7 @@ export function parseDirectSummaryReviewResponse(
 const analysisFindingReviewStatusSchema = v.variant("state", [
   v.strictObject({ state: v.literal("actionable") }),
   v.strictObject({ state: v.literal("pending_review") }),
-  v.strictObject({ state: v.literal("published") }),
+  v.strictObject({ state: v.literal("published"), needsReply: v.boolean() }),
   v.strictObject({ state: v.literal("locked") }),
 ]);
 const analysisReviewActionsSchema = v.strictObject({

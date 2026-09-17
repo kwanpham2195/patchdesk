@@ -276,6 +276,28 @@ describe("AnalysisReader", () => {
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
+  it("marks only the Finding whose published thread waits on the viewer's reply", () => {
+    const { rerender } = render(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{ "finding-1": "published", "finding-2": "published" }}
+      />,
+    );
+    expect(screen.queryByText("Needs your reply")).toBeNull();
+
+    rerender(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{ "finding-1": "published", "finding-2": "published" }}
+        needsReplyFindingIds={new Set(["finding-2"])}
+      />,
+    );
+    const row = screen.getByText("Second boundary issue").closest("li");
+    if (row === null) throw new Error("missing Finding row");
+    expect(within(row).getByText("Needs your reply")).toBeTruthy();
+    expect(screen.getAllByText("Needs your reply")).toHaveLength(1);
+  });
+
   // The banner and merge readiness share one handled rule: a receipt handles
   // a finding the same way a dismissal does.
   it("drops a finding from the attention count once it has a review receipt", () => {
