@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
 import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import type { DesktopResponse } from "../../src/main/ipc-contract";
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import {
+  PatchdeskApiError,
+  ReviewPreconditionError,
+} from "../../src/renderer/src/api-client";
 import {
   useDirectConversationActions,
   type DirectConversationActions,
@@ -141,6 +144,7 @@ afterEach(() => {
 
 function renderActions(
   answer: () => DesktopResponse | Promise<DesktopResponse>,
+  workbench = projection(),
 ) {
   desktop = installDesktopDouble({
     [COMMAND]: answer,
@@ -155,7 +159,7 @@ function renderActions(
   const requireRecovery = vi.fn();
   const rendered = renderHook(() =>
     useDirectConversationActions({
-      workbench: projection(),
+      workbench,
       runDirectCommand: async (operation) => await operation(),
       appendRecentWrites,
       observeConfirmedReviewWrite,
@@ -194,9 +198,12 @@ describe("useDirectConversationActions", () => {
     "$name rejects a wrong 2xx receipt and requires recovery without optimistic evidence",
     async ({ operation, invoke, wrongReceipt }) => {
       const rendered = renderActions(() => success(wrongReceipt));
-      await expect(invoke(rendered.result.current)).rejects.toThrow(
-        "malformed",
-      );
+      const request = invoke(rendered.result.current);
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-direct-conversation-receipt",
+      });
       expect(rendered.requireRecovery).toHaveBeenCalledOnce();
       expect(rendered.requireRecovery).toHaveBeenCalledWith(operation);
       expect(rendered.appendRecentWrites).not.toHaveBeenCalled();
@@ -325,9 +332,15 @@ describe("useDirectConversationActions", () => {
     "locks an edit after a 2xx receipt with %s",
     async (_name, receipt) => {
       const rendered = renderActions(() => success(receipt));
-      await expect(
-        rendered.result.current.editComment("comment-1", "edited"),
-      ).rejects.toThrow("malformed");
+      const request = rendered.result.current.editComment(
+        "comment-1",
+        "edited",
+      );
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-direct-conversation-receipt",
+      });
       expect(rendered.requireRecovery).toHaveBeenCalledExactlyOnceWith(
         "EditPublishedComment",
       );
@@ -371,13 +384,50 @@ describe("useDirectConversationActions", () => {
         reconciliation: "complete",
       }),
     );
-    await expect(
-      rendered.result.current.dismissReview("101", "reason"),
-    ).rejects.toThrow("malformed");
+    const request = rendered.result.current.dismissReview("101", "reason");
+    await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+    await expect(request).rejects.toMatchObject({
+      kind: "outcome_unknown",
+      correlationId: "invalid-direct-conversation-receipt",
+    });
     expect(rendered.requireRecovery).toHaveBeenCalledExactlyOnceWith(
       "DismissPublishedReview",
     );
   });
+
+  it.each([
+    [
+      "Reply",
+      (actions: DirectConversationActions) =>
+        actions.replyToThread("thread-1", "reply"),
+    ],
+    [
+      "EditComment",
+      (actions: DirectConversationActions) =>
+        actions.editComment("comment-1", "edited"),
+    ],
+    [
+      "DeleteComment",
+      (actions: DirectConversationActions) =>
+        actions.deleteComment("comment-1"),
+    ],
+  ] as const)(
+    "%s refuses without a readable diff and sends nothing",
+    async (_name, invoke) => {
+      const current = projection();
+      const rendered = renderActions(() => success(null), {
+        ...current,
+        revision: { ...current.revision, patchHash: undefined },
+      });
+      const request = invoke(rendered.result.current);
+      await expect(request).rejects.toBeInstanceOf(ReviewPreconditionError);
+      await expect(request).rejects.toMatchObject({
+        reason: "diff_unreadable",
+      });
+      expect(desktop?.request).not.toHaveBeenCalled();
+      expect(rendered.requireRecovery).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves the created comment's optional threadId", async () => {
     const rendered = renderActions(() => success(cases[0]?.receipt ?? null));
