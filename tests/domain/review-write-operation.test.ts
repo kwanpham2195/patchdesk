@@ -143,6 +143,7 @@ const confirmedReceipts = {
     removed: ["hubot"],
   },
   DraftStateChange: { _tag: "DraftStateChange", draft: true },
+  BaseBranchChange: { _tag: "BaseBranchChange", branch: "release/1.2" },
 } satisfies Record<RecentReviewWrite["_tag"], RecentReviewWrite>;
 
 it.each(Object.entries(confirmedReceipts))(

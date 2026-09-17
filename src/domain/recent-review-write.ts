@@ -38,7 +38,8 @@ export type RecentReviewWrite =
       readonly requested: ReadonlyArray<string>;
       readonly removed: ReadonlyArray<string>;
     }
-  | { readonly _tag: "DraftStateChange"; readonly draft: boolean };
+  | { readonly _tag: "DraftStateChange"; readonly draft: boolean }
+  | { readonly _tag: "BaseBranchChange"; readonly branch: string };
 
 /** Failure to decode a serialized receipt into a `RecentReviewWrite`. */
 export type InvalidRecentReviewWrite = {
@@ -85,6 +86,10 @@ export const recentReviewWriteRecordSchema = v.variant("_tag", [
     removed: v.pipe(v.array(v.string()), v.readonly()),
   }),
   v.strictObject({ _tag: v.literal("DraftStateChange"), draft: v.boolean() }),
+  v.strictObject({
+    _tag: v.literal("BaseBranchChange"),
+    branch: v.pipe(v.string(), v.minLength(1)),
+  }),
 ]);
 
 /** A schema-validated serialized receipt whose branded ids are not yet parsed. */
@@ -141,6 +146,7 @@ export function parseRecentReviewWrite(
     case "AssigneeChange":
     case "ReviewerChange":
     case "DraftStateChange":
+    case "BaseBranchChange":
       return ok(record);
   }
 }
@@ -196,5 +202,7 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       // The whole write is the state it left behind, so two toggles to the
       // same state are the same write.
       return `DraftStateChange:${entry.draft}`;
+    case "BaseBranchChange":
+      return `BaseBranchChange:${entry.branch}`;
   }
 }
