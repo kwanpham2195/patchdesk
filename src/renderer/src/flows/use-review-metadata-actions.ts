@@ -18,6 +18,10 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import {
+  parseBaseBranchListResponse,
+  type BaseBranchListResponse,
+} from "../base-branch-contracts";
+import {
   parseAssigneeReceipt,
   parseBaseBranchReceipt,
   parseDraftStateReceipt,
@@ -58,6 +62,9 @@ export type ReviewMetadataActions = {
   ) => Promise<void>;
   /** `draft: false` publishes a draft for review; `true` takes it back to draft. */
   readonly setDraftState: (draft: boolean) => Promise<void>;
+  readonly fetchBaseBranches: (
+    query?: string,
+  ) => Promise<BaseBranchListResponse | undefined>;
   /** Changes the base branch, then rebuilds the Review against the new base. */
   readonly setBaseBranch: (branch: string) => Promise<BaseBranchChangeOutcome>;
 };
@@ -168,6 +175,16 @@ export function useReviewMetadataActions({
       parseReviewerListResponse(
         await requestJson(
           `/v1/reviews/reviewers?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}${query === undefined || query === "" ? "" : `&query=${encodeURIComponent(query)}`}`,
+        ),
+      ),
+    [profileId, reviewId],
+  );
+
+  const fetchBaseBranches = useCallback(
+    async (query?: string) =>
+      parseBaseBranchListResponse(
+        await requestJson(
+          `/v1/reviews/base-branch?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}${query === undefined || query === "" ? "" : `&query=${encodeURIComponent(query)}`}`,
         ),
       ),
     [profileId, reviewId],
@@ -360,6 +377,7 @@ export function useReviewMetadataActions({
     requestReviewers,
     removeReviewers,
     setDraftState,
+    fetchBaseBranches,
     setBaseBranch,
   };
 }

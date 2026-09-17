@@ -49,6 +49,9 @@ export function ReviewWorkbenchDialogs({
         {...(actions.setDraftState === undefined
           ? {}
           : { onSetDraftState: actions.setDraftState })}
+        {...(actions.baseBranch === undefined
+          ? {}
+          : { baseBranch: actions.baseBranch })}
       />
       {actions.pendingReview === undefined ||
       actions.pendingReview.projection?.state !== "pending" ? null : (

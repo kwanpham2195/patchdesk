@@ -6,6 +6,7 @@ import {
 import type { AssigneesSectionActions } from "../components/assignee-picker";
 import type { LabelPickerActions } from "../components/label-picker";
 import type { ReviewerPickerActions } from "../components/reviewer-picker";
+import type { ChangeBaseBranchActions } from "../components/change-base-branch-dialog";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
@@ -119,6 +120,8 @@ export function ReviewWorkbenchFlow({
     requestReviewers,
     removeReviewers,
     setDraftState,
+    fetchBaseBranches,
+    setBaseBranch,
   } = useReviewMetadataActions({
     workbench,
     runDirectCommand,
@@ -127,6 +130,9 @@ export function ReviewWorkbenchFlow({
     requireRecovery: writeRecovery.requireRecovery,
     requestRefresh,
   });
+  // Permission is read with the branch list and enforced by BaseBranchService.
+  const canWriteBaseBranch =
+    workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
     !writeRecovery.githubWritesLocked &&
@@ -189,6 +195,10 @@ export function ReviewWorkbenchFlow({
     ? { fetchReviewers, requestReviewers, removeReviewers }
     : undefined;
   const draftStateAction = canWriteDraftState ? setDraftState : undefined;
+  const baseBranchActions: ChangeBaseBranchActions | undefined =
+    canWriteBaseBranch
+      ? { fetchBaseBranches, setBaseBranch, refresh }
+      : undefined;
 
   const workbenchActionsBase = {
     detectUpdates: runDetect,
@@ -254,10 +264,14 @@ export function ReviewWorkbenchFlow({
     draftStateAction === undefined
       ? workbenchActionsWithReviewers
       : { ...workbenchActionsWithReviewers, setDraftState: draftStateAction };
+  const workbenchActionsWithBaseBranch =
+    baseBranchActions === undefined
+      ? workbenchActionsWithDraftState
+      : { ...workbenchActionsWithDraftState, baseBranch: baseBranchActions };
   const workbenchActions =
     conversationActions === undefined
-      ? workbenchActionsWithDraftState
-      : { ...workbenchActionsWithDraftState, ...conversationActions };
+      ? workbenchActionsWithBaseBranch
+      : { ...workbenchActionsWithBaseBranch, ...conversationActions };
 
   return (
     <>

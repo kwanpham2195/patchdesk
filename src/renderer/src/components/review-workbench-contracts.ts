@@ -8,6 +8,7 @@ import type {
   PendingReviewComposerActions,
 } from "./review-diff-view";
 import type { ReviewerPickerActions } from "./reviewer-picker";
+import type { ChangeBaseBranchActions } from "./change-base-branch-dialog";
 import type {
   CommitDiffResponse,
   DirectSummaryReviewProjection,
@@ -84,6 +85,8 @@ export type ReviewWorkbenchActions = {
   readonly reviewers?: ReviewerPickerActions;
   /** The author's own draft toggle; `draft: false` publishes for review. Absent unless the viewer authored this pull request. */
   readonly setDraftState?: (draft: boolean) => Promise<void>;
+  /** The base-branch change; absent once the Review is terminal or writes are locked. */
+  readonly baseBranch?: ChangeBaseBranchActions;
   readonly reportNavigationState: (
     state: "clear" | "dirty_draft" | "write_pending",
   ) => void;

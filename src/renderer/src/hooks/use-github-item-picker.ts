@@ -10,7 +10,7 @@ import {
 import { withoutMember } from "../picker-selection";
 
 /** How long the search box waits after the last keystroke before it re-queries the server-side filter — long enough to absorb normal typing cadence, short enough to still feel live. */
-const SEARCH_DEBOUNCE_MS = 200;
+export const SEARCH_DEBOUNCE_MS = 200;
 
 /**
  * The reads and writes one picker needs, already narrowed to a single item:
