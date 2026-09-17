@@ -24,7 +24,11 @@ import {
   type RepoRelativePath,
   type WorkspaceProfileId,
 } from "./ids";
-import type { RecentReviewWrite } from "./recent-review-write";
+import {
+  parseRecentReviewWrite,
+  recentReviewWriteRecordSchema,
+  type RecentReviewWrite,
+} from "./recent-review-write";
 import { err, ok, type Result } from "./result";
 
 /** Revision identity that an uncertain Review write remains bound to. */
@@ -218,34 +222,6 @@ const intentSchema = v.variant("_tag", [
   }),
   v.strictObject({ _tag: v.literal("SetDraftState"), draft: v.boolean() }),
 ]);
-const recentWriteSchema = v.variant("_tag", [
-  v.strictObject({
-    _tag: v.literal("Comment"),
-    commentId: v.string(),
-    reviewId: v.optional(v.string()),
-  }),
-  v.strictObject({
-    _tag: v.literal("ThreadState"),
-    threadId: v.string(),
-    state: v.picklist(["open", "resolved"]),
-  }),
-  v.strictObject({
-    _tag: v.literal("LabelChange"),
-    added: v.array(v.string()),
-    removed: v.array(v.string()),
-  }),
-  v.strictObject({
-    _tag: v.literal("AssigneeChange"),
-    added: v.array(v.string()),
-    removed: v.array(v.string()),
-  }),
-  v.strictObject({
-    _tag: v.literal("ReviewerChange"),
-    requested: v.array(v.string()),
-    removed: v.array(v.string()),
-  }),
-  v.strictObject({ _tag: v.literal("DraftStateChange"), draft: v.boolean() }),
-]);
 const operationSchema = v.strictObject({
   schemaVersion: v.literal(1),
   profileId: v.string(),
@@ -260,7 +236,7 @@ const operationSchema = v.strictObject({
     }),
     v.strictObject({
       _tag: v.literal("Confirmed"),
-      receipt: v.optional(recentWriteSchema),
+      receipt: v.optional(recentReviewWriteRecordSchema),
     }),
   ]),
   startedAt: v.string(),
@@ -417,32 +393,10 @@ function parseState(
   if (state._tag === "Requested") return state;
   if (state._tag === "OutcomeUnknown") return state;
   if (state.receipt === undefined) return { _tag: "Confirmed" };
-  if (state.receipt._tag === "Comment") {
-    return {
-      _tag: "Confirmed",
-      receipt:
-        state.receipt.reviewId === undefined
-          ? { _tag: "Comment", commentId: state.receipt.commentId }
-          : {
-              _tag: "Comment",
-              commentId: state.receipt.commentId,
-              reviewId: state.receipt.reviewId,
-            },
-    };
-  }
-  if (state.receipt._tag === "ThreadState") {
-    const threadId = parseGitHubThreadId(state.receipt.threadId);
-    if (threadId._tag === "err") return undefined;
-    return {
-      _tag: "Confirmed",
-      receipt: {
-        _tag: "ThreadState",
-        threadId: threadId.value,
-        state: state.receipt.state,
-      },
-    };
-  }
-  return { _tag: "Confirmed", receipt: state.receipt };
+  const receipt = parseRecentReviewWrite(state.receipt);
+  return receipt._tag === "err"
+    ? undefined
+    : { _tag: "Confirmed", receipt: receipt.value };
 }
 
 /** Advance a requested write immediately before its GitHub mutation. */
