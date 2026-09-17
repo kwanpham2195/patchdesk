@@ -59,6 +59,23 @@ export type GitHubConversationThread = {
   readonly location?: DiffLocation;
 };
 
+/**
+ * Whether an unresolved thread waits on the viewer: its last comment is not
+ * theirs by GitHub's own `viewerDidAuthor`, so no login comparison can drift.
+ * An absent `viewerDidAuthor` proves nothing and reads as not waiting.
+ */
+export function threadNeedsReply(thread: {
+  readonly state: GitHubConversationThread["state"];
+  readonly comments: ReadonlyArray<{
+    readonly viewerDidAuthor?: boolean | undefined;
+  }>;
+}): boolean {
+  return (
+    thread.state !== "resolved" &&
+    thread.comments.at(-1)?.viewerDidAuthor === false
+  );
+}
+
 export type CheckRunSummary = {
   readonly name: string;
   readonly required: boolean | "unknown";
