@@ -31,6 +31,21 @@ describe("unionRecentWrites", () => {
       { _tag: "DraftStateChange", draft: true },
     ]);
   });
+
+  it("keys a BaseBranchChange by the branch it left behind", () => {
+    expect(
+      unionRecentWrites(
+        [{ _tag: "BaseBranchChange", branch: "main" }],
+        [
+          { _tag: "BaseBranchChange", branch: "main" },
+          { _tag: "BaseBranchChange", branch: "release/1.2" },
+        ],
+      ),
+    ).toEqual([
+      { _tag: "BaseBranchChange", branch: "main" },
+      { _tag: "BaseBranchChange", branch: "release/1.2" },
+    ]);
+  });
 });
 
 describe("parseRecentReviewWrite", () => {

@@ -115,7 +115,8 @@ export type ReviewWriteIntent =
       readonly _tag: "RemoveReviewers";
       readonly logins: ReadonlyArray<string>;
     }
-  | { readonly _tag: "SetDraftState"; readonly draft: boolean };
+  | { readonly _tag: "SetDraftState"; readonly draft: boolean }
+  | { readonly _tag: "SetBaseBranch"; readonly branch: string };
 
 /** Every `ReviewWriteIntent` tag; the renderer recovery picklist and the workbench projection are built from this list. */
 export const REVIEW_WRITE_INTENT_TAGS = [
@@ -134,6 +135,7 @@ export const REVIEW_WRITE_INTENT_TAGS = [
   "RequestReviewers",
   "RemoveReviewers",
   "SetDraftState",
+  "SetBaseBranch",
 ] as const satisfies ReadonlyArray<ReviewWriteIntent["_tag"]>;
 
 /** A `ReviewWriteIntent` tag drawn from `REVIEW_WRITE_INTENT_TAGS`. */
@@ -261,6 +263,10 @@ const intentSchema = v.variant("_tag", [
     logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
   }),
   v.strictObject({ _tag: v.literal("SetDraftState"), draft: v.boolean() }),
+  v.strictObject({
+    _tag: v.literal("SetBaseBranch"),
+    branch: v.pipe(v.string(), v.minLength(1)),
+  }),
 ]);
 
 /**
@@ -421,6 +427,7 @@ function parseIntent(
       return ok(intent);
     }
     case "SetDraftState":
+    case "SetBaseBranch":
       return ok(intent);
   }
 }

@@ -80,6 +80,11 @@ const entrySchema = v.variant("_tag", [
     draft: v.boolean(),
     writtenAt: v.string(),
   }),
+  v.strictObject({
+    _tag: v.literal("BaseBranchChange"),
+    branch: v.string(),
+    writtenAt: v.string(),
+  }),
 ]);
 const journalSchema = v.strictObject({
   schemaVersion: v.literal(1),

@@ -64,6 +64,7 @@ describe("POST /v1/reviews/detect-updates", () => {
       removed: ["hubot"],
     },
     DraftStateChange: { _tag: "DraftStateChange", draft: true },
+    BaseBranchChange: { _tag: "BaseBranchChange", branch: "release/1.2" },
   } satisfies Record<RecentReviewWrite["_tag"], RecentReviewWrite>;
 
   for (const [tag, receipt] of Object.entries(receipts)) {

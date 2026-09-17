@@ -101,4 +101,5 @@ export const reviewWriteIntents = {
   RequestReviewers: { _tag: "RequestReviewers", logins: ["hubot"] },
   RemoveReviewers: { _tag: "RemoveReviewers", logins: ["hubot"] },
   SetDraftState: { _tag: "SetDraftState", draft: true },
+  SetBaseBranch: { _tag: "SetBaseBranch", branch: "release/1.2" },
 } satisfies Record<ReviewWriteIntent["_tag"], ReviewWriteIntent>;

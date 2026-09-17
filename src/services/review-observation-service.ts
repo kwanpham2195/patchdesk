@@ -774,6 +774,8 @@ function containsRecentWrites(
       }
       case "DraftStateChange":
         return snapshot.pullRequest.isDraft === write.draft;
+      case "BaseBranchChange":
+        return snapshot.pullRequest.baseBranch === write.branch;
       default:
         return casesHandled(write);
     }
