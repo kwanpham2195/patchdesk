@@ -197,7 +197,7 @@ const turnCompletedParamsSchema = v.looseObject({
 const agentMessageDeltaParamsSchema = v.looseObject({
   delta: v.optional(v.string()),
 });
-// `proposedExecpolicyAmendment` is not read: upstream proposes one on every `untrusted` prompt, and only `acceptWithExecpolicyAmendment` applies it.
+// `proposedExecpolicyAmendment` is not read because a plain `accept` becomes `ReviewDecision::Approved` upstream, which applies no amendment.
 const commandApprovalParamsSchema = v.looseObject({
   kind: v.optional(v.string()),
   networkApprovalContext: v.optional(v.unknown()),
@@ -842,7 +842,11 @@ class RpcChild {
         command !== undefined &&
         this.approvalWorktreePath !== undefined &&
         (await isPathInsideWorktree(this.approvalWorktreePath, worktreePath)) &&
-        (await isReadOnlyCommand(command, this.approvalWorktreePath));
+        (await isReadOnlyCommand(
+          command,
+          this.approvalWorktreePath,
+          worktreePath,
+        ));
       this.activity?.approvalAnswered(allowed ? "accepted" : "declined");
       this.send({ id, result: { decision: allowed ? "accept" : "decline" } });
       return;
