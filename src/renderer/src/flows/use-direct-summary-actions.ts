@@ -4,6 +4,7 @@ import {
   contextualMessage,
   isOutcomeUnknownRetry,
   requestJson,
+  untrustedWriteResponseError,
 } from "../api-client";
 import { DIRECT_SUMMARY_MESSAGES } from "../review-copy";
 import {
@@ -138,13 +139,11 @@ export function useDirectSummaryActions({
             result === undefined ||
             result.state === "idle" ||
             (result.state === "confirmed" && result.receipt.event !== event)
-          ) {
-            setDirectSummaryOverride({
-              state: "recovery_required",
-              resolution: "check_required",
-            });
-            throw new Error("Invalid direct summary review response");
-          }
+          )
+            // The catch below locks recovery for every unconfirmed submit.
+            throw untrustedWriteResponseError(
+              "invalid-direct-summary-response",
+            );
           setDirectSummaryOverride(result);
           if (result.state === "confirmed") {
             const write = {
@@ -200,7 +199,9 @@ export function useDirectSummaryActions({
           );
           const result = parseDirectSummaryReviewResponse(value);
           if (result === undefined)
-            throw new Error("Invalid direct summary recovery response");
+            throw untrustedWriteResponseError(
+              "invalid-direct-summary-recovery-response",
+            );
           setDirectSummaryOverride(result);
           if (result.state === "confirmed") {
             appendRecentWrites({

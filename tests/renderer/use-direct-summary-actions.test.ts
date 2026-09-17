@@ -3,6 +3,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type { RunDirectCommand } from "../../src/renderer/src/flows/use-review-observation";
 import {
@@ -287,19 +288,46 @@ describe("useDirectSummaryActions recovery", () => {
     const { result, appendRecentWrites } = renderDirectSummary(reviewable);
 
     await act(async () => {
-      await expect(
-        panelOf(result).onSubmit(
-          _case === "event that does not match the submitted decision"
-            ? "APPROVE"
-            : "COMMENT",
-          "Body",
-        ),
-      ).rejects.toThrow(/Invalid direct summary review response/);
+      const submit = panelOf(result).onSubmit(
+        _case === "event that does not match the submitted decision"
+          ? "APPROVE"
+          : "COMMENT",
+        "Body",
+      );
+      await expect(submit).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(submit).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-direct-summary-response",
+      });
     });
     expect(panelOf(result).state).toBe("recovery_required");
     expect(panelOf(result).recoveryResolution).toBe("check_required");
     expect(panelOf(result).error).toBeTruthy();
     expect(appendRecentWrites).not.toHaveBeenCalled();
+  });
+
+  it("reports a malformed recovery response as unconfirmed", async () => {
+    installSummaryDouble({ recover: () => ({}) });
+    const { result } = renderDirectSummary(
+      projection({
+        pendingReview: pending("none"),
+        directSummary: {
+          state: "recovery_required",
+          resolution: "check_required",
+        },
+      }),
+    );
+
+    await act(async () => {
+      const recover = panelOf(result).onRecover();
+      await expect(recover).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(recover).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-direct-summary-recovery-response",
+      });
+    });
+    expect(panelOf(result).state).toBe("recovery_required");
+    expect(panelOf(result).error).toBeTruthy();
   });
 
   it("admits only one submit in the same tick", async () => {
