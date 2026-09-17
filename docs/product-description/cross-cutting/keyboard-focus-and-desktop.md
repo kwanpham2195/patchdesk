@@ -2,7 +2,7 @@
 
 ## Summary
 
-Patchdesk's supported direct input is keyboard and mouse in one macOS desktop window. Navigation, Settings, Pull requests, and the Review workbench share destination guards, focus movement, keyboard commands, and native close behavior. A clean action proceeds; a pending GitHub write keeps the maintainer at the current surface until the final result arrives, and an unsaved Review draft asks before it is discarded.
+Patchdesk's supported direct input is keyboard and mouse in one macOS desktop window. Navigation, Settings, Pull requests, and the Review workbench share destination guards, focus movement, keyboard commands, and native close behavior. A clean action proceeds; a pending GitHub write keeps the maintainer at the current surface until the final result arrives, and an unsaved Review draft asks before it is discarded. When Patchdesk is in the background or showing another Review, macOS notifications report Insight runs that settle and GitHub writes that need a check.
 
 ## The simple case
 
@@ -50,6 +50,14 @@ When a GitHub write is pending, the guard offers Wait for completion and prevent
 
 Settings itself holds nothing back: its sections save their own values, so closing the overlay, changing section, reload, window close, and quit are never blocked by it. A native close path can show the desktop warning when the renderer cannot remain visible.
 
+### Desktop notifications
+
+Patchdesk posts a macOS notification when a Brief, Walkthrough, or Analysis finishes or fails, and when a GitHub write leaves the Review waiting for **Check GitHub again**. With **Review ready and merge completed** switched on in Settings → General → Notifications, it also posts one when a Review finishes preparing and when a merge completes. A cancelled or superseded Insight run posts nothing. The notification names the pull request as `owner/repo#number`.
+
+No notification is posted for the Review the focused window is showing, or while **Notifications** is off. Clicking a notification brings the window forward and navigates to its Review with the same guards as any navigation; an Insight notification lands on the Insights tab with that Insight selected.
+
+> Technical note: the main process writes a `desktop-notification` debug log line for each event: `shown`, `skipped` with `focused_on_review` or `disabled`, and `clicked`. ADR 0044 records the decision.
+
 ### Settle
 
 A destination change updates the titlebar, screen, saved destination, and focus. Returning from Settings reveals the same destination and restores opener focus. A workbench position remains associated with its Review rather than becoming global navigation state.
@@ -94,7 +102,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 
 **Feedback, errors, and diagnostics.** Focus and titlebar feedback identify where the maintainer is; feature errors and Diagnostics identify why an action failed.
 
-**Preferences, keyboard commands, and desktop integration.** Settings, ⌘K, ⌘,, Navigate, Back, Skip to content, and native close share destination state and guards.
+**Preferences, keyboard commands, and desktop integration.** Settings, ⌘K, ⌘,, Navigate, Back, Skip to content, native close, and a clicked desktop notification share destination state and guards.
 
 **Supported input and accessibility limits.** Keyboard and mouse are supported. Touch, pen, and screen-reader behavior are outside the supported product surface.
 
@@ -108,6 +116,8 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - A Review workbench position belongs to its Review ID, not to the next Review opened in the same window.
 - A native window close uses desktop warning behavior because renderer state may not remain visible during shutdown.
 - Keyboard row selection and Enter activation share the same action owner as mouse selection.
+- A clicked notification for the Review already on screen focuses the window and keeps the current tab.
+- A write that GitHub rejected, or one refused because an earlier write already holds the lock, posts no notification.
 
 ## Open questions and verification
 
@@ -116,6 +126,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - Confirm the exact keyboard and native-menu behavior for Settings, Navigate, Pull requests row activation, and Review file navigation.
 - Confirm the titlebar busy label when overlapping tracked actions settle in reverse order.
 - Confirm the native close prompt for an unsaved Review draft and for a pending GitHub write on a real macOS window.
+- Live verification of desktop notifications is pending: a macOS banner cannot be observed over CDP, so the log lines are the evidence.
 - In the current source only the Review workbench reports navigation state, and only as write-pending or clear. Confirm which surface, if any, still reports an unsaved draft to this guard.
 
 Verified against Patchdesk application source commit `3100615`; the removal of the workspace draft guard described from `883fad2`.
