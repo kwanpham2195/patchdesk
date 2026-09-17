@@ -21,6 +21,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { AvatarRailDependencies } from "./avatar-sync-service";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { DesktopNotifier } from "./desktop-notifier";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import {
   mapGitHubReadFailure,
@@ -133,6 +134,7 @@ export class AssigneeService {
     >,
     /** Best-effort; see `AvatarRailDependencies`. Absent in tests/paths that never exercise avatar behaviour, in which case `list` returns every user with no `avatarDataUri`. */
     private readonly avatars?: AvatarRailDependencies,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   async execute(input: {
@@ -151,6 +153,7 @@ export class AssigneeService {
         validate: () => validateLocalCommand(input.command),
         prepare: () => this.prepareWrite(input),
         journalEntry: journalEntryFor,
+        notifier: this.notifier,
       },
     );
   }
@@ -374,6 +377,7 @@ export class AssigneeService {
       const writer = this.github.addAssigneesToAssignable.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
+        pullRequest: pr,
         intent: { _tag: "AddAssignees" as const, logins: assigneeLogins },
         write: async (): Promise<
           Result<AssigneeReceipt, AssigneeWriteFailure>
@@ -394,6 +398,7 @@ export class AssigneeService {
     const writer = this.github.removeAssigneesFromAssignable.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      pullRequest: pr,
       intent: { _tag: "RemoveAssignees" as const, logins: assigneeLogins },
       write: async (): Promise<
         Result<AssigneeReceipt, AssigneeWriteFailure>

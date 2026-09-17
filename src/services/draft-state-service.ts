@@ -12,6 +12,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { DesktopNotifier } from "./desktop-notifier";
 import {
   mapGitHubWriteFailure,
   mapMetadataGateFailure,
@@ -66,6 +67,7 @@ export class DraftStateService {
       ReviewWriteOperationStore,
       "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
     >,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   async execute(input: {
@@ -88,6 +90,7 @@ export class DraftStateService {
       // `prepareWrite` performs.
       validate: () => ok(undefined),
       prepare: () => this.prepareWrite(input),
+      notifier: this.notifier,
       journalEntry: (receipt) => ({
         _tag: "DraftStateChange",
         draft: receipt.draft,
@@ -145,6 +148,7 @@ export class DraftStateService {
     const writer = this.github.setPullRequestDraftState.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      pullRequest: pr,
       intent: { _tag: "SetDraftState" as const, draft },
       write: async (): Promise<
         Result<DraftStateReceipt, DraftStateWriteFailure>

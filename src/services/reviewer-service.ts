@@ -26,6 +26,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { AvatarRailDependencies } from "./avatar-sync-service";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { DesktopNotifier } from "./desktop-notifier";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import {
   mapGitHubReadFailure,
@@ -133,6 +134,7 @@ export class ReviewerService {
     >,
     /** Best-effort; see `AvatarRailDependencies`. Absent in tests/paths that never exercise avatar behaviour, in which case `list` returns every row with no `avatarDataUri`. */
     private readonly avatars?: AvatarRailDependencies,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   async execute(input: {
@@ -151,6 +153,7 @@ export class ReviewerService {
         validate: () => validateLocalCommand(input.command),
         prepare: () => this.prepareWrite(input),
         journalEntry: journalEntryFor,
+        notifier: this.notifier,
       },
     );
   }
@@ -349,6 +352,7 @@ export class ReviewerService {
       const writer = this.github.requestReviews.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
+        pullRequest: pr,
         intent: { _tag: "RequestReviewers" as const, logins: reviewerLogins },
         write: async (): Promise<
           Result<ReviewerReceipt, ReviewerWriteFailure>
@@ -369,6 +373,7 @@ export class ReviewerService {
     const writer = this.github.removeRequestedReviewers.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      pullRequest: pr,
       intent: { _tag: "RemoveReviewers" as const, logins: reviewerLogins },
       write: async (): Promise<
         Result<ReviewerReceipt, ReviewerWriteFailure>

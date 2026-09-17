@@ -29,6 +29,11 @@ import {
   type ReviewWriteOperation,
 } from "../domain/review-write-operation";
 import { err, ok, type Result } from "../domain/result";
+import type { PullRequestRef } from "../domain/pull-request";
+import {
+  postDesktopNotification,
+  type DesktopNotifier,
+} from "./desktop-notifier";
 
 export type DirectConversationCommand =
   | {
@@ -126,6 +131,7 @@ export class InlineConversationService {
       ReviewWriteOperationStore,
       "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
     >,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   async execute(input: {
@@ -213,6 +219,7 @@ export class InlineConversationService {
         if (coordinates === undefined) return err("invalid_input");
         return this.runDurableWrite(
           input,
+          pr,
           {
             _tag: "CreateComment",
             expected: command.expected,
@@ -262,6 +269,7 @@ export class InlineConversationService {
         if (!target.value.found) return err("not_found");
         return this.runDurableWrite(
           input,
+          pr,
           {
             _tag: "Reply",
             expected: command.expected,
@@ -303,6 +311,7 @@ export class InlineConversationService {
         if (!target.value.found) return err("not_found");
         return this.runDurableWrite(
           input,
+          pr,
           {
             _tag: "SetThreadState",
             expected: command.expected,
@@ -341,6 +350,7 @@ export class InlineConversationService {
             return err("github_write_failed");
           return this.runDurableWrite(
             input,
+            pr,
             {
               _tag: "EditComment",
               expected: command.expected,
@@ -367,6 +377,7 @@ export class InlineConversationService {
         const command = input.command;
         return this.runDurableWrite(
           input,
+          pr,
           {
             _tag: "DeleteComment",
             expected: command.expected,
@@ -392,62 +403,77 @@ export class InlineConversationService {
       readonly reviewId: ReviewId;
       readonly command: DirectConversationCommand;
     },
+    pullRequest: PullRequestRef,
     intent: Extract<ReviewWriteIntent, { readonly expected: unknown }>,
     write: () => Promise<Result<T, GitHubWriteFailure>>,
     toReceipt: (value: T) => DirectConversationReceipt,
   ): Promise<Result<DirectConversationReceipt, DirectConversationFailure>> {
-    const operation: ReviewWriteOperation = {
-      schemaVersion: 1,
-      profileId: input.profileId,
-      reviewId: input.reviewId,
-      sessionId: intent.expected.sessionId,
-      intent,
-      state: { _tag: "Requested" },
-      startedAt: this.now(),
-    };
-    const begun = await this.operations.begin(operation);
-    if (begun._tag === "err") return err("outcome_unknown");
-    const outcomeUnknown = markReviewWriteOutcomeUnknown(operation);
-    if (outcomeUnknown._tag === "err") return err("outcome_unknown");
-    const marked = await this.operations.markOutcomeUnknown(
-      outcomeUnknown.value,
-    );
-    if (marked._tag === "err") return err("outcome_unknown");
-    let result: Result<T, GitHubWriteFailure>;
+    // Set once this call's own operation is outcome-unknown; only `reject` or `remove` clears it.
+    let leftLocked = false;
     try {
-      result = await write();
-    } catch {
-      return err("outcome_unknown");
-    }
-    if (result._tag === "err") {
-      if (result.error.category === "unavailable")
+      const operation: ReviewWriteOperation = {
+        schemaVersion: 1,
+        profileId: input.profileId,
+        reviewId: input.reviewId,
+        sessionId: intent.expected.sessionId,
+        intent,
+        state: { _tag: "Requested" },
+        startedAt: this.now(),
+      };
+      const begun = await this.operations.begin(operation);
+      if (begun._tag === "err") return err("outcome_unknown");
+      const outcomeUnknown = markReviewWriteOutcomeUnknown(operation);
+      if (outcomeUnknown._tag === "err") return err("outcome_unknown");
+      const marked = await this.operations.markOutcomeUnknown(
+        outcomeUnknown.value,
+      );
+      if (marked._tag === "err") return err("outcome_unknown");
+      leftLocked = true;
+      let result: Result<T, GitHubWriteFailure>;
+      try {
+        result = await write();
+      } catch {
         return err("outcome_unknown");
-      const rejected = await this.operations.reject(operation);
-      if (rejected._tag === "err") return err("outcome_unknown");
-      return err(mapWriteFailure(result.error));
-    }
-    const receipt = toReceipt(result.value);
-    const journalEntry = journalEntryFor(receipt);
-    const confirmedOperation = confirmReviewWrite(
-      outcomeUnknown.value,
-      journalEntry,
-    );
-    if (confirmedOperation._tag === "err") return err("outcome_unknown");
-    const confirmed = await this.operations.confirm(confirmedOperation.value);
-    if (confirmed._tag === "err") return err("outcome_unknown");
-    if (journalEntry !== undefined)
-      await this.recentWrites.appendConfirmed(
+      }
+      if (result._tag === "err") {
+        if (result.error.category === "unavailable")
+          return err("outcome_unknown");
+        const rejected = await this.operations.reject(operation);
+        if (rejected._tag === "err") return err("outcome_unknown");
+        leftLocked = false;
+        return err(mapWriteFailure(result.error));
+      }
+      const receipt = toReceipt(result.value);
+      const journalEntry = journalEntryFor(receipt);
+      const confirmedOperation = confirmReviewWrite(
+        outcomeUnknown.value,
+        journalEntry,
+      );
+      if (confirmedOperation._tag === "err") return err("outcome_unknown");
+      const confirmed = await this.operations.confirm(confirmedOperation.value);
+      if (confirmed._tag === "err") return err("outcome_unknown");
+      if (journalEntry !== undefined)
+        await this.recentWrites.appendConfirmed(
+          input.profileId,
+          input.reviewId,
+          journalEntry,
+          this.now(),
+        );
+      const removed = await this.operations.remove(
         input.profileId,
         input.reviewId,
-        journalEntry,
-        this.now(),
       );
-    const removed = await this.operations.remove(
-      input.profileId,
-      input.reviewId,
-    );
-    if (removed._tag === "err") return err("outcome_unknown");
-    return ok(receipt);
+      if (removed._tag === "err") return err("outcome_unknown");
+      leftLocked = false;
+      return ok(receipt);
+    } finally {
+      if (leftLocked)
+        postDesktopNotification(this.notifier, {
+          _tag: "WriteNeedsRecovery",
+          reviewId: input.reviewId,
+          pullRequest,
+        });
+    }
   }
 
   private async ownedComment(

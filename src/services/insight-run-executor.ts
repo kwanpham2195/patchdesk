@@ -14,6 +14,7 @@ import {
   sameInsightRevision,
   type InsightFailureCategory,
   type InsightRecord,
+  type RetainedInsightEnvelope,
   type InsightType,
 } from "../domain/insight-record";
 import { rawJsonValueSchema } from "../domain/json";
@@ -23,6 +24,10 @@ import type { InsightStore } from "../adapters/storage/insight-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { BriefReachComputer } from "./brief-reach-service";
+import {
+  postDesktopNotification,
+  type DesktopNotifier,
+} from "./desktop-notifier";
 import type {
   Active,
   InsightCoordinatorFailure,
@@ -59,6 +64,7 @@ export class InsightRunExecutor {
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
     /** Counts a completed Brief's Reach block; absent leaves the block off. */
     private readonly reach?: BriefReachComputer,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   async execute(
@@ -339,7 +345,7 @@ export class InsightRunExecutor {
             await contentHash(session.value.patchPath),
           );
           if (patchHash._tag === "err") return undefined;
-          return this.insights.mutate({
+          const mutated = await this.insights.mutate({
             profileId: input.profileId,
             reviewId: input.reviewId,
             type,
@@ -371,6 +377,24 @@ export class InsightRunExecutor {
               return operation(record);
             },
           });
+          // Posted inside the lock but outside the record transition, so only a persisted settlement is announced.
+          if (mutated._tag === "ok") {
+            const outcome = settledOutcome(mutated.value, runId);
+            if (outcome !== undefined)
+              postDesktopNotification(this.notifier, {
+                _tag: "InsightSettled",
+                reviewId: input.reviewId,
+                pullRequest: {
+                  host: review.value.identity.host,
+                  owner: review.value.identity.owner,
+                  repo: review.value.identity.repo,
+                  number: review.value.identity.prNumber,
+                },
+                insightType: type,
+                outcome,
+              });
+          }
+          return mutated;
         },
       );
       if (changed === undefined) throw new Error("revision_unavailable");
@@ -442,6 +466,19 @@ export class InsightRunExecutor {
       // Diagnostics are best effort and never become an unhandled rejection.
     }
   }
+}
+
+/** A cancelled or superseded run is the maintainer's own doing or already replaced, so it settles silently. */
+function settledOutcome(
+  record: InsightRecord<RetainedInsightEnvelope>,
+  runId: InsightRunId,
+): "completed" | "failed" | undefined {
+  if (record.retained?.runId === runId) return "completed";
+  const failure = record.replacementFailure;
+  return failure?.runId === runId &&
+    (failure.reason === "failed" || failure.reason === "invalid_result")
+    ? "failed"
+    : undefined;
 }
 
 /** Renders the invoker's bounded phase label; never provider text. */
