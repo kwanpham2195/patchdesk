@@ -28,6 +28,8 @@ Conversation opens inside the represented Review without changing the Review rev
 
 The metadata rail shows current labels, assignees, and requested reviewers. Each management control loads its current candidates on demand. Suggested reviewers are grouped before other candidates. Each reviewer who has already approved, requested changes, commented, or been dismissed shows a re-request control beside their verdict; reviewers still waiting to answer show none. GitHub eligibility, current membership, and limits determine which entries can be changed. On a merged or closed Review, or while GitHub writes are locked, Reviewers lists the requested reviewers from the last refresh as read-only rows, without verdicts or a picker.
 
+An unresolved thread whose most recent comment was written by someone other than the viewer is marked **Needs your reply**; GitHub's own authorship flag for the viewer decides it, not a login comparison. In the Diff's Threads navigator those threads come first, each group in diff order, and the Threads tab label carries a second count of them. The `{` and `}` thread jump visits them first in the same order. On Analysis, a Finding whose published thread is in that state shows the same marker. A reply or a resolve clears the marker when the confirmed write is reconciled into the Review, without pressing Refresh. A comment GitHub returned without the authorship flag never counts as needing a reply.
+
 ### Leave unchanged
 
 Reading, expanding content, opening and closing a picker, or changing tabs records nothing on GitHub. Cancelling a reply, edit, or dismissal keeps the represented conversation unchanged. Returning to Diff or Insights preserves the Review but does not promise to preserve every open row editor.
@@ -110,4 +112,4 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 - Confirm that the dirty-navigation guard covers every non-empty reply and edit form, not only inline diff authoring.
 - Confirm visible ordering when a metadata write is confirmed while a slower candidate-list request is still pending.
 
-Verified against Patchdesk application source commit `3100615`; reviewer re-request and the author's draft toggle updated for issue #230; the base-branch change added for issue #117 at `e078fbd8`.
+Verified against Patchdesk application source commit `3100615`; reviewer re-request and the author's draft toggle updated for issue #230; the base-branch change added for issue #117 at `e078fbd8`; Needs your reply added for issue #228.
