@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createReview,
+  markReviewLeft,
   markReviewOpened,
   markReviewRevisionChanged,
   markReviewUnavailable,
@@ -139,6 +140,41 @@ describe("Review", () => {
     expect(
       markReviewOpened(titled, { title: undefined, now: later }),
     ).toMatchObject({ title: "Add the sidebar", lastOpenedAt: later });
+  });
+
+  it("records the head and newest entry seen on leaving, and round-trips them", () => {
+    const left = markReviewLeft(review(), {
+      headSha: firstSha,
+      seenThrough: now,
+      now: later,
+    });
+    expect(left).toMatchObject({
+      lastLooked: { headSha: firstSha, seenThrough: now },
+      updatedAt: later,
+    });
+    expect(parseReview(structuredClone(left))).toEqual({
+      _tag: "ok",
+      value: left,
+    });
+  });
+
+  it("never moves seenThrough backwards when a later leave shows nothing newer", () => {
+    const left = markReviewLeft(review(), {
+      headSha: firstSha,
+      seenThrough: later,
+      now: later,
+    });
+    for (const seenThrough of [now, undefined])
+      expect(
+        markReviewLeft(left, { headSha: secondSha, seenThrough, now: later })
+          .lastLooked,
+      ).toEqual({ headSha: secondSha, seenThrough: later });
+  });
+
+  it("parses a record written before the cursor existed", () => {
+    const parsed = parseReview(structuredClone(review()));
+    expect(parsed).toMatchObject({ _tag: "ok" });
+    expect(parsed._tag === "ok" && "lastLooked" in parsed.value).toBe(false);
   });
 
   it("rejects identity mismatches in stored data", () => {

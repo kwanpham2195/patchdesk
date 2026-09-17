@@ -8,6 +8,7 @@ import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ReviewStore } from "../../src/adapters/storage/review-store";
 import {
   createReview,
+  markReviewLeft,
   markReviewOpened,
   markReviewTerminal,
   type ReviewIdentity,
@@ -98,12 +99,12 @@ describe("ReviewStore", () => {
     });
   });
 
-  it("round-trips the visited-sidebar title and last-opened instant", async () => {
+  it("round-trips the visited-sidebar title, last-opened instant, and last-looked cursor", async () => {
     const { store } = await storeFixture();
-    const opened = markReviewOpened(makeReview(), {
-      title: "Add the sidebar",
-      now: later,
-    });
+    const opened = markReviewLeft(
+      markReviewOpened(makeReview(), { title: "Add the sidebar", now }),
+      { headSha: firstSha, seenThrough: now, now: later },
+    );
 
     await expect(store.save(opened)).resolves.toMatchObject({ _tag: "ok" });
     await expect(store.load(profileId, opened.id)).resolves.toEqual({
