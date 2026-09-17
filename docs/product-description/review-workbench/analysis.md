@@ -53,6 +53,8 @@ An exact pending-review projection updates the canonical workbench immediately w
 
 A confirmed dismissal patches the retained Analysis locally and removes its Add action. A deterministic failure keeps the Finding retryable and preserves its reason. Unknown pending-review outcome locks mutation and delegates settlement to Check GitHub again or manual GitHub inspection.
 
+A Finding that no longer maps to the represented diff, or an Add while the pending review needs recovery, sends nothing and says the Finding no longer matches the current diff or pending review, with Check GitHub again or refresh as the next step. A malformed or stale response to Add or Dismiss is worded as unconfirmed: the row says GitHub could not confirm the Finding action and to check GitHub before repeating it. The row keeps that sentence until the maintainer starts another action on the same Finding.
+
 ## Variants
 
 | Variant                                                | Before the action runs                                                                                                                                      | While the action runs                                                                                                                |

@@ -50,7 +50,7 @@ Every command passes through the shared detect-before-write gate. Patchdesk acce
 
 Start or Add success records only newly created thread IDs and renders the returned cumulative pending review. Submit success expects pending state `none`, closes the dialog, journals the published review evidence, and observes the Review so checks and merge readiness can reconcile. Discard success expects `none` and journals the formerly pending thread IDs so stale reads cannot resurrect them.
 
-A confirmed rejection leaves the dialog or composer retryable with bounded context. A malformed success or transport-unknown outcome changes pending state to recovery required. Check GitHub again can recover the pending projection and reload the canonical Review. If Patchdesk finds a pending review but cannot identify the exact Finding comment, it directs the maintainer to inspect or discard it on GitHub.
+A confirmed rejection leaves the dialog or composer retryable with bounded context. When Patchdesk cannot verify the pending review against the current diff, it sends nothing and says to refresh, then try again. A malformed success or transport-unknown outcome changes pending state to recovery required. Check GitHub again can recover the pending projection and reload the canonical Review; a reload Patchdesk cannot read reports that it could not check GitHub and to try again. If Patchdesk finds a pending review but cannot identify the exact Finding comment, it directs the maintainer to inspect or discard it on GitHub.
 
 ## Variants
 
