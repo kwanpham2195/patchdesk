@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 
-import type { NotificationSettings } from "../../../domain/contracts";
+import {
+  notificationSettingsOf,
+  type NotificationSettings,
+} from "../../../domain/contracts";
 import { requestJson } from "../api-client";
-
-/** Mirrors `notificationSettingsOf`: a config that never saved the toggles runs with these. */
-const defaultNotificationSettings: NotificationSettings = {
-  enabled: true,
-  preparationAndMerge: false,
-};
 
 // Loose: `/v1/settings` also carries appearance and diff theme, which this hook does not own.
 const settingsResponseSchema = v.looseObject({
@@ -28,7 +25,10 @@ async function readNotificationSettings(
 ): Promise<NotificationSettings> {
   const parsed = v.safeParse(settingsResponseSchema, await request);
   if (!parsed.success) throw new Error("invalid settings response");
-  return parsed.output.notifications ?? defaultNotificationSettings;
+  const { notifications } = parsed.output;
+  return notificationSettingsOf(
+    notifications === undefined ? {} : { notifications },
+  );
 }
 
 /** What the Notifications card reads and calls. */
