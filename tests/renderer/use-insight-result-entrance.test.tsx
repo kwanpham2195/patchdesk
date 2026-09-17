@@ -52,12 +52,14 @@ function attachResultWrapper(
 beforeEach(() => {
   nextFrame = 1;
   frames = new Map();
+  // oxlint-disable-next-line patchdesk/no-method-spying -- `useInsightResultEntrance` schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
   vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
     const frame = nextFrame;
     nextFrame += 1;
     frames.set(frame, callback);
     return frame;
   });
+  // oxlint-disable-next-line patchdesk/no-method-spying -- `useInsightResultEntrance` cancels through `window.cancelAnimationFrame` with no frame-scheduler seam, so the spy drops the held frame the test would otherwise run.
   vi.spyOn(window, "cancelAnimationFrame").mockImplementation((frame) => {
     frames.delete(frame);
   });

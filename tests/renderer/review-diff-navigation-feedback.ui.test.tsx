@@ -412,6 +412,7 @@ describe("ReviewDiffView navigation feedback", () => {
     const { rerender } = render(view(annotations));
 
     const frames: Array<FrameRequestCallback> = [];
+    // oxlint-disable-next-line patchdesk/no-method-spying -- Diff keyboard navigation schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
     const requestFrame = vi
       .spyOn(window, "requestAnimationFrame")
       .mockImplementation((callback) => {

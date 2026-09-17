@@ -348,6 +348,7 @@ describe("InsightsSlot run requests", () => {
   });
   it("transitions Walkthrough focus without interrupting docked focus restoration", async () => {
     const frames: FrameRequestCallback[] = [];
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The Walkthrough focus transition schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       frames.push(callback);
       return frames.length;

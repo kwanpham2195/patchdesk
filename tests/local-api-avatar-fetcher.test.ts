@@ -189,6 +189,7 @@ describe("local API avatar fetcher configuration seam", () => {
     // Any real network fetch (i.e. the production `createAvatarFetcher`
     // reaching out to avatars.githubusercontent.com) would go through the
     // global fetch. Spying on it proves the stub above was used instead.
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The avatar fetcher reaches the network through global `fetch` with no injectable seam, so this spy is how the test proves the `fetchAvatar` stub replaced it.
     const globalFetchSpy = vi.spyOn(globalThis, "fetch");
 
     const started = await startLocalApiServer({

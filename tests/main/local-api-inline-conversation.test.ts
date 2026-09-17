@@ -97,6 +97,7 @@ describe("POST /v1/reviews/inline-conversations/command parse failures", () => {
       }),
       tail: () => ({ entries: [] }),
     };
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The parse-failure branch must never write to the global `console.error`, which has no seam into the local API server, so capturing it is the one way to assert that.
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});

@@ -57,6 +57,7 @@ describe("GeneratedMarkdown", () => {
   });
 
   it("renders repeated identical tokens without duplicate-key warnings", () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- React reports duplicate keys only through the global `console.error`, which has no seam, so capturing it is the one way to assert the warning is absent.
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { container } = render(
       <GeneratedMarkdown

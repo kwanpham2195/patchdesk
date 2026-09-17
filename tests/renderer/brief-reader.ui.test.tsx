@@ -536,6 +536,7 @@ describe("BriefReader", () => {
 
   it("copies one view's rows as diff text, with no title line", async () => {
     const user = userEvent.setup();
+    // oxlint-disable-next-line patchdesk/no-method-spying -- jsdom has no working clipboard and `BriefReader` writes through `navigator.clipboard` with no injected writer, so the spy supplies the write result.
     const writeText = vi
       .spyOn(navigator.clipboard, "writeText")
       .mockResolvedValue(undefined);
@@ -560,6 +561,7 @@ describe("BriefReader", () => {
 
   it("leaves the Flow copy label unchanged when the clipboard write fails", async () => {
     const user = userEvent.setup();
+    // oxlint-disable-next-line patchdesk/no-method-spying -- jsdom has no working clipboard and `BriefReader` writes through `navigator.clipboard` with no injected writer, so the spy supplies the rejected write.
     const writeText = vi
       .spyOn(navigator.clipboard, "writeText")
       .mockRejectedValue(new Error("denied"));
@@ -580,6 +582,7 @@ describe("BriefReader", () => {
 
   it("flips only the clicked view's Copy button to Copied", async () => {
     const user = userEvent.setup();
+    // oxlint-disable-next-line patchdesk/no-method-spying -- jsdom has no working clipboard and `BriefReader` writes through `navigator.clipboard` with no injected writer, so the spy supplies the write result.
     const writeText = vi
       .spyOn(navigator.clipboard, "writeText")
       .mockResolvedValue(undefined);

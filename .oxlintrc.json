@@ -2,7 +2,8 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "react"],
   "jsPlugins": [
-    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }
+    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" },
+    { "name": "patchdesk", "specifier": "./tools/oxlint/patchdesk/index.ts" }
   ],
   "categories": {
     "correctness": "off"
@@ -115,7 +116,8 @@
     "anti-slop/no-unknown-type-aliases": "error",
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error"
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "patchdesk/no-method-spying": "error"
   },
   "overrides": [
     {
