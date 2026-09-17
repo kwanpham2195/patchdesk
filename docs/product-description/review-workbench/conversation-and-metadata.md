@@ -2,7 +2,7 @@
 
 ## Summary
 
-The Conversation view presents the pull request description, issue comments, review summaries, general review threads, and the pull request's labels, assignees, and requested reviewers. The maintainer reaches it from the Conversation tab of an open Review. Reading remains available for represented terminal Reviews and during write recovery; GitHub controls appear only when the current Review and the exact action are writable. The pull request's own author additionally finds a draft toggle in the PR overview's Merge readiness row.
+The Conversation view presents the pull request description, issue comments, review summaries, general review threads, and the pull request's labels, assignees, and requested reviewers. The maintainer reaches it from the Conversation tab of an open Review. Reading remains available for represented terminal Reviews and during write recovery; GitHub controls appear only when the current Review and the exact action are writable. The pull request's own author additionally finds a draft toggle in the PR overview's Merge readiness row, and any maintainer on an open Review finds **Change base branch** there.
 
 ## The simple case
 
@@ -36,7 +36,7 @@ Reading, expanding content, opening and closing a picker, or changing tabs recor
 
 Reply and edit require non-blank text. Deleting a published comment uses a separate confirmation. Resolving toggles an eligible thread between open and resolved. Dismissing a review requires a reason and explicit confirmation.
 
-Metadata actions are exact: add or remove named labels, add or remove named assignees, assign the configured viewer, request reviewers, or remove reviewers. A reviewer who has already answered carries a re-request control on their own row, which asks that one person for another review without disturbing anyone else's request. The author's draft toggle names the state it moves to: Ready for review publishes a draft, and Convert to draft returns a published pull request to draft. Patchdesk accepts only a receipt that confirms the requested action and resulting membership.
+Metadata actions are exact: add or remove named labels, add or remove named assignees, assign the configured viewer, request reviewers, or remove reviewers. A reviewer who has already answered carries a re-request control on their own row, which asks that one person for another review without disturbing anyone else's request. The author's draft toggle names the state it moves to: Ready for review publishes a draft, and Convert to draft returns a published pull request to draft. **Change base branch** opens a dialog that searches the branches of the pull request's base repository, marks the current base as current and not selectable, and says that a new base can change the pull request's commits, files, checks, and merge conflicts. Picking a branch and pressing **Change base branch** asks for a second confirmation that names the old and new base. Patchdesk accepts only a receipt that confirms the requested action and resulting membership.
 
 ### While the action runs
 
@@ -44,7 +44,7 @@ The affected row or picker becomes busy and rejects a same-tick duplicate. A rep
 
 ### Settle
 
-A confirmed reply, edit, delete, thread-state change, dismissal, or metadata change is recorded as a recent write and reconciled into the canonical Review projection. A read-back failure does not turn a durable confirmation into a failed write. A deterministic rejection leaves represented state intact and shows a bounded error.
+A confirmed reply, edit, delete, thread-state change, dismissal, or metadata change is recorded as a recent write and reconciled into the canonical Review projection. A confirmed base-branch change is followed by a Refresh, which rebuilds the Review against the new base: retained Insights stay readable and are marked outdated, and comments and Findings keep their place where their anchor still exists in the new diff. If that Refresh fails, the dialog says the base changed and offers Refresh; the change is never sent again. A read-back failure does not turn a durable confirmation into a failed write. A deterministic rejection leaves represented state intact and shows a bounded error.
 
 If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pause. Conversation stays readable and Refresh stays available. Check GitHub again can clear the pause when one exact remote result is found; ambiguous recovery requires manual inspection on GitHub.
 
@@ -54,7 +54,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 | --- | --- | --- |
 | Workspace profile and GitHub account | Candidate lists and self-assignment use the active profile's host and configured viewer identity. | Changing profile leaves the Review only after the normal navigation guard permits it. A receipt for another viewer cannot confirm Assign self. |
 | Pull request and Review state | Open represented Reviews can expose writes. Merged or closed Reviews remain readable but hide write controls. | A remote terminal transition discovered before the write prevents it; one discovered afterward is reconciled as new represented state. |
-| GitHub permissions and merge readiness | Each control depends on GitHub eligibility and permission. Re-request appears only when the reviewer read reports write permission on this pull request. The draft toggle appears only for the viewer who opened the pull request, and GitHub's repository permission is still resolved on the write itself. Merge readiness does not itself block metadata writes. | A permission failure is shown for the action and does not imply that another metadata category is writable. |
+| GitHub permissions and merge readiness | Each control depends on GitHub eligibility and permission. Re-request appears only when the reviewer read reports write permission on this pull request. The draft toggle appears only for the viewer who opened the pull request, and GitHub's repository permission is still resolved on the write itself. The base-branch dialog reads pull-request write permission with the branch list: denied disables the confirm and says why, unknown leaves it enabled with a warning that GitHub may refuse, and the write itself is refused without permitted evidence. Merge readiness does not itself block metadata writes. | A permission failure is shown for the action and does not imply that another metadata category is writable. |
 | Network, local tool, and Insight provider availability | Conversation reading uses saved and refreshed GitHub data. Insight providers are unrelated. | Network or `gh` failure can block candidate loading, mutation, or reconciliation. A confirmed write remains confirmed when later observation fails. |
 | Input path: mouse, keyboard, or desktop menu | Tabs, buttons, pickers, text fields, and dialogs support mouse and keyboard. | Submit and cancel controls keep the same action guard for either input path. The desktop menu does not directly write conversation data. |
 
@@ -100,6 +100,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 - A failed cached avatar falls back to initials and can retry when the cached data URI changes.
 - A stale or terminal Review hides direct conversation writers without hiding its represented content.
 - Re-request is hidden for a reviewer the candidate read did not return, because the request GitHub accepts names a person by identifier rather than by login.
+- A base-branch change to the branch the pull request already targets is refused before any GitHub write. The dialog lists at most 100 branches and says how many exist when there are more; searching narrows the list.
 - A draft change the pull request has already made is refused rather than sent, because neither GitHub draft mutation is idempotent and its refusal cannot be told apart from a permission denial.
 
 ## Open questions and verification
@@ -109,4 +110,4 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 - Confirm that the dirty-navigation guard covers every non-empty reply and edit form, not only inline diff authoring.
 - Confirm visible ordering when a metadata write is confirmed while a slower candidate-list request is still pending.
 
-Verified against Patchdesk application source commit `3100615`; reviewer re-request and the author's draft toggle updated for issue #230.
+Verified against Patchdesk application source commit `3100615`; reviewer re-request and the author's draft toggle updated for issue #230; the base-branch change added for issue #117 at `e078fbd8`.
