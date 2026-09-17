@@ -45,6 +45,7 @@ import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import { SidebarListingService } from "../services/sidebar-listing-service";
+import { WatchedPullRequestService } from "../services/watched-pull-request-service";
 import type { AppLogService } from "../services/app-log-service";
 
 /** The narrow log seam every request-scoped writer needs. */
@@ -79,6 +80,7 @@ export type LocalApiContainer = {
   readonly publishedFeedback: PublishedFeedbackService;
   readonly pullRequestImages: PullRequestImageService;
   readonly sidebarListing: SidebarListingService;
+  readonly watchedPullRequests: WatchedPullRequestService;
 };
 
 /** Either the built container, or the startup refusal that stopped it. */
@@ -114,6 +116,7 @@ export async function buildLocalApiContainer(
     storageArtifacts,
     lifecycleGate,
     insights,
+    watchedPullRequests,
     storageManagement,
   } = built.stores;
   await ReviewPreparationJournal.recover(
@@ -466,6 +469,12 @@ export async function buildLocalApiContainer(
       publishedFeedback,
       pullRequestImages,
       sidebarListing,
+      watchedPullRequests: new WatchedPullRequestService({
+        profiles,
+        store: watchedPullRequests,
+        github,
+        now: systemNow,
+      }),
     },
   };
 }

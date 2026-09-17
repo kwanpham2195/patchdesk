@@ -154,3 +154,25 @@ export const updateThreadCommentMutation =
   "mutation($commentId:ID!,$body:String!){updatePullRequestReviewComment(input:{pullRequestReviewCommentId:$commentId,body:$body}){pullRequestReviewComment{id}}}";
 export const deleteThreadCommentMutation =
   "mutation($commentId:ID!){deletePullRequestReviewComment(input:{id:$commentId}){clientMutationId}}";
+/**
+ * One aliased read of every watched pull request (ADR 0045): `pr0`…`prN`,
+ * each bound to its own variables so no owner or name is spliced into the
+ * document. Twenty aliases cost one point and twenty nodes (checked live
+ * 2026-09-17).
+ */
+export function watchedPullRequestsQuery(count: number): string {
+  const indexes = Array.from({ length: count }, (_, index) => index);
+  const variables = indexes
+    .map(
+      (index) =>
+        `$owner${index}: String!, $name${index}: String!, $number${index}: Int!`,
+    )
+    .join(", ");
+  const selections = indexes
+    .map(
+      (index) =>
+        `pr${index}: repository(owner: $owner${index}, name: $name${index}) { pullRequest(number: $number${index}) { state updatedAt headRefOid reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } }`,
+    )
+    .join(" ");
+  return `query WatchedPullRequests(${variables}) { rateLimit { remaining resetAt } ${selections} }`;
+}

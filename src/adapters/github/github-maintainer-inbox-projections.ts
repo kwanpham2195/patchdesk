@@ -120,7 +120,8 @@ function parseMaintainerPullRequest(
   return ok({ summary, checks: rollupCheckSummary(rollup) });
 }
 
-function mapReviewDecision(
+/** GitHub's `reviewDecision` as the domain review state every pull request listing uses. */
+export function mapReviewDecision(
   value: string | null | undefined,
 ): PullRequestSummary["reviewState"] {
   switch (value) {
@@ -138,7 +139,8 @@ function mapReviewDecision(
   }
 }
 
-function rollupCheckSummary(value: string | undefined): CheckSummary {
+/** A head commit's `statusCheckRollup.state` as the aggregate check status. */
+export function rollupCheckSummary(value: string | undefined): CheckSummary {
   switch (value) {
     case "SUCCESS":
       return { overall: "passing", checks: [] };

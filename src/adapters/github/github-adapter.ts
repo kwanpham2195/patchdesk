@@ -46,6 +46,7 @@ import type {
   GitHubReviewRestId,
   GitHubThreadId,
   GitSha,
+  IsoTimestamp,
   RepoRelativePath,
 } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
@@ -85,6 +86,7 @@ import type {
   MergeOutcome,
   PendingReviewComment,
   RepositoryBranchListing,
+  WatchedPullRequestRead,
 } from "./github-ports";
 
 /** The GitHub port declarations this adapter implements. */
@@ -101,6 +103,7 @@ export type {
   MergeOutcome,
   PendingReviewComment,
   RepositoryBranchListing,
+  WatchedPullRequestRead,
 } from "./github-ports";
 
 /** Explicit evidence created by a future fetched-ref owner before Git diff fallback is allowed. */
@@ -305,6 +308,16 @@ export class GitHubAdapter
     readonly query?: string;
   }): Promise<Result<AssignableUserListing, GitHubReadFailure>> {
     return this.collaborators.listAssignableUsers(input);
+  }
+
+  async readWatchedPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly refs: ReadonlyArray<PullRequestRef>;
+    readonly now: IsoTimestamp;
+  }): Promise<
+    Result<ReadonlyArray<WatchedPullRequestRead>, GitHubReadFailure>
+  > {
+    return this.pullRequests.readWatchedPullRequests(input);
   }
 
   async listRepositoryBranches(input: {

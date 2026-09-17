@@ -48,8 +48,7 @@ export type WatchedPullRequestChange =
   | "merged"
   | "closed";
 
-/** True when both references name the same pull request. */
-export function sameWatchedPullRequest(
+function sameWatchedPullRequest(
   left: PullRequestRef,
   right: PullRequestRef,
 ): boolean {
@@ -62,6 +61,21 @@ export function sameWatchedPullRequest(
 }
 
 /**
+ * Whether `ref` fits the watched list: an already watched pull request always
+ * fits, and a new one fits below the cap.
+ */
+export function checkWatchCapacity(
+  list: ReadonlyArray<WatchedPullRequest>,
+  ref: PullRequestRef,
+): Result<void, WatchLimitReached> {
+  if (list.some((watched) => sameWatchedPullRequest(watched.ref, ref)))
+    return ok(undefined);
+  return list.length >= WATCHED_PULL_REQUEST_LIMIT
+    ? err({ _tag: "WatchLimitReached", limit: WATCHED_PULL_REQUEST_LIMIT })
+    : ok(undefined);
+}
+
+/**
  * Adds `entry` to the watched list. Watching a pull request already on the
  * list keeps the list as it is; a new entry past the cap is refused.
  */
@@ -69,14 +83,11 @@ export function watchPullRequest(
   list: ReadonlyArray<WatchedPullRequest>,
   entry: WatchedPullRequest,
 ): Result<ReadonlyArray<WatchedPullRequest>, WatchLimitReached> {
-  if (list.some((watched) => sameWatchedPullRequest(watched.ref, entry.ref)))
-    return ok(list);
-  if (list.length >= WATCHED_PULL_REQUEST_LIMIT)
-    return err({
-      _tag: "WatchLimitReached",
-      limit: WATCHED_PULL_REQUEST_LIMIT,
-    });
-  return ok([...list, entry]);
+  const capacity = checkWatchCapacity(list, entry.ref);
+  if (capacity._tag === "err") return capacity;
+  return list.some((watched) => sameWatchedPullRequest(watched.ref, entry.ref))
+    ? ok(list)
+    : ok([...list, entry]);
 }
 
 /** Removes the pull request `ref` names; an unwatched ref leaves the list unchanged. */

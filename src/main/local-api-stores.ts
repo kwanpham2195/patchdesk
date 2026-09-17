@@ -16,6 +16,7 @@ import { MergeOperationStore } from "../adapters/storage/merge-operation-store";
 import { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import { ReviewArtifactStorage } from "../adapters/storage/review-artifact-storage";
 import { InsightStore } from "../adapters/storage/insight-store";
+import { WatchedPullRequestStore } from "../adapters/storage/watched-pull-request-store";
 import { StorageManagementService } from "../services/storage-management-service";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import type { GitHubReader } from "../adapters/github/github-adapter";
@@ -88,6 +89,7 @@ export type LocalApiStores = {
   readonly storageArtifacts: ReviewArtifactStorage;
   readonly lifecycleGate: ReviewLifecycleGate;
   readonly insights: InsightStore;
+  readonly watchedPullRequests: WatchedPullRequestStore;
   readonly storageManagement: StorageManagementService;
 };
 
@@ -213,6 +215,7 @@ export async function buildLocalApiStores(
       storageArtifacts,
       lifecycleGate,
       insights,
+      watchedPullRequests: new WatchedPullRequestStore(paths),
       storageManagement,
     },
   };
