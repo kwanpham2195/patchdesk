@@ -28,6 +28,8 @@ A Codex CLI account run projects a small activity trace on the existing
   place when the command completes: the command, its status (`in_progress`,
   `completed`, `failed`, `declined`), and the exit code and duration when Codex
   reports them.
+- `approvals`: how many command approval requests Patchdesk accepted and
+  declined in the run (#240), as two counts with no command text.
 
 What is not projected: prompts, the agent message stream, raw notifications,
 and command output. `aggregatedOutput` is unbounded worktree output that the
