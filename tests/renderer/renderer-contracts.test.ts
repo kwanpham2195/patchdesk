@@ -7,6 +7,7 @@ import {
 import {
   parseCommitDiffResponse,
   parseInboxResponse,
+  parseInsightRunResponse,
   parseMergeReceipt,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
@@ -731,6 +732,61 @@ describe("parseModelCatalog", () => {
       parseModelCatalog({
         models: [{ id: "model-a", label: "Model A" }],
         defaultReasoning: "extreme",
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("parseInsightRunResponse activity", () => {
+  const command = {
+    id: "cmd-1",
+    command: "git diff HEAD~1",
+    status: "completed",
+    exitCode: 0,
+    durationMs: 400,
+  };
+  const poll = { runId: "run-a", type: "analysis", status: "running" };
+
+  it("accepts a bounded trace", () => {
+    expect(
+      parseInsightRunResponse({
+        ...poll,
+        activity: {
+          phase: "turn",
+          reasoningLine: "Checking",
+          commands: [command],
+        },
+      }),
+    ).toMatchObject({ activity: { commands: [command] } });
+  });
+
+  it.each([
+    [
+      "a command over 200 characters",
+      { commands: [{ ...command, command: "x".repeat(201) }] },
+    ],
+    [
+      "more than 200 command rows",
+      {
+        commands: Array.from({ length: 201 }, (_, index) => ({
+          ...command,
+          id: `cmd-${String(index)}`,
+        })),
+      },
+    ],
+    [
+      "a reasoning line over 4096 characters",
+      { reasoningLine: "x".repeat(4097), commands: [] },
+    ],
+    [
+      "command output",
+      { commands: [{ ...command, aggregatedOutput: "secret" }] },
+    ],
+  ])("fails closed on %s", (_name, fields) => {
+    expect(
+      parseInsightRunResponse({
+        ...poll,
+        activity: { phase: "turn", ...fields },
       }),
     ).toBeUndefined();
   });
