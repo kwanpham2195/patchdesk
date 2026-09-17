@@ -267,6 +267,7 @@ function AppContent({
   const parsedProfileHost = parseGitHubHost(dashboard?.profile.githubHost);
   useDesktopMenuBridge({
     fixtureMode,
+    destination,
     navigationState,
     openSettings,
     refreshDashboard,

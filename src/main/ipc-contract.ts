@@ -68,6 +68,17 @@ type SetNavigationStateDesktopRequest = {
   readonly state: "clear" | "dirty_draft" | "write_pending";
 };
 
+/**
+ * The screen the renderer shows, so the main process can stay silent about a
+ * Review the maintainer is already looking at.
+ */
+type SetNavigationDestinationDesktopRequest = {
+  readonly operation: "setNavigationDestination";
+  readonly destination:
+    | { readonly kind: "dashboard" }
+    | { readonly kind: "workbench"; readonly reviewId: string };
+};
+
 /** Opens a validated HTTPS URL outside the isolated renderer. */
 type OpenExternalHttpsDesktopRequest = {
   readonly operation: "openExternalHttps";
@@ -79,6 +90,7 @@ export type DesktopRequest =
   | LocalApiDesktopRequest
   | SelectDirectoryDesktopRequest
   | SetNavigationStateDesktopRequest
+  | SetNavigationDestinationDesktopRequest
   | OpenExternalHttpsDesktopRequest;
 
 export type DesktopResponse = {

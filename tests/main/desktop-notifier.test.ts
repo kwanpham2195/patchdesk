@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createDesktopNotifier } from "../../src/main/desktop-notifier";
+import {
+  createDesktopNotifier,
+  decideDesktopNotification,
+  type NotificationDestination,
+} from "../../src/main/desktop-notifier";
 import type { DesktopNotificationClick } from "../../src/main/ipc-contract";
 import type { LogEntryInput } from "../../src/domain/log-entry";
 import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
@@ -52,11 +56,17 @@ function fakeNotifications() {
 
 function harness(
   createNotification?: ReturnType<typeof fakeNotifications>["create"],
+  window: {
+    readonly focused: boolean;
+    readonly destination: NotificationDestination;
+  } = { focused: false, destination: { kind: "dashboard" } },
 ) {
   const notifications = fakeNotifications();
   const logs: LogEntryInput[] = [];
   const clicks: DesktopNotificationClick[] = [];
   const notifier = createDesktopNotifier({
+    windowFocused: () => window.focused,
+    destination: () => window.destination,
     createNotification: createNotification ?? notifications.create,
     onClick: (click) => clicks.push(click),
     logs: { write: (entry) => logs.push(entry) },
@@ -94,6 +104,24 @@ describe("createDesktopNotifier", () => {
     expect(logs.map((entry) => entry.message)).toEqual(["shown", "clicked"]);
   });
 
+  it("stays silent and logs why while the window is focused on the event's Review", () => {
+    const { notifier, notifications, logs } = harness(undefined, {
+      focused: true,
+      destination: { kind: "workbench", reviewId },
+    });
+
+    notifier.notify(analysisFinished);
+
+    expect(notifications.shown).toEqual([]);
+    expect(logs).toMatchObject([
+      {
+        level: "debug",
+        message: "skipped",
+        meta: { kind: "InsightSettled", reason: "focused_on_review" },
+      },
+    ]);
+  });
+
   it("logs a notification the platform refused instead of throwing into the caller", () => {
     const { notifier, logs } = harness(() => {
       throw new Error("notification center unavailable");
@@ -110,4 +138,41 @@ describe("createDesktopNotifier", () => {
       },
     ]);
   });
+});
+
+describe("decideDesktopNotification", () => {
+  const otherReviewId =
+    "cfw__centraldigital__patchdesk__pr-7__review-0123456789ab";
+  it.each([
+    { focused: false, on: "same Review", expected: "show" },
+    { focused: false, on: "other Review", expected: "show" },
+    { focused: false, on: "dashboard", expected: "show" },
+    { focused: true, on: "same Review", expected: "focused_on_review" },
+    { focused: true, on: "other Review", expected: "show" },
+    { focused: true, on: "dashboard", expected: "show" },
+  ] as const)(
+    "focused=$focused on the $on: $expected",
+    ({ focused, on, expected }) => {
+      const destination: NotificationDestination =
+        on === "dashboard"
+          ? { kind: "dashboard" }
+          : {
+              kind: "workbench",
+              // SAFETY: both literals match the Review id syntax the bridge parses before this rule runs.
+              reviewId: (on === "same Review"
+                ? reviewId
+                : otherReviewId) as typeof reviewId,
+            };
+
+      const decision = decideDesktopNotification({
+        focused,
+        destination,
+        event: analysisFinished,
+      });
+
+      expect(decision._tag === "show" ? "show" : decision.reason).toBe(
+        expected,
+      );
+    },
+  );
 });

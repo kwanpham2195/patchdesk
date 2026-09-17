@@ -517,7 +517,10 @@ function installDesktopApi(
       "/v1/watchlist/suggestions": () => success([]),
     },
     {
-      operations: { setNavigationState: () => success({}) },
+      operations: {
+        setNavigationState: () => success({}),
+        setNavigationDestination: () => success({}),
+      },
       appearanceAtLoad: options.appearanceAtLoad ?? "system",
     },
   );
