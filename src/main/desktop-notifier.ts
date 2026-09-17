@@ -31,13 +31,19 @@ type DesktopNotificationDecision =
   | { readonly _tag: "show" }
   | {
       readonly _tag: "skip";
-      readonly reason: "disabled" | "focused_on_review" | "focused";
+      readonly reason:
+        | "disabled"
+        | "focused_on_review"
+        | "focused"
+        | "open_in_workbench";
     };
 
 /**
  * Whether one event is shown (ADR 0044): the toggles decide first, then the
  * focused window silences events about the Review it shows, and every
- * preparation event.
+ * preparation event. A watched pull request open in the workbench stays
+ * silent whether or not the window is focused, because the workbench's own
+ * freshness check reports the change there (ADR 0045).
  */
 export function decideDesktopNotification(input: {
   readonly focused: boolean;
@@ -53,6 +59,12 @@ export function decideDesktopNotification(input: {
     (lowerValue && !input.settings.preparationAndMerge)
   )
     return { _tag: "skip", reason: "disabled" };
+  if (
+    input.event._tag === "WatchedPullRequestChanged" &&
+    input.destination.kind === "workbench" &&
+    input.destination.reviewId === input.event.reviewId
+  )
+    return { _tag: "skip", reason: "open_in_workbench" };
   if (
     input.focused &&
     input.destination.kind === "workbench" &&
@@ -169,9 +181,22 @@ function log(
 function desktopNotificationClick(
   event: DesktopNotificationEvent,
 ): DesktopNotificationClick {
-  return event._tag === "InsightSettled"
-    ? { reviewId: event.reviewId, insightType: event.insightType }
-    : { reviewId: event.reviewId };
+  switch (event._tag) {
+    case "InsightSettled":
+      return {
+        kind: "review",
+        reviewId: event.reviewId,
+        insightType: event.insightType,
+      };
+    case "WatchedPullRequestChanged":
+      return { kind: "pullRequest", pullRequest: event.pullRequest };
+    case "WriteNeedsRecovery":
+    case "PreparationFinished":
+    case "MergeCompleted":
+      return { kind: "review", reviewId: event.reviewId };
+    default:
+      return casesHandled(event);
+  }
 }
 
 const insightLabels = {
