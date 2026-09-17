@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { parseGitHubThreadId } from "../../src/domain/ids";
+import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import {
   confirmReviewWrite,
   markReviewWriteOutcomeUnknown,
@@ -190,5 +192,36 @@ it.each([true, false])(
       _tag: "Confirmed",
       receipt: { _tag: "DraftStateChange", draft },
     });
+  },
+);
+
+const receiptThreadId = parseGitHubThreadId("PRRT_thread");
+if (receiptThreadId._tag === "err") throw new Error("invalid fixture");
+const confirmedReceipts = {
+  Comment: { _tag: "Comment", commentId: "PRRC_1", reviewId: "PRR_1" },
+  ThreadState: {
+    _tag: "ThreadState",
+    threadId: receiptThreadId.value,
+    state: "resolved",
+  },
+  PendingThread: { _tag: "PendingThread", threadId: receiptThreadId.value },
+  DirectSummaryReview: { _tag: "DirectSummaryReview", reviewId: "PRR_1" },
+  LabelChange: { _tag: "LabelChange", added: ["bug"], removed: [] },
+  AssigneeChange: { _tag: "AssigneeChange", added: ["octocat"], removed: [] },
+  ReviewerChange: {
+    _tag: "ReviewerChange",
+    requested: ["octocat"],
+    removed: ["hubot"],
+  },
+  DraftStateChange: { _tag: "DraftStateChange", draft: true },
+} satisfies Record<RecentReviewWrite["_tag"], RecentReviewWrite>;
+
+it.each(Object.entries(confirmedReceipts))(
+  "round-trips a Confirmed %s receipt",
+  (_tag, receipt) => {
+    const state = { _tag: "Confirmed", receipt };
+    const parsed = parseReviewWriteOperation({ ...stored, state });
+    expect(parsed._tag).toBe("ok");
+    if (parsed._tag === "ok") expect(parsed.value.state).toEqual(state);
   },
 );
