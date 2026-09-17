@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { RecentWriteJournalStore } from "../../src/adapters/storage/recent-write-journal-store";
@@ -115,34 +115,47 @@ describe("RecentWriteJournalStore", () => {
     });
   });
 
-  it("fails the whole read closed on an unrecognized entry tag instead of throwing", async () => {
-    // Per ADR 0022, a durable record Patchdesk fully owns on both read and
-    // write uses v.strictObject and fails the whole read closed on
-    // structural drift; a future/unknown entry must not corrupt or crash the
-    // read, only return a typed storage failure.
-    const { store, paths } = await tempStore();
-    const fromTheFuture = {
-      schemaVersion: 1,
-      entries: [
-        { _tag: "SomeFutureVariant", whatever: true, writtenAt },
-        { _tag: "Comment", commentId: "c-still-here", writtenAt },
-      ],
-    };
-    const written = await writeAtomicJson(
-      paths.recentWriteJournalFile(profileId, reviewId),
-      fromTheFuture,
-    );
-    expect(written._tag).toBe("ok");
-    const loaded = await store.load(profileId, reviewId);
-    expect(loaded).toEqual({
-      _tag: "err",
-      error: {
-        _tag: "StorageFailure",
-        operation: "read",
-        reason: "invalid_stored_value",
-      },
-    });
-  });
+  it.each([
+    ["invalid JSON", "{not json"],
+    [
+      "an unrecognized entry tag",
+      JSON.stringify({
+        schemaVersion: 1,
+        entries: [{ _tag: "SomeFutureVariant", whatever: true, writtenAt }],
+      }),
+    ],
+  ])(
+    "moves a journal holding %s aside and restarts it empty",
+    async (_name, poisoned) => {
+      const { store, paths, logged } = await tempStore();
+      const file = paths.recentWriteJournalFile(profileId, reviewId);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, poisoned);
+
+      await expect(store.load(profileId, reviewId)).resolves.toEqual({
+        _tag: "ok",
+        value: [],
+      });
+      await expect(
+        readFile(
+          paths.recentWriteJournalQuarantineFile(profileId, reviewId),
+          "utf8",
+        ),
+      ).resolves.toBe(poisoned);
+      expect(logged).toMatchObject([
+        { level: "warn", topic: "recent-write-journal", profileId },
+      ]);
+
+      const receipt = { _tag: "Comment", commentId: "PRRC_1" } as const;
+      await expect(
+        store.append(profileId, reviewId, receipt, writtenAt),
+      ).resolves.toEqual({ _tag: "ok", value: undefined });
+      await expect(store.load(profileId, reviewId)).resolves.toEqual({
+        _tag: "ok",
+        value: [receipt],
+      });
+    },
+  );
 
   it("logs a failed append of a confirmed write and resolves", async () => {
     const { store, paths, logged } = await tempStore();

@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 
 import * as v from "valibot";
 
@@ -211,17 +211,58 @@ export class RecentWriteJournalStore {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<Result<ReadonlyArray<DurableRecentReviewWrite>, StorageFailure>> {
+    const read = await this.parseEntries(profileId, reviewId);
+    if (read._tag === "ok") return read;
+    if (read.error.reason === "not_found") return ok([]);
+    if (
+      read.error.reason !== "invalid_json" &&
+      read.error.reason !== "invalid_stored_value"
+    )
+      return read;
+    return this.quarantine(profileId, reviewId, read.error.reason);
+  }
+
+  private async parseEntries(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<ReadonlyArray<DurableRecentReviewWrite>, StorageFailure>> {
     const stored = await readJsonFile(
       this.paths.recentWriteJournalFile(profileId, reviewId),
     );
-    if (stored._tag === "err") {
-      return stored.error.reason === "not_found" ? ok([]) : stored;
-    }
+    if (stored._tag === "err") return stored;
     // Schema-validate at this exact I/O boundary; every downstream helper
     // works from the resulting named, non-`unknown` variant type.
     const parsed = v.safeParse(journalSchema, stored.value);
     if (!parsed.success) return invalidRead();
     return parseRecentWriteEntries(parsed.output.entries);
+  }
+
+  /**
+   * ADR 0019: an invalid journal is moved aside and restarts empty, since
+   * nothing can rebuild it and losing it costs one redundant refresh.
+   */
+  private async quarantine(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    reason: "invalid_json" | "invalid_stored_value",
+  ): Promise<Result<ReadonlyArray<DurableRecentReviewWrite>, StorageFailure>> {
+    try {
+      await rename(
+        this.paths.recentWriteJournalFile(profileId, reviewId),
+        this.paths.recentWriteJournalQuarantineFile(profileId, reviewId),
+      );
+    } catch {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    this.log.write({
+      process: "main",
+      level: "warn",
+      topic: "recent-write-journal",
+      message: "journal unreadable; moved aside and restarted empty",
+      profileId,
+      meta: { reason, reviewId },
+    });
+    return ok([]);
   }
 }
 
