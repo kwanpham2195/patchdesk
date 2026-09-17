@@ -1,5 +1,6 @@
 import type { NotificationSettings } from "../domain/contracts";
 import type { ReviewId } from "../domain/ids";
+import type { WatchedPullRequestChange } from "../domain/watched-pull-request";
 import type { LogEntryInput } from "../domain/log-entry";
 import { loggableMetaValue } from "../domain/log-entry";
 import { casesHandled, type Result } from "../domain/result";
@@ -179,6 +180,15 @@ const insightLabels = {
   brief: "Brief",
 } as const;
 
+const watchedChangeTitles = {
+  commented: "New comment or review",
+  decision: "Review decision changed",
+  checks: "Checks changed",
+  pushed: "New commits pushed",
+  merged: "Pull request merged",
+  closed: "Pull request closed",
+} as const satisfies Record<WatchedPullRequestChange, string>;
+
 function desktopNotificationText(
   event: DesktopNotificationEvent,
 ): DesktopNotificationText {
@@ -199,6 +209,8 @@ function desktopNotificationText(
       return { title: "Review ready", body: reference };
     case "MergeCompleted":
       return { title: "Pull request merged", body: reference };
+    case "WatchedPullRequestChanged":
+      return { title: watchedChangeTitles[event.change], body: reference };
     default:
       return casesHandled(event);
   }

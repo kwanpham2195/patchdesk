@@ -1,6 +1,7 @@
 import type { ReviewId } from "../domain/ids";
 import type { InsightType } from "../domain/insight-record";
 import type { PullRequestRef } from "../domain/pull-request";
+import type { WatchedPullRequestChange } from "../domain/watched-pull-request";
 
 /** The Review and pull request every desktop notification names. */
 type DesktopNotificationSubject = {
@@ -20,7 +21,11 @@ export type DesktopNotificationEvent =
     })
   | (DesktopNotificationSubject & { readonly _tag: "WriteNeedsRecovery" })
   | (DesktopNotificationSubject & { readonly _tag: "PreparationFinished" })
-  | (DesktopNotificationSubject & { readonly _tag: "MergeCompleted" });
+  | (DesktopNotificationSubject & { readonly _tag: "MergeCompleted" })
+  | (DesktopNotificationSubject & {
+      readonly _tag: "WatchedPullRequestChanged";
+      readonly change: WatchedPullRequestChange;
+    });
 
 /**
  * Posts one desktop notification. Synchronous and total by contract: the
