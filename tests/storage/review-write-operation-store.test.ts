@@ -6,6 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import { ReviewWriteOperationStore } from "../../src/adapters/storage/review-write-operation-store";
 import { parseReviewWriteOperation } from "../../src/domain/review-write-operation";
+import {
+  reviewWriteIntents,
+  storedReviewWriteOperation,
+} from "../domain/review-write-operation-fixture";
 
 let root: string | undefined;
 afterEach(async () => {
@@ -103,4 +107,25 @@ describe("ReviewWriteOperationStore", () => {
       value: undefined,
     });
   });
+
+  it.each(Object.entries(reviewWriteIntents))(
+    "reads back a persisted %s operation",
+    async (_tag, intent) => {
+      root = await mkdtemp(join(tmpdir(), "patchdesk-write-operation-"));
+      const store = new ReviewWriteOperationStore(PatchdeskPaths.forTest(root));
+      const parsed = parseReviewWriteOperation({
+        ...storedReviewWriteOperation,
+        intent,
+      });
+      if (parsed._tag === "err") throw new Error("invalid fixture");
+      const value = parsed.value;
+      await expect(store.begin(value)).resolves.toEqual({
+        _tag: "ok",
+        value: undefined,
+      });
+      await expect(
+        store.load(value.profileId, value.reviewId),
+      ).resolves.toEqual({ _tag: "ok", value });
+    },
+  );
 });
