@@ -18,7 +18,7 @@ const settingsResponseSchema = v.looseObject({
 });
 
 /** The loaded toggles, or why they are not shown. */
-export type NotificationSettingsState =
+type NotificationSettingsState =
   | { readonly _tag: "loading" }
   | { readonly _tag: "ready"; readonly settings: NotificationSettings }
   | { readonly _tag: "unavailable" };
