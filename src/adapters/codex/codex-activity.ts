@@ -76,7 +76,7 @@ const reasoningDeltaSchema = v.looseObject({
 });
 
 /** Parses the activity notifications and forwards them to one run's sink. */
-export type CodexActivityEmitter = {
+type CodexActivityEmitter = {
   readonly notification: (message: CodexRpcMessage) => void;
   readonly turnStarted: () => void;
 };
