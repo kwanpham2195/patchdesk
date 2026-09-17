@@ -71,6 +71,10 @@ const reviewProjection = (): WorkbenchResponse =>
     checks: { overall: "passing", checks: [] },
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
     mergeReasons: [],
+    analysisReviewActions: {
+      findings: { "finding-1": { state: "actionable" } },
+      canFinishWithAnalysisSummary: false,
+    },
   }) as WorkbenchResponse;
 
 type Deferred<T> = {
@@ -236,6 +240,7 @@ describe("useInsightRun", () => {
     });
     const firstPatch: Array<unknown> = [];
     const secondPatch: Array<unknown> = [];
+    const secondActions: Array<unknown> = [];
     const firstCompleted: Array<boolean> = [];
     const secondCompleted: Array<boolean> = [];
     const { result, rerender } = renderHook(
@@ -244,7 +249,11 @@ describe("useInsightRun", () => {
           profileId: "profile",
           reviewId: "review-42",
           type: "analysis",
-          onInsightPatch: (_type, value) => patch.push(value),
+          onInsightPatch: (_type, value, options) => {
+            patch.push(value);
+            if (patch === secondPatch)
+              secondActions.push(options?.analysisReviewActions);
+          },
           onCompleted: () => completed.push(true),
         }),
       {
@@ -268,6 +277,7 @@ describe("useInsightRun", () => {
     });
     await waitFor(() => expect(secondPatch).toHaveLength(1));
     expect(firstPatch).toHaveLength(0);
+    expect(secondActions).toEqual([reviewProjection().analysisReviewActions]);
     expect(secondCompleted).toHaveLength(1);
     expect(firstCompleted).toHaveLength(0);
     expect(result.current.status).toBe("completed");

@@ -43,6 +43,11 @@ export type InsightRunController = {
   readonly cancel: () => void;
 };
 
+/** Workbench fields a terminal run's reload carries alongside the Insight itself. */
+export type InsightPatchOptions = {
+  readonly analysisReviewActions?: WorkbenchResponse["analysisReviewActions"];
+};
+
 /** Owns one generation-safe Insight start, poll, and cancellation lifecycle. */
 export function useInsightRun(input: {
   readonly profileId: string;
@@ -55,6 +60,7 @@ export function useInsightRun(input: {
   readonly onInsightPatch?: (
     type: InsightRunType,
     projection: NonNullable<WorkbenchResponse["insights"][InsightRunType]>,
+    options?: InsightPatchOptions,
   ) => void;
   readonly onCompleted?: () => void;
 }): InsightRunController {
@@ -283,7 +289,13 @@ export function useInsightRun(input: {
             onInsightPatchRef.current !== undefined &&
             projected !== undefined
           )
-            onInsightPatchRef.current(type, projected);
+            onInsightPatchRef.current(
+              type,
+              projected,
+              definedProps({
+                analysisReviewActions: workbench.analysisReviewActions,
+              }),
+            );
           else onWorkbenchReplaceRef.current?.(workbench);
           if (terminal.parsed.status === "completed")
             onCompletedRef.current?.();

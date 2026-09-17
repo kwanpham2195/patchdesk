@@ -1,12 +1,14 @@
 import { useCallback } from "react";
 import * as v from "valibot";
 
+import { definedProps } from "../../../domain/defined-props";
 import type { InsightProvider } from "../../../domain/insight-provider";
 import { requestJson } from "../api-client";
 import type { WorkbenchResponse } from "../renderer-contracts";
 import { saveInsightRunPreference } from "../insight-run-preferences";
 import {
   useInsightRun,
+  type InsightPatchOptions,
   type InsightRunController,
   type InsightRunType,
 } from "./use-insight-run";
@@ -71,8 +73,14 @@ export function useInsightRunControls({
     (
       type: InsightRunType,
       projection: NonNullable<WorkbenchResponse["insights"][InsightRunType]>,
+      options?: InsightPatchOptions,
     ): void => {
-      onWorkbenchPatch({ insights: { [type]: projection } });
+      onWorkbenchPatch({
+        insights: { [type]: projection },
+        ...definedProps({
+          analysisReviewActions: options?.analysisReviewActions,
+        }),
+      });
     },
     [onWorkbenchPatch],
   );
