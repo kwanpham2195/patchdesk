@@ -15,6 +15,7 @@ import {
   type WorkspaceProfileId,
 } from "../../domain/ids";
 import {
+  INBOX_CATEGORIES,
   INBOX_DATA_FRESHNESS,
   INBOX_INSIGHT_STATES,
   INBOX_REPOSITORY_OUTCOMES,
@@ -112,7 +113,7 @@ const rowSchema = v.strictObject({
     v.array(v.strictObject({ name: v.string(), color: v.string() })),
   ),
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-  categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
+  categories: v.array(v.picklist(INBOX_CATEGORIES)),
   recommendedAction: actionSchema,
   dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });

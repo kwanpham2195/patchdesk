@@ -15,6 +15,7 @@ import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
 import { FINDING_MAPPING_STATUSES } from "../../domain/review-result";
 import {
+  INBOX_CATEGORIES,
   INBOX_DATA_FRESHNESS,
   INBOX_PAGE_SIZES,
   INBOX_REPOSITORY_OUTCOMES,
@@ -106,7 +107,7 @@ const inboxRowSchema = v.strictObject({
   ),
   labels: v.array(v.strictObject({ name: v.string(), color: v.string() })),
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-  categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
+  categories: v.array(v.picklist(INBOX_CATEGORIES)),
   recommendedAction: inboxRecommendedActionSchema,
   dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
