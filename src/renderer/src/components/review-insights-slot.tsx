@@ -405,22 +405,22 @@ export function InsightsSlot({
                   <InsightRunning
                     type={selectedInsight}
                     projection={selectedProjection}
+                    activity={selectedRunning?.activity}
                   />
                 ) : selectedProjection?.status === "failed" ? (
                   <InsightFailed
                     projection={selectedProjection}
+                    activity={selectedRunning?.activity}
                     onRetry={() => openRunDialog("retry")}
-                    {...(retainedDescription === undefined
-                      ? {}
-                      : { retainedDescription })}
+                    {...definedProps({ retainedDescription })}
                   />
                 ) : selectedIsOutdated ? (
                   <InsightOutdated
                     type={selectedInsight}
                     onRetry={() => openRunDialog("retry")}
-                    {...(selectedRetained === undefined
-                      ? {}
-                      : { retainedRevision: selectedRetained.headSha })}
+                    {...definedProps({
+                      retainedRevision: selectedRetained?.headSha,
+                    })}
                     currentRevision={currentRevision}
                   />
                 ) : retainedReader === null ? (

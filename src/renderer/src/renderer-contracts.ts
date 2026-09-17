@@ -7,7 +7,11 @@ import {
   viewerLoginSchema,
 } from "./review-write-receipts";
 import { briefInsightSchema } from "./brief-contracts";
-import { insightFields, retainedInsightFields } from "./insight-contracts";
+import {
+  insightFields,
+  insightRunActivitySchema,
+  retainedInsightFields,
+} from "./insight-contracts";
 import { inboxRecommendedActionSchema } from "./inbox-action-contract";
 import { inboxInsightReadinessSchema } from "./inbox-insight-contract";
 import { changeScopeSchema } from "../../domain/change-scope";
@@ -877,6 +881,7 @@ const insightRunResponseSchema = v.strictObject({
   failureReason: v.optional(
     v.picklist(["cancelled", "failed", "invalid_result", "superseded"]),
   ),
+  activity: v.optional(insightRunActivitySchema),
 });
 export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;
 export function parseInsightRunResponse(
