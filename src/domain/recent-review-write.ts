@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
 import { parseGitHubThreadId, type GitHubThreadId } from "./ids";
-import { err, ok, type Result } from "./result";
+import { err, ok, type AssertNever, type Result } from "./result";
 
 /** A GitHub write made by this app that detection must exclude from remote changes. */
 export type RecentReviewWrite =
@@ -91,8 +91,6 @@ export const recentReviewWriteRecordSchema = v.variant("_tag", [
 export type RecentReviewWriteRecord = v.InferOutput<
   typeof recentReviewWriteRecordSchema
 >;
-
-type AssertNever<T extends never> = T;
 
 /**
  * Fails to compile when `RecentReviewWrite` gains a member that

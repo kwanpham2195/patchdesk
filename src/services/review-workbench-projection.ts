@@ -13,6 +13,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+import type { ReviewWriteIntentTag } from "../domain/review-write-operation";
 import {
   sessionRepresentsReview,
   type ReviewFreshness,
@@ -92,22 +93,7 @@ type WorkbenchSessionProjection = {
 };
 /** Bounded renderer view of the one durable Review write awaiting recovery. */
 type RemoteWriteRecoveryProjection = {
-  readonly operation:
-    | "CreateComment"
-    | "Reply"
-    | "SetThreadState"
-    | "EditComment"
-    | "DeleteComment"
-    | "AddLabels"
-    | "RemoveLabels"
-    | "AddAssignees"
-    | "RemoveAssignees"
-    | "RequestReviewers"
-    | "RemoveReviewers"
-    | "SetDraftState"
-    | "EditPublishedComment"
-    | "DeletePublishedComment"
-    | "DismissPublishedReview";
+  readonly operation: ReviewWriteIntentTag;
   readonly resolution: "check_required" | "manual_resolution_required";
 };
 

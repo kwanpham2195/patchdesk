@@ -29,7 +29,7 @@ import {
   recentReviewWriteRecordSchema,
   type RecentReviewWrite,
 } from "./recent-review-write";
-import { err, ok, type Result } from "./result";
+import { err, ok, type AssertNever, type Result } from "./result";
 
 /** Revision identity that an uncertain Review write remains bound to. */
 export type ReviewWriteRevision = {
@@ -116,6 +116,38 @@ export type ReviewWriteIntent =
       readonly logins: ReadonlyArray<string>;
     }
   | { readonly _tag: "SetDraftState"; readonly draft: boolean };
+
+/** Every `ReviewWriteIntent` tag; the renderer recovery picklist and the workbench projection are built from this list. */
+export const REVIEW_WRITE_INTENT_TAGS = [
+  "CreateComment",
+  "Reply",
+  "SetThreadState",
+  "EditComment",
+  "DeleteComment",
+  "EditPublishedComment",
+  "DeletePublishedComment",
+  "DismissPublishedReview",
+  "AddLabels",
+  "RemoveLabels",
+  "AddAssignees",
+  "RemoveAssignees",
+  "RequestReviewers",
+  "RemoveReviewers",
+  "SetDraftState",
+] as const satisfies ReadonlyArray<ReviewWriteIntent["_tag"]>;
+
+/** A `ReviewWriteIntent` tag drawn from `REVIEW_WRITE_INTENT_TAGS`. */
+export type ReviewWriteIntentTag = (typeof REVIEW_WRITE_INTENT_TAGS)[number];
+
+/**
+ * Fails to compile when `ReviewWriteIntent` gains a member that
+ * `REVIEW_WRITE_INTENT_TAGS` omits.
+ *
+ * @public Nothing imports this; the compiler is its only reader.
+ */
+export type UnlistedReviewWriteIntentTag = AssertNever<
+  Exclude<ReviewWriteIntent["_tag"], ReviewWriteIntentTag>
+>;
 
 /** One durable, per-Review direct-conversation write and its recovery state. */
 export type ReviewWriteOperation = {
@@ -222,6 +254,18 @@ const intentSchema = v.variant("_tag", [
   }),
   v.strictObject({ _tag: v.literal("SetDraftState"), draft: v.boolean() }),
 ]);
+
+/**
+ * Fails to compile when `intentSchema` and `REVIEW_WRITE_INTENT_TAGS` disagree
+ * in either direction, so a listed tag cannot be persisted without a variant.
+ *
+ * @public Nothing imports this; the compiler is its only reader.
+ */
+export type UnlistedIntentSchemaTag = AssertNever<
+  | Exclude<v.InferOutput<typeof intentSchema>["_tag"], ReviewWriteIntentTag>
+  | Exclude<ReviewWriteIntentTag, v.InferOutput<typeof intentSchema>["_tag"]>
+>;
+
 const operationSchema = v.strictObject({
   schemaVersion: v.literal(1),
   profileId: v.string(),

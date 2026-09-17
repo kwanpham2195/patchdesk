@@ -12,3 +12,12 @@ export function ok<T>(value: T): Result<T, never> {
 export function err<E>(error: E): Result<never, E> {
   return { _tag: "err", error };
 }
+
+/**
+ * Compiles only when `T` is `never`, so an exported alias over a set
+ * difference fails the build, naming that alias, when the difference is not
+ * empty.
+ *
+ * @template T The set difference that must be empty.
+ */
+export type AssertNever<T extends never> = T;
