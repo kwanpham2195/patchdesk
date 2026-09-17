@@ -15,6 +15,7 @@ import type { RawJsonValue } from "../../src/domain/json";
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import { MaintainerInbox } from "../../src/renderer/src/components/maintainer-inbox";
 import { ReviewWorkbenchHeader } from "../../src/renderer/src/components/review-workbench-header";
+import { WatchPullRequestButton } from "../../src/renderer/src/components/watch-pull-request-button";
 import {
   useWatchedPullRequests,
   WatchedPullRequestsProvider,
@@ -167,6 +168,27 @@ describe("watched pull request change", () => {
     expect(
       screen.queryByRole("button", { name: /A watched pull request changed/ }),
     ).toBeNull();
+  });
+});
+
+describe("watched pull request unwatched by a poll", () => {
+  it("re-reads the watched list on a change, so a merged pull request shows Watch again", async () => {
+    let list: RawJsonValue = { pullRequests: [ref] };
+    const double = installDesktopDouble({
+      "/v1/watched-pull-requests": () => success(list),
+    });
+    installed = double;
+    render(
+      <WatchedPullRequestsProvider profileId="cfw">
+        <WatchPullRequestButton pullRequest={ref} />
+      </WatchedPullRequestsProvider>,
+    );
+    await screen.findByRole("button", { name: "Unwatch" });
+
+    list = { pullRequests: [] };
+    act(() => double.sendWatchedPullRequestChange("cfw"));
+
+    expect(await screen.findByRole("button", { name: "Watch" })).toBeTruthy();
   });
 });
 
