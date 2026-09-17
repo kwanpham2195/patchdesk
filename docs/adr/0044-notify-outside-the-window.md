@@ -1,8 +1,8 @@
 # Notify outside the window
 
-> **Status: Accepted.** Issue #227. Issue #226 (watch a pull request) reuses
-> the notifier port, the settings record, the click channel, and this record,
-> and amends it. ADR 0032 is unchanged: no notification reads GitHub.
+> **Status: Accepted.** Issue #227. Amended by ADR 0045 (issue #226), which
+> adds the watched pull request event and the poll it comes from; the four
+> events below still read nothing from GitHub.
 
 An Analysis run takes minutes, and a maintainer switches to another app while
 it runs. Patchdesk said nothing when it finished. A GitHub write whose outcome
@@ -57,6 +57,15 @@ owns the settings read, the rule, Electron's `Notification`, and the click
 hand-off. It logs `desktop-notification` `debug` lines: `shown` and `clicked`
 with the event kind and Review id, and `skipped` with the kind and
 `focused_on_review`, `focused`, or `disabled`.
+
+**Watched pull requests (ADR 0045).** A fifth event,
+`WatchedPullRequestChanged`, carries the pull request reference and the
+change: commented, decision, checks, pushed, merged, or closed. `enabled`
+gates it. It posts nothing while its pull request's Review is the workbench
+destination, whether or not the window is focused, and logs `skipped` with
+`open_in_workbench`. Its click is the closed union's second arm,
+`{ kind: "pullRequest" }`, and opens the pull request the way the ⌘K palette
+opens a pasted reference; a Review click is `{ kind: "review" }`.
 
 ## Consequences
 
