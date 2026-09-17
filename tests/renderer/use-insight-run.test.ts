@@ -544,6 +544,7 @@ describe("useInsightRun", () => {
           durationMs: 400,
         },
       ],
+      approvals: { accepted: 1, declined: 0 },
     };
     installBridge((input) => {
       if (input.path.endsWith("/run")) return started;

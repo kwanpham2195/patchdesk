@@ -42,7 +42,14 @@ export type InsightActivityEvent =
       readonly _tag: "reasoning_delta";
       readonly itemId: string;
       readonly delta: string;
+    }
+  | {
+      readonly _tag: "approval_answered";
+      readonly decision: InsightApprovalDecision;
     };
+
+/** How Patchdesk answered one command approval request; the command itself is not carried. */
+export type InsightApprovalDecision = "accepted" | "declined";
 
 /**
  * Receives activity from the adapter's RPC listener. It is called synchronously,
@@ -76,9 +83,10 @@ const reasoningDeltaSchema = v.looseObject({
 });
 
 /** Parses the activity notifications and forwards them to one run's sink. */
-type CodexActivityEmitter = {
+export type CodexActivityEmitter = {
   readonly notification: (message: CodexRpcMessage) => void;
   readonly turnStarted: () => void;
+  readonly approvalAnswered: (decision: InsightApprovalDecision) => void;
 };
 
 /**
@@ -103,6 +111,8 @@ export function createCodexActivityEmitter(
     notification: (message) =>
       emit(parseCodexActivity(message, worktreePath, homePath)),
     turnStarted: () => emit({ _tag: "turn_started" }),
+    approvalAnswered: (decision) =>
+      emit({ _tag: "approval_answered", decision }),
   };
 }
 

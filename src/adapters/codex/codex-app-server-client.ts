@@ -11,7 +11,10 @@ import type { RepresentedReviewWorktree } from "../../domain/represented-review-
 import type { InsightFailureCategory } from "../../domain/insight-record";
 import { isNotFound } from "../storage/json-file";
 import { createCodexActivityEmitter } from "./codex-activity";
-import type { InsightActivitySink } from "./codex-activity";
+import type {
+  CodexActivityEmitter,
+  InsightActivitySink,
+} from "./codex-activity";
 import {
   isPathInsideWorktree,
   isReadOnlyCommand,
@@ -508,6 +511,7 @@ class RpcChild {
   private turnId: string | undefined;
   private threadId: string | undefined;
   private approvalWorktreePath: string | undefined;
+  private activity: CodexActivityEmitter | undefined;
   private readonly approvalTasks = new Set<Promise<void>>();
 
   constructor(private readonly processFactory: CodexProcessFactory) {}
@@ -625,6 +629,7 @@ class RpcChild {
   ): Promise<Result<unknown, CodexAppServerFailure>> {
     this.threadId = threadId;
     const activity = createCodexActivityEmitter(onActivity, worktreePath);
+    this.activity = activity;
     this.approvalWorktreePath = worktreePath;
     let text = "";
     let resolveTurn: (
@@ -802,6 +807,8 @@ class RpcChild {
         method,
         commandParamsParsed.success ? commandParamsParsed.output : undefined,
       ).catch(() => {
+        if (method === COMMAND_APPROVAL_METHOD)
+          this.activity?.approvalAnswered("declined");
         this.send({ id, result: { decision: "decline" } });
       });
       this.approvalTasks.add(task);
@@ -836,6 +843,7 @@ class RpcChild {
         this.approvalWorktreePath !== undefined &&
         (await isPathInsideWorktree(this.approvalWorktreePath, worktreePath)) &&
         (await isReadOnlyCommand(command, this.approvalWorktreePath));
+      this.activity?.approvalAnswered(allowed ? "accepted" : "declined");
       this.send({ id, result: { decision: allowed ? "accept" : "decline" } });
       return;
     }

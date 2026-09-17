@@ -18,8 +18,13 @@ import {
   type CodexAppServerFailure,
   type CodexRpcMessage,
 } from "../../src/adapters/codex/codex-app-server-client";
+import type {
+  InsightActivityEvent,
+  InsightActivitySink,
+} from "../../src/adapters/codex/codex-activity";
 import type { Result } from "../../src/domain/result";
 import type { RepresentedReviewWorktree } from "../../src/domain/represented-review-worktree";
+import { InsightActivityBuffer } from "../../src/services/insight-activity-buffer";
 import { composeReviewPrompt } from "../../src/services/review-rubric";
 
 class FakeCodexProcess extends EventEmitter {
@@ -365,7 +370,7 @@ describe("CodexAppServerClient", () => {
         params: { item: { type: "fileChange", id: "fc-1", changes: [] } },
       },
     ];
-    const events: unknown[] = [];
+    const events: InsightActivityEvent[] = [];
     const client = new CodexAppServerClient("codex", {
       processFactory: () =>
         asChildProcess(
@@ -393,7 +398,10 @@ describe("CodexAppServerClient", () => {
     );
 
     expect(result).toEqual({ _tag: "ok", value: { title: "Fixture" } });
-    expect(events).toEqual([
+    // The approval answer waits on `realpath`, so its position among the notifications is not fixed.
+    expect(
+      events.filter((event) => event._tag !== "approval_answered"),
+    ).toEqual([
       { _tag: "turn_started" },
       {
         _tag: "reasoning_delta",
@@ -482,6 +490,7 @@ describe("CodexAppServerClient approval requests", () => {
       readonly id: string;
       readonly method: string;
       readonly params: {
+        readonly command?: string;
         readonly kind?: string;
         readonly networkApprovalContext?: {
           readonly host: string;
@@ -490,6 +499,7 @@ describe("CodexAppServerClient approval requests", () => {
         readonly proposedExecpolicyAmendment?: ReadonlyArray<string>;
       };
     }>,
+    onActivity?: InsightActivitySink,
   ): Promise<FakeCodexProcess> {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
     roots.push(root);
@@ -511,13 +521,16 @@ describe("CodexAppServerClient approval requests", () => {
       processFactory: () => asChildProcess(child),
     });
     await expect(
-      client.run({
-        worktreePath: representedWorktree(root),
-        expectedHeadSha: "a".repeat(40),
-        model: "fixture-codex",
-        reasoning: "low",
-        prompt: "Return JSON.",
-      }),
+      client.run(
+        {
+          worktreePath: representedWorktree(root),
+          expectedHeadSha: "a".repeat(40),
+          model: "fixture-codex",
+          reasoning: "low",
+          prompt: "Return JSON.",
+        },
+        { onActivity },
+      ),
     ).resolves.toMatchObject({ _tag: "ok" });
     return child;
   }
@@ -571,6 +584,21 @@ describe("CodexAppServerClient approval requests", () => {
       id: "amendment",
       result: { decision: "accept" },
     });
+  });
+
+  it("counts the accepted and declined command approvals in the activity snapshot", async () => {
+    const buffer = new InsightActivityBuffer();
+    await runWithRequests(
+      [
+        {
+          id: "outside",
+          method: "item/commandExecution/requestApproval",
+          params: { command: "cat /etc/passwd" },
+        },
+      ],
+      (event) => buffer.append(event),
+    );
+    expect(buffer.snapshot().approvals).toEqual({ accepted: 1, declined: 1 });
   });
 
   it("answers a permissions request with an empty profile, which grants nothing", async () => {

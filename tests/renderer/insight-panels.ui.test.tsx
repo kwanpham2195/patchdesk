@@ -37,6 +37,7 @@ it("renders a running Insight's command trace", () => {
             status: "in_progress",
           },
         ],
+        approvals: { accepted: 2, declined: 0 },
       }}
     />,
   );

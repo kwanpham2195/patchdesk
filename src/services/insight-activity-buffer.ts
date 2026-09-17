@@ -25,6 +25,11 @@ export type InsightActivitySnapshot = {
   readonly phase: "preparing" | "turn";
   readonly reasoningLine?: string | undefined;
   readonly commands: ReadonlyArray<InsightActivityCommand>;
+  /** How many command approval requests Patchdesk accepted and declined in this run. */
+  readonly approvals: {
+    readonly accepted: number;
+    readonly declined: number;
+  };
 };
 
 /**
@@ -37,6 +42,8 @@ export class InsightActivityBuffer {
   private readonly commands = new Map<string, InsightActivityCommand>();
   private reasoningItemId: string | undefined;
   private reasoningTail = "";
+  private acceptedApprovals = 0;
+  private declinedApprovals = 0;
 
   /** Records one activity event. */
   append(event: InsightActivityEvent): void {
@@ -74,6 +81,10 @@ export class InsightActivityBuffer {
             -MAX_REASONING_TAIL_CHARS,
           );
         return;
+      case "approval_answered":
+        if (event.decision === "accepted") this.acceptedApprovals += 1;
+        else this.declinedApprovals += 1;
+        return;
       default:
         return casesHandled(event);
     }
@@ -91,6 +102,10 @@ export class InsightActivityBuffer {
         this.reasoningTail.slice(-MAX_REASONING_TAIL_CHARS),
       ),
       commands: [...this.commands.values()],
+      approvals: {
+        accepted: this.acceptedApprovals,
+        declined: this.declinedApprovals,
+      },
     };
   }
 

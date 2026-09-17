@@ -104,6 +104,10 @@ export const insightRunActivitySchema = v.strictObject({
     ),
     v.maxLength(200),
   ),
+  approvals: v.strictObject({
+    accepted: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+    declined: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+  }),
 });
 
 /** One parsed activity trace, as the running panel renders it. */
