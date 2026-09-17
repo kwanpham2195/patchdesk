@@ -3,14 +3,16 @@ import { rm } from "node:fs/promises";
 import * as v from "valibot";
 
 import {
-  parseGitHubThreadId,
   parseIsoTimestamp,
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
 import { err, ok, type Result } from "../../domain/result";
-import type { RecentReviewWrite } from "../../domain/recent-review-write";
+import {
+  parseRecentReviewWrite,
+  type RecentReviewWrite,
+} from "../../domain/recent-review-write";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
   isNotFound,
@@ -29,11 +31,6 @@ const RECENT_WRITE_JOURNAL_AGE_CEILING_MS = 24 * 60 * 60 * 1000;
 /** The persisted variant of a typed own-write entry, dated for pruning. */
 export type DurableRecentReviewWrite = RecentReviewWrite & {
   readonly writtenAt: IsoTimestamp;
-};
-
-type PersistedRecentWriteJournal = {
-  readonly schemaVersion: 1;
-  readonly entries: ReadonlyArray<DurableRecentReviewWrite>;
 };
 
 const entrySchema = v.variant("_tag", [
@@ -61,20 +58,20 @@ const entrySchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("LabelChange"),
-    added: v.array(v.string()),
-    removed: v.array(v.string()),
+    added: v.pipe(v.array(v.string()), v.readonly()),
+    removed: v.pipe(v.array(v.string()), v.readonly()),
     writtenAt: v.string(),
   }),
   v.strictObject({
     _tag: v.literal("AssigneeChange"),
-    added: v.array(v.string()),
-    removed: v.array(v.string()),
+    added: v.pipe(v.array(v.string()), v.readonly()),
+    removed: v.pipe(v.array(v.string()), v.readonly()),
     writtenAt: v.string(),
   }),
   v.strictObject({
     _tag: v.literal("ReviewerChange"),
-    requested: v.array(v.string()),
-    removed: v.array(v.string()),
+    requested: v.pipe(v.array(v.string()), v.readonly()),
+    removed: v.pipe(v.array(v.string()), v.readonly()),
     writtenAt: v.string(),
   }),
   v.strictObject({
@@ -87,6 +84,9 @@ const journalSchema = v.strictObject({
   schemaVersion: v.literal(1),
   entries: v.array(entrySchema),
 });
+
+/** Typed from the schema so a write fails to compile when `entrySchema` lacks a receipt tag. */
+type PersistedRecentWriteJournal = v.InferOutput<typeof journalSchema>;
 
 /**
  * Durable per-review record of this app session's own confirmed GitHub
@@ -207,79 +207,15 @@ function parseRecentWriteEntries(
   return ok(entries);
 }
 
-/**
- * The declared return type makes TypeScript reject a schema member without a
- * branch, so an entry tag added later cannot be silently read as another one.
- */
 function parseRecentWriteEntry(
   entry: RawJournalEntry,
 ): Result<DurableRecentReviewWrite, StorageFailure> {
-  const parsedWrittenAt = parseIsoTimestamp(entry.writtenAt);
-  if (parsedWrittenAt._tag === "err") return invalidRead();
-  const writtenAt = parsedWrittenAt.value;
-  switch (entry._tag) {
-    case "Comment":
-      return ok(
-        entry.reviewId === undefined
-          ? { _tag: "Comment", commentId: entry.commentId, writtenAt }
-          : {
-              _tag: "Comment",
-              commentId: entry.commentId,
-              reviewId: entry.reviewId,
-              writtenAt,
-            },
-      );
-    case "ThreadState": {
-      const threadId = parseGitHubThreadId(entry.threadId);
-      return threadId._tag === "err"
-        ? invalidRead()
-        : ok({
-            _tag: "ThreadState",
-            threadId: threadId.value,
-            state: entry.state,
-            writtenAt,
-          });
-    }
-    case "PendingThread": {
-      const threadId = parseGitHubThreadId(entry.threadId);
-      return threadId._tag === "err"
-        ? invalidRead()
-        : ok({
-            _tag: "PendingThread",
-            threadId: threadId.value,
-            writtenAt,
-          });
-    }
-    case "DirectSummaryReview":
-      return ok({
-        _tag: "DirectSummaryReview",
-        reviewId: entry.reviewId,
-        writtenAt,
-      });
-    case "LabelChange":
-      return ok({
-        _tag: "LabelChange",
-        added: entry.added,
-        removed: entry.removed,
-        writtenAt,
-      });
-    case "AssigneeChange":
-      return ok({
-        _tag: "AssigneeChange",
-        added: entry.added,
-        removed: entry.removed,
-        writtenAt,
-      });
-    case "ReviewerChange":
-      return ok({
-        _tag: "ReviewerChange",
-        requested: entry.requested,
-        removed: entry.removed,
-        writtenAt,
-      });
-    case "DraftStateChange":
-      return ok({ _tag: "DraftStateChange", draft: entry.draft, writtenAt });
-  }
+  const { writtenAt, ...record } = entry;
+  const parsedWrittenAt = parseIsoTimestamp(writtenAt);
+  const write = parseRecentReviewWrite(record);
+  if (parsedWrittenAt._tag === "err" || write._tag === "err")
+    return invalidRead();
+  return ok({ ...write.value, writtenAt: parsedWrittenAt.value });
 }
 
 function stripWrittenAt(entry: DurableRecentReviewWrite): RecentReviewWrite {

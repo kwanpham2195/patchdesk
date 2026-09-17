@@ -8,12 +8,14 @@ import { writeAtomicJson } from "../../src/adapters/storage/json-file";
 import { createReviewId } from "../../src/domain/ids";
 import {
   parseGitHubHost,
+  parseGitHubThreadId,
   parseGitHubOwner,
   parseGitHubRepoName,
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
+import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import type { Result } from "../../src/domain/result";
 
 const must = <T>(result: Result<T, unknown>): T => {
@@ -51,35 +53,35 @@ async function tempStore(): Promise<{
 }
 
 describe("RecentWriteJournalStore", () => {
-  it("round-trips a LabelChange entry", async () => {
+  it("round-trips a journal holding every receipt tag", async () => {
     const { store } = await tempStore();
-    const appended = await store.append(
-      profileId,
-      reviewId,
-      { _tag: "LabelChange", added: ["bug"], removed: ["needs-triage"] },
-      writtenAt,
-    );
-    expect(appended._tag).toBe("ok");
+    const threadId = must(parseGitHubThreadId("PRRT_thread"));
+    const receipts = {
+      Comment: { _tag: "Comment", commentId: "PRRC_1", reviewId: "PRR_1" },
+      ThreadState: { _tag: "ThreadState", threadId, state: "resolved" },
+      PendingThread: { _tag: "PendingThread", threadId },
+      DirectSummaryReview: { _tag: "DirectSummaryReview", reviewId: "PRR_1" },
+      LabelChange: { _tag: "LabelChange", added: ["bug"], removed: ["wip"] },
+      AssigneeChange: { _tag: "AssigneeChange", added: [], removed: ["hubot"] },
+      ReviewerChange: {
+        _tag: "ReviewerChange",
+        requested: ["octocat"],
+        removed: [],
+      },
+      DraftStateChange: { _tag: "DraftStateChange", draft: true },
+    } satisfies Record<RecentReviewWrite["_tag"], RecentReviewWrite>;
+    for (const receipt of Object.values(receipts)) {
+      const appended = await store.append(
+        profileId,
+        reviewId,
+        receipt,
+        writtenAt,
+      );
+      expect(appended._tag).toBe("ok");
+    }
     await expect(store.load(profileId, reviewId)).resolves.toEqual({
       _tag: "ok",
-      value: [
-        { _tag: "LabelChange", added: ["bug"], removed: ["needs-triage"] },
-      ],
-    });
-  });
-
-  it("round-trips a DraftStateChange entry", async () => {
-    const { store } = await tempStore();
-    const appended = await store.append(
-      profileId,
-      reviewId,
-      { _tag: "DraftStateChange", draft: true },
-      writtenAt,
-    );
-    expect(appended._tag).toBe("ok");
-    await expect(store.load(profileId, reviewId)).resolves.toEqual({
-      _tag: "ok",
-      value: [{ _tag: "DraftStateChange", draft: true }],
+      value: Object.values(receipts),
     });
   });
 
