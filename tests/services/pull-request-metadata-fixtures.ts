@@ -13,6 +13,7 @@ import {
 } from "../../src/domain/ids";
 import { ok, type Result } from "../../src/domain/result";
 import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 /**
  * The fixture preamble the three pull request metadata write suites share —
@@ -66,9 +67,7 @@ export const makeGate = () => ({
 const nowValue = must(parseIsoTimestamp("2026-01-01T00:00:00.000Z"));
 export const now = () => nowValue;
 
-export const makeRecentWrites = () => {
-  return { append: vi.fn(async () => ok(undefined)) };
-};
+export const makeRecentWrites = confirmedWriteJournal;
 
 export const makeReviewWriteOperations = () => {
   let operation: ReviewWriteOperation | undefined;

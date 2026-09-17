@@ -93,9 +93,8 @@ function fixture(
 ) {
   const trace: string[] = [];
   let operation: ReviewWriteOperation | undefined;
-  const append = vi.fn(async () => {
+  const appendConfirmed = vi.fn(async () => {
     trace.push("journal");
-    return ok(undefined);
   });
   const writer = vi.fn(async (_input: PublishedFeedbackWriteInput) => {
     trace.push("write");
@@ -171,7 +170,7 @@ function fixture(
     gateway,
     new ReviewOperationCoordinator(),
     () => "2026-08-01T00:00:00.000Z" as never,
-    { append },
+    { appendConfirmed },
     operations,
     options.refresh,
   );
@@ -179,7 +178,7 @@ function fixture(
     service,
     trace,
     writer,
-    append,
+    appendConfirmed,
     operations,
     operation: () => operation,
   };
@@ -296,7 +295,7 @@ describe("PublishedFeedbackService", () => {
           intent: expect.objectContaining({ _tag: intentTag }),
         }),
       );
-      expect(built.append).not.toHaveBeenCalled();
+      expect(built.appendConfirmed).not.toHaveBeenCalled();
       expect(built.trace.slice(-2)).toEqual(["intent:Confirmed", "remove"]);
     },
   );

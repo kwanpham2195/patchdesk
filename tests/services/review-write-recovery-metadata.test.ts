@@ -17,6 +17,7 @@ import {
   ReviewWriteRecoveryService,
 } from "../../src/services/review-write-recovery-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 const createdAt = (() => {
   const value = new Date("2026-01-01T00:00:01.000Z").toISOString();
@@ -169,7 +170,7 @@ describe("metadata recovery evidence", () => {
       } as never),
     );
     const getPullRequestComments = vi.fn();
-    const append = vi.fn(async () => ok(undefined));
+    const recentWrites = confirmedWriteJournal();
     const remove = vi.fn(async () => ok(undefined));
     const service = new ReviewWriteRecoveryService(
       { requireFresh, requireCurrentSession },
@@ -188,7 +189,7 @@ describe("metadata recovery evidence", () => {
         confirm: vi.fn(async () => ok(undefined)),
         remove,
       },
-      { append },
+      recentWrites,
       new ReviewOperationCoordinator(),
       () => createdAt,
     );
@@ -204,7 +205,7 @@ describe("metadata recovery evidence", () => {
     expect(requireCurrentSession).toHaveBeenCalledOnce();
     expect(requireFresh).not.toHaveBeenCalled();
     expect(getPullRequestComments).not.toHaveBeenCalled();
-    expect(append).toHaveBeenCalledExactlyOnceWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledExactlyOnceWith(
       value.profileId,
       value.reviewId,
       { _tag: "LabelChange", added: ["bug"], removed: [] },
@@ -261,7 +262,7 @@ describe("metadata recovery evidence", () => {
         confirm: vi.fn(async () => ok(undefined)),
         remove,
       },
-      new RecentWriteJournalStore(paths),
+      new RecentWriteJournalStore(paths, { write: () => undefined }),
       new ReviewOperationCoordinator(),
       () => createdAt,
     );

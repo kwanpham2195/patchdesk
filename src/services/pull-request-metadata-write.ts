@@ -4,7 +4,7 @@ import type {
   RepositoryPermissionEvidence,
 } from "../adapters/github/github-adapter";
 import type { ForbiddenReason } from "../adapters/github/command-runner";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
 import type {
@@ -195,7 +195,7 @@ export async function runGuardedMetadataWrite<
     ReviewWriteOperationStore,
     "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
   >;
-  readonly recentWrites: Pick<RecentWriteJournalStore, "append">;
+  readonly recentWrites: ConfirmedWriteJournal;
   readonly now: () => IsoTimestamp;
   readonly validate: () => Result<void, Failure>;
   readonly prepare: () => Promise<
@@ -246,13 +246,12 @@ export async function runGuardedMetadataWrite<
     if (confirmedOperation._tag === "err") return err("outcome_unknown");
     const confirmed = await input.operations.confirm(confirmedOperation.value);
     if (confirmed._tag === "err") return err("outcome_unknown");
-    const appended = await input.recentWrites.append(
+    await input.recentWrites.appendConfirmed(
       input.profileId,
       input.reviewId,
       receipt,
       input.now(),
     );
-    if (appended._tag === "err") return err("outcome_unknown");
     const removed = await input.operations.remove(
       input.profileId,
       input.reviewId,

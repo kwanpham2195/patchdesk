@@ -71,7 +71,7 @@ describe("DraftStateService", () => {
     expect(github.setPullRequestDraftState).toHaveBeenCalledWith(
       expect.objectContaining({ pullRequestId: "PR_node", draft: false }),
     );
-    expect(recentWrites.append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       { _tag: "DraftStateChange", draft: false },
@@ -110,7 +110,7 @@ describe("DraftStateService", () => {
       }),
     ).resolves.toEqual({ _tag: "err", error: "invalid_input" });
     expect(github.setPullRequestDraftState).not.toHaveBeenCalled();
-    expect(recentWrites.append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
   });
 
   it("refuses without explicit pull-request-write permission", async () => {
@@ -165,6 +165,6 @@ describe("DraftStateService", () => {
         command: { _tag: "SetDraftState", draft: false },
       }),
     ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
-    expect(recentWrites.append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
   });
 });

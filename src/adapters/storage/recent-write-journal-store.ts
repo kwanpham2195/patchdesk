@@ -8,6 +8,7 @@ import {
   type ReviewId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
+import type { LogEntryInput } from "../../domain/log-entry";
 import { err, ok, type Result } from "../../domain/result";
 import {
   parseRecentReviewWrite,
@@ -88,6 +89,12 @@ const journalSchema = v.strictObject({
 /** Typed from the schema so a write fails to compile when `entrySchema` lacks a receipt tag. */
 type PersistedRecentWriteJournal = v.InferOutput<typeof journalSchema>;
 
+/** What a write flow needs from the journal: record a write GitHub already confirmed. */
+export type ConfirmedWriteJournal = Pick<
+  RecentWriteJournalStore,
+  "appendConfirmed"
+>;
+
 /**
  * Durable per-review record of this app session's own confirmed GitHub
  * writes, appended at the main-process write-confirmation boundary and read
@@ -97,7 +104,33 @@ type PersistedRecentWriteJournal = v.InferOutput<typeof journalSchema>;
  * transition journal.
  */
 export class RecentWriteJournalStore {
-  constructor(private readonly paths: PatchdeskPaths) {}
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    private readonly log: { readonly write: (input: LogEntryInput) => void },
+  ) {}
+
+  /**
+   * Journals a write GitHub already confirmed. A failure is logged and
+   * swallowed: the journal only suppresses a duplicate observation, and ADR
+   * 0035 forbids a confirmed write from ending locked or retryable.
+   */
+  async appendConfirmed(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    entry: RecentReviewWrite,
+    writtenAt: IsoTimestamp,
+  ): Promise<void> {
+    const appended = await this.append(profileId, reviewId, entry, writtenAt);
+    if (appended._tag === "ok") return;
+    this.log.write({
+      process: "main",
+      level: "warn",
+      topic: "recent-write-journal",
+      message: "journal append failed; write already confirmed, continuing",
+      profileId,
+      meta: { reason: appended.error.reason, reviewId },
+    });
+  }
 
   /** Read-modify-write append; callers must already hold the review write lock. */
   async append(

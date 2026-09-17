@@ -1,5 +1,5 @@
 import type { GitHubReviewWriter } from "../../src/adapters/github/github-adapter";
-import { err, ok, type Result } from "../../src/domain/result";
+import { ok, type Result } from "../../src/domain/result";
 import { AssigneeService } from "../../src/services/assignee-service";
 import { DraftStateService } from "../../src/services/draft-state-service";
 import { LabelService } from "../../src/services/label-service";
@@ -8,11 +8,14 @@ import { ReviewOperationCoordinator } from "../../src/services/review-operation-
 import { now, profileId, reviewId, values } from "./review-invariant-fixtures";
 import {
   freshGate,
-  recentWritesJournal,
+  gatewayWrite,
+  recordedWriteFlowRun,
+  recordingWriteOperations,
   recorded,
-  unavailable,
+  TracingRecentWriteJournal,
   type FlowRun,
   type Trace,
+  type WriteFlowFixture,
 } from "./write-invariant-harness";
 
 const sessions = { current: () => values.session };
@@ -47,16 +50,16 @@ type MetadataWriteName =
 type MetadataGateway = typeof reads &
   Required<Pick<GitHubReviewWriter, MetadataWriteName>>;
 
-function unavailableGateway(): MetadataGateway {
+function metadataGateway(fixture: WriteFlowFixture): MetadataGateway {
   return {
     ...reads,
-    addLabelsToLabelable: async () => err(unavailable),
-    removeLabelsFromLabelable: async () => err(unavailable),
-    addAssigneesToAssignable: async () => err(unavailable),
-    removeAssigneesFromAssignable: async () => err(unavailable),
-    requestReviews: async () => err(unavailable),
-    removeRequestedReviewers: async () => err(unavailable),
-    setPullRequestDraftState: async () => err(unavailable),
+    addLabelsToLabelable: gatewayWrite(fixture, undefined),
+    removeLabelsFromLabelable: gatewayWrite(fixture, undefined),
+    addAssigneesToAssignable: gatewayWrite(fixture, undefined),
+    removeAssigneesFromAssignable: gatewayWrite(fixture, undefined),
+    requestReviews: gatewayWrite(fixture, undefined),
+    removeRequestedReviewers: gatewayWrite(fixture, undefined),
+    setPullRequestDraftState: gatewayWrite(fixture, undefined),
   };
 }
 
@@ -65,87 +68,94 @@ export type MetadataFlow = {
   readonly run: () => Promise<FlowRun>;
 };
 
+type MetadataServices = ReturnType<typeof services>;
+
 function buildRun(
+  fixture: WriteFlowFixture,
   makeCommand: (
-    trace: Trace,
-    github: MetadataGateway,
-    durability: ReturnType<typeof recentWritesJournal>,
+    built: MetadataServices,
   ) => () => Promise<Result<unknown, unknown>>,
 ): () => Promise<FlowRun> {
   return async () => {
     const trace: Trace = [];
-    const durability = recentWritesJournal(trace);
-    const command = makeCommand(trace, unavailableGateway(), durability);
-    await command();
-    return {
-      trace,
-      again: command,
-      intentTag: () => durability.current()?.state._tag,
-    };
+    const operations = recordingWriteOperations(trace);
+    const command = makeCommand(
+      services(
+        recorded(trace, metadataGateway(fixture)),
+        new TracingRecentWriteJournal(trace, fixture.journal),
+        operations,
+      ),
+    );
+    return recordedWriteFlowRun(trace, command, operations);
   };
 }
 
 function services(
-  trace: Trace,
-  github: MetadataGateway,
-  durability: ReturnType<typeof recentWritesJournal>,
+  gateway: MetadataGateway,
+  journal: TracingRecentWriteJournal,
+  operations: ReturnType<typeof recordingWriteOperations>,
 ) {
   const gate = freshGate(sessions);
   const coordinator = new ReviewOperationCoordinator();
-  const gateway = recorded(trace, github);
   return {
     labels: new LabelService(
       gate,
       gateway,
       coordinator,
       now,
-      durability,
-      durability,
+      journal,
+      operations,
     ),
     assignees: new AssigneeService(
       gate,
       gateway,
       coordinator,
       now,
-      durability,
-      durability,
+      journal,
+      operations,
     ),
     reviewers: new ReviewerService(
       gate,
       gateway,
       coordinator,
       now,
-      durability,
-      durability,
+      journal,
+      operations,
     ),
     draftState: new DraftStateService(
       gate,
       gateway,
       coordinator,
       now,
-      durability,
-      durability,
+      journal,
+      operations,
     ),
   };
 }
 
-export const metadataFlows: ReadonlyArray<MetadataFlow> = [
+/** Every pull request metadata write, built under one fixture. */
+export const metadataFlows = (
+  fixture: WriteFlowFixture,
+): ReadonlyArray<MetadataFlow> => [
   {
     name: "labels: add",
-    run: buildRun((trace, github, durability) => {
-      const service = services(trace, github, durability).labels;
+    run: buildRun(fixture, (built) => {
+      const service = built.labels;
       return () =>
         service.execute({
           profileId,
           reviewId,
-          command: { _tag: "AddLabels", labels: [{ id: "LA_1", name: "bug" }] },
+          command: {
+            _tag: "AddLabels",
+            labels: [{ id: "LA_1", name: "bug" }],
+          },
         });
     }),
   },
   {
     name: "labels: remove",
-    run: buildRun((trace, github, durability) => {
-      const service = services(trace, github, durability).labels;
+    run: buildRun(fixture, (built) => {
+      const service = built.labels;
       return () =>
         service.execute({
           profileId,
@@ -159,8 +169,8 @@ export const metadataFlows: ReadonlyArray<MetadataFlow> = [
   },
   {
     name: "assignees: add",
-    run: buildRun((trace, github, durability) => {
-      const service = services(trace, github, durability).assignees;
+    run: buildRun(fixture, (built) => {
+      const service = built.assignees;
       return () =>
         service.execute({
           profileId,
@@ -174,8 +184,8 @@ export const metadataFlows: ReadonlyArray<MetadataFlow> = [
   },
   {
     name: "assignees: remove",
-    run: buildRun((trace, github, durability) => {
-      const service = services(trace, github, durability).assignees;
+    run: buildRun(fixture, (built) => {
+      const service = built.assignees;
       return () =>
         service.execute({
           profileId,
@@ -189,8 +199,8 @@ export const metadataFlows: ReadonlyArray<MetadataFlow> = [
   },
   {
     name: "assignees: self",
-    run: buildRun((trace, github, durability) => {
-      const service = services(trace, github, durability).assignees;
+    run: buildRun(fixture, (built) => {
+      const service = built.assignees;
       return () =>
         service.execute({
           profileId,
@@ -201,8 +211,8 @@ export const metadataFlows: ReadonlyArray<MetadataFlow> = [
   },
   {
     name: "reviewers: request",
-    run: buildRun((trace, github, durability) => {
-      const service = services(trace, github, durability).reviewers;
+    run: buildRun(fixture, (built) => {
+      const service = built.reviewers;
       return () =>
         service.execute({
           profileId,
@@ -218,8 +228,8 @@ export const metadataFlows: ReadonlyArray<MetadataFlow> = [
     // The fixture pull request is not a draft, so only the convert-to-draft
     // direction is a real write rather than the refused no-op.
     name: "draft state: convert to draft",
-    run: buildRun((trace, github, durability) => {
-      const service = services(trace, github, durability).draftState;
+    run: buildRun(fixture, (built) => {
+      const service = built.draftState;
       return () =>
         service.execute({
           profileId,
@@ -230,8 +240,8 @@ export const metadataFlows: ReadonlyArray<MetadataFlow> = [
   },
   {
     name: "reviewers: remove",
-    run: buildRun((trace, github, durability) => {
-      const service = services(trace, github, durability).reviewers;
+    run: buildRun(fixture, (built) => {
+      const service = built.reviewers;
       return () =>
         service.execute({
           profileId,

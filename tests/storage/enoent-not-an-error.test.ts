@@ -93,6 +93,7 @@ describe("an ENOENT rejection that is not an Error", () => {
   it("leaves the recent-write journal clear reporting success", async () => {
     const store = new RecentWriteJournalStore(
       PatchdeskPaths.forTest(missingRoot),
+      { write: () => undefined },
     );
 
     expect(await store.clear(profileId, reviewId)).toMatchObject({
@@ -103,6 +104,7 @@ describe("an ENOENT rejection that is not an Error", () => {
   it("still fails the recent-write journal clear under another code", async () => {
     const store = new RecentWriteJournalStore(
       PatchdeskPaths.forTest(unreadableRoot),
+      { write: () => undefined },
     );
 
     expect(await store.clear(profileId, reviewId)).toMatchObject({

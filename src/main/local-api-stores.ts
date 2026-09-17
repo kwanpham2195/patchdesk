@@ -158,7 +158,7 @@ export async function buildLocalApiStores(
   const reviews = new ReviewStore(paths);
   const remoteReviews = new ReviewRemoteStore(paths);
   const observationJournals = new ReviewObservationJournalStore(paths);
-  const recentWriteJournals = new RecentWriteJournalStore(paths);
+  const recentWriteJournals = new RecentWriteJournalStore(paths, logs);
   const reviewWriteGate = new ReviewWriteGate(
     profiles,
     reviews,
