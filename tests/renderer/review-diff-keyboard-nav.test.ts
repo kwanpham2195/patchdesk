@@ -293,7 +293,7 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:a-late",
-              conversationThread: { state: "open" },
+              conversationThread: { state: "open", comments: [] },
             },
           },
           {
@@ -301,7 +301,7 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:a-early",
-              conversationThread: { state: "open" },
+              conversationThread: { state: "open", comments: [] },
             },
           },
         ],
@@ -314,7 +314,7 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:b-early",
-              conversationThread: { state: "open" },
+              conversationThread: { state: "open", comments: [] },
             },
           },
         ],
@@ -331,6 +331,47 @@ describe("buildCommentOrder", () => {
     ]);
   });
 
+  it("visits threads that need the viewer's reply first, each group in file then line order", () => {
+    const thread = (
+      id: string,
+      lineNumber: number,
+      viewerDidAuthor: boolean,
+    ) => ({
+      lineNumber,
+      side: "additions" as const,
+      metadata: {
+        id,
+        conversationThread: {
+          state: "open" as const,
+          comments: [{ viewerDidAuthor }],
+        },
+      },
+    });
+    const items: CommentOrderItem[] = [
+      {
+        id: "a.ts",
+        annotations: [
+          thread("a-viewer", 1, true),
+          thread("a-waiting", 9, false),
+        ],
+      },
+      {
+        id: "b.ts",
+        annotations: [
+          thread("b-waiting", 2, false),
+          thread("b-viewer", 3, true),
+        ],
+      },
+    ];
+
+    expect(buildCommentOrder(items).map((anchor) => anchor.id)).toEqual([
+      "a-waiting",
+      "b-waiting",
+      "a-viewer",
+      "b-viewer",
+    ]);
+  });
+
   it("excludes a resolved thread", () => {
     const items: CommentOrderItem[] = [
       {
@@ -341,7 +382,7 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:open",
-              conversationThread: { state: "open" },
+              conversationThread: { state: "open", comments: [] },
             },
           },
           {
@@ -349,7 +390,7 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:resolved",
-              conversationThread: { state: "resolved" },
+              conversationThread: { state: "resolved", comments: [] },
             },
           },
         ],

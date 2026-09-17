@@ -123,4 +123,100 @@ describe("review navigator", () => {
     // the filtered-out docs file still has a row.
     expect(screen.getByRole("tab", { name: "Threads 1" })).toBeTruthy();
   });
+
+  it("marks the thread waiting on the viewer and drops the mark once they reply or resolve", () => {
+    const patch = [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1,2 +1,2 @@",
+      "-old",
+      "-old",
+      "+new",
+      "+new",
+      "",
+    ].join("\n");
+    const thread = (
+      author: string,
+      start: number,
+      conversationThread: Pick<
+        NonNullable<ReviewInlineAnnotation["conversationThread"]>,
+        "state" | "comments"
+      >,
+    ): ReviewInlineAnnotation => ({
+      id: `conversation:${author}`,
+      path: "src/a.ts",
+      start,
+      end: start,
+      side: "new",
+      severity: "conversation",
+      title: "Conversation",
+      explanation: "",
+      conversationThread: {
+        // SAFETY: `id` is a branded GitHub node id; `as never` widens the
+        // plain fixture string the same way the workbench fixtures do.
+        target: { _tag: "thread", id: `PRRT_${author}` as never },
+        ...conversationThread,
+      },
+    });
+    const comment = (id: string, viewerDidAuthor: boolean) => ({
+      id,
+      author: viewerDidAuthor ? "fixture" : "reviewer",
+      body: id,
+      createdAt: "2026-08-01T00:00:00.000Z",
+      viewerDidAuthor,
+    });
+    const answered = thread("answered", 1, {
+      state: "open",
+      comments: [comment("question", false), comment("answer", true)],
+    });
+    const renderThreads = (waiting: ReviewInlineAnnotation) => (
+      <ReviewNavigator
+        patch={patch}
+        commits={[]}
+        conversationThreadEntries={[answered, waiting]}
+        section="threads"
+        {...callbacks}
+      />
+    );
+    const { rerender } = render(
+      renderThreads(
+        thread("waiting", 2, {
+          state: "open",
+          comments: [comment("request", false)],
+        }),
+      ),
+    );
+
+    expect(
+      screen.getByRole("tab", { name: "Threads 2 1 need your reply" }),
+    ).toBeTruthy();
+    const waiting = screen.getAllByRole("button", {
+      name: /Needs your reply/,
+    });
+    expect(waiting.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("src/a.ts:2"),
+    ]);
+
+    rerender(
+      renderThreads(
+        thread("waiting", 2, {
+          state: "open",
+          comments: [comment("request", false), comment("reply", true)],
+        }),
+      ),
+    );
+    expect(screen.getByRole("tab", { name: "Threads 2" })).toBeTruthy();
+    expect(screen.queryByText("Needs your reply")).toBeNull();
+
+    rerender(
+      renderThreads(
+        thread("waiting", 2, {
+          state: "resolved",
+          comments: [comment("request", false)],
+        }),
+      ),
+    );
+    expect(screen.queryByText("Needs your reply")).toBeNull();
+  });
 });

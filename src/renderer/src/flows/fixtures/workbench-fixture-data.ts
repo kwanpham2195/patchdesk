@@ -173,9 +173,10 @@ export const workbenchFixtureData = {
   conversationThreads: noConversationThreads,
 };
 // Threads placed for the browser suite's Threads-navigator coverage: one new-
-// side single line, one old-side single line, one multi-line range, and one
-// in src/c.ts -- the third file of `activeFollowFixturePatch`. Every file in
-// the patch is handed to the diff at mount, but Pierre's CodeView still
+// side single line (last comment the viewer's), one old-side single line, one
+// multi-line range, and one needing the viewer's reply in src/c.ts -- the
+// third file of `activeFollowFixturePatch`. Every file in the patch is handed
+// to the diff at mount, but Pierre's CodeView still
 // virtualizes its own rendering, so a file this far down has no header in
 // the DOM until something scrolls the viewport near it. Selecting the
 // src/c.ts thread must drive that scroll itself, exercising the same
@@ -199,6 +200,7 @@ const activeFollowFixtureConversationThreads: ReadonlyArray<FixtureConversationT
           author: "new-side-thread-author",
           body: "New-side thread body.",
           createdAt: "2026-07-17T00:00:00.000Z",
+          viewerDidAuthor: true,
         },
       ],
     },
@@ -238,6 +240,7 @@ const activeFollowFixtureConversationThreads: ReadonlyArray<FixtureConversationT
           author: "deep-file-thread-author",
           body: "Deep-file thread body.",
           createdAt: "2026-07-17T00:00:00.000Z",
+          viewerDidAuthor: false,
         },
       ],
     },
