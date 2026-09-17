@@ -37,6 +37,19 @@ export const DESKTOP_WINDOW_FULL_SCREEN_CHANNEL =
  */
 export const DESKTOP_WINDOW_APPEARANCE_CHANNEL = "patchdesk:window-appearance";
 
+/** Main-to-renderer: the maintainer clicked a desktop notification. */
+export const DESKTOP_NOTIFICATION_CLICK_CHANNEL =
+  "patchdesk:notification-click";
+
+/**
+ * Where a clicked notification lands: the Review, and the Insight reader when
+ * the notification was about an Insight run.
+ */
+export type DesktopNotificationClick = {
+  readonly reviewId: string;
+  readonly insightType?: "analysis" | "walkthrough" | "brief";
+};
+
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
   readonly path: string;
@@ -87,6 +100,10 @@ export type PatchdeskDesktopApi = {
   request(input: DesktopRequest): Promise<DesktopResponse>;
   openExternalHttps(url: string): Promise<boolean>;
   onMenuAction(listener: (action: DesktopMenuAction) => void): () => void;
+  /** Fires after the main process focused the window for a clicked notification. */
+  onNotificationClick(
+    listener: (click: DesktopNotificationClick) => void,
+  ): () => void;
   /**
    * Fires whenever the window enters or leaves native macOS full screen,
    * which the renderer cannot observe on its own: `(display-mode:

@@ -23,6 +23,7 @@ import type { ReviewOperationCoordinator } from "../services/review-operation-co
 import type { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import type { AppLogService } from "../services/app-log-service";
 import type { AvatarFetcher } from "../services/avatar-sync-service";
+import type { DesktopNotifier } from "../services/desktop-notifier";
 import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
 import type { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
@@ -92,6 +93,8 @@ export type LocalApiConfiguration = {
   readonly diagnostics?: ReviewDiagnosticService;
   /** Composition-root local log stream; defaults to a fresh on-disk service. */
   readonly logs?: Pick<AppLogService, "write" | "tail">;
+  /** Main-process desktop notifier handed to the write and preparation services; absent posts nothing. */
+  readonly desktopNotifier?: DesktopNotifier;
   /** Test-only avatar download seam; production keeps the real network fetcher. */
   readonly fetchAvatar?: AvatarFetcher;
   /** Main-process-owned durable Review Insight lifecycle seam. */
