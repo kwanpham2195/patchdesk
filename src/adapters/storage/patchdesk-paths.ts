@@ -83,6 +83,16 @@ export class PatchdeskPaths {
     );
   }
 
+  /** The pull requests one profile watches, with the snapshot each poll compares against. */
+  watchedPullRequestsFile(profileId: WorkspaceProfileId): string {
+    return join(
+      this.dataDirectory(),
+      "profiles",
+      profileId,
+      "watched-pull-requests.json",
+    );
+  }
+
   profileReviewsDirectory(profileId: WorkspaceProfileId): string {
     return join(this.dataDirectory(), "profiles", profileId, "reviews");
   }
