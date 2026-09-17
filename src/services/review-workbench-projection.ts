@@ -495,6 +495,7 @@ export class ReviewWorkbenchProjectionService {
       freshness,
       patchHash,
       pendingReview: pendingReview?.state ?? session.pendingReview,
+      threads: conversation.inline?.threads ?? [],
     });
 
     const revision: ReviewWorkbenchProjection["revision"] = {
