@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { unionRecentWrites } from "../../src/domain/recent-review-write";
+import {
+  parseRecentReviewWrite,
+  unionRecentWrites,
+} from "../../src/domain/recent-review-write";
 
 describe("unionRecentWrites", () => {
   it("dedupes a LabelChange entry the durable journal and the request both carry", () => {
@@ -27,5 +30,16 @@ describe("unionRecentWrites", () => {
       { _tag: "DraftStateChange", draft: false },
       { _tag: "DraftStateChange", draft: true },
     ]);
+  });
+});
+
+describe("parseRecentReviewWrite", () => {
+  it("rejects a thread receipt whose thread id is not a GitHub thread id", () => {
+    expect(
+      parseRecentReviewWrite({
+        _tag: "PendingThread",
+        threadId: "not a thread",
+      }),
+    ).toEqual({ _tag: "err", error: { _tag: "InvalidRecentReviewWrite" } });
   });
 });
