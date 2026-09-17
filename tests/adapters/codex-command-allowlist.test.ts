@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isReadOnlyCommand } from "../../src/adapters/codex/codex-command-allowlist";
 
 let worktree = "";
+let outside = "";
 
 beforeAll(async () => {
   worktree = await mkdtemp(join(tmpdir(), "patchdesk-codex-allowlist-"));
@@ -17,10 +18,17 @@ beforeAll(async () => {
   );
   await writeFile(join(worktree, "knip.json"), "{}");
   await symlink(tmpdir(), join(worktree, "src", "escape"));
+  // A PR can commit `src/x -> <outside>` beside a real root-level `x/passwd`.
+  outside = await mkdtemp(join(tmpdir(), "patchdesk-codex-outside-"));
+  await writeFile(join(outside, "passwd"), "root:x:0:0");
+  await mkdir(join(worktree, "x"));
+  await writeFile(join(worktree, "x", "passwd"), "not a secret");
+  await symlink(outside, join(worktree, "src", "x"));
 });
 
 afterAll(async () => {
   await rm(worktree, { recursive: true, force: true });
+  await rm(outside, { recursive: true, force: true });
 });
 
 // Codex sends `shlex_join(["/bin/zsh", "-lc", script])`, observed live in #243.
@@ -64,7 +72,9 @@ describe("isReadOnlyCommand", () => {
     "/bin/bash -c \"git diff 'HEAD~1'\"",
     observedChain,
   ])("accepts %s", async (command) => {
-    await expect(isReadOnlyCommand(command, worktree)).resolves.toBe(true);
+    await expect(isReadOnlyCommand(command, worktree, worktree)).resolves.toBe(
+      true,
+    );
   });
 
   it.each([
@@ -133,7 +143,27 @@ describe("isReadOnlyCommand", () => {
     "/bin/zsh -lc 'cat '",
     "cat  src/a.ts",
     "git diff HEAD~1",
+    "git log --all",
   ])("declines %s", async (command) => {
-    await expect(isReadOnlyCommand(command, worktree)).resolves.toBe(false);
+    await expect(isReadOnlyCommand(command, worktree, worktree)).resolves.toBe(
+      false,
+    );
+  });
+
+  // zsh resolves a relative path against the request cwd, which the model chooses inside the worktree.
+  it.each([
+    ["src", "cat x/passwd", false],
+    ["src", "/bin/zsh -lc 'cat x/passwd'", false],
+    ["src", "head -n 5 x/passwd", false],
+    ["src", "git diff -- x/passwd", false],
+    ["src", "git diff x/passwd", false],
+    [".", "cat src/x/passwd", false],
+    ["src", "cat a.ts", true],
+    ["src", "/bin/zsh -lc 'rg -n pageRange domain'", true],
+    [".", "cat x/passwd", true],
+  ])("in cwd %s, answers %s with %s", async (cwd, command, expected) => {
+    await expect(
+      isReadOnlyCommand(command, worktree, join(worktree, cwd)),
+    ).resolves.toBe(expected);
   });
 });

@@ -568,7 +568,7 @@ describe("CodexAppServerClient approval requests", () => {
     });
   });
 
-  // Upstream proposes an amendment on every `untrusted` prompt; a plain `accept` never applies it.
+  // A plain `accept` never applies a proposed amendment upstream.
   it("answers an allowlisted command that carries a proposed amendment with a plain accept", async () => {
     const child = await runWithRequests([
       {

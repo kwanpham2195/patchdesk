@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 
 import { casesHandled } from "../../domain/result";
 import { isPathContained } from "../storage/path-containment";
@@ -150,7 +150,7 @@ const READ_ONLY_COMMANDS: ReadonlyMap<string, CommandSpec> = new Map([
     "git",
     spec({
       booleanFlags:
-        "-p -s -b -M -w --patch --no-patch --stat --shortstat --numstat --summary --name-only --name-status --oneline --short --branch --porcelain --cached --staged --merge-base --no-color --graph --decorate --no-decorate --abbrev-commit --first-parent --no-merges --reverse --all --find-renames --ignore-all-space --word-diff --no-ext-diff --no-textconv --show-toplevel --abbrev-ref --verify --others --exclude-standard --modified --deleted",
+        "-p -s -b -M -w --patch --no-patch --stat --shortstat --numstat --summary --name-only --name-status --oneline --short --branch --porcelain --cached --staged --merge-base --no-color --graph --decorate --no-decorate --abbrev-commit --first-parent --no-merges --reverse --find-renames --ignore-all-space --word-diff --no-ext-diff --no-textconv --show-toplevel --abbrev-ref --verify --others --exclude-standard --modified --deleted",
       countFlags: "-n -U --max-count --unified --skip",
       textFlags: "--format --pretty --since --until --author --diff-filter",
       positionals: "git_revisions_and_paths",
@@ -187,11 +187,14 @@ export async function isPathInsideWorktree(
  * Decides whether a Codex command approval request names a read-only
  * inspection inside `worktreePath`. `command` is Codex's `shlex_join` of the
  * argv; a `/bin/zsh -lc` script is accepted only when it is plain words joined
- * by ` && `, and every segment must pass on its own.
+ * by ` && `, and every segment must pass on its own. `cwd` is the request's
+ * working directory, already contained in the worktree; relative paths resolve
+ * against it, as the shell resolves them.
  */
 export async function isReadOnlyCommand(
   command: string,
   worktreePath: string,
+  cwd: string,
 ): Promise<boolean> {
   if (
     command.length === 0 ||
@@ -204,7 +207,7 @@ export async function isReadOnlyCommand(
   const segments = commandSegments(argv);
   if (segments === undefined) return false;
   for (const segment of segments)
-    if (!(await isReadOnlySegment(segment, worktreePath))) return false;
+    if (!(await isReadOnlySegment(segment, worktreePath, cwd))) return false;
   return true;
 }
 
@@ -331,6 +334,7 @@ function splitShellScript(
 async function isReadOnlySegment(
   tokens: ReadonlyArray<string>,
   worktreePath: string,
+  cwd: string,
 ): Promise<boolean> {
   if (
     tokens.some(
@@ -353,7 +357,7 @@ async function isReadOnlySegment(
   }
   const parsed = parseArguments(args, commandSpec);
   if (parsed === undefined) return false;
-  return await arePositionalsReadOnly(parsed, commandSpec, worktreePath);
+  return await arePositionalsReadOnly(parsed, commandSpec, worktreePath, cwd);
 }
 
 type ParsedArguments = {
@@ -424,9 +428,11 @@ async function arePositionalsReadOnly(
   { positionals, flags }: ParsedArguments,
   commandSpec: CommandSpec,
   worktreePath: string,
+  cwd: string,
 ): Promise<boolean> {
+  // `realpath` follows every symlink on the resolved path, the last component included.
   const inside = (token: string): Promise<boolean> =>
-    isPathInsideWorktree(worktreePath, join(worktreePath, token));
+    isPathInsideWorktree(worktreePath, resolve(cwd, token));
   let paths = positionals.map(({ value }) => value);
   switch (commandSpec.positionals) {
     case "none":
@@ -450,7 +456,13 @@ async function arePositionalsReadOnly(
     case "git_revisions_and_paths":
       for (const { value, afterSeparator } of positionals) {
         if (await inside(value)) continue;
-        if (afterSeparator || !GIT_REVISION.test(value)) return false;
+        // A token naming an existing path outside the worktree is never read as a revision.
+        const escapes = await realpath(resolve(cwd, value)).then(
+          () => true,
+          () => false,
+        );
+        if (escapes || afterSeparator || !GIT_REVISION.test(value))
+          return false;
       }
       return true;
     default:
