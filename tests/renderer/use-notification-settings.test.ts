@@ -29,7 +29,11 @@ describe("useNotificationSettings", () => {
     await waitFor(() =>
       expect(result.current.state).toEqual({
         _tag: "ready",
-        settings: { enabled: true, preparationAndMerge: false },
+        settings: {
+          enabled: true,
+          preparationAndMerge: false,
+          intervalMinutes: 3,
+        },
       }),
     );
   });
@@ -39,7 +43,11 @@ describe("useNotificationSettings", () => {
       "/v1/settings": (input) =>
         input.method === "PATCH"
           ? success({
-              notifications: { enabled: false, preparationAndMerge: false },
+              notifications: {
+                enabled: false,
+                preparationAndMerge: false,
+                intervalMinutes: 3,
+              },
             })
           : success({}),
     });
@@ -48,7 +56,11 @@ describe("useNotificationSettings", () => {
     await waitFor(() => expect(result.current.state._tag).toBe("ready"));
 
     await act(() =>
-      result.current.update({ enabled: false, preparationAndMerge: false }),
+      result.current.update({
+        enabled: false,
+        preparationAndMerge: false,
+        intervalMinutes: 3,
+      }),
     );
 
     expect(
@@ -56,11 +68,21 @@ describe("useNotificationSettings", () => {
         "path" in input && input.method === "PATCH" ? [input.body] : [],
       ),
     ).toEqual([
-      { notifications: { enabled: false, preparationAndMerge: false } },
+      {
+        notifications: {
+          enabled: false,
+          preparationAndMerge: false,
+          intervalMinutes: 3,
+        },
+      },
     ]);
     expect(result.current.state).toEqual({
       _tag: "ready",
-      settings: { enabled: false, preparationAndMerge: false },
+      settings: {
+        enabled: false,
+        preparationAndMerge: false,
+        intervalMinutes: 3,
+      },
     });
   });
 
@@ -73,13 +95,21 @@ describe("useNotificationSettings", () => {
     await waitFor(() => expect(result.current.state._tag).toBe("ready"));
 
     await act(() =>
-      result.current.update({ enabled: true, preparationAndMerge: true }),
+      result.current.update({
+        enabled: true,
+        preparationAndMerge: true,
+        intervalMinutes: 3,
+      }),
     );
 
     expect(result.current.saveFailed).toBe(true);
     expect(result.current.state).toEqual({
       _tag: "ready",
-      settings: { enabled: true, preparationAndMerge: false },
+      settings: {
+        enabled: true,
+        preparationAndMerge: false,
+        intervalMinutes: 3,
+      },
     });
   });
 });

@@ -3,6 +3,7 @@ import * as v from "valibot";
 
 import {
   notificationSettingsOf,
+  WATCH_INTERVAL_MINUTES,
   type NotificationSettings,
 } from "../../../domain/contracts";
 import { requestJson } from "../api-client";
@@ -10,7 +11,11 @@ import { requestJson } from "../api-client";
 // Loose: `/v1/settings` also carries appearance and diff theme, which this hook does not own.
 const settingsResponseSchema = v.looseObject({
   notifications: v.optional(
-    v.strictObject({ enabled: v.boolean(), preparationAndMerge: v.boolean() }),
+    v.strictObject({
+      enabled: v.boolean(),
+      preparationAndMerge: v.boolean(),
+      intervalMinutes: v.picklist(WATCH_INTERVAL_MINUTES),
+    }),
   ),
 });
 

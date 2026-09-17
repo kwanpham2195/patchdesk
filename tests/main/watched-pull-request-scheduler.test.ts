@@ -84,14 +84,17 @@ async function harness() {
     },
   });
   const notified: DesktopNotificationEvent[] = [];
+  const changedProfiles: string[] = [];
   const logs: LogEntryInput[] = [];
   const coordinator = new ReviewOperationCoordinator();
+  let notificationsOn = true;
   const service = new WatchedPullRequestService({
     profiles: { load: async () => ok(profile) },
     store,
     github,
     now: () => mustParse(parseIsoTimestamp("2026-09-17T10:00:00.000Z")),
     notifier: { notify: (event) => notified.push(event) },
+    onChange: (profileId) => changedProfiles.push(profileId),
   });
   const start = () =>
     startWatchedPullRequestScheduler({
@@ -99,6 +102,12 @@ async function harness() {
       watched: service,
       coordinator,
       intervalMinutes: 3,
+      settings: async () =>
+        ok({
+          enabled: notificationsOn,
+          preparationAndMerge: false,
+          intervalMinutes: 3,
+        }),
       enabled: true,
       logs: { write: (entry) => logs.push(entry) },
     });
@@ -111,12 +120,16 @@ async function harness() {
     store,
     github,
     notified,
+    changedProfiles,
     logs,
     coordinator,
     start,
     ticks,
     setRemote: (next: ReadonlyArray<WatchedPullRequest>) => {
       remote = next;
+    },
+    turnNotificationsOff: () => {
+      notificationsOn = false;
     },
   };
 }
@@ -151,6 +164,19 @@ describe("watched pull request scheduler", () => {
     expect(fixture.github.calls.readWatchedPullRequests).toHaveLength(1);
   });
 
+  it("asks GitHub nothing while notifications are off", async () => {
+    const fixture = await harness();
+    fixture.turnNotificationsOff();
+    const scheduler = fixture.start();
+    await fixture.ticks(1);
+    await scheduler.stop();
+
+    expect(fixture.logs).toMatchObject([
+      { message: "skipped", meta: { reason: "disabled" } },
+    ]);
+    expect(fixture.github.calls.readWatchedPullRequests).toEqual([]);
+  });
+
   it("notifies a change once and not again after a restart", async () => {
     const fixture = await harness();
     fixture.setRemote([watched({ updatedAt: "2026-09-17T09:00:00.000Z" })]);
@@ -165,6 +191,7 @@ describe("watched pull request scheduler", () => {
       "WatchedPullRequestChanged",
     ]);
     expect(fixture.notified[0]).toMatchObject({ change: "commented" });
+    expect(fixture.changedProfiles).toEqual([profile.id]);
   });
 
   it("unwatches a pull request after its merged notification", async () => {

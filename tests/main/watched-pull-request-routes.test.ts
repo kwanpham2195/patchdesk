@@ -89,6 +89,7 @@ async function routeFixture(watchedCount: number) {
     github,
     now: () => mustParse(parseIsoTimestamp("2026-09-17T10:00:00.000Z")),
     notifier: undefined,
+    onChange: undefined,
   });
   const app = new Hono();
   // SAFETY: the routes under test reach only the watched pull request service.

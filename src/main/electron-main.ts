@@ -33,6 +33,7 @@ import {
 import { createAppCapability } from "./app-capability";
 import { sendMenuAction } from "./desktop-menu-channel";
 import { sendNotificationClick } from "./desktop-notification-channel";
+import { sendWatchedPullRequestChange } from "./desktop-watched-pull-request-channel";
 import {
   createDesktopNotifier,
   type NotificationDestination,
@@ -196,6 +197,11 @@ const desktopLifecycle = createDesktopLifecycle({
         lifecycleGate,
         retentionSweep: true,
         watchedPullRequestPolling: true,
+        watchedPullRequestChanged(profileId) {
+          const window = mainWindow;
+          if (window !== undefined && !window.isDestroyed())
+            sendWatchedPullRequestChange(window.webContents, profileId);
+        },
         reviewOperations,
         diagnostics,
         logs,

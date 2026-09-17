@@ -62,6 +62,13 @@ export type DesktopNotificationClick =
       };
     };
 
+/**
+ * Main-to-renderer: a poll found a change on a watched pull request of the
+ * named profile, which lights the Pull requests freshness badge (ADR 0045).
+ */
+export const DESKTOP_WATCHED_PULL_REQUEST_CHANGE_CHANNEL =
+  "patchdesk:watched-pull-request-change";
+
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
   readonly path: string;
@@ -128,6 +135,8 @@ export type PatchdeskDesktopApi = {
   onNotificationClick(
     listener: (click: DesktopNotificationClick) => void,
   ): () => void;
+  /** Fires with the profile id when a poll finds a change on one of its watched pull requests. */
+  onWatchedPullRequestChange(listener: (profileId: string) => void): () => void;
   /**
    * Fires whenever the window enters or leaves native macOS full screen,
    * which the renderer cannot observe on its own: `(display-mode:

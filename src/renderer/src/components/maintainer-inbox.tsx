@@ -9,6 +9,7 @@ import {
 import { InboxFiltersBar } from "./inbox-filters-bar";
 import { LabelFilterPopover } from "./inbox-label-filter";
 import { InboxRowItem } from "./inbox-row-item";
+import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import {
   ReviewDetailsInspector,
   type InspectorInsightRequests,
@@ -757,6 +758,12 @@ function InboxFreshness({
   readonly onRefresh: () => void;
 }): React.JSX.Element {
   const stable = status === "Current";
+  const watchedChangedAt = useWatchedPullRequests()?.changedAt;
+  // Lit until a refresh newer than the change, and never refreshes anything itself (ADR 0045).
+  const watchedChanged =
+    watchedChangedAt !== undefined &&
+    (snapshot?.refreshedAt === undefined ||
+      Date.parse(watchedChangedAt) > Date.parse(snapshot.refreshedAt));
   const ageMs =
     snapshot?.refreshedAt === undefined
       ? undefined
@@ -780,7 +787,7 @@ function InboxFreshness({
             type="button"
             onClick={onRefresh}
             disabled={status === "Refreshing"}
-            aria-label={`Refresh pull requests. GitHub: ${status}`}
+            aria-label={`Refresh pull requests. GitHub: ${status}${watchedChanged ? ". A watched pull request changed" : ""}`}
           />
         }
         variant={variant}
@@ -791,6 +798,13 @@ function InboxFreshness({
         title={snapshot?.refreshedAt}
       >
         GitHub: {status}
+        {watchedChanged ? (
+          <span
+            aria-hidden="true"
+            data-slot="watched-change-dot"
+            className="size-1.5 rounded-full bg-primary"
+          />
+        ) : null}
       </Badge>
       {!stable && status !== "Refreshing" && ageMs !== undefined ? (
         <span className="text-[10px] text-muted-foreground">

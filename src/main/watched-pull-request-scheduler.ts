@@ -1,4 +1,6 @@
+import type { NotificationSettings } from "../domain/contracts";
 import type { LogEntryInput } from "../domain/log-entry";
+import type { Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewOperationCoordinator } from "../services/review-operation-coordinator";
 import type { WatchedPullRequestService } from "../services/watched-pull-request-service";
@@ -11,16 +13,21 @@ type WatchedPullRequestSchedulerInput = {
   readonly profiles: ReadonlyArray<WorkspaceProfileConfig>;
   readonly watched: Pick<WatchedPullRequestService, "poll">;
   readonly coordinator: Pick<ReviewOperationCoordinator, "hasActiveOperation">;
-  readonly intervalMinutes: number;
+  /** Read once at start, so a changed interval applies at the next launch. */
+  readonly intervalMinutes: NotificationSettings["intervalMinutes"];
+  /** Read on every tick: with notifications off, nothing asks GitHub. */
+  readonly settings: () => Promise<
+    Result<NotificationSettings, "config_unreadable">
+  >;
   readonly enabled: boolean;
   readonly logs: { write(input: LogEntryInput): void };
 };
 
 /**
  * Polls every watched pull request while the app runs (ADR 0045): once at
- * start, then every `intervalMinutes`. A profile with a GitHub write or write
- * recovery in flight waits for the next tick, and a failed tick is not
- * retried early.
+ * start, then every `intervalMinutes`. A tick with notifications off asks
+ * GitHub nothing, a profile with a GitHub write or write recovery in flight
+ * waits for the next tick, and a failed tick is not retried early.
  */
 export function startWatchedPullRequestScheduler(
   input: WatchedPullRequestSchedulerInput,
@@ -57,6 +64,13 @@ export function startWatchedPullRequestScheduler(
 async function pollProfiles(
   input: WatchedPullRequestSchedulerInput,
 ): Promise<void> {
+  const settings = await input.settings();
+  if (settings._tag === "err" || !settings.value.enabled) {
+    log(input, "skipped", {
+      reason: settings._tag === "err" ? settings.error : "disabled",
+    });
+    return;
+  }
   await Promise.all(
     input.profiles.map((profile) => pollProfile(input, profile)),
   );

@@ -16,21 +16,33 @@ export type PatchdeskConfigFile = {
   readonly notifications?: NotificationSettings;
 };
 
+/** How often watched pull requests are polled, in minutes (ADR 0045). */
+export const WATCH_INTERVAL_MINUTES = [1, 3, 5, 10] as const;
+type WatchIntervalMinutes = (typeof WATCH_INTERVAL_MINUTES)[number];
+
 /**
- * The desktop notification toggles (ADR 0044). `enabled` gates every
+ * The desktop notification settings (ADR 0044). `enabled` gates every
  * notification; `preparationAndMerge` additionally gates the two
- * lower-value ones. Stored and patched as a pair.
+ * lower-value ones; `intervalMinutes` paces the watched pull request poll
+ * (ADR 0045). Stored and patched together.
  */
 export type NotificationSettings = {
   readonly enabled: boolean;
   readonly preparationAndMerge: boolean;
+  readonly intervalMinutes: WatchIntervalMinutes;
 };
 
-/** The toggles a config that never saved them runs with. */
+/** The settings a config that never saved them runs with. */
 export function notificationSettingsOf(
   config: PatchdeskConfigFile,
 ): NotificationSettings {
-  return config.notifications ?? { enabled: true, preparationAndMerge: false };
+  return (
+    config.notifications ?? {
+      enabled: true,
+      preparationAndMerge: false,
+      intervalMinutes: 3,
+    }
+  );
 }
 
 /** The stored appearance choice; "system" follows the OS preference. */
@@ -51,6 +63,14 @@ export type PatchdeskSettingsPatch = {
 const notificationSettingsSchema = v.strictObject({
   enabled: v.boolean(),
   preparationAndMerge: v.boolean(),
+  intervalMinutes: v.picklist(WATCH_INTERVAL_MINUTES),
+});
+
+// A config saved before the poll interval existed stores the pair alone; it reads with the default interval.
+const storedNotificationSettingsSchema = v.strictObject({
+  enabled: v.boolean(),
+  preparationAndMerge: v.boolean(),
+  intervalMinutes: v.optional(v.picklist(WATCH_INTERVAL_MINUTES), 3),
 });
 
 /** Valibot schema for the global Patchdesk config file. */
@@ -63,7 +83,7 @@ const patchdeskConfigSchema = v.strictObject({
       dark: v.pipe(v.string(), v.minLength(1)),
     }),
   ),
-  notifications: v.optional(notificationSettingsSchema),
+  notifications: v.optional(storedNotificationSettingsSchema),
 });
 
 /** Valibot schema for the mutable, file-backed settings exposed by the desktop API. */

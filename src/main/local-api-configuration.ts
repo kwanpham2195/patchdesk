@@ -9,6 +9,7 @@ import {
 } from "valibot";
 
 import type { AppCapability } from "./ipc-contract";
+import type { WorkspaceProfileId } from "../domain/ids";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { TrashMover } from "../services/storage-management-service";
 import type { GitHubCredentials } from "../adapters/github/github-credentials";
@@ -112,6 +113,8 @@ export type LocalApiConfiguration = {
   readonly retentionSweep?: boolean;
   /** Polls watched pull requests while the app runs (ADR 0045). Main-process-only; tests keep it off. */
   readonly watchedPullRequestPolling?: boolean;
+  /** Main-process push to the renderer when a poll finds a change; absent tells no one. */
+  readonly watchedPullRequestChanged?: (profileId: WorkspaceProfileId) => void;
 };
 
 /** The subset of the configuration the loopback API validates before it binds. */

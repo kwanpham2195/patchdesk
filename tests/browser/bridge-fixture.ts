@@ -85,6 +85,9 @@ export async function installTestDesktopBridge(
       onNotificationClick() {
         return () => undefined;
       },
+      onWatchedPullRequestChange() {
+        return () => undefined;
+      },
       // A browser page is never in a macOS window, so the header keeps the
       // traffic-light inset it has when the app is not full screen.
       onWindowFullScreen() {
