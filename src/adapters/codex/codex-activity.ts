@@ -49,7 +49,7 @@ export type InsightActivityEvent =
     };
 
 /** How Patchdesk answered one command approval request; the command itself is not carried. */
-export type InsightApprovalDecision = "accepted" | "declined";
+type InsightApprovalDecision = "accepted" | "declined";
 
 /**
  * Receives activity from the adapter's RPC listener. It is called synchronously,
