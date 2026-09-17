@@ -638,7 +638,10 @@ export function ReviewWorkbench({
             <Conversation
               conversation={model.conversation}
               profileId={model.session.key.profileId}
-              {...definedProps({ pullRequest: externalPullRequest })}
+              {...definedProps({
+                pullRequest: externalPullRequest,
+                lastLooked: model.review.lastLooked,
+              })}
               {...conversationTabProps}
               {...(conversationRail === undefined
                 ? {}
@@ -670,17 +673,14 @@ export function ReviewWorkbench({
                       conversationThreadEntries={conversationThreadEntries}
                       findingCountsByPath={findingCountsByPath}
                       section={section}
-                      {...(scopeFilteredPaths === undefined
-                        ? {}
-                        : { visiblePaths: scopeFilteredPaths })}
-                      {...(selectedPath === undefined ? {} : { selectedPath })}
-                      {...(activePath === undefined ? {} : { activePath })}
-                      {...(selectedCommitSha === undefined
-                        ? {}
-                        : { selectedCommitSha })}
-                      {...(selectedThreadId === undefined
-                        ? {}
-                        : { selectedThreadId })}
+                      {...definedProps({
+                        visiblePaths: scopeFilteredPaths,
+                        selectedPath,
+                        activePath,
+                        selectedCommitSha,
+                        selectedThreadId,
+                        lastLooked: model.review.lastLooked,
+                      })}
                       onSectionChange={selectNavigatorSection}
                       onFileSelect={(path) => {
                         commitWorkbenchPosition({

@@ -21,6 +21,7 @@ const fixtureHashes = new Set([
   "#workbench-merged-fixture",
   "#workbench-draft-fixture",
   "#conversation-rail-fixture",
+  "#conversation-new-since-fixture",
   "#walkthrough-fixture",
   "#long-workbench-fixture",
   "#active-follow-fixture",

@@ -239,6 +239,51 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
         }}
       />
     ),
+    // The last five comments postdate the cursor, so Conversation marks them and Jump to first new has somewhere to scroll.
+    "#conversation-new-since-fixture": (onNavigationStateChange) => (
+      <CanonicalFixtureWorkbench
+        data={workbenchFixtureData}
+        onNavigationStateChange={onNavigationStateChange}
+        modelOverrides={{
+          review: {
+            id: "fixture-review",
+            status: "open",
+            lastLooked: { seenThrough: "2026-07-17T00:14:00.000Z" },
+          },
+          conversation: {
+            prDescription: "",
+            inline: {
+              threads: [
+                {
+                  id: "thread-new-since",
+                  state: "open",
+                  location: { path: "src/b.ts", line: 1, diffSide: "new" },
+                  comments: [
+                    {
+                      id: "comment-new-since",
+                      author: "reviewer",
+                      body: "A reply that arrived after the last look.",
+                      createdAt: "2026-07-17T00:30:00.000Z",
+                    },
+                  ],
+                },
+              ],
+            },
+            entries: longConversationFixtureEntries.map((entry, index) =>
+              entry._tag === "IssueComment"
+                ? {
+                    ...entry,
+                    comment: {
+                      ...entry.comment,
+                      createdAt: `2026-07-17T00:${String(index).padStart(2, "0")}:00.000Z`,
+                    },
+                  }
+                : entry,
+            ),
+          },
+        }}
+      />
+    ),
     "#workbench-draft-fixture": (onNavigationStateChange) => (
       <DraftStateFixtureWorkbench
         onNavigationStateChange={onNavigationStateChange}

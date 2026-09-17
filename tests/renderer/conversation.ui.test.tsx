@@ -89,6 +89,50 @@ describe("Conversation", () => {
     expect(screen.getByLabelText("Incomplete task")).toBeTruthy();
   });
 
+  it("marks only the entries newer than the last-looked cursor, and jumps to the earliest of them", async () => {
+    const comment = (id: string, createdAt: string) =>
+      ({
+        _tag: "IssueComment",
+        comment: { id, author: "reviewer", body: id, createdAt },
+      }) as const;
+    render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          entries: [
+            comment("seen", "2026-08-01T00:00:00.000Z"),
+            comment("first-new", "2026-08-02T00:00:00.000Z"),
+            comment("second-new", "2026-08-03T00:00:00.000Z"),
+          ],
+        }}
+        lastLooked={{ seenThrough: "2026-08-01T00:00:00.000Z" }}
+      />,
+    );
+
+    const markers = screen.getAllByLabelText("New since you last looked");
+    expect(markers).toHaveLength(2);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Jump to first new" }),
+    );
+    expect(document.activeElement).toBe(markers[0]?.parentElement);
+  });
+
+  it("marks nothing and offers no jump before the maintainer first leaves the Review", () => {
+    render(
+      <Conversation
+        conversation={{
+          prDescription: "",
+          entries: [generalThreadEntry()],
+        }}
+      />,
+    );
+
+    expect(screen.queryByLabelText("New since you last looked")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Jump to first new" }),
+    ).toBeNull();
+  });
+
   it("renders Reply, Resolve, Edit, and Delete controls for a general thread when actions are wired", () => {
     render(
       <Conversation

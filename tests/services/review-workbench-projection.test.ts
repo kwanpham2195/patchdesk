@@ -80,6 +80,24 @@ describe("ReviewWorkbenchProjectionService", () => {
     expect(value.reviews.load).toHaveBeenCalledOnce();
   });
 
+  it("carries the last-looked cursor's seenThrough, and nothing before the first leave", async () => {
+    const input = {
+      profileId,
+      sessionId,
+      snapshot,
+      refreshedAt: at,
+      freshness: { _tag: "Fresh" as const },
+    };
+    const left = fixture(review({ lastLooked: { headSha, seenThrough: at } }));
+    await expect(left.service.loadRepresented(input)).resolves.toMatchObject({
+      value: { review: { lastLooked: { seenThrough: at } } },
+    });
+    const never = await fixture().service.loadRepresented(input);
+    expect(never._tag === "ok" && never.value.review).not.toHaveProperty(
+      "lastLooked",
+    );
+  });
+
   it("projects the local checkout failure as a clear metadata-only Review warning", async () => {
     const value = fixture(undefined, "local_checkout_unavailable");
 
