@@ -94,6 +94,7 @@ const allowedRoutes = new Set([
   "GET /v1/insight-providers",
   "POST /v1/insight-providers/codex/models",
   "POST /v1/reviews/load",
+  "POST /v1/reviews/leave",
   "POST /v1/reviews/detect-updates",
   "POST /v1/reviews/insights/analysis/run",
   "POST /v1/reviews/insights/walkthrough/run",

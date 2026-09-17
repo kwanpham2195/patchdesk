@@ -428,6 +428,62 @@ describe("ReviewWorkbenchController", () => {
     });
   });
 
+  it("stamps the last-looked cursor from the represented snapshot's head and newest entry on leave", async () => {
+    const newest = "2026-08-09T12:00:00.000Z";
+    const saved: Array<{ next: Review; token: string }> = [];
+    const value = fixture({
+      reviews: {
+        load: vi.fn(async () => ok(review)),
+        save: vi.fn(async (next: Review, token: string) => {
+          saved.push({ next, token });
+          return ok(undefined);
+        }),
+      },
+      remote: {
+        load: vi.fn(async () =>
+          ok({
+            conversation: {
+              prDescription: "",
+              entries: [
+                { _tag: "PrDescription", body: "" },
+                { _tag: "IssueComment", comment: { createdAt: newest } },
+                { _tag: "ReviewSummary", review: { submittedAt: at } },
+              ],
+            },
+          }),
+        ),
+      },
+    });
+
+    await expect(
+      value.controller.leave({ profileId, reviewId }),
+    ).resolves.toEqual({ _tag: "ok", value: null });
+    expect(saved).toEqual([
+      {
+        next: expect.objectContaining({
+          lastLooked: { headSha, seenThrough: newest },
+        }),
+        token: review.updatedAt,
+      },
+    ]);
+  });
+
+  it("records nothing on leave when the Review never represented a snapshot", async () => {
+    const { representedRemote: _represented, ...unrepresented } = review;
+    void _represented;
+    const value = fixture({
+      reviews: {
+        load: vi.fn(async () => ok(unrepresented)),
+        save: vi.fn(async () => ok(undefined)),
+      },
+    });
+
+    await expect(
+      value.controller.leave({ profileId, reviewId }),
+    ).resolves.toEqual({ _tag: "ok", value: null });
+    expect(value.lifecycle.reviews.save).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed input before any lifecycle work", async () => {
     const value = fixture();
     await expect(value.controller.load({ profileId })).resolves.toEqual({

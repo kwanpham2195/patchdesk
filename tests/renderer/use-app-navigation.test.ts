@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   useAppNavigation,
   type AppNavigation,
+  type LeftWorkbench,
 } from "../../src/renderer/src/hooks/use-app-navigation";
 import type { WorkbenchPayload } from "../../src/renderer/src/renderer-models";
 import { projection } from "./review-workbench-fixtures";
@@ -38,7 +39,7 @@ function openWorkbench(
 
 describe("useAppNavigation", () => {
   it("drops the held Review when routing from one workbench to another", () => {
-    const { result } = renderHook(() => useAppNavigation());
+    const { result } = renderHook(() => useAppNavigation(() => undefined));
     openWorkbench(result, projection({ review: { id: "a", status: "open" } }));
 
     act(() => {
@@ -53,7 +54,7 @@ describe("useAppNavigation", () => {
   });
 
   it("keeps the held Review when routing to the workbench already open", () => {
-    const { result } = renderHook(() => useAppNavigation());
+    const { result } = renderHook(() => useAppNavigation(() => undefined));
     const payload = projection({ review: { id: "a", status: "open" } });
     openWorkbench(result, payload);
 
@@ -65,7 +66,7 @@ describe("useAppNavigation", () => {
   });
 
   it("drops the held Review when leaving the workbench", () => {
-    const { result } = renderHook(() => useAppNavigation());
+    const { result } = renderHook(() => useAppNavigation(() => undefined));
     openWorkbench(result, projection({ review: { id: "a", status: "open" } }));
 
     act(() => {
@@ -77,7 +78,7 @@ describe("useAppNavigation", () => {
 
   it("treats the destination restored at mount as the boot restore until the first navigation", () => {
     window.localStorage.setItem("patchdesk.destination", "workbench:a");
-    const { result } = renderHook(() => useAppNavigation());
+    const { result } = renderHook(() => useAppNavigation(() => undefined));
     expect(result.current.destination).toEqual({
       kind: "workbench",
       reviewId: "a",
@@ -92,7 +93,7 @@ describe("useAppNavigation", () => {
   });
 
   it("drops the held Review when the leave-confirmation is discarded", () => {
-    const { result } = renderHook(() => useAppNavigation());
+    const { result } = renderHook(() => useAppNavigation(() => undefined));
     openWorkbench(result, projection({ review: { id: "a", status: "open" } }));
 
     act(() => {
@@ -116,5 +117,43 @@ describe("useAppNavigation", () => {
       kind: "workbench",
       reviewId: "b",
     });
+  });
+
+  it("reports one leave per workbench left, and none between dashboards or back to the same Review", () => {
+    const left: LeftWorkbench[] = [];
+    const { result } = renderHook(() =>
+      useAppNavigation((workbench) => left.push(workbench)),
+    );
+    act(() => {
+      result.current.performNavigation({ kind: "dashboard" });
+    });
+    openWorkbench(result, projection({ review: { id: "a", status: "open" } }));
+    act(() => {
+      result.current.performNavigation({ kind: "workbench", reviewId: "a" });
+    });
+    expect(left).toEqual([]);
+
+    act(() => {
+      result.current.performNavigation({ kind: "dashboard" });
+    });
+    act(() => {
+      result.current.performNavigation({ kind: "dashboard" });
+    });
+
+    expect(left).toEqual([{ profileId: expect.any(String), reviewId: "a" }]);
+  });
+
+  it("reports no leave for a workbench destination whose Review never loaded", () => {
+    window.localStorage.setItem("patchdesk.destination", "workbench:a");
+    const left: LeftWorkbench[] = [];
+    const { result } = renderHook(() =>
+      useAppNavigation((workbench) => left.push(workbench)),
+    );
+
+    act(() => {
+      result.current.performNavigation({ kind: "dashboard" });
+    });
+
+    expect(left).toEqual([]);
   });
 });
