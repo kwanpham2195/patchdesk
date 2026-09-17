@@ -31,6 +31,7 @@ import {
 import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
+import { reviewRecoverySchema } from "./review-recovery-schema";
 
 /** Opening, loading, refreshing, diffing and merging one Review. */
 export function registerReviewLifecycleRoutes(
@@ -58,7 +59,7 @@ export function registerReviewLifecycleRoutes(
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/merge/recover", async (context) => {
-    const parsed = safeParse(reviewRecoverSchema, await jsonBody(context));
+    const parsed = safeParse(reviewRecoverySchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
@@ -170,11 +171,6 @@ const reviewLoadSchema = strictObject({
   reviewId: pipe(string(), minLength(1)),
   /** Set only by the maintainer's own open; see `ReviewWorkbenchController.load`. */
   recordOpen: optional(boolean()),
-});
-/** The recovery routes reload the workbench already on screen, so they never carry `recordOpen`. */
-const reviewRecoverSchema = strictObject({
-  profileId: pipe(string(), minLength(1)),
-  reviewId: pipe(string(), minLength(1)),
 });
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),

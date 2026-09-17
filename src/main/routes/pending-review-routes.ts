@@ -1,8 +1,9 @@
 import type { Context, Hono } from "hono";
+import { safeParse } from "valibot";
 
 import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
 import type { ReviewSessionId, WorkspaceProfileId } from "../../domain/ids";
-import { readObjectField } from "../../services/read-object-field";
+import type { RawJsonValue } from "../../domain/json";
 import type { ReviewSessionStore } from "../../adapters/storage/review-session-store";
 import {
   projectPendingReview,
@@ -19,6 +20,7 @@ import {
   parsePendingReviewCommand,
 } from "./pending-review-command";
 import { jsonBody } from "./json-body";
+import { reviewRecoverySchema } from "./review-recovery-schema";
 
 /** The pending-review composer and the direct summary review that bypasses it. */
 export function registerPendingReviewRoutes(
@@ -145,13 +147,14 @@ async function pendingReviewCommandResponse(
 async function pendingReviewRecoverResponse(
   context: Context,
   service: PendingReviewService | undefined,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-  body: unknown,
+  body: RawJsonValue | undefined,
 ): Promise<Response> {
   if (service === undefined)
     return context.json({ error: "review_write_unavailable" }, 503);
-  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
-  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
+  const parsed = safeParse(reviewRecoverySchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
   if (profileId._tag === "err" || reviewId._tag === "err")
     return context.json({ error: "invalid_input" }, 400);
   const result = await service.reconcile({
@@ -236,13 +239,14 @@ async function directSummarySubmitResponse(
 async function directSummaryRecoverResponse(
   context: Context,
   service: DirectSummaryReviewService | undefined,
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is the route's I/O boundary parser; it runs its own schema/field parsing on the raw body immediately.
-  body: unknown,
+  body: RawJsonValue | undefined,
 ): Promise<Response> {
   if (service === undefined)
     return context.json({ error: "review_write_unavailable" }, 503);
-  const profileId = parseWorkspaceProfileId(readObjectField(body, "profileId"));
-  const reviewId = parseReviewId(readObjectField(body, "reviewId"));
+  const parsed = safeParse(reviewRecoverySchema, body);
+  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+  const reviewId = parseReviewId(parsed.output.reviewId);
   if (profileId._tag === "err" || reviewId._tag === "err")
     return context.json({ error: "invalid_input" }, 400);
   const result = await service.reconcile({
