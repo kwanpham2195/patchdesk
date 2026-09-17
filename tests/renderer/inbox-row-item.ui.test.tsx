@@ -56,6 +56,18 @@ describe("InboxRowItem", () => {
     expect(screen.queryByText("Brief")).toBeNull();
   });
 
+  it("marks a row whose head moved since the maintainer last looked, and only that row", () => {
+    renderRow({ ...row, headMovedSinceLastLooked: true });
+    expect(
+      screen.getByLabelText("New commits since you last looked"),
+    ).toBeTruthy();
+    cleanup();
+    renderRow({ ...row, headMovedSinceLastLooked: false });
+    expect(
+      screen.queryByLabelText("New commits since you last looked"),
+    ).toBeNull();
+  });
+
   it("shows the author's cached avatar as an image once it resolves", () => {
     renderRow({ ...row, authorAvatarDataUri: "data:image/png;base64,AAAA" });
     const avatars = avatarSlots();
