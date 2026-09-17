@@ -111,7 +111,7 @@ export type Review = {
  * `seenThrough` is GitHub's newest entry timestamp the maintainer was shown,
  * never this machine's clock; it is absent when no timestamped entry was shown.
  */
-export type LastLooked = {
+type LastLooked = {
   readonly headSha: GitSha;
   readonly seenThrough?: IsoTimestamp;
 };
