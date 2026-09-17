@@ -10,8 +10,7 @@ import { InlineError } from "@/components/ui/inline-error";
 import { Spinner } from "@/components/ui/spinner";
 
 /** The sentence a refused Watch or Unwatch shows beside its toggle. */
-// oxlint-disable-next-line react/only-export-components -- Shared by the toggle and the palette command, which words the same refusal.
-export function watchToggleFailureCopy(failure: WatchToggleFailure): string {
+function watchToggleFailureCopy(failure: WatchToggleFailure): string {
   return failure.kind === "limit"
     ? `Patchdesk watches at most ${failure.limit} pull requests per workspace. Unwatch one first.`
     : "Could not change whether this pull request is watched.";
