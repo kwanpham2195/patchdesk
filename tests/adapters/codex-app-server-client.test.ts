@@ -38,6 +38,7 @@ class FakeCodexProcess extends EventEmitter {
     ],
     private readonly finalText?: string,
     private readonly malformedItems = false,
+    private readonly notifications: ReadonlyArray<CodexRpcMessage> = [],
   ) {
     super();
     this.stdin.on("data", (chunk: Buffer) => {
@@ -96,6 +97,7 @@ class FakeCodexProcess extends EventEmitter {
           turnId: "turn-fixture",
         },
       });
+      for (const notification of this.notifications) this.write(notification);
       for (const delta of this.deltas)
         this.write({
           method: "item/agentMessage/delta",
@@ -284,6 +286,162 @@ describe("CodexAppServerClient", () => {
       error: { reason: "timed_out", phase: "turn" },
     });
     expect(child?.killed).toBe(true);
+  });
+
+  it("emits command and reasoning activity without command output", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
+    roots.push(root);
+    const longCommand = `rg ${"x".repeat(400)}`;
+    const commandItem = (fields: {
+      readonly id: string;
+      readonly command: string;
+      readonly status: string;
+      readonly aggregatedOutput: string | null;
+      readonly exitCode: number | null;
+      readonly durationMs: number | null;
+    }) => ({
+      type: "commandExecution",
+      cwd: root,
+      processId: null,
+      commandActions: [],
+      ...fields,
+    });
+    const notifications: ReadonlyArray<CodexRpcMessage> = [
+      {
+        method: "item/started",
+        params: {
+          item: { type: "reasoning", id: "rs-1", summary: [], content: [] },
+        },
+      },
+      {
+        method: "item/reasoning/summaryTextDelta",
+        params: {
+          itemId: "rs-1",
+          delta: "**Reading the diff**",
+          summaryIndex: 0,
+        },
+      },
+      {
+        method: "item/started",
+        params: {
+          item: commandItem({
+            id: "cmd-1",
+            command: `cat ${root}/src/a.ts`,
+            status: "inProgress",
+            aggregatedOutput: null,
+            exitCode: null,
+            durationMs: null,
+          }),
+        },
+      },
+      {
+        method: "item/completed",
+        params: {
+          item: commandItem({
+            id: "cmd-1",
+            command: `cat ${root}/src/a.ts`,
+            status: "completed",
+            aggregatedOutput: "export const a = 1;",
+            exitCode: 0,
+            durationMs: 12,
+          }),
+        },
+      },
+      {
+        method: "item/completed",
+        params: {
+          item: commandItem({
+            id: "cmd-2",
+            command: longCommand,
+            status: "declined",
+            aggregatedOutput: null,
+            exitCode: null,
+            durationMs: null,
+          }),
+        },
+      },
+      {
+        method: "item/started",
+        params: { item: { type: "fileChange", id: "fc-1", changes: [] } },
+      },
+    ];
+    const events: unknown[] = [];
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () =>
+        asChildProcess(
+          new FakeCodexProcess(
+            tmpdir(),
+            "pwd",
+            true,
+            [JSON.stringify({ title: "Fixture" })],
+            undefined,
+            false,
+            notifications,
+          ),
+        ),
+    });
+
+    const result = await client.run(
+      {
+        worktreePath: representedWorktree(root),
+        expectedHeadSha: "a".repeat(40),
+        model: "fixture-codex",
+        reasoning: "low",
+        prompt: "Return JSON.",
+      },
+      { onActivity: (event) => events.push(event) },
+    );
+
+    expect(result).toEqual({ _tag: "ok", value: { title: "Fixture" } });
+    expect(events).toEqual([
+      { _tag: "turn_started" },
+      {
+        _tag: "reasoning_delta",
+        itemId: "rs-1",
+        delta: "**Reading the diff**",
+      },
+      { _tag: "command_started", id: "cmd-1", command: "cat src/a.ts" },
+      {
+        _tag: "command_completed",
+        id: "cmd-1",
+        command: "cat src/a.ts",
+        status: "completed",
+        exitCode: 0,
+        durationMs: 12,
+      },
+      {
+        _tag: "command_completed",
+        id: "cmd-2",
+        command: longCommand.slice(0, 200),
+        status: "declined",
+      },
+    ]);
+  });
+
+  it("completes the turn when the activity callback throws", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
+    roots.push(root);
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () =>
+        asChildProcess(new FakeCodexProcess(tmpdir(), "pwd")),
+    });
+
+    await expect(
+      client.run(
+        {
+          worktreePath: representedWorktree(root),
+          expectedHeadSha: "a".repeat(40),
+          model: "fixture-codex",
+          reasoning: "low",
+          prompt: "Return JSON.",
+        },
+        {
+          onActivity: () => {
+            throw new Error("sink failed");
+          },
+        },
+      ),
+    ).resolves.toEqual({ _tag: "ok", value: { title: "Fixture" } });
   });
 
   // `classifyThrownFailure` reads ENOENT with the shared `isNotFound`, which
