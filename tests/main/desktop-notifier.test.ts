@@ -175,6 +175,36 @@ describe("createDesktopNotifier", () => {
 });
 
 describe("decideDesktopNotification", () => {
+  const preparationFinished: DesktopNotificationEvent = {
+    _tag: "PreparationFinished",
+    reviewId,
+    pullRequest,
+  };
+  const withPreparation = { enabled: true, preparationAndMerge: true };
+  it.each([
+    { focused: true, destination: { kind: "dashboard" }, expected: "focused" },
+    {
+      focused: true,
+      destination: { kind: "workbench", reviewId },
+      expected: "focused_on_review",
+    },
+    { focused: false, destination: { kind: "dashboard" }, expected: "show" },
+  ] as const)(
+    "preparation finished while focused=$focused on $destination.kind: $expected",
+    ({ focused, destination, expected }) => {
+      const decision = decideDesktopNotification({
+        focused,
+        destination,
+        settings: withPreparation,
+        event: preparationFinished,
+      });
+
+      expect(decision._tag === "show" ? "show" : decision.reason).toBe(
+        expected,
+      );
+    },
+  );
+
   const otherReviewId =
     "cfw__centraldigital__patchdesk__pr-7__review-0123456789ab";
   it.each([

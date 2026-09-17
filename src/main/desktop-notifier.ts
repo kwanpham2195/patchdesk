@@ -30,12 +30,13 @@ type DesktopNotificationDecision =
   | { readonly _tag: "show" }
   | {
       readonly _tag: "skip";
-      readonly reason: "disabled" | "focused_on_review";
+      readonly reason: "disabled" | "focused_on_review" | "focused";
     };
 
 /**
  * Whether one event is shown (ADR 0044): the toggles decide first, then the
- * one silence rule, which spares the Review the focused window is showing.
+ * focused window silences events about the Review it shows, and every
+ * preparation event.
  */
 export function decideDesktopNotification(input: {
   readonly focused: boolean;
@@ -51,10 +52,15 @@ export function decideDesktopNotification(input: {
     (lowerValue && !input.settings.preparationAndMerge)
   )
     return { _tag: "skip", reason: "disabled" };
-  return input.focused &&
+  if (
+    input.focused &&
     input.destination.kind === "workbench" &&
     input.destination.reviewId === input.event.reviewId
-    ? { _tag: "skip", reason: "focused_on_review" }
+  )
+    return { _tag: "skip", reason: "focused_on_review" };
+  // Preparation runs while the maintainer is opening or refreshing a Review in the window, so a focused window already shows it.
+  return input.focused && input.event._tag === "PreparationFinished"
+    ? { _tag: "skip", reason: "focused" }
     : { _tag: "show" };
 }
 
