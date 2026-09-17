@@ -32,6 +32,7 @@ import {
   MergeWriteController,
   type MergeCommand,
 } from "../../src/services/merge-write-controller";
+import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import type { ReviewStore } from "../../src/adapters/storage/review-store";
 import { ReviewWriteGate } from "../../src/services/review-write-gate";
@@ -337,6 +338,7 @@ function fixture(
     readonly analysisMergePolicy?: AnalysisMergePolicy;
   } = {},
 ) {
+  const notifications: DesktopNotificationEvent[] = [];
   const created = createReviewSession({
     key: values.session.key,
     pr: values.session.pr,
@@ -413,9 +415,11 @@ function fixture(
     writeGate,
     { reviews, insights: analysisInsights(options.analysis) },
     coordinator,
+    { notify: (event) => notifications.push(event) },
   );
   return {
     controller,
+    notifications,
     coordinator,
     gateway,
     operations,
@@ -519,6 +523,29 @@ describe("MergeWriteController", () => {
       headSha: current.headSha,
       method: "squash",
     });
+  });
+
+  it("posts one merge-completed event only after the receipt is removed", async () => {
+    const current = fixture();
+
+    await current.controller.merge(request());
+
+    expect(current.notifications).toMatchObject([
+      {
+        _tag: "MergeCompleted",
+        pullRequest: { number: current.session.key.prNumber },
+      },
+    ]);
+  });
+
+  it("posts no merge-completed event when the merge confirms but the terminal Review cannot be saved", async () => {
+    const current = fixture({
+      saveReview: err({ _tag: "ReviewConflict", reason: "stale_revision" }),
+    });
+
+    await current.controller.merge(request());
+
+    expect(current.notifications).toEqual([]);
   });
 
   it("retains confirmed evidence if terminal Review persistence fails", async () => {
