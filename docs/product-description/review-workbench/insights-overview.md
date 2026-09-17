@@ -110,6 +110,7 @@ The filter is a way of reading this diff now, not a place to return to. It is se
 - Choosing a bucket while a file outside it is selected moves the selection to the bucket's first file.
 - Moving to Commits, or choosing a commit there, clears an active Scope filter.
 - A card with no retained result says the Insight is not generated for this revision and shows no retained time.
+- An API key run whose request Patchdesk abandons while the Insight runtime is still working, such as when the desktop bridge's request timeout cuts it short, is recorded as cancelled rather than as a failed run with an execution failure. Its card still reads Failed, and a retained result stays in place.
 - A Brief with no Start here lead falls back to the title of its first Flow view for its headline.
 - An Analysis card counts only the findings still needing attention, using the same rule as merge readiness, so the card and the readiness card never disagree.
 

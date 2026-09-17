@@ -37,7 +37,8 @@ type ReadyDiffSourceResponse = {
   readonly newFile?: DiffFileContents;
 };
 
-type ReviewDiffUnavailableReason =
+/** Why the diff-file source service could not supply a file's exact contents. */
+export type ReviewDiffUnavailableReason =
   | "revision_unavailable"
   | "head_changed"
   | "patch_unavailable"

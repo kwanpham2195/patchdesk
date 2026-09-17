@@ -21,3 +21,18 @@ export function err<E>(error: E): Result<never, E> {
  * @template T The set difference that must be empty.
  */
 export type AssertNever<T extends never> = T;
+
+/**
+ * Ends a switch over a closed union: adding a variant fails to compile at the
+ * call site, and reaching it at runtime is a defect, so it throws. The message
+ * names only the value's `_tag`, when it has one.
+ */
+export function casesHandled(unexpected: never): never {
+  const value: unknown = unexpected;
+  const tag =
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- picks a defect message's label, not decoding input against a contract.
+    typeof value === "object" && value !== null && "_tag" in value
+      ? String(value._tag)
+      : String(value);
+  throw new Error(`Unhandled case: ${tag}`);
+}

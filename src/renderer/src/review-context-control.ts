@@ -1,3 +1,6 @@
+import { casesHandled } from "../../domain/result";
+import type { ReviewDiffUnavailableReason } from "./hooks/use-review-diff-hydration";
+
 export type ReviewContextStatus = "idle" | "loading" | "ready" | "unavailable";
 
 export type ReviewContextControl = {
@@ -16,7 +19,7 @@ export function reviewContextControl(input: {
   readonly status: ReviewContextStatus;
   readonly hasExpandableRenderedFile: boolean;
   readonly expanded: boolean;
-  readonly unavailableReason?: string | undefined;
+  readonly unavailableReason?: ReviewDiffUnavailableReason | undefined;
 }): ReviewContextControl {
   if (input.hasExpandableRenderedFile) {
     return {
@@ -37,13 +40,17 @@ export function reviewContextControl(input: {
   return {
     disabled: true,
     label: "Context unavailable",
-    description: input.hasSourceSession
-      ? unavailableContextDescription(input.unavailableReason)
-      : "Exact file contents are unavailable for this review",
+    description: !input.hasSourceSession
+      ? "Exact file contents are unavailable for this review"
+      : input.unavailableReason === undefined
+        ? "Exact file contents are unavailable for the rendered diff"
+        : unavailableContextDescription(input.unavailableReason),
   };
 }
 
-function unavailableContextDescription(reason: string | undefined): string {
+function unavailableContextDescription(
+  reason: ReviewDiffUnavailableReason,
+): string {
   switch (reason) {
     case "github_read":
       return "Patchdesk could not read the required file contents from the saved review revisions";
@@ -60,6 +67,6 @@ function unavailableContextDescription(reason: string | undefined): string {
     case "path_unavailable":
       return "The selected path is unavailable in the saved review";
     default:
-      return "Exact file contents are unavailable for the rendered diff";
+      return casesHandled(reason);
   }
 }

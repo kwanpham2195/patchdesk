@@ -392,6 +392,28 @@ describe("PiInsightChildInvoker failure classification", () => {
       ),
     ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
   });
+
+  // No signal is passed, so `runChild`'s own aborted-signal checks cannot answer first.
+  it("reports a child the runner aborted as cancelled", async () => {
+    const invoker = new PiInsightChildInvoker(
+      new CommandRunner(new RecordingExecutor({ _tag: "Aborted" })),
+      "/workspace",
+    );
+
+    await expect(
+      invoker.invokeWalkthrough(
+        {
+          profileId: "profile",
+          sessionId,
+          contextPath: "/app/context",
+          patchPath: "/app/patch",
+          model: "deepseek/deepseek-v4-flash",
+          reasoning: "low",
+        },
+        60_000,
+      ),
+    ).resolves.toEqual({ _tag: "err", error: { reason: "cancelled" } });
+  });
 });
 
 describe("PiInsightChildInvoker strict response boundary", () => {
