@@ -270,7 +270,12 @@ export type InboxPageRequest = {
   readonly pageToken?: string;
 };
 
-export type InboxCategory = "updated_since_review" | "ready_to_merge";
+/** Every inbox row category; the renderer and cache picklists are built from this list. */
+export const INBOX_CATEGORIES = [
+  "updated_since_review",
+  "ready_to_merge",
+] as const;
+export type InboxCategory = (typeof INBOX_CATEGORIES)[number];
 
 export type InboxRecommendedAction =
   | { readonly kind: "run_review" }
