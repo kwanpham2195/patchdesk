@@ -255,6 +255,26 @@ export const DRAFT_STATE_MESSAGES: ContextualMessages = {
     "GitHub blocked this draft change: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
 };
 
+const UNCONFIRMED_BASE_BRANCH =
+  "GitHub could not confirm the base branch change. Check GitHub again before changing it again.";
+
+/** The base-branch change in the PR overview sheet. */
+export const BASE_BRANCH_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not change this pull request's base branch.",
+  outcome_unknown: UNCONFIRMED_BASE_BRANCH,
+  ambiguous_write: UNCONFIRMED_BASE_BRANCH,
+  timeout: UNCONFIRMED_BASE_BRANCH,
+  invalid_input:
+    "This pull request already targets that branch, or the branch name is not valid.",
+  rejected: "GitHub rejected the base branch change.",
+  github_rejected:
+    "The base branch change was refused: this account may lack write access to this repository.",
+  rate_limited:
+    "GitHub rate-limited this base branch change. Wait a moment, then try again.",
+  forbidden:
+    "GitHub blocked this base branch change: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
 const UNCONFIRMED_REVIEW_REQUEST =
   "GitHub could not confirm the review request. Check GitHub again before requesting it again.";
 

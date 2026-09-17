@@ -48,6 +48,10 @@ import {
 import { cn } from "@/lib/utils";
 import { INSIGHT_ICONS } from "../insight-icons";
 import type { InsightRunDialogType } from "./insight-run-dialog";
+import {
+  ChangeBaseBranchCommand,
+  type ChangeBaseBranchActions,
+} from "./change-base-branch-dialog";
 
 export type PullRequestOverviewMerge = {
   readonly readiness: MergeReadiness;
@@ -128,6 +132,7 @@ export function CanonicalReviewOverviewSheet({
   focusSection,
   onReviewFindings,
   onSetDraftState,
+  baseBranch,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -138,6 +143,7 @@ export function CanonicalReviewOverviewSheet({
   readonly onReviewFindings?: (findingIds: ReadonlyArray<string>) => void;
   /** The author's draft toggle; absent when the viewer may not write it. */
   readonly onSetDraftState?: (draft: boolean) => Promise<void>;
+  readonly baseBranch?: ChangeBaseBranchActions;
 }): React.JSX.Element {
   const terminal = overview.terminalState !== undefined;
   const checks = presentOverallCheckResult(
@@ -267,6 +273,14 @@ export function CanonicalReviewOverviewSheet({
                 <DraftStateCommand
                   isDraft={overview.isDraft}
                   onSetDraftState={onSetDraftState}
+                />
+              </div>
+            )}
+            {baseBranch === undefined || terminal ? null : (
+              <div className="mt-3 border-t pt-3">
+                <ChangeBaseBranchCommand
+                  repository={overview.repository}
+                  actions={baseBranch}
                 />
               </div>
             )}
