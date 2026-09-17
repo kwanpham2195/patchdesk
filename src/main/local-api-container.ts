@@ -476,6 +476,7 @@ export async function buildLocalApiContainer(
         github,
         now: systemNow,
         notifier: configuration.desktopNotifier,
+        onChange: configuration.watchedPullRequestChanged,
       }),
       reviewOperations,
     },

@@ -1,6 +1,11 @@
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono, type MiddlewareHandler } from "hono";
 
+import {
+  notificationSettingsOf,
+  type NotificationSettings,
+} from "../domain/contracts";
+import { err, ok, type Result } from "../domain/result";
 import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
 import { hasMatchingAppCapability } from "./app-capability";
 import type { LocalApiStartupResult } from "./app-lifecycle";
@@ -65,11 +70,24 @@ export async function startLocalApiServer(
     enabled: configuration.retentionSweep ?? false,
     diagnostics: container.diagnostics,
   });
+  const notificationSettings = async (): Promise<
+    Result<NotificationSettings, "config_unreadable">
+  > => {
+    const settings = await container.dashboard.getSettings();
+    return settings._tag === "ok"
+      ? ok(notificationSettingsOf(settings.value))
+      : err("config_unreadable");
+  };
+  const startupSettings = await notificationSettings();
   const watchedPullRequestScheduler = startWatchedPullRequestScheduler({
     profiles: container.configuredProfiles,
     watched: container.watchedPullRequests,
     coordinator: container.reviewOperations,
-    intervalMinutes: 3,
+    intervalMinutes:
+      startupSettings._tag === "ok"
+        ? startupSettings.value.intervalMinutes
+        : notificationSettingsOf({}).intervalMinutes,
+    settings: notificationSettings,
     enabled: configuration.watchedPullRequestPolling ?? false,
     logs,
   });

@@ -673,7 +673,13 @@ function installDesktopApi(
     "/v1/settings": (input) =>
       success(
         input.method === "PATCH"
-          ? { notifications: { enabled: false, preparationAndMerge: false } }
+          ? {
+              notifications: {
+                enabled: false,
+                preparationAndMerge: false,
+                intervalMinutes: 3,
+              },
+            }
           : {},
       ),
     "/v1/storage/clear-local-data": () =>

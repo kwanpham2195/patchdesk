@@ -33,6 +33,7 @@ const analysisFinished: DesktopNotificationEvent = {
 const defaults: NotificationSettings = {
   enabled: true,
   preparationAndMerge: false,
+  intervalMinutes: 3,
 };
 
 /** Lets the notifier's settings read settle. */
@@ -151,7 +152,13 @@ describe("createDesktopNotifier", () => {
     ],
     [
       "with Notifications off",
-      { settings: { enabled: false, preparationAndMerge: true } },
+      {
+        settings: {
+          enabled: false,
+          preparationAndMerge: true,
+          intervalMinutes: 3,
+        },
+      },
       "disabled",
     ],
   ] as const)(
@@ -226,7 +233,11 @@ describe("decideDesktopNotification", () => {
     reviewId,
     pullRequest,
   };
-  const withPreparation = { enabled: true, preparationAndMerge: true };
+  const withPreparation = {
+    enabled: true,
+    preparationAndMerge: true,
+    intervalMinutes: 3,
+  } as const;
   it.each([
     { focused: true, destination: { kind: "dashboard" }, expected: "focused" },
     {
@@ -289,28 +300,32 @@ describe("decideDesktopNotification", () => {
 
   it.each([
     [
-      { enabled: false, preparationAndMerge: true },
+      { enabled: false, preparationAndMerge: true, intervalMinutes: 3 },
       "InsightSettled",
       "disabled",
     ],
     [
-      { enabled: true, preparationAndMerge: false },
+      { enabled: true, preparationAndMerge: false, intervalMinutes: 3 },
       "WriteNeedsRecovery",
       "show",
     ],
     [
-      { enabled: true, preparationAndMerge: false },
+      { enabled: true, preparationAndMerge: false, intervalMinutes: 3 },
       "PreparationFinished",
       "disabled",
     ],
     [
-      { enabled: true, preparationAndMerge: false },
+      { enabled: true, preparationAndMerge: false, intervalMinutes: 3 },
       "MergeCompleted",
       "disabled",
     ],
-    [{ enabled: true, preparationAndMerge: true }, "MergeCompleted", "show"],
     [
-      { enabled: false, preparationAndMerge: true },
+      { enabled: true, preparationAndMerge: true, intervalMinutes: 3 },
+      "MergeCompleted",
+      "show",
+    ],
+    [
+      { enabled: false, preparationAndMerge: true, intervalMinutes: 3 },
       "MergeCompleted",
       "disabled",
     ],

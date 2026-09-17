@@ -32,6 +32,8 @@ type WatchedPullRequestsValue = {
     ref: WatchedPullRequestRef,
   ) => WatchToggleFailure | undefined;
   readonly toggle: (ref: WatchedPullRequestRef) => Promise<void>;
+  /** When this window last heard that a poll found a change for the profile; the freshness badge compares it with its refresh. */
+  readonly changedAt: string | undefined;
 };
 
 const WatchedPullRequestsContext =
@@ -52,6 +54,14 @@ const limitFailureSchema = v.strictObject({
     limit: v.number(),
   }),
 });
+
+/** A value and the workspace profile it was read for. */
+type ProfileScoped<Value> = {
+  readonly profileId: string;
+  readonly value: Value;
+};
+
+const noFailures: ReadonlyMap<string, WatchToggleFailure> = new Map();
 
 function refKey(ref: WatchedPullRequestRef): string {
   return `${ref.host}/${ref.owner}/${ref.repo}#${ref.number}`;
@@ -90,17 +100,29 @@ export function WatchedPullRequestsProvider({
   readonly profileId: string;
   readonly children: ReactNode;
 }): React.JSX.Element {
-  const [watched, setWatched] = useState<ReadonlySet<string> | undefined>();
+  // Each piece of state names the profile it belongs to, so a workspace switch hides the previous one without an effect resetting it.
+  const [loaded, setLoaded] = useState<ProfileScoped<ReadonlySet<string>>>();
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
-  const [failures, setFailures] = useState<
-    ReadonlyMap<string, WatchToggleFailure>
-  >(new Map());
+  const [failureState, setFailureState] =
+    useState<ProfileScoped<ReadonlyMap<string, WatchToggleFailure>>>();
+  const [changed, setChanged] = useState<ProfileScoped<string>>();
   const generation = useRef(0);
+  const watched = loaded?.profileId === profileId ? loaded.value : undefined;
+  const failures =
+    failureState?.profileId === profileId ? failureState.value : noFailures;
+  const changedAt =
+    changed?.profileId === profileId ? changed.value : undefined;
+
+  useEffect(() => {
+    if (profileId === "" || window.patchdesk === undefined) return;
+    return window.patchdesk.onWatchedPullRequestChange((changedProfileId) => {
+      if (changedProfileId === profileId)
+        setChanged({ profileId, value: new Date().toISOString() });
+    });
+  }, [profileId]);
 
   useEffect(() => {
     const owner = ++generation.current;
-    setWatched(undefined);
-    setFailures(new Map());
     if (profileId === "") return;
     const load = async (): Promise<void> => {
       try {
@@ -109,7 +131,8 @@ export function WatchedPullRequestsProvider({
             `/v1/watched-pull-requests?profileId=${encodeURIComponent(profileId)}`,
           ),
         );
-        if (generation.current === owner) setWatched(new Set(list.map(refKey)));
+        if (generation.current === owner)
+          setLoaded({ profileId, value: new Set(list.map(refKey)) });
       } catch {
         // An unreadable list hides the toggles rather than showing every pull request as unwatched.
       }
@@ -123,11 +146,9 @@ export function WatchedPullRequestsProvider({
       const key = refKey(ref);
       const owner = generation.current;
       setPending((current) => new Set(current).add(key));
-      setFailures((current) => {
-        const next = new Map(current);
-        next.delete(key);
-        return next;
-      });
+      const withoutFailure = new Map(failures);
+      withoutFailure.delete(key);
+      setFailureState({ profileId, value: withoutFailure });
       try {
         const list = readList(
           await requestJson("/v1/watched-pull-requests", {
@@ -135,12 +156,14 @@ export function WatchedPullRequestsProvider({
             body: { profileId, pullRequest: ref },
           }),
         );
-        if (generation.current === owner) setWatched(new Set(list.map(refKey)));
+        if (generation.current === owner)
+          setLoaded({ profileId, value: new Set(list.map(refKey)) });
       } catch (cause: unknown) {
         if (generation.current === owner)
-          setFailures((current) =>
-            new Map(current).set(key, toggleFailure(cause)),
-          );
+          setFailureState({
+            profileId,
+            value: new Map(withoutFailure).set(key, toggleFailure(cause)),
+          });
       } finally {
         setPending((current) => {
           const next = new Set(current);
@@ -149,7 +172,7 @@ export function WatchedPullRequestsProvider({
         });
       }
     },
-    [profileId, watched],
+    [failures, profileId, watched],
   );
 
   const value = useMemo<WatchedPullRequestsValue | null>(
@@ -161,8 +184,9 @@ export function WatchedPullRequestsProvider({
             isPending: (ref) => pending.has(refKey(ref)),
             failureFor: (ref) => failures.get(refKey(ref)),
             toggle,
+            changedAt,
           },
-    [failures, pending, toggle, watched],
+    [changedAt, failures, pending, toggle, watched],
   );
   return (
     <WatchedPullRequestsContext.Provider value={value}>

@@ -53,6 +53,8 @@ type WatchedPullRequestServiceDependencies = {
   readonly now: () => IsoTimestamp;
   /** Absent posts nothing; a poll still moves the stored snapshots. */
   readonly notifier: DesktopNotifier | undefined;
+  /** Told once per poll that found a change, so the renderer can light the freshness badge. */
+  readonly onChange: ((profileId: WorkspaceProfileId) => void) | undefined;
 };
 
 /**
@@ -181,6 +183,7 @@ export class WatchedPullRequestService {
         return { _tag: "failed", reason: saved.error.reason };
       for (const event of events)
         postDesktopNotification(this.dependencies.notifier, event);
+      if (events.length > 0) this.dependencies.onChange?.(profile.id);
       return { _tag: "polled", notified: events.length };
     });
   }

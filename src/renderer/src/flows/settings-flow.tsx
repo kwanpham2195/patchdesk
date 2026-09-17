@@ -37,15 +37,11 @@ import {
 } from "../components/ui/card";
 import {
   Field,
-  FieldContent,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldSet,
 } from "../components/ui/field";
-import { InlineError } from "../components/ui/inline-error";
-import { Switch } from "../components/ui/switch";
-import { useNotificationSettings } from "../hooks/use-notification-settings";
+import { NotificationsCard } from "./settings-notifications-card";
 import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
@@ -570,79 +566,6 @@ function GeneralSection({
       </Card>
       <NotificationsCard />
     </div>
-  );
-}
-
-/** Settings → General → Notifications: the two toggles ADR 0044 describes. */
-function NotificationsCard(): React.JSX.Element {
-  const { state, saveFailed, update } = useNotificationSettings();
-  const settings = state._tag === "ready" ? state.settings : undefined;
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Notifications</CardTitle>
-        <CardDescription>
-          Notify when Patchdesk is in the background or showing another Review.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <FieldGroup>
-          <Field
-            orientation="horizontal"
-            data-disabled={settings === undefined}
-          >
-            <FieldContent>
-              <FieldLabel htmlFor="notifications-enabled">
-                Notifications
-              </FieldLabel>
-              <FieldDescription>
-                Insight runs that finish or fail, and GitHub writes that need a
-                check.
-              </FieldDescription>
-            </FieldContent>
-            <Switch
-              id="notifications-enabled"
-              checked={settings?.enabled ?? false}
-              disabled={settings === undefined}
-              onCheckedChange={(enabled) => {
-                if (settings !== undefined)
-                  void update({ ...settings, enabled });
-              }}
-            />
-          </Field>
-          <Field
-            orientation="horizontal"
-            data-disabled={settings === undefined || !settings.enabled}
-          >
-            <FieldContent>
-              <FieldLabel htmlFor="notifications-preparation-merge">
-                Review ready and merge completed
-              </FieldLabel>
-              <FieldDescription>
-                Also notify when a Review finishes preparing or a merge
-                completes.
-              </FieldDescription>
-            </FieldContent>
-            <Switch
-              id="notifications-preparation-merge"
-              checked={settings?.preparationAndMerge ?? false}
-              disabled={settings === undefined || !settings.enabled}
-              onCheckedChange={(preparationAndMerge) => {
-                if (settings !== undefined)
-                  void update({ ...settings, preparationAndMerge });
-              }}
-            />
-          </Field>
-        </FieldGroup>
-        {state._tag === "unavailable" || saveFailed ? (
-          <InlineError className="mt-3">
-            {saveFailed
-              ? "Could not save notification settings. The previous choice is kept."
-              : "Could not load notification settings."}
-          </InlineError>
-        ) : null}
-      </CardContent>
-    </Card>
   );
 }
 

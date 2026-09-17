@@ -61,7 +61,11 @@ export type DesktopOperationRoute = (
 export type DesktopDoubleExtras = Partial<
   Omit<
     PatchdeskDesktopApi,
-    "request" | "onMenuAction" | "onWindowFullScreen" | "onNotificationClick"
+    | "request"
+    | "onMenuAction"
+    | "onWindowFullScreen"
+    | "onNotificationClick"
+    | "onWatchedPullRequestChange"
   >
 > & {
   /** Routes for privileged operations, keyed by `operation`. */
@@ -87,6 +91,8 @@ export type DesktopDouble = {
   readonly sendWindowFullScreen: (fullScreen: boolean) => void;
   /** Fires the listener registered through `onNotificationClick`, as the main process does after a click. */
   readonly sendNotificationClick: (click: DesktopNotificationClick) => void;
+  /** Fires the listener registered through `onWatchedPullRequestChange`, as a poll that found a change does. */
+  readonly sendWatchedPullRequestChange: (profileId: string) => void;
   /**
    * Whether a full-screen listener is currently registered, so a test can
    * assert that a hook released its subscription instead of only asserting
@@ -138,6 +144,9 @@ export function installDesktopDouble(
   let notificationClickListener:
     | ((click: DesktopNotificationClick) => void)
     | undefined;
+  let watchedPullRequestChangeListener:
+    | ((profileId: string) => void)
+    | undefined;
   const unrouted: string[] = [];
   const refuse = (description: string, remedy: string): never => {
     unrouted.push(description);
@@ -180,6 +189,12 @@ export function installDesktopDouble(
         notificationClickListener = undefined;
       };
     },
+    onWatchedPullRequestChange: (listener: (profileId: string) => void) => {
+      watchedPullRequestChangeListener = listener;
+      return () => {
+        watchedPullRequestChangeListener = undefined;
+      };
+    },
     windowFullScreenAtLoad: extras.windowFullScreenAtLoad ?? false,
     appearanceAtLoad: extras.appearanceAtLoad ?? "system",
     setWindowAppearance: extras.setWindowAppearance ?? (() => undefined),
@@ -195,6 +210,8 @@ export function installDesktopDouble(
     sendWindowFullScreen: (fullScreen) =>
       windowFullScreenListener?.(fullScreen),
     sendNotificationClick: (click) => notificationClickListener?.(click),
+    sendWatchedPullRequestChange: (profileId) =>
+      watchedPullRequestChangeListener?.(profileId),
     hasWindowFullScreenListener: () => windowFullScreenListener !== undefined,
     takeUnroutedCalls: () => unrouted.splice(0),
     restore: () => {

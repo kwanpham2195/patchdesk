@@ -132,6 +132,44 @@ const row: InboxRow = {
   dataFreshness: "fresh",
 };
 
+describe("watched pull request change", () => {
+  it("lights the freshness badge until a refresh newer than the change", async () => {
+    const double = installWatchRoutes({ pullRequests: [ref] }, () =>
+      success({ pullRequests: [ref] }),
+    );
+    const inbox = (refreshedAt: string) => (
+      <WatchedPullRequestsProvider profileId="cfw">
+        <MaintainerInbox
+          profileId="watch-badge"
+          profileLabel="P"
+          rows={[row]}
+          freshness="fresh"
+          refreshStatus="Current"
+          snapshot={{ state: "current", refreshedAt }}
+          onOpenReview={vi.fn()}
+          onOpenReviewId={vi.fn()}
+        />
+      </WatchedPullRequestsProvider>
+    );
+    const view = render(inbox("2026-01-01T00:00:00.000Z"));
+    await screen.findAllByRole("button", { name: "Unwatch" });
+
+    act(() => double.sendWatchedPullRequestChange("other-profile"));
+    expect(
+      screen.queryByRole("button", { name: /A watched pull request changed/ }),
+    ).toBeNull();
+    act(() => double.sendWatchedPullRequestChange("cfw"));
+    expect(
+      screen.getByRole("button", { name: /A watched pull request changed/ }),
+    ).toBeTruthy();
+
+    view.rerender(inbox(new Date(Date.now() + 60_000).toISOString()));
+    expect(
+      screen.queryByRole("button", { name: /A watched pull request changed/ }),
+    ).toBeNull();
+  });
+});
+
 describe("Watch toggle surfaces", () => {
   it("watches from the Pull requests inspector and marks the row", async () => {
     installWatchRoutes({ pullRequests: [] }, () =>
