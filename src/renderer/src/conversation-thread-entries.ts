@@ -1,3 +1,4 @@
+import { threadNeedsReply } from "../../domain/github-context";
 import type { ReviewInlineAnnotation } from "./components/review-diff-view";
 
 /**
@@ -62,6 +63,8 @@ export type ConversationThreadRow = {
   /** Short, whitespace-collapsed excerpt of the opening comment body. */
   readonly preview: string;
   readonly state: ConversationThreadRowState;
+  /** An unresolved published thread whose last comment is not the viewer's; see `threadNeedsReply`. */
+  readonly needsReply: boolean;
 };
 
 const PREVIEW_MAX_LENGTH = 80;
@@ -95,6 +98,7 @@ function projectConversationThreadRow(
         author: opening?.author ?? "Unknown",
         preview: previewOf(opening?.body ?? ""),
         state: entry.conversationThread.state,
+        needsReply: threadNeedsReply(entry.conversationThread),
       },
     ];
   }
@@ -109,6 +113,7 @@ function projectConversationThreadRow(
         author: "You",
         preview: previewOf(entry.pendingReviewThread.body),
         state: "pending",
+        needsReply: false,
       },
     ];
   }
@@ -116,13 +121,13 @@ function projectConversationThreadRow(
 }
 
 /**
- * Projects Conversation thread entries into Threads navigator rows, ordered
- * by the entry's file position in `fileOrder` (the parsed patch's file
- * order, as already computed for the file tree) then by `start` ascending —
- * diff order, not alphabetical and not the published-then-pending concat
- * order `deriveConversationThreadEntries` returns. An entry whose path is
- * absent from `fileOrder` (should not happen for a well-formed patch) sorts
- * after every entry whose file the patch does place.
+ * Projects Conversation thread entries into Threads navigator rows. Rows that
+ * need the viewer's reply come first, because they are the ones someone is
+ * waiting on; within each group rows follow diff order: the entry's position
+ * in `fileOrder` (the parsed patch's file order), then `start` ascending. An
+ * entry whose path is absent from `fileOrder` sorts after every entry in its
+ * group whose file the patch does place. `buildCommentOrder`
+ * (`review-diff-keyboard-nav.ts`) visits threads in the same order.
  */
 export function projectConversationThreadRows(
   entries: ReadonlyArray<ReviewInlineAnnotation>,
@@ -133,6 +138,7 @@ export function projectConversationThreadRows(
   );
   const rows = entries.flatMap(projectConversationThreadRow);
   return rows.sort((a, b) => {
+    if (a.needsReply !== b.needsReply) return a.needsReply ? -1 : 1;
     const orderA = orderByPath.get(a.path) ?? fileOrder.length;
     const orderB = orderByPath.get(b.path) ?? fileOrder.length;
     return orderA !== orderB ? orderA - orderB : a.start - b.start;
