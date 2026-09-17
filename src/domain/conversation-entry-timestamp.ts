@@ -62,3 +62,18 @@ function newestTimestamp<Timestamp extends string>(
       newest = timestamp;
   return newest;
 }
+
+/**
+ * Whether an entry arrived after the maintainer last left the Review. Nothing
+ * is new before the first leave; a cursor that saw no dated entry makes every
+ * dated entry new.
+ */
+export function isNewSinceLastLooked(
+  timestamp: string | undefined,
+  lastLooked: { readonly seenThrough?: string | undefined } | undefined,
+): boolean {
+  if (lastLooked === undefined || timestamp === undefined) return false;
+  return (
+    lastLooked.seenThrough === undefined || timestamp > lastLooked.seenThrough
+  );
+}

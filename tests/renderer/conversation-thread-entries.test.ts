@@ -178,6 +178,7 @@ describe("projectConversationThreadRows", () => {
         preview: "needs a fix",
         state: "open",
         needsReply: false,
+        newCount: 0,
       },
       {
         id: "c2",
@@ -189,6 +190,7 @@ describe("projectConversationThreadRows", () => {
         preview: "looks good now",
         state: "resolved",
         needsReply: false,
+        newCount: 0,
       },
       {
         id: "c3",
@@ -200,6 +202,7 @@ describe("projectConversationThreadRows", () => {
         preview: "draft reply",
         state: "pending",
         needsReply: false,
+        newCount: 0,
       },
     ]);
   });
@@ -277,5 +280,24 @@ describe("projectConversationThreadRows", () => {
       ["viewer-last", false],
       ["unknown", false],
     ]);
+  });
+
+  it("counts a thread's comments dated after the last-looked cursor, and none before the first leave", () => {
+    const thread = published({
+      id: "c1",
+      path: "a.ts",
+      start: 1,
+      state: "open",
+      author: "alice",
+      body: "y",
+      ghThreadId: "PRRT_new",
+    });
+    const count = (lastLooked?: { readonly seenThrough?: string }) =>
+      projectConversationThreadRows([thread], ["a.ts"], lastLooked)[0]
+        ?.newCount;
+
+    expect(count({ seenThrough: "2025-12-31T00:00:00Z" })).toBe(1);
+    expect(count({ seenThrough: "2026-01-01T00:00:00Z" })).toBe(0);
+    expect(count()).toBe(0);
   });
 });

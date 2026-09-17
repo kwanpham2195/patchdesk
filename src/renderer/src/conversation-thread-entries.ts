@@ -1,3 +1,4 @@
+import { isNewSinceLastLooked } from "../../domain/conversation-entry-timestamp";
 import { threadNeedsReply } from "../../domain/github-context";
 import type { ReviewInlineAnnotation } from "./components/review-diff-view";
 
@@ -65,7 +66,11 @@ export type ConversationThreadRow = {
   readonly state: ConversationThreadRowState;
   /** An unresolved published thread whose last comment is not the viewer's; see `threadNeedsReply`. */
   readonly needsReply: boolean;
+  /** Comments GitHub dated after the last-looked cursor; zero before the first leave. */
+  readonly newCount: number;
 };
+
+type LastLookedCursor = { readonly seenThrough?: string | undefined };
 
 const PREVIEW_MAX_LENGTH = 80;
 
@@ -85,6 +90,7 @@ function previewOf(body: string): string {
  */
 function projectConversationThreadRow(
   entry: ReviewInlineAnnotation,
+  lastLooked: LastLookedCursor | undefined,
 ): ReadonlyArray<ConversationThreadRow> {
   if (entry.conversationThread !== undefined) {
     const opening = entry.conversationThread.comments[0];
@@ -99,6 +105,9 @@ function projectConversationThreadRow(
         preview: previewOf(opening?.body ?? ""),
         state: entry.conversationThread.state,
         needsReply: threadNeedsReply(entry.conversationThread),
+        newCount: entry.conversationThread.comments.filter((comment) =>
+          isNewSinceLastLooked(comment.createdAt, lastLooked),
+        ).length,
       },
     ];
   }
@@ -114,6 +123,7 @@ function projectConversationThreadRow(
         preview: previewOf(entry.pendingReviewThread.body),
         state: "pending",
         needsReply: false,
+        newCount: 0,
       },
     ];
   }
@@ -132,11 +142,14 @@ function projectConversationThreadRow(
 export function projectConversationThreadRows(
   entries: ReadonlyArray<ReviewInlineAnnotation>,
   fileOrder: ReadonlyArray<string>,
+  lastLooked?: LastLookedCursor,
 ): ReadonlyArray<ConversationThreadRow> {
   const orderByPath = new Map(
     fileOrder.map((path, index) => [path, index] as const),
   );
-  const rows = entries.flatMap(projectConversationThreadRow);
+  const rows = entries.flatMap((entry) =>
+    projectConversationThreadRow(entry, lastLooked),
+  );
   return rows.sort((a, b) => {
     if (a.needsReply !== b.needsReply) return a.needsReply ? -1 : 1;
     const orderA = orderByPath.get(a.path) ?? fileOrder.length;

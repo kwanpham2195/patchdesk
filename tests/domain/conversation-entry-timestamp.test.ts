@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   conversationEntryTimestamp,
+  isNewSinceLastLooked,
   newestConversationTimestamp,
 } from "../../src/domain/conversation-entry-timestamp";
 
@@ -54,5 +55,13 @@ describe("conversationEntryTimestamp", () => {
     expect(
       newestConversationTimestamp([entries.PrDescription.entry]),
     ).toBeUndefined();
+  });
+
+  it("counts an entry new only when it is later than the cursor, and nothing before the first leave", () => {
+    expect(isNewSinceLastLooked(late, { seenThrough: early })).toBe(true);
+    expect(isNewSinceLastLooked(early, { seenThrough: early })).toBe(false);
+    expect(isNewSinceLastLooked(early, {})).toBe(true);
+    expect(isNewSinceLastLooked(undefined, {})).toBe(false);
+    expect(isNewSinceLastLooked(late, undefined)).toBe(false);
   });
 });

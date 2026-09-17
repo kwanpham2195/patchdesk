@@ -811,6 +811,11 @@ const workbenchProjectionSchema = v.strictObject({
   review: v.strictObject({
     id: v.pipe(v.string(), v.minLength(1)),
     status: v.picklist(["open", "merged", "closed"]),
+    lastLooked: v.optional(
+      v.strictObject({
+        seenThrough: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+      }),
+    ),
   }),
   session: workbenchSessionSchema,
   localCheckout: v.optional(

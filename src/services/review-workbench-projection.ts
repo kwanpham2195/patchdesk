@@ -104,6 +104,8 @@ export type ReviewWorkbenchProjection = {
   readonly review: {
     readonly id: ReviewId;
     readonly status: "open" | "merged" | "closed";
+    /** Absent until the maintainer first leaves the Review; Conversation marks nothing without it. */
+    readonly lastLooked?: { readonly seenThrough?: IsoTimestamp };
   };
   readonly session: WorkbenchSessionProjection;
   readonly localCheckout?: {
@@ -508,7 +510,18 @@ export class ReviewWorkbenchProjectionService {
     const projection: ReviewWorkbenchProjection = {
       state: "review",
       viewerLogin: viewerLogin.value,
-      review: { id: reviewId, status: reviewStatus },
+      review: {
+        id: reviewId,
+        status: reviewStatus,
+        ...definedProps({
+          lastLooked:
+            stableReview.value.lastLooked === undefined
+              ? undefined
+              : definedProps({
+                  seenThrough: stableReview.value.lastLooked.seenThrough,
+                }),
+        }),
+      },
       session: projectSession(session),
       revision,
       commits: remote?.commits ?? [],
