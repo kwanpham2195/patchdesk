@@ -1,5 +1,9 @@
 # Refresh the pull requests screen only when asked
 
+> **Superseded in part by ADR 0045:** a timer exists for explicitly watched
+> pull requests; it posts notifications and a badge dot and replaces no
+> displayed state.
+>
 > **Status: Accepted. Implemented in `ad02438..HEAD` on `main`** —
 > `InboxRefreshScheduler` and its focus polling, backoff ladder, and rate-limit
 > wait are gone; refresh happens only when the maintainer asks. Companion to
