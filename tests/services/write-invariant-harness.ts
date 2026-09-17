@@ -58,6 +58,7 @@ export const GATEWAY_WRITES: ReadonlySet<string> = new Set([
   "requestReviews",
   "removeRequestedReviewers",
   "setPullRequestDraftState",
+  "setPullRequestBaseBranch",
   "mergePullRequest",
 ]);
 

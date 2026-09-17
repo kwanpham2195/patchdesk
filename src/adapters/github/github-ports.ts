@@ -86,6 +86,12 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>>;
+  /** Up to 100 branch names of the repository, alphabetical; `query` filters by name substring. */
+  listRepositoryBranches(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly query?: string;
+  }): Promise<Result<RepositoryBranchListing, GitHubReadFailure>>;
   /** Bounded list of repository collaborators eligible for assignment, for populating an assignee picker. `query` filters server-side by login/name substring. */
   listAssignableUsers(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -179,6 +185,12 @@ export interface GitHubReader {
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>>;
 }
+
+/** One bounded page of branch names; compare `totalCount` against `branches.length` to detect truncation. */
+export type RepositoryBranchListing = {
+  readonly branches: ReadonlyArray<string>;
+  readonly totalCount: number;
+};
 
 export type MergeOutcome =
   | { readonly state: "open" | "closed_unmerged" }
@@ -312,6 +324,12 @@ export interface GitHubReviewWriter {
     readonly profile: WorkspaceProfileConfig;
     readonly pullRequestId: string;
     readonly draft: boolean;
+  }): Promise<Result<void, GitHubWriteFailure>>;
+  /** Moves an open pull request onto another branch of its base repository by GraphQL node ID. */
+  setPullRequestBaseBranch?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly branch: string;
   }): Promise<Result<void, GitHubWriteFailure>>;
   updateThreadComment?(input: {
     readonly profile: WorkspaceProfileConfig;

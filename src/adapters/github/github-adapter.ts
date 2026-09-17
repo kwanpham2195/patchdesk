@@ -84,6 +84,7 @@ import type {
   GitHubThreadTarget,
   MergeOutcome,
   PendingReviewComment,
+  RepositoryBranchListing,
 } from "./github-ports";
 
 /** The GitHub port declarations this adapter implements. */
@@ -99,6 +100,7 @@ export type {
   GitHubThreadTarget,
   MergeOutcome,
   PendingReviewComment,
+  RepositoryBranchListing,
 } from "./github-ports";
 
 /** Explicit evidence created by a future fetched-ref owner before Git diff fallback is allowed. */
@@ -303,6 +305,14 @@ export class GitHubAdapter
     readonly query?: string;
   }): Promise<Result<AssignableUserListing, GitHubReadFailure>> {
     return this.collaborators.listAssignableUsers(input);
+  }
+
+  async listRepositoryBranches(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly query?: string;
+  }): Promise<Result<RepositoryBranchListing, GitHubReadFailure>> {
+    return this.pullRequests.listRepositoryBranches(input);
   }
 
   async getPullRequestReviewers(input: {
@@ -695,6 +705,14 @@ export class GitHubAdapter
     readonly draft: boolean;
   }): Promise<Result<void, GitHubWriteFailure>> {
     return this.collaborators.setPullRequestDraftState(input);
+  }
+
+  async setPullRequestBaseBranch(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly branch: string;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    return this.collaborators.setPullRequestBaseBranch(input);
   }
 
   async updateThreadComment(input: {

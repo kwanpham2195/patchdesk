@@ -28,6 +28,7 @@ import {
   removeLabelsFromLabelableMutation,
   repositoryLabelsQuery,
   requestReviewsMutation,
+  updatePullRequestBaseBranchMutation,
 } from "./github-graphql-queries";
 import {
   assignableUsersResponseSchema,
@@ -316,6 +317,34 @@ export class GitHubCollaborators {
         `query=${mutation}`,
         "-F",
         `pullRequestId=${input.pullRequestId}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
+  /** Moves a pull request onto `branch` of its base repository with `updatePullRequest`. */
+  async setPullRequestBaseBranch(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly branch: string;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${updatePullRequestBaseBranchMutation}`,
+        "-F",
+        `pullRequestId=${input.pullRequestId}`,
+        // `-f` keeps a numeric-looking branch name a GraphQL String.
+        "-f",
+        `baseRefName=${input.branch}`,
       ],
       timeoutMs: commandTimeoutMs,
     });
