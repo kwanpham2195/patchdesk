@@ -230,27 +230,35 @@ const intentSchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("AddLabels"),
-    names: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+    names: v.pipe(
+      v.array(v.pipe(v.string(), v.minLength(1))),
+      v.minLength(1),
+      v.readonly(),
+    ),
   }),
   v.strictObject({
     _tag: v.literal("RemoveLabels"),
-    names: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+    names: v.pipe(
+      v.array(v.pipe(v.string(), v.minLength(1))),
+      v.minLength(1),
+      v.readonly(),
+    ),
   }),
   v.strictObject({
     _tag: v.literal("AddAssignees"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1)),
+    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
   }),
   v.strictObject({
     _tag: v.literal("RemoveAssignees"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1)),
+    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
   }),
   v.strictObject({
     _tag: v.literal("RequestReviewers"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1)),
+    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
   }),
   v.strictObject({
     _tag: v.literal("RemoveReviewers"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1)),
+    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
   }),
   v.strictObject({ _tag: v.literal("SetDraftState"), draft: v.boolean() }),
 ]);
@@ -285,6 +293,11 @@ const operationSchema = v.strictObject({
   ]),
   startedAt: v.string(),
 });
+
+/** The persisted form of an operation record; the store writes this, parseReviewWriteOperation reads it. */
+export type PersistedReviewWriteOperation = v.InferOutput<
+  typeof operationSchema
+>;
 
 /** Parse a persisted operation, including every branded identity at the storage boundary. */
 export function parseReviewWriteOperation(
