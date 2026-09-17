@@ -2,28 +2,24 @@ import type { Hono } from "hono";
 import {
   array,
   boolean,
-  type InferOutput,
   integer,
   minLength,
   minValue,
   number,
   optional,
-  picklist,
   pipe,
   safeParse,
   strictObject,
   string,
-  variant,
 } from "valibot";
 
 import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
+import { parseReviewId, parseWorkspaceProfileId } from "../../domain/ids";
 import {
-  parseGitHubThreadId,
-  parseReviewId,
-  parseWorkspaceProfileId,
-} from "../../domain/ids";
-import type { RecentReviewWrite } from "../../domain/recent-review-write";
-import { err, ok, type Result } from "../../domain/result";
+  parseRecentReviewWrite,
+  recentReviewWriteRecordSchema,
+  type RecentReviewWrite,
+} from "../../domain/recent-review-write";
 import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
@@ -139,111 +135,13 @@ const reviewRecoverSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
 });
-const recentReviewWriteSchema = variant("_tag", [
-  strictObject({
-    _tag: picklist(["Comment"] as const),
-    commentId: pipe(string(), minLength(1)),
-    reviewId: optional(pipe(string(), minLength(1))),
-  }),
-  strictObject({
-    _tag: picklist(["ThreadState"] as const),
-    threadId: pipe(string(), minLength(1)),
-    state: picklist(["open", "resolved"] as const),
-  }),
-  strictObject({
-    _tag: picklist(["PendingThread"] as const),
-    threadId: pipe(string(), minLength(1)),
-  }),
-  strictObject({
-    _tag: picklist(["DirectSummaryReview"] as const),
-    reviewId: pipe(string(), minLength(1)),
-  }),
-  strictObject({
-    _tag: picklist(["LabelChange"] as const),
-    added: array(string()),
-    removed: array(string()),
-  }),
-  strictObject({
-    _tag: picklist(["AssigneeChange"] as const),
-    added: array(string()),
-    removed: array(string()),
-  }),
-  strictObject({
-    _tag: picklist(["ReviewerChange"] as const),
-    requested: array(string()),
-    removed: array(string()),
-  }),
-  strictObject({
-    _tag: picklist(["DraftStateChange"] as const),
-    draft: boolean(),
-  }),
-]);
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
-  recentWrites: optional(array(recentReviewWriteSchema)),
+  recentWrites: optional(array(recentReviewWriteRecordSchema)),
 });
 const reviewCommitDiffSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
   commitSha: pipe(string(), minLength(7)),
 });
-
-/**
- * The declared return type makes TypeScript reject a schema member without a
- * branch, so a receipt tag added later cannot be silently read as another one.
- */
-function parseRecentReviewWrite(
-  entry: InferOutput<typeof recentReviewWriteSchema>,
-): Result<RecentReviewWrite, "invalid_input"> {
-  switch (entry._tag) {
-    case "Comment":
-      return ok(
-        entry.reviewId === undefined
-          ? { _tag: "Comment", commentId: entry.commentId }
-          : {
-              _tag: "Comment",
-              commentId: entry.commentId,
-              reviewId: entry.reviewId,
-            },
-      );
-    case "ThreadState": {
-      const threadId = parseGitHubThreadId(entry.threadId);
-      return threadId._tag === "err"
-        ? err("invalid_input")
-        : ok({
-            _tag: "ThreadState",
-            threadId: threadId.value,
-            state: entry.state,
-          });
-    }
-    case "PendingThread": {
-      const threadId = parseGitHubThreadId(entry.threadId);
-      return threadId._tag === "err"
-        ? err("invalid_input")
-        : ok({ _tag: "PendingThread", threadId: threadId.value });
-    }
-    case "DirectSummaryReview":
-      return ok({ _tag: "DirectSummaryReview", reviewId: entry.reviewId });
-    case "LabelChange":
-      return ok({
-        _tag: "LabelChange",
-        added: entry.added,
-        removed: entry.removed,
-      });
-    case "AssigneeChange":
-      return ok({
-        _tag: "AssigneeChange",
-        added: entry.added,
-        removed: entry.removed,
-      });
-    case "ReviewerChange":
-      return ok({
-        _tag: "ReviewerChange",
-        requested: entry.requested,
-        removed: entry.removed,
-      });
-    case "DraftStateChange":
-      return ok({ _tag: "DraftStateChange", draft: entry.draft });
-  }
-}
