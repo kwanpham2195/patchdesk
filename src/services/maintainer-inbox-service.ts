@@ -13,6 +13,7 @@ import type { InsightStore } from "../adapters/storage/insight-store";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import { resolveAvatarDataUris } from "../adapters/storage/avatar-cache-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewStore } from "../adapters/storage/review-store";
 import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
 import { definedProps } from "../domain/defined-props";
 import type { PullRequestSummary } from "../domain/github-context";
@@ -217,6 +218,11 @@ export class MaintainerInboxService {
      * no `authorAvatarDataUri` and the renderer draws the initials badge.
      */
     private readonly avatars?: AvatarRailDependencies,
+    /**
+     * Optional in the same way: without it a row carries no last-looked head
+     * and never shows that new commits arrived.
+     */
+    private readonly reviews?: Pick<ReviewStore, "load">,
   ) {}
 
   /**
@@ -442,16 +448,15 @@ export class MaintainerInboxService {
     const entries = await Promise.all(
       searched.value.entries.map(
         async ({ cursor: entryCursor, pullRequest }) => {
-          const latestReview = latestReviewFor(pullRequest.summary, sessions);
-          const scope = await readCurrentHeadScope(
-            pullRequest.summary,
-            sessions,
-          );
-          const insights = await readInsightReadiness(
-            pullRequest.summary,
-            sessions,
-            this.insights,
-          );
+          const [latestReview, scope, insights] = await Promise.all([
+            withLastLookedHead(
+              latestReviewFor(pullRequest.summary, sessions),
+              profile.id,
+              this.reviews,
+            ),
+            readCurrentHeadScope(pullRequest.summary, sessions),
+            readInsightReadiness(pullRequest.summary, sessions, this.insights),
+          ]);
           const scopeField = scope === undefined ? {} : { scope };
           const input = {
             summary: pullRequest.summary,
@@ -828,6 +833,22 @@ function latestReviewFor(
         matchesCurrentHead: session.key.headSha === summary.headSha,
       };
 }
+/**
+ * Adds the head the maintainer last left the Review at. An unreadable Review
+ * only costs the row its new-commits mark, so it reads as no cursor.
+ */
+async function withLastLookedHead(
+  latestReview: InboxReviewSummary | undefined,
+  profileId: WorkspaceProfileId,
+  reviews: Pick<ReviewStore, "load"> | undefined,
+): Promise<InboxReviewSummary | undefined> {
+  if (latestReview === undefined || reviews === undefined) return latestReview;
+  const review = await reviews.load(profileId, latestReview.reviewId);
+  const lastLookedHeadSha =
+    review._tag === "ok" ? review.value.lastLooked?.headSha : undefined;
+  return { ...latestReview, ...definedProps({ lastLookedHeadSha }) };
+}
+
 function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
   return { ...row, dataFreshness: "cached" };
 }

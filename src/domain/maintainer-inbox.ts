@@ -290,6 +290,8 @@ export type InboxReviewSummary = {
   readonly reviewedHeadSha: GitSha;
   readonly updatedAt: IsoTimestamp;
   readonly matchesCurrentHead: boolean;
+  /** The head the maintainer last left this Review at; absent until they first leave it. */
+  readonly lastLookedHeadSha?: GitSha;
 };
 
 /**
@@ -345,12 +347,28 @@ export type MaintainerInboxRow = {
    */
   readonly insights?: InboxInsightReadiness;
   readonly latestReview?: InboxReviewSummary;
+  /** New commits arrived since the maintainer last left this Review; false before they first leave it. */
+  readonly headMovedSinceLastLooked: boolean;
   readonly labels: ReadonlyArray<GitHubLabel>;
   readonly labelCount?: number;
   readonly categories: ReadonlyArray<InboxCategory>;
   readonly recommendedAction: InboxRecommendedAction;
   readonly dataFreshness: InboxDataFreshness;
 };
+
+/**
+ * Whether new commits arrived since the maintainer last left the Review. Only
+ * the head counts (#231): comment and review marks belong to Conversation.
+ */
+export function headMovedSinceLastLooked(
+  review: InboxReviewSummary | undefined,
+  currentHeadSha: GitSha,
+): boolean {
+  return (
+    review?.lastLookedHeadSha !== undefined &&
+    review.lastLookedHeadSha !== currentHeadSha
+  );
+}
 
 /** Project one PR into overlapping queue categories and one truthful primary action. */
 export function projectMaintainerInboxRow(input: {
@@ -421,6 +439,10 @@ export function projectMaintainerInboxRow(input: {
     ...scopeField,
     ...definedProps({ insights: input.insights }),
     ...latestReviewField,
+    headMovedSinceLastLooked: headMovedSinceLastLooked(
+      review,
+      input.summary.headSha,
+    ),
     labels: input.summary.labels,
     ...labelCountField,
     categories,
@@ -470,6 +492,7 @@ function projectMergedMaintainerInboxRow(input: {
     mergeability: input.summary.mergeability,
     ...scopeField,
     ...definedProps({ insights: input.insights }),
+    headMovedSinceLastLooked: false,
     labels: input.summary.labels,
     ...labelCountField,
     categories: [],

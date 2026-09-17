@@ -8,6 +8,7 @@ import type { ProfileStore } from "../adapters/storage/profile-store";
 import { MaintainerInboxCacheStore } from "../adapters/storage/maintainer-inbox-cache-store";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import { ReviewStore } from "../adapters/storage/review-store";
 import {
   deriveWorkspaceProfileId,
   parseAbsolutePath,
@@ -128,6 +129,7 @@ export class DashboardController {
       },
       new InsightStore(paths),
       avatars,
+      new ReviewStore(paths),
     );
     this.inboxRefresh = new InboxRefreshCoordinator(this.inbox);
   }

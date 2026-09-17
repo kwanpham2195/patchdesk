@@ -91,6 +91,16 @@ export function InboxRowItem({
                   <span className="sr-only">Watched</span>
                 </span>
               ) : null}
+              {row.headMovedSinceLastLooked === true ? (
+                <Badge
+                  variant="outline"
+                  className="h-4 border-primary/40 px-1 text-[10px] text-primary"
+                  aria-label="New commits since you last looked"
+                  title="New commits since you last looked"
+                >
+                  New
+                </Badge>
+              ) : null}
               {row.remoteState === "merged" ? (
                 <Badge variant="secondary" className="h-4 px-1 text-[10px]">
                   Merged

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { definedProps } from "../../src/domain/defined-props";
 import { parseGitSha } from "../../src/domain/ids";
 import {
   composeInboxSearchQuery,
@@ -109,6 +110,33 @@ describe("maintainer inbox", () => {
       reviewId,
     });
     expect(row.categories).toContain("updated_since_review");
+  });
+
+  it("marks new commits only when the head moved past the last-looked cursor", () => {
+    const latestReview = {
+      reviewId,
+      reviewedHeadSha: previousSha.value,
+      updatedAt: reviewTimestamp,
+      matchesCurrentHead: false,
+    };
+    const cases = [
+      { lastLookedHeadSha: previousSha.value, moved: true },
+      { lastLookedHeadSha: sha.value, moved: false },
+      { lastLookedHeadSha: undefined, moved: false },
+    ];
+    for (const { lastLookedHeadSha, moved } of cases)
+      expect(
+        projectMaintainerInboxRow({
+          ...input,
+          latestReview: {
+            ...latestReview,
+            ...definedProps({ lastLookedHeadSha }),
+          },
+        }).headMovedSinceLastLooked,
+      ).toBe(moved);
+    expect(projectMaintainerInboxRow(input).headMovedSinceLastLooked).toBe(
+      false,
+    );
   });
 
   it("keeps Open Review as the one action for a ready-to-merge matching Review", () => {

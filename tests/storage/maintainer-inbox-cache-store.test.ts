@@ -10,6 +10,7 @@ import {
 } from "../../src/adapters/storage/maintainer-inbox-cache-store";
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import {
+  createReviewId,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -56,6 +57,8 @@ async function fixtureStore(): Promise<{
 
 const updatedAt = must(parseIsoTimestamp("2026-07-18T00:00:00.000Z"));
 const sha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
+const earlierSha = must(parseGitSha("1".repeat(40)));
+const cfw = must(parseWorkspaceProfileId("cfw"));
 const repository = {
   host: must(parseGitHubHost("github.com")),
   owner: must(parseGitHubOwner("centraldigital")),
@@ -88,7 +91,19 @@ describe("maintainer inbox cache store", () => {
           checks: { overall: "passing" as const, checks: [] },
           reviewState: "none" as const,
           mergeability: "unknown" as const,
+          latestReview: {
+            reviewId: createReviewId({
+              profileId: cfw,
+              ...repository,
+              prNumber: must(parsePullRequestNumber(42)),
+            }),
+            reviewedHeadSha: sha,
+            updatedAt,
+            matchesCurrentHead: true,
+            lastLookedHeadSha: earlierSha,
+          },
           labels: [],
+          headMovedSinceLastLooked: true,
           categories: ["updated_since_review"] as const,
           recommendedAction: {
             kind: "run_review" as const,
@@ -134,6 +149,7 @@ describe("maintainer inbox cache store", () => {
       reviewState: "none" as const,
       mergeability: "unknown" as const,
       labels: [],
+      headMovedSinceLastLooked: false,
       categories: [] as const,
       recommendedAction: { kind: "run_review" as const },
       dataFreshness: "fresh" as const,
@@ -192,6 +208,7 @@ describe("maintainer inbox cache store", () => {
             walkthrough: "ready" as const,
           },
           labels: [],
+          headMovedSinceLastLooked: false,
           categories: [],
           recommendedAction: {
             kind: "run_review" as const,
@@ -356,6 +373,7 @@ describe("maintainer inbox cache store", () => {
           mergeability: "unknown" as const,
           labels: [{ name: "bug", color: "d73a4a" }],
           labelCount: 5,
+          headMovedSinceLastLooked: false,
           categories: ["updated_since_review"] as const,
           recommendedAction: {
             kind: "run_review" as const,
@@ -423,7 +441,7 @@ describe("maintainer inbox cache store", () => {
 
     expect(parsed).toMatchObject({
       _tag: "ok",
-      value: { rows: [{ labels: [] }] },
+      value: { rows: [{ labels: [], headMovedSinceLastLooked: false }] },
     });
     if (parsed._tag === "ok")
       expect(parsed.value.rows[0]).not.toHaveProperty("labelCount");
@@ -590,6 +608,7 @@ describe("maintainer inbox cache store", () => {
           reviewState: "none" as const,
           mergeability: "unknown" as const,
           labels: [],
+          headMovedSinceLastLooked: false,
           categories: [],
           recommendedAction: {
             kind: "run_review" as const,
@@ -654,6 +673,7 @@ describe("maintainer inbox cache store", () => {
           reviewState: "none" as const,
           mergeability: "unknown" as const,
           labels: [],
+          headMovedSinceLastLooked: false,
           categories: [],
           recommendedAction: {
             kind: "run_review" as const,
