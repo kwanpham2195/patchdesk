@@ -114,7 +114,11 @@ export function WatchedPullRequestsProvider({
     changed?.profileId === profileId ? changed.value : undefined;
 
   useEffect(() => {
-    if (profileId === "" || window.patchdesk === undefined) return;
+    if (
+      profileId === "" ||
+      window.patchdesk?.onWatchedPullRequestChange === undefined
+    )
+      return;
     return window.patchdesk.onWatchedPullRequestChange((changedProfileId) => {
       if (changedProfileId === profileId)
         setChanged({ profileId, value: new Date().toISOString() });
