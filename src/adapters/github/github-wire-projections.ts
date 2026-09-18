@@ -6,15 +6,12 @@ import type {
   AssignableUser,
   CheckRunSummary,
   CheckSummary,
-  ConversationEntry,
   GitHubAppliedRulesetEvidence,
   GitHubAppliedRulesetPullRequestParameters,
   GitHubClassicBranchProtectionEvidence,
   GitHubComment,
-  GitHubComments,
   GitHubMergePolicyEvidence,
   GitHubMergeStateStatus,
-  GitHubPublishedFeedback,
   MergePolicySnapshot,
   PullRequestReviewEntry,
   PullRequestReviewerListing,
@@ -35,7 +32,7 @@ import {
 } from "../../domain/ids";
 import { definedProps } from "../../domain/defined-props";
 import type { PullRequestRef } from "../../domain/pull-request";
-import { casesHandled, err, ok, type Result } from "../../domain/result";
+import { err, ok, type Result } from "../../domain/result";
 import type { PendingReviewAnchor } from "../../domain/pending-review";
 import type { GitHubReviewEvent } from "../../domain/pending-review";
 import type { DirectSummaryReviewReceipt } from "../../domain/direct-summary-review";
@@ -911,61 +908,4 @@ export function parseDirectSummaryReceipt(
         headSha: headSha.value,
         submittedAt: submittedAt.value,
       };
-}
-
-/**
- * Orders one Conversation timeline: every published review summary, every
- * published review comment, every plain issue comment, and the review threads
- * GitHub returned with no code anchor. Threads that DO carry a `location` are deliberately absent —
- * they belong to `Conversation.inline` and are placed against the diff
- * instead (ADR 0028, "Show only conversation threads the diff can place"), so
- * the caller owns that split and this function owns the timeline.
- *
- * The real adapter and `FakeGitHubAdapter` share this ordering so a fixture
- * timeline cannot drift from the one GitHub produces.
- */
-export function assembleConversationEntries(
-  feedback: GitHubPublishedFeedback,
-  comments: GitHubComments,
-): ReadonlyArray<ConversationEntry> {
-  const entries: ConversationEntry[] = [
-    ...feedback.reviews.map((review) => ({
-      _tag: "ReviewSummary" as const,
-      review,
-    })),
-    ...feedback.comments.map((comment) => ({
-      _tag: "ReviewComment" as const,
-      comment,
-    })),
-    ...feedback.issueComments.map((comment) => ({
-      _tag: "IssueComment" as const,
-      comment,
-    })),
-    ...comments.threads
-      .filter((thread) => thread.location === undefined)
-      .map((thread) => ({ _tag: "GeneralThread" as const, thread })),
-  ];
-  return entries.sort((a, b) =>
-    conversationEntryOrder(a).localeCompare(conversationEntryOrder(b)),
-  );
-}
-
-/**
- * The timestamp each entry kind is stamped with; an undated entry sorts as
- * `""`, ahead of everything dated.
- */
-function conversationEntryOrder(entry: ConversationEntry): string {
-  switch (entry._tag) {
-    case "ReviewSummary":
-      return entry.review.submittedAt;
-    case "IssueComment":
-    case "ReviewComment":
-      return entry.comment.createdAt;
-    case "GeneralThread":
-      return entry.thread.comments[0]?.createdAt ?? "";
-    case "PrDescription":
-      return "";
-    default:
-      return casesHandled(entry);
-  }
 }

@@ -1,4 +1,8 @@
 import type { GitHubReader } from "../adapters/github/github-adapter";
+import {
+  assembleConversation,
+  noPublishedFeedback,
+} from "../adapters/github/github-conversation-assembly";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
 import type {
@@ -64,7 +68,6 @@ export type ReviewRefreshDependencies = {
     | "getPullRequestComments"
     | "getPullRequestCommits"
     | "getPullRequestChecks"
-    | "loadConversation"
     | "getMergePolicy"
   > &
     Partial<
@@ -166,7 +169,6 @@ export class ReviewRefreshService {
       comments,
       commits,
       checks,
-      conversation,
       mergePolicy,
       publishedFeedback,
       policyEvidence,
@@ -183,10 +185,6 @@ export class ReviewRefreshService {
         profile,
         pr: pullRequest,
         headSha: current.value.headSha,
-      }),
-      this.dependencies.github.loadConversation({
-        profile,
-        pr: pullRequest,
       }),
       this.dependencies.github.getMergePolicy({
         profile,
@@ -211,11 +209,17 @@ export class ReviewRefreshService {
       comments._tag === "err" ||
       commits._tag === "err" ||
       checks._tag === "err" ||
-      conversation._tag === "err" ||
       mergePolicy._tag === "err" ||
       publishedFeedback._tag === "err"
     )
       return err({ reason: "github_read" });
+    // The conversation is a projection of reads this batch already made, so it
+    // is assembled here rather than re-fetched through `loadConversation`.
+    const conversation = assembleConversation(
+      current.value.description ?? "",
+      publishedFeedback.value ?? noPublishedFeedback,
+      comments.value,
+    );
     const verified = await this.dependencies.github.getPullRequest({
       profile,
       pr: pullRequest,
@@ -240,7 +244,7 @@ export class ReviewRefreshService {
       comments: comments.value,
       commits: commits.value,
       checks: checks.value,
-      conversation: conversation.value,
+      conversation,
       mergePolicy: mergePolicy.value,
       mergeEvidence: toMergeEvidence(
         mergePolicy.value,

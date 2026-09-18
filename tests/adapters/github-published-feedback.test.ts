@@ -8,7 +8,7 @@ import {
 } from "../../src/adapters/github/command-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { type GitHubCredentials } from "../../src/adapters/github/github-credentials";
-import { assembleConversationEntries } from "../../src/adapters/github/github-wire-projections";
+import { assembleConversationEntries } from "../../src/adapters/github/github-conversation-assembly";
 import type {
   GitHubComments,
   GitHubPublishedFeedback,

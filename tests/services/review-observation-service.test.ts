@@ -377,6 +377,9 @@ function fakeGitHub(input: { readonly terminal: boolean }) {
   const current = {
     ...snapshot({ title: "new" }).pullRequest,
     isOpen: !input.terminal,
+    // The observation assembles the Conversation from this read, so the
+    // description it carries is the one the stored snapshot must show.
+    description: "current description",
   };
   return {
     async getPullRequest() {
@@ -387,6 +390,12 @@ function fakeGitHub(input: { readonly terminal: boolean }) {
     },
     async getPullRequestComments() {
       return ok({ threads: [], complete: true });
+    },
+    // Present but poisoned: one observation assembles the Conversation from
+    // the reads it already made, and `loadConversation` would re-run all of
+    // them (nine more gh calls, see github-conversation-reads.test.ts).
+    async loadConversation() {
+      throw new Error("loadConversation re-reads what the cycle already holds");
     },
     async getPullRequestChecks() {
       return ok({ overall: "passing" as const, checks: [] });
@@ -400,15 +409,6 @@ function fakeGitHub(input: { readonly terminal: boolean }) {
         mergeability: "mergeable" as const,
         reviewDecision: "approved" as const,
         checks: { overall: "passing" as const, checks: [] },
-        complete: true,
-      });
-    },
-    async loadConversation() {
-      return ok({
-        prDescription: "current description",
-        entries: [
-          { _tag: "PrDescription" as const, body: "current description" },
-        ],
         complete: true,
       });
     },
