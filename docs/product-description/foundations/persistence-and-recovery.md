@@ -6,7 +6,7 @@ Patchdesk separates configuration, durable Review data, disposable cache, and lo
 
 ## The simple case
 
-Profiles and global preferences live under `~/.config/patchdesk`. Reviews, sessions, retained Insights, write intents, diagnostics, prepared artifacts, and logs live under `~/.local/share/patchdesk`. Re-creatable inbox data, avatars, and represented-review worktrees live under `~/.cache/patchdesk`.
+Profiles and global preferences live under `~/.config/patchdesk`. Reviews, including each pull request's title and the time it was last opened, sessions, retained Insights, write intents, diagnostics, prepared artifacts, and logs live under `~/.local/share/patchdesk`. Re-creatable inbox data, avatars, and represented-review worktrees live under `~/.cache/patchdesk`.
 
 Patchdesk writes one complete replacement file, syncs it, and renames it over the previous value. Readers validate the JSON and its domain shape before the value can affect the product.
 
@@ -31,7 +31,11 @@ stateDiagram-v2
 
 Startup creates the local API, recovers Insight run state, recovers preparation journals and Review state through their owners, sweeps retained storage, and opens the window only after the local service passes its health check. If the local service cannot start, Patchdesk shows a native error and exits without beginning a Review or GitHub write.
 
+A profile's durable data also holds the pull requests it watches, as one file per profile carrying the snapshot each check compares against, and each Review record carries the head and newest Conversation entry timestamp the maintainer last saw. Both are ordinary local records: they are validated on read and never reach the renderer as trusted state when invalid.
+
 Missing configuration is a normal first-run state. Missing optional Review records can be an empty state. Invalid JSON, invalid domain values, sensitive content, or inconsistent artifacts are failures and never become rendered product state.
+
+Listing a workspace's Reviews skips a record it cannot read and counts it, so one corrupt file no longer empties the whole list. The [Visited pull requests column](visited-pull-requests.md) shows the readable rows, and the count goes to a redacted Diagnostic. Insight recovery at startup does the same: it recovers the readable Reviews and records a listing failure for the rest.
 
 ### Leave unchanged
 
@@ -120,15 +124,16 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 - Corrupt JSON and structurally invalid values are different storage failures but neither reaches the renderer as trusted state.
 - A crash-left active Insight with no live child becomes retryable failed, not permanently running.
 - An open pull request does not prove an uncertain merge failed; the merge operation remains locked.
-- Clear cache keeps durable Review history. Clear local review data keeps active Reviews, running Insights, locked writes, pending merges, and diagnostics.
+- Clear cache keeps durable Review history. Clear local review data keeps active Reviews, running Insights, locked writes, pending merges, and diagnostics. [Data and recovery](../settings/data-and-recovery.md) owns their copy and what the screen does afterwards.
 - The retention sweep targets terminal or orphaned sessions older than 14 days and quarantine entries older than 30 days. Per-item failure does not fail startup.
+- For a terminal Review, the sweep removes the whole Review record, with its Insights and journals, before its session. Opening that pull request again starts a fresh Review. If the record has an unreconciled GitHub write operation, or its removal fails, the sweep keeps both and tries again next time. An orphaned session is removed on its own.
+- A Review record written by this build cannot be read by an older build, because it carries the title and last-open fields.
 
 ## Open questions and verification
 
-- Live desktop verification is pending because this task did not run with the required herdr dev and log panes.
-- Confirm the exact Settings copy and post-action destination after Clear cache and Clear local review data succeed or fail.
+- A read-only live pass on 2026-09-14 saw retention sweep milestones in Review activity reporting `sweep complete: 0 sessions, 0 quarantine entries removed`. Nothing was old enough to remove, so record removal and unreadable-record skipping were not observed.
 - Confirm startup presentation after an interrupted preparation, orphaned Insight run, uncertain GitHub write, corrupt session, and corrupt Review.
 - Confirm that cache clearing re-creates represented-review worktrees when an older Review opens again and clearly reports any missing local checkout.
 - Confirm native Trash behavior and recovery options for quarantined entries; the current Settings surface does not expose every lower-level storage-management action.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

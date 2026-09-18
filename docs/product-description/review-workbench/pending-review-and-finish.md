@@ -6,7 +6,7 @@ The pending-review flow collects one or more inline comments in GitHub's unpubli
 
 ## The simple case
 
-The maintainer chooses Start a review on the first inline comment, adds more comments with Add to review, then chooses Finish review. The dialog lists every pending comment and its location, focuses the optional summary, defaults the decision to Comment, and submits once. GitHub publishes the review, Patchdesk records the created or discarded thread IDs for reconciliation, closes the dialog, and refreshes review state and merge readiness.
+The maintainer chooses Start a review on the first inline comment, adds more comments with Add review comment, then chooses Finish review · N in the header, where N counts the pending comments. The dialog lists every pending comment and its location under Pending comments · N, focuses the optional Summary, defaults the decision to Comment, and submits once with Submit review. GitHub publishes the review, Patchdesk records the created or discarded thread IDs for reconciliation, closes the dialog, and refreshes review state and merge readiness.
 
 ## The task, event by event
 
@@ -15,7 +15,7 @@ stateDiagram-v2
     [*] --> none : no pending review
     none --> starting : Start a review
     starting --> pending : exact projection with first comment
-    pending --> adding : Add to review
+    pending --> adding : Add review comment
     adding --> pending : exact cumulative projection
     pending --> finishing : Finish review
     finishing --> submitted : Submit review confirmed
@@ -26,9 +26,9 @@ stateDiagram-v2
 
 ### Arrive
 
-With no pending review, the header offers Start a review and inline composers offer direct Comment now or Start a review. With a pending review, the header shows Finish review and its comment count; inline composers offer Add to review. If pending-review state is unavailable, Patchdesk shows a recovery banner instead of pretending there is none.
+With no pending review, the header offers Start a review and inline composers offer Start a review or Comment now. With a pending review, the header shows Finish review · N, and inline composers offer Add review comment. If pending-review state is unavailable, Patchdesk shows a recovery banner instead of pretending there is none, and inline composers disable their text field and say "Pending review state is unavailable. Check GitHub again or refresh before commenting."
 
-Finish review lists the pending ledger with path, line or range, side, and comment body. The Summary is modal-local and sent only with Submit. Decision labels are human-readable while the request uses GitHub's `COMMENT`, `APPROVE`, or `REQUEST_CHANGES` values.
+Finish review says "Submit your pending review comments to GitHub. The summary below is sent only when you submit." It lists the pending ledger with path, line or range, side, and comment body, and repeats the count as an "N pending" badge beside Decision. The Summary is modal-local and sent only with Submit review. Decision labels are human-readable while the request uses GitHub's `COMMENT`, `APPROVE`, or `REQUEST_CHANGES` values.
 
 ### Leave unchanged
 
@@ -50,7 +50,7 @@ Every command passes through the shared detect-before-write gate. Patchdesk acce
 
 Start or Add success records only newly created thread IDs and renders the returned cumulative pending review. Submit success expects pending state `none`, closes the dialog, journals the published review evidence, and observes the Review so checks and merge readiness can reconcile. Discard success expects `none` and journals the formerly pending thread IDs so stale reads cannot resurrect them.
 
-A confirmed rejection leaves the dialog or composer retryable with bounded context. When Patchdesk cannot verify the pending review against the current diff, it sends nothing and says to refresh, then try again. A malformed success or transport-unknown outcome changes pending state to recovery required. Check GitHub again can recover the pending projection and reload the canonical Review; a reload Patchdesk cannot read reports that it could not check GitHub and to try again. If Patchdesk finds a pending review but cannot identify the exact Finding comment, it directs the maintainer to inspect or discard it on GitHub.
+A confirmed rejection leaves the dialog or composer retryable with bounded context. When Patchdesk cannot verify the pending review against the current diff, it sends nothing and says to refresh, then try again. In Finish review, a failed submit says "Patchdesk could not finish this review. Check GitHub again or refresh." and a failed discard says "Patchdesk could not discard this review. Check GitHub again or refresh.", unless the workbench supplies a more specific message; either failure offers Check GitHub again when recovery is available, and a failed discard disarms Discard review. A malformed success or transport-unknown outcome changes pending state to recovery required. Check GitHub again can recover the pending projection and reload the canonical Review; a reload Patchdesk cannot read reports that it could not check GitHub and to try again. If Patchdesk finds a pending review but cannot identify the exact Finding comment, it directs the maintainer to inspect or discard it on GitHub.
 
 ## Variants
 
@@ -99,6 +99,8 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 - Start a review from the header opens the summary dialog directly when no pending review exists; it does not open an inline composer.
 - An Analysis summary seeds only Summary and keeps Comment selected.
 - Discard stays in a separate footer group and requires Confirm discard.
+- The Finish review ledger shows each comment body as plain text. Inline pending-review cards in the Diff render the same bodies as Markdown, with images and links, by the rules [Conversation](conversation-and-metadata.md#arrive) describes.
+- Start a review in the header is disabled when the summary dialog is not available for the Review.
 - A malformed successful response produces recovery required rather than assuming the write failed or succeeded.
 - Reverse settlement of cumulative Add commands cannot replace a newer projection with one missing its target.
 - Submit can be confirmed even if the later observation refresh fails; Patchdesk must not resubmit.
@@ -107,9 +109,11 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 
 ## Open questions and verification
 
-- Live desktop verification is pending. Confirm focus, scroll, wrapping, and error presentation in Finish review at narrow window sizes.
+- Not checked live on 2026-09-14: every step past arming the inline composer. No Review in the workspace had a pending review, and creating one is a GitHub write.
+- Confirm focus, scroll, wrapping, and error presentation in Finish review at narrow window sizes.
+- Confirm that the armed Discard state reads as destructive at a glance: Confirm discard uses the destructive button style, while the unarmed Discard review is a ghost button.
 - Confirm the user-visible Start a review behavior from the header when there are no inline comments.
 - Confirm app close and quit behavior while a pending-review command is in flight.
 - Confirm how GitHub permission restrictions for Approve and Request changes are explained before or after submission.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.

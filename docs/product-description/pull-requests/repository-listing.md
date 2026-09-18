@@ -10,7 +10,7 @@ The maintainer scans the rows from GitHub. A row names its pull request number a
 
 The Insights line shows one chip per Insight, Brief, Analysis, and Walkthrough, reading Ready when Patchdesk retains that Insight for the row's current head, Outdated when it is retained for an earlier head, and Not run otherwise. Beside each chip, Request Brief, Request Analysis, or Request Walkthrough starts that Insight with the profile's saved Review defaults in one click and stays on the list. A row that has never been opened first has its Review prepared in the background, which reads GitHub and writes nothing there; the button reads Preparing…, then Requesting…, then Running… until the run settles, and the listing is re-read so the chip updates. A kind whose defaults are not saved keeps its button disabled with a pointer to Settings > Review.
 
-Below the Insights line, **Watch** asks Patchdesk to watch the pull request (ADR 0045); the button then reads **Unwatch**. A watched row carries an eye mark beside its badges, and so does its row in the column of pull requests you have opened. The Review header offers the same toggle on an open Review, and the ⌘K palette offers Watch or Unwatch for a pull request reference typed into it. Watching reads the pull request once from GitHub and changes nothing there. A workspace watches at most 20 pull requests; a 21st Watch is refused with that limit named beside the button.
+Below the Insights line, **Watch** asks Patchdesk to watch the pull request (ADR 0045); the button then reads **Unwatch**. A watched row carries an eye mark beside its badges, and so does its row in the [Visited pull requests](../foundations/visited-pull-requests.md) column. The Review header offers the same toggle on an open Review, and the ⌘K palette offers Watch or Unwatch for a pull request reference typed into it. Watching reads the pull request once from GitHub and changes nothing there. A workspace watches at most 20 pull requests; a 21st Watch is refused with that limit named beside the button.
 
 While Patchdesk runs it checks watched pull requests on the interval set in Settings → General → Notifications and posts one macOS notification per change: a new comment or review, a changed review decision, changed checks, new commits, or the pull request merging or closing, after which it is no longer watched. A change also puts a dot on the **GitHub:** freshness badge until the next refresh; the rows themselves still change only when you refresh. No notification is posted while the pull request's Review is open in the workbench. Clicking one opens the pull request the way pasting it into the palette does.
 
@@ -52,7 +52,7 @@ The row's indicators remain read-only facts from the settled listing. A cached l
 
 ### Settle
 
-A successful opening enters the keyed Review workbench. A failure leaves the row selected, clears its busy state, and shows `Could not open review` with the local reason. A saved-review load failure can fall back to opening by the row's Pull request identity, which heals a missing or obsolete local record.
+A successful opening enters the keyed Review workbench. A failure leaves the row selected, clears its busy state, and shows `Could not open review` with the local reason. [Opening a Review](opening-a-review.md#settle) owns the other outcomes, including the quiet launch restore. A saved-review load failure can fall back to opening by the row's Pull request identity, which heals a missing or obsolete local record.
 
 Merged rows remain readable through the terminal-only route. They do not enter active-work categories, and the listing does not turn them into merge or Review-write targets.
 
@@ -88,7 +88,7 @@ After a row-open failure, the row remains inspectable and can be activated again
 
 **Review revision and freshness.** Row freshness is a listing fact. The Review workbench owns represented revisions and refresh transitions.
 
-**Local persistence and recovery.** Selected row and inspector state are local preferences. Review sessions and preparation artifacts are durable only after the opening workflow commits them.
+**Local persistence and recovery.** Selected row and inspector state are local preferences. Review sessions and preparation artifacts are durable only after the opening workflow commits them. A row opened successfully appears at the top of the [Visited pull requests column](../foundations/visited-pull-requests.md), which reopens that Review without its listing row.
 
 **GitHub permissions and write authority.** Listing rows are read-only. Checks and mergeability inform indicators but never authorize a write.
 
@@ -123,10 +123,10 @@ After a row-open failure, the row remains inspectable and can be activated again
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- Live pass on 2026-09-14 confirmed the inspector's Insights line, its Request Brief, Request Analysis, and Request Walkthrough buttons, and the Scope gauge with bucket counts. No Request button was pressed.
 - Confirm row selection, inspector focus, and Arrow key wrapping in a real window.
 - Confirm the exact visible behavior when a selected row disappears during refresh.
 - Confirm which cached listing actions remain available in the running workbench.
 - Confirm the title hover affordance, double-click, and Enter each open exactly once in a real window.
 
-Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`; scoped select-then-open row and single Open action behavior updated through `838a47e`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.

@@ -10,6 +10,8 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Review workbench.** The persistent screen where a maintainer conducts a *Review*. It shows represented GitHub state, the pull-request diff and conversation, review controls, and optional *Insights*.
 
+**Visited pull requests column.** The persistent column left of the main content on the Pull requests screen, on every Review workbench, and beside workspace setup. It lists up to 20 pull requests the maintainer has opened in the active workspace, most recently opened first, read from local Review records with no GitHub request. Each entry is a Visited row: a click, Enter, or Space opens that Review workbench with no select step, and the row of the Review already on screen is highlighted and does nothing. The titlebar's first control collapses and expands the column; that choice is one setting on this machine, shared by every workspace.
+
 **Settings.** A global overlay above the current screen. It has General, Workspace, Review, Data & recovery, and Logs sections and returns focus to the control that opened it when it closes normally.
 
 **Local API.** The authenticated loopback boundary between Patchdesk's sandboxed window and its main process. The maintainer does not call it directly; visible actions in the window use it to read local state, run tools, and request GitHub operations.
@@ -70,6 +72,22 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Terminal remote state.** A Review state in which GitHub reports the pull request merged or closed. Patchdesk keeps the Review readable and stops further Review and merge writes.
 
+## Reading the Review workbench
+
+**PR overview.** The drawer on the right of the Review workbench, titled "PR overview", that both the Checks and Merge status controls in the Review header open. Its collapsible rows are Revision, Checks, Review status, and Merge readiness, and Merge readiness holds the merge command. Closing it returns focus to the control that opened it.
+
+**Browse.** The Diff navigator's first tab, listing the displayed patch's changed files as a tree. A Scope filter narrows it; the Commits and Threads tabs beside it stay complete.
+
+**File display mode.** The diff toolbar choice between All files, which draws every file of the displayed patch in one scrolling pane, and Selected, which draws only the selected file. The default is All files, and the choice is saved per workspace profile with the View options. File, hunk, and unresolved-comment keyboard commands work only in All files.
+
+**Scope bucket.** One of the five groups a changed file falls into by its path alone: Core, Tests, Generated, Docs, or Config. Every changed file lands in exactly one bucket.
+
+**Scope filter.** The narrowing of Browse and the diff pane to one Scope bucket, chosen from the Scope card or the diff toolbar's Scope picker. Choosing the same bucket on the Scope card, All files in the picker, or the Commits tab clears it. It is not saved with the workbench position.
+
+**Finding badge.** The count on a Browse row and in a diff file header of how many mapped Findings in the current Analysis cite that file. Its tone follows the most severe of them: destructive for P0 and P1, warning for P2, muted for P3.
+
+**Finding card.** A mapped Finding drawn at its line in the diff, with its severity, title, explanation, and Open in Analysis. It appears only while the Analysis is current.
+
 ## Review content and GitHub writes
 
 **Conversation.** The chronological PR description, issue comments, review summaries, and general conversation threads that GitHub shows for the pull request. It is GitHub-owned and separate from the viewer's pending review.
@@ -98,7 +116,31 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Insight run.** One queued, running, completed, failed, cancelled, or superseded attempt to produce an Insight for a represented revision.
 
-**Brief.** The latest successful answer to the structure of a change — its flow, ownership, and where to start reading. Its blocks are Flow, Shape, Start here, and Reach.
+**Insight run dialog.** The dialog that Generate, Regenerate, Try again, and Run for latest revision open before any Insight run starts. It has Provider, Model, and Reasoning controls, a confirmation line naming what will receive the prepared pull-request artifacts, and Start run.
+
+**Brief.** The latest successful answer to the structure of a change — its flow, ownership, and where to start reading. Its blocks are Flow, Shape, Start here, and Reach, with a Provenance card beside them.
+
+**Flow.** The Brief block of up to three diff-styled views, one per kind: call tree, control flow, and component tree. Each marks steps added, removed, or unchanged, and a changed step can cite the hunk that supports it.
+
+**Shape.** The Brief block that groups the changed files by directory, collapsing a directory past twelve files into a counted remainder.
+
+**Start here.** The Brief card with a lead sentence and an ordered list of files to read first, ending in Open walkthrough or Generate walkthrough.
+
+**Reach.** The Brief block of four rows stating what the change may reach and how each count was produced.
+
+**Provenance card.** The Brief side-column card naming the Revision, when the Brief was Generated, the Provider and model, and whether all Citations were verified. It ends with a Regenerate button.
+
+**Verdict card.** The first card of an Analysis: a verdict badge, a count of Findings needing attention, the CI state, a heading that follows the verdict, the generated summary, and Finish review when finishing with an Analysis summary is allowed.
+
+**Verification checklist.** The Analysis card titled Verification, with one checkbox per generated verification step. Its ticks are held only by the reader on screen and are never saved.
+
+**Lower severity.** The collapsed Analysis disclosure that holds P2 and P3 Findings when the Analysis also has P0 or P1 Findings.
+
+**Docked layout.** The Walkthrough layout it always opens in, with the Insight tab strip, the shared Insight header, and the chapter rail beside the reading surface.
+
+**Focused layout.** The Walkthrough layout that Focus section switches to, hiding the tab strip, header, and chapter rail for one reading column. Exit focus or Escape returns to the Docked layout.
+
+**Support.** The Walkthrough group that holds the changed hunks no section cites, in a collapsed disclosure below the chapters in the chapter rail. Mark Support reviewed records it as read.
 
 **Analysis.** The latest successful review body and evidence-backed Findings produced for a represented revision. The maintainer can dismiss Findings or use current mapped Findings to create GitHub pending-review comments.
 
@@ -106,7 +148,7 @@ The vocabulary used across these documents. When a document uses one of these wo
 
 **Walkthrough.** The latest successful guided explanation of a represented revision. It orders narrative chapters and cited diff hunks without changing GitHub.
 
-**Scope gauge.** The deterministic bar that groups changed files into core, tests, generated, docs, and config, with added and removed line counts. It needs no model and is absent when the patch cannot be read.
+**Scope gauge.** The deterministic bar that groups changed files into Scope buckets, with added and removed line counts. It needs no model and is absent when the patch cannot be read. The pull-request list and the workbench header show it; on Insights Overview it is the Scope card, whose bucket rows apply a Scope filter.
 
 ## Task state
 
