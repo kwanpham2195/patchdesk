@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  parseArguments,
   summarizeCycles,
   summarizeSpawns,
-} from "../../scripts/gh-spawn-report.mjs";
+} from "../../scripts/gh-spawn-report-lib.mjs";
+import { parseArguments } from "../../scripts/gh-spawn-report.mjs";
 
 /** A `command-spawn` line as `NodeCommandExecutor` writes it: `at` is when the child finished. */
 const spawnLine = (options: {
