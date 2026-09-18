@@ -26,6 +26,7 @@ import {
 } from "../adapters/github/github-credentials";
 import {
   CommandRunner,
+  NodeCommandExecutor,
   type CommandRequest,
 } from "../adapters/github/command-runner";
 import { discoverExecutable } from "../adapters/process/executable-discovery";
@@ -113,7 +114,25 @@ export async function buildLocalApiStores(
 
   const paths = configuration.paths ?? PatchdeskPaths.default();
   const logs = configuration.logs ?? new AppLogService(paths);
-  const commands = new CommandRunner(undefined, (stderr) => {
+  // Every slow operation in this app is a child process; this is the only
+  // place that counts them, so `scripts/gh-spawn-report.mjs` can tell which
+  // endpoints a route spawned and how often it repeated one.
+  const executor = new NodeCommandExecutor(undefined, undefined, (record) => {
+    logs.write({
+      process: "main",
+      level: "debug",
+      topic: "command-spawn",
+      message: `${record.executable} ${record.label}`,
+      meta: {
+        executable: record.executable,
+        label: record.label,
+        durationMs: record.durationMs,
+        outcome: record.outcome,
+        exitCode: record.exitCode,
+      },
+    });
+  });
+  const commands = new CommandRunner(executor, (stderr) => {
     // Fires only when a nonzero-exit command failure matched neither a
     // structured signal nor any regex predicate — genuine gh-wording drift
     // worth a human noticing. AppLogService.write already masks credential
