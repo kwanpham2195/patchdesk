@@ -1,11 +1,8 @@
 import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
-import {
-  commandTimeoutMs,
-  type GhCommandRequest,
-  type GhRequestRunner,
-} from "./gh-request-runner";
+import { type GhRequestRunner } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import {
   type GitHubThreadId,
   type GitSha,
@@ -42,10 +39,10 @@ function wait(ms: number): Promise<void> {
 export class GitHubThreadWriter {
   constructor(private readonly requests: GhRequestRunner) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
@@ -73,22 +70,14 @@ export class GitHubThreadWriter {
     for (const backoffMs of backoffsMs) {
       if (backoffMs > 0) await wait(backoffMs);
       const response = await this.ghJson(profile, {
-        argv: [
-          "gh",
-          "api",
-          "graphql",
-          "--hostname",
-          profile.githubHost,
-          "-f",
-          `query=${confirmCreatedCommentThreadQuery}`,
-          "-F",
-          `owner=${pr.owner}`,
-          "-F",
-          `name=${pr.repo}`,
-          "-F",
-          `number=${pr.number}`,
+        kind: "graphql",
+        host: profile.githubHost,
+        document: confirmCreatedCommentThreadQuery,
+        variables: [
+          { kind: "typed", name: "owner", value: pr.owner },
+          { kind: "typed", name: "name", value: pr.repo },
+          { kind: "typed", name: "number", value: pr.number },
         ],
-        timeoutMs: commandTimeoutMs,
       });
       if (response._tag === "err") return undefined;
       const parsed = v.safeParse(threadResponseSchema, response.value);
@@ -123,23 +112,15 @@ export class GitHubThreadWriter {
     >
   > {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "POST",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "POST",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments`,
+      jsonBody: JSON.stringify({
         body: input.body,
         commit_id: input.headSha,
         ...input.coordinates,
       }),
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
     const created = v.safeParse(createdInlineCommentSchema, response.value);
@@ -195,20 +176,13 @@ export class GitHubThreadWriter {
     >
   > {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${addThreadReplyMutation}`,
-        "-F",
-        `threadId=${input.threadId}`,
-        "-f",
-        `body=${input.body}`,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: addThreadReplyMutation,
+      variables: [
+        { kind: "typed", name: "threadId", value: input.threadId },
+        { kind: "string", name: "body", value: input.body },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
     const replied = v.safeParse(addedThreadReplySchema, response.value);
@@ -238,18 +212,10 @@ export class GitHubThreadWriter {
     readonly state: "resolved" | "open";
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${reviewThreadStateMutation(input.state)}`,
-        "-F",
-        `threadId=${input.threadId}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: reviewThreadStateMutation(input.state),
+      variables: [{ kind: "typed", name: "threadId", value: input.threadId }],
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))
@@ -262,20 +228,13 @@ export class GitHubThreadWriter {
     readonly body: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${updateThreadCommentMutation}`,
-        "-F",
-        `commentId=${input.commentId}`,
-        "-f",
-        `body=${input.body}`,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: updateThreadCommentMutation,
+      variables: [
+        { kind: "typed", name: "commentId", value: input.commentId },
+        { kind: "string", name: "body", value: input.body },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))
@@ -287,18 +246,10 @@ export class GitHubThreadWriter {
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${deleteThreadCommentMutation}`,
-        "-F",
-        `commentId=${input.commentId}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: deleteThreadCommentMutation,
+      variables: [{ kind: "typed", name: "commentId", value: input.commentId }],
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))
@@ -312,19 +263,11 @@ export class GitHubThreadWriter {
     readonly body: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "PATCH",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/comments/${input.commentId}`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({ body: input.body }),
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "PATCH",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/comments/${input.commentId}`,
+      jsonBody: JSON.stringify({ body: input.body }),
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))
@@ -337,16 +280,10 @@ export class GitHubThreadWriter {
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.requests.ghText(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "DELETE",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/comments/${input.commentId}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "DELETE",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/comments/${input.commentId}`,
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))

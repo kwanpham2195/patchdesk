@@ -12,6 +12,7 @@ import type { IsoTimestamp } from "../../domain/ids";
 import { err, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import { parseGitHubTimestamp } from "./github-wire-projections";
+import { ghInvocationFor, type GitHubRequest } from "./github-request";
 import type { MaintainerRateLimit } from "./github-wire-schemas";
 
 export type GitHubReadFailure =
@@ -76,6 +77,11 @@ export type GhCommandRequest = Omit<
   "environment" | "inheritEnvironment"
 >;
 
+/** Every gh call this adapter makes shares the one timeout, so the request never carries it. */
+function ghCommandFor(request: GitHubRequest): GhCommandRequest {
+  return { ...ghInvocationFor(request), timeoutMs: commandTimeoutMs };
+}
+
 /**
  * Runs every gh invocation the GitHub adapter makes, as the profile's own
  * account, and classifies what comes back.
@@ -106,22 +112,22 @@ export class GhRequestRunner {
     ),
   ) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
-    return this.runAsProfileAccount(profile, request, (input) =>
+    return this.runAsProfileAccount(profile, ghCommandFor(request), (input) =>
       this.commands.runJson(input),
     );
   }
 
-  /** Run a gh command that returns text as the profile's configured GitHub account. */
+  /** Run a request that returns text as the profile's configured GitHub account. */
   async ghText(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
-    return this.runAsProfileAccount(profile, request, (input) =>
+    return this.runAsProfileAccount(profile, ghCommandFor(request), (input) =>
       this.commands.runText(input),
     );
   }

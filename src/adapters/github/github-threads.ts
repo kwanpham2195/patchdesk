@@ -2,12 +2,11 @@ import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
 import {
-  commandTimeoutMs,
-  type GhCommandRequest,
   type GhRequestRunner,
   type GitHubReadFailure,
   type GitHubReadOperation,
 } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import type {
   GitHubComment,
   GitHubComments,
@@ -48,10 +47,10 @@ import type { GitHubCommentTarget, GitHubThreadTarget } from "./github-adapter";
 export class GitHubThreadReader {
   constructor(private readonly requests: GhRequestRunner) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
@@ -78,23 +77,17 @@ export class GitHubThreadReader {
       page += 1
     ) {
       const response = await this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "graphql",
-          "--hostname",
-          input.profile.githubHost,
-          "-f",
-          `query=${threadQuery}`,
-          "-F",
-          `owner=${input.pr.owner}`,
-          "-F",
-          `name=${input.pr.repo}`,
-          "-F",
-          `number=${input.pr.number}`,
-          ...(cursor === undefined ? [] : ["-F", `cursor=${cursor}`]),
+        kind: "graphql",
+        host: input.profile.githubHost,
+        document: threadQuery,
+        variables: [
+          { kind: "typed", name: "owner", value: input.pr.owner },
+          { kind: "typed", name: "name", value: input.pr.repo },
+          { kind: "typed", name: "number", value: input.pr.number },
+          ...(cursor === undefined
+            ? []
+            : [{ kind: "typed" as const, name: "cursor", value: cursor }]),
         ],
-        timeoutMs: commandTimeoutMs,
       });
       if (response._tag === "err") {
         return this.commandFailure(
@@ -202,20 +195,13 @@ export class GitHubThreadReader {
     ) {
       if (cursor === null) return { comments, complete: false };
       const response = await this.ghJson(profile, {
-        argv: [
-          "gh",
-          "api",
-          "graphql",
-          "--hostname",
-          profile.githubHost,
-          "-f",
-          `query=${threadCommentsQuery}`,
-          "-F",
-          `id=${threadId}`,
-          "-F",
-          `cursor=${cursor}`,
+        kind: "graphql",
+        host: profile.githubHost,
+        document: threadCommentsQuery,
+        variables: [
+          { kind: "typed", name: "id", value: threadId },
+          { kind: "typed", name: "cursor", value: cursor },
         ],
-        timeoutMs: commandTimeoutMs,
       });
       if (response._tag === "err") return { comments, complete: false };
       const parsed = v.safeParse(threadCommentsResponseSchema, response.value);
@@ -238,18 +224,10 @@ export class GitHubThreadReader {
     readonly threadId: GitHubThreadId;
   }): Promise<Result<GitHubThreadTarget, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${reviewThreadTargetQuery}`,
-        "-F",
-        `id=${input.threadId}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: reviewThreadTargetQuery,
+      variables: [{ kind: "typed", name: "id", value: input.threadId }],
     });
     if (response._tag === "err") return missing("get_thread_target");
     const parsed = v.safeParse(reviewThreadTargetSchema, response.value);
@@ -271,18 +249,10 @@ export class GitHubThreadReader {
     readonly commentId: string;
   }): Promise<Result<GitHubCommentTarget, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${reviewCommentTargetQuery}`,
-        "-F",
-        `id=${input.commentId}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: reviewCommentTargetQuery,
+      variables: [{ kind: "typed", name: "id", value: input.commentId }],
     });
     if (response._tag === "err") return missing("get_comment_target");
     const parsed = v.safeParse(reviewCommentTargetSchema, response.value);

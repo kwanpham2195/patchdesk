@@ -2,12 +2,11 @@ import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
 import {
-  commandTimeoutMs,
-  type GhCommandRequest,
   type GhRequestRunner,
   type GitHubReadFailure,
   type GitHubReadOperation,
 } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import {
   type GitHubLogin,
   type GitHubReviewNodeId,
@@ -58,18 +57,18 @@ import { invalid, writeFailure } from "./github-write-failures";
 export class GitHubPendingReviews {
   constructor(private readonly requests: GhRequestRunner) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
 
-  /** Run a gh command that returns text as the profile's configured GitHub account. */
+  /** Run a request that returns text as the profile's configured GitHub account. */
   private async ghText(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
     return this.requests.ghText(profile, request);
   }
@@ -88,14 +87,9 @@ export class GitHubPendingReviews {
     readonly account: GitHubLogin;
   }): Promise<Result<PendingReviewRead, GitHubReadFailure>> {
     const reviews = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
     });
     if (reviews._tag === "err")
       return this.commandFailure(
@@ -143,22 +137,14 @@ export class GitHubPendingReviews {
     }
 
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${pendingReviewThreadsQuery}`,
-        "-F",
-        `owner=${input.pr.owner}`,
-        "-F",
-        `name=${input.pr.repo}`,
-        "-F",
-        `number=${input.pr.number}`,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: pendingReviewThreadsQuery,
+      variables: [
+        { kind: "typed", name: "owner", value: input.pr.owner },
+        { kind: "typed", name: "name", value: input.pr.repo },
+        { kind: "typed", name: "number", value: input.pr.number },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
       return this.commandFailure(
@@ -242,22 +228,14 @@ export class GitHubPendingReviews {
     readonly body: string;
   }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
     const created = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "POST",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "POST",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
+      jsonBody: JSON.stringify({
         commit_id: input.headSha,
         comments: [pendingReviewComment(input.anchor, input.body)],
       }),
-      timeoutMs: commandTimeoutMs,
     });
     if (created._tag === "err") return err(writeFailure(created.error));
     const receipt = v.safeParse(reviewReceiptSchema, created.value);
@@ -294,24 +272,15 @@ export class GitHubPendingReviews {
       input.anchor.side === "new" ? "RIGHT" : "LEFT",
     );
     const appended = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${appendQuery}`,
-        "-F",
-        `reviewId=${input.reviewId}`,
-        "-F",
-        `path=${input.anchor.path}`,
-        "-F",
-        `line=${input.anchor.line}`,
-        "-f",
-        `body=${input.body}`,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: appendQuery,
+      variables: [
+        { kind: "typed", name: "reviewId", value: input.reviewId },
+        { kind: "typed", name: "path", value: input.anchor.path },
+        { kind: "typed", name: "line", value: input.anchor.line },
+        { kind: "string", name: "body", value: input.body },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (appended._tag === "err") return err(writeFailure(appended.error));
     const added = v.safeParse(addedReviewThreadSchema, appended.value);
@@ -426,16 +395,10 @@ export class GitHubPendingReviews {
     // GitHub's HTTP error exits classify as typed failures. Never retried by
     // the caller; a timeout is an unavailable outcome.
     const response = await this.ghText(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "DELETE",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "DELETE",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}`,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
     return ok(undefined);

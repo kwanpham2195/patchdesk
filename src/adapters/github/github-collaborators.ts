@@ -2,12 +2,11 @@ import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
 import {
-  commandTimeoutMs,
-  type GhCommandRequest,
   type GhRequestRunner,
   type GitHubReadFailure,
   type GitHubReadOperation,
 } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import type {
   AssignableUserListing,
   PullRequestReviewerListing,
@@ -49,10 +48,10 @@ import { invalid, writeFailure } from "./github-write-failures";
 export class GitHubCollaborators {
   constructor(private readonly requests: GhRequestRunner) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
@@ -72,20 +71,13 @@ export class GitHubCollaborators {
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
     const host = input.profile.githubHost;
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        host,
-        "-f",
-        `query=${repositoryLabelsQuery}`,
-        "-F",
-        `owner=${input.repo.owner}`,
-        "-F",
-        `name=${input.repo.repo}`,
+      kind: "graphql",
+      host,
+      document: repositoryLabelsQuery,
+      variables: [
+        { kind: "typed", name: "owner", value: input.repo.owner },
+        { kind: "typed", name: "name", value: input.repo.repo },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
       return this.commandFailure(
@@ -110,23 +102,16 @@ export class GitHubCollaborators {
   }): Promise<Result<AssignableUserListing, GitHubReadFailure>> {
     const host = input.profile.githubHost;
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        host,
-        "-f",
-        `query=${assignableUsersQuery}`,
-        "-F",
-        `owner=${input.repo.owner}`,
-        "-F",
-        `name=${input.repo.repo}`,
+      kind: "graphql",
+      host,
+      document: assignableUsersQuery,
+      variables: [
+        { kind: "typed", name: "owner", value: input.repo.owner },
+        { kind: "typed", name: "name", value: input.repo.repo },
         ...(input.query !== undefined && input.query.length > 0
-          ? ["-F", `search=${input.query}`]
+          ? [{ kind: "typed" as const, name: "search", value: input.query }]
           : []),
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
       return this.commandFailure("list_assignable_users", response.error, host);
@@ -145,22 +130,14 @@ export class GitHubCollaborators {
   }): Promise<Result<PullRequestReviewerListing, GitHubReadFailure>> {
     const host = input.profile.githubHost;
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        host,
-        "-f",
-        `query=${pullRequestReviewersQuery}`,
-        "-F",
-        `owner=${input.pr.owner}`,
-        "-F",
-        `name=${input.pr.repo}`,
-        "-F",
-        `number=${input.pr.number}`,
+      kind: "graphql",
+      host,
+      document: pullRequestReviewersQuery,
+      variables: [
+        { kind: "typed", name: "owner", value: input.pr.owner },
+        { kind: "typed", name: "name", value: input.pr.repo },
+        { kind: "typed", name: "number", value: input.pr.number },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
       return this.commandFailure(
@@ -181,11 +158,9 @@ export class GitHubCollaborators {
   }
 
   /**
-   * Runs one `gh api graphql` mutation whose whole variable set is a subject
-   * node id plus a list of node ids — the shape every label, assignee, and
-   * reviewer mutation on this adapter has. The list rides as one repeated
-   * `-F 'name[]=<id>'` pair per element, which is how `gh` sends a real
-   * GraphQL list (verified live on gh 2.96.0; see the note on
+   * Runs one GraphQL mutation whose whole variable set is a subject node id
+   * plus a list of node ids — the shape every label, assignee, and reviewer
+   * mutation on this adapter has (see the note on
    * `addLabelsToLabelableMutation`). Every such mutation returns only
    * `clientMutationId`, so a succeeding command is the whole result.
    */
@@ -198,19 +173,17 @@ export class GitHubCollaborators {
     readonly ids: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${input.mutation}`,
-        "-F",
-        `${input.subjectVariable}=${input.subjectId}`,
-        ...input.ids.flatMap((id) => ["-F", `${input.idsVariable}[]=${id}`]),
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: input.mutation,
+      variables: [
+        {
+          kind: "typed",
+          name: input.subjectVariable,
+          value: input.subjectId,
+        },
+        { kind: "list", name: input.idsVariable, values: input.ids },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))
@@ -295,7 +268,7 @@ export class GitHubCollaborators {
   /**
    * Toggles one pull request's draft state. `runIdListMutation` cannot carry
    * this write: its whole shape is a subject id plus a list of node ids, and
-   * this mutation takes only the subject, so the argv is built here the way
+   * this mutation takes only the subject, so the request is built here the way
    * `removeRequestedReviewers` builds its own.
    */
   async setPullRequestDraftState(input: {
@@ -307,18 +280,12 @@ export class GitHubCollaborators {
       ? convertPullRequestToDraftMutation
       : markPullRequestReadyForReviewMutation;
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${mutation}`,
-        "-F",
-        `pullRequestId=${input.pullRequestId}`,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: mutation,
+      variables: [
+        { kind: "typed", name: "pullRequestId", value: input.pullRequestId },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))
@@ -332,21 +299,14 @@ export class GitHubCollaborators {
     readonly branch: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        input.profile.githubHost,
-        "-f",
-        `query=${updatePullRequestBaseBranchMutation}`,
-        "-F",
-        `pullRequestId=${input.pullRequestId}`,
-        // `-f` keeps a numeric-looking branch name a GraphQL String.
-        "-f",
-        `baseRefName=${input.branch}`,
+      kind: "graphql",
+      host: input.profile.githubHost,
+      document: updatePullRequestBaseBranchMutation,
+      variables: [
+        { kind: "typed", name: "pullRequestId", value: input.pullRequestId },
+        // A string variable keeps a numeric-looking branch name a GraphQL String.
+        { kind: "string", name: "baseRefName", value: input.branch },
       ],
-      timeoutMs: commandTimeoutMs,
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))
@@ -358,9 +318,9 @@ export class GitHubCollaborators {
    * the REST endpoint's own subtractive semantics (`DELETE
    * .../requested_reviewers` with a `{ reviewers: [...] }` body removes only
    * the named logins) — see the asymmetry explained on
-   * `GitHubReviewWriter.removeRequestedReviewers`. `--method DELETE` +
-   * `--input -` + `stdin: JSON.stringify(...)` copies `updateReviewComment`'s
-   * argv shape for a body-carrying non-GET request.
+   * `GitHubReviewWriter.removeRequestedReviewers`. A `DELETE` method with a
+   * `jsonBody` copies `updateReviewComment`'s shape for a body-carrying
+   * non-GET request.
    */
   async removeRequestedReviewers(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -368,19 +328,11 @@ export class GitHubCollaborators {
     readonly logins: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "DELETE",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/requested_reviewers`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({ reviewers: input.logins }),
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "DELETE",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/requested_reviewers`,
+      jsonBody: JSON.stringify({ reviewers: input.logins }),
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))

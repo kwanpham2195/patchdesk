@@ -2,12 +2,11 @@ import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
 import {
-  commandTimeoutMs,
-  type GhCommandRequest,
   type GhRequestRunner,
   type GitHubReadFailure,
   type GitHubReadOperation,
 } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import type {
   MaintainerPullRequestPage,
   MaintainerPullRequestSearchPage,
@@ -109,10 +108,10 @@ function graphqlPullRequestState(state: InboxStateFilter): "OPEN" | "MERGED" {
 export class GitHubPullRequestReader {
   constructor(private readonly requests: GhRequestRunner) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
@@ -130,14 +129,9 @@ export class GitHubPullRequestReader {
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.repo.owner}/${input.repo.repo}/pulls?state=open&per_page=100`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.repo.owner}/${input.repo.repo}/pulls?state=open&per_page=100`,
     });
     if (response._tag === "err")
       return this.commandFailure(
@@ -173,25 +167,28 @@ export class GitHubPullRequestReader {
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
     const host = input.profile.githubHost;
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        host,
-        "-f",
-        `query=${maintainerInboxQuery}`,
-        "-F",
-        `owner=${input.repo.owner}`,
-        "-F",
-        `name=${input.repo.repo}`,
-        "-F",
-        `first=${input.pageSize}`,
-        "-F",
-        `state=${graphqlPullRequestState(input.state ?? "open")}`,
-        ...(input.cursor === undefined ? [] : ["-f", `cursor=${input.cursor}`]),
+      kind: "graphql",
+      host,
+      document: maintainerInboxQuery,
+      variables: [
+        { kind: "typed", name: "owner", value: input.repo.owner },
+        { kind: "typed", name: "name", value: input.repo.repo },
+        { kind: "typed", name: "first", value: input.pageSize },
+        {
+          kind: "typed",
+          name: "state",
+          value: graphqlPullRequestState(input.state ?? "open"),
+        },
+        ...(input.cursor === undefined
+          ? []
+          : [
+              {
+                kind: "string" as const,
+                name: "cursor",
+                value: input.cursor,
+              },
+            ]),
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
       return this.commandFailure("list_maintainer_prs", response.error, host);
@@ -228,21 +225,22 @@ export class GitHubPullRequestReader {
   }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
     const host = input.profile.githubHost;
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        host,
-        "-f",
-        `query=${maintainerInboxSearchQuery}`,
-        "-F",
-        `search=${input.searchQuery}`,
-        "-F",
-        `first=${input.pageSize}`,
-        ...(input.cursor === undefined ? [] : ["-f", `cursor=${input.cursor}`]),
+      kind: "graphql",
+      host,
+      document: maintainerInboxSearchQuery,
+      variables: [
+        { kind: "typed", name: "search", value: input.searchQuery },
+        { kind: "typed", name: "first", value: input.pageSize },
+        ...(input.cursor === undefined
+          ? []
+          : [
+              {
+                kind: "string" as const,
+                name: "cursor",
+                value: input.cursor,
+              },
+            ]),
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
       return this.commandFailure("search_maintainer_prs", response.error, host);
@@ -273,24 +271,17 @@ export class GitHubPullRequestReader {
   }): Promise<Result<RepositoryBranchListing, GitHubReadFailure>> {
     const host = input.profile.githubHost;
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        host,
-        "-f",
-        `query=${repositoryBranchesQuery}`,
-        "-F",
-        `owner=${input.repo.owner}`,
-        "-F",
-        `name=${input.repo.repo}`,
-        // `-f` keeps a numeric-looking search a GraphQL String.
+      kind: "graphql",
+      host,
+      document: repositoryBranchesQuery,
+      variables: [
+        { kind: "typed", name: "owner", value: input.repo.owner },
+        { kind: "typed", name: "name", value: input.repo.repo },
+        // A string variable keeps a numeric-looking search a GraphQL String.
         ...(input.query !== undefined && input.query.length > 0
-          ? ["-f", `search=${input.query}`]
+          ? [{ kind: "string" as const, name: "search", value: input.query }]
           : []),
       ],
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
       return this.commandFailure(
@@ -333,25 +324,15 @@ export class GitHubPullRequestReader {
         resumeAt,
       });
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "graphql",
-        "--hostname",
-        host,
-        "-f",
-        `query=${watchedPullRequestsQuery(input.refs.length)}`,
-        // `-f` keeps a numeric-looking owner or name a GraphQL String.
-        ...input.refs.flatMap((ref, index) => [
-          "-f",
-          `owner${index}=${ref.owner}`,
-          "-f",
-          `name${index}=${ref.repo}`,
-          "-F",
-          `number${index}=${ref.number}`,
-        ]),
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "graphql",
+      host,
+      document: watchedPullRequestsQuery(input.refs.length),
+      // A string variable keeps a numeric-looking owner or name a GraphQL String.
+      variables: input.refs.flatMap((ref, index) => [
+        { kind: "string" as const, name: `owner${index}`, value: ref.owner },
+        { kind: "string" as const, name: `name${index}`, value: ref.repo },
+        { kind: "typed" as const, name: `number${index}`, value: ref.number },
+      ]),
     });
     if (response._tag === "err")
       return this.commandFailure("get_watched_prs", response.error, host);
@@ -408,14 +389,9 @@ export class GitHubPullRequestReader {
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestSummary, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}`,
     });
     if (response._tag === "err") {
       return this.commandFailure(
@@ -440,14 +416,9 @@ export class GitHubPullRequestReader {
     readonly pr: PullRequestRef;
   }): Promise<Result<MergeOutcome, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}`,
     });
     if (response._tag === "err")
       return this.commandFailure(
@@ -466,16 +437,10 @@ export class GitHubPullRequestReader {
     const current = await this.getPullRequest(input);
     if (current._tag === "err") return current;
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--paginate",
-        "--slurp",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/commits?per_page=100`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      paginate: true,
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/commits?per_page=100`,
     });
     if (response._tag === "err")
       return this.commandFailure(
