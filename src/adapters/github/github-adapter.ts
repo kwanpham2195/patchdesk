@@ -1,12 +1,8 @@
 import * as v from "valibot";
 
 import type { CommandFailure, CommandRunner } from "./command-runner";
-import {
-  commandTimeoutMs,
-  type GhCommandRequest,
-  GhRequestRunner,
-  type GitHubReadFailure,
-} from "./gh-request-runner";
+import { GhRequestRunner, type GitHubReadFailure } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import {
   GitHubCliCredentials,
   type GitHubCredentials,
@@ -251,18 +247,18 @@ export class GitHubAdapter
     );
   }
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
 
-  /** Run a gh command that returns text as the profile's configured GitHub account. */
+  /** Run a request that returns text as the profile's configured GitHub account. */
   private async ghText(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
     return this.requests.ghText(profile, request);
   }
@@ -452,16 +448,10 @@ export class GitHubAdapter
       // `gh auth status` exits nonzero if any stale, inactive account is
       // invalid, even when the configured active account can make API calls.
       // Ask GitHub who this invocation can actually authenticate as instead.
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        profile.githubHost,
-        "user",
-        "--jq",
-        ".login",
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: profile.githubHost,
+      path: "user",
+      jq: ".login",
     });
     if (
       response._tag === "err" ||
@@ -494,23 +484,15 @@ export class GitHubAdapter
         message: "No review content is selected.",
       });
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "POST",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "POST",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
+      jsonBody: JSON.stringify({
         commit_id: input.headSha,
         body: input.summaryBody,
         comments: input.comments.map(toGitHubReviewComment),
       }),
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err") return err(writeFailure(response.error));
     const receipt = v.safeParse(reviewReceiptSchema, response.value);
@@ -534,19 +516,14 @@ export class GitHubAdapter
     readonly summaryBody: string;
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "POST",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}/events`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({ event: input.event, body: input.summaryBody }),
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "POST",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}/events`,
+      jsonBody: JSON.stringify({
+        event: input.event,
+        body: input.summaryBody,
+      }),
     });
     if (response._tag === "err") return err(writeFailure(response.error));
     const submitted = v.safeParse(reviewReceiptSchema, response.value);
@@ -767,19 +744,11 @@ export class GitHubAdapter
     readonly message: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "PUT",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}/dismissals`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({ message: input.message }),
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "PUT",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}/dismissals`,
+      jsonBody: JSON.stringify({ message: input.message }),
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))

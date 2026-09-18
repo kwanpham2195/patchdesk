@@ -3,11 +3,11 @@ import * as v from "valibot";
 import type { CommandFailure, CommandRunner } from "./command-runner";
 import {
   commandTimeoutMs,
-  type GhCommandRequest,
   type GhRequestRunner,
   type GitHubReadFailure,
   type GitHubReadOperation,
 } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import type { CheckSummary } from "../../domain/github-context";
 import {
   type AbsolutePath,
@@ -45,18 +45,18 @@ export class GitHubDiffReader {
     private readonly commands: CommandRunner,
   ) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
 
-  /** Run a gh command that returns text as the profile's configured GitHub account. */
+  /** Run a request that returns text as the profile's configured GitHub account. */
   private async ghText(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
     return this.requests.ghText(profile, request);
   }
@@ -76,24 +76,14 @@ export class GitHubDiffReader {
   }): Promise<Result<CheckSummary, GitHubReadFailure>> {
     const [checkRunsResponse, statusesResponse] = await Promise.all([
       this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "--hostname",
-          input.profile.githubHost,
-          `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/check-runs`,
-        ],
-        timeoutMs: commandTimeoutMs,
+        kind: "rest",
+        host: input.profile.githubHost,
+        path: `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/check-runs`,
       }),
       this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "--hostname",
-          input.profile.githubHost,
-          `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/status`,
-        ],
-        timeoutMs: commandTimeoutMs,
+        kind: "rest",
+        host: input.profile.githubHost,
+        path: `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/status`,
       }),
     ]);
     if (checkRunsResponse._tag === "err" && statusesResponse._tag === "err")
@@ -157,16 +147,10 @@ export class GitHubDiffReader {
 
     if (input.snapshot !== undefined) {
       const exact = await this.ghText(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "--hostname",
-          input.profile.githubHost,
-          "-H",
-          "Accept: application/vnd.github.v3.diff",
-          `repos/${input.pr.owner}/${input.pr.repo}/compare/${input.snapshot.baseSha}...${input.snapshot.headSha}`,
-        ],
-        timeoutMs: commandTimeoutMs,
+        kind: "rest",
+        host: input.profile.githubHost,
+        accept: "application/vnd.github.v3.diff",
+        path: `repos/${input.pr.owner}/${input.pr.repo}/compare/${input.snapshot.baseSha}...${input.snapshot.headSha}`,
       });
       return exact._tag === "ok"
         ? exact
@@ -178,16 +162,11 @@ export class GitHubDiffReader {
     }
 
     const response = await this.ghText(input.profile, {
-      argv: [
-        "gh",
-        "pr",
-        "diff",
-        String(input.pr.number),
-        "--repo",
-        `${input.profile.githubHost}/${input.pr.owner}/${input.pr.repo}`,
-        "--patch",
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "pull_request_diff",
+      host: input.profile.githubHost,
+      owner: input.pr.owner,
+      repo: input.pr.repo,
+      number: input.pr.number,
     });
     if (response._tag === "ok" && response.value.length > 0) return response;
     if (
@@ -214,14 +193,9 @@ export class GitHubDiffReader {
       .map((segment) => encodeURIComponent(segment))
       .join("/");
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/contents/${encodedPath}?ref=${input.sha}`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/contents/${encodedPath}?ref=${input.sha}`,
     });
     if (response._tag === "err")
       return this.commandFailure(

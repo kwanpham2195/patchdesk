@@ -2,12 +2,11 @@ import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
 import {
-  commandTimeoutMs,
-  type GhCommandRequest,
   type GhRequestRunner,
   type GitHubReadFailure,
   type GitHubReadOperation,
 } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import type {
   CheckRunSummary,
   GitHubMergePolicyEvidence,
@@ -72,10 +71,10 @@ function isKnownRepositoryRole(value: string): value is KnownRepositoryRole {
 export class GitHubMergePolicyReader {
   constructor(private readonly requests: GhRequestRunner) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
@@ -98,23 +97,17 @@ export class GitHubMergePolicyReader {
     let policyPage: MergePolicyPage | undefined;
     for (let page = 0; page < maxMergePolicyPages; page += 1) {
       const response = await this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "graphql",
-          "--hostname",
-          input.profile.githubHost,
-          "-f",
-          `query=${mergePolicyQuery}`,
-          "-F",
-          `owner=${input.pr.owner}`,
-          "-F",
-          `name=${input.pr.repo}`,
-          "-F",
-          `number=${input.pr.number}`,
-          ...(cursor === undefined ? [] : ["-F", `cursor=${cursor}`]),
+        kind: "graphql",
+        host: input.profile.githubHost,
+        document: mergePolicyQuery,
+        variables: [
+          { kind: "typed", name: "owner", value: input.pr.owner },
+          { kind: "typed", name: "name", value: input.pr.repo },
+          { kind: "typed", name: "number", value: input.pr.number },
+          ...(cursor === undefined
+            ? []
+            : [{ kind: "typed" as const, name: "cursor", value: cursor }]),
         ],
-        timeoutMs: commandTimeoutMs,
       });
       if (response._tag === "err")
         return this.commandFailure(
@@ -152,14 +145,9 @@ export class GitHubMergePolicyReader {
       );
 
     const required = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(policyPage.baseBranch)}/protection/required_status_checks`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(policyPage.baseBranch)}/protection/required_status_checks`,
     });
     // GitHub returns 404 when the branch has no classic required-status-check
     // policy. Rulesets remain available through the GraphQL policy read above.
@@ -190,14 +178,9 @@ export class GitHubMergePolicyReader {
     readonly account: string;
   }): Promise<Result<RepositoryPermissionEvidence, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/collaborators/${encodeURIComponent(input.account)}/permission`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/collaborators/${encodeURIComponent(input.account)}/permission`,
     });
     if (response._tag === "err")
       return this.commandFailure(
@@ -236,14 +219,9 @@ export class GitHubMergePolicyReader {
     readonly branch: string;
   }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`,
     });
     // GitHub returns 404 for an unprotected branch (rather than an empty policy).
     // Treat that absence as affirmative unprotected evidence; other failures remain
@@ -274,24 +252,14 @@ export class GitHubMergePolicyReader {
   }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>> {
     const [branchProtection, appliedRuleset] = await Promise.all([
       this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "--hostname",
-          input.profile.githubHost,
-          `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`,
-        ],
-        timeoutMs: commandTimeoutMs,
+        kind: "rest",
+        host: input.profile.githubHost,
+        path: `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`,
       }),
       this.ghJson(input.profile, {
-        argv: [
-          "gh",
-          "api",
-          "--hostname",
-          input.profile.githubHost,
-          `repos/${input.pr.owner}/${input.pr.repo}/rules/branches/${encodeURIComponent(input.branch)}`,
-        ],
-        timeoutMs: commandTimeoutMs,
+        kind: "rest",
+        host: input.profile.githubHost,
+        path: `repos/${input.pr.owner}/${input.pr.repo}/rules/branches/${encodeURIComponent(input.branch)}`,
       }),
     ]);
     const classify: CommandFailureClassifier = (operation, failure) =>
@@ -320,19 +288,14 @@ export class GitHubMergePolicyReader {
     Result<{ readonly mergeCommitSha?: GitSha }, GitHubWriteFailure>
   > {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "PUT",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/merge`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({ sha: input.headSha, merge_method: input.method }),
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "PUT",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/merge`,
+      jsonBody: JSON.stringify({
+        sha: input.headSha,
+        merge_method: input.method,
+      }),
     });
     if (response._tag === "err") return err(writeFailure(response.error));
     const merge = v.safeParse(mergeResultSchema, response.value);

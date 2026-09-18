@@ -2,12 +2,11 @@ import * as v from "valibot";
 
 import type { CommandFailure } from "./command-runner";
 import {
-  commandTimeoutMs,
-  type GhCommandRequest,
   type GhRequestRunner,
   type GitHubReadFailure,
   type GitHubReadOperation,
 } from "./gh-request-runner";
+import type { GitHubRequest } from "./github-request";
 import type {
   Conversation,
   GitHubComments,
@@ -60,9 +59,8 @@ import type { GitHubMergePolicyReader } from "./github-merge-policy";
 /**
  * Asks the REST comment endpoints for `body_html` beside `body`, in the same
  * request, so `extractImageRewrites` can learn which images GitHub proxied.
- * `gh api` takes headers before the path, and the path must stay last.
  */
-const fullJsonAccept = ["-H", "Accept: application/vnd.github.full+json"];
+const fullJsonMediaType = "application/vnd.github.full+json";
 
 /** Omits the field when GitHub proxied nothing, so a stored snapshot gains no empty object. */
 function imageRewritesOf(
@@ -96,10 +94,10 @@ export class GitHubConversationReader {
     private readonly accounts: AuthenticatedAccountReader,
   ) {}
 
-  /** Run a gh command that returns JSON as the profile's configured GitHub account. */
+  /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
     profile: WorkspaceProfileConfig,
-    request: GhCommandRequest,
+    request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
   }
@@ -155,40 +153,25 @@ export class GitHubConversationReader {
     const [reviews, comments, issueComments, account, pullRequest] =
       await Promise.all([
         this.ghJson(input.profile, {
-          argv: [
-            "gh",
-            "api",
-            "--hostname",
-            input.profile.githubHost,
-            ...fullJsonAccept,
-            `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
-          ],
-          timeoutMs: commandTimeoutMs,
+          kind: "rest",
+          host: input.profile.githubHost,
+          accept: fullJsonMediaType,
+          path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
         }),
         this.ghJson(input.profile, {
-          argv: [
-            "gh",
-            "api",
-            "--hostname",
-            input.profile.githubHost,
-            ...fullJsonAccept,
-            `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments?per_page=100&page=1`,
-          ],
-          timeoutMs: commandTimeoutMs,
+          kind: "rest",
+          host: input.profile.githubHost,
+          accept: fullJsonMediaType,
+          path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments?per_page=100&page=1`,
         }),
         // The plain conversation comments. `pulls/{n}/comments` above returns
         // only diff-anchored review comments, so without this read a top-level
         // comment never reaches the timeline at all.
         this.ghJson(input.profile, {
-          argv: [
-            "gh",
-            "api",
-            "--hostname",
-            input.profile.githubHost,
-            ...fullJsonAccept,
-            `repos/${input.pr.owner}/${input.pr.repo}/issues/${input.pr.number}/comments?per_page=100&page=1`,
-          ],
-          timeoutMs: commandTimeoutMs,
+          kind: "rest",
+          host: input.profile.githubHost,
+          accept: fullJsonMediaType,
+          path: `repos/${input.pr.owner}/${input.pr.repo}/issues/${input.pr.number}/comments?per_page=100&page=1`,
         }),
         this.resolveAuthenticatedAccount(input.profile),
         // The base branch this read needs for branch protection. It was already
@@ -405,23 +388,15 @@ export class GitHubConversationReader {
     readonly body: string;
   }): Promise<Result<DirectSummaryReviewReceipt, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        "--method",
-        "POST",
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
-        "--input",
-        "-",
-      ],
-      stdin: JSON.stringify({
+      kind: "rest",
+      host: input.profile.githubHost,
+      method: "POST",
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
+      jsonBody: JSON.stringify({
         commit_id: input.headSha,
         event: input.event,
         body: input.body,
       }),
-      timeoutMs: commandTimeoutMs,
     });
     if (response._tag === "err")
       return err(directSummaryWriteFailure(response.error));
@@ -452,14 +427,9 @@ export class GitHubConversationReader {
     >
   > {
     const response = await this.ghJson(input.profile, {
-      argv: [
-        "gh",
-        "api",
-        "--hostname",
-        input.profile.githubHost,
-        `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
-      ],
-      timeoutMs: commandTimeoutMs,
+      kind: "rest",
+      host: input.profile.githubHost,
+      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
     });
     if (response._tag === "err")
       return this.commandFailure(
