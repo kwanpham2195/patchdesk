@@ -1,6 +1,6 @@
 # Call the GitHub API directly
 
-> **Status: Accepted.** Amends ADR 0021: which account a call runs as is
+> **Status: Accepted.** Issue #276. Amends ADR 0021: which account a call runs as is
 > unchanged, only how the credential is carried. Lifts the deferral recorded in
 > ADR 0023 — response headers become readable. Changes the fixture contract ADR
 > 0024 depends on. ADR 0026's canonical patch hash and ADR 0035's write
