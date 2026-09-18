@@ -169,6 +169,8 @@ export interface GitHubReader {
   getPullRequestCommits(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
+    /** The head this list marks `isHead`, when the caller already read it; otherwise the adapter reads the pull request for it. */
+    readonly headSha?: GitSha;
   }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>>;
   getPullRequestChecks(input: {
     readonly profile: WorkspaceProfileConfig;
