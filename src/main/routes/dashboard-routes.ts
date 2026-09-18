@@ -1,7 +1,10 @@
 import type { Hono } from "hono";
 import { err, ok, type Result } from "../../domain/result";
 
-import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
+import {
+  runWithCoalescedGitHubReads,
+  runWithRequestAbortSignal,
+} from "../../adapters/github/command-runner";
 import { listAuthenticatedGitHubAccounts } from "../../adapters/github/github-auth-accounts";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
@@ -84,93 +87,101 @@ export function registerDashboardRoutes(
     response(context, await dashboard.updateSettings(await jsonBody(context))),
   );
   app.get("/v1/inbox", async (context) =>
-    runWithRequestAbortSignal(context.req.raw.signal, async () => {
-      // The filter is a structured, enumerated value — each field is
-      // validated against a literal union here, exactly as `state` was
-      // validated here. The renderer never sends a GitHub search
-      // qualifier string; `composeInboxSearchQuery` in
-      // `maintainer-inbox.ts` is the only place that composes one.
-      const state = context.req.query("state") ?? "open";
-      if (state !== "open" && state !== "merged")
-        return response(context, err({ reason: "invalid_input" }));
-      const pageSize = parseInboxPageSize(context.req.query("pageSize"));
-      if (pageSize === undefined)
-        return response(context, err({ reason: "invalid_input" }));
-      const repository = parseInboxRepositoryQuery(
-        context.req.query("host"),
-        context.req.query("owner"),
-        context.req.query("repo"),
-      );
-      if (repository === "invalid")
-        return response(context, err({ reason: "invalid_input" }));
-      const labels = parseInboxLabelsQuery(context.req.queries("label") ?? []);
-      if (labels === "invalid")
-        return response(context, err({ reason: "invalid_input" }));
-      const preset = parseInboxPresetQuery(context.req.query("preset"));
-      if (preset === "invalid")
-        return response(context, err({ reason: "invalid_input" }));
-      const reviewState = parseInboxReviewStateQuery(
-        context.req.query("reviewState"),
-      );
-      if (reviewState === "invalid")
-        return response(context, err({ reason: "invalid_input" }));
-      const checkStatus = parseInboxCheckStatusQuery(
-        context.req.query("checkStatus"),
-      );
-      if (checkStatus === "invalid")
-        return response(context, err({ reason: "invalid_input" }));
-      const author = parseInboxFilterTextQuery(
-        context.req.query("author"),
-        parseInboxAuthorFilter,
-      );
-      if (author._tag === "err")
-        return response(context, err({ reason: "invalid_input" }));
-      const baseBranch = parseInboxFilterTextQuery(
-        context.req.query("base"),
-        parseInboxBaseBranchFilter,
-      );
-      if (baseBranch._tag === "err")
-        return response(context, err({ reason: "invalid_input" }));
-      const labelsField = labels.length === 0 ? {} : { labels };
-      const presetField = preset === undefined ? {} : { preset };
-      const reviewStateField = reviewState === undefined ? {} : { reviewState };
-      const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
-      const authorField =
-        author.value === undefined ? {} : { author: author.value };
-      const baseBranchField =
-        baseBranch.value === undefined ? {} : { baseBranch: baseBranch.value };
-      const filter: InboxFilter = {
-        state,
-        ...labelsField,
-        ...presetField,
-        ...reviewStateField,
-        ...checkStatusField,
-        ...authorField,
-        ...baseBranchField,
-      };
-      // Every field above is bounded on its own, but the 256-character cap
-      // binds their sum, so it is checked once here over the whole composed
-      // query. Sending it and reading GitHub's refusal instead cannot work:
-      // it arrives as a `gh` command failure, indistinguishable from a
-      // network failure without parsing stderr.
-      if (
-        inboxSearchQueryExcess(
-          repository === undefined ? [] : [repository],
-          filter,
-        ) > 0
-      )
-        return response(context, err({ reason: "invalid_input" }));
-      const page = context.req.query("page");
-      const result = await dashboard.inboxForActiveProfile(
-        repository,
-        page === undefined
-          ? { filter, pageSize }
-          : { filter, pageSize, pageToken: page },
-      );
-      if (result._tag === "err")
-        await recordProfileReloadFailure("profile-reload-inbox");
-      return response(context, result);
-    }),
+    runWithRequestAbortSignal(context.req.raw.signal, async () =>
+      runWithCoalescedGitHubReads(async () => {
+        // The filter is a structured, enumerated value — each field is
+        // validated against a literal union here, exactly as `state` was
+        // validated here. The renderer never sends a GitHub search
+        // qualifier string; `composeInboxSearchQuery` in
+        // `maintainer-inbox.ts` is the only place that composes one.
+        const state = context.req.query("state") ?? "open";
+        if (state !== "open" && state !== "merged")
+          return response(context, err({ reason: "invalid_input" }));
+        const pageSize = parseInboxPageSize(context.req.query("pageSize"));
+        if (pageSize === undefined)
+          return response(context, err({ reason: "invalid_input" }));
+        const repository = parseInboxRepositoryQuery(
+          context.req.query("host"),
+          context.req.query("owner"),
+          context.req.query("repo"),
+        );
+        if (repository === "invalid")
+          return response(context, err({ reason: "invalid_input" }));
+        const labels = parseInboxLabelsQuery(
+          context.req.queries("label") ?? [],
+        );
+        if (labels === "invalid")
+          return response(context, err({ reason: "invalid_input" }));
+        const preset = parseInboxPresetQuery(context.req.query("preset"));
+        if (preset === "invalid")
+          return response(context, err({ reason: "invalid_input" }));
+        const reviewState = parseInboxReviewStateQuery(
+          context.req.query("reviewState"),
+        );
+        if (reviewState === "invalid")
+          return response(context, err({ reason: "invalid_input" }));
+        const checkStatus = parseInboxCheckStatusQuery(
+          context.req.query("checkStatus"),
+        );
+        if (checkStatus === "invalid")
+          return response(context, err({ reason: "invalid_input" }));
+        const author = parseInboxFilterTextQuery(
+          context.req.query("author"),
+          parseInboxAuthorFilter,
+        );
+        if (author._tag === "err")
+          return response(context, err({ reason: "invalid_input" }));
+        const baseBranch = parseInboxFilterTextQuery(
+          context.req.query("base"),
+          parseInboxBaseBranchFilter,
+        );
+        if (baseBranch._tag === "err")
+          return response(context, err({ reason: "invalid_input" }));
+        const labelsField = labels.length === 0 ? {} : { labels };
+        const presetField = preset === undefined ? {} : { preset };
+        const reviewStateField =
+          reviewState === undefined ? {} : { reviewState };
+        const checkStatusField =
+          checkStatus === undefined ? {} : { checkStatus };
+        const authorField =
+          author.value === undefined ? {} : { author: author.value };
+        const baseBranchField =
+          baseBranch.value === undefined
+            ? {}
+            : { baseBranch: baseBranch.value };
+        const filter: InboxFilter = {
+          state,
+          ...labelsField,
+          ...presetField,
+          ...reviewStateField,
+          ...checkStatusField,
+          ...authorField,
+          ...baseBranchField,
+        };
+        // Every field above is bounded on its own, but the 256-character cap
+        // binds their sum, so it is checked once here over the whole composed
+        // query. Sending it and reading GitHub's refusal instead cannot work:
+        // it arrives as a `gh` command failure, indistinguishable from a
+        // network failure without parsing stderr.
+        if (
+          inboxSearchQueryExcess(
+            repository === undefined ? [] : [repository],
+            filter,
+          ) > 0
+        )
+          return response(context, err({ reason: "invalid_input" }));
+        const page = context.req.query("page");
+        const result = await dashboard.inboxForActiveProfile(
+          repository,
+          page === undefined
+            ? { filter, pageSize }
+            : { filter, pageSize, pageToken: page },
+        );
+        if (result._tag === "err")
+          await recordProfileReloadFailure("profile-reload-inbox");
+        return response(context, result);
+      }),
+    ),
   );
   // Repository-scoped, never Review-scoped: `GET /v1/reviews/labels` cannot
   // serve the Pull requests screen's label filter because it resolves the
@@ -180,30 +191,32 @@ export function registerDashboardRoutes(
   // picker never need that service's write gate or its resolved permission,
   // and the inbox is read-only.
   app.get("/v1/inbox/labels", async (context) =>
-    runWithRequestAbortSignal(context.req.raw.signal, async () => {
-      const repository = parseInboxRepositoryQuery(
-        context.req.query("host"),
-        context.req.query("owner"),
-        context.req.query("repo"),
-      );
-      if (repository === "invalid")
-        return response(context, err({ reason: "invalid_input" }));
-      // Validated against the active profile's watchlist before any GitHub
-      // call, exactly as `GET /v1/inbox` validates its own `repository`
-      // query params — without this a renderer could read labels from any
-      // repository the active token can see, not just a watched one.
-      const resolved = await dashboard.activeProfileRepository(repository);
-      if (resolved._tag === "err") return response(context, resolved);
-      if (resolved.value.repository === undefined)
-        return context.json({ state: "ready", labels: [], totalCount: 0 });
-      return repositoryLabelListResponse(
-        context,
-        await github.listRepositoryLabels({
-          profile: resolved.value.profile,
-          repo: resolved.value.repository,
-        }),
-      );
-    }),
+    runWithRequestAbortSignal(context.req.raw.signal, async () =>
+      runWithCoalescedGitHubReads(async () => {
+        const repository = parseInboxRepositoryQuery(
+          context.req.query("host"),
+          context.req.query("owner"),
+          context.req.query("repo"),
+        );
+        if (repository === "invalid")
+          return response(context, err({ reason: "invalid_input" }));
+        // Validated against the active profile's watchlist before any GitHub
+        // call, exactly as `GET /v1/inbox` validates its own `repository`
+        // query params — without this a renderer could read labels from any
+        // repository the active token can see, not just a watched one.
+        const resolved = await dashboard.activeProfileRepository(repository);
+        if (resolved._tag === "err") return response(context, resolved);
+        if (resolved.value.repository === undefined)
+          return context.json({ state: "ready", labels: [], totalCount: 0 });
+        return repositoryLabelListResponse(
+          context,
+          await github.listRepositoryLabels({
+            profile: resolved.value.profile,
+            repo: resolved.value.repository,
+          }),
+        );
+      }),
+    ),
   );
   app.post("/v1/watchlist", async (context) =>
     response(

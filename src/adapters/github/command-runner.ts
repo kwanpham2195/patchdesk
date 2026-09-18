@@ -28,6 +28,40 @@ export function runWithRequestAbortSignal<T>(
   return requestAbortContext.run(signal, fn);
 }
 
+/**
+ * The GitHub reads one request currently has in flight, split by the two
+ * response shapes `CommandRunner` answers with. An entry is added when a read
+ * starts and removed the moment it settles, so it is never a result cache.
+ */
+export type InFlightGitHubReads = {
+  readonly json: Map<string, Promise<Result<unknown, CommandFailure>>>;
+  readonly text: Map<string, Promise<Result<string, CommandFailure>>>;
+};
+
+/**
+ * Ambient in-flight coalescing for the current request, carried implicitly
+ * for the same reason `requestAbortContext` above is: threading a scope object
+ * from an HTTP route down to `GhRequestRunner.ghJson` would touch every
+ * `GitHubReader` method in between.
+ *
+ * The scope belongs to one request, which is what makes joining safe with
+ * respect to cancellation. `withAmbientSignal` binds the ambient
+ * `AbortSignal` at the moment a child is spawned, so the first caller's
+ * execution carries its own request's signal; because no entry outlives the
+ * request that created it, a joining caller is always inside that same
+ * request and under that same signal, and can never inherit an abort it did
+ * not share.
+ */
+export const requestCoalescingContext =
+  new AsyncLocalStorage<InFlightGitHubReads>();
+
+/** Runs `fn` with one coalescing scope shared by every GitHub read made within it (see `requestCoalescingContext`). */
+export function runWithCoalescedGitHubReads<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  return requestCoalescingContext.run({ json: new Map(), text: new Map() }, fn);
+}
+
 /** An explicit executable and argument vector owned by an external adapter. */
 export type CommandRequest = {
   readonly argv: ReadonlyArray<string>;

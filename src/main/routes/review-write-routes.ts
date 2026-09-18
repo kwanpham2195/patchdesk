@@ -14,6 +14,7 @@ import {
   variant,
 } from "valibot";
 
+import { runWithCoalescedGitHubReads } from "../../adapters/github/command-runner";
 import {
   parseContentHash,
   parseGitSha,
@@ -140,13 +141,15 @@ export function registerReviewWriteRoutes(
     const rawQuery = context.req.query("query");
     const queryField =
       rawQuery !== undefined && rawQuery.length > 0 ? { query: rawQuery } : {};
-    return assigneeListResponse(
-      context,
-      await assigneeWrites.list({
-        profileId: profileId.value,
-        reviewId: reviewId.value,
-        ...queryField,
-      }),
+    return runWithCoalescedGitHubReads(async () =>
+      assigneeListResponse(
+        context,
+        await assigneeWrites.list({
+          profileId: profileId.value,
+          reviewId: reviewId.value,
+          ...queryField,
+        }),
+      ),
     );
   });
   app.post("/v1/reviews/reviewers/command", async (context) =>
@@ -160,13 +163,15 @@ export function registerReviewWriteRoutes(
     const rawQuery = context.req.query("query");
     const queryField =
       rawQuery !== undefined && rawQuery.length > 0 ? { query: rawQuery } : {};
-    return reviewerListResponse(
-      context,
-      await reviewerWrites.list({
-        profileId: profileId.value,
-        reviewId: reviewId.value,
-        ...queryField,
-      }),
+    return runWithCoalescedGitHubReads(async () =>
+      reviewerListResponse(
+        context,
+        await reviewerWrites.list({
+          profileId: profileId.value,
+          reviewId: reviewId.value,
+          ...queryField,
+        }),
+      ),
     );
   });
   app.post("/v1/reviews/draft-state/command", async (context) =>
