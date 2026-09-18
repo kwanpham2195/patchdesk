@@ -8,4 +8,12 @@
 > other GitHub read and write still reports a rate limit as such. What no longer
 > exists is the scheduler that waited.
 
+> **The header deferral below is lifted by ADR 0046, "Call the GitHub API
+> directly".** Reading `Retry-After` and `X-RateLimit-Reset` was deferred here
+> for one reason: `gh` exposed response headers only by prefixing them onto
+> stdout ahead of the JSON body. Patchdesk now makes the HTTPS request itself,
+> so the headers arrive on every response and cost nothing to read. The
+> opportunistic `rateLimit { remaining resetAt }` field on the listing query
+> still works and is still cached per host.
+
 A GitHub rate limit is now a distinct, named condition throughout Patchdesk rather than a generic "unavailable" read or write failure: the adapter classifies a rate-limited `gh` command into its own tag on both the read and write boundaries, and every consumer of those failures — the Maintainer Inbox poll, pending reviews, direct-summary reviews, inline conversation writes, and merges — reports it as such instead of folding it into a rejection or an ambiguous outcome. Patchdesk learns the reset time opportunistically rather than through a dedicated call: the GraphQL query the Inbox poll already runs each cycle carries a free `rateLimit { remaining resetAt }` field, and a successful response caches that reset time per GitHub host so it is available the moment a later call on the same host is rate-limited. A rate-limited state disables the read-side retry affordance — retrying into an active rate limit only makes it worse — and instead waits until the learned resume time, or a conservative sixty-minute fallback when no reset time has been observed yet; the poll scheduler honors that wait directly, bypassing its normal capped backoff ladder, and a rate limit alongside otherwise-healthy repositories does not slow the whole poll, only an all-repositories-blocked case does. Reading the precise reset time and retry delay from GitHub's response headers (`Retry-After`, `X-Ratelimit-Reset`) was considered and deliberately deferred, because `gh`'s CLI only exposes those headers by prefixing them onto stdout ahead of the JSON body, which would require restructuring how every adapter call captures and parses `gh` output — a disproportionate change for the accuracy it would buy over the GraphQL field already in hand.
