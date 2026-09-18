@@ -16,6 +16,10 @@ import type { ReviewSessionStore } from "../adapters/storage/review-session-stor
 import type { ReviewStore } from "../adapters/storage/review-store";
 import { toMergeEvidence } from "../domain/github-context";
 import {
+  assembleConversation,
+  noPublishedFeedback,
+} from "../adapters/github/github-conversation-assembly";
+import {
   parseGitHubLogin,
   type IsoTimestamp,
   type ReviewId,
@@ -85,7 +89,6 @@ type ObservationGitHub = Pick<
   | "getPullRequestComments"
   | "getPullRequestChecks"
   | "getMergePolicy"
-  | "loadConversation"
   | "resolveAuthenticatedAccount"
 > &
   Partial<
@@ -284,7 +287,6 @@ export class ReviewObservationService {
     const [
       comments,
       checks,
-      conversation,
       mergePolicy,
       publishedFeedback,
       mergeEvidence,
@@ -298,10 +300,6 @@ export class ReviewObservationService {
         profile,
         pr: reviewRef(review),
         headSha: session.key.headSha,
-      }),
-      this.dependencies.github.loadConversation({
-        profile,
-        pr: reviewRef(review),
       }),
       this.dependencies.github.getMergePolicy({
         profile,
@@ -326,11 +324,21 @@ export class ReviewObservationService {
     if (
       comments._tag === "err" ||
       checks._tag === "err" ||
-      conversation._tag === "err" ||
-      mergePolicy._tag === "err"
+      mergePolicy._tag === "err" ||
+      // The conversation is assembled from this read, so a failed one leaves
+      // no conversation to reconcile — exactly as a failed `loadConversation`
+      // did when it made this same read itself.
+      publishedFeedback?._tag === "err"
     ) {
       return this.markUnavailable(input, review, detectedAt, "github_read");
     }
+    // A projection of reads this batch already made, rather than a
+    // `loadConversation` call that would re-run every one of them.
+    const conversation = assembleConversation(
+      terminalRead.value.description ?? "",
+      publishedFeedback?.value ?? noPublishedFeedback,
+      comments.value,
+    );
 
     // Cheap torn-read guard: headSha and baseSha are content-addressed, so an
     // unchanged pair proves the diff `first` already fetched and hashed is
@@ -389,7 +397,7 @@ export class ReviewObservationService {
       pullRequest: terminalRead.value,
       comments: comments.value,
       checks: checks.value,
-      conversation: conversation.value,
+      conversation,
       mergePolicy: mergePolicy.value,
       mergeEvidence:
         mergeEvidence?._tag === "ok"
@@ -413,7 +421,7 @@ export class ReviewObservationService {
       evidenceComplete:
         observedPending.available &&
         comments.value.complete === true &&
-        conversation.value.complete === true &&
+        conversation.complete === true &&
         (publishedFeedback === undefined ||
           (publishedFeedback._tag === "ok" &&
             publishedFeedback.value.complete === true)),

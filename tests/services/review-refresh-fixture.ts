@@ -77,9 +77,6 @@ type CommentsResult = Awaited<
 type CommitsResult = Awaited<
   ReturnType<ReviewRefreshDependencies["github"]["getPullRequestCommits"]>
 >;
-type ConversationResult = Awaited<
-  ReturnType<ReviewRefreshDependencies["github"]["loadConversation"]>
->;
 type MergePolicyResult = Awaited<
   ReturnType<ReviewRefreshDependencies["github"]["getMergePolicy"]>
 >;
@@ -118,7 +115,6 @@ export type ReviewRefreshFixtureOptions = {
   readonly checksResult?: ChecksResult;
   readonly commentsResult?: CommentsResult;
   readonly commitsResult?: CommitsResult;
-  readonly conversationResult?: ConversationResult;
   readonly mergePolicyResult?: MergePolicyResult;
   readonly mergePolicyEvidenceResult?: MergePolicyEvidenceResult;
   readonly mergeOutcomeResult?: MergeOutcomeResult;
@@ -301,15 +297,23 @@ export function createReviewRefreshFixture(
     pullRequestRead += 1;
     return result ?? ok(currentPullRequest);
   };
-  const github: ReviewRefreshDependencies["github"] = {
+  // Present but poisoned: one refresh assembles the Conversation from the
+  // reads it already made, and `loadConversation` would re-run all of them
+  // (nine more gh calls, see tests/adapters/github-conversation-reads.test.ts).
+  const github: ReviewRefreshDependencies["github"] & {
+    readonly loadConversation: () => never;
+  } = {
+    loadConversation: () => {
+      throw new Error(
+        "loadConversation re-reads what the refresh already holds",
+      );
+    },
     getPullRequest: readPullRequest,
     getPullRequestChecks: async () =>
       options.checksResult ?? ok(values.snapshot.checks),
     getPullRequestComments: async () =>
       options.commentsResult ?? ok(values.snapshot.comments),
     getPullRequestCommits: async () => options.commitsResult ?? ok([]),
-    loadConversation: async () =>
-      options.conversationResult ?? ok(values.snapshot.conversation),
     getMergePolicy: async () => options.mergePolicyResult ?? ok(mergePolicy),
   };
   const mergePolicyEvidenceResult = options.mergePolicyEvidenceResult;

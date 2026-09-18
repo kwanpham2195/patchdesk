@@ -36,13 +36,16 @@ import {
   publishedReviewSchema,
 } from "./github-wire-schemas";
 import {
-  assembleConversationEntries,
   digestReviewBody,
   directSummaryEvent,
   parseDirectSummaryReceipt,
   parseGitHubTimestamp,
   parseLocation,
 } from "./github-wire-projections";
+import {
+  assembleConversation,
+  noPublishedFeedback,
+} from "./github-conversation-assembly";
 import { extractImageRewrites } from "./github-image-rewrites";
 import { directSummaryWriteFailure, invalid } from "./github-write-failures";
 import { definedProps } from "../../domain/defined-props";
@@ -482,45 +485,18 @@ export class GitHubConversationReader {
       this.getPullRequest(input),
       this.getPullRequestComments(input),
       this.getPullRequestPublishedFeedback?.(input) ??
-        Promise.resolve(ok({ reviews: [], comments: [], issueComments: [] })),
+        Promise.resolve(ok(noPublishedFeedback)),
     ]);
     if (commentsResult._tag === "err") return commentsResult;
     if (feedbackResult._tag === "err") return feedbackResult;
     const prDescription =
       prResult._tag === "ok" ? (prResult.value.description ?? "") : "";
     return ok(
-      this.assembleConversation(
+      assembleConversation(
         prDescription,
         feedbackResult.value,
         commentsResult.value,
       ),
     );
-  }
-
-  /**
-   * Splits one loaded pull request into its two conversation halves: the
-   * timeline `assembleConversationEntries` orders, and the anchored threads
-   * the diff places (ADR 0028).
-   */
-  private assembleConversation(
-    prDescription: string,
-    feedback: GitHubPublishedFeedback,
-    comments: GitHubComments,
-  ): Conversation {
-    let inline: GitHubComments = {
-      threads: comments.threads.filter(
-        (thread) => thread.location !== undefined,
-      ),
-    };
-    if (comments.complete !== undefined)
-      inline = { ...inline, complete: comments.complete };
-    if (comments.incompleteReason !== undefined)
-      inline = { ...inline, incompleteReason: comments.incompleteReason };
-    return {
-      prDescription,
-      entries: assembleConversationEntries(feedback, comments),
-      inline,
-      complete: feedback.complete !== false && comments.complete !== false,
-    };
   }
 }

@@ -55,10 +55,8 @@ import {
   type WatchedPullRequestRead,
 } from "./github-adapter";
 import type { WatchedSnapshot } from "../../domain/watched-pull-request";
-import {
-  assembleConversationEntries,
-  samePullRequest,
-} from "./github-wire-projections";
+import { samePullRequest } from "./github-wire-projections";
+import { assembleConversation } from "./github-conversation-assembly";
 import { missing } from "./github-write-failures";
 
 /** A fixture-oriented GitHubReader with no process, filesystem, or network behavior. */
@@ -731,14 +729,14 @@ export class FakeGitHubAdapter
   }): Promise<Result<Conversation, GitHubReadFailure>> {
     void input;
     const pr = this.values.pullRequest;
-    const prDescription = pr?.description ?? "";
     const threads = this.values.comments ?? { threads: [], complete: true };
-    const feedback = this.publishedFeedback();
-    return ok({
-      prDescription,
-      entries: assembleConversationEntries(feedback, threads),
-      complete: feedback.complete !== false && threads.complete !== false,
-    });
+    return ok(
+      assembleConversation(
+        pr?.description ?? "",
+        this.publishedFeedback(),
+        threads,
+      ),
+    );
   }
 }
 
