@@ -1,4 +1,5 @@
 import type { GitHubReader } from "../adapters/github/github-adapter";
+import type { PullRequestSummary } from "../domain/github-context";
 import type { PullRequestRef } from "../domain/pull-request";
 import type {
   ObservedRevisionIdentity,
@@ -42,20 +43,34 @@ export class GitHubRevisionIdentityReader {
     >,
   ) {}
 
-  /** Read GitHub's complete canonical identity for one represented session. */
+  /**
+   * Read GitHub's complete canonical identity for one represented session.
+   *
+   * `current` is the caller's own pull request read, supplied when nothing
+   * has awaited between that read and this call. It only skips re-reading the
+   * SHA pair: the compare diff below is still fetched and hashed fresh every
+   * time, which is what ADR 0026 requires of this read. A caller that needs a
+   * torn-read guard — one whose pull request read is separated from this call
+   * by work it is guarding — must omit `current` so this read hits the
+   * network, exactly as `recheckUnchanged` does.
+   */
   async read(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly session: ReviewSession;
+    readonly current?: PullRequestSummary;
   }): Promise<Result<RevisionComparison, never>> {
     if (input.session.pr.baseSha === undefined) {
       return ok({ _tag: "Unavailable", reason: "base_missing" });
     }
 
-    const current = await this.github.getPullRequest({
-      profile: input.profile,
-      pr: input.pr,
-    });
+    const current =
+      input.current === undefined
+        ? await this.github.getPullRequest({
+            profile: input.profile,
+            pr: input.pr,
+          })
+        : ok(input.current);
     if (current._tag === "err") {
       return ok({ _tag: "Unavailable", reason: "github_read" });
     }
