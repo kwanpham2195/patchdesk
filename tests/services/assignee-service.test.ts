@@ -851,6 +851,42 @@ describe("AssigneeService", () => {
         });
       });
 
+      it("reads the pull request beside the assignable-user list, not after it", async () => {
+        const store = await avatarPaths();
+        const gate = makeGate();
+        let releaseList = (): void => {};
+        const listReleased = new Promise<void>((resolve) => {
+          releaseList = resolve;
+        });
+        const listAssignableUsers = vi.fn(async () => {
+          await listReleased;
+          return ok({ users: [], totalCount: 0 });
+        });
+        const github = makeGateway({ listAssignableUsers });
+        const service = new AssigneeService(
+          gate,
+          // SAFETY: the mock only implements the Gateway methods this test
+          // exercises; the service never calls any method left unimplemented.
+          github as never,
+          new ReviewOperationCoordinator(),
+          now,
+          makeRecentWrites(),
+          makeReviewWriteOperations(),
+          {
+            paths: store,
+            sync: { warmAvatarUrls: vi.fn(async () => undefined) },
+          },
+        );
+        const pending = service.list({ profileId, reviewId });
+        // The list read is still in flight, so this only resolves if the pull
+        // request read shares the batch instead of waiting its turn.
+        await vi.waitFor(() =>
+          expect(github.getPullRequest).toHaveBeenCalledTimes(1),
+        );
+        releaseList();
+        await expect(pending).resolves.toMatchObject({ _tag: "ok" });
+      });
+
       it("never fails the read when the avatar dependency itself throws", async () => {
         const store = await avatarPaths();
         const gate = makeGate();

@@ -183,16 +183,21 @@ export class AssigneeService {
       repo: pr,
       ...definedProps({ query: input.query }),
     };
-    const [listed, permission] = await Promise.all([
+    const [listed, permission, pullRequest] = await Promise.all([
       this.github.listAssignableUsers(listInput),
       this.resolvePermission(current.value.profile, pr),
+      // Only the avatar warm order reads this, so it joins the batch instead
+      // of costing a sequential round trip; with no avatar cache wired there
+      // is nothing to order and nothing to read.
+      this.avatars === undefined
+        ? undefined
+        : this.github.getPullRequest({ profile: current.value.profile, pr }),
     ]);
     if (listed._tag !== "ok") return ok(mapGitHubReadFailure(listed.error));
     const users = await this.withResolvedAvatars(
       input.profileId,
-      current.value.profile,
-      pr,
       listed.value.users,
+      pullRequest,
     );
     return ok({
       _tag: "ready",
@@ -225,20 +230,23 @@ export class AssigneeService {
    * and `resolveAvatarDataUris` already never throw on their own account;
    * this is defense in depth against a misbehaving injected `avatars`
    * dependency, mirroring `ReviewRefreshService`'s identical guard around
-   * `syncCommentAuthors`.
+   * `syncCommentAuthors`. The pull request read that supplies the warm order
+   * is the caller's, taken in the same batch as the assignable-user list, and
+   * a failed one simply leaves the order unprioritized.
    */
   private async withResolvedAvatars(
     profileId: WorkspaceProfileId,
-    profile: WorkspaceProfileConfig,
-    pr: PullRequestRef,
     users: ReadonlyArray<AssignableUser>,
+    /** The caller's batched pull request read, absent when no avatar cache is wired. */
+    pullRequest:
+      | Awaited<ReturnType<GitHubReader["getPullRequest"]>>
+      | undefined,
   ): Promise<ReadonlyArray<AssignableUser>> {
     const avatars = this.avatars;
     if (avatars === undefined) return users;
     try {
-      const pullRequest = await this.github.getPullRequest({ profile, pr });
       const currentAssigneeLogins = new Set(
-        pullRequest._tag === "ok" ? (pullRequest.value.assignees ?? []) : [],
+        pullRequest?._tag === "ok" ? (pullRequest.value.assignees ?? []) : [],
       );
       const prioritized = [...users].sort((a, b) => {
         const aAssigned = currentAssigneeLogins.has(a.login);
