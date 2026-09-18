@@ -26,7 +26,13 @@ stateDiagram-v2
 
 The Review section labels the controls Default model and Default reasoning. It loads the provider catalog and lists only API-key models in the Settings model selector. The saved Analysis preference is profile-scoped and defaults to the API key provider with the ordinary fallback model and Medium reasoning until the catalog supplies a usable choice.
 
-The section separately checks whether the Codex CLI account provider is available. If no eligible model can be shown, it explains that provider credentials or local configuration must be made available and that the saved preference is kept.
+The section separately checks whether the Codex CLI account provider is available and reports it under the description `Profile-scoped defaults for the next Analysis run. They never start work.` The line reads `Codex CLI account: checking availability`, then `available` or `unavailable; expose codex on the app launch PATH and log in externally`.
+
+If no API-key model and no Codex CLI account is available, or the catalog fails, the section shows `No eligible model configured` and says to configure an API key or ambient provider credentials in the Electron process, then reload the screen; the saved preference is kept. If only the Codex CLI account is available, it shows `No API-key model configured` and says to start an Insight and select Codex CLI account to load its models.
+
+What the section can list depends on the environment Patchdesk started with. At startup, before anything reads a provider key or looks for `codex`, Patchdesk runs the maintainer's login shell once and imports provider API keys and `PATH` from it. A key exported only in `~/.zshrc`, or a `codex` installed through Homebrew, is therefore found when Patchdesk is opened from the Dock or Finder, the same as when it is started from a terminal.
+
+> Technical note: only the provider credential variable names Patchdesk knows are imported, and a variable already set in the app's own environment is never overwritten. `PATH` is replaced only when the login shell's `PATH` contains every current entry and adds at least one. The shell has three seconds and 1 MB of output; a timeout or malformed output imports nothing. The imported values stay in the main process, and the log records only their names.
 
 ### Leave unchanged
 
@@ -101,14 +107,16 @@ If the provider catalog fails, Settings shows the no-eligible-model guidance and
 - A catalog failure disables the model selector and preserves the stored preference.
 - The reasoning selector offers the full five-value Settings range even when the currently selected model's catalog advertises a narrower range for a run dialog.
 - Model labels can be searched by canonical model ID in the combobox.
+- The login-shell import runs once per app launch. A key exported after Patchdesk started is not seen until Patchdesk is quit and opened again.
 - Settings defaults apply only to Analysis; Brief and Walkthrough retain their own run preferences.
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- A read-only live pass on 2026-09-14 confirmed the section description, `Codex CLI account: available`, and the Default model and Default reasoning selectors, on a Patchdesk started from a terminal. It changed no value.
+- Not observed live: the unavailable wording, the no-eligible-model guidance, a Dock or Finder launch, and a profile switch.
+- The no-eligible-model guidance says to reload the screen, but a key added to the login shell after launch needs a relaunch. Confirm whether reloading Settings can pick up any credential source the guidance means, or whether the copy should say relaunch. See [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
 - Confirm the visible fallback when a saved API-key model disappears from the provider catalog.
 - Confirm whether a failed preference write has visible feedback outside the current tests.
 - Confirm the exact handoff from Settings defaults to the Analysis run dialog.
-- Confirm the Codex availability wording for each external login and app-launch PATH state.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

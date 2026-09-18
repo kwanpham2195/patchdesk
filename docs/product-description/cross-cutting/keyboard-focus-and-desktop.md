@@ -26,7 +26,11 @@ stateDiagram-v2
 
 ### Arrive
 
-Patchdesk restores the last saved destination, defaulting to Pull requests when the saved value is absent or invalid. The titlebar names Pull requests or Review workbench. A Skip to content link targets the main content region.
+Patchdesk restores the last saved destination, defaulting to Pull requests when the saved value is absent or invalid. The titlebar names Pull requests or Review workbench. A Skip to content link targets the main content region; activating it moves focus into the main content, past the titlebar and the [Visited pull requests column](../foundations/visited-pull-requests.md).
+
+Tab order follows the window from the top: Skip to content, the column's collapse toggle, Back on a Review workbench, Active workspace, Settings, Navigate, the Visited pull requests column while it is expanded, then the screen's own controls. The column is one Tab stop, not one per row: Tab enters it on the row of the Review on screen, or the first row otherwise, and Arrow Down and Arrow Up move focus between rows from there. Tab again leaves the column for the screen.
+
+The collapse toggle's accessible name is `Collapse the pull requests you have opened` while the column shows and `Expand the pull requests you have opened` while it is hidden, it reports whether the column is expanded, and it shows the same wording as a hover tooltip. Collapsing hides the column entirely. The choice survives renderer reload and relaunch and applies to every workspace.
 
 Settings is a global overlay with General, Workspace, Review, Data & recovery, and Logs sections. The opener is remembered for normal focus return. Within a Review workbench, the selected top-level tab, navigator section, and file position restore under that Review's identity.
 
@@ -38,7 +42,7 @@ Selecting the current destination again does nothing. Keyboard focus moving amon
 
 ### Begin an action
 
-Mouse clicks, keyboard commands, and supported native menu items call the same destination and action owners as visible buttons. Pull requests rows support keyboard selection and Enter activation; Review navigation supports keyboard movement through its file and section controls.
+Mouse clicks, keyboard commands, and supported native menu items call the same destination and action owners as visible buttons. A Visited pull requests row opens its Review on a click, Enter, or Space and requests that destination through the same guard as Back and Navigate. Pull requests rows support keyboard selection and Enter activation; Review navigation supports keyboard movement through its file and section controls.
 
 Opening Settings writes a session-only section marker for reload restoration. Changing workbench position saves the position for the current Review. These view preferences do not change represented revision, freshness, or write authority.
 
@@ -104,7 +108,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 
 **Feedback, errors, and diagnostics.** Focus and titlebar feedback identify where the maintainer is; feature errors and Diagnostics identify why an action failed.
 
-**Preferences, keyboard commands, and desktop integration.** Settings, ⌘K, ⌘,, Navigate, Back, Skip to content, native close, and a clicked desktop notification share destination state and guards.
+**Preferences, keyboard commands, and desktop integration.** Settings, ⌘K, ⌘,, Navigate, Back, Visited pull requests rows, Skip to content, native close, and a clicked desktop notification share destination state and guards. The column's collapse toggle is a view preference and changes no destination.
 
 **Supported input and accessibility limits.** Keyboard and mouse are supported. Touch, pen, and screen-reader behavior are outside the supported product surface.
 
@@ -118,12 +122,19 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - A Review workbench position belongs to its Review ID, not to the next Review opened in the same window.
 - A native window close uses desktop warning behavior because renderer state may not remain visible during shutdown.
 - Keyboard row selection and Enter activation share the same action owner as mouse selection.
+- ⌘K does nothing while focus is in a text field or an editable region, so typing there is never taken over.
+- Every titlebar icon button shows a hover tooltip: the collapse toggle, Back, Settings, and Navigate.
+- Activating Skip to content adds `#main-content` to the renderer address, and it stays there through later navigation.
 - A clicked Insight notification for the Review already on screen reopens that Review on the Insight, unless an unsaved draft or pending write holds it; then the window is only focused.
 - A write that GitHub rejected, or one refused because an earlier write already holds the lock, posts no notification.
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- Live pass on 2026-09-14 confirmed Skip to content moving focus into the main content, the toggle's alternating accessible name, the collapsed column surviving a renderer reload, and focus returning to the Settings button when Settings closes. Two things it saw have since changed: the column was then one Tab stop per row, 14 in that workspace, and the toggle had no tooltip. Both are fixed; neither the single Tab stop nor the tooltip has been observed live.
+- Heading focus after a destination change was not confirmed live: the check ran in a hidden CDP window where animation frames do not run. [Navigation and overlays](../foundations/navigation-and-overlays.md#open-questions-and-verification) records the result and the latent defect [B-14](../bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change).
+- Confirmed live and by an independent review: the Visited pull requests row for the Review on screen is announced as the current page and does nothing on Enter. That is intended and test-covered. The Tab cost recorded as [UX-01](../ux-friction.md#ux-01-tab-walks-every-visited-row-before-the-screen) is fixed; that row is now the column's single Tab stop.
+- Confirm in the running app that the collapsed column preference carries across a workspace switch; the live pass did not switch workspace.
+- The `#main-content` address fragment has no visible effect in the desktop window; confirm nothing reads it.
 - Confirm focus placement after destination changes, Settings close, profile switch, guard Cancel, and native window close.
 - Confirm the exact keyboard and native-menu behavior for Settings, Navigate, Pull requests row activation, and Review file navigation.
 - Confirm the titlebar busy label when overlapping tracked actions settle in reverse order.
@@ -131,4 +142,4 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - Live verification of desktop notifications is pending: a macOS banner cannot be observed over CDP, so the log lines are the evidence.
 - In the current source only the Review workbench reports navigation state, and only as write-pending or clear. Confirm which surface, if any, still reports an unsaved draft to this guard.
 
-Verified against Patchdesk application source commit `3100615`; the removal of the workspace draft guard described from `883fad2`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, including the removal of the workspace draft guard.

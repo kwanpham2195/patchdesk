@@ -23,6 +23,8 @@ stateDiagram-v2
 
 General is the default Settings section. Appearance offers System, Light, and Dark. System resolves from the macOS color-scheme preference and updates when that system preference changes.
 
+Appearance is in place before Patchdesk draws anything. At launch Patchdesk reads the saved appearance before it creates the window, so the native window background and the first painted frame already use it, and no frame of the other theme shows while the app starts. A renderer reload paints with the appearance currently applied rather than the one the window launched with.
+
 Diff theme offers separate Light appearance and Dark appearance selectors from the installed theme catalog. The default pair is `pierre-light` and `pierre-dark`. The selected appearance determines which member of the pair a Review diff uses.
 
 ### Leave unchanged
@@ -31,7 +33,7 @@ Opening and closing Settings without changing a selector has no effect. Changing
 
 ### Begin an action
 
-Choosing Appearance applies the new mode at once. Choosing either Diff theme applies that side at once to mounted diff views. Patchdesk then saves the changed global preference while leaving the other side unchanged.
+Choosing Appearance applies the new mode at once, to the app and to the native window background, so a strip uncovered while the window is resized matches the new appearance rather than the one just left. Under System, the window background also follows macOS when its color scheme changes. Choosing either Diff theme applies that side at once to mounted diff views. Patchdesk then saves the changed global preference while leaving the other side unchanged.
 
 The values belong to the app, not to the active workspace profile. A profile switch does not choose a different appearance or Diff theme. A renderer reload reads the saved global values before the next diff is mounted.
 
@@ -98,14 +100,17 @@ If loading global settings fails, Patchdesk uses the current defaults, shows a p
 - A missing settings file is normal first-run state; an actual read failure uses defaults and shows Retry.
 - A save failure does not roll back the visible Appearance or Diff theme.
 - A mounted diff receives a theme event without requiring a Review remount.
+- The native window background changes with Appearance even when the save of that choice fails.
+- Launch uses the appearance stored in global settings; a missing or unreadable file launches with System.
 - Settings does not show the provider, model, or reasoning controls; those belong to Review preferences and Insight run dialogs.
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- A read-only live pass on 2026-09-14 confirmed the General section's Appearance selector with System, Light, and Dark, and the Diff theme selectors showing Pierre Light and Pierre Dark. It changed no value.
+- Not observed live: the first frame at launch, the frame after a renderer reload, and the window background during a resize, because the pass could not relaunch, reload, or resize.
 - Confirm the visible repaint timing when a mounted diff changes from Light to Dark or changes only one Diff theme.
 - Confirm the focus target after selecting a theme and after a preference-save error.
 - Confirm how the app presents a system appearance change while a fixed Light or Dark choice is active.
 - Confirm the final visible copy when global settings cannot be read or saved.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

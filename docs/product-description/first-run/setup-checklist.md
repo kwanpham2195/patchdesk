@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The screen reaches this path when the workspace loaded successfully and watches no repository. The heading is `Set up your workspace`, above the line `Confirm the GitHub account, choose the folders that hold your checkouts, then tick the repositories to review.` The filter toolbar, the table, the pager, and the details panel are not rendered; setup replaces the screen rather than sitting above it. When the first inbox load never succeeded at all, the same setup appears under the screen's own `First run` header, with Refresh available.
+The screen reaches this path when the workspace loaded successfully and watches no repository. The heading is `Set up your workspace`, above the line `Confirm the GitHub account, choose the folders that hold your checkouts, then tick the repositories to review.` The filter toolbar, the table, the pager, and the details panel are not rendered; setup replaces the screen rather than sitting above it. The titlebar and the [Visited pull requests column](../foundations/visited-pull-requests.md) stay beside it, as they do on every screen. On a fresh install the column is a blank frame until the account save creates the workspace; after that it reads the new workspace's Reviews and shows its empty line when there are none. When the first inbox load never succeeded at all, the same setup appears under the screen's own `First run` header, with Refresh available.
 
 One environment read serves the whole screen. `1. Reviewing as` renders what the GitHub CLI reports. Below it, and only when that read says Git is missing, one line says `Git is not installed. Install Git for this platform, then re-check.` Nothing else about local tools is shown, and Patchdesk installs and logs in to nothing.
 
@@ -107,12 +107,14 @@ After an interrupt the maintainer stays on Pull requests with whatever was saved
 - Setup never opens Settings, and Settings is not needed to finish it.
 - A workspace that already watches a repository does not show setup, even when the latest read returns no pull request; that is a different settled state.
 - A late Review-opening result from a prior workspace is ignored when the current one reaches setup.
+- A workspace that stopped watching its last repository still lists the Reviews it opened in the Visited pull requests column beside setup, and a row there opens that Review.
 
 ## Open questions and verification
 
-- Live desktop verification of the in-place flow is pending; the checklists in `verification/` still describe the previous card.
+- Live desktop verification of the in-place flow is pending; the checklists in `verification/` still describe the previous card. The 2026-09-14 read-only pass could not reach setup, because the test workspace watches a repository.
+- Confirm how the Visited pull requests column looks beside setup on a fresh install.
 - Confirm the moment the listing replaces setup after the first repository is ticked, and where focus lands.
 - Confirm what a fresh install shows between the account save and the first environment read settling.
 - Confirm the presentation when the account save fails on a machine with no stored workspace.
 
-Baseline drafted from Patchdesk application source commit `3100615`; in-place workspace setup described from `883fad2`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

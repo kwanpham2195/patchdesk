@@ -2,11 +2,11 @@
 
 ## Summary
 
-Patchdesk has two primary destinations: the Pull requests screen and a Review workbench identified by its Review. Settings opens above either destination and does not replace it. Navigation preserves safe screen position, moves focus when the destination changes, and refuses to discard an unsaved Review draft or abandon a GitHub write whose result is still pending.
+Patchdesk has two primary destinations: the Pull requests screen and a Review workbench identified by its Review. Around them sits persistent app chrome: the titlebar and the [Visited pull requests column](visited-pull-requests.md), which stay in place while the destination changes. Settings opens above either destination and does not replace it. Navigation preserves safe screen position, moves focus when the destination changes, and refuses to discard an unsaved Review draft or abandon a GitHub write whose result is still pending.
 
 ## The simple case
 
-The app opens on the last saved destination. The maintainer selects a pull request and enters its Review workbench, then uses the Back control or Navigate to return to Pull requests. The document title and titlebar name the current destination. From either destination, entering a GitHub pull-request URL or compact `owner/repository#number` reference in Navigate adds one action to open that pull request.
+The app opens on the last saved destination. The maintainer selects a pull request and enters its Review workbench, then uses the Back control or Navigate to return to Pull requests. A row in the Visited pull requests column moves straight from one Review workbench to another without passing through Pull requests. The document title and titlebar name the current destination. From either destination, entering a GitHub pull-request URL or compact `owner/repository#number` reference in Navigate adds one action to open that pull request.
 
 Settings opens from the titlebar, Navigate, ⌘,, or the native application menu. It defaults to General unless the caller targets a section. Closing it reveals the same destination and returns focus to the control that opened it.
 
@@ -19,6 +19,7 @@ stateDiagram-v2
     [*] --> pullRequests : launch or navigate home
     pullRequests --> workbench : open Review
     workbench --> pullRequests : Back or Navigate
+    workbench --> workbench : open another Review from the Visited pull requests column
     pullRequests --> settings : open Settings
     workbench --> settings : open Settings
     settings --> pullRequests : close over Pull requests
@@ -31,6 +32,8 @@ stateDiagram-v2
 ### Arrive
 
 On launch, Patchdesk reads the saved destination. An absent, malformed, or unrecognized value falls back to Pull requests. A workbench destination includes the Review ID; Patchdesk loads the Review before rendering the full workbench.
+
+When the restored Review's record no longer exists, such as after the retention sweep removed it, Patchdesk returns quietly to Pull requests and saves that as the destination, so the next launch does not ask for the same Review again. No alert appears. Any other load failure, and any failure for a Review opened during this session, still shows the `Could not open review` notice.
 
 The app title becomes `Pull requests · Patchdesk` or `Review workbench · Patchdesk`. After a true destination change, Patchdesk focuses the first `h1` inside the main content. A Skip to content link targets the same main region.
 
@@ -46,7 +49,7 @@ Closing Navigate without choosing a command records no destination change. Text 
 
 Opening a Review stores its validated workbench projection and changes the destination to that Review's workbench key. The Review code loads only after Patchdesk has a canonical Review projection.
 
-Back, Navigate, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench. A recognized pull-request reference adds `Open owner/repository#number`; activating it checks the active workspace's watchlist before using the same Review opener as the Pull requests screen.
+Back, Navigate, a Visited pull requests row, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench. A recognized pull-request reference adds `Open owner/repository#number`; activating it checks the active workspace's watchlist before using the same Review opener as the Pull requests screen. The same reference also adds `Watch owner/repository#number`, or `Unwatch` when Patchdesk already watches it, under Pull requests; [Repository listing](../pull-requests/repository-listing.md) owns what watching does.
 
 Opening Settings is refused when navigation state is not clear. ⌘K and the titlebar Settings control are also disabled or ignored. The native close path reads the same navigation state from the renderer.
 
@@ -60,7 +63,7 @@ When the renderer reports anything other than a clear navigation state, Patchdes
 
 ### Settle
 
-A successful destination change updates the screen, stored destination key, title, and focus. Leaving the workbench drops its loaded renderer projection, while durable Review state remains local.
+A successful destination change updates the screen, stored destination key, title, and focus. Leaving the workbench drops its loaded renderer projection, while durable Review state remains local. Moving from one Review workbench to another drops the first Review's projection at once, so its diff never renders under the second Review's name; until the second Review loads, the main content shows the Pull requests screen with the titlebar busy bar labeled `Loading review…`.
 
 Closing Settings normally clears its reload marker and restores opener focus. If the renderer reloads while Settings is open, the overlay reopens on the saved section. A fresh app launch does not reopen Settings because the marker uses session storage.
 
@@ -98,7 +101,7 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 
 **Review revision and freshness.** A Review destination stays keyed to the Review across revisions. The workbench projection owns freshness; navigation only owns where it is shown.
 
-**Local persistence and recovery.** Destination and per-Review position use local storage and survive relaunch. Open Settings section uses session storage and survives reload only. Invalid values are ignored or partially degraded.
+**Local persistence and recovery.** Destination, per-Review position, and the Visited pull requests column's collapse choice use local storage and survive relaunch. Open Settings section uses session storage and survives reload only. Invalid values are ignored or partially degraded.
 
 **GitHub permissions and write authority.** Navigation never grants write authority. It blocks departure during a pending write so the main process can report the final GitHub result.
 
@@ -108,7 +111,7 @@ After interruption, Patchdesk keeps the current destination unless it explicitly
 
 **Feedback, errors, and diagnostics.** Loading statuses and route errors appear in main content. Native close warnings explain whether unsaved local text or a GitHub result is at risk.
 
-**Preferences, keyboard commands, and desktop integration.** ⌘K opens Navigate and ⌘, opens Settings when navigation is clear. Native menu Settings and Refresh actions raise the window before delivery. Window bounds persist separately from workbench position.
+**Preferences, keyboard commands, and desktop integration.** ⌘K opens Navigate and ⌘, opens Settings when navigation is clear. The first titlebar control collapses or expands the Visited pull requests column. Native menu Settings and Refresh actions raise the window before delivery. Window bounds persist separately from workbench position.
 
 Navigate accepts a plain GitHub pull-request URL, a URL with trailing path, query, or fragment content after the pull-request number, or a compact reference. Issue and commit URLs remain ordinary search text and add no pull-request action.
 
@@ -123,16 +126,20 @@ Navigate accepts a plain GitHub pull-request URL, a URL with trailing path, quer
 - A second app launch focuses or recreates the existing Patchdesk window rather than opening a second working instance.
 - Closing the only window on macOS does not necessarily quit the app; activating the app can recreate or focus the workbench window.
 - Settings cannot open while navigation is blocked, including through ⌘, or the native menu.
+- Only the Review workbench reports navigation state, and only as a pending GitHub write or clear. No surface reports an unsaved draft, so the Stay on this review and Discard changes and leave choices are not reachable in the default app.
 - The Navigate palette closes before it dispatches a destination or Pull requests action.
 - A pull-request palette action is available from both Pull requests and a Review workbench. An unwatched repository returns to Pull requests and shows the existing refusal without sending an opening request.
+- A launch that restores a Review whose record was removed lands on Pull requests with no alert. A Review opened in this session that fails to load still shows `Could not open review`.
+- A workbench-to-workbench change never shows the previous Review's content while the next one loads, and a failed load does not leave it on screen.
 
 ## Open questions and verification
 
-- Live desktop verification is pending because this task did not run with the required herdr dev and log panes.
-- Confirm focus after every destination change, normal Settings close, leave-guard cancellation, and native close cancellation.
+- A read-only live pass on 2026-09-14 confirmed that Settings opened from the titlebar or from Navigate returns focus to that opener on Close or Escape, and that Escape closes Settings.
+- The same pass read focus after three destination changes and did not find it on the new `h1`. An independent review found that result inconclusive: the CDP window reported `document.visibilityState` as hidden and ran no animation frames, and Patchdesk moves heading focus in the next animation frame. The claim above stands on source until a pass runs in a visible window.
+- Latent defect: a re-render that hands the shell a new destination value before that frame runs cancels the scheduled focus, and the shell never schedules it again, because it recorded the destination as focused when it scheduled the frame. The heavy first paint of a Review workbench makes that re-render plausible. No test covers heading focus. See [B-14](../bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change).
+- Confirm focus after leave-guard cancellation and native close cancellation.
 - Confirm that Escape and clicking outside Settings clear the restore marker on a clean close.
-- In the current source only the Review workbench reports navigation state, and only as write-pending or clear. Confirm which surface, if any, still reports an unsaved draft to this guard.
 - Confirm the exact visible restore after a renderer reload from each workbench tab, navigator section, and selected file.
-- Confirm behavior when the saved workbench destination refers to a Review that local cleanup removed; source inspection for the load fallback belongs in `pull-requests/opening-a-review.md`.
+- The quiet launch return and the workbench-to-workbench transition were not observed live: the test workspace held no removed Review, and every Review loaded too fast to see the intermediate screen.
 
-Verified against Patchdesk application source commit `3100615`; the removal of the workspace draft guard described from `883fad2`; global pull-request palette behavior updated for issue #84.
+Baseline drafted from Patchdesk application source commit `3100615`; global pull-request palette behavior updated for issue #84; revised and verified against `737c515c`.

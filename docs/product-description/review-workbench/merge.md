@@ -2,7 +2,7 @@
 
 ## Summary
 
-Merge evaluates the represented pull request's exact revision, required checks, GitHub mergeability, policy evidence, warnings, allowed merge methods, and write-recovery state before offering one explicit GitHub merge. The maintainer reaches it from the Merge status control and PR overview. Patchdesk never automatically retries an uncertain merge.
+Merge evaluates the represented pull request's exact revision, required checks, GitHub mergeability, policy evidence, warnings, allowed merge methods, and write-recovery state before offering one explicit GitHub merge. The maintainer reaches it from the Merge status control and PR overview, whose rows this page describes in full. Patchdesk never automatically retries an uncertain merge.
 
 ## The simple case
 
@@ -26,9 +26,18 @@ stateDiagram-v2
 
 ### Arrive
 
-The Review header shows separate Checks and Merge status controls; the Checks control opens PR overview with the Checks row expanded and focused, and the Merge control opens it with the Merge readiness row expanded and focused. Readiness distinguishes Ready, Needs acknowledgement, and Blocked. Blockers and warnings remain separate. Open P0 or P1 findings from the current Analysis appear as one card that counts them; its Review findings action closes PR overview and opens the first of those findings on the Insights tab. A sole unknown-mergeability condition is not presented with the same destructive certainty as a confirmed policy block.
+The Review header shows separate Checks and Merge status controls. Both open PR overview with Revision, Review status, and Merge readiness expanded. The Checks control also expands the Checks row and moves focus to it; the Merge control leaves Checks collapsed and moves focus to the Merge readiness row. PR overview is a drawer on the right titled "PR overview", with the repository, pull-request number, and title beneath. It has four collapsible rows, in this order:
 
-The merge command names repository and pull-request number, base and head branches, and short represented head SHA. Methods remain the catalogued Squash, Merge, and Rebase choices. GitHub-originated reasons can offer Open on GitHub when the safe external pull-request URL is available.
+- **Revision.** Its label states freshness: Current, Updates available, Remote state unavailable, Not refreshed, or Unavailable. Expanded, it shows base ← head branches, "Refreshed" with a relative time, and the commit and changed-file counts. When GitHub reports a newer head than the represented one, it also shows the Reviewed and Current short SHAs. Without revision data it reads "Revision details unavailable." [Review session and revision](../foundations/review-session-and-revision.md) owns what each freshness state means.
+- **Checks.** Its label states the overall check result, such as Passing or Failing, and its body lists the checks.
+- **Review status.** One line each for Brief, Analysis, and Walkthrough, with the Insight's icon and its status: Not generated, Running, Current, Outdated, or Failed. [Insights overview](insights-overview.md) owns those Insights.
+- **Merge readiness.** Its label reads Ready to merge, Warnings, Blocked, or Unknown, and its body holds the reasons, warnings, and the merge command.
+
+Readiness distinguishes Ready, Needs acknowledgement, and Blocked. Blockers and warnings remain separate. With none of either, the row says "No merge blockers or warnings. This Review is ready to merge." The merge command appears inside Merge readiness only while the Review is not terminal and readiness is not Blocked. A merged or closed Review adds a footer: "This Review is merged and remains readable." or the same sentence with closed. Open P0 or P1 findings from the current Analysis appear as one card that counts them; its Review findings action closes PR overview and opens the first of those findings on the Insights tab. A sole unknown-mergeability condition is not presented with the same destructive certainty as a confirmed policy block: the row label reads Unknown in an informational tone.
+
+A reason GitHub or a rule confirmed shows in a destructive card with its source, such as Branch protection. A reason Patchdesk could not confirm shows in an informational card captioned "Patchdesk could not confirm this rule" with its source. One case has its own wording: when GitHub requires an approval and Patchdesk cannot see whether one exists, the card says "GitHub requires an approval. Patchdesk cannot see whether one exists; check on GitHub." and has no caption.
+
+The merge command names repository and pull-request number, base and head branches, and short represented head SHA. Methods remain the catalogued Squash, Merge, and Rebase choices. GitHub-originated reasons can offer Open on GitHub when the safe external pull-request URL is available. Only the first reason that offers it shows the button, because every reason links to the same pull request.
 
 ### Leave unchanged
 
@@ -72,7 +81,7 @@ If the receipt is confirmed but terminal refresh fails, Patchdesk shows Merged p
 | GitHub, the network, a local tool, or an Insight provider fails or times out | Readiness can show unknown or blocked evidence and Open on GitHub. | An in-progress-gate failure is retryable because GitHub did not receive the merge; other uncertainty is non-retryable until recovery. |
 | Close Settings, reload the renderer, close the window, or quit Patchdesk | Settings overlays readiness. Confirmed terminal and unknown merge operation are durable. | Durable state must restore terminal or recovery behavior after reload. Close and quit during active GitHub merge need live verification. |
 | The pull request, represented revision, pending review, permission, or other target changes elsewhere | Any mismatch in head, base, patch, represented revision, permission, or readiness invalidates the request. | Server-side exact-revision checks and typed receipts prevent an older screen from confirming a different merge. |
-| macOS focus, a file or folder picker, or another input path takes control | Focus can move among readiness, method, acknowledgement, and external GitHub link. | Focus loss does not cancel merge or recovery. Focus return after closing PR overview needs live verification. |
+| macOS focus, a file or folder picker, or another input path takes control | Focus can move among readiness, method, acknowledgement, and external GitHub link. Closing PR overview returns focus to the header control that opened it; Review findings instead leaves focus on the Analysis Finding it opens. | Focus loss does not cancel merge or recovery. |
 
 ## Interactions with other systems
 
@@ -108,9 +117,11 @@ If the receipt is confirmed but terminal refresh fails, Patchdesk shows Merged p
 
 ## Open questions and verification
 
-- Live desktop verification is pending. Confirm PR overview focus, warning acknowledgement, method grouping, external-link handoff, and recovery feedback.
+- Confirmed live on 2026-09-14: PR overview shows the Revision, Checks, Review status, and Merge readiness rows in that order with the content described above; the Merge control opens it with Merge readiness expanded and focused; closing it with Escape or Close returns focus to the Merge or Checks control that opened it. Merge was not pressed.
+- Suspected defect, confirmed live and by an independent review: the Checks control opens PR overview exactly as the Merge control does, with the Checks row collapsed and not focused, so a maintainer who asked for checks is shown Merge readiness. See [B-12](../bug-triage.md#b-12-the-checks-control-opens-pr-overview-on-merge-readiness).
+- Not checked live: the unconfirmed-approval wording, a Revision row with a newer head, warning acknowledgement, method grouping, external-link handoff, and recovery feedback. No pull request in the workspace reached those states, and merging is a GitHub write.
 - Confirm close and quit behavior while GitHub is still processing a merge.
 - Confirm visible readiness messages for each current GitHub policy and permission reason.
 - Confirm the selected method's persistence when PR overview closes and reopens without leaving the Review.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.

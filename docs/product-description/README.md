@@ -82,7 +82,7 @@ Drafting reads the code; verification watches the product. The `verification/` d
 
 A tester runs the checklists in the default macOS desktop app and records `pass`, `fail`, or `blocked`. A failure goes into `bug-triage.md` with the checklist ID. A document moves from `drafted` to `verified` only when every P1 and P2 item has passed or has been filed.
 
-`bug-triage.md` consolidates suspected defects raised by the documents. It will name the user-visible behavior, reproduction, source cause, severity, and decision needed. An automated or static pass alone does not confirm live desktop behavior.
+`bug-triage.md` consolidates suspected defects raised by the documents. It names the user-visible behavior, reproduction, source cause, severity, and decision needed. An automated or static pass alone does not confirm live desktop behavior. [`ux-friction.md`](ux-friction.md) records friction that is not a defect, each item with a disposition.
 
 ### Order of work
 
@@ -96,7 +96,7 @@ Progress is tracked in the [coverage table](#coverage).
 ### Scope decisions
 
 - **Surface.** The whole default Patchdesk desktop app on supported Apple Silicon macOS is in scope. The maintainer uses one local app window, a keyboard and mouse, workspace profiles, local checkouts, GitHub CLI authentication, and optional configured Insight providers.
-- **Source snapshot.** The baseline drafting pass used committed source `3100615`. Follow-up behavior in the documents updated by the 2026-08-31 product-verification work is verified through `c49045d`, which contains the completed follow-up fixes. The Pull requests filter document has one scoped follow-up verified against application commit `359770f` and the 2026-09-02 live pass. Untouched documents retain their prior source snapshots and historical live-pass evidence; this scope does not silently repin or reverify them.
+- **Source snapshot.** The baseline drafting pass used committed source `3100615`. Follow-up behavior in the documents updated by the 2026-08-31 product-verification work is verified through `c49045d`, which contains the completed follow-up fixes. The Pull requests filter document has one scoped follow-up verified against application commit `359770f` and the 2026-09-02 live pass. The 2026-09-14 UX pass drafted against `dd613996` and was then refreshed against `737c515c`, the pin every document it revised now carries in its footer. Its live pass ran on `5fe7df3b`, which is `dd613996` plus renderer failure copy for comment and Finding actions only; that copy is not described as behavior here. Behavior that landed between `dd613996` and `737c515c` is read from source and is not live-verified, and each page says which of its claims that covers. Untouched documents retain their prior source snapshots and historical live-pass evidence; this scope does not silently repin or reverify them.
 - **Runtime.** Development verification uses `REMOTE_DEBUGGING_PORT=9233 pnpm dev` and `agent-browser` over CDP 9233. The raw app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
 - **Fixture routes.** Browser and performance fixture routes are test harnesses, not maintainer-facing product surfaces, so they are out of scope.
 - **Installation and release production.** Downloading a release, Gatekeeper recovery, packaging, signing, notarization, and release publication are out of scope. Startup after installation and single-instance behavior remain in scope where they affect the running app.
@@ -115,6 +115,7 @@ goal.md                            standing drafting instructions
 AGENTS.md, CLAUDE.md               entry points for future drafting sessions
 glossary.md                        shared vocabulary
 bug-triage.md                      consolidated suspected defects
+ux-friction.md                     UX friction from the 2026-09-14 live passes, with dispositions
 
 verification/
   README.md                        hand-verification protocol
@@ -122,6 +123,7 @@ verification/
   pull-requests.md                 first-run and Pull requests checklists
   review-workbench.md              workbench and GitHub-write checklists
   insights-and-cross-cutting.md    Insight and cross-cutting checklists
+  unblocking-notes.md              notes on blocked rows from the 2026-08-31 pass
 
 foundations/
   task-lifecycle-and-interruption.md  task phases, variants, interrupts, and operation states
@@ -129,6 +131,7 @@ foundations/
   workspace-profile-and-identity.md  profiles, GitHub identity, repositories, and local roots
   review-session-and-revision.md     Pull request, Review, session, worktree, and freshness
   persistence-and-recovery.md        saved local state, cache, journals, locks, and recovery
+  visited-pull-requests.md           the column of opened pull requests beside every screen
 
 first-run/
   setup-checklist.md                 workspace setup in place on the Pull requests screen
@@ -167,18 +170,20 @@ cross-cutting/
 
 ## Coverage
 
-Status is one of `not started`, `drafted`, or `verified`.
+Status is one of `not started`, `drafted`, or `verified`. A document is `verified` only when every P1 and P2 checklist item for it has passed in a hand pass or has been filed in `bug-triage.md`; the automated and CDP passes to date leave every document `drafted`.
 
 | Document                                        | Status  |
 | ----------------------------------------------- | ------- |
 | glossary.md                                     | drafted |
 | bug-triage.md                                   | drafted |
-| verification/ (4 checklists)                    | drafted |
+| ux-friction.md                                  | drafted |
+| verification/ (4 checklists + notes)            | drafted |
 | foundations/task-lifecycle-and-interruption.md  | drafted |
 | foundations/navigation-and-overlays.md          | drafted |
 | foundations/workspace-profile-and-identity.md   | drafted |
 | foundations/review-session-and-revision.md      | drafted |
 | foundations/persistence-and-recovery.md         | drafted |
+| foundations/visited-pull-requests.md            | drafted |
 | first-run/setup-checklist.md                    | drafted |
 | first-run/repository-discovery.md               | drafted |
 | pull-requests/selected-repository.md            | drafted |
@@ -206,7 +211,7 @@ Status is one of `not started`, `drafted`, or `verified`.
 
 ## Reference
 
-The baseline source of truth is Patchdesk at `/Users/kwanpham/Work/patchdesk`, pinned to application-source commit `3100615`. Documents changed by the follow-up additionally reflect behavior through `c49045d`; that scope does not extend to untouched documents. Relevant locations are:
+The source of truth is Patchdesk at `/Users/kwanpham/Work/personal/patchdesk`. The baseline pin is application-source commit `3100615`; documents changed by the follow-up reflect behavior through `c49045d`, and documents revised by the 2026-09-14 UX pass are pinned to `737c515c`. Each document's footer names its own pin. Relevant locations are:
 
 - [`src/renderer/src/app.tsx`](../../src/renderer/src/app.tsx): root screen routing, Settings overlay, profile switching, and leave guards.
 - [`src/renderer/src/flows/`](../../src/renderer/src/flows/): Pull requests, Review workbench, Settings, and their interaction hooks.

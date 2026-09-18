@@ -31,7 +31,7 @@ The initial request leaves the repository out until the renderer has learned the
 
 ### Leave unchanged
 
-Opening the picker and closing it without choosing a different item changes nothing. Choosing the already selected repository is a no-op. Reading rows, selecting a row for inspection, or opening a Review does not change the Selected repository.
+Opening the picker and closing it without choosing a different item changes nothing. Choosing the already selected repository is a no-op. Reading rows, selecting a row for inspection, or opening a Review does not change the Selected repository. That includes a Review opened from the [Visited pull requests column](../foundations/visited-pull-requests.md) for a pull request in another watched repository; returning to Pull requests shows the same Selected repository.
 
 ### Begin an action
 
@@ -49,7 +49,7 @@ The picker remains a local scope control. A failed read leaves the last confirme
 
 A successful read shows the new repository's rows, GitHub freshness, count, filters, and page controls. The new choice remains selected after reload for that profile. Changing back to the earlier repository restores that profile's stored repository choice only if it is still watched.
 
-If the watchlist is empty, the picker disappears and the Pull requests screen uses the first-run setup card. Existing Review data is not deleted when a repository leaves the watchlist.
+If the watchlist is empty, the picker disappears and the Pull requests screen uses the first-run setup card. The Visited pull requests column stays beside it unless the maintainer has collapsed it. Existing Review data is not deleted when a repository leaves the watchlist.
 
 ## Variants
 
@@ -79,7 +79,7 @@ After a failed or superseded read, the active scope remains the last requested w
 
 ## Interactions with other systems
 
-**Workspace profile and identity.** The picker reads only the active profile's watched repositories and saves the choice per profile.
+**Workspace profile and identity.** The picker reads only the active profile's watched repositories and saves the choice per profile. The Selected repository scopes the repository listing only; the Visited pull requests column lists the active profile's opened pull requests from every repository.
 
 **Review revision and freshness.** Repository selection chooses the source scope; freshness and represented-revision rules belong to the resulting rows and Review workbench.
 
@@ -110,9 +110,9 @@ After a failed or superseded read, the active scope remains the last requested w
 
 ## Open questions and verification
 
-- Live desktop verification is pending; no CDP pass was run for this document.
+- Live pass on 2026-09-14 confirmed that a profile with one watched repository shows the picker. Trigger truncation, the empty-watchlist setup card, and opening a Visited row from a different repository were not checkable with that profile.
 - Confirm picker focus and the visible loading transition when changing between two watched repositories.
 - Confirm the exact restore when a selected repository is removed in Settings while Pull requests is visible.
 - Confirm whether a failed new-repository read should retain the requested picker value or visibly revert to the previous confirmed value.
 
-Verified against Patchdesk application source commit `3100615`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.
