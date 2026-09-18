@@ -1,23 +1,19 @@
+import { StubCredentials } from "./stub-github-credentials";
 import { describe, expect, it } from "vitest";
 
 import {
   CommandRunner,
   type CommandExecution,
   type CommandExecutor,
-  type CommandFailure,
 } from "../../src/adapters/github/command-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import type { GitHubCredentials } from "../../src/adapters/github/github-credentials";
 import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
 } from "../../src/domain/ids";
-import { ok, type Result } from "../../src/domain/result";
-import {
-  parseWorkspaceProfileConfig,
-  type WorkspaceProfileConfig,
-} from "../../src/domain/workspace-profile";
+import { type Result } from "../../src/domain/result";
+import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 
 function mustParse<T, E>(result: Result<T, E>): T {
   if (result._tag === "err") throw new Error("Expected test value to parse");
@@ -55,16 +51,6 @@ class FakeProcessExecutor implements CommandExecutor {
       throw new Error("Missing fake command response");
     return response;
   }
-}
-
-class StubCredentials implements GitHubCredentials {
-  async environmentFor(): Promise<
-    Result<Readonly<Record<string, string>>, CommandFailure>
-  > {
-    return ok({ GH_TOKEN: "profile-token" });
-  }
-
-  forget(_profile: WorkspaceProfileConfig): void {}
 }
 
 function exited(stdout: string): CommandExecution {

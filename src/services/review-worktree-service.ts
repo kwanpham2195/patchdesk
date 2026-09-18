@@ -97,7 +97,7 @@ export class ReviewWorktreeService {
   constructor(
     private readonly paths: PatchdeskPaths,
     private readonly git: GitReadExecutor,
-    private readonly credentials: GitHubCredentials,
+    private readonly credentials: Pick<GitHubCredentials, "environmentFor">,
     // Resolved per call, not cached at construction: mirrors electron-main's
     // `codexInvoke` precedent so a PATH change is picked up without a
     // restart, and so tests can stub it without touching process state.

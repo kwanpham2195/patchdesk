@@ -100,7 +100,7 @@ function worktrees(
         return ok({ stdout: "" });
       },
     },
-    { environmentFor: async () => ok({}), forget: () => undefined },
+    { environmentFor: async () => ok({}) },
     async () => "/usr/local/bin/gh",
   );
 }

@@ -13,6 +13,9 @@ import { describe, expect, it } from "vitest";
 
 import { PatchdeskPaths } from "../../src/adapters/storage/patchdesk-paths";
 import type { GitHubCredentials } from "../../src/adapters/github/github-credentials";
+
+/** All `ReviewWorktreeService` asks of a credential source. */
+type WorktreeCredentials = Pick<GitHubCredentials, "environmentFor">;
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -65,11 +68,10 @@ class RecordingGit implements GitReadExecutor {
   }
 }
 
-const credentials: GitHubCredentials = {
+const credentials: WorktreeCredentials = {
   async environmentFor() {
     return ok({ GH_TOKEN: "profile-token" });
   },
-  forget() {},
 };
 
 // Deliberately contains a space: Git runs the credential helper through
@@ -290,12 +292,11 @@ describe("ReviewWorktreeService", () => {
       const local = join(root, "repo");
       await mkdir(local);
       const requestedProfiles: string[] = [];
-      const unavailable: GitHubCredentials = {
+      const unavailable: WorktreeCredentials = {
         async environmentFor(requested) {
           requestedProfiles.push(requested.ghAccount);
           return err({ _tag: "CommandAuthenticationRequired" });
         },
-        forget() {},
       };
       const git = new RecordingGit();
       const prepared = await new ReviewWorktreeService(
@@ -609,11 +610,10 @@ describe("ReviewWorktreeService", () => {
       const local = join(root, "repo");
       await mkdir(local);
       const enterpriseHost = must(parseGitHubHost("ghe.example.com"));
-      const enterpriseCredentials: GitHubCredentials = {
+      const enterpriseCredentials: WorktreeCredentials = {
         async environmentFor() {
           return ok({ GH_ENTERPRISE_TOKEN: "enterprise-token" });
         },
-        forget() {},
       };
       const git = new RecordingGit();
       const prepared = await new ReviewWorktreeService(
