@@ -1,5 +1,6 @@
 import type { GitSha } from "../domain/ids";
 
+import type { InsightActivitySink } from "../adapters/codex/codex-activity";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { InsightStore } from "../adapters/storage/insight-store";
 import {
@@ -35,6 +36,7 @@ import {
   canonicalModelId,
   type PiRuntimeModelCatalog,
 } from "../adapters/pi/pi-runtime-model-catalog";
+import type { DesktopNotifier } from "./desktop-notifier";
 import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightProviderCatalog } from "./insight-provider-catalog";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
@@ -43,6 +45,10 @@ import { err, ok, type Result } from "../domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { InsightRecovery } from "./insight-recovery";
 import { InsightRunExecutor } from "./insight-run-executor";
+import {
+  InsightActivityBuffer,
+  type InsightActivitySnapshot,
+} from "./insight-activity-buffer";
 
 export type InsightInvocationInput = {
   readonly profileId: WorkspaceProfileId;
@@ -72,10 +78,15 @@ type InsightInvocationFailure = {
   /** The provider's bounded, redacted account of the failure, when it gave one. */
   readonly stderr?: string;
 };
+/** Per-invocation options; Pi has no incremental boundary and never calls `onActivity`. */
+export type InsightInvocationOptions = {
+  readonly signal: AbortSignal;
+  readonly onActivity?: InsightActivitySink | undefined;
+};
 export type InsightInvoker = {
   invoke(
     input: InsightInvocationInput,
-    options: { readonly signal: AbortSignal },
+    options: InsightInvocationOptions,
   ): Promise<Result<unknown, InsightInvocationFailure>>;
 };
 export type InsightRunResponse = {
@@ -93,6 +104,8 @@ export type InsightRunResponse = {
     | "failed"
     | "invalid_result"
     | "superseded";
+  /** Present while this process holds the run's activity trace; a Pi run has none. */
+  readonly activity?: InsightActivitySnapshot | undefined;
 };
 export type InsightCoordinatorInput = {
   readonly profileId: WorkspaceProfileId;
@@ -122,6 +135,11 @@ export type Active = {
 
 export class InsightRunCoordinator {
   private readonly active = new Map<string, Active>();
+  /** The last activity trace per profile, Review, and Insight type, kept after the run ends until the next run starts. */
+  private readonly traces = new Map<
+    string,
+    { readonly runId: InsightRunId; readonly activity: InsightActivityBuffer }
+  >();
   private readonly recovery: InsightRecovery;
   private readonly executor: InsightRunExecutor;
 
@@ -141,6 +159,8 @@ export class InsightRunCoordinator {
      * Absent leaves the block off: every other Insight type ignores it.
      */
     private readonly reach?: BriefReachComputer,
+    /** Announces a settled run outside the window (ADR 0044). */
+    private readonly notifier?: DesktopNotifier,
   ) {
     this.recovery = new InsightRecovery(
       this.reviews,
@@ -162,6 +182,7 @@ export class InsightRunCoordinator {
       (input) => this.recovery.recover(input),
       this.diagnostics,
       this.reach,
+      this.notifier,
     );
   }
 
@@ -263,6 +284,16 @@ export class InsightRunCoordinator {
         : err("storage_unavailable");
     const controller = new AbortController();
     this.active.set(runId.value, { runId: runId.value, controller });
+    // Pi's child writes one result at exit, so a Pi run keeps today's panel instead of a trace.
+    const activity =
+      provider === "pi" ? undefined : new InsightActivityBuffer();
+    const traceKey = activityTraceKey(
+      input.profileId,
+      input.reviewId,
+      input.type,
+    );
+    if (activity === undefined) this.traces.delete(traceKey);
+    else this.traces.set(traceKey, { runId: runId.value, activity });
     const invocation = {
       profileId: input.profileId,
       reviewId: input.reviewId,
@@ -290,6 +321,7 @@ export class InsightRunCoordinator {
       runId.value,
       hash.value,
       controller,
+      activity === undefined ? undefined : (event) => activity.append(event),
     );
     return ok({ runId: runId.value, type: input.type, status: "queued" });
   }
@@ -522,6 +554,7 @@ export class InsightRunCoordinator {
 
   /** Startup sweep: fails every run a crash left active, across all profiles. */
   async recoverAll(): Promise<void> {
+    this.traces.clear();
     return this.recovery.recoverAll();
   }
 
@@ -544,19 +577,31 @@ export class InsightRunCoordinator {
           ? "not_found"
           : "storage_unavailable",
       );
+    const trace = this.traces.get(
+      activityTraceKey(input.profileId, input.reviewId, input.type),
+    );
+    const activity =
+      trace?.runId === input.runId ? trace.activity.snapshot() : undefined;
     if (record.value.activeRun?.id === input.runId)
       return ok({
         runId: input.runId,
         type: input.type,
         status: record.value.activeRun.status,
+        activity,
       });
     if (record.value.retained?.runId === input.runId) {
-      return ok({ runId: input.runId, type: input.type, status: "completed" });
+      return ok({
+        runId: input.runId,
+        type: input.type,
+        status: "completed",
+        activity,
+      });
     }
     if (record.value.replacementFailure?.runId === input.runId)
       return ok({
         runId: input.runId,
         type: input.type,
+        activity,
         status:
           record.value.replacementFailure.reason === "cancelled"
             ? "cancelled"
@@ -593,6 +638,14 @@ export class InsightRunCoordinator {
       ? err("ownership_mismatch")
       : err("not_found");
   }
+}
+
+function activityTraceKey(
+  profileId: WorkspaceProfileId,
+  reviewId: ReviewId,
+  type: InsightType,
+): string {
+  return `${profileId}:${reviewId}:${type}`;
 }
 
 function currentIsoTimestamp(): IsoTimestamp {

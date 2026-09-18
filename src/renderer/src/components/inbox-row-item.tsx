@@ -4,6 +4,7 @@ import {
   CircleDashed,
   CircleSlash,
   Clock3,
+  Eye,
   GitPullRequest,
 } from "lucide-react";
 
@@ -16,6 +17,7 @@ import {
 import { ScopeGauge } from "./scope-gauge";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import { cn } from "@/lib/utils";
 
 /** The author's cached avatar at the row's text scale; initials until the cache warms. */
@@ -36,6 +38,7 @@ export function InboxRowItem({
 }): React.JSX.Element {
   const key = inboxIdentityKey(row);
   const opening = openingState?.status === "opening";
+  const watched = useWatchedPullRequests()?.isWatched(row.identity) === true;
   return (
     // An `option`'s descendants are presentational under ARIA, so the row
     // cannot hold a nested control and the title below is styled text the
@@ -80,6 +83,22 @@ export function InboxRowItem({
               {row.isDraft ? (
                 <Badge variant="outline" className="h-4 px-1 text-[10px]">
                   Draft
+                </Badge>
+              ) : null}
+              {watched ? (
+                <span className="inline-flex shrink-0" title="Watched">
+                  <Eye className="size-3 text-muted-foreground" />
+                  <span className="sr-only">Watched</span>
+                </span>
+              ) : null}
+              {row.headMovedSinceLastLooked === true ? (
+                <Badge
+                  variant="outline"
+                  className="h-4 border-primary/40 px-1 text-[10px] text-primary"
+                  aria-label="New commits since you last looked"
+                  title="New commits since you last looked"
+                >
+                  New
                 </Badge>
               ) : null}
               {row.remoteState === "merged" ? (

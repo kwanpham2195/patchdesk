@@ -123,8 +123,8 @@ Patchdesk currently requires:
 - `git`.
 - The GitHub CLI (`gh`), authenticated with `gh auth login`.
 
-Node.js is not required. The optional Insight runtime ships inside the app and
-uses Electron's Node runtime.
+The packaged app does not require Node.js. The optional Insight runtime ships
+inside the app and uses Electron's Node runtime.
 
 ### Install with Homebrew
 
@@ -159,6 +159,35 @@ quarantine flag; it does not change the app.
 
 Opening Patchdesk while it is already running brings the existing window to
 the front and quits the new copy.
+
+### Install from source
+
+Building the app from a checkout also requires Node.js 22.19 or later and
+pnpm 8.8.0:
+
+```bash
+git clone https://github.com/kwanpham2195/patchdesk.git
+cd patchdesk
+pnpm install
+pnpm install:mac
+```
+
+`pnpm install:mac` builds the arm64 package and copies it to
+`/Applications/Patchdesk.app`, replacing any copy there. It quits a Patchdesk
+running from `/Applications` first, then opens the new app. A local build
+carries no download quarantine flag, so it needs no `xattr` step.
+
+To update, pull and install again:
+
+```bash
+git pull
+pnpm install
+pnpm install:mac
+```
+
+To run the development app instead, see
+[Build and contribute](#build-and-contribute) and
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Build and contribute
 

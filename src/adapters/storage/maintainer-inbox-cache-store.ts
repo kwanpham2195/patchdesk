@@ -15,10 +15,12 @@ import {
   type WorkspaceProfileId,
 } from "../../domain/ids";
 import {
+  INBOX_CATEGORIES,
   INBOX_DATA_FRESHNESS,
   INBOX_INSIGHT_STATES,
   INBOX_REPOSITORY_OUTCOMES,
   INBOX_STATE_FILTER_VALUES,
+  headMovedSinceLastLooked,
   type InboxRepositoryOutcome,
   type InboxCategory,
   type InboxRecommendedAction,
@@ -106,13 +108,16 @@ const rowSchema = v.strictObject({
       reviewedHeadSha: v.string(),
       updatedAt: v.string(),
       matchesCurrentHead: v.boolean(),
+      lastLookedHeadSha: v.optional(v.string()),
     }),
   ),
+  /** Written with every row but re-derived on read from `latestReview`, so a row cached before #231 reads the same. */
+  headMovedSinceLastLooked: v.optional(v.boolean()),
   labels: v.optional(
     v.array(v.strictObject({ name: v.string(), color: v.string() })),
   ),
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-  categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
+  categories: v.array(v.picklist(INBOX_CATEGORIES)),
   recommendedAction: actionSchema,
   dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
@@ -276,6 +281,10 @@ function parseRow(
           : insights,
     }),
     ...latestReviewField,
+    headMovedSinceLastLooked: headMovedSinceLastLooked(
+      latestReview?.value,
+      currentHeadSha.value,
+    ),
     labels,
     ...labelCountField,
     categories,
@@ -326,14 +335,20 @@ function parseLatestReview(
   const reviewId = parseReviewId(input.reviewId);
   const reviewedHeadSha = parseGitSha(input.reviewedHeadSha);
   const updatedAt = parseIsoTimestamp(input.updatedAt);
+  const lastLookedHeadSha =
+    input.lastLookedHeadSha === undefined
+      ? ok(undefined)
+      : parseGitSha(input.lastLookedHeadSha);
   return reviewId._tag === "ok" &&
     reviewedHeadSha._tag === "ok" &&
-    updatedAt._tag === "ok"
+    updatedAt._tag === "ok" &&
+    lastLookedHeadSha._tag === "ok"
     ? ok({
         reviewId: reviewId.value,
         reviewedHeadSha: reviewedHeadSha.value,
         updatedAt: updatedAt.value,
         matchesCurrentHead: input.matchesCurrentHead,
+        ...definedProps({ lastLookedHeadSha: lastLookedHeadSha.value }),
       })
     : invalidCache();
 }

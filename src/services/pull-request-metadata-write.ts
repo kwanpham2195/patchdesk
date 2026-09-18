@@ -4,7 +4,7 @@ import type {
   RepositoryPermissionEvidence,
 } from "../adapters/github/github-adapter";
 import type { ForbiddenReason } from "../adapters/github/command-runner";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type { GitHubWriteFailure } from "../domain/github-write";
 import type {
@@ -24,6 +24,10 @@ import {
 } from "../domain/review-write-operation";
 import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
+import {
+  postDesktopNotification,
+  type DesktopNotifier,
+} from "./desktop-notifier";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import type { ReviewWriteGateFailure } from "./review-write-gate";
 
@@ -180,6 +184,7 @@ export async function resolvePullRequestWritePermission<Permission>(input: {
 /** Deterministic metadata preflight result captured before durable admission. */
 export type PreparedMetadataWrite<Receipt, Failure> = {
   readonly sessionId: ReviewSessionId;
+  readonly pullRequest: PullRequestRef;
   readonly intent: ReviewWriteIntent;
   readonly write: () => Promise<Result<Receipt, Failure>>;
 };
@@ -195,13 +200,14 @@ export async function runGuardedMetadataWrite<
     ReviewWriteOperationStore,
     "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
   >;
-  readonly recentWrites: Pick<RecentWriteJournalStore, "append">;
+  readonly recentWrites: ConfirmedWriteJournal;
   readonly now: () => IsoTimestamp;
   readonly validate: () => Result<void, Failure>;
   readonly prepare: () => Promise<
     Result<PreparedMetadataWrite<Receipt, Failure>, Failure>
   >;
   readonly journalEntry: (receipt: Receipt) => RecentReviewWrite;
+  readonly notifier?: DesktopNotifier | undefined;
 }): Promise<
   Result<Receipt, Failure | "review_write_in_progress" | "outcome_unknown">
 > {
@@ -209,6 +215,8 @@ export async function runGuardedMetadataWrite<
   if (validated._tag === "err") return validated;
   const key = `${input.profileId}:${input.reviewId}`;
   if (!input.coordinator.acquire(key)) return err("review_write_in_progress");
+  // Set once this call's own operation is outcome-unknown; only `reject` or `remove` clears it.
+  let leftLocked: PullRequestRef | undefined;
   try {
     const active = await input.operations.load(input.profileId, input.reviewId);
     if (active._tag === "err" || active.value !== undefined)
@@ -230,6 +238,7 @@ export async function runGuardedMetadataWrite<
     if (unknown._tag === "err") return err("outcome_unknown");
     const marked = await input.operations.markOutcomeUnknown(unknown.value);
     if (marked._tag === "err") return err("outcome_unknown");
+    leftLocked = prepared.value.pullRequest;
     let result: Result<Receipt, Failure>;
     try {
       result = await prepared.value.write();
@@ -239,26 +248,35 @@ export async function runGuardedMetadataWrite<
     if (result._tag === "err") {
       if (result.error === "outcome_unknown") return result;
       const rejected = await input.operations.reject(operation);
-      return rejected._tag === "err" ? err("outcome_unknown") : result;
+      if (rejected._tag === "err") return err("outcome_unknown");
+      leftLocked = undefined;
+      return result;
     }
     const receipt = input.journalEntry(result.value);
     const confirmedOperation = confirmReviewWrite(unknown.value, receipt);
     if (confirmedOperation._tag === "err") return err("outcome_unknown");
     const confirmed = await input.operations.confirm(confirmedOperation.value);
     if (confirmed._tag === "err") return err("outcome_unknown");
-    const appended = await input.recentWrites.append(
+    await input.recentWrites.appendConfirmed(
       input.profileId,
       input.reviewId,
       receipt,
       input.now(),
     );
-    if (appended._tag === "err") return err("outcome_unknown");
     const removed = await input.operations.remove(
       input.profileId,
       input.reviewId,
     );
-    return removed._tag === "err" ? err("outcome_unknown") : ok(result.value);
+    if (removed._tag === "err") return err("outcome_unknown");
+    leftLocked = undefined;
+    return ok(result.value);
   } finally {
     input.coordinator.release(key);
+    if (leftLocked !== undefined)
+      postDesktopNotification(input.notifier, {
+        _tag: "WriteNeedsRecovery",
+        reviewId: input.reviewId,
+        pullRequest: leftLocked,
+      });
   }
 }

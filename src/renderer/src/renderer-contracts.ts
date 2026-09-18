@@ -7,7 +7,11 @@ import {
   viewerLoginSchema,
 } from "./review-write-receipts";
 import { briefInsightSchema } from "./brief-contracts";
-import { insightFields, retainedInsightFields } from "./insight-contracts";
+import {
+  insightFields,
+  insightRunActivitySchema,
+  retainedInsightFields,
+} from "./insight-contracts";
 import { inboxRecommendedActionSchema } from "./inbox-action-contract";
 import { inboxInsightReadinessSchema } from "./inbox-insight-contract";
 import { changeScopeSchema } from "../../domain/change-scope";
@@ -15,6 +19,7 @@ import { FORBIDDEN_REASONS } from "../../domain/github-forbidden-reason";
 import type { RawJsonValue } from "../../domain/json";
 import { FINDING_MAPPING_STATUSES } from "../../domain/review-result";
 import {
+  INBOX_CATEGORIES,
   INBOX_DATA_FRESHNESS,
   INBOX_PAGE_SIZES,
   INBOX_REPOSITORY_OUTCOMES,
@@ -102,11 +107,13 @@ const inboxRowSchema = v.strictObject({
       reviewedHeadSha: v.pipe(v.string(), v.minLength(7)),
       updatedAt: v.pipe(v.string(), v.isoTimestamp()),
       matchesCurrentHead: v.boolean(),
+      lastLookedHeadSha: v.optional(v.pipe(v.string(), v.minLength(7))),
     }),
   ),
+  headMovedSinceLastLooked: v.optional(v.boolean()),
   labels: v.array(v.strictObject({ name: v.string(), color: v.string() })),
   labelCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-  categories: v.array(v.picklist(["updated_since_review", "ready_to_merge"])),
+  categories: v.array(v.picklist(INBOX_CATEGORIES)),
   recommendedAction: inboxRecommendedActionSchema,
   dataFreshness: v.picklist(INBOX_DATA_FRESHNESS),
 });
@@ -790,7 +797,7 @@ export function parseDirectSummaryReviewResponse(
 const analysisFindingReviewStatusSchema = v.variant("state", [
   v.strictObject({ state: v.literal("actionable") }),
   v.strictObject({ state: v.literal("pending_review") }),
-  v.strictObject({ state: v.literal("published") }),
+  v.strictObject({ state: v.literal("published"), needsReply: v.boolean() }),
   v.strictObject({ state: v.literal("locked") }),
 ]);
 const analysisReviewActionsSchema = v.strictObject({
@@ -804,6 +811,11 @@ const workbenchProjectionSchema = v.strictObject({
   review: v.strictObject({
     id: v.pipe(v.string(), v.minLength(1)),
     status: v.picklist(["open", "merged", "closed"]),
+    lastLooked: v.optional(
+      v.strictObject({
+        seenThrough: v.optional(v.pipe(v.string(), v.isoTimestamp())),
+      }),
+    ),
   }),
   session: workbenchSessionSchema,
   localCheckout: v.optional(
@@ -876,6 +888,7 @@ const insightRunResponseSchema = v.strictObject({
   failureReason: v.optional(
     v.picklist(["cancelled", "failed", "invalid_result", "superseded"]),
   ),
+  activity: v.optional(insightRunActivitySchema),
 });
 export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;
 export function parseInsightRunResponse(

@@ -351,6 +351,31 @@ describe("useReviewObservation observation outcomes", () => {
     expect(replace).toHaveBeenCalledWith(reconciled);
   });
 
+  it.each([
+    { answer: "no projection", body: { _tag: "Reconciled" } },
+    {
+      answer: "a malformed projection",
+      body: { _tag: "Reconciled", projection: { detected: "yes" } },
+    },
+  ])(
+    "leaves the workbench alone for a Reconciled observation with $answer",
+    async ({ body }) => {
+      vi.useFakeTimers();
+      installObservationDouble({
+        detect: (call) => (call === 1 ? { _tag: "Unchanged" } : body),
+      });
+      const { result, replace, patch } = renderObservation(projection());
+      await flush();
+
+      await flush(DETECT_INTERVAL_MS);
+      await act(async () => {
+        await result.current.observeConfirmedReviewWrite();
+      });
+      expect(replace).not.toHaveBeenCalled();
+      expect(patch).not.toHaveBeenCalled();
+    },
+  );
+
   it("patches the Review status for a Terminal observation", async () => {
     vi.useFakeTimers();
     installObservationDouble({

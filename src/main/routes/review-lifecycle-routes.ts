@@ -12,19 +12,26 @@ import {
   safeParse,
   strictObject,
   string,
-  variant,
 } from "valibot";
 
 import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
 import {
-  parseGitHubThreadId,
+  parseContentHash,
+  parseGitSha,
+  parseIsoTimestamp,
   parseReviewId,
+  parseReviewSessionId,
   parseWorkspaceProfileId,
 } from "../../domain/ids";
-import type { RecentReviewWrite } from "../../domain/recent-review-write";
+import {
+  parseRecentReviewWrite,
+  recentReviewWriteRecordSchema,
+  type RecentReviewWrite,
+} from "../../domain/recent-review-write";
 import type { LocalApiContainer } from "../local-api-container";
 import { response } from "./http-status";
 import { jsonBody } from "./json-body";
+import { reviewRecoverySchema } from "./review-recovery-schema";
 
 /** Opening, loading, refreshing, diffing and merging one Review. */
 export function registerReviewLifecycleRoutes(
@@ -51,8 +58,35 @@ export function registerReviewLifecycleRoutes(
       ? response(context, await reviewWorkbench.load(parsed.output))
       : context.json({ error: "invalid_input" }, 400);
   });
+  app.post("/v1/reviews/leave", async (context) => {
+    const parsed = safeParse(reviewLeaveSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    const headSha = parseGitSha(parsed.output.headSha);
+    const seenThrough =
+      parsed.output.seenThrough === undefined
+        ? undefined
+        : parseIsoTimestamp(parsed.output.seenThrough);
+    if (
+      profileId._tag === "err" ||
+      reviewId._tag === "err" ||
+      headSha._tag === "err" ||
+      seenThrough?._tag === "err"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await reviewWorkbench.leave({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        headSha: headSha.value,
+        seenThrough: seenThrough?.value,
+      }),
+    );
+  });
   app.post("/v1/reviews/merge/recover", async (context) => {
-    const parsed = safeParse(reviewRecoverSchema, await jsonBody(context));
+    const parsed = safeParse(reviewRecoverySchema, await jsonBody(context));
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
     const reviewId = parseReviewId(parsed.output.reviewId);
@@ -77,45 +111,10 @@ export function registerReviewLifecycleRoutes(
       return context.json({ error: "invalid_input" }, 400);
     const recentWrites: Array<RecentReviewWrite> = [];
     for (const entry of parsed.output.recentWrites ?? []) {
-      if (entry._tag === "Comment") {
-        recentWrites.push(
-          entry.reviewId === undefined
-            ? { _tag: "Comment", commentId: entry.commentId }
-            : {
-                _tag: "Comment",
-                commentId: entry.commentId,
-                reviewId: entry.reviewId,
-              },
-        );
-      } else if (entry._tag === "PendingThread") {
-        const parsedThreadId = parseGitHubThreadId(entry.threadId);
-        if (parsedThreadId._tag === "err")
-          return context.json({ error: "invalid_input" }, 400);
-        recentWrites.push({
-          _tag: "PendingThread",
-          threadId: parsedThreadId.value,
-        });
-      } else if (entry._tag === "ThreadState") {
-        const parsedThreadId = parseGitHubThreadId(entry.threadId);
-        if (parsedThreadId._tag === "err")
-          return context.json({ error: "invalid_input" }, 400);
-        recentWrites.push({
-          _tag: "ThreadState",
-          threadId: parsedThreadId.value,
-          state: entry.state,
-        });
-      } else if (entry._tag === "DirectSummaryReview") {
-        recentWrites.push({
-          _tag: "DirectSummaryReview",
-          reviewId: entry.reviewId,
-        });
-      } else {
-        recentWrites.push({
-          _tag: "LabelChange",
-          added: entry.added,
-          removed: entry.removed,
-        });
-      }
+      const write = parseRecentReviewWrite(entry);
+      if (write._tag === "err")
+        return context.json({ error: "invalid_input" }, 400);
+      recentWrites.push(write.value);
     }
     const detectUpdatesInput = {
       profileId: profileId.value,
@@ -147,11 +146,44 @@ export function registerReviewLifecycleRoutes(
   app.post("/v1/reviews/diff-file", async (context) =>
     response(context, await reviewDiffSources.load(await jsonBody(context))),
   );
-  app.post("/v1/reviews/merge", async (context) =>
-    mergeWrites === undefined
-      ? context.json({ error: "merge_unavailable" }, 503)
-      : response(context, await mergeWrites.merge(await jsonBody(context))),
-  );
+  app.post("/v1/reviews/merge", async (context) => {
+    if (mergeWrites === undefined)
+      return context.json({ error: "merge_unavailable" }, 503);
+    const parsed = safeParse(mergeCommandSchema, await jsonBody(context));
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const body = parsed.output;
+    const profileId = parseWorkspaceProfileId(body.profileId);
+    const reviewId = parseReviewId(body.reviewId);
+    const sessionId = parseReviewSessionId(body.sessionId);
+    const expectedHeadSha = parseGitSha(body.expectedHeadSha);
+    const expectedBaseSha = parseGitSha(body.expectedBaseSha);
+    const expectedPatchHash = parseContentHash(body.expectedPatchHash);
+    const expectedRevision = parseIsoTimestamp(body.expectedRevision);
+    if (
+      profileId._tag === "err" ||
+      reviewId._tag === "err" ||
+      sessionId._tag === "err" ||
+      expectedHeadSha._tag === "err" ||
+      expectedBaseSha._tag === "err" ||
+      expectedPatchHash._tag === "err" ||
+      expectedRevision._tag === "err"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await mergeWrites.merge({
+        profileId: profileId.value,
+        reviewId: reviewId.value,
+        sessionId: sessionId.value,
+        expectedHeadSha: expectedHeadSha.value,
+        expectedBaseSha: expectedBaseSha.value,
+        expectedPatchHash: expectedPatchHash.value,
+        expectedRevision: expectedRevision.value,
+        method: body.method,
+        acknowledgedWarnings: body.acknowledgedWarnings,
+      }),
+    );
+  });
 }
 
 const reviewOpenSchema = strictObject({
@@ -167,43 +199,41 @@ const reviewLoadSchema = strictObject({
   /** Set only by the maintainer's own open; see `ReviewWorkbenchController.load`. */
   recordOpen: optional(boolean()),
 });
-/** The recovery routes reload the workbench already on screen, so they never carry `recordOpen`. */
-const reviewRecoverSchema = strictObject({
+/** What the renderer showed as the maintainer left; see `ReviewWorkbenchController.leave`. */
+const reviewLeaveSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
+  headSha: pipe(string(), minLength(1)),
+  seenThrough: optional(pipe(string(), minLength(1))),
 });
-const recentReviewWriteSchema = variant("_tag", [
-  strictObject({
-    _tag: picklist(["Comment"] as const),
-    commentId: pipe(string(), minLength(1)),
-    reviewId: optional(pipe(string(), minLength(1))),
-  }),
-  strictObject({
-    _tag: picklist(["ThreadState"] as const),
-    threadId: pipe(string(), minLength(1)),
-    state: picklist(["open", "resolved"] as const),
-  }),
-  strictObject({
-    _tag: picklist(["PendingThread"] as const),
-    threadId: pipe(string(), minLength(1)),
-  }),
-  strictObject({
-    _tag: picklist(["DirectSummaryReview"] as const),
-    reviewId: pipe(string(), minLength(1)),
-  }),
-  strictObject({
-    _tag: picklist(["LabelChange"] as const),
-    added: array(string()),
-    removed: array(string()),
-  }),
-]);
 const reviewUpdateSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
-  recentWrites: optional(array(recentReviewWriteSchema)),
+  recentWrites: optional(array(recentReviewWriteRecordSchema)),
 });
 const reviewCommitDiffSchema = strictObject({
   profileId: pipe(string(), minLength(1)),
   reviewId: pipe(string(), minLength(1)),
   commitSha: pipe(string(), minLength(7)),
+});
+/** Mirrors the renderer's merge payload in `use-review-merge-action.ts`; a new field changes both. */
+const mergeCommandSchema = strictObject({
+  profileId: pipe(string(), minLength(1)),
+  reviewId: pipe(string(), minLength(1)),
+  sessionId: pipe(string(), minLength(1)),
+  expectedHeadSha: pipe(string(), minLength(1)),
+  expectedBaseSha: pipe(string(), minLength(1)),
+  expectedPatchHash: pipe(string(), minLength(1)),
+  expectedRevision: pipe(string(), minLength(1)),
+  method: picklist(["merge", "squash", "rebase"]),
+  acknowledgedWarnings: strictObject({
+    revision: strictObject({
+      headSha: string(),
+      baseSha: string(),
+      patchHash: string(),
+    }),
+    warningCodes: array(
+      picklist(["request_changes", "findings_need_acknowledgement"]),
+    ),
+  }),
 });

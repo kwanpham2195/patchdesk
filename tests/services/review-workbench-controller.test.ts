@@ -428,6 +428,64 @@ describe("ReviewWorkbenchController", () => {
     });
   });
 
+  it("stamps the head and newest entry the renderer showed, even when a Refresh saved a newer snapshot first", async () => {
+    const shownSeenThrough = "2026-08-09T11:00:00.000Z";
+    const refreshedHeadSha = "c".repeat(40);
+    const saved: Array<{ next: Review; token: string }> = [];
+    const refreshedReview: Review = {
+      ...review,
+      currentHeadSha: refreshedHeadSha as never,
+      representedRemote: {
+        headSha: refreshedHeadSha as never,
+        pullRequestUpdatedAt: at,
+        snapshotHash,
+        refreshedAt: at,
+      },
+    };
+    const value = fixture({
+      reviews: {
+        load: vi.fn(async () => ok(refreshedReview)),
+        save: vi.fn(async (next: Review, token: string) => {
+          saved.push({ next, token });
+          return ok(undefined);
+        }),
+      },
+      remote: {
+        load: vi.fn(async () =>
+          ok({
+            conversation: {
+              prDescription: "",
+              entries: [
+                {
+                  _tag: "IssueComment",
+                  comment: { createdAt: "2026-08-09T12:00:00.000Z" },
+                },
+              ],
+            },
+          }),
+        ),
+      },
+    });
+
+    await expect(
+      value.controller.leave({
+        profileId,
+        reviewId,
+        headSha,
+        seenThrough: shownSeenThrough as never,
+      }),
+    ).resolves.toEqual({ _tag: "ok", value: null });
+    expect(saved).toEqual([
+      {
+        next: expect.objectContaining({
+          lastLooked: { headSha, seenThrough: shownSeenThrough },
+        }),
+        token: refreshedReview.updatedAt,
+      },
+    ]);
+    expect(value.lifecycle.remote.load).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed input before any lifecycle work", async () => {
     const value = fixture();
     await expect(value.controller.load({ profileId })).resolves.toEqual({

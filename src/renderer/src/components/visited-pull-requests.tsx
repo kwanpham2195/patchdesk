@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { Eye } from "lucide-react";
 
 import { requestJson } from "@/api-client";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -7,6 +8,7 @@ import {
   formatExactTime,
 } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
+import { useWatchedPullRequests } from "@/hooks/use-watched-pull-requests";
 import {
   parseSidebarReviewsResponse,
   type SidebarReviewRow,
@@ -32,6 +34,7 @@ export function VisitedPullRequests({
   onNavigate,
   reloadKey,
   workspaceLabel,
+  host,
 }: {
   /** Empty while a workspace switch is in flight, which draws the frame alone. */
   readonly profileId: string;
@@ -41,8 +44,12 @@ export function VisitedPullRequests({
   readonly reloadKey: number;
   /** The active workspace's label for the header strip; undefined while a switch is in flight. */
   readonly workspaceLabel: string | undefined;
+  /** The workspace's GitHub host; the rows carry none, and a watched mark needs it. */
+  readonly host?: string;
 }): React.JSX.Element {
   const [state, setState] = useState<ListState>({ kind: "idle" });
+  const watch = useWatchedPullRequests();
+  const [activeReviewId, setActiveReviewId] = useState<string | undefined>();
 
   useEffect(() => {
     if (profileId === "") {
@@ -79,6 +86,21 @@ export function VisitedPullRequests({
   // several: the label is there to tell apart what is visible.
   const scope: VisitedLabelScope =
     state.kind === "loaded" ? visitedLabelScope(state.rows) : "number";
+  const rows = state.kind === "loaded" ? state.rows : [];
+  // Roving tabindex, as on the Pull requests table: the column is one Tab stop.
+  const tabStopReviewId =
+    [activeReviewId, openReviewId].find((reviewId) =>
+      rows.some((row) => row.reviewId === reviewId),
+    ) ?? rows[0]?.reviewId;
+  const onRowsKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const index = rows.findIndex((row) => row.reviewId === tabStopReviewId);
+    const next = rows[index + (event.key === "ArrowDown" ? 1 : -1)];
+    if (next === undefined) return;
+    setActiveReviewId(next.reviewId);
+    document.getElementById(`visited-row-${next.reviewId}`)?.focus();
+  };
 
   return (
     <aside
@@ -104,7 +126,7 @@ export function VisitedPullRequests({
       <ScrollArea className="min-h-0 flex-1">
         {/* The padding sits inside the viewport so it does not inset the
          * scrollbar, which is positioned against the ScrollArea root. */}
-        <div className="pt-3 pb-2">
+        <div className="pt-3 pb-2" onKeyDown={onRowsKeyDown}>
           {state.kind === "failed" ? (
             <p className="px-2.5 py-2 text-[12px] text-muted-foreground">
               Patchdesk could not read the pull requests you have opened.
@@ -132,7 +154,13 @@ export function VisitedPullRequests({
                     <VisitedRow
                       row={row}
                       selected={row.reviewId === openReviewId}
+                      tabStop={row.reviewId === tabStopReviewId}
                       scope={scope}
+                      watched={
+                        host !== undefined &&
+                        watch?.isWatched({ ...row, host }) === true
+                      }
+                      onFocus={() => setActiveReviewId(row.reviewId)}
                       onOpen={() =>
                         onNavigate({
                           kind: "workbench",
@@ -225,18 +253,28 @@ function localDayIndex(at: number): number {
 function VisitedRow({
   row,
   selected,
+  tabStop,
   scope,
+  watched,
   onOpen,
+  onFocus,
 }: {
   readonly row: SidebarReviewRow;
   readonly selected: boolean;
+  readonly tabStop: boolean;
   readonly scope: VisitedLabelScope;
+  /** Marks a pull request the maintainer watches (ADR 0045). */
+  readonly watched: boolean;
   readonly onOpen: () => void;
+  readonly onFocus: () => void;
 }): React.JSX.Element {
   const { title, reference } = visitedRowLabels(row, scope);
   return (
     <button
       type="button"
+      id={`visited-row-${row.reviewId}`}
+      tabIndex={tabStop ? 0 : -1}
+      onFocus={onFocus}
       aria-current={selected ? "page" : undefined}
       aria-disabled={selected ? true : undefined}
       title={title}
@@ -275,6 +313,15 @@ function VisitedRow({
               </time>
             )}
           </span>
+          {watched ? (
+            <span
+              className="ml-auto inline-flex shrink-0 self-center"
+              title="Watched"
+            >
+              <Eye className="size-3" aria-hidden="true" />
+              <span className="sr-only">Watched</span>
+            </span>
+          ) : null}
           {row.terminal === undefined ? null : (
             <TerminalMarker terminal={row.terminal} />
           )}

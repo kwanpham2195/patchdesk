@@ -14,7 +14,15 @@ import {
   type ConversationThreadTarget,
 } from "../../src/renderer/src/components/conversation-thread-card";
 import { parseGitHubThreadId } from "../../src/domain/ids";
-import { PatchdeskApiError } from "../../src/renderer/src/api-client";
+import {
+  PatchdeskApiError,
+  contextualMessage,
+} from "../../src/renderer/src/api-client";
+import {
+  COMMENT_DELETE_MESSAGES,
+  COMMENT_EDIT_MESSAGES,
+  THREAD_REPLY_MESSAGES,
+} from "../../src/renderer/src/review-copy";
 import { PullRequestImageCacheProvider } from "../../src/renderer/src/hooks/use-pull-request-image";
 import { parsePullRequestInput } from "../../src/domain/pull-request";
 import { installDesktopDouble, success } from "./fake-desktop-response";
@@ -514,6 +522,81 @@ describe("ConversationThreadCard", () => {
       screen.getAllByRole("button", { name: "Save" }).at(-1) as HTMLElement,
     );
     expect(onEditComment).toHaveBeenCalledWith("c-reply", "Edited reply");
+  });
+
+  it("tells the maintainer to check GitHub when an edit's outcome is unknown", async () => {
+    const user = userEvent.setup();
+    const cause = new PatchdeskApiError(
+      "outcome_unknown",
+      502,
+      true,
+      "outcome-unknown",
+      "raw provider failure",
+    );
+    const onEditComment = vi.fn(async () => {
+      throw cause;
+    });
+    render(<ConversationThreadCard thread={thread({ onEditComment })} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Edit comment" }),
+      " Edited",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      contextualMessage(cause, COMMENT_EDIT_MESSAGES),
+    );
+  });
+
+  it("words a forbidden deletion failure by its cause", async () => {
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    const cause = new PatchdeskApiError(
+      "forbidden",
+      403,
+      false,
+      "permission-denied",
+      "raw provider denial",
+    );
+    const onDeleteComment = vi.fn(async () => {
+      throw cause;
+    });
+    render(<ConversationThreadCard thread={thread({ onDeleteComment })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      contextualMessage(cause, COMMENT_DELETE_MESSAGES),
+    );
+  });
+
+  it("words a forbidden reply failure by its cause", async () => {
+    const user = userEvent.setup();
+    const cause = new PatchdeskApiError(
+      "forbidden",
+      403,
+      false,
+      "permission-denied",
+      "raw provider denial",
+    );
+    const onReply = vi.fn(async () => {
+      throw cause;
+    });
+    render(<ConversationThreadCard thread={thread({ onReply })} />);
+
+    await user.type(screen.getByRole("textbox", { name: "Reply" }), "A reply");
+    await user.click(screen.getByRole("button", { name: "Reply" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      contextualMessage(cause, THREAD_REPLY_MESSAGES),
+    );
   });
 
   it("explains why Reply and Resolve are unavailable on a comment-only card", () => {

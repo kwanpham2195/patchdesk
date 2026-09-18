@@ -13,6 +13,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
+import type { ReviewWriteIntentTag } from "../domain/review-write-operation";
 import {
   sessionRepresentsReview,
   type ReviewFreshness,
@@ -92,21 +93,7 @@ type WorkbenchSessionProjection = {
 };
 /** Bounded renderer view of the one durable Review write awaiting recovery. */
 type RemoteWriteRecoveryProjection = {
-  readonly operation:
-    | "CreateComment"
-    | "Reply"
-    | "SetThreadState"
-    | "EditComment"
-    | "DeleteComment"
-    | "AddLabels"
-    | "RemoveLabels"
-    | "AddAssignees"
-    | "RemoveAssignees"
-    | "RequestReviewers"
-    | "RemoveReviewers"
-    | "EditPublishedComment"
-    | "DeletePublishedComment"
-    | "DismissPublishedReview";
+  readonly operation: ReviewWriteIntentTag;
   readonly resolution: "check_required" | "manual_resolution_required";
 };
 
@@ -117,6 +104,8 @@ export type ReviewWorkbenchProjection = {
   readonly review: {
     readonly id: ReviewId;
     readonly status: "open" | "merged" | "closed";
+    /** Absent until the maintainer first leaves the Review; Conversation marks nothing without it. */
+    readonly lastLooked?: { readonly seenThrough?: IsoTimestamp };
   };
   readonly session: WorkbenchSessionProjection;
   readonly localCheckout?: {
@@ -508,6 +497,7 @@ export class ReviewWorkbenchProjectionService {
       freshness,
       patchHash,
       pendingReview: pendingReview?.state ?? session.pendingReview,
+      threads: conversation.inline?.threads ?? [],
     });
 
     const revision: ReviewWorkbenchProjection["revision"] = {
@@ -520,7 +510,18 @@ export class ReviewWorkbenchProjectionService {
     const projection: ReviewWorkbenchProjection = {
       state: "review",
       viewerLogin: viewerLogin.value,
-      review: { id: reviewId, status: reviewStatus },
+      review: {
+        id: reviewId,
+        status: reviewStatus,
+        ...definedProps({
+          lastLooked:
+            stableReview.value.lastLooked === undefined
+              ? undefined
+              : definedProps({
+                  seenThrough: stableReview.value.lastLooked.seenThrough,
+                }),
+        }),
+      },
       session: projectSession(session),
       revision,
       commits: remote?.commits ?? [],

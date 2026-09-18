@@ -50,7 +50,7 @@ Every command passes through the shared detect-before-write gate. Patchdesk acce
 
 Start or Add success records only newly created thread IDs and renders the returned cumulative pending review. Submit success expects pending state `none`, closes the dialog, journals the published review evidence, and observes the Review so checks and merge readiness can reconcile. Discard success expects `none` and journals the formerly pending thread IDs so stale reads cannot resurrect them.
 
-A confirmed rejection leaves the dialog or composer retryable with bounded context. In Finish review, a failed submit says "Patchdesk could not finish this review. Check GitHub again or refresh." and a failed discard says "Patchdesk could not discard this review. Check GitHub again or refresh.", unless the workbench supplies a more specific message; either failure offers Check GitHub again when recovery is available, and a failed discard disarms Discard review. A malformed success or transport-unknown outcome changes pending state to recovery required. Check GitHub again can recover the pending projection and reload the canonical Review. If Patchdesk finds a pending review but cannot identify the exact Finding comment, it directs the maintainer to inspect or discard it on GitHub.
+A confirmed rejection leaves the dialog or composer retryable with bounded context. When Patchdesk cannot verify the pending review against the current diff, it sends nothing and says to refresh, then try again. In Finish review, a failed submit says "Patchdesk could not finish this review. Check GitHub again or refresh." and a failed discard says "Patchdesk could not discard this review. Check GitHub again or refresh.", unless the workbench supplies a more specific message; either failure offers Check GitHub again when recovery is available, and a failed discard disarms Discard review. A malformed success or transport-unknown outcome changes pending state to recovery required. Check GitHub again can recover the pending projection and reload the canonical Review; a reload Patchdesk cannot read reports that it could not check GitHub and to try again. If Patchdesk finds a pending review but cannot identify the exact Finding comment, it directs the maintainer to inspect or discard it on GitHub.
 
 ## Variants
 
@@ -116,4 +116,4 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 - Confirm app close and quit behavior while a pending-review command is in flight.
 - Confirm how GitHub permission restrictions for Approve and Request changes are explained before or after submission.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`, with live checks from the 2026-09-14 pass.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.

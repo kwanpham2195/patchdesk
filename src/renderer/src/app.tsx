@@ -30,9 +30,11 @@ import { BusyProvider } from "./hooks/use-busy";
 import { PullRequestImageCacheProvider } from "./hooks/use-pull-request-image";
 import {
   useAppNavigation,
+  type LeftWorkbench,
   type NavigationState,
 } from "./hooks/use-app-navigation";
 import { useDesktopMenuBridge } from "./hooks/use-desktop-menu-bridge";
+import { useDesktopNotificationClicks } from "./hooks/use-desktop-notifications";
 import { useGlobalPreferences } from "./hooks/use-global-preferences";
 import {
   useReviewWorkbenchRoute,
@@ -41,6 +43,7 @@ import {
 import { useSettingsOverlay } from "./hooks/use-settings-overlay";
 import { useWorkspaceInbox } from "./hooks/use-workspace-inbox";
 import { useProfileSwitch } from "./hooks/use-profile-switch";
+import { WatchedPullRequestsProvider } from "./hooks/use-watched-pull-requests";
 import type { AppDestination } from "./routes";
 import {
   clearSettingsRestore,
@@ -55,6 +58,8 @@ import { parseGitHubHost } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import { sameRepositoryIdentity } from "../../domain/repository-identity";
 import { useInboxReviewOpening } from "./flows/use-inbox-review-opening";
+import { requestJson } from "./api-client";
+import { appLog } from "./lib/logger";
 
 export type { ReviewWorkbenchLoader };
 
@@ -126,9 +131,27 @@ function AppContent({
     () => lazy(performanceFixtureLoader),
     [performanceFixtureLoader],
   );
+  const leaveWorkbench = useCallback(
+    (left: LeftWorkbench): void => {
+      if (fixtureMode) return;
+      // A lost cursor write only costs the next visit's marks, so it is logged rather than shown.
+      void requestJson("/v1/reviews/leave", {
+        method: "POST",
+        body: left,
+      }).catch(() =>
+        appLog.warn(
+          "review-workbench",
+          "recording the last-looked cursor failed",
+          {
+            reviewId: left.reviewId,
+          },
+        ),
+      );
+    },
+    [fixtureMode],
+  );
   const {
     destination,
-    setDestination,
     workbench,
     setWorkbench,
     navigationState,
@@ -138,7 +161,7 @@ function AppContent({
     setPendingDestination,
     performNavigation,
     navigate,
-  } = useAppNavigation();
+  } = useAppNavigation(leaveWorkbench);
   const {
     LazyReviewWorkbench,
     restoredWorkbenchUi,
@@ -183,7 +206,7 @@ function AppContent({
     changeInboxPageSize,
     changeInboxLabels,
     labelFits,
-    changeInboxAwaitingMyReview,
+    changeInboxPreset,
     changeInboxReviewState,
     changeInboxCheckStatus,
     changeInboxAuthor,
@@ -200,13 +223,12 @@ function AppContent({
     async (id: string): Promise<void> => {
       saveInboxViewPreferences(id, { state: "open" });
       resetInboxStateOnProfileLoad.current = true;
-      setWorkbench(undefined);
+      // Leaves a held Review, so the switch records its cursor like any other leave.
+      performNavigation({ kind: "dashboard" });
       dispatchWorkspace({ _tag: "cleared" });
       activeInboxProfileId.current = undefined;
       inboxRefreshGeneration.current += 1;
       updateInboxRequest(firstInboxRequest);
-      setDestination({ kind: "dashboard" });
-      window.localStorage.setItem("patchdesk.destination", "dashboard");
       await loadWorkspace();
     },
     [
@@ -214,9 +236,8 @@ function AppContent({
       dispatchWorkspace,
       inboxRefreshGeneration,
       loadWorkspace,
+      performNavigation,
       resetInboxStateOnProfileLoad,
-      setDestination,
-      setWorkbench,
       updateInboxRequest,
     ],
   );
@@ -264,9 +285,17 @@ function AppContent({
     },
     [dashboard?.profile.repos, navigate, openPullRequestByRef, reportOpenError],
   );
+  const notificationFocus = useDesktopNotificationClicks({
+    enabled: !fixtureMode,
+    destination,
+    navigationState,
+    navigate,
+    openPullRequest: openPullRequestFromPalette,
+  });
   const parsedProfileHost = parseGitHubHost(dashboard?.profile.githubHost);
   useDesktopMenuBridge({
     fixtureMode,
+    destination,
     navigationState,
     openSettings,
     refreshDashboard,
@@ -277,28 +306,33 @@ function AppContent({
     next: AppDestination = destination,
   ): React.JSX.Element => (
     <TooltipProvider>
-      <AppShell
-        destination={next}
-        navigationBlocked={navigationState !== "clear"}
-        onNavigate={navigate}
-        onOpenSettings={openSettings}
-        profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
-        activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
-        profileSwitchState={profileSwitchState}
-        visitedReloadKey={visitedReloadKey}
-        onInboxStateChange={changeInboxState}
-        {...(parsedProfileHost._tag === "ok"
-          ? {
-              pullRequestDefaultHost: parsedProfileHost.value,
-              onOpenPullRequest: openPullRequestFromPalette,
-            }
-          : {})}
-        onProfileSwitch={(id) => {
-          void switchProfile(id, "header");
-        }}
+      <WatchedPullRequestsProvider
+        profileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
       >
-        {content}
-      </AppShell>
+        <AppShell
+          destination={next}
+          navigationBlocked={navigationState !== "clear"}
+          onNavigate={navigate}
+          onOpenSettings={openSettings}
+          profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
+          activeProfileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
+          profileSwitchState={profileSwitchState}
+          visitedReloadKey={visitedReloadKey}
+          onInboxStateChange={changeInboxState}
+          onInboxPresetChange={changeInboxPreset}
+          {...(parsedProfileHost._tag === "ok"
+            ? {
+                pullRequestDefaultHost: parsedProfileHost.value,
+                onOpenPullRequest: openPullRequestFromPalette,
+              }
+            : {})}
+          onProfileSwitch={(id) => {
+            void switchProfile(id, "header");
+          }}
+        >
+          {content}
+        </AppShell>
+      </WatchedPullRequestsProvider>
       <SettingsModal
         open={settingsOpen}
         onOpenChange={(open) => {
@@ -404,11 +438,19 @@ function AppContent({
           fallback={<RouteLoadingFallback label="Loading review workbench" />}
         >
           <LazyReviewWorkbench
+            // A clicked Insight notification remounts its Review on that Insight.
+            key={
+              notificationFocus?.reviewId === workbench.review.id
+                ? notificationFocus.generation
+                : 0
+            }
             workbench={workbench}
-            {...(restoredWorkbenchUi.current !== undefined &&
-            restoredWorkbenchUi.current.reviewId === workbench.review.id
-              ? { initialUiState: restoredWorkbenchUi.current.state }
-              : {})}
+            {...(notificationFocus?.reviewId === workbench.review.id
+              ? { initialUiState: notificationFocus.state }
+              : restoredWorkbenchUi.current !== undefined &&
+                  restoredWorkbenchUi.current.reviewId === workbench.review.id
+                ? { initialUiState: restoredWorkbenchUi.current.state }
+                : {})}
             onUiStateChange={(state) =>
               saveWorkbenchUiState(workbench.review.id, state)
             }
@@ -482,8 +524,10 @@ function AppContent({
         selectedLabels={inboxRequest.selectedLabels}
         onInboxLabelsChange={changeInboxLabels}
         labelFits={labelFits}
-        awaitingMyReview={inboxRequest.awaitingMyReview}
-        onInboxAwaitingMyReviewChange={changeInboxAwaitingMyReview}
+        {...(inboxRequest.preset === undefined
+          ? {}
+          : { preset: inboxRequest.preset })}
+        onInboxPresetChange={changeInboxPreset}
         {...(inboxRequest.reviewState === undefined
           ? {}
           : { reviewState: inboxRequest.reviewState })}

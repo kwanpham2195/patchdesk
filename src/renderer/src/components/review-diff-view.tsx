@@ -69,6 +69,7 @@ import {
 } from "@/hooks/use-review-diff-navigation-feedback";
 import { useReviewFileNavigation } from "@/hooks/use-review-file-navigation";
 import { useReviewHunkNavigation } from "@/hooks/use-review-hunk-navigation";
+import { useReviewSelectedModeNavigationHint } from "@/hooks/use-review-selected-mode-navigation-hint";
 import { useReviewDiffSelectionScroll } from "@/hooks/use-review-diff-scroll-state";
 import { useDiffWorkerPoolTheme } from "@/hooks/use-diff-worker-pool-theme";
 import {
@@ -409,6 +410,7 @@ function ReviewDiffSurface({
   useReviewFileNavigation({ ...navigationInputs, resolveActiveFilePathAt });
   useReviewHunkNavigation({ ...navigationInputs, resolveActiveFilePathAt });
   useReviewCommentNavigation(navigationInputs);
+  useReviewSelectedModeNavigationHint(navigationInputs);
 
   return (
     <ReviewDiffRenderSite

@@ -1,4 +1,5 @@
 import { XIcon } from "lucide-react";
+import { useId } from "react";
 import { definedProps } from "../../../domain/defined-props";
 
 import type { InsightProvider } from "../../../domain/insight-provider";
@@ -87,26 +88,58 @@ function InsightDocumentIdentity({
     </div>
   );
 }
+export const TERMINAL_REVIEW_INSIGHT_REASON =
+  "This Review is merged or closed. Generating an Insight needs an open Review; retained Insights stay readable.";
+
+function hasAvailableInsightProvider(
+  configuration: InsightRunConfiguration,
+): boolean {
+  return (
+    configuration.catalog?.providers.some((candidate) => candidate.available) ??
+    false
+  );
+}
+
+/** Whether an Insight run can start, and the id of the reason it cannot when the Review is merged or closed. */
+function useInsightRunAvailability(
+  workbench: WorkbenchResponse,
+  configuration: InsightRunConfiguration,
+) {
+  const reasonId = `insight-run-reason-${useId()}`;
+  const reviewOpen = workbench.review.status === "open";
+  return {
+    runEnabled:
+      !configuration.catalogError &&
+      hasAvailableInsightProvider(configuration) &&
+      reviewOpen,
+    runDisabledReasonId: reviewOpen ? undefined : reasonId,
+  };
+}
+
 function InsightAvailabilityErrors({
-  catalogError,
-  hasAvailableProvider,
-  provider,
-  modelCount,
+  terminalReasonId,
+  configuration,
   requestFailureMessage,
 }: {
-  readonly catalogError: boolean;
-  readonly hasAvailableProvider: boolean;
-  readonly provider: InsightProvider;
-  readonly modelCount: number;
+  /** Set on a merged or closed Review, whose reason replaces provider errors because fixing a provider would not enable a run. */
+  readonly terminalReasonId: string | undefined;
+  readonly configuration: InsightRunConfiguration;
   readonly requestFailureMessage: string | undefined;
-}): React.JSX.Element | null {
+}): React.JSX.Element {
+  const { catalogError, provider, models } = configuration;
+  const hasAvailableProvider = hasAvailableInsightProvider(configuration);
   const unavailable =
-    catalogError ||
-    !hasAvailableProvider ||
-    (provider === "pi" && modelCount === 0);
-  if (!unavailable && requestFailureMessage === undefined) return null;
+    terminalReasonId === undefined &&
+    (catalogError ||
+      !hasAvailableProvider ||
+      (provider === "pi" && models.length === 0));
   return (
     <>
+      {terminalReasonId === undefined ? null : (
+        <p id={terminalReasonId} className="py-2 text-sm text-muted-foreground">
+          {TERMINAL_REVIEW_INSIGHT_REASON}
+        </p>
+      )}
       {unavailable ? (
         <InlineError className="py-2">
           {catalogError || !hasAvailableProvider
@@ -185,7 +218,6 @@ export function InsightsSlot({
     onWorkbenchReplace,
     onWorkbenchPatch,
   });
-  const { catalog, provider, models, catalogError } = configuration;
   const brief = workbench.insights.brief ?? NOT_GENERATED_BRIEF;
   const projections = {
     analysis: workbench.insights.analysis,
@@ -197,10 +229,10 @@ export function InsightsSlot({
     walkthrough: walkthroughRun,
     brief: briefRun,
   };
-  const hasAvailableProvider =
-    catalog?.providers.some((candidate) => candidate.available) ?? false;
-  const runEnabled =
-    !catalogError && hasAvailableProvider && workbench.review.status === "open";
+  const { runEnabled, runDisabledReasonId } = useInsightRunAvailability(
+    workbench,
+    configuration,
+  );
   const selectedProjection =
     selectedInsight === "overview" ? undefined : projections[selectedInsight];
   const insightResultRef = useInsightResultEntrance({
@@ -246,6 +278,7 @@ export function InsightsSlot({
       openRunDialog("run", "walkthrough");
     },
     runEnabled,
+    ...definedProps({ runDisabledReasonId }),
   });
   const walkthroughFocusActive =
     selectedInsight === "walkthrough" && walkthroughFocused;
@@ -347,6 +380,7 @@ export function InsightsSlot({
                         size="sm"
                         onClick={() => openRunDialog("regenerate")}
                         disabled={!runEnabled}
+                        aria-describedby={runDisabledReasonId}
                       >
                         Regenerate
                       </Button>
@@ -355,10 +389,8 @@ export function InsightsSlot({
                 </header>
               )}
               <InsightAvailabilityErrors
-                catalogError={catalogError}
-                hasAvailableProvider={hasAvailableProvider}
-                provider={provider}
-                modelCount={models.length}
+                terminalReasonId={runDisabledReasonId}
+                configuration={configuration}
                 requestFailureMessage={selectedRequestFailureMessage}
               />
               {selectedProjection?.artifactStatus === "mismatch" ? (
@@ -373,22 +405,22 @@ export function InsightsSlot({
                   <InsightRunning
                     type={selectedInsight}
                     projection={selectedProjection}
+                    activity={selectedRunning?.activity}
                   />
                 ) : selectedProjection?.status === "failed" ? (
                   <InsightFailed
                     projection={selectedProjection}
+                    activity={selectedRunning?.activity}
                     onRetry={() => openRunDialog("retry")}
-                    {...(retainedDescription === undefined
-                      ? {}
-                      : { retainedDescription })}
+                    {...definedProps({ retainedDescription })}
                   />
                 ) : selectedIsOutdated ? (
                   <InsightOutdated
                     type={selectedInsight}
                     onRetry={() => openRunDialog("retry")}
-                    {...(selectedRetained === undefined
-                      ? {}
-                      : { retainedRevision: selectedRetained.headSha })}
+                    {...definedProps({
+                      retainedRevision: selectedRetained?.headSha,
+                    })}
                     currentRevision={currentRevision}
                   />
                 ) : retainedReader === null ? (
@@ -396,6 +428,7 @@ export function InsightsSlot({
                     type={selectedInsight}
                     onRun={() => openRunDialog("run")}
                     disabled={!runEnabled}
+                    {...definedProps({ describedBy: runDisabledReasonId })}
                   />
                 ) : null}
                 {retainedReader === null ? null : (

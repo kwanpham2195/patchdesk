@@ -21,11 +21,14 @@ import {
   addAssigneesToAssignableMutation,
   addLabelsToLabelableMutation,
   assignableUsersQuery,
+  convertPullRequestToDraftMutation,
+  markPullRequestReadyForReviewMutation,
   pullRequestReviewersQuery,
   removeAssigneesFromAssignableMutation,
   removeLabelsFromLabelableMutation,
   repositoryLabelsQuery,
   requestReviewsMutation,
+  updatePullRequestBaseBranchMutation,
 } from "./github-graphql-queries";
 import {
   assignableUsersResponseSchema,
@@ -287,6 +290,67 @@ export class GitHubCollaborators {
       idsVariable: "userIds",
       ids: input.userIds,
     });
+  }
+
+  /**
+   * Toggles one pull request's draft state. `runIdListMutation` cannot carry
+   * this write: its whole shape is a subject id plus a list of node ids, and
+   * this mutation takes only the subject, so the argv is built here the way
+   * `removeRequestedReviewers` builds its own.
+   */
+  async setPullRequestDraftState(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly draft: boolean;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const mutation = input.draft
+      ? convertPullRequestToDraftMutation
+      : markPullRequestReadyForReviewMutation;
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${mutation}`,
+        "-F",
+        `pullRequestId=${input.pullRequestId}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
+  }
+
+  /** Moves a pull request onto `branch` of its base repository with `updatePullRequest`. */
+  async setPullRequestBaseBranch(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly branch: string;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        input.profile.githubHost,
+        "-f",
+        `query=${updatePullRequestBaseBranchMutation}`,
+        "-F",
+        `pullRequestId=${input.pullRequestId}`,
+        // `-f` keeps a numeric-looking branch name a GraphQL String.
+        "-f",
+        `baseRefName=${input.branch}`,
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    return response._tag === "err"
+      ? err(writeFailure(response.error))
+      : ok(undefined);
   }
 
   /**

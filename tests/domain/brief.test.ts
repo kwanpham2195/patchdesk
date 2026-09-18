@@ -250,7 +250,7 @@ describe("insightOutputGuidance", () => {
     expect(guidance).toContain("Never list a test function as a step");
     expect(guidance).toContain("A condition or a return is never a root");
     expect(guidance).toContain(
-      "Before you write a tree, list every entry point whose behavior this patch changes -- each command, request path, and error path -- and give each one a root.",
+      "Give every entry point whose behavior this patch changes -- each command, request path, and error path -- its own root.",
     );
     expect(guidance).toContain(
       "Omit flow entirely when the patch adds, removes, or reorders no step, such as a rename, a docs change, or a pure refactor.",

@@ -1,5 +1,4 @@
-import { err, ok } from "../../src/domain/result";
-import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
+import { ok } from "../../src/domain/result";
 import { InlineConversationService } from "../../src/services/inline-conversation-service";
 import { PublishedFeedbackService } from "../../src/services/published-feedback-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
@@ -15,15 +14,20 @@ import {
   values,
 } from "./review-invariant-fixtures";
 import {
-  recentWritesJournal,
+  gatewayWrite,
+  recordedWriteFlowRun,
+  recordingWriteOperations,
   recorded,
-  unavailable,
+  TracingRecentWriteJournal,
   type Trace,
   type WriteFlow,
+  type WriteFlowFixture,
 } from "./write-invariant-harness";
 
 /** The five Diff-conversation writes share the durable operation store. */
-function inlineConversationFlows(): ReadonlyArray<WriteFlow> {
+function inlineConversationFlows(
+  fixture: WriteFlowFixture,
+): ReadonlyArray<WriteFlow> {
   const commands = [
     {
       name: "create comment",
@@ -75,42 +79,17 @@ function inlineConversationFlows(): ReadonlyArray<WriteFlow> {
     name: `inline conversation: ${name}`,
     run: async () => {
       const trace: Trace = [];
-      let operation: ReviewWriteOperation | undefined;
-      const operations = {
-        load: async () => ok(operation),
-        begin: async (next: ReviewWriteOperation) => {
-          operation = next;
-          trace.push(`intent:${next.state._tag}`);
-          return ok(undefined);
-        },
-        markOutcomeUnknown: async (next: ReviewWriteOperation) => {
-          operation = next;
-          trace.push(`intent:${next.state._tag}`);
-          return ok(undefined);
-        },
-        confirm: async (next: ReviewWriteOperation) => {
-          operation = next;
-          return ok(undefined);
-        },
-        reject: async () => {
-          operation = undefined;
-          return ok(undefined);
-        },
-        remove: async () => {
-          operation = undefined;
-          return ok(undefined);
-        },
-      };
+      const operations = recordingWriteOperations(trace);
       const gateway = {
         getPullRequest: async () => ok(values.snapshot.pullRequest),
         getReviewThreadTarget: async () => ok({ found: true }),
         getReviewCommentTarget: async () =>
           ok({ found: true, viewerDidAuthor: true }),
-        createInlineComment: async () => err(unavailable),
-        createThreadReply: async () => err(unavailable),
-        setReviewThreadState: async () => err(unavailable),
-        updateThreadComment: async () => err(unavailable),
-        deleteThreadComment: async () => err(unavailable),
+        createInlineComment: gatewayWrite(fixture, { commentId: "comment-2" }),
+        createThreadReply: gatewayWrite(fixture, { commentId: "comment-2" }),
+        setReviewThreadState: gatewayWrite(fixture, undefined),
+        updateThreadComment: gatewayWrite(fixture, undefined),
+        deleteThreadComment: gatewayWrite(fixture, undefined),
       };
       const service = new InlineConversationService(
         // SAFETY: this fixture gate answers with the parsed fixture session;
@@ -124,22 +103,19 @@ function inlineConversationFlows(): ReadonlyArray<WriteFlow> {
         recorded(trace, gateway) as never,
         new ReviewOperationCoordinator(),
         now,
-        recentWritesJournal(trace),
+        new TracingRecentWriteJournal(trace, fixture.journal),
         operations,
       );
       const issue = () => service.execute({ profileId, reviewId, command });
-      await issue();
-      return {
-        trace,
-        again: issue,
-        intentTag: () => operation?.state._tag,
-      };
+      return recordedWriteFlowRun(trace, issue, operations);
     },
   }));
 }
 
 /** The three published-feedback writes retain unavailable outcomes without replay. */
-function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
+function publishedFeedbackFlows(
+  fixture: WriteFlowFixture,
+): ReadonlyArray<WriteFlow> {
   const feedback = {
     reviews: [
       {
@@ -208,39 +184,14 @@ function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
     name: `published feedback: ${name}`,
     run: async () => {
       const trace: Trace = [];
-      let operation: ReviewWriteOperation | undefined;
-      const operations = {
-        load: async () => ok(operation),
-        begin: async (next: ReviewWriteOperation) => {
-          operation = next;
-          trace.push(`intent:${next.state._tag}`);
-          return ok(undefined);
-        },
-        markOutcomeUnknown: async (next: ReviewWriteOperation) => {
-          operation = next;
-          trace.push(`intent:${next.state._tag}`);
-          return ok(undefined);
-        },
-        confirm: async (next: ReviewWriteOperation) => {
-          operation = next;
-          return ok(undefined);
-        },
-        reject: async () => {
-          operation = undefined;
-          return ok(undefined);
-        },
-        remove: async () => {
-          operation = undefined;
-          return ok(undefined);
-        },
-      };
+      const operations = recordingWriteOperations(trace);
       const gateway = {
         getPullRequest: async () => ok(values.snapshot.pullRequest),
         getPullRequestComments: async () => ok(values.snapshot.comments),
         getPullRequestPublishedFeedback: async () => ok(feedback),
-        updateReviewComment: async () => err(unavailable),
-        deleteReviewComment: async () => err(unavailable),
-        dismissReview: async () => err(unavailable),
+        updateReviewComment: gatewayWrite(fixture, undefined),
+        deleteReviewComment: gatewayWrite(fixture, undefined),
+        dismissReview: gatewayWrite(fixture, undefined),
       };
       const service = new PublishedFeedbackService(
         // SAFETY: this fixture gate answers with the parsed fixture Review and
@@ -259,20 +210,20 @@ function publishedFeedbackFlows(): ReadonlyArray<WriteFlow> {
         recorded(trace, gateway) as never,
         new ReviewOperationCoordinator(),
         now,
-        recentWritesJournal(trace),
+        new TracingRecentWriteJournal(trace, fixture.journal),
         operations,
       );
-      await issue(service);
-      return {
-        trace,
-        again: () => issue(service),
-        intentTag: () => operation?.state._tag,
-      };
+      return recordedWriteFlowRun(trace, () => issue(service), operations);
     },
   }));
 }
 
 /** Every Diff-conversation and published-feedback write, in one list. */
-export function conversationFlows(): ReadonlyArray<WriteFlow> {
-  return [...inlineConversationFlows(), ...publishedFeedbackFlows()];
+export function conversationFlows(
+  fixture: WriteFlowFixture,
+): ReadonlyArray<WriteFlow> {
+  return [
+    ...inlineConversationFlows(fixture),
+    ...publishedFeedbackFlows(fixture),
+  ];
 }

@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  Notification,
   screen,
   shell,
 } from "electron";
@@ -31,6 +32,12 @@ import {
 } from "./external-navigation";
 import { createAppCapability } from "./app-capability";
 import { sendMenuAction } from "./desktop-menu-channel";
+import { sendNotificationClick } from "./desktop-notification-channel";
+import { sendWatchedPullRequestChange } from "./desktop-watched-pull-request-channel";
+import {
+  createDesktopNotifier,
+  type NotificationDestination,
+} from "./desktop-notifier";
 import type { DesktopMenuAction } from "./ipc-contract";
 import {
   healthCheckLocalApi,
@@ -43,11 +50,15 @@ import { ProfileStore } from "../adapters/storage/profile-store";
 import { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
-import type { Appearance } from "../domain/contracts";
+import {
+  notificationSettingsOf,
+  type Appearance,
+  type NotificationSettings,
+} from "../domain/contracts";
 import { parseGitSha } from "../domain/ids";
 import type { InsightProvider } from "../domain/insight-provider";
 import { loggableMetaValue } from "../domain/log-entry";
-import { err } from "../domain/result";
+import { err, ok, type Result } from "../domain/result";
 import {
   PiInsightChildInvoker,
   unavailablePiInsightInvoker,
@@ -79,6 +90,7 @@ let mainWindow: BrowserWindow | undefined;
 let openingWindow: Promise<BrowserWindow> | undefined;
 let stopping = false;
 let rendererNavigationState: DesktopNavigationState = "clear";
+let rendererDestination: NotificationDestination = { kind: "dashboard" };
 let allowWindowClose = false;
 let closePromptOpen = false;
 /**
@@ -140,6 +152,23 @@ const diagnostics = new ReviewDiagnosticService(
     },
   },
 );
+/** Clicking a notification raises the window before the renderer routes to its Review. */
+const desktopNotifier = createDesktopNotifier({
+  windowFocused: () =>
+    mainWindow !== undefined &&
+    !mainWindow.isDestroyed() &&
+    mainWindow.isFocused(),
+  destination: () => rendererDestination,
+  settings: loadNotificationSettings,
+  createNotification: (options) => new Notification(options),
+  onClick(click) {
+    const window = mainWindow;
+    if (window === undefined || window.isDestroyed()) return;
+    focusWindow(window);
+    sendNotificationClick(window.webContents, click);
+  },
+  logs,
+});
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
     async start() {
@@ -167,9 +196,16 @@ const desktopLifecycle = createDesktopLifecycle({
         insightProviders,
         lifecycleGate,
         retentionSweep: true,
+        watchedPullRequestPolling: true,
+        watchedPullRequestChanged(profileId) {
+          const window = mainWindow;
+          if (window !== undefined && !window.isDestroyed())
+            sendWatchedPullRequestChange(window.webContents, profileId);
+        },
         reviewOperations,
         diagnostics,
         logs,
+        desktopNotifier,
         modelCatalog: runtimeModelCatalog,
         trash: {
           async move(path) {
@@ -313,6 +349,7 @@ function createInsightCoordinator(
       paths,
       new CommandRunner(undefined, logUnclassifiedCommandFailure),
     ),
+    desktopNotifier,
   );
 }
 
@@ -519,6 +556,9 @@ async function createWorkbenchWindow(
       setNavigationState(state) {
         rendererNavigationState = state;
       },
+      setNavigationDestination(destination) {
+        rendererDestination = destination;
+      },
       // The renderer only reaches this after the user clicked a link, so it
       // allows any HTTPS host. `installWebContentsSecurity` below keeps the
       // allowlist for navigation the page starts by itself.
@@ -589,6 +629,7 @@ async function createWorkbenchWindow(
     if (mainWindow === window) {
       mainWindow = undefined;
       rendererNavigationState = "clear";
+      rendererDestination = { kind: "dashboard" };
       allowWindowClose = false;
     }
   });
@@ -659,6 +700,17 @@ async function loadStoredAppearance(): Promise<Appearance> {
   return config._tag === "ok"
     ? (config.value.appearance ?? "system")
     : "system";
+}
+
+/** The stored notification toggles; a missing config file is a first run with the defaults. */
+async function loadNotificationSettings(): Promise<
+  Result<NotificationSettings, "config_unreadable">
+> {
+  const config = await new ProfileStore(PatchdeskPaths.default()).loadConfig();
+  if (config._tag === "ok") return ok(notificationSettingsOf(config.value));
+  return config.error.reason === "not_found"
+    ? ok(notificationSettingsOf({}))
+    : err("config_unreadable");
 }
 
 async function loadAllowedExternalHosts(): Promise<ReadonlySet<string>> {

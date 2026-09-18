@@ -13,6 +13,7 @@ import type { PendingReviewState } from "../../src/domain/pending-review";
 import type { ReviewSession } from "../../src/domain/review-session";
 import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.
 const profileId = "cfw" as never;
@@ -105,7 +106,7 @@ function fixture(
     ...overrides,
   };
   const coordinator = new ReviewOperationCoordinator();
-  const recentWrites = { append: vi.fn(async () => ok(undefined)) };
+  const recentWrites = confirmedWriteJournal();
   // SAFETY: these fixture mocks implement only the Pick<...> subset each
   // dependency interface requires; the service never calls their other members.
   return {
@@ -363,7 +364,7 @@ describe("DirectSummaryReviewService save compare-and-swap", () => {
       github as never,
       () => now,
       new ReviewOperationCoordinator(),
-      { append: vi.fn(async () => ok(undefined)) },
+      confirmedWriteJournal(),
     );
 
     await expect(service.reconcile({ profileId, reviewId })).resolves.toEqual({

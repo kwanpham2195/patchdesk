@@ -16,10 +16,12 @@ import type {
 import type { PullRequestRef } from "../../../domain/pull-request";
 import type { MergeReadiness } from "../../../domain/merge-readiness";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import { contextualMessage } from "../api-client";
 import {
   openPullRequestExternalUrl,
   pullRequestPageUrl,
 } from "../external-links";
+import { DRAFT_STATE_MESSAGES } from "../review-copy";
 import {
   CompactMergeCommand,
   type MergeCommandResult,
@@ -33,7 +35,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { InlineError } from "@/components/ui/inline-error";
 import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Sheet,
   SheetContent,
@@ -44,6 +48,10 @@ import {
 import { cn } from "@/lib/utils";
 import { INSIGHT_ICONS } from "../insight-icons";
 import type { InsightRunDialogType } from "./insight-run-dialog";
+import {
+  ChangeBaseBranchCommand,
+  type ChangeBaseBranchActions,
+} from "./change-base-branch-dialog";
 
 export type PullRequestOverviewMerge = {
   readonly readiness: MergeReadiness;
@@ -84,6 +92,7 @@ export type CanonicalReviewOverview = {
   readonly summary: string;
   readonly checks: CheckSummary;
   readonly mergeReadiness: WorkbenchResponse["mergeReadiness"];
+  readonly isDraft: boolean;
   readonly mergeReasons: ReadonlyArray<MergeDisplayReason>;
   readonly pullRequest?: PullRequestRef;
   readonly revision?: {
@@ -108,8 +117,8 @@ export type CanonicalReviewOverview = {
   readonly terminalState?: "merged" | "closed";
 };
 
-/** The row the sheet lands focus on when it opens; the header's Merge chip asks for readiness. */
-export type OverviewFocusSection = "merge_readiness";
+/** The row the sheet opens and lands focus on; the header's Checks and Merge chips each ask for their own. */
+export type OverviewFocusSection = "checks" | "merge_readiness";
 
 type OverviewMergeWarning =
   CanonicalReviewOverview["mergeReadiness"]["warnings"][number];
@@ -122,6 +131,8 @@ export function CanonicalReviewOverviewSheet({
   merge,
   focusSection,
   onReviewFindings,
+  onSetDraftState,
+  baseBranch,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -130,6 +141,9 @@ export function CanonicalReviewOverviewSheet({
   readonly focusSection?: OverviewFocusSection;
   /** Called with the findings card's ids once the sheet has closed. */
   readonly onReviewFindings?: (findingIds: ReadonlyArray<string>) => void;
+  /** The author's draft toggle; absent when the viewer may not write it. */
+  readonly onSetDraftState?: (draft: boolean) => Promise<void>;
+  readonly baseBranch?: ChangeBaseBranchActions;
 }): React.JSX.Element {
   const terminal = overview.terminalState !== undefined;
   const checks = presentOverallCheckResult(
@@ -139,6 +153,7 @@ export function CanonicalReviewOverviewSheet({
   const freshness = overview.revision?.freshness;
   const checkFreshness = checksFreshness(freshness);
   const CheckIcon = checks.Icon;
+  const checksTriggerRef = useRef<HTMLButtonElement>(null);
   const readinessTriggerRef = useRef<HTMLButtonElement>(null);
   // Review findings hands its ids over only after the close finishes, and
   // tells the dialog not to return focus, so the Analysis row keeps focus.
@@ -166,9 +181,11 @@ export function CanonicalReviewOverviewSheet({
       <SheetContent
         side="right"
         className="w-[370px] max-w-[calc(100vw-24px)] gap-0 sm:max-w-[370px]"
-        {...(focusSection === "merge_readiness"
-          ? { initialFocus: readinessTriggerRef }
-          : {})}
+        {...(focusSection === "checks"
+          ? { initialFocus: checksTriggerRef }
+          : focusSection === "merge_readiness"
+            ? { initialFocus: readinessTriggerRef }
+            : {})}
         finalFocus={() => reviewFindingsRef.current === undefined}
       >
         <SheetHeader className="border-b px-5 py-4 pr-12">
@@ -192,6 +209,8 @@ export function CanonicalReviewOverviewSheet({
           <Separator />
           <OverviewRow
             title="Checks"
+            defaultOpen={focusSection === "checks"}
+            triggerRef={checksTriggerRef}
             icon={<CheckIcon className="size-3.5" />}
             trailing={checks.label}
             trailingTone={checks.treatment}
@@ -249,6 +268,22 @@ export function CanonicalReviewOverviewSheet({
                 ? {}
                 : { onReviewFindings: requestReviewFindings })}
             />
+            {onSetDraftState === undefined ? null : (
+              <div className="mt-3 border-t pt-3">
+                <DraftStateCommand
+                  isDraft={overview.isDraft}
+                  onSetDraftState={onSetDraftState}
+                />
+              </div>
+            )}
+            {baseBranch === undefined || terminal ? null : (
+              <div className="mt-3 border-t pt-3">
+                <ChangeBaseBranchCommand
+                  repository={overview.repository}
+                  actions={baseBranch}
+                />
+              </div>
+            )}
             {merge === undefined ||
             terminal ||
             overview.mergeReadiness._tag === "Blocked" ? null : (
@@ -392,6 +427,47 @@ function StatusRow({
         <span className="truncate">{title}</span>
       </span>
       <span className={cn("shrink-0 text-xs font-medium", tone)}>{text}</span>
+    </div>
+  );
+}
+
+/**
+ * The author's draft toggle. It sits in the Merge readiness body rather than
+ * beside the merge command because a draft pull request is always
+ * `Blocked`, which suppresses that command entirely.
+ */
+function DraftStateCommand({
+  isDraft,
+  onSetDraftState,
+}: {
+  readonly isDraft: boolean;
+  readonly onSetDraftState: (draft: boolean) => Promise<void>;
+}): React.JSX.Element {
+  const [writing, setWriting] = useState(false);
+  const [writeError, setWriteError] = useState<string>();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full"
+        disabled={writing}
+        onClick={() => {
+          setWriteError(undefined);
+          setWriting(true);
+          onSetDraftState(!isDraft)
+            .catch((cause: unknown) => {
+              setWriteError(contextualMessage(cause, DRAFT_STATE_MESSAGES));
+            })
+            .finally(() => setWriting(false));
+        }}
+      >
+        {writing ? <Spinner data-icon="inline-start" /> : null}
+        {isDraft ? "Ready for review" : "Convert to draft"}
+      </Button>
+      {writeError === undefined ? null : (
+        <InlineError className="text-xs">{writeError}</InlineError>
+      )}
     </div>
   );
 }

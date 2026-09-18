@@ -120,14 +120,14 @@ function saveConflictingPreferences(): void {
   saveInboxViewPreferences("a", {
     state: "merged",
     pageSize: 10,
-    awaitingMyReview: true,
+    preset: "awaiting_my_review",
     selectedLabels: ["from-a"],
     selectedRepository: repositoryA,
   });
   saveInboxViewPreferences("b", {
     state: "merged",
     pageSize: 50,
-    awaitingMyReview: true,
+    preset: "awaiting_my_review",
     selectedLabels: ["from-b"],
     selectedRepository: repositoryB,
   });
@@ -166,7 +166,6 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       state: "open",
       pageSize: 25,
       selectedLabels: [],
-      awaitingMyReview: false,
     });
     expect(loadInboxViewPreferences("b").selectedLabels).toEqual([]);
   });
@@ -263,7 +262,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     });
     await waitFor(() =>
       expect(paths).toEqual([
-        "/v1/inbox?state=merged&pageSize=10&label=from-a&awaitingMyReview=1",
+        "/v1/inbox?state=merged&pageSize=10&label=from-a&preset=awaiting_my_review",
       ]),
     );
     act(() => {
@@ -280,7 +279,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     });
 
     expect(paths).toEqual([
-      "/v1/inbox?state=merged&pageSize=10&label=from-a&awaitingMyReview=1",
+      "/v1/inbox?state=merged&pageSize=10&label=from-a&preset=awaiting_my_review",
       "/v1/inbox?state=open&pageSize=25",
       targetRequest(repositoryB),
     ]);
@@ -291,7 +290,6 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       state: "open",
       pageSize: 25,
       selectedLabels: [],
-      awaitingMyReview: false,
     });
     expect(result.current.inboxListPending).toBe(false);
   });
@@ -418,7 +416,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
         result.current.updateInboxRequest({
           ...result.current.inboxRequest,
           selectedLabels: ["bug"],
-          awaitingMyReview: true,
+          preset: "awaiting_my_review",
           pageToken: "stale-page",
           previousPageTokens: ["older-page"],
           ...initialFilter,
@@ -429,7 +427,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       expect(result.current.inboxRequest).toMatchObject({
         repository: repositoryA,
         selectedLabels: ["bug"],
-        awaitingMyReview: true,
+        preset: "awaiting_my_review",
         previousPageTokens: [],
         ...requestFilter,
       });
@@ -444,7 +442,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       }
       await waitFor(() =>
         expect(paths.at(-1)).toBe(
-          `/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&awaitingMyReview=1&${query}`,
+          `/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&preset=awaiting_my_review&${query}`,
         ),
       );
     },
@@ -554,7 +552,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       result.current.updateInboxRequest({
         ...result.current.inboxRequest,
         selectedLabels: ["bug"],
-        awaitingMyReview: true,
+        preset: "awaiting_my_review",
         reviewState: "approved",
         checkStatus: "failure",
         author: "octocat",
@@ -570,7 +568,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
       state: "open",
       pageSize: 25,
       selectedLabels: ["bug"],
-      awaitingMyReview: true,
+      preset: "awaiting_my_review",
       previousPageTokens: [],
     });
     const savedPreferences = loadInboxViewPreferences("a");
@@ -580,7 +578,7 @@ describe("useWorkspaceInbox profile-switch bootstrap", () => {
     }
     await waitFor(() =>
       expect(paths.at(-1)).toBe(
-        "/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&awaitingMyReview=1",
+        "/v1/inbox?state=open&pageSize=25&host=github.com&owner=owner-a&repo=repo-a&label=bug&preset=awaiting_my_review",
       ),
     );
     expect(paths.filter((path) => path.includes("owner=owner-a"))).toHaveLength(

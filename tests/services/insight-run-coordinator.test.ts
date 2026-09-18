@@ -21,11 +21,16 @@ import {
 import type { InsightType } from "../../src/domain/insight-record";
 import { createReview } from "../../src/domain/review";
 import { createReviewSession } from "../../src/domain/review-session";
-import { ok, type Result } from "../../src/domain/result";
+import { err, ok, type Result } from "../../src/domain/result";
+import type {
+  DesktopNotificationEvent,
+  DesktopNotifier,
+} from "../../src/services/desktop-notifier";
 import type {
   BriefReachComputer,
   BriefReachRequest,
 } from "../../src/services/brief-reach-service";
+import { InsightProviderCatalog } from "../../src/services/insight-provider-catalog";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
 import {
   InsightRunCoordinator,
@@ -61,6 +66,8 @@ async function fixture(
   invoker: InsightInvoker,
   operations = new ReviewOperationCoordinator(),
   reach?: BriefReachComputer,
+  providerCatalog?: InsightProviderCatalog,
+  notifier?: DesktopNotifier,
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-insight-current-"));
   roots.push(root);
@@ -150,8 +157,9 @@ async function fixture(
     operations,
     () => now,
     undefined,
-    undefined,
+    providerCatalog,
     reach,
+    notifier,
   );
   return {
     coordinator,
@@ -553,6 +561,133 @@ describe("InsightRunCoordinator current lifecycle", () => {
     });
   });
 
+  it("observes a Codex run's activity and keeps it after the run ends", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const codexCatalog = new InsightProviderCatalog(
+      { get: async () => ok({ models: [] }) },
+      () => ({
+        listModels: async () =>
+          ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
+      }),
+      async () => "/usr/local/bin/codex",
+    );
+    const value = await fixture(
+      {
+        async invoke(_input, options) {
+          options.onActivity?.({ _tag: "turn_started" });
+          options.onActivity?.({
+            _tag: "command_started",
+            id: "cmd-1",
+            command: "git diff",
+          });
+          await wait;
+          return ok(analysisResult);
+        },
+      },
+      undefined,
+      undefined,
+      codexCatalog,
+    );
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      provider: "codex-cli-account",
+      model: "model",
+      reasoning: "medium",
+    });
+    if (started._tag === "err") throw new Error("expected run");
+    const trace = {
+      phase: "turn",
+      commands: [{ id: "cmd-1", command: "git diff", status: "in_progress" }],
+    };
+    await expect(
+      value.coordinator.observe({
+        profileId,
+        reviewId: value.review.id,
+        type: "analysis",
+        runId: started.value.runId,
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { status: "queued", activity: trace },
+    });
+    release();
+    expect(
+      await settled(value.coordinator, value.review.id, started.value.runId),
+    ).toMatchObject({ status: "completed", activity: trace });
+  });
+
+  it("never answers one run's poll with another run's trace", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const codexCatalog = new InsightProviderCatalog(
+      { get: async () => ok({ models: [] }) },
+      () => ({
+        listModels: async () =>
+          ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
+      }),
+      async () => "/usr/local/bin/codex",
+    );
+    let invocations = 0;
+    const value = await fixture(
+      {
+        async invoke(_input, options) {
+          invocations += 1;
+          const id = `cmd-${String(invocations)}`;
+          options.onActivity?.({ _tag: "command_started", id, command: "pwd" });
+          if (invocations > 1) await wait;
+          return ok(analysisResult);
+        },
+      },
+      undefined,
+      undefined,
+      codexCatalog,
+    );
+    const startInput = {
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      provider: "codex-cli-account",
+      model: "model",
+      reasoning: "medium",
+    } as const;
+    const first = await value.coordinator.start(startInput);
+    if (first._tag === "err") throw new Error("expected first run");
+    await settled(value.coordinator, value.review.id, first.value.runId);
+    const second = await value.coordinator.start(startInput);
+    if (second._tag === "err") throw new Error("expected second run");
+
+    const observed = (runId: typeof first.value.runId) =>
+      value.coordinator.observe({
+        profileId,
+        reviewId: value.review.id,
+        type: "analysis",
+        runId,
+      });
+    const firstPoll = await observed(first.value.runId);
+    expect(firstPoll).toMatchObject({
+      _tag: "ok",
+      value: { status: "completed" },
+    });
+    expect(firstPoll._tag === "ok" && firstPoll.value.activity).toBe(undefined);
+    await expect(observed(second.value.runId)).resolves.toMatchObject({
+      _tag: "ok",
+      value: {
+        activity: {
+          commands: [{ id: "cmd-2", command: "pwd", status: "in_progress" }],
+        },
+      },
+    });
+    release();
+    await settled(value.coordinator, value.review.id, second.value.runId);
+  });
+
   it("persists cancellation before aborting and does not retain a late success", async () => {
     let release!: () => void;
     let signal: AbortSignal | undefined;
@@ -702,5 +837,138 @@ describe("InsightRunCoordinator current lifecycle", () => {
         replacementFailure: { reason: "invalid_result" },
       },
     });
+  });
+});
+
+describe("InsightRunCoordinator desktop notifications", () => {
+  /** Starts one Analysis, waits for it to settle and release the Review lock, and returns what was posted. */
+  async function notificationsFor(
+    invoker: InsightInvoker,
+    during?: (value: Awaited<ReturnType<typeof fixture>>) => Promise<void>,
+  ): Promise<ReadonlyArray<DesktopNotificationEvent>> {
+    const events: DesktopNotificationEvent[] = [];
+    const value = await fixture(invoker, undefined, undefined, undefined, {
+      notify: (event) => events.push(event),
+    });
+    const started = await value.coordinator.start({
+      profileId,
+      reviewId: value.review.id,
+      type: "analysis",
+      model: "model",
+      reasoning: "medium",
+    });
+    if (started._tag === "err") throw new Error("expected run");
+    await during?.(value);
+    await settled(value.coordinator, value.review.id, started.value.runId);
+    await value.operations.withReviewLock(
+      profileId,
+      value.review.id,
+      async () => undefined,
+    );
+    return events;
+  }
+
+  it("posts one completed event naming the pull request", async () => {
+    const events = await notificationsFor({
+      async invoke() {
+        return ok(analysisResult);
+      },
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        _tag: "InsightSettled",
+        insightType: "analysis",
+        outcome: "completed",
+        pullRequest: expect.objectContaining({
+          owner: "centraldigital",
+          number: 42,
+        }),
+      }),
+    ]);
+  });
+
+  it.each([
+    [
+      "an invocation failure",
+      {
+        async invoke() {
+          return err({ reason: "execution_failed" as const });
+        },
+      },
+    ],
+    [
+      "an unexpected failure",
+      {
+        async invoke(): Promise<Result<unknown, never>> {
+          throw new Error("invoker defect");
+        },
+      },
+    ],
+  ])("posts one failed event after %s", async (_label, invoker) => {
+    const events = await notificationsFor(invoker);
+
+    expect(events).toMatchObject([
+      { _tag: "InsightSettled", outcome: "failed" },
+    ]);
+  });
+
+  it("posts nothing for a run the maintainer cancelled", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const events = await notificationsFor(
+      {
+        async invoke() {
+          await wait;
+          return ok(analysisResult);
+        },
+      },
+      async (value) => {
+        const active = await value.insights.load(
+          profileId,
+          value.review.id,
+          "analysis",
+        );
+        const runId =
+          active._tag === "ok" ? active.value.activeRun?.id : undefined;
+        if (runId === undefined) throw new Error("expected active run");
+        await value.coordinator.cancel({
+          profileId,
+          reviewId: value.review.id,
+          type: "analysis",
+          runId,
+        });
+        release();
+      },
+    );
+
+    expect(events).toEqual([]);
+  });
+
+  it("posts nothing for a run superseded by a changed patch", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const events = await notificationsFor(
+      {
+        async invoke() {
+          await wait;
+          return ok(analysisResult);
+        },
+      },
+      async (value) => {
+        await writeFile(
+          value.session.patchPath,
+          "diff --git a/a.ts b/a.ts\n+different\n",
+          "utf8",
+        );
+        release();
+      },
+    );
+
+    expect(events).toEqual([]);
   });
 });

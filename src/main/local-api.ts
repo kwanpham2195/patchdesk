@@ -1,12 +1,18 @@
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono, type MiddlewareHandler } from "hono";
 
+import {
+  notificationSettingsOf,
+  type NotificationSettings,
+} from "../domain/contracts";
+import { err, ok, type Result } from "../domain/result";
 import { APP_CAPABILITY_HEADER, type AppCapability } from "./ipc-contract";
 import { hasMatchingAppCapability } from "./app-capability";
 import type { LocalApiStartupResult } from "./app-lifecycle";
 import { buildLocalApiContainer, type LogWriter } from "./local-api-container";
 import type { LocalApiConfiguration } from "./local-api-configuration";
 import { startRetentionSweepScheduler } from "./retention-sweep-scheduler";
+import { startWatchedPullRequestScheduler } from "./watched-pull-request-scheduler";
 import { registerDashboardRoutes } from "./routes/dashboard-routes";
 import { registerInsightRoutes } from "./routes/insight-routes";
 import { registerPendingReviewRoutes } from "./routes/pending-review-routes";
@@ -16,6 +22,7 @@ import { registerReviewLifecycleRoutes } from "./routes/review-lifecycle-routes"
 import { registerReviewWriteRoutes } from "./routes/review-write-routes";
 import { registerSidebarRoutes } from "./routes/sidebar-routes";
 import { registerStorageDiagnosticsRoutes } from "./routes/storage-diagnostics-routes";
+import { registerWatchedPullRequestRoutes } from "./routes/watched-pull-request-routes";
 
 export { createReadOnlyGitExecutor } from "./local-api-stores";
 
@@ -52,6 +59,7 @@ export async function startLocalApiServer(
   registerInsightRoutes(app, container);
   registerStorageDiagnosticsRoutes(app, container);
   registerSidebarRoutes(app, container);
+  registerWatchedPullRequestRoutes(app, container);
 
   const { server, port } = await listenOnLoopback(app);
   const url = new URL(`http://${localhostHostname}:${port}/`);
@@ -62,6 +70,27 @@ export async function startLocalApiServer(
     enabled: configuration.retentionSweep ?? false,
     diagnostics: container.diagnostics,
   });
+  const notificationSettings = async (): Promise<
+    Result<NotificationSettings, "config_unreadable">
+  > => {
+    const settings = await container.dashboard.getSettings();
+    return settings._tag === "ok"
+      ? ok(notificationSettingsOf(settings.value))
+      : err("config_unreadable");
+  };
+  const startupSettings = await notificationSettings();
+  const watchedPullRequestScheduler = startWatchedPullRequestScheduler({
+    profiles: container.configuredProfiles,
+    watched: container.watchedPullRequests,
+    coordinator: container.reviewOperations,
+    intervalMinutes:
+      startupSettings._tag === "ok"
+        ? startupSettings.value.intervalMinutes
+        : notificationSettingsOf({}).intervalMinutes,
+    settings: notificationSettings,
+    enabled: configuration.watchedPullRequestPolling ?? false,
+    logs,
+  });
 
   return {
     _tag: "started",
@@ -70,6 +99,7 @@ export async function startLocalApiServer(
       url,
       async stop(): Promise<void> {
         await retentionScheduler.stop();
+        await watchedPullRequestScheduler.stop();
         await closeServer(server);
       },
     },

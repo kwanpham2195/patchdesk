@@ -23,6 +23,7 @@ function published(input: {
   readonly author: string;
   readonly body: string;
   readonly ghThreadId: string;
+  readonly viewerDidAuthor?: boolean | undefined;
 }): ReviewInlineAnnotation {
   return {
     id: input.id,
@@ -45,6 +46,7 @@ function published(input: {
           author: input.author,
           body: input.body,
           createdAt: "2026-01-01T00:00:00Z",
+          viewerDidAuthor: input.viewerDidAuthor,
         },
       ],
     },
@@ -175,6 +177,8 @@ describe("projectConversationThreadRows", () => {
         author: "alice",
         preview: "needs a fix",
         state: "open",
+        needsReply: false,
+        newCount: 0,
       },
       {
         id: "c2",
@@ -185,6 +189,8 @@ describe("projectConversationThreadRows", () => {
         author: "bob",
         preview: "looks good now",
         state: "resolved",
+        needsReply: false,
+        newCount: 0,
       },
       {
         id: "c3",
@@ -195,6 +201,8 @@ describe("projectConversationThreadRows", () => {
         author: "You",
         preview: "draft reply",
         state: "pending",
+        needsReply: false,
+        newCount: 0,
       },
     ]);
   });
@@ -236,5 +244,60 @@ describe("projectConversationThreadRows", () => {
     );
 
     expect(rows.map((row) => row.id)).toEqual(["r-file", "r-early", "r-late"]);
+  });
+
+  it("puts threads that need the viewer's reply first, each group in diff order", () => {
+    const thread = (
+      id: string,
+      path: string,
+      start: number,
+      viewerDidAuthor?: boolean,
+    ): ReviewInlineAnnotation =>
+      published({
+        id,
+        path,
+        start,
+        state: "open",
+        author: "x",
+        body: "y",
+        ghThreadId: `PRRT_${id}`,
+        viewerDidAuthor,
+      });
+
+    const rows = projectConversationThreadRows(
+      [
+        thread("viewer-last", "a.ts", 1, true),
+        thread("waiting-late", "b.ts", 9, false),
+        thread("unknown", "a.ts", 5),
+        thread("waiting-early", "b.ts", 2, false),
+      ],
+      ["a.ts", "b.ts"],
+    );
+
+    expect(rows.map((row) => [row.id, row.needsReply])).toEqual([
+      ["waiting-early", true],
+      ["waiting-late", true],
+      ["viewer-last", false],
+      ["unknown", false],
+    ]);
+  });
+
+  it("counts a thread's comments dated after the last-looked cursor, and none before the first leave", () => {
+    const thread = published({
+      id: "c1",
+      path: "a.ts",
+      start: 1,
+      state: "open",
+      author: "alice",
+      body: "y",
+      ghThreadId: "PRRT_new",
+    });
+    const count = (lastLooked?: { readonly seenThrough?: string }) =>
+      projectConversationThreadRows([thread], ["a.ts"], lastLooked)[0]
+        ?.newCount;
+
+    expect(count({ seenThrough: "2025-12-31T00:00:00Z" })).toBe(1);
+    expect(count({ seenThrough: "2026-01-01T00:00:00Z" })).toBe(0);
+    expect(count()).toBe(0);
   });
 });

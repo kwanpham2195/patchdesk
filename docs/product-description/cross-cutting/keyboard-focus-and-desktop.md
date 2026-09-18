@@ -2,7 +2,7 @@
 
 ## Summary
 
-Patchdesk's supported direct input is keyboard and mouse in one macOS desktop window. Navigation, Settings, Pull requests, and the Review workbench share destination guards, focus movement, keyboard commands, and native close behavior. A clean action proceeds; a pending GitHub write keeps the maintainer at the current surface until the final result arrives, and an unsaved Review draft asks before it is discarded.
+Patchdesk's supported direct input is keyboard and mouse in one macOS desktop window. Navigation, Settings, Pull requests, and the Review workbench share destination guards, focus movement, keyboard commands, and native close behavior. A clean action proceeds; a pending GitHub write keeps the maintainer at the current surface until the final result arrives, and an unsaved Review draft asks before it is discarded. When Patchdesk is in the background or showing another Review, macOS notifications report Insight runs that settle, GitHub writes that need a check, and changes to watched pull requests.
 
 ## The simple case
 
@@ -28,9 +28,9 @@ stateDiagram-v2
 
 Patchdesk restores the last saved destination, defaulting to Pull requests when the saved value is absent or invalid. The titlebar names Pull requests or Review workbench. A Skip to content link targets the main content region; activating it moves focus into the main content, past the titlebar and the [Visited pull requests column](../foundations/visited-pull-requests.md).
 
-Tab order follows the window from the top: Skip to content, the column's collapse toggle, Back on a Review workbench, Active workspace, Settings, Navigate, then each Visited pull requests row while the column is expanded, then the screen's own controls. A maintainer who tabs from Navigate passes through every listed row, up to 20, before reaching the screen.
+Tab order follows the window from the top: Skip to content, the column's collapse toggle, Back on a Review workbench, Active workspace, Settings, Navigate, the Visited pull requests column while it is expanded, then the screen's own controls. The column is one Tab stop, not one per row: Tab enters it on the row of the Review on screen, or the first row otherwise, and Arrow Down and Arrow Up move focus between rows from there. Tab again leaves the column for the screen.
 
-The collapse toggle's accessible name is `Collapse the pull requests you have opened` while the column shows and `Expand the pull requests you have opened` while it is hidden, and it reports whether the column is expanded. Collapsing hides the column entirely. The choice survives renderer reload and relaunch and applies to every workspace.
+The collapse toggle's accessible name is `Collapse the pull requests you have opened` while the column shows and `Expand the pull requests you have opened` while it is hidden, it reports whether the column is expanded, and it shows the same wording as a hover tooltip. Collapsing hides the column entirely. The choice survives renderer reload and relaunch and applies to every workspace.
 
 Settings is a global overlay with General, Workspace, Review, Data & recovery, and Logs sections. The opener is remembered for normal focus return. Within a Review workbench, the selected top-level tab, navigator section, and file position restore under that Review's identity.
 
@@ -53,6 +53,16 @@ The titlebar busy bar appears for tracked loading actions and remains until all 
 When a GitHub write is pending, the guard offers Wait for completion and prevents leaving or closing the window until the final result arrives. When an unsaved Review draft is reported instead, the guard offers Stay on this review or Discard changes and leave.
 
 Settings itself holds nothing back: its sections save their own values, so closing the overlay, changing section, reload, window close, and quit are never blocked by it. A native close path can show the desktop warning when the renderer cannot remain visible.
+
+### Desktop notifications
+
+Patchdesk posts a macOS notification when a Brief, Walkthrough, or Analysis finishes or fails, and when a GitHub write leaves the Review waiting for **Check GitHub again**. With **Review ready and merge completed** switched on in Settings → General → Notifications, it also posts one when a Review finishes preparing and when a merge completes. A cancelled or superseded Insight run posts nothing. The notification names the pull request as `owner/repo#number`.
+
+No notification is posted for the Review the focused window is showing, for a Review that finishes preparing while the window is focused, or while **Notifications** is off. Refresh that adopts a new head prepares the Review again, so it can post **Review ready** too. Clicking a notification brings the window forward and navigates to its Review with the same guards as any navigation; an Insight notification lands on the Insights tab with that Insight selected.
+
+A watched pull request posts one notification per change Patchdesk finds when it checks: a new comment or review, a changed review decision, changed checks, new commits, or merging or closing. It posts nothing while that pull request's Review is open in the workbench, focused or not. Clicking it brings the window forward and opens the pull request as the ⌘K palette opens a pasted reference, with the same guards. Settings → General → Notifications sets how often Patchdesk checks, every 1, 3, 5, or 10 minutes; a new interval applies the next time Patchdesk starts.
+
+> Technical note: the main process writes a `desktop-notification` debug log line for each event: `shown`, `skipped` with `focused_on_review`, `focused`, `open_in_workbench`, or `disabled`, and `clicked`. Each check writes a `watched-pull-requests` line, `polled` or `skipped` with its reason. ADR 0044 and ADR 0045 record the decisions.
 
 ### Settle
 
@@ -98,7 +108,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 
 **Feedback, errors, and diagnostics.** Focus and titlebar feedback identify where the maintainer is; feature errors and Diagnostics identify why an action failed.
 
-**Preferences, keyboard commands, and desktop integration.** Settings, ⌘K, ⌘,, Navigate, Back, Visited pull requests rows, Skip to content, and native close share destination state and guards. The column's collapse toggle is a view preference and changes no destination.
+**Preferences, keyboard commands, and desktop integration.** Settings, ⌘K, ⌘,, Navigate, Back, Visited pull requests rows, Skip to content, native close, and a clicked desktop notification share destination state and guards. The column's collapse toggle is a view preference and changes no destination.
 
 **Supported input and accessibility limits.** Keyboard and mouse are supported. Touch, pen, and screen-reader behavior are outside the supported product surface.
 
@@ -113,20 +123,23 @@ After an explicit Discard, the draft guard clears and the requested destination 
 - A native window close uses desktop warning behavior because renderer state may not remain visible during shutdown.
 - Keyboard row selection and Enter activation share the same action owner as mouse selection.
 - ⌘K does nothing while focus is in a text field or an editable region, so typing there is never taken over.
-- The collapse toggle and Back show no hover tooltip; Settings and Navigate do.
+- Every titlebar icon button shows a hover tooltip: the collapse toggle, Back, Settings, and Navigate.
 - Activating Skip to content adds `#main-content` to the renderer address, and it stays there through later navigation.
+- A clicked Insight notification for the Review already on screen reopens that Review on the Insight, unless an unsaved draft or pending write holds it; then the window is only focused.
+- A write that GitHub rejected, or one refused because an earlier write already holds the lock, posts no notification.
 
 ## Open questions and verification
 
-- Live pass on 2026-09-14 confirmed the Tab order above with 14 Visited rows, Skip to content moving focus into the main content, the toggle's alternating accessible name, the collapsed column surviving a renderer reload, no tooltip on the toggle beside `Open Settings` on Settings, and focus returning to the Settings button when Settings closes.
+- Live pass on 2026-09-14 confirmed Skip to content moving focus into the main content, the toggle's alternating accessible name, the collapsed column surviving a renderer reload, and focus returning to the Settings button when Settings closes. Two things it saw have since changed: the column was then one Tab stop per row, 14 in that workspace, and the toggle had no tooltip. Both are fixed; neither the single Tab stop nor the tooltip has been observed live.
 - Heading focus after a destination change was not confirmed live: the check ran in a hidden CDP window where animation frames do not run. [Navigation and overlays](../foundations/navigation-and-overlays.md#open-questions-and-verification) records the result and the latent defect [B-14](../bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change).
-- Confirmed live and by an independent review: the Visited pull requests row for the Review on screen stays in the Tab order, is announced as the current page, and does nothing on Enter. That is intended and test-covered. The Tab cost is recorded as [UX-01](../ux-friction.md#ux-01-tab-walks-every-visited-row-before-the-screen).
+- Confirmed live and by an independent review: the Visited pull requests row for the Review on screen is announced as the current page and does nothing on Enter. That is intended and test-covered. The Tab cost recorded as [UX-01](../ux-friction.md#ux-01-tab-walks-every-visited-row-before-the-screen) is fixed; that row is now the column's single Tab stop.
 - Confirm in the running app that the collapsed column preference carries across a workspace switch; the live pass did not switch workspace.
 - The `#main-content` address fragment has no visible effect in the desktop window; confirm nothing reads it.
 - Confirm focus placement after destination changes, Settings close, profile switch, guard Cancel, and native window close.
 - Confirm the exact keyboard and native-menu behavior for Settings, Navigate, Pull requests row activation, and Review file navigation.
 - Confirm the titlebar busy label when overlapping tracked actions settle in reverse order.
 - Confirm the native close prompt for an unsaved Review draft and for a pending GitHub write on a real macOS window.
+- Live verification of desktop notifications is pending: a macOS banner cannot be observed over CDP, so the log lines are the evidence.
 - In the current source only the Review workbench reports navigation state, and only as write-pending or clear. Confirm which surface, if any, still reports an unsaved draft to this guard.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`, including the removal of the workspace draft guard.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, including the removal of the workspace draft guard.

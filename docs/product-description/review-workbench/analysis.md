@@ -32,7 +32,7 @@ The reader shows its cards in a fixed order.
 - **Verdict card.** A verdict badge reads Ready to approve, Changes requested, or Comment recommended. Beside it, one badge counts the Findings that still need attention, or says "No findings need attention", and one badge gives the CI state as Passing, Failing, Pending, Skipped, or Unknown; Failing is drawn as destructive. A heading follows the verdict: "The change is ready for your final review.", "Resolve the blocking findings before approval.", or "Review the highlighted concern before you finish." The generated summary sits below the heading. When Patchdesk allows finishing with an Analysis summary, the card carries a Finish review button.
 - **Findings card.** Its title is Needs attention, No findings need attention, or No findings, with a matching description, and its header carries Copy as markdown prompt.
 - **What changed.** The generated change summary for this retained Review snapshot.
-- **Verification.** One checkbox per generated verification step, with the count "N of M checked in this view". The card is absent when Analysis generated no steps.
+- **Verification.** One checkbox per generated verification step, under "N of M checked. Ticks are not saved and reset when you leave Analysis." The card is absent when Analysis generated no steps.
 - **Supporting details.** A collapsed card that counts its details and groups, with Show details. The groups are Reviewer callouts, Open questions, and Assumptions. Duplicate supporting details are removed before grouping.
 
 Findings are grouped by severity. P0 and P1 Findings are listed first and always shown. P2 and P3 Findings sit behind a collapsed Lower severity disclosure that counts them. When every Finding is in one group, all of them are listed with no disclosure. Each Finding shows its severity badge, title, explanation, file and line, and a state badge: actionable, pending review, published, locked, dismissed, or unavailable when Patchdesk has no action state for it. When the Analysis is current and the Finding maps to the represented diff, the file and line is a link that opens the Diff at that location.
@@ -67,19 +67,22 @@ Each Finding owns its pending and error state. Add to review reads Adding… and
 
 Add to review passes through the detect-before-write gate and pending-review coordinator. A malformed success or unknown outcome never marks the Finding confirmed. Dismissal applies only the exact returned Finding ID and status.
 
-A generation run follows the lifecycle described in [Brief](brief.md#while-the-action-runs).
+A generation run follows the lifecycle described in [Brief](brief.md#while-the-action-runs), including the running panel and the Codex activity trace a Codex CLI account run shows in it.
+
 ### Settle
 
 An exact pending-review projection updates the canonical workbench immediately without an advisory full Review load. A Finding becomes pending review only when the projection's unresolved Finding identity matches the run, Finding, session, head, patch, and pending-review node. It becomes published only from matching recent-write evidence.
 
 A confirmed dismissal patches the retained Analysis locally and removes its Add action. A failed Finding action shows "The Finding action could not be saved. Try again." under that Finding, keeps it retryable, and preserves the dismissal reason. Unknown pending-review outcome locks mutation and delegates settlement to Check GitHub again or manual GitHub inspection; a locked Finding says Patchdesk cannot safely change it because its exact GitHub comment is not confirmed.
 
+A Finding that no longer maps to the represented diff, or an Add while the pending review needs recovery, sends nothing and says the Finding no longer matches the current diff or pending review, with Check GitHub again or refresh as the next step. A malformed or stale response to Add or Dismiss is worded as unconfirmed: the row says GitHub could not confirm the Finding action and to check GitHub before repeating it. The row keeps that sentence until the maintainer starts another action on the same Finding.
+
 ## Variants
 
 | Variant                                                | Before the action runs                                                                                                                                      | While the action runs                                                                                                                |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Workspace profile and GitHub account                   | Profile rules and provider configuration shape generation; the configured GitHub identity owns later review writes.                                         | A profile switch leaves the session. A result or receipt from the former session cannot confirm the new Review.                      |
-| Pull request and Review state                          | Retained Analysis can be read for terminal or outdated Reviews. Generate analysis and Regenerate need an open Review. Add to review needs an open, Fresh, patch-backed Review and available pending-review state. An outdated Analysis shows no Add, Dismiss, evidence, or Diff link. | Revision or terminal change discovered before the write prevents it. Generated evidence stays bound to the old represented revision. |
+| Pull request and Review state                          | Retained Analysis can be read for terminal or outdated Reviews. Generate analysis and Regenerate need an open Review; on a merged or closed Review, a muted line above the reader says so and describes the two disabled buttons. Add to review needs an open, Fresh, patch-backed Review and available pending-review state. An outdated Analysis shows no Add, Dismiss, evidence, or Diff link. | Revision or terminal change discovered before the write prevents it. Generated evidence stays bound to the old represented revision. |
 | GitHub permissions and merge readiness                 | Analysis generation needs no GitHub write permission. Add to review needs comment authority; merge readiness is separate.                                   | A permission rejection leaves the Finding actionable and does not change merge readiness.                                            |
 | Network, local tool, and Insight provider availability | Reading a retained Analysis needs no provider. Generation needs an available provider; Add to review needs GitHub.                                          | Provider failure leaves the retained Analysis. GitHub uncertainty pauses writes without relabeling the Finding as published.         |
 | Input path: mouse, keyboard, or desktop menu           | Reader, evidence controls, checkboxes, dialogs, and buttons support mouse and keyboard.                                                                     | Both paths use row-local admission guards. Desktop menus do not add or dismiss Findings.                                             |
@@ -110,7 +113,7 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 
 **Concurrent operations and locking.** Row-local guards, cumulative projection checks, and the Review coordinator prevent duplicate or out-of-order confirmation.
 
-**Feedback, errors, and diagnostics.** Pending, pending review, published, dismissed, failed, and recovery-required are distinct. Raw prompts, provider events, and unbounded errors do not enter the renderer projection.
+**Feedback, errors, and diagnostics.** Pending, pending review, published, dismissed, failed, and recovery-required are distinct. A Codex CLI account run's command trace and one reasoning line enter the renderer projection, bounded as [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md) records; raw prompts, command output, raw provider events, and unbounded errors do not.
 
 **Preferences, keyboard commands, and desktop integration.** Analysis remembers provider, model, and reasoning defaults. No desktop menu shortcut accepts a Finding.
 
@@ -123,7 +126,7 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 - Lower severity appears only when the Analysis has both P0 or P1 and P2 or P3 Findings.
 - Opening a P2 or P3 Finding from a Finding card opens Lower severity even when the maintainer had closed it.
 - The needs-attention count uses the same handled rule as merge readiness, so the verdict card, the Overview card, and the readiness card agree.
-- Verification ticks reset when the maintainer leaves the Analysis reader, with no warning.
+- Verification ticks reset when the maintainer leaves the Analysis reader, and the card's own description says so before any tick is made.
 - Two concurrent adds that settle in reverse order preserve both confirmed Findings.
 - A stale lower receipt missing its target cannot overwrite a newer pending-review projection.
 - Malformed success produces recovery-required state, not optimistic confirmation.
@@ -136,11 +139,11 @@ A confirmed dismissal patches the retained Analysis locally and removes its Add 
 ## Open questions and verification
 
 - The 2026-09-14 live pass confirmed the empty state and the disabled Generate analysis on a merged Review. No retained Analysis existed in the live workspace, so the verdict card, severity grouping, Verification checklist, and Finding actions were checked from source only.
-- Verification ticks are lost when the maintainer switches Insight tabs, leaves Insights, or reloads, and nothing on screen says they are temporary beyond "in this view". Recorded as [UX-10](../ux-friction.md#ux-10-verification-ticks-are-lost-without-warning).
+- [UX-10](../ux-friction.md#ux-10-verification-ticks-are-lost-without-warning) is fixed: the card now says the ticks are not saved and reset when the maintainer leaves Analysis. The new wording is not yet live-verified; no Review in the live workspace had a retained Analysis.
 - Suspected defect, confirmed live and by an independent review: a disabled Generate analysis or Regenerate on a merged or closed Review shows no reason on screen. The open-only rule is intended. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
 - Confirm evidence expansion, highlighted range, row focus after Open in Analysis, and error placement.
 - Confirm whether a non-empty dismissal reason is guarded when switching Insights readers or leaving the Review.
 - Confirm progress and Cancel presentation for provider timeout versus explicit cancellation.
 - Confirm the outdated Analysis wording against a retained Analysis on a moved revision.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

@@ -62,3 +62,32 @@ test("long Threads path stays contained at the minimum navigator width", async (
     await closeServer(server);
   }
 });
+
+test("the thread waiting on the viewer leads the Threads list and the `}` jump", async ({
+  page,
+}) => {
+  const server = await serveRenderer();
+  try {
+    await page.setViewportSize({ width: 1_440, height: 900 });
+    await openDiff(page, `${serverOrigin(server)}/#active-follow-fixture`);
+
+    await page
+      .getByRole("tab", { name: "Threads 4 1 need your reply" })
+      .click();
+    const rows = page.getByLabel("Conversation threads").getByRole("button");
+    await expect(rows.first()).toContainText("deep-file-thread-author");
+    await expect(rows.first()).toContainText("Needs your reply");
+    await expect(rows.filter({ hasText: "Needs your reply" })).toHaveCount(1);
+
+    const diffViewport = page.locator(".review-diff-viewport");
+    await diffViewport.focus();
+    await page.keyboard.press("}");
+    const status = page.locator(
+      '[data-review-diff-navigation-status][data-navigation-kind="comment"]',
+    );
+    await expect(status).toHaveAttribute("data-navigation-path", "src/c.ts");
+    await expect(status).toHaveAttribute("data-navigation-line", "30");
+  } finally {
+    await closeServer(server);
+  }
+});

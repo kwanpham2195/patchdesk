@@ -18,8 +18,13 @@ import {
   type CodexAppServerFailure,
   type CodexRpcMessage,
 } from "../../src/adapters/codex/codex-app-server-client";
+import type {
+  InsightActivityEvent,
+  InsightActivitySink,
+} from "../../src/adapters/codex/codex-activity";
 import type { Result } from "../../src/domain/result";
 import type { RepresentedReviewWorktree } from "../../src/domain/represented-review-worktree";
+import { InsightActivityBuffer } from "../../src/services/insight-activity-buffer";
 import { composeReviewPrompt } from "../../src/services/review-rubric";
 
 class FakeCodexProcess extends EventEmitter {
@@ -38,6 +43,7 @@ class FakeCodexProcess extends EventEmitter {
     ],
     private readonly finalText?: string,
     private readonly malformedItems = false,
+    private readonly notifications: ReadonlyArray<CodexRpcMessage> = [],
   ) {
     super();
     this.stdin.on("data", (chunk: Buffer) => {
@@ -96,6 +102,7 @@ class FakeCodexProcess extends EventEmitter {
           turnId: "turn-fixture",
         },
       });
+      for (const notification of this.notifications) this.write(notification);
       for (const delta of this.deltas)
         this.write({
           method: "item/agentMessage/delta",
@@ -286,6 +293,165 @@ describe("CodexAppServerClient", () => {
     expect(child?.killed).toBe(true);
   });
 
+  it("emits command and reasoning activity without command output", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
+    roots.push(root);
+    const longCommand = `rg ${"x".repeat(400)}`;
+    const commandItem = (fields: {
+      readonly id: string;
+      readonly command: string;
+      readonly status: string;
+      readonly aggregatedOutput: string | null;
+      readonly exitCode: number | null;
+      readonly durationMs: number | null;
+    }) => ({
+      type: "commandExecution",
+      cwd: root,
+      processId: null,
+      commandActions: [],
+      ...fields,
+    });
+    const notifications: ReadonlyArray<CodexRpcMessage> = [
+      {
+        method: "item/started",
+        params: {
+          item: { type: "reasoning", id: "rs-1", summary: [], content: [] },
+        },
+      },
+      {
+        method: "item/reasoning/summaryTextDelta",
+        params: {
+          itemId: "rs-1",
+          delta: "**Reading the diff**",
+          summaryIndex: 0,
+        },
+      },
+      {
+        method: "item/started",
+        params: {
+          item: commandItem({
+            id: "cmd-1",
+            command: `cat ${root}/src/a.ts`,
+            status: "inProgress",
+            aggregatedOutput: null,
+            exitCode: null,
+            durationMs: null,
+          }),
+        },
+      },
+      {
+        method: "item/completed",
+        params: {
+          item: commandItem({
+            id: "cmd-1",
+            command: `cat ${root}/src/a.ts`,
+            status: "completed",
+            aggregatedOutput: "export const a = 1;",
+            exitCode: 0,
+            durationMs: 12,
+          }),
+        },
+      },
+      {
+        method: "item/completed",
+        params: {
+          item: commandItem({
+            id: "cmd-2",
+            command: longCommand,
+            status: "declined",
+            aggregatedOutput: null,
+            exitCode: null,
+            durationMs: null,
+          }),
+        },
+      },
+      {
+        method: "item/started",
+        params: { item: { type: "fileChange", id: "fc-1", changes: [] } },
+      },
+    ];
+    const events: InsightActivityEvent[] = [];
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () =>
+        asChildProcess(
+          new FakeCodexProcess(
+            tmpdir(),
+            "pwd",
+            true,
+            [JSON.stringify({ title: "Fixture" })],
+            undefined,
+            false,
+            notifications,
+          ),
+        ),
+    });
+
+    const result = await client.run(
+      {
+        worktreePath: representedWorktree(root),
+        expectedHeadSha: "a".repeat(40),
+        model: "fixture-codex",
+        reasoning: "low",
+        prompt: "Return JSON.",
+      },
+      { onActivity: (event) => events.push(event) },
+    );
+
+    expect(result).toEqual({ _tag: "ok", value: { title: "Fixture" } });
+    // The approval answer waits on `realpath`, so its position among the notifications is not fixed.
+    expect(
+      events.filter((event) => event._tag !== "approval_answered"),
+    ).toEqual([
+      { _tag: "turn_started" },
+      {
+        _tag: "reasoning_delta",
+        itemId: "rs-1",
+        delta: "**Reading the diff**",
+      },
+      { _tag: "command_started", id: "cmd-1", command: "cat src/a.ts" },
+      {
+        _tag: "command_completed",
+        id: "cmd-1",
+        command: "cat src/a.ts",
+        status: "completed",
+        exitCode: 0,
+        durationMs: 12,
+      },
+      {
+        _tag: "command_completed",
+        id: "cmd-2",
+        command: longCommand.slice(0, 200),
+        status: "declined",
+      },
+    ]);
+  });
+
+  it("completes the turn when the activity callback throws", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
+    roots.push(root);
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () =>
+        asChildProcess(new FakeCodexProcess(tmpdir(), "pwd")),
+    });
+
+    await expect(
+      client.run(
+        {
+          worktreePath: representedWorktree(root),
+          expectedHeadSha: "a".repeat(40),
+          model: "fixture-codex",
+          reasoning: "low",
+          prompt: "Return JSON.",
+        },
+        {
+          onActivity: () => {
+            throw new Error("sink failed");
+          },
+        },
+      ),
+    ).resolves.toEqual({ _tag: "ok", value: { title: "Fixture" } });
+  });
+
   // `classifyThrownFailure` reads ENOENT with the shared `isNotFound`, which
   // takes `code` off any object rather than requiring `instanceof Error`. A
   // spawn failure that crossed a realm boundary — an Electron utility process,
@@ -314,6 +480,138 @@ describe("CodexAppServerClient", () => {
     await expect(client.listModels()).resolves.toEqual({
       _tag: "err",
       error: { reason: "execution_failed", phase: "initialize" },
+    });
+  });
+});
+
+describe("CodexAppServerClient approval requests", () => {
+  async function runWithRequests(
+    requests: ReadonlyArray<{
+      readonly id: string;
+      readonly method: string;
+      readonly params: {
+        readonly command?: string;
+        readonly kind?: string;
+        readonly networkApprovalContext?: {
+          readonly host: string;
+          readonly protocol: string;
+        };
+        readonly proposedExecpolicyAmendment?: ReadonlyArray<string>;
+      };
+    }>,
+    onActivity?: InsightActivitySink,
+  ): Promise<FakeCodexProcess> {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-codex-client-"));
+    roots.push(root);
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "src", "a.ts"), "export const a = 1;", "utf8");
+    const child = new FakeCodexProcess(
+      root,
+      "cat src/a.ts",
+      true,
+      [JSON.stringify({ title: "Fixture" })],
+      undefined,
+      false,
+      requests.map((request) => ({
+        ...request,
+        params: { cwd: root, command: "cat src/a.ts", ...request.params },
+      })),
+    );
+    const client = new CodexAppServerClient("codex", {
+      processFactory: () => asChildProcess(child),
+    });
+    await expect(
+      client.run(
+        {
+          worktreePath: representedWorktree(root),
+          expectedHeadSha: "a".repeat(40),
+          model: "fixture-codex",
+          reasoning: "low",
+          prompt: "Return JSON.",
+        },
+        { onActivity },
+      ),
+    ).resolves.toMatchObject({ _tag: "ok" });
+    return child;
+  }
+
+  it("starts the thread with the untrusted approval policy", async () => {
+    const child = await runWithRequests([]);
+    expect(
+      child.received.find((message) => message.method === "thread/start")
+        ?.params,
+    ).toMatchObject({ sandbox: "read-only", approvalPolicy: "untrusted" });
+  });
+
+  it("declines a stdin write and a network approval even for an allowlisted command", async () => {
+    const child = await runWithRequests([
+      {
+        id: "stdin",
+        method: "item/commandExecution/requestApproval",
+        params: { kind: "writeStdin" },
+      },
+      {
+        id: "network",
+        method: "item/commandExecution/requestApproval",
+        params: {
+          networkApprovalContext: { host: "example.com", protocol: "https" },
+        },
+      },
+    ]);
+    expect(child.received).toContainEqual({
+      id: "stdin",
+      result: { decision: "decline" },
+    });
+    expect(child.received).toContainEqual({
+      id: "network",
+      result: { decision: "decline" },
+    });
+  });
+
+  // A plain `accept` never applies a proposed amendment upstream.
+  it("answers an allowlisted command that carries a proposed amendment with a plain accept", async () => {
+    const child = await runWithRequests([
+      {
+        id: "amendment",
+        method: "item/commandExecution/requestApproval",
+        params: {
+          kind: "command",
+          proposedExecpolicyAmendment: ["cat", "src/a.ts"],
+        },
+      },
+    ]);
+    expect(child.received).toContainEqual({
+      id: "amendment",
+      result: { decision: "accept" },
+    });
+  });
+
+  it("counts the accepted and declined command approvals in the activity snapshot", async () => {
+    const buffer = new InsightActivityBuffer();
+    await runWithRequests(
+      [
+        {
+          id: "outside",
+          method: "item/commandExecution/requestApproval",
+          params: { command: "cat /etc/passwd" },
+        },
+      ],
+      (event) => buffer.append(event),
+    );
+    expect(buffer.snapshot().approvals).toEqual({ accepted: 1, declined: 1 });
+  });
+
+  it("answers a permissions request with an empty profile, which grants nothing", async () => {
+    const child = await runWithRequests([
+      {
+        id: "permissions",
+        method: "item/permissions/requestApproval",
+        params: {},
+      },
+    ]);
+    expect(child.received).toContainEqual({
+      id: "permissions",
+      result: { permissions: {}, scope: "turn" },
     });
   });
 });

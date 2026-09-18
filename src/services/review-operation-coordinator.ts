@@ -32,6 +32,14 @@ export class ReviewOperationCoordinator {
     return true;
   }
 
+  /** Whether any command holds a Review of `profileId`, so background work can wait for it. */
+  hasActiveOperation(profileId: string): boolean {
+    const prefix = `${profileId}:`;
+    for (const key of this.acquired.keys())
+      if (key.startsWith(prefix)) return true;
+    return false;
+  }
+
   release(key: string): void {
     const release = this.acquired.get(key);
     if (release === undefined) return;

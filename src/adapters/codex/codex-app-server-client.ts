@@ -3,9 +3,6 @@ import {
   type ChildProcess,
   type SpawnOptions,
 } from "node:child_process";
-import { realpath } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
-
 import * as v from "valibot";
 
 import { err, ok, type Result } from "../../domain/result";
@@ -13,7 +10,15 @@ import type { InsightReasoning } from "../../domain/insight-provider";
 import type { RepresentedReviewWorktree } from "../../domain/represented-review-worktree";
 import type { InsightFailureCategory } from "../../domain/insight-record";
 import { isNotFound } from "../storage/json-file";
-import { isPathContained } from "../storage/path-containment";
+import { createCodexActivityEmitter } from "./codex-activity";
+import type {
+  CodexActivityEmitter,
+  InsightActivitySink,
+} from "./codex-activity";
+import {
+  isPathInsideWorktree,
+  isReadOnlyCommand,
+} from "./codex-command-allowlist";
 
 const CLIENT_NAME = "patchdesk";
 const CLIENT_VERSION = "0.1.0";
@@ -192,7 +197,10 @@ const turnCompletedParamsSchema = v.looseObject({
 const agentMessageDeltaParamsSchema = v.looseObject({
   delta: v.optional(v.string()),
 });
+// `proposedExecpolicyAmendment` is not read because a plain `accept` becomes `ReviewDecision::Approved` upstream, which applies no amendment.
 const commandApprovalParamsSchema = v.looseObject({
+  kind: v.optional(v.string()),
+  networkApprovalContext: v.optional(v.unknown()),
   cwd: v.optional(v.string()),
   command: v.optional(v.string()),
 });
@@ -209,21 +217,6 @@ function allowlistedCodexEnvironment(
     if (value !== undefined) result[name] = value;
   }
   return result;
-}
-
-/** Validates that a path is inside the represented worktree without following an escape. */
-async function isPathInsideWorktree(
-  worktreePath: string,
-  candidatePath: string,
-): Promise<boolean> {
-  if (isAbsolute(candidatePath) === false && candidatePath.includes(".."))
-    return false;
-  const [worktree, candidate] = await Promise.all([
-    realpath(worktreePath),
-    realpath(candidatePath),
-  ]).catch(() => ["", ""] as const);
-  if (worktree.length === 0 || candidate.length === 0) return false;
-  return isPathContained(worktree, candidate);
 }
 
 /** The Analysis result contract Codex must return, kept faithful to modelReviewResultSchema. */
@@ -352,10 +345,13 @@ export class CodexAppServerClient {
     }
   }
 
-  /** Runs one strict Analysis or Walkthrough response in a fresh Codex thread. */
+  /** Runs one strict Insight response in a fresh Codex thread; `onActivity` observes its commands and reasoning. */
   async run(
     input: CodexRunInput,
-    options: { readonly signal?: AbortSignal } = {},
+    options: {
+      readonly signal?: AbortSignal;
+      readonly onActivity?: InsightActivitySink | undefined;
+    } = {},
   ): Promise<Result<unknown, CodexAppServerFailure>> {
     const maxPromptBytes = input.maxPromptBytes ?? MAX_PROMPT_BYTES;
     if (Buffer.byteLength(input.prompt, "utf8") > maxPromptBytes)
@@ -382,7 +378,7 @@ export class CodexAppServerClient {
     try {
       return await Promise.race([
         timeout,
-        this.runTurn(child, input, options.signal),
+        this.runTurn(child, input, options.signal, options.onActivity),
       ]);
     } finally {
       clearTimeout(timer);
@@ -394,6 +390,7 @@ export class CodexAppServerClient {
     child: RpcChild,
     input: CodexRunInput,
     signal?: AbortSignal,
+    onActivity?: InsightActivitySink,
   ): Promise<Result<unknown, CodexAppServerFailure>> {
     const models = await paginateModelList(child, signal);
     if (models._tag === "err") return models;
@@ -405,7 +402,13 @@ export class CodexAppServerClient {
       return err({ reason: "runtime_unavailable", phase: "model_list" });
     const thread = await child.request(
       "thread/start",
-      { model: input.model, cwd: input.worktreePath, sandbox: "read-only" },
+      // `untrusted` sends every command without an exec-policy Allow rule to `handleRequest`.
+      {
+        model: input.model,
+        cwd: input.worktreePath,
+        sandbox: "read-only",
+        approvalPolicy: "untrusted",
+      },
       signal,
     );
     if (thread._tag === "err")
@@ -425,6 +428,7 @@ export class CodexAppServerClient {
       input.reasoning,
       input.worktreePath,
       signal,
+      onActivity,
     );
   }
 }
@@ -507,6 +511,7 @@ class RpcChild {
   private turnId: string | undefined;
   private threadId: string | undefined;
   private approvalWorktreePath: string | undefined;
+  private activity: CodexActivityEmitter | undefined;
   private readonly approvalTasks = new Set<Promise<void>>();
 
   constructor(private readonly processFactory: CodexProcessFactory) {}
@@ -620,8 +625,11 @@ class RpcChild {
     reasoning: InsightReasoning,
     worktreePath: string,
     signal?: AbortSignal,
+    onActivity?: InsightActivitySink,
   ): Promise<Result<unknown, CodexAppServerFailure>> {
     this.threadId = threadId;
+    const activity = createCodexActivityEmitter(onActivity, worktreePath);
+    this.activity = activity;
     this.approvalWorktreePath = worktreePath;
     let text = "";
     let resolveTurn: (
@@ -635,6 +643,7 @@ class RpcChild {
     const onMessage = (message: CodexRpcMessage): void => {
       const { method, params } = message;
       if (method === undefined || !v.is(plainObjectSchema, params)) return;
+      activity.notification(message);
       if (method === "item/agentMessage/delta") {
         const deltaParsed = v.safeParse(agentMessageDeltaParamsSchema, params);
         const delta = deltaParsed.success
@@ -673,6 +682,7 @@ class RpcChild {
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     try {
+      activity.turnStarted();
       const started = await this.request(
         "turn/start",
         {
@@ -797,6 +807,8 @@ class RpcChild {
         method,
         commandParamsParsed.success ? commandParamsParsed.output : undefined,
       ).catch(() => {
+        if (method === COMMAND_APPROVAL_METHOD)
+          this.activity?.approvalAnswered("declined");
         this.send({ id, result: { decision: "decline" } });
       });
       this.approvalTasks.add(task);
@@ -812,6 +824,7 @@ class RpcChild {
     commandParams: CommandApprovalParams | undefined,
   ): Promise<void> {
     if (method === PERMISSIONS_APPROVAL_METHOD) {
+      // An empty profile grants no filesystem root or network, which is the denial; the response has no `decision` field.
       this.send({ id, result: { permissions: {}, scope: "turn" } });
       return;
     }
@@ -823,71 +836,22 @@ class RpcChild {
       const worktreePath = commandParams?.cwd;
       const command = commandParams?.command;
       const allowed =
+        (commandParams?.kind ?? "command") === "command" &&
+        commandParams?.networkApprovalContext === undefined &&
         worktreePath !== undefined &&
         command !== undefined &&
         this.approvalWorktreePath !== undefined &&
         (await isPathInsideWorktree(this.approvalWorktreePath, worktreePath)) &&
-        (await this.isReadOnlyCommand(command, this.approvalWorktreePath));
+        (await isReadOnlyCommand(
+          command,
+          this.approvalWorktreePath,
+          worktreePath,
+        ));
+      this.activity?.approvalAnswered(allowed ? "accepted" : "declined");
       this.send({ id, result: { decision: allowed ? "accept" : "decline" } });
       return;
     }
     this.send({ id, error: { code: -32601, message: "unsupported_request" } });
-  }
-
-  private async isReadOnlyCommand(
-    command: string,
-    worktreePath: string,
-  ): Promise<boolean> {
-    if (
-      command.length === 0 ||
-      command.length > 4_096 ||
-      /[;&|><`$\n\r]/.test(command)
-    )
-      return false;
-    const tokens = command.trim().split(/\s+/u);
-    const executable = tokens[0];
-    if (
-      executable === undefined ||
-      executable.includes("/") ||
-      ![
-        "cat",
-        "head",
-        "tail",
-        "sed",
-        "grep",
-        "rg",
-        "find",
-        "git",
-        "pwd",
-        "wc",
-      ].includes(executable)
-    )
-      return false;
-    if (
-      tokens.some(
-        (token) =>
-          token.startsWith("-") ||
-          token.startsWith("/") ||
-          token.split("/").includes(".."),
-      )
-    )
-      return false;
-    if (
-      executable === "git" &&
-      !["show", "diff", "status", "log", "ls-files", "rev-parse"].includes(
-        tokens[1] ?? "",
-      )
-    )
-      return false;
-    if (executable === "git" && tokens.length > 2) return false;
-    if (executable === "pwd" && tokens.length !== 1) return false;
-    for (const token of tokens.slice(executable === "git" ? 2 : 1)) {
-      if (
-        !(await isPathInsideWorktree(worktreePath, join(worktreePath, token)))
-      )
-        return false;
-    }
-    return true;
   }
 
   private failPending(): void {

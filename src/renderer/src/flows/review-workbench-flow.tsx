@@ -6,6 +6,7 @@ import {
 import type { AssigneesSectionActions } from "../components/assignee-picker";
 import type { LabelPickerActions } from "../components/label-picker";
 import type { ReviewerPickerActions } from "../components/reviewer-picker";
+import type { ChangeBaseBranchActions } from "../components/change-base-branch-dialog";
 import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
@@ -61,6 +62,7 @@ export function ReviewWorkbenchFlow({
     refreshError,
     runDetect,
     refresh,
+    requestRefresh,
     replaceWorkbench,
     runDirectCommand,
     observeConfirmedReviewWrite,
@@ -97,6 +99,15 @@ export function ReviewWorkbenchFlow({
     workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
   const canWriteReviewers =
     workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
+  // The draft toggle is the author's own control, and repository permission
+  // is not projected here, so this gates on author-is-viewer. The narrowing is
+  // that a non-author maintainer is not offered it; DraftStateService still
+  // resolves permission on every write.
+  const canWriteDraftState =
+    workbench.review.status === "open" &&
+    !writeRecovery.githubWritesLocked &&
+    workbench.pullRequest?.author.toLowerCase() ===
+      workbench.viewerLogin.toLowerCase();
   const {
     fetchLabels,
     addLabels,
@@ -108,13 +119,20 @@ export function ReviewWorkbenchFlow({
     fetchReviewers,
     requestReviewers,
     removeReviewers,
+    setDraftState,
+    fetchBaseBranches,
+    setBaseBranch,
   } = useReviewMetadataActions({
     workbench,
     runDirectCommand,
     appendRecentWrites,
     observeConfirmedReviewWrite,
     requireRecovery: writeRecovery.requireRecovery,
+    requestRefresh,
   });
+  // Permission is read with the branch list and enforced by BaseBranchService.
+  const canWriteBaseBranch =
+    workbench.review.status === "open" && !writeRecovery.githubWritesLocked;
   const canWriteDirectConversation =
     workbench.review.status === "open" &&
     !writeRecovery.githubWritesLocked &&
@@ -176,6 +194,11 @@ export function ReviewWorkbenchFlow({
   const reviewerActions: ReviewerPickerActions | undefined = canWriteReviewers
     ? { fetchReviewers, requestReviewers, removeReviewers }
     : undefined;
+  const draftStateAction = canWriteDraftState ? setDraftState : undefined;
+  const baseBranchActions: ChangeBaseBranchActions | undefined =
+    canWriteBaseBranch
+      ? { fetchBaseBranches, setBaseBranch, refresh }
+      : undefined;
 
   const workbenchActionsBase = {
     detectUpdates: runDetect,
@@ -237,10 +260,18 @@ export function ReviewWorkbenchFlow({
     reviewerActions === undefined
       ? workbenchActionsWithAssignees
       : { ...workbenchActionsWithAssignees, reviewers: reviewerActions };
+  const workbenchActionsWithDraftState =
+    draftStateAction === undefined
+      ? workbenchActionsWithReviewers
+      : { ...workbenchActionsWithReviewers, setDraftState: draftStateAction };
+  const workbenchActionsWithBaseBranch =
+    baseBranchActions === undefined
+      ? workbenchActionsWithDraftState
+      : { ...workbenchActionsWithDraftState, baseBranch: baseBranchActions };
   const workbenchActions =
     conversationActions === undefined
-      ? workbenchActionsWithReviewers
-      : { ...workbenchActionsWithReviewers, ...conversationActions };
+      ? workbenchActionsWithBaseBranch
+      : { ...workbenchActionsWithBaseBranch, ...conversationActions };
 
   return (
     <>

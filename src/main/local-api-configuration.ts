@@ -9,6 +9,7 @@ import {
 } from "valibot";
 
 import type { AppCapability } from "./ipc-contract";
+import type { WorkspaceProfileId } from "../domain/ids";
 import type { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import type { TrashMover } from "../services/storage-management-service";
 import type { GitHubCredentials } from "../adapters/github/github-credentials";
@@ -23,6 +24,7 @@ import type { ReviewOperationCoordinator } from "../services/review-operation-co
 import type { ReviewDiagnosticService } from "../services/review-diagnostic-service";
 import type { AppLogService } from "../services/app-log-service";
 import type { AvatarFetcher } from "../services/avatar-sync-service";
+import type { DesktopNotifier } from "../services/desktop-notifier";
 import type { InsightRunCoordinator } from "../services/insight-run-coordinator";
 import type { InsightProviderCatalog } from "../services/insight-provider-catalog";
 import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
@@ -92,6 +94,8 @@ export type LocalApiConfiguration = {
   readonly diagnostics?: ReviewDiagnosticService;
   /** Composition-root local log stream; defaults to a fresh on-disk service. */
   readonly logs?: Pick<AppLogService, "write" | "tail">;
+  /** Main-process desktop notifier handed to the write and preparation services; absent posts nothing. */
+  readonly desktopNotifier?: DesktopNotifier;
   /** Test-only avatar download seam; production keeps the real network fetcher. */
   readonly fetchAvatar?: AvatarFetcher;
   /** Main-process-owned durable Review Insight lifecycle seam. */
@@ -107,6 +111,10 @@ export type LocalApiConfiguration = {
    * Main-process-only; local integration tests keep it off.
    */
   readonly retentionSweep?: boolean;
+  /** Polls watched pull requests while the app runs (ADR 0045). Main-process-only; tests keep it off. */
+  readonly watchedPullRequestPolling?: boolean;
+  /** Main-process push to the renderer when a poll finds a change; absent tells no one. */
+  readonly watchedPullRequestChanged?: (profileId: WorkspaceProfileId) => void;
 };
 
 /** The subset of the configuration the loopback API validates before it binds. */

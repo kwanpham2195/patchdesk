@@ -2,6 +2,8 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
 import { definedProps } from "../../../domain/defined-props";
+import { contextualMessage } from "../api-client";
+import { FINDING_ACTION_MESSAGES } from "../review-copy";
 import {
   renderAnalysisFixPrompt,
   type AnalysisFixPromptContext,
@@ -74,6 +76,8 @@ export type AnalysisReaderProps = {
     reason: string,
   ) => Promise<void>;
   readonly findingStatuses?: Readonly<Record<string, FindingStatus>>;
+  /** Findings whose published thread waits on the viewer's reply. */
+  readonly needsReplyFindingIds?: ReadonlySet<string>;
   readonly evidencePatch?: string;
   readonly checkStatus?: CheckStatus;
   readonly canFinishWithAnalysisSummary?: boolean;
@@ -90,6 +94,7 @@ export function AnalysisReader({
   onAddFinding,
   onDismissFinding,
   findingStatuses,
+  needsReplyFindingIds,
   evidencePatch,
   checkStatus = "unknown",
   canFinishWithAnalysisSummary = false,
@@ -150,13 +155,10 @@ export function AnalysisReader({
     try {
       await action();
       return true;
-    } catch {
+    } catch (cause) {
       setFindingErrors((current) => {
         const next = new Map(current);
-        next.set(
-          findingId,
-          "The Finding action could not be saved. Try again.",
-        );
+        next.set(findingId, contextualMessage(cause, FINDING_ACTION_MESSAGES));
         return next;
       });
       return false;
@@ -182,6 +184,7 @@ export function AnalysisReader({
       key={finding.id}
       finding={finding}
       status={findingStatuses?.[finding.id]}
+      needsReply={needsReplyFindingIds?.has(finding.id) ?? false}
       actionState={findingActions.get(finding.id)}
       actionError={findingErrors.get(finding.id)}
       {...(evidencePatch === undefined ? {} : { evidencePatch })}
@@ -334,8 +337,8 @@ export function AnalysisReader({
           <CardHeader>
             <CardTitle>Verification</CardTitle>
             <CardDescription>
-              {verifiedSteps.size} of {result.validationPlan.length} checked in
-              this view
+              {verifiedSteps.size} of {result.validationPlan.length} checked.
+              Ticks are not saved and reset when you leave Analysis.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -422,6 +425,7 @@ function CopyFixPromptButton({
 function AnalysisFindingRow({
   finding,
   status,
+  needsReply,
   actionState,
   actionError,
   evidencePatch,
@@ -431,6 +435,7 @@ function AnalysisFindingRow({
 }: {
   readonly finding: AnalysisFinding;
   readonly status?: FindingStatus | undefined;
+  readonly needsReply: boolean;
   readonly actionState?: FindingActionState | undefined;
   readonly actionError?: string | undefined;
   readonly evidencePatch?: string | undefined;
@@ -550,6 +555,9 @@ function AnalysisFindingRow({
           >
             {reviewStatus.replaceAll("_", " ")}
           </Badge>
+          {needsReply ? (
+            <Badge variant="warning">Needs your reply</Badge>
+          ) : null}
           {disposition === "open" &&
           reviewStatus === "actionable" &&
           finding.mappingStatus === "mapped" &&

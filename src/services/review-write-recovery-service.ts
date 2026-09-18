@@ -1,5 +1,5 @@
 import type { GitHubReader } from "../adapters/github/github-adapter";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type {
   GitHubComments,
@@ -54,10 +54,10 @@ export class ReviewWriteRecoveryService {
       ReviewWriteOperationStore,
       "load" | "markOutcomeUnknown" | "confirm" | "remove"
     >,
-    private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly recentWrites: ConfirmedWriteJournal,
     private readonly coordinator: ReviewOperationCoordinator,
     private readonly now: () => Parameters<
-      RecentWriteJournalStore["append"]
+      ConfirmedWriteJournal["appendConfirmed"]
     >[3],
   ) {}
 
@@ -250,15 +250,13 @@ export class ReviewWriteRecoveryService {
       const confirmed = await this.operations.confirm(transitioned.value);
       if (confirmed._tag === "err") return err("storage");
     }
-    if (receipt !== undefined) {
-      const appended = await this.recentWrites.append(
+    if (receipt !== undefined)
+      await this.recentWrites.appendConfirmed(
         operation.profileId,
         operation.reviewId,
         receipt,
         this.now(),
       );
-      if (appended._tag === "err") return err("storage");
-    }
     const removed = await this.operations.remove(
       operation.profileId,
       operation.reviewId,
@@ -387,6 +385,19 @@ export function classifyMetadataIntent(
     return intent._tag === "RequestReviewers"
       ? { _tag: "ReviewerChange", requested: intent.logins, removed: [] }
       : { _tag: "ReviewerChange", requested: [], removed: intent.logins };
+  }
+  if (intent._tag === "SetDraftState") {
+    // `isDraft` is a required field on every pull request read, so an
+    // unconfirmed toggle is real evidence the write did not land, unlike the
+    // optional assignee and reviewer fields above.
+    return pullRequest.isDraft === intent.draft
+      ? { _tag: "DraftStateChange", draft: intent.draft }
+      : undefined;
+  }
+  if (intent._tag === "SetBaseBranch") {
+    return pullRequest.baseBranch === intent.branch
+      ? { _tag: "BaseBranchChange", branch: intent.branch }
+      : undefined;
   }
   return undefined;
 }

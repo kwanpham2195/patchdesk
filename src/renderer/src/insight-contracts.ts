@@ -81,3 +81,34 @@ export const retainedInsightFields = {
     }),
   ),
 } as const;
+
+/**
+ * The activity trace a Codex run poll carries (ADR 0043). The main process
+ * already bounds every field; an over-long snapshot fails the poll closed
+ * rather than rendering.
+ */
+export const insightRunActivitySchema = v.strictObject({
+  phase: v.picklist(["preparing", "turn"]),
+  reasoningLine: v.optional(
+    v.pipe(v.string(), v.minLength(1), v.maxLength(4096)),
+  ),
+  commands: v.pipe(
+    v.array(
+      v.strictObject({
+        id: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
+        command: v.pipe(v.string(), v.maxLength(200)),
+        status: v.picklist(["in_progress", "completed", "failed", "declined"]),
+        exitCode: v.optional(v.pipe(v.number(), v.integer())),
+        durationMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+      }),
+    ),
+    v.maxLength(200),
+  ),
+  approvals: v.strictObject({
+    accepted: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+    declined: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+  }),
+});
+
+/** One parsed activity trace, as the running panel renders it. */
+export type InsightRunActivity = v.InferOutput<typeof insightRunActivitySchema>;

@@ -9,6 +9,7 @@ import { InsightRunDialog } from "../../src/renderer/src/components/insight-run-
 const models = Array.from({ length: 269 }, (_, index) => ({
   id: `provider/model-${index}`,
   label: `Model ${index}`,
+  cost: { input: index / 100, output: index / 10 },
 }));
 
 const baseProps = {
@@ -42,7 +43,7 @@ describe("InsightRunDialog model picker", () => {
     const input = screen.getByRole("combobox", { name: "Insight model" });
     await user.type(input, "MODEL-268");
     expect(
-      await screen.findByRole("option", { name: "Model 268" }),
+      await screen.findByRole("option", { name: /^Model 268\b/ }),
     ).toBeTruthy();
     await user.keyboard("{ArrowDown}{Enter}");
 

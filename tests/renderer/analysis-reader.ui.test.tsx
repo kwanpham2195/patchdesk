@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AnalysisReader } from "../../src/renderer/src/components/analysis-reader";
 import { renderAnalysisFixPrompt } from "../../src/renderer/src/analysis-fix-prompt";
+import {
+  PatchdeskApiError,
+  contextualMessage,
+} from "../../src/renderer/src/api-client";
+import { FINDING_ACTION_MESSAGES } from "../../src/renderer/src/review-copy";
 
 const result: Parameters<typeof AnalysisReader>[0]["result"] = {
   changeSummary: "Analysis of the `currentChange`",
@@ -271,6 +276,28 @@ describe("AnalysisReader", () => {
     expect(screen.queryByRole("button", { name: "Add to review" })).toBeNull();
   });
 
+  it("marks only the Finding whose published thread waits on the viewer's reply", () => {
+    const { rerender } = render(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{ "finding-1": "published", "finding-2": "published" }}
+      />,
+    );
+    expect(screen.queryByText("Needs your reply")).toBeNull();
+
+    rerender(
+      <AnalysisReader
+        result={twoFindingResult}
+        findingStatuses={{ "finding-1": "published", "finding-2": "published" }}
+        needsReplyFindingIds={new Set(["finding-2"])}
+      />,
+    );
+    const row = screen.getByText("Second boundary issue").closest("li");
+    if (row === null) throw new Error("missing Finding row");
+    expect(within(row).getByText("Needs your reply")).toBeTruthy();
+    expect(screen.getAllByText("Needs your reply")).toHaveLength(1);
+  });
+
   // The banner and merge readiness share one handled rule: a receipt handles
   // a finding the same way a dismissal does.
   it("drops a finding from the attention count once it has a review receipt", () => {
@@ -459,6 +486,44 @@ describe("AnalysisReader", () => {
       await within(firstRow).findByRole("button", { name: "Add to review" }),
     ).toBeTruthy();
     expect(within(secondRow).getByRole("alert")).toBeTruthy();
+  });
+
+  async function findAddFailureAlert(cause: Error): Promise<HTMLElement> {
+    const user = userEvent.setup();
+    render(
+      <AnalysisReader
+        result={result}
+        findingStatuses={{ "finding-1": "actionable" }}
+        onAddFinding={vi.fn(async () => {
+          throw cause;
+        })}
+      />,
+    );
+    const [row] = screen.getAllByRole("listitem");
+    if (row === undefined) throw new Error("missing Finding row");
+    await user.click(
+      within(row).getByRole("button", { name: "Add to review" }),
+    );
+    return within(row).findByRole("alert");
+  }
+
+  it("words a Finding action failure by its cause", async () => {
+    const cause = new PatchdeskApiError(
+      "outcome_unknown",
+      502,
+      true,
+      "outcome-unknown",
+      "raw provider failure",
+    );
+    const alert = await findAddFailureAlert(cause);
+    expect(alert.textContent).toBe(
+      contextualMessage(cause, FINDING_ACTION_MESSAGES),
+    );
+  });
+
+  it("falls back to the Finding action message for an unrecognised error", async () => {
+    const alert = await findAddFailureAlert(new Error("x"));
+    expect(alert.textContent).toBe(FINDING_ACTION_MESSAGES.fallback);
   });
 });
 

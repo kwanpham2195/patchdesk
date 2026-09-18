@@ -26,7 +26,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The Review header shows separate Checks and Merge status controls. Both open PR overview in the same state: Revision, Review status, and Merge readiness expanded, and Checks collapsed. The Merge control also moves focus to the Merge readiness row. The Checks control neither expands nor focuses the Checks row; focus lands on the first row, Revision, and the maintainer expands Checks by hand. PR overview is a drawer on the right titled "PR overview", with the repository, pull-request number, and title beneath. It has four collapsible rows, in this order:
+The Review header shows separate Checks and Merge status controls. Both open PR overview with Revision, Review status, and Merge readiness expanded. The Checks control also expands the Checks row and moves focus to it; the Merge control leaves Checks collapsed and moves focus to the Merge readiness row. PR overview is a drawer on the right titled "PR overview", with the repository, pull-request number, and title beneath. It has four collapsible rows, in this order:
 
 - **Revision.** Its label states freshness: Current, Updates available, Remote state unavailable, Not refreshed, or Unavailable. Expanded, it shows base ← head branches, "Refreshed" with a relative time, and the commit and changed-file counts. When GitHub reports a newer head than the represented one, it also shows the Reviewed and Current short SHAs. Without revision data it reads "Revision details unavailable." [Review session and revision](../foundations/review-session-and-revision.md) owns what each freshness state means.
 - **Checks.** Its label states the overall check result, such as Passing or Failing, and its body lists the checks.
@@ -124,4 +124,4 @@ If the receipt is confirmed but terminal refresh fails, Patchdesk shows Merged p
 - Confirm visible readiness messages for each current GitHub policy and permission reason.
 - Confirm the selected method's persistence when PR overview closes and reopens without leaving the Review.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`, with live checks from the 2026-09-14 pass.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.

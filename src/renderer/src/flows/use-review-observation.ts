@@ -8,6 +8,7 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import { useLatestCommitted } from "../hooks/use-latest-committed";
+import { reconciledProjection } from "./review-observation-projection";
 
 export type ReviewWorkbenchPatch = Omit<
   Partial<WorkbenchResponse>,
@@ -35,6 +36,8 @@ export type ReviewObservationResult = {
   readonly refreshError: boolean;
   readonly runDetect: () => Promise<void>;
   readonly refresh: () => Promise<void>;
+  /** Adopts the pull request's current revision; rejects when the refresh fails. */
+  readonly requestRefresh: () => Promise<WorkbenchResponse>;
   readonly replaceWorkbench: (workbench: WorkbenchResponse) => void;
   readonly runDirectCommand: RunDirectCommand;
   readonly observeConfirmedReviewWrite: (
@@ -149,14 +152,15 @@ export function useReviewObservation({
       const observation = isReviewObservation(value);
       if (observation !== undefined) {
         if (observation._tag === "Reconciled") {
-          const next = parseWorkbenchResponse(observation.projection);
+          const next = reconciledProjection(observation);
           if (
-            next !== undefined &&
-            next.review.id === current.review.id &&
-            next.session.id === current.session.id &&
-            next.revision.reviewedHeadSha === current.revision.reviewedHeadSha
+            next._tag === "parsed" &&
+            next.workbench.review.id === current.review.id &&
+            next.workbench.session.id === current.session.id &&
+            next.workbench.revision.reviewedHeadSha ===
+              current.revision.reviewedHeadSha
           ) {
-            replaceWorkbenchRef.current(next);
+            replaceWorkbenchRef.current(next.workbench);
             setDetectedStaleFreshness(undefined);
           }
         } else if (observation._tag === "RevisionChanged") {
@@ -319,14 +323,15 @@ export function useReviewObservation({
         return;
       const observation = isReviewObservation(value);
       if (observation?._tag === "Reconciled") {
-        const next = parseWorkbenchResponse(observation.projection);
+        const next = reconciledProjection(observation);
         if (
-          next !== undefined &&
-          next.review.id === latest.review.id &&
-          next.session.id === latest.session.id &&
-          next.revision.reviewedHeadSha === latest.revision.reviewedHeadSha
+          next._tag === "parsed" &&
+          next.workbench.review.id === latest.review.id &&
+          next.workbench.session.id === latest.session.id &&
+          next.workbench.revision.reviewedHeadSha ===
+            latest.revision.reviewedHeadSha
         ) {
-          replaceWorkbench(next);
+          replaceWorkbench(next.workbench);
           setDetectedStaleFreshness(undefined);
         }
         return;
@@ -353,6 +358,7 @@ export function useReviewObservation({
     refreshError,
     runDetect,
     refresh,
+    requestRefresh,
     replaceWorkbench,
     runDirectCommand,
     observeConfirmedReviewWrite,

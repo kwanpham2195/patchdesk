@@ -17,7 +17,9 @@ import type { OverviewFocusSection } from "./pr-overview-sheet";
 import type { ReviewWorkbenchActions } from "./review-workbench";
 import { RelativeTime } from "./relative-time";
 import { ScopeGauge } from "./scope-gauge";
+import { WatchPullRequestButton } from "./watch-pull-request-button";
 import { cn } from "@/lib/utils";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
 
@@ -67,6 +69,11 @@ export function ReviewWorkbenchHeader({
           className="flex flex-wrap items-center gap-2"
           aria-label="Pull request status and actions"
         >
+          {model.pullRequest?.isDraft === true ? (
+            <Badge variant="outline" className="h-6 px-2 text-[10px]">
+              Draft
+            </Badge>
+          ) : null}
           {model.scope === undefined ? null : (
             // The Checks and Merge chips beside it are outline `xs` buttons;
             // the Scope chip carries no action, so it borrows their geometry
@@ -82,7 +89,7 @@ export function ReviewWorkbenchHeader({
               "hover:bg-status-success/20 hover:text-status-success",
               checksPillColor(model.checks.overall),
             )}
-            onClick={() => openOverview()}
+            onClick={() => openOverview("checks")}
             aria-label={`Open PR overview: checks ${checksLabel.toLowerCase()}`}
           >
             {checksIcon(model.checks.overall)}
@@ -115,6 +122,9 @@ export function ReviewWorkbenchHeader({
           >
             <ExternalLink data-icon="inline-start" /> Open on GitHub
           </Button>
+          {externalPullRequest === undefined || terminal ? null : (
+            <WatchPullRequestButton pullRequest={externalPullRequest} />
+          )}
           {actions.pendingReview === undefined || terminal ? null : (
             <PendingReviewHeaderAction
               pendingReview={actions.pendingReview}

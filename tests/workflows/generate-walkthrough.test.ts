@@ -201,7 +201,7 @@ describe("walkthrough prompt preparation", () => {
       expect(prompt).not.toContain("profile-1");
       expect(prompt).not.toContain("session-1");
       expect(prompt).not.toContain("300 characters");
-      expect(prompt).toContain("Create at most 1 chapters.");
+      expect(prompt).not.toContain("Create at most");
       expect(prompt.split("each section's prose within 320").length - 1).toBe(
         1,
       );

@@ -191,7 +191,9 @@ async function fixture(
   const github = fakeGitHub({ terminal: options.terminal === true });
   let failed = options.failReviewSave === true;
   const journals = new ReviewObservationJournalStore(paths);
-  const recentWrites = new RecentWriteJournalStore(paths);
+  const recentWrites = new RecentWriteJournalStore(paths, {
+    write: () => undefined,
+  });
   let removeFailed = options.failJournalRemove === true;
   let sessionSaveFailed = options.failSessionSave === true;
   const observationDependencies = {
@@ -650,7 +652,9 @@ describe("ReviewObservationService", () => {
       sessions: value.sessions,
       remote: value.remote,
       journals: new ReviewObservationJournalStore(value.paths),
-      recentWrites: new RecentWriteJournalStore(value.paths),
+      recentWrites: new RecentWriteJournalStore(value.paths, {
+        write: () => undefined,
+      }),
       github: fakeGitHub({ terminal: false }),
       pendingReview: {
         adoptObservedState() {

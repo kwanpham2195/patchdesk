@@ -293,7 +293,8 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:a-late",
-              conversationThread: { state: "open" },
+              start: 30,
+              conversationThread: { state: "open", comments: [] },
             },
           },
           {
@@ -301,7 +302,8 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:a-early",
-              conversationThread: { state: "open" },
+              start: 2,
+              conversationThread: { state: "open", comments: [] },
             },
           },
         ],
@@ -314,7 +316,8 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:b-early",
-              conversationThread: { state: "open" },
+              start: 5,
+              conversationThread: { state: "open", comments: [] },
             },
           },
         ],
@@ -331,6 +334,74 @@ describe("buildCommentOrder", () => {
     ]);
   });
 
+  it("visits threads that need the viewer's reply first, each group in file then line order", () => {
+    const thread = (
+      id: string,
+      lineNumber: number,
+      viewerDidAuthor: boolean,
+    ) => ({
+      lineNumber,
+      side: "additions" as const,
+      metadata: {
+        id,
+        start: lineNumber,
+        conversationThread: {
+          state: "open" as const,
+          comments: [{ viewerDidAuthor }],
+        },
+      },
+    });
+    const items: CommentOrderItem[] = [
+      {
+        id: "a.ts",
+        annotations: [
+          thread("a-viewer", 1, true),
+          thread("a-waiting", 9, false),
+        ],
+      },
+      {
+        id: "b.ts",
+        annotations: [
+          thread("b-waiting", 2, false),
+          thread("b-viewer", 3, true),
+        ],
+      },
+    ];
+
+    expect(buildCommentOrder(items).map((anchor) => anchor.id)).toEqual([
+      "a-waiting",
+      "b-waiting",
+      "a-viewer",
+      "b-viewer",
+    ]);
+  });
+
+  it("orders a range thread by its first line, as the Threads navigator does", () => {
+    const waiting = (id: string, start: number, lineNumber: number) => ({
+      lineNumber,
+      side: "additions" as const,
+      metadata: {
+        id,
+        start,
+        conversationThread: {
+          state: "open" as const,
+          comments: [{ viewerDidAuthor: false }],
+        },
+      },
+    });
+    const items: CommentOrderItem[] = [
+      {
+        id: "a.ts",
+        annotations: [waiting("single", 15, 15), waiting("range", 10, 20)],
+      },
+    ];
+
+    expect(buildCommentOrder(items).map((anchor) => anchor.id)).toEqual([
+      "range",
+      "single",
+    ]);
+  });
+
   it("excludes a resolved thread", () => {
     const items: CommentOrderItem[] = [
       {
@@ -341,7 +412,8 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:open",
-              conversationThread: { state: "open" },
+              start: 1,
+              conversationThread: { state: "open", comments: [] },
             },
           },
           {
@@ -349,7 +421,8 @@ describe("buildCommentOrder", () => {
             side: "additions",
             metadata: {
               id: "conversation:resolved",
-              conversationThread: { state: "resolved" },
+              start: 2,
+              conversationThread: { state: "resolved", comments: [] },
             },
           },
         ],
@@ -365,7 +438,11 @@ describe("buildCommentOrder", () => {
       {
         id: "a.ts",
         annotations: [
-          { lineNumber: 1, side: "additions", metadata: { id: "finding:1" } },
+          {
+            lineNumber: 1,
+            side: "additions",
+            metadata: { id: "finding:1", start: 1 },
+          },
           { lineNumber: 2, side: "additions", metadata: undefined },
         ],
       },

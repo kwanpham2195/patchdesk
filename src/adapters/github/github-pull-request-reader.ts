@@ -14,7 +14,7 @@ import type {
   PullRequestCommit,
   PullRequestSummary,
 } from "../../domain/github-context";
-import { parseGitSha } from "../../domain/ids";
+import { parseGitSha, type IsoTimestamp } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import type {
   InboxPageSize,
@@ -22,12 +22,19 @@ import type {
 } from "../../domain/maintainer-inbox";
 import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
+import type { WatchedSnapshot } from "../../domain/watched-pull-request";
 import {
   maintainerInboxQuery,
   maintainerInboxSearchQuery,
   maxPullRequestCommits,
+  repositoryBranchesQuery,
+  watchedPullRequestsQuery,
 } from "./github-graphql-queries";
-import { parseMaintainerPullRequestPage } from "./github-maintainer-inbox-projections";
+import {
+  mapReviewDecision,
+  parseMaintainerPullRequestPage,
+  rollupCheckSummary,
+} from "./github-maintainer-inbox-projections";
 import {
   maintainerInboxResponseSchema,
   maintainerInboxSearchResponseSchema,
@@ -35,6 +42,7 @@ import {
   mergeOutcomeSchema,
   pullRequestCommitSchema,
   pullRequestSchema,
+  repositoryBranchesResponseSchema,
 } from "./github-wire-schemas";
 import {
   parseGitHubTimestamp,
@@ -42,7 +50,53 @@ import {
   parsePullRequest,
 } from "./github-wire-projections";
 import { invalid } from "./github-write-failures";
-import type { MergeOutcome } from "./github-adapter";
+import type {
+  MergeOutcome,
+  RepositoryBranchListing,
+  WatchedPullRequestRead,
+} from "./github-adapter";
+
+const watchedPullRequestNodeSchema = v.looseObject({
+  state: v.picklist(["OPEN", "MERGED", "CLOSED"]),
+  updatedAt: v.string(),
+  headRefOid: v.string(),
+  reviewDecision: v.nullish(v.string()),
+  commits: v.looseObject({
+    nodes: v.array(
+      v.looseObject({
+        commit: v.looseObject({
+          statusCheckRollup: v.nullish(v.looseObject({ state: v.string() })),
+        }),
+      }),
+    ),
+  }),
+});
+
+const watchedPullRequestStates = {
+  OPEN: "open",
+  MERGED: "merged",
+  CLOSED: "closed",
+} as const satisfies Record<
+  v.InferOutput<typeof watchedPullRequestNodeSchema>["state"],
+  WatchedSnapshot["state"]
+>;
+
+function parseWatchedSnapshot(
+  node: v.InferOutput<typeof watchedPullRequestNodeSchema>,
+): WatchedSnapshot | undefined {
+  const updatedAt = parseGitHubTimestamp(node.updatedAt);
+  const headSha = parseGitSha(node.headRefOid);
+  if (updatedAt._tag === "err" || headSha._tag === "err") return undefined;
+  return {
+    updatedAt: updatedAt.value,
+    headSha: headSha.value,
+    reviewState: mapReviewDecision(node.reviewDecision),
+    checks: rollupCheckSummary(
+      node.commits.nodes[0]?.commit.statusCheckRollup?.state,
+    ).overall,
+    state: watchedPullRequestStates[node.state],
+  };
+}
 
 function graphqlPullRequestState(state: InboxStateFilter): "OPEN" | "MERGED" {
   return state === "merged" ? "MERGED" : "OPEN";
@@ -209,6 +263,132 @@ export class GitHubPullRequestReader {
     return page === undefined
       ? invalid("search_maintainer_prs")
       : ok({ ...page, issueCount: connection.issueCount });
+  }
+
+  /** Reads up to 100 branch names of one repository; a non-empty `query` filters by name substring. */
+  async listRepositoryBranches(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly query?: string;
+  }): Promise<Result<RepositoryBranchListing, GitHubReadFailure>> {
+    const host = input.profile.githubHost;
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${repositoryBranchesQuery}`,
+        "-F",
+        `owner=${input.repo.owner}`,
+        "-F",
+        `name=${input.repo.repo}`,
+        // `-f` keeps a numeric-looking search a GraphQL String.
+        ...(input.query !== undefined && input.query.length > 0
+          ? ["-f", `search=${input.query}`]
+          : []),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure(
+        "list_repository_branches",
+        response.error,
+        host,
+      );
+    const parsed = v.safeParse(
+      repositoryBranchesResponseSchema,
+      response.value,
+    );
+    if (!parsed.success) return invalid("list_repository_branches");
+    this.recordRateLimit(host, parsed.output.data.rateLimit);
+    const refs = parsed.output.data.repository.refs;
+    return ok({
+      branches: refs.nodes.map((node) => node.name),
+      totalCount: refs.totalCount,
+    });
+  }
+
+  /**
+   * Reads every watched pull request of one profile in one aliased GraphQL
+   * call. A host whose last response spent the whole rate limit answers
+   * `GitHubRateLimited` without a call until its reset passes.
+   */
+  async readWatchedPullRequests(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly refs: ReadonlyArray<PullRequestRef>;
+    readonly now: IsoTimestamp;
+  }): Promise<
+    Result<ReadonlyArray<WatchedPullRequestRead>, GitHubReadFailure>
+  > {
+    const host = input.profile.githubHost;
+    if (input.refs.length === 0) return ok([]);
+    const resumeAt = this.requests.exhaustedRateLimit(host, input.now);
+    if (resumeAt !== undefined)
+      return err({
+        _tag: "GitHubRateLimited",
+        operation: "get_watched_prs",
+        resumeAt,
+      });
+    const response = await this.ghJson(input.profile, {
+      argv: [
+        "gh",
+        "api",
+        "graphql",
+        "--hostname",
+        host,
+        "-f",
+        `query=${watchedPullRequestsQuery(input.refs.length)}`,
+        // `-f` keeps a numeric-looking owner or name a GraphQL String.
+        ...input.refs.flatMap((ref, index) => [
+          "-f",
+          `owner${index}=${ref.owner}`,
+          "-f",
+          `name${index}=${ref.repo}`,
+          "-F",
+          `number${index}=${ref.number}`,
+        ]),
+      ],
+      timeoutMs: commandTimeoutMs,
+    });
+    if (response._tag === "err")
+      return this.commandFailure("get_watched_prs", response.error, host);
+    const parsed = v.safeParse(
+      v.looseObject({
+        data: v.looseObject({
+          rateLimit: v.optional(
+            v.looseObject({
+              remaining: v.pipe(v.number(), v.integer(), v.minValue(0)),
+              resetAt: v.string(),
+            }),
+          ),
+        }),
+      }),
+      response.value,
+    );
+    if (!parsed.success) return invalid("get_watched_prs");
+    this.recordRateLimit(host, parsed.output.data.rateLimit);
+    const reads: WatchedPullRequestRead[] = [];
+    for (const [index, ref] of input.refs.entries()) {
+      const aliased = v.safeParse(
+        v.looseObject({
+          pullRequest: v.nullable(watchedPullRequestNodeSchema),
+        }),
+        parsed.output.data[`pr${index}`],
+      );
+      if (!aliased.success) return invalid("get_watched_prs");
+      const node = aliased.output.pullRequest;
+      if (node === null) {
+        reads.push({ ref, snapshot: undefined });
+        continue;
+      }
+      const snapshot = parseWatchedSnapshot(node);
+      if (snapshot === undefined) return invalid("get_watched_prs");
+      reads.push({ ref, snapshot });
+    }
+    return ok(reads);
   }
 
   /**

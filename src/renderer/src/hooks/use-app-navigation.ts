@@ -7,8 +7,20 @@ import {
 import type { WorkbenchPayload } from "../renderer-models";
 import type { AppDestination } from "../routes";
 import { destinationKey, parseDestination } from "../routes";
+import { useLatestCommitted } from "./use-latest-committed";
+import { newestConversationTimestamp } from "../../../domain/conversation-entry-timestamp";
+import { definedProps } from "../../../domain/defined-props";
 
 export type NavigationState = "clear" | "dirty_draft" | "write_pending";
+
+/** The Review the maintainer is navigating away from, and what it showed them. */
+export type LeftWorkbench = {
+  readonly profileId: string;
+  readonly reviewId: string;
+  readonly headSha: string;
+  /** GitHub's time on the newest Conversation entry shown; absent when none was dated. */
+  readonly seenThrough?: string;
+};
 
 /**
  * The renderer's route state: where the app is, what is holding it there, and
@@ -22,7 +34,6 @@ export type NavigationState = "clear" | "dirty_draft" | "write_pending";
  */
 export type AppNavigation = {
   readonly destination: AppDestination;
-  readonly setDestination: Dispatch<SetStateAction<AppDestination>>;
   readonly workbench: WorkbenchPayload | undefined;
   readonly setWorkbench: Dispatch<SetStateAction<WorkbenchPayload | undefined>>;
   readonly navigationState: NavigationState;
@@ -37,13 +48,19 @@ export type AppNavigation = {
   readonly setPendingDestination: Dispatch<
     SetStateAction<AppDestination | undefined>
   >;
-  /** Navigates without asking, forgetting a held Review the route leaves. */
+  /** Navigates without asking, forgetting and reporting a held Review the route leaves. */
   readonly performNavigation: (next: AppDestination) => void;
   /** Navigates, or parks the destination behind the leave-confirmation. */
   readonly navigate: (next: AppDestination) => void;
 };
 
-export function useAppNavigation(): AppNavigation {
+/**
+ * `onLeaveWorkbench` hears only a Review that was loaded on screen: a workbench
+ * destination still loading showed the maintainer nothing to have looked at.
+ */
+export function useAppNavigation(
+  onLeaveWorkbench: (left: LeftWorkbench) => void,
+): AppNavigation {
   const [destination, setDestination] = useState<AppDestination>(() =>
     parseDestination(
       globalThis.window === undefined
@@ -58,17 +75,44 @@ export function useAppNavigation(): AppNavigation {
   const [pendingDestination, setPendingDestination] =
     useState<AppDestination>();
 
-  const performNavigation = useCallback((next: AppDestination): void => {
-    setWorkbench((held) => {
-      if (next.kind !== "workbench" || held === undefined) return undefined;
-      // The same id `openWorkbench` in `app.tsx` routes by, so a payload the
-      // route was built from is recognized as the one the route still names.
-      return held.review.id === next.reviewId ? held : undefined;
-    });
-    setDestination(next);
-    setBootRestoredDestination(false);
-    window.localStorage.setItem("patchdesk.destination", destinationKey(next));
-  }, []);
+  const committedDestination = useLatestCommitted(destination);
+  const committedWorkbench = useLatestCommitted(workbench);
+  const committedOnLeave = useLatestCommitted(onLeaveWorkbench);
+
+  const performNavigation = useCallback(
+    (next: AppDestination): void => {
+      const left = committedDestination.current;
+      const shown = committedWorkbench.current;
+      if (
+        left.kind === "workbench" &&
+        shown?.review.id === left.reviewId &&
+        destinationKey(next) !== destinationKey(left)
+      )
+        committedOnLeave.current({
+          profileId: shown.session.key.profileId,
+          reviewId: shown.review.id,
+          headSha: shown.revision.reviewedHeadSha,
+          ...definedProps({
+            seenThrough: newestConversationTimestamp(
+              shown.conversation.entries,
+            ),
+          }),
+        });
+      setWorkbench((held) => {
+        if (next.kind !== "workbench" || held === undefined) return undefined;
+        // The same id `openWorkbench` in `app.tsx` routes by, so a payload the
+        // route was built from is recognized as the one the route still names.
+        return held.review.id === next.reviewId ? held : undefined;
+      });
+      setDestination(next);
+      setBootRestoredDestination(false);
+      window.localStorage.setItem(
+        "patchdesk.destination",
+        destinationKey(next),
+      );
+    },
+    [committedDestination, committedWorkbench, committedOnLeave],
+  );
   const navigate = useCallback(
     (next: AppDestination): void => {
       if (destinationKey(next) === destinationKey(destination)) return;
@@ -82,7 +126,6 @@ export function useAppNavigation(): AppNavigation {
   );
   return {
     destination,
-    setDestination,
     workbench,
     setWorkbench,
     navigationState,

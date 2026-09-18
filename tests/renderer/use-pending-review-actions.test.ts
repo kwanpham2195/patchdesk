@@ -3,6 +3,13 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
+import {
+  PatchdeskApiError,
+  ReviewPreconditionError,
+  contextualMessage,
+  untrustedWriteResponseError,
+} from "../../src/renderer/src/api-client";
+import { PENDING_REVIEW_RECOVERY_MESSAGES } from "../../src/renderer/src/review-copy";
 import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
 import type {
   ReviewWorkbenchPatch,
@@ -235,6 +242,26 @@ describe("usePendingReviewActions commands", () => {
     expect(observeConfirmedReviewWrite).toHaveBeenCalledTimes(1);
   });
 
+  it("refuses a command without a verifiable diff and sends nothing", async () => {
+    const request = installPendingDouble({});
+    const current = projection({ pendingReview: pending("none") as never });
+    const { result, patch } = renderPendingReview({
+      ...current,
+      revision: { ...current.revision, patchHash: undefined },
+    });
+
+    await act(async () => {
+      const start = composerOf(result).onStartReview(anchor, "No diff");
+      await expect(start).rejects.toBeInstanceOf(ReviewPreconditionError);
+      await expect(start).rejects.toMatchObject({
+        reason: "diff_anchor_unverifiable",
+      });
+    });
+
+    expect(request).not.toHaveBeenCalled();
+    expect(patch).not.toHaveBeenCalled();
+  });
+
   it("reports busy for the whole command and clears it afterwards", async () => {
     let release!: DeferredResolve;
     installPendingDouble({
@@ -273,9 +300,15 @@ describe("usePendingReviewActions recovery", () => {
     );
 
     await act(async () => {
-      await expect(
-        composerOf(result).onStartReview(anchor, "Cannot confirm this command"),
-      ).rejects.toThrow(/could not confirm this write/i);
+      const start = composerOf(result).onStartReview(
+        anchor,
+        "Cannot confirm this command",
+      );
+      await expect(start).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(start).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-pending-review-projection",
+      });
     });
 
     expect(patch).toHaveBeenCalledWith({
@@ -324,6 +357,28 @@ describe("usePendingReviewActions recovery", () => {
     );
     expect(replace).toHaveBeenCalledWith(reloaded);
     expect(panelOf(result).recoveryError).toBeUndefined();
+  });
+
+  it("words a malformed reload after recovery as an unconfirmed check", async () => {
+    installPendingDouble({
+      recover: () => ({ pendingReview: { state: "none" } }),
+      load: () => ({ state: "review" }),
+    });
+    const { result, replace } = renderPendingReview(
+      projection({ pendingReview: pending("unavailable") as never }),
+    );
+
+    await act(async () => {
+      await panelOf(result).onCheckGitHubAgain();
+    });
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(panelOf(result).recoveryError).toBe(
+      contextualMessage(
+        untrustedWriteResponseError("invalid-review-load-response"),
+        PENDING_REVIEW_RECOVERY_MESSAGES,
+      ),
+    );
   });
 
   it("keeps the lock and explains it when recovery still cannot identify the review", async () => {

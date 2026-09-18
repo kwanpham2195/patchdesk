@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import type { ReviewId, WorkspaceProfileId } from "../../domain/ids";
 import {
   parseReviewWriteOperation,
+  type PersistedReviewWriteOperation,
   type ReviewWriteOperation,
 } from "../../domain/review-write-operation";
 import { err, ok, type Result } from "../../domain/result";
@@ -109,8 +110,9 @@ export class ReviewWriteOperationStore {
     }
   }
 
+  // The domain type supplies the branded ids the file path needs; the persisted type proves the record reads back.
   private write(
-    operation: ReviewWriteOperation,
+    operation: ReviewWriteOperation & PersistedReviewWriteOperation,
   ): Promise<Result<void, StorageFailure>> {
     return writeAtomicJson(
       this.paths.reviewWriteOperationFile(

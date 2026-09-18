@@ -7,6 +7,7 @@ import {
 import {
   parseCommitDiffResponse,
   parseInboxResponse,
+  parseInsightRunResponse,
   parseMergeReceipt,
   parseRepositoryLabelListResponse,
   parseWorkbenchResponse,
@@ -251,6 +252,23 @@ describe("parseRepositoryLabelListResponse", () => {
 });
 
 describe("commit diff response", () => {
+  it("parses a provider catalog model with and without a list price", () => {
+    const model = {
+      provider: "pi",
+      id: "openai/gpt",
+      label: "openai/gpt",
+      reasoning: ["low"],
+    };
+    const parsed = parseInsightProviderCatalog({
+      providers: [],
+      models: [model, { ...model, cost: { input: 0.035, output: 0.14 } }],
+    });
+    expect(parsed?.models.map((entry) => entry.cost)).toEqual([
+      undefined,
+      { input: 0.035, output: 0.14 },
+    ]);
+  });
+
   it("parses provider catalogs and rejects paths or raw diagnostics", () => {
     expect(
       parseInsightProviderCatalog({
@@ -365,18 +383,6 @@ describe("parseWorkbenchResponse", () => {
       operation: "DeleteComment",
       resolution: "manual_resolution_required",
     });
-    for (const operation of [
-      "EditPublishedComment",
-      "DeletePublishedComment",
-      "DismissPublishedReview",
-    ] as const) {
-      expect(
-        parseWorkbenchResponse({
-          ...reviewProjection,
-          remoteWriteRecovery: { operation, resolution: "check_required" },
-        })?.remoteWriteRecovery,
-      ).toEqual({ operation, resolution: "check_required" });
-    }
     for (const remoteWriteRecovery of [
       { operation: "UnknownWrite", resolution: "check_required" },
       { operation: "Reply", resolution: "retry_allowed" },
@@ -726,6 +732,71 @@ describe("parseModelCatalog", () => {
       parseModelCatalog({
         models: [{ id: "model-a", label: "Model A" }],
         defaultReasoning: "extreme",
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("parseInsightRunResponse activity", () => {
+  const command = {
+    id: "cmd-1",
+    command: "git diff HEAD~1",
+    status: "completed",
+    exitCode: 0,
+    durationMs: 400,
+  };
+  const poll = { runId: "run-a", type: "analysis", status: "running" };
+  const approvals = { accepted: 1, declined: 0 };
+
+  it("accepts a bounded trace", () => {
+    expect(
+      parseInsightRunResponse({
+        ...poll,
+        activity: {
+          phase: "turn",
+          reasoningLine: "Checking",
+          commands: [command],
+          approvals,
+        },
+      }),
+    ).toMatchObject({ activity: { commands: [command], approvals } });
+  });
+
+  it.each([
+    [
+      "a command over 200 characters",
+      { commands: [{ ...command, command: "x".repeat(201) }] },
+    ],
+    [
+      "more than 200 command rows",
+      {
+        commands: Array.from({ length: 201 }, (_, index) => ({
+          ...command,
+          id: `cmd-${String(index)}`,
+        })),
+      },
+    ],
+    [
+      "a reasoning line over 4096 characters",
+      { reasoningLine: "x".repeat(4097), commands: [] },
+    ],
+    [
+      "command output",
+      { commands: [{ ...command, aggregatedOutput: "secret" }] },
+    ],
+    [
+      "command text beside the approval counts",
+      { commands: [], approvals: { ...approvals, command: "pwd" } },
+    ],
+    [
+      "a negative approval count",
+      { commands: [], approvals: { accepted: -1, declined: 0 } },
+    ],
+  ])("fails closed on %s", (_name, fields) => {
+    expect(
+      parseInsightRunResponse({
+        ...poll,
+        activity: { phase: "turn", approvals, ...fields },
       }),
     ).toBeUndefined();
   });

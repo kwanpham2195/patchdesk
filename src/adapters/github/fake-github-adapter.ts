@@ -50,8 +50,11 @@ import {
   type GitHubThreadTarget,
   type MergeOutcome,
   type PendingReviewComment,
+  type RepositoryBranchListing,
   type RepositoryPermissionEvidence,
+  type WatchedPullRequestRead,
 } from "./github-adapter";
+import type { WatchedSnapshot } from "../../domain/watched-pull-request";
 import {
   assembleConversationEntries,
   samePullRequest,
@@ -63,6 +66,25 @@ export class FakeGitHubAdapter
   implements GitHubReader, GitHubReviewWriter, GitHubMergeWriter
 {
   constructor(private readonly values: Partial<FakeGitHubAdapterValues>) {}
+
+  private readonly searchMaintainerPullRequestsCalls: SearchMaintainerPullRequestsInput[] =
+    [];
+  private readonly listRepositoryLabelsCalls: ListRepositoryLabelsInput[] = [];
+  private readonly listRepositoryBranchesCalls: ListRepositoryBranchesInput[] =
+    [];
+  private readonly setPullRequestBaseBranchCalls: SetPullRequestBaseBranchInput[] =
+    [];
+  private readonly readWatchedPullRequestsCalls: ReadWatchedPullRequestsInput[] =
+    [];
+
+  /** Inputs of the calls tests assert GitHub was or was not asked for, in call order. */
+  readonly calls: FakeGitHubAdapterCalls = {
+    searchMaintainerPullRequests: this.searchMaintainerPullRequestsCalls,
+    listRepositoryLabels: this.listRepositoryLabelsCalls,
+    listRepositoryBranches: this.listRepositoryBranchesCalls,
+    setPullRequestBaseBranch: this.setPullRequestBaseBranchCalls,
+    readWatchedPullRequests: this.readWatchedPullRequestsCalls,
+  };
 
   async listOpenPullRequests(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -106,7 +128,7 @@ export class FakeGitHubAdapter
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
-    void input;
+    this.searchMaintainerPullRequestsCalls.push(input);
     if (this.values.maintainerPullRequestsSearch !== undefined)
       return ok(this.values.maintainerPullRequestsSearch);
     if (this.values.listOpenPullRequests === undefined)
@@ -131,10 +153,21 @@ export class FakeGitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
-    void input;
+    this.listRepositoryLabelsCalls.push(input);
     return this.values.repositoryLabels === undefined
       ? missing("list_repository_labels")
       : ok(this.values.repositoryLabels);
+  }
+
+  async listRepositoryBranches(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
+    readonly query?: string;
+  }): Promise<Result<RepositoryBranchListing, GitHubReadFailure>> {
+    this.listRepositoryBranchesCalls.push(input);
+    return this.values.repositoryBranches === undefined
+      ? missing("list_repository_branches")
+      : ok(this.values.repositoryBranches);
   }
 
   async listAssignableUsers(input: {
@@ -166,6 +199,21 @@ export class FakeGitHubAdapter
     return this.values.pullRequest === undefined
       ? missing("get_pr")
       : ok(this.values.pullRequest);
+  }
+
+  async readWatchedPullRequests(
+    input: ReadWatchedPullRequestsInput,
+  ): Promise<Result<ReadonlyArray<WatchedPullRequestRead>, GitHubReadFailure>> {
+    this.readWatchedPullRequestsCalls.push(input);
+    const current = this.values.watchedPullRequests;
+    if (current === undefined) return missing("get_watched_prs");
+    return ok(
+      input.refs.map((ref) => ({
+        ref,
+        snapshot: current.find((entry) => samePullRequest(entry.ref, ref))
+          ?.snapshot,
+      })),
+    );
   }
 
   async getMergePolicy(input: {
@@ -457,6 +505,38 @@ export class FakeGitHubAdapter
       : ok(undefined);
   }
 
+  async setPullRequestDraftState(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly draft: boolean;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    void input;
+    return this.values.setPullRequestDraftState === undefined
+      ? err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "set_draft_state",
+        })
+      : ok(undefined);
+  }
+
+  async setPullRequestBaseBranch(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pullRequestId: string;
+    readonly branch: string;
+  }): Promise<Result<void, GitHubWriteFailure>> {
+    this.setPullRequestBaseBranchCalls.push(input);
+    return this.values.setPullRequestBaseBranch === undefined
+      ? err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "set_base_branch",
+        })
+      : this.values.setPullRequestBaseBranch.failure === undefined
+        ? ok(undefined)
+        : err(this.values.setPullRequestBaseBranch.failure);
+  }
+
   async updateThreadComment(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly commentId: string;
@@ -662,6 +742,32 @@ export class FakeGitHubAdapter
   }
 }
 
+type SearchMaintainerPullRequestsInput = Parameters<
+  FakeGitHubAdapter["searchMaintainerPullRequests"]
+>[0];
+type ListRepositoryLabelsInput = Parameters<
+  FakeGitHubAdapter["listRepositoryLabels"]
+>[0];
+
+type ListRepositoryBranchesInput = Parameters<
+  FakeGitHubAdapter["listRepositoryBranches"]
+>[0];
+type SetPullRequestBaseBranchInput = Parameters<
+  FakeGitHubAdapter["setPullRequestBaseBranch"]
+>[0];
+
+type ReadWatchedPullRequestsInput = Parameters<
+  GitHubReader["readWatchedPullRequests"]
+>[0];
+
+type FakeGitHubAdapterCalls = {
+  readonly searchMaintainerPullRequests: ReadonlyArray<SearchMaintainerPullRequestsInput>;
+  readonly listRepositoryLabels: ReadonlyArray<ListRepositoryLabelsInput>;
+  readonly listRepositoryBranches: ReadonlyArray<ListRepositoryBranchesInput>;
+  readonly setPullRequestBaseBranch: ReadonlyArray<SetPullRequestBaseBranchInput>;
+  readonly readWatchedPullRequests: ReadonlyArray<ReadWatchedPullRequestsInput>;
+};
+
 /** Fixture values accepted by FakeGitHubAdapter. */
 export type FakeGitHubAdapterValues = {
   readonly listOpenPullRequests: ReadonlyArray<PullRequestSummary>;
@@ -669,9 +775,15 @@ export type FakeGitHubAdapterValues = {
   /** `searchMaintainerPullRequests` fixture. Set `issueCount` independently of `entries.length` to test the repository-wide count diverging from the loaded page. */
   readonly maintainerPullRequestsSearch: MaintainerPullRequestSearchPage;
   readonly repositoryLabels: RepositoryLabelListing;
+  readonly repositoryBranches: RepositoryBranchListing;
   readonly assignableUsers: AssignableUserListing;
   readonly pullRequestReviewers: PullRequestReviewerListing;
   readonly pullRequest: PullRequestSummary;
+  /** What GitHub reports for each watched pull request; a ref not listed no longer resolves. A getter lets a test move it between polls. */
+  readonly watchedPullRequests: ReadonlyArray<{
+    readonly ref: PullRequestRef;
+    readonly snapshot: WatchedSnapshot;
+  }>;
   readonly mergePolicy: MergePolicySnapshot;
   readonly mergePolicyEvidence: GitHubMergePolicyEvidence;
   readonly mergeOutcome: MergeOutcome;
@@ -734,4 +846,7 @@ export type FakeGitHubAdapterValues = {
   readonly removeAssigneesFromAssignable?: Record<string, never>;
   readonly requestReviews?: Record<string, never>;
   readonly removeRequestedReviewers?: Record<string, never>;
+  readonly setPullRequestDraftState?: Record<string, never>;
+  /** Present means the write reaches GitHub; `failure` makes GitHub answer with it. */
+  readonly setPullRequestBaseBranch?: { readonly failure?: GitHubWriteFailure };
 };

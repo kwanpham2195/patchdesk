@@ -189,3 +189,120 @@ export const DIRECT_SUMMARY_MESSAGES: ContextualMessages = {
   forbidden:
     "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
 };
+
+// Conversation and Finding write failures. The unconfirmed-write sentences
+// never say "try again": GitHub may already have applied the write.
+
+const UNCONFIRMED_COMMENT_EDIT =
+  "GitHub could not confirm the edit. Check GitHub again before editing again.";
+
+/** Saving an edit to a published comment from its row controls. */
+export const COMMENT_EDIT_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not edit this comment.",
+  outcome_unknown: UNCONFIRMED_COMMENT_EDIT,
+  ambiguous_write: UNCONFIRMED_COMMENT_EDIT,
+  timeout: UNCONFIRMED_COMMENT_EDIT,
+  rate_limited:
+    "GitHub rate-limited this edit. Wait a moment, then save again.",
+  forbidden:
+    "GitHub blocked this edit: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_COMMENT_DELETE =
+  "GitHub could not confirm the deletion. Check GitHub again before deleting again.";
+
+/** Deleting a published comment from its row controls. */
+export const COMMENT_DELETE_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not delete this comment.",
+  outcome_unknown: UNCONFIRMED_COMMENT_DELETE,
+  ambiguous_write: UNCONFIRMED_COMMENT_DELETE,
+  timeout: UNCONFIRMED_COMMENT_DELETE,
+  rate_limited:
+    "GitHub rate-limited this deletion. Wait a moment, then delete again.",
+  forbidden:
+    "GitHub blocked this deletion: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_THREAD_REPLY =
+  "GitHub could not confirm the reply. Check GitHub again before replying again.";
+
+/** Publishing a reply from a conversation thread card. */
+export const THREAD_REPLY_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not publish this reply.",
+  outcome_unknown: UNCONFIRMED_THREAD_REPLY,
+  ambiguous_write: UNCONFIRMED_THREAD_REPLY,
+  timeout: UNCONFIRMED_THREAD_REPLY,
+  rate_limited:
+    "GitHub rate-limited this reply. Wait a moment, then reply again.",
+  forbidden:
+    "GitHub blocked this reply: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_DRAFT_STATE =
+  "GitHub could not confirm the draft change. Check GitHub again before changing it again.";
+
+/** The author's draft toggle in the PR overview sheet. */
+export const DRAFT_STATE_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not change this pull request's draft state.",
+  outcome_unknown: UNCONFIRMED_DRAFT_STATE,
+  ambiguous_write: UNCONFIRMED_DRAFT_STATE,
+  timeout: UNCONFIRMED_DRAFT_STATE,
+  rejected: "GitHub rejected the draft change.",
+  github_rejected: "GitHub rejected the draft change.",
+  rate_limited:
+    "GitHub rate-limited this draft change. Wait a moment, then try again.",
+  forbidden:
+    "GitHub blocked this draft change: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_BASE_BRANCH =
+  "GitHub could not confirm the base branch change. Check GitHub again before changing it again.";
+
+/** The base-branch change in the PR overview sheet. */
+export const BASE_BRANCH_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not change this pull request's base branch.",
+  outcome_unknown: UNCONFIRMED_BASE_BRANCH,
+  ambiguous_write: UNCONFIRMED_BASE_BRANCH,
+  timeout: UNCONFIRMED_BASE_BRANCH,
+  invalid_input:
+    "This pull request already targets that branch, or the branch name is not valid.",
+  rejected: "GitHub rejected the base branch change.",
+  github_rejected:
+    "The base branch change was refused: this account may lack write access to this repository.",
+  rate_limited:
+    "GitHub rate-limited this base branch change. Wait a moment, then try again.",
+  forbidden:
+    "GitHub blocked this base branch change: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_REVIEW_REQUEST =
+  "GitHub could not confirm the review request. Check GitHub again before requesting it again.";
+
+/** Re-requesting a review from the metadata rail's Reviewers section. */
+export const RE_REQUEST_REVIEW_MESSAGES: ContextualMessages = {
+  fallback: "Patchdesk could not request this review again.",
+  outcome_unknown: UNCONFIRMED_REVIEW_REQUEST,
+  ambiguous_write: UNCONFIRMED_REVIEW_REQUEST,
+  timeout: UNCONFIRMED_REVIEW_REQUEST,
+  rejected: "GitHub rejected the review request.",
+  github_rejected: "GitHub rejected the review request.",
+  rate_limited:
+    "GitHub rate-limited this review request. Wait a moment, then try again.",
+  forbidden:
+    "GitHub blocked this review request: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};
+
+const UNCONFIRMED_FINDING_ACTION =
+  "GitHub could not confirm the Finding action. Check GitHub again before repeating it.";
+
+/** Adding a Finding to the review, or dismissing it, from the Analysis reader. */
+export const FINDING_ACTION_MESSAGES: ContextualMessages = {
+  fallback: "The Finding action could not be saved. Try again.",
+  outcome_unknown: UNCONFIRMED_FINDING_ACTION,
+  ambiguous_write: UNCONFIRMED_FINDING_ACTION,
+  timeout: UNCONFIRMED_FINDING_ACTION,
+  rate_limited:
+    "GitHub rate-limited this Finding action. Wait a moment, then try again.",
+  forbidden:
+    "GitHub blocked this Finding action: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
+};

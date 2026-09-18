@@ -35,7 +35,7 @@ The chapter rail is headed Chapters and shows progress as the current position a
 
 The reading surface shows a chapter-context eyebrow, the complete current section title, the generated prose, a badge counting the section's hunks, a "reviewed" badge when the section is reviewed, and the Focus section button. The cited hunks follow, then Mark section reviewed, Previous section and Next section, and the position as "N of M". A one-section Walkthrough omits Previous section and Next section. A zero-section Walkthrough reports 0, omits Mark section reviewed, and keeps no fabricated active section.
 
-When the Walkthrough is current and its inline discussion is available, the cited hunks show the pull request's open and resolved inline conversation threads that fall on those lines. These threads are read-only in the Walkthrough: there is no reply, resolve, or comment control. [Inline conversations](inline-conversations.md) owns thread writes. Inline discussion is available only when the Walkthrough is current and verified, the Review is Fresh, the represented patch is loaded, the inline conversation has fully loaded, and the Walkthrough was generated for this exact profile, session, head, and patch. Otherwise the reading surface says "Inline discussion is unavailable or incomplete. Refresh GitHub state to check for replies."
+When the Walkthrough is current and its inline discussion is available, the cited hunks show the pull request's open and resolved inline conversation threads that fall on those lines. These threads are read-only in the Walkthrough: there is no reply, resolve, or comment control. [Inline conversations](inline-conversations.md) owns thread writes. Inline discussion is available only when the Walkthrough is current and verified, the Review is Fresh, the represented patch is loaded, the inline conversation has fully loaded, and the Walkthrough was generated for this exact profile, session, head, and patch. Otherwise the reading surface names the next step: an outdated Walkthrough says "This Walkthrough is for an older revision. Regenerate it to see inline discussion.", and every other cause says "Inline discussion is unavailable or incomplete. Refresh GitHub state to check for replies."
 
 A Walkthrough retained before hunk citations were verified shows "Diff citations need regeneration." A section with no verified hunk shows "This section has no verified supporting hunks." in place of the diff. Repeated files use unique block identifiers so separate cited hunks do not collapse into one render target.
 
@@ -45,7 +45,7 @@ Reading, scrolling, changing diff layout or wrapping, opening Support, switching
 
 ### Begin an action
 
-For multiple sections, Previous section and Next section move one section and disable at the first and last boundaries. The chapter rail can jump directly to a section. The Left arrow and `j` move to the previous section; the Right arrow and `k` move to the next. These keys act only when no text field, select, or combobox has focus. One-section and zero-section Walkthroughs omit the movement buttons.
+For multiple sections, Previous section and Next section move one section and disable at the first and last boundaries. The chapter rail can jump directly to a section. The Left arrow and `k` move to the previous section; the Right arrow and `j` move to the next, matching the Vim convention. These keys act only when no text field, select, or combobox has focus. One-section and zero-section Walkthroughs omit the movement buttons.
 
 Mark section reviewed records the current section's stable identity. Mark Support reviewed, inside the Support disclosure, records the Support group.
 
@@ -58,6 +58,10 @@ Regenerate opens the shared Insight run dialog described in [Brief](brief.md#beg
 Section movement updates the active prose and cited hunks together, and scrolls the chosen section into view in the chapter rail. Each cited hunk keeps its original file header, uses natural height, and lets the reader own scrolling. It respects unified or split layout, wrapping, app appearance, and diff theme.
 
 Reviewed markers and the current section are shown at once and saved locally in the background. Controls stay usable while the save runs. Generation follows the Insight run lifecycle described in [Brief](brief.md#while-the-action-runs) and keeps any retained Walkthrough until a replacement succeeds.
+
+A Codex CLI account run also shows what it is doing. The panel reads **Preparing a bounded run…** until Codex starts the turn, then how long ago the run started. Below that it shows the last line of the model's reasoning summary, when the model sends one, and a **Commands** list with one row per command Codex ran: its exit status, **declined**, or a spinner while it runs; the command as plain text; and its duration. Codex asks Patchdesk before it runs any command, and Patchdesk allows only read-only inspection inside the represented worktree, so a command outside that list shows as **declined** and the run carries on without it. An API key run shows only the spinner and start time. When the run fails, times out, or is cancelled, the failure notice keeps the last command list until another run starts or the renderer reloads.
+
+> Technical note: commands are shortened to 200 characters, with paths inside the represented worktree made relative and the home directory shown as `~`, before they leave the main process. Command output is never shown. The trace is held in memory only; see [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md). The command allowlist, and the one exception a global Codex `Allow` rule makes to it, are recorded in [ADR 0016](../../adr/0016-use-the-local-codex-cli-account.md).
 
 ### Settle
 
@@ -74,7 +78,7 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 | Variant                                                | Before the action runs                                                                                                           | While the action runs                                                                                                           |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Workspace profile and GitHub account                   | Walkthrough belongs to a profile-scoped Review session. Viewer identity does not affect reading markers.                         | Switching profile leaves the Review; the old section state cannot become another profile's Walkthrough.                         |
-| Pull request and Review state                          | A retained Walkthrough can be read for open or terminal represented Reviews. Regenerate needs an open Review. Inline discussion appears only on a current Walkthrough for a Fresh Review. | Remote updates do not rewrite the reader; a newer revision needs its own Walkthrough.                                           |
+| Pull request and Review state                          | A retained Walkthrough can be read for open or terminal represented Reviews. Generation needs an open Review; on a merged or closed Review, a muted line above the reader says so and describes the disabled Generate walkthrough and Regenerate. Inline discussion appears only on a current Walkthrough for a Fresh Review. | Remote updates do not rewrite the reader; a newer revision needs its own Walkthrough.                                           |
 | GitHub permissions and merge readiness                 | No GitHub write permission or merge readiness is required.                                                                       | Mark reviewed is local and cannot change checks, review decision, or merge readiness.                                           |
 | Network, local tool, and Insight provider availability | A retained Walkthrough is readable without a provider. Generation needs an available provider and prepared context.              | Provider failure leaves the retained Walkthrough. Local highlighting failure inside a cited hunk needs live verification. |
 | Input path: mouse, keyboard, or desktop menu           | Rail, Previous section, Next section, review markers, Focus section, arrow keys, `j`, `k`, and Escape support mouse or keyboard use. | Arrow keys, `j`, and `k` are ignored while a text field, select, or combobox has focus. They do not check modifier keys. Desktop menus do not mark progress. |
@@ -122,7 +126,7 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - Support stays compact and excludes legacy unverified citations.
 - Support and Mark Support reviewed live in the chapter rail, so they are unavailable in the focused layout.
 - An already reviewed section keeps its indicator and disables another Mark action. Mark Support reviewed stays enabled after Support is reviewed.
-- `j` moves to the previous section and `k` to the next, matching Left and Right arrows rather than the Vim down and up convention.
+- `j` moves to the next section and `k` to the previous, so the letters follow Vim while the arrows follow reading direction.
 - The Left and Right arrows move between sections rather than scrolling a wide hunk sideways.
 - Arrow keys, `j`, and `k` do nothing while a text field, select, or combobox has focus.
 - Escape can focus the current section heading without changing reviewed state.
@@ -131,13 +135,13 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 ## Open questions and verification
 
 - The 2026-09-14 live pass confirmed only the empty state. No retained Walkthrough existed in the live workspace, so the docked and focused layouts, Regenerate, inline conversation threads, and keyboard movement were checked from source only.
-- `j` moves backward and `k` forward, the reverse of the Vim convention. Recorded as [UX-11](../ux-friction.md#ux-11-walkthrough-j-and-k-run-opposite-to-the-vim-convention).
+- The reversed `j` and `k` recorded as [UX-11](../ux-friction.md#ux-11-walkthrough-j-and-k-run-opposite-to-the-vim-convention) are fixed; the new direction is not yet live-verified.
 - Suspected defect: the reading surface ends with "Each section maps to one part of the patch. Use Back to files when you're done." The Walkthrough has no Back to files control. See [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
-- The inline-discussion notice does not say which condition failed, so an outdated Walkthrough and an inline conversation that has not finished loading read the same. Recorded as [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed).
+- [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed) is fixed: an outdated Walkthrough now says to regenerate it. The other causes still share one sentence, and neither wording is live-verified.
 - Suspected defect: arrow keys, `j`, and `k` do not check modifier keys, so a Command or Control combination with those keys may also move sections. See [B-23](../bug-triage.md#b-23-walkthrough-section-keys-ignore-modifier-keys).
 - Suspected defect, confirmed by an independent review: a disabled Regenerate on a merged or closed Review shows no reason on screen. The open-only rule is intended. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
 - Confirm the layout fade, scroll ownership, and focus return after leaving the focused layout in the built app.
 - Confirm persistence of the current section and reviewed markers across app quit, not only rerender.
 - Confirm fallback presentation when syntax highlighting fails inside a Walkthrough block.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

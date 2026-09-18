@@ -21,7 +21,10 @@ import {
   parseWorkspaceProfileId,
 } from "../../src/domain/ids";
 import type { Result } from "../../src/domain/result";
-import { InsightsSlot } from "../../src/renderer/src/components/review-insights-slot";
+import {
+  InsightsSlot,
+  TERMINAL_REVIEW_INSIGHT_REASON,
+} from "../../src/renderer/src/components/review-insights-slot";
 import {
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
@@ -275,6 +278,68 @@ describe("InsightsSlot empty states", () => {
   }
 });
 
+describe("InsightsSlot on a merged Review", () => {
+  function description(control: HTMLElement): string | null {
+    const id = control.getAttribute("aria-describedby");
+    if (id === null) throw new Error("Expected an accessible description");
+    return document.getElementById(id)?.textContent ?? null;
+  }
+
+  it("describes each disabled Generate with the terminal reason", async () => {
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+    });
+    const user = userEvent.setup();
+    renderInsights(
+      projection({ review: { id: "review-42", status: "merged" } }),
+    );
+
+    for (const [tab, action] of [
+      [/^Brief/, "Generate brief"],
+      [/^Walkthrough/, "Generate walkthrough"],
+      [/^Analysis/, "Generate analysis"],
+    ] as const) {
+      await user.click(screen.getByRole("tab", { name: tab }));
+      const generate = await screen.findByRole("button", { name: action });
+      expect(generate.getAttribute("disabled")).not.toBeNull();
+      expect(description(generate)).toBe(TERMINAL_REVIEW_INSIGHT_REASON);
+    }
+  });
+
+  it("describes both Brief Regenerate controls with the terminal reason", () => {
+    renderInsights(
+      projection({
+        review: { id: "review-42", status: "closed" },
+        insights: {
+          analysis: { status: "not_generated" },
+          walkthrough: { status: "not_generated" },
+          brief: briefInsight(),
+        },
+      }),
+    );
+
+    const regenerates = screen.getAllByRole("button", { name: "Regenerate" });
+    expect(regenerates).toHaveLength(2);
+    for (const regenerate of regenerates) {
+      expect(regenerate.getAttribute("disabled")).not.toBeNull();
+      expect(description(regenerate)).toBe(TERMINAL_REVIEW_INSIGHT_REASON);
+    }
+  });
+
+  it("gives no reason on an open Review with a provider", async () => {
+    desktop = installDesktopDouble({
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+    });
+    renderInsights();
+
+    const generate = await screen.findByRole("button", {
+      name: "Generate brief",
+    });
+    await waitFor(() => expect(generate.getAttribute("disabled")).toBeNull());
+    expect(generate.getAttribute("aria-describedby")).toBeNull();
+  });
+});
+
 describe("InsightsSlot run requests", () => {
   it("marks retained readers as insight results", () => {
     renderInsights(withAnalysis("actionable"), "analysis");
@@ -283,6 +348,7 @@ describe("InsightsSlot run requests", () => {
   });
   it("transitions Walkthrough focus without interrupting docked focus restoration", async () => {
     const frames: FrameRequestCallback[] = [];
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The Walkthrough focus transition schedules through `window.requestAnimationFrame` with no frame-scheduler seam, so the spy holds each frame for the test to run by hand.
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       frames.push(callback);
       return frames.length;

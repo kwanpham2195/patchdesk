@@ -5,6 +5,7 @@ import {
   PatchdeskApiError,
   isOutcomeUnknownRetry,
   requestJson,
+  untrustedWriteResponseError,
 } from "../api-client";
 import {
   parseAssignableUserListResponse,
@@ -17,7 +18,13 @@ import {
   type WorkbenchResponse,
 } from "../renderer-contracts";
 import {
+  parseBaseBranchListResponse,
+  type BaseBranchListResponse,
+} from "../base-branch-contracts";
+import {
   parseAssigneeReceipt,
+  parseBaseBranchReceipt,
+  parseDraftStateReceipt,
   parseLabelReceipt,
   parseReviewerReceipt,
 } from "./review-workbench-receipts";
@@ -53,7 +60,22 @@ export type ReviewMetadataActions = {
   readonly removeReviewers: (
     reviewers: ReadonlyArray<{ readonly id: string; readonly login: string }>,
   ) => Promise<void>;
+  /** `draft: false` publishes a draft for review; `true` takes it back to draft. */
+  readonly setDraftState: (draft: boolean) => Promise<void>;
+  readonly fetchBaseBranches: (
+    query?: string,
+  ) => Promise<BaseBranchListResponse | undefined>;
+  /** Changes the base branch, then rebuilds the Review against the new base. */
+  readonly setBaseBranch: (branch: string) => Promise<BaseBranchChangeOutcome>;
 };
+
+/**
+ * `RefreshFailed` means GitHub confirmed the base change but the Review still
+ * represents the old base; the maintainer refreshes, and the write is never retried.
+ */
+export type BaseBranchChangeOutcome =
+  | { readonly _tag: "Refreshed" }
+  | { readonly _tag: "RefreshFailed"; readonly branch: string };
 
 export type ReviewMetadataActionsInput = {
   readonly workbench: WorkbenchResponse;
@@ -65,6 +87,7 @@ export type ReviewMetadataActionsInput = {
   readonly requireRecovery: (
     operation: RemoteWriteRecovery["operation"],
   ) => void;
+  readonly requestRefresh: () => Promise<WorkbenchResponse>;
 };
 
 /** Owns pull request metadata reads and strict confirmation handling. */
@@ -74,6 +97,7 @@ export function useReviewMetadataActions({
   appendRecentWrites,
   observeConfirmedReviewWrite,
   requireRecovery,
+  requestRefresh,
 }: ReviewMetadataActionsInput): ReviewMetadataActions {
   const profileId = workbench.session.key.profileId;
   const reviewId = workbench.review.id;
@@ -96,10 +120,11 @@ export function useReviewMetadataActions({
           }),
         );
         const receipt = input.parse(value);
-        if (receipt === undefined || !input.matches(receipt)) {
-          requireRecovery(input.operation);
-          throw new Error("Invalid metadata confirmation response");
-        }
+        // The catch below requires recovery for every unconfirmed write.
+        if (receipt === undefined || !input.matches(receipt))
+          throw untrustedWriteResponseError(
+            "invalid-metadata-confirmation-response",
+          );
         const recentWrite = input.recentWrite(receipt);
         appendRecentWrites(recentWrite);
         void observeConfirmedReviewWrite([recentWrite]).catch(() => undefined);
@@ -150,6 +175,16 @@ export function useReviewMetadataActions({
       parseReviewerListResponse(
         await requestJson(
           `/v1/reviews/reviewers?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}${query === undefined || query === "" ? "" : `&query=${encodeURIComponent(query)}`}`,
+        ),
+      ),
+    [profileId, reviewId],
+  );
+
+  const fetchBaseBranches = useCallback(
+    async (query?: string) =>
+      parseBaseBranchListResponse(
+        await requestJson(
+          `/v1/reviews/base-branch?profileId=${encodeURIComponent(profileId)}&reviewId=${encodeURIComponent(reviewId)}${query === undefined || query === "" ? "" : `&query=${encodeURIComponent(query)}`}`,
         ),
       ),
     [profileId, reviewId],
@@ -296,6 +331,39 @@ export function useReviewMetadataActions({
     },
     [runConfirmed],
   );
+  const setDraftState = useCallback(
+    async (draft: boolean) => {
+      await runConfirmed({
+        path: "/v1/reviews/draft-state/command",
+        command: { _tag: "SetDraftState", draft },
+        operation: "SetDraftState",
+        parse: parseDraftStateReceipt,
+        matches: (receipt) => receipt.draft === draft,
+        recentWrite: () => ({ _tag: "DraftStateChange", draft }),
+      });
+    },
+    [runConfirmed],
+  );
+  const setBaseBranch = useCallback(
+    async (branch: string): Promise<BaseBranchChangeOutcome> => {
+      await runConfirmed({
+        path: "/v1/reviews/base-branch/command",
+        command: { _tag: "SetBaseBranch", branch },
+        operation: "SetBaseBranch",
+        parse: parseBaseBranchReceipt,
+        matches: (receipt) => receipt.branch === branch,
+        recentWrite: () => ({ _tag: "BaseBranchChange", branch }),
+      });
+      // A new base moves the revision identity, so only Refresh can adopt it (ADR 0017).
+      try {
+        await requestRefresh();
+        return { _tag: "Refreshed" };
+      } catch {
+        return { _tag: "RefreshFailed", branch };
+      }
+    },
+    [requestRefresh, runConfirmed],
+  );
 
   return {
     fetchLabels,
@@ -308,6 +376,9 @@ export function useReviewMetadataActions({
     fetchReviewers,
     requestReviewers,
     removeReviewers,
+    setDraftState,
+    fetchBaseBranches,
+    setBaseBranch,
   };
 }
 

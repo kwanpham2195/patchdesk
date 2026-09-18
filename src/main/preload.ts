@@ -9,10 +9,13 @@ import {
   subscribeToWindowFullScreen,
 } from "./desktop-full-screen-channel";
 import { subscribeToMenuActions } from "./desktop-menu-channel";
+import { subscribeToNotificationClicks } from "./desktop-notification-channel";
+import { subscribeToWatchedPullRequestChanges } from "./desktop-watched-pull-request-channel";
 import type { Appearance } from "../domain/contracts";
 import {
   DESKTOP_REQUEST_CHANNEL,
   type DesktopMenuAction,
+  type DesktopNotificationClick,
   type DesktopRequest,
   type DesktopResponse,
   type PatchdeskDesktopApi,
@@ -44,6 +47,12 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
   },
   onMenuAction(listener: (action: DesktopMenuAction) => void) {
     return subscribeToMenuActions(ipcRenderer, listener);
+  },
+  onNotificationClick(listener: (click: DesktopNotificationClick) => void) {
+    return subscribeToNotificationClicks(ipcRenderer, listener);
+  },
+  onWatchedPullRequestChange(listener: (profileId: string) => void) {
+    return subscribeToWatchedPullRequestChanges(ipcRenderer, listener);
   },
   onWindowFullScreen(listener: (fullScreen: boolean) => void) {
     return subscribeToWindowFullScreen(ipcRenderer, listener);

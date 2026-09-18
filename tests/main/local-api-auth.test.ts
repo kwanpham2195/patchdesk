@@ -25,7 +25,11 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "../../src/main/local-api";
-import type { CommandRequest } from "../../src/adapters/github/command-runner";
+import {
+  NodeCommandExecutor,
+  type CommandExecution,
+  type CommandRequest,
+} from "../../src/adapters/github/command-runner";
 import { ok } from "../../src/domain/result";
 import { StorageManagementService } from "../../src/services/storage-management-service";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
@@ -354,6 +358,7 @@ describe("local API current Review capability boundary", () => {
   });
 
   it("accepts a LabelChange recent write and passes it through to the workbench controller unchanged", async () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiContainer` builds its own `ReviewWorkbenchController` and `LocalApiConfiguration` exposes no workbench seam, so this route test observes the forwarded write through a spy; follow-up: add reviewWorkbench to LocalApiConfiguration.
     const detectUpdates = vi
       .spyOn(ReviewWorkbenchController.prototype, "detectUpdates")
       .mockResolvedValue(ok(undefined));
@@ -380,9 +385,11 @@ describe("local API current Review capability boundary", () => {
   });
 
   it("delegates cache and full local-data cleanup to distinct operations", async () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiStores` builds its own `StorageManagementService` and `LocalApiConfiguration` exposes no storage-management seam, so this route test tells the two operations apart through spies; follow-up: add storageManagement to LocalApiConfiguration.
     const clearCache = vi
       .spyOn(StorageManagementService.prototype, "clearCache")
       .mockResolvedValue(ok(undefined));
+    // oxlint-disable-next-line patchdesk/no-method-spying -- `buildLocalApiStores` builds its own `StorageManagementService` and `LocalApiConfiguration` exposes no storage-management seam, so this route test tells the two operations apart through spies; follow-up: add storageManagement to LocalApiConfiguration.
     const clearLocalData = vi
       .spyOn(StorageManagementService.prototype, "clearLocalData")
       .mockResolvedValue(ok(undefined));
@@ -450,10 +457,6 @@ describe("GET /v1/inbox request boundaries", () => {
         issueCount: 0,
       },
     });
-    const searchMaintainerPullRequests = vi.spyOn(
-      adapter,
-      "searchMaintainerPullRequests",
-    );
     const api = await start({ github: adapter });
     if (root === undefined) throw new Error("test root was not created");
     const paths = PatchdeskPaths.forTest(root);
@@ -480,12 +483,11 @@ describe("GET /v1/inbox request boundaries", () => {
         )
       )._tag,
     ).toBe("ok");
-    return { api, searchMaintainerPullRequests };
+    return { api, adapter };
   }
 
   it("rejects an unlisted pageSize as a normal parse failure with no GitHub read", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?pageSize=100", api.url), {
       headers: headers(),
@@ -495,12 +497,11 @@ describe("GET /v1/inbox request boundaries", () => {
     await expect(response.json()).resolves.toEqual({
       error: "invalid_input",
     });
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
   it("rejects a non-numeric, zero, negative, or float pageSize the same way", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     for (const value of ["abc", "0", "-10", "25.0"]) {
       const response = await fetch(
@@ -509,12 +510,11 @@ describe("GET /v1/inbox request boundaries", () => {
       );
       expect(response.status, value).toBe(400);
     }
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
   it("rejects a filter whose composed search query passes GitHub's cap", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
     // Five labels, each at the 50-character per-label cap: every field is
     // within its own bound, and their sum is not. GitHub's own refusal would
     // come back as an unreadable command failure, so the request never goes.
@@ -532,83 +532,81 @@ describe("GET /v1/inbox request boundaries", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
   it("defaults to page size 25 when pageSize is omitted", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox", api.url), {
       headers: headers(),
     });
 
     expect(response.status).toBe(200);
-    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({ pageSize: 25 }),
-    );
+    ]);
   });
 
   it("accepts an explicitly listed pageSize and forwards it to GitHub", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?pageSize=10", api.url), {
       headers: headers(),
     });
 
     expect(response.status).toBe(200);
-    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({ pageSize: 10 }),
-    );
+    ]);
   });
 
-  it("forwards the Awaiting review from you preset to GitHub as a search qualifier", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+  it("forwards each preset to GitHub as its own search qualifier", async () => {
+    const { api, adapter } = await startWithWatchedProfile();
 
-    const response = await fetch(
-      new URL("v1/inbox?awaitingMyReview=1", api.url),
-      { headers: headers() },
-    );
-
-    expect(response.status).toBe(200);
     // The renderer sends a bounded, enumerated value; the route is the only
     // place it becomes GitHub search-qualifier text.
-    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
-      expect.objectContaining({
-        searchQuery:
-          "repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me",
-      }),
-    );
-  });
-
-  it("omits the Awaiting review from you qualifier when the param is absent or off", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
-
-    for (const query of ["v1/inbox", "v1/inbox?awaitingMyReview=0"]) {
-      const response = await fetch(new URL(query, api.url), {
-        headers: headers(),
-      });
-      expect(response.status, query).toBe(200);
-    }
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        searchQuery: expect.stringContaining("user-review-requested"),
-      }),
-    );
-  });
-
-  it("rejects an unparseable awaitingMyReview value with no GitHub read", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
-
-    // A typo must be reported, not silently read as off — that would widen
-    // the listing without the maintainer noticing.
-    for (const value of ["yes", "2", ""]) {
+    for (const [preset, qualifier] of [
+      ["awaiting_my_review", "user-review-requested:@me"],
+      ["my_pull_requests", "author:@me"],
+    ]) {
       const response = await fetch(
-        new URL(`v1/inbox?awaitingMyReview=${value}`, api.url),
+        new URL(`v1/inbox?preset=${preset}`, api.url),
+        { headers: headers() },
+      );
+
+      expect(response.status, preset).toBe(200);
+      expect(adapter.calls.searchMaintainerPullRequests).toContainEqual(
+        expect.objectContaining({
+          searchQuery: `repo:centraldigital/patchdesk is:pr is:open ${qualifier}`,
+        }),
+      );
+    }
+  });
+
+  it("omits every preset qualifier when the param is absent", async () => {
+    const { api, adapter } = await startWithWatchedProfile();
+
+    const response = await fetch(new URL("v1/inbox", api.url), {
+      headers: headers(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(adapter.calls.searchMaintainerPullRequests).toEqual([
+      expect.objectContaining({
+        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+      }),
+    ]);
+  });
+
+  it("rejects an unparseable preset value with no GitHub read", async () => {
+    const { api, adapter } = await startWithWatchedProfile();
+
+    // A typo must be reported, not silently read as no preset — that would
+    // widen the listing without the maintainer noticing.
+    for (const value of ["1", "awaiting", ""]) {
+      const response = await fetch(
+        new URL(`v1/inbox?preset=${value}`, api.url),
         { headers: headers() },
       );
       expect(response.status, value).toBe(400);
@@ -616,12 +614,11 @@ describe("GET /v1/inbox request boundaries", () => {
         error: "invalid_input",
       });
     }
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
   it("rejects an unknown filter state as a normal parse failure with no GitHub read", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?state=closed", api.url), {
       headers: headers(),
@@ -631,12 +628,11 @@ describe("GET /v1/inbox request boundaries", () => {
     await expect(response.json()).resolves.toEqual({
       error: "invalid_input",
     });
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
   it("forwards review and check filter values as GitHub qualifiers", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(
       new URL("v1/inbox?reviewState=approved&checkStatus=failure", api.url),
@@ -644,17 +640,16 @@ describe("GET /v1/inbox request boundaries", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
         searchQuery:
           "repo:centraldigital/patchdesk is:pr is:open review:approved status:failure",
       }),
-    );
+    ]);
   });
 
   it("rejects invalid review and check filter values without reading GitHub", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     for (const query of [
       "v1/inbox?reviewState=review_pending",
@@ -670,12 +665,11 @@ describe("GET /v1/inbox request boundaries", () => {
         error: "invalid_input",
       });
     }
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
   it("forwards author and base branch filter values as GitHub qualifiers", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(
       new URL("v1/inbox?author=octocat&base=release%2F1.0", api.url),
@@ -683,50 +677,47 @@ describe("GET /v1/inbox request boundaries", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
         searchQuery:
           'repo:centraldigital/patchdesk is:pr is:open author:"octocat" base:"release/1.0"',
       }),
-    );
+    ]);
   });
 
   it("forwards @me as the author qualifier for GitHub to resolve", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?author=%40me", api.url), {
       headers: headers(),
     });
 
     expect(response.status).toBe(200);
-    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
         searchQuery: 'repo:centraldigital/patchdesk is:pr is:open author:"@me"',
       }),
-    );
+    ]);
   });
 
   it("forwards a login literally named invalid rather than reading it as a rejection", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(new URL("v1/inbox?author=invalid", api.url), {
       headers: headers(),
     });
 
     expect(response.status).toBe(200);
-    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
         searchQuery:
           'repo:centraldigital/patchdesk is:pr is:open author:"invalid"',
       }),
-    );
+    ]);
   });
 
   it("rejects quoted, spaced, empty, or over-long author and base branch values without reading GitHub", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     for (const query of [
       `v1/inbox?author=${encodeURIComponent('octo"cat')}`,
@@ -746,12 +737,11 @@ describe("GET /v1/inbox request boundaries", () => {
         error: "invalid_input",
       });
     }
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
   it("rejects a repository the active profile does not watch, with no GitHub read", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(
       new URL(
@@ -765,12 +755,11 @@ describe("GET /v1/inbox request boundaries", () => {
     await expect(response.json()).resolves.toEqual({
       error: "invalid_input",
     });
-    expect(searchMaintainerPullRequests).not.toHaveBeenCalled();
+    expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
   it("accepts a watched repository and forwards its search query to GitHub", async () => {
-    const { api, searchMaintainerPullRequests } =
-      await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(
       new URL(
@@ -781,7 +770,7 @@ describe("GET /v1/inbox request boundaries", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(searchMaintainerPullRequests).toHaveBeenCalledWith(
+    expect(adapter.calls.searchMaintainerPullRequests).toEqual([
       expect.objectContaining({
         repo: {
           host: "github.com",
@@ -789,7 +778,7 @@ describe("GET /v1/inbox request boundaries", () => {
           repo: "patchdesk",
         },
       }),
-    );
+    ]);
   });
 });
 
@@ -802,7 +791,6 @@ describe("GET /v1/inbox/labels", () => {
         totalCount: 1,
       },
     });
-    const listRepositoryLabels = vi.spyOn(adapter, "listRepositoryLabels");
     const api = await start({ github: adapter });
     if (root === undefined) throw new Error("test root was not created");
     const paths = PatchdeskPaths.forTest(root);
@@ -829,7 +817,7 @@ describe("GET /v1/inbox/labels", () => {
         )
       )._tag,
     ).toBe("ok");
-    return { api, listRepositoryLabels };
+    return { api, adapter };
   }
 
   // Mirrors "GET /v1/inbox page size boundary"'s "rejects a repository the
@@ -839,7 +827,7 @@ describe("GET /v1/inbox/labels", () => {
   // without this a renderer could read labels from any repository the
   // active token can see, not just a watched one.
   it("rejects a repository the active profile does not watch, with no GitHub read", async () => {
-    const { api, listRepositoryLabels } = await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(
       new URL(
@@ -853,11 +841,11 @@ describe("GET /v1/inbox/labels", () => {
     await expect(response.json()).resolves.toEqual({
       error: "invalid_input",
     });
-    expect(listRepositoryLabels).not.toHaveBeenCalled();
+    expect(adapter.calls.listRepositoryLabels).toHaveLength(0);
   });
 
   it("accepts a watched repository and returns its GitHub-read labels", async () => {
-    const { api, listRepositoryLabels } = await startWithWatchedProfile();
+    const { api, adapter } = await startWithWatchedProfile();
 
     const response = await fetch(
       new URL(
@@ -873,7 +861,7 @@ describe("GET /v1/inbox/labels", () => {
       labels: [{ id: "LA_bug", name: "bug", color: "d73a4a" }],
       totalCount: 1,
     });
-    expect(listRepositoryLabels).toHaveBeenCalledWith(
+    expect(adapter.calls.listRepositoryLabels).toEqual([
       expect.objectContaining({
         repo: {
           host: "github.com",
@@ -881,7 +869,64 @@ describe("GET /v1/inbox/labels", () => {
           repo: "patchdesk",
         },
       }),
+    ]);
+  });
+});
+
+describe("GET /v1/environment GitHub authentication", () => {
+  // Plain `gh auth status` fails on any invalid listed account; the JSON probe reports each account's own state.
+  function fakeGhAuthStatus(accountStates: ReadonlyArray<string>): void {
+    const hosts = {
+      "github.com": accountStates.map((state, index) => ({
+        active: index === 0,
+        host: "github.com",
+        login: `account-${index}`,
+        state,
+      })),
+    };
+    // oxlint-disable-next-line patchdesk/no-method-spying -- LocalApiConfiguration exposes no executor seam, so the GET /v1/environment path builds its own CommandRunner; follow-up: add commands to LocalApiConfiguration.
+    vi.spyOn(NodeCommandExecutor.prototype, "execute").mockImplementation(
+      async (input): Promise<CommandExecution> => {
+        const json = input.argv.includes("--json");
+        return {
+          _tag: "Exited",
+          exitCode: json ? 0 : 1,
+          stdout: json ? JSON.stringify({ hosts }) : "",
+          stderr: json
+            ? ""
+            : "X Failed to log in to github.com account stale (keyring)\n  - To re-authenticate, run: gh auth login -h github.com",
+        };
+      },
     );
+  }
+
+  async function environment() {
+    const api = await start();
+    const response = await fetch(new URL("v1/environment", api.url), {
+      headers: headers(),
+    });
+    expect(response.status).toBe(200);
+    return response.json();
+  }
+
+  it("reports ready when one account works though another has an invalid token", async () => {
+    fakeGhAuthStatus(["success", "invalid token"]);
+
+    await expect(environment()).resolves.toMatchObject({
+      githubAuth: "ready",
+      githubAccounts: [
+        { host: "github.com", login: "account-0", active: true },
+      ],
+    });
+  });
+
+  it("reports authentication required when no account works", async () => {
+    fakeGhAuthStatus(["invalid token"]);
+
+    await expect(environment()).resolves.toMatchObject({
+      githubAuth: "authentication_required",
+      githubAccounts: [],
+    });
   });
 });
 

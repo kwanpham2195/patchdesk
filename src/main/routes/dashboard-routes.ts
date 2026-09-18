@@ -7,6 +7,7 @@ import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
+  INBOX_PRESET_VALUES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
   inboxSearchQueryExcess,
   MAX_INBOX_FILTER_LABELS,
@@ -17,6 +18,7 @@ import {
   type InboxFilter,
   type InboxFilterTextFailure,
   type InboxPageSize,
+  type InboxPreset,
   type InboxReviewStateFilter,
 } from "../../domain/maintainer-inbox";
 import {
@@ -104,10 +106,8 @@ export function registerDashboardRoutes(
       const labels = parseInboxLabelsQuery(context.req.queries("label") ?? []);
       if (labels === "invalid")
         return response(context, err({ reason: "invalid_input" }));
-      const awaitingMyReview = parseInboxBooleanQuery(
-        context.req.query("awaitingMyReview"),
-      );
-      if (awaitingMyReview === "invalid")
+      const preset = parseInboxPresetQuery(context.req.query("preset"));
+      if (preset === "invalid")
         return response(context, err({ reason: "invalid_input" }));
       const reviewState = parseInboxReviewStateQuery(
         context.req.query("reviewState"),
@@ -132,9 +132,7 @@ export function registerDashboardRoutes(
       if (baseBranch._tag === "err")
         return response(context, err({ reason: "invalid_input" }));
       const labelsField = labels.length === 0 ? {} : { labels };
-      const awaitingMyReviewField = awaitingMyReview
-        ? { awaitingMyReview }
-        : {};
+      const presetField = preset === undefined ? {} : { preset };
       const reviewStateField = reviewState === undefined ? {} : { reviewState };
       const checkStatusField = checkStatus === undefined ? {} : { checkStatus };
       const authorField =
@@ -144,7 +142,7 @@ export function registerDashboardRoutes(
       const filter: InboxFilter = {
         state,
         ...labelsField,
-        ...awaitingMyReviewField,
+        ...presetField,
         ...reviewStateField,
         ...checkStatusField,
         ...authorField,
@@ -239,8 +237,9 @@ export function registerDashboardRoutes(
       }),
       git: git._tag === "ok" ? "ready" : "missing",
       gh: gh._tag === "ok" ? "ready" : "missing",
+      // Plain `gh auth status` exits nonzero when any listed account is invalid, so a working account decides readiness first.
       githubAuth:
-        ghAuth._tag === "ok"
+        githubAccounts.length > 0 || ghAuth._tag === "ok"
           ? "ready"
           : ghAuth.error._tag === "CommandAuthenticationRequired"
             ? "authentication_required"
@@ -293,29 +292,17 @@ function parseInboxRepositoryQuery(
 }
 
 /**
- * Validates the `GET /v1/inbox` `label` query param(s) — repeatable, one per
- * selected label — into the structured filter `composeInboxSearchQuery`
- * composes into `label:"NAME"` qualifiers. Bounded by count and length; the
- * composed query's own length is checked once, over every field together, by
- * `inboxSearchQueryExcess` at the route, and the values here are also
- * stripped of the double quote a label name would otherwise use to break
- * out of its own qualifier. This is the injection boundary ADR 0031/0032
- * name: the renderer sends label names, never GitHub search-qualifier text.
+ * Parses the one-click preset. Absent means none; an unrecognized value is
+ * `invalid_input` rather than a silent none, so a typo in the query string is
+ * reported instead of quietly widening the listing.
  */
-/**
- * Validates a boolean `GET /v1/inbox` filter param — today the "Awaiting
- * review from you" preset. Absent means off; only the spellings a
- * `URLSearchParams` caller would produce are accepted, and anything else is
- * `invalid_input` rather than a silent false, so a typo in the query string
- * is reported instead of quietly widening the listing.
- */
-function parseInboxBooleanQuery(
+function parseInboxPresetQuery(
   value: string | undefined,
-): boolean | "invalid" {
-  if (value === undefined) return false;
-  if (value === "1" || value === "true") return true;
-  if (value === "0" || value === "false") return false;
-  return "invalid";
+): InboxPreset | undefined | "invalid" {
+  if (value === undefined) return undefined;
+  return (
+    INBOX_PRESET_VALUES.find((candidate) => candidate === value) ?? "invalid"
+  );
 }
 
 /** Parses the optional GitHub `review:<value>` qualifier without widening an invalid value. */
@@ -349,6 +336,16 @@ function parseInboxFilterTextQuery(
   return parse(value);
 }
 
+/**
+ * Validates the `GET /v1/inbox` `label` query param(s) — repeatable, one per
+ * selected label — into the structured filter `composeInboxSearchQuery`
+ * composes into `label:"NAME"` qualifiers. Bounded by count and length; the
+ * composed query's own length is checked once, over every field together, by
+ * `inboxSearchQueryExcess` at the route, and the values here are also
+ * stripped of the double quote a label name would otherwise use to break
+ * out of its own qualifier. This is the injection boundary ADR 0031/0032
+ * name: the renderer sends label names, never GitHub search-qualifier text.
+ */
 function parseInboxLabelsQuery(
   values: ReadonlyArray<string>,
 ): ReadonlyArray<string> | "invalid" {

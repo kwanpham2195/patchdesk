@@ -15,9 +15,10 @@ import {
 import type { RepresentedReviewWorktree } from "../domain/represented-review-worktree";
 import type {
   InsightInvocationInput,
+  InsightInvocationOptions,
   InsightInvoker,
 } from "./insight-run-coordinator";
-import { err } from "../domain/result";
+import { casesHandled, err } from "../domain/result";
 import { prepareBriefPrompt, type BriefPromptFailure } from "./brief-operation";
 import { composeReviewPrompt } from "./review-rubric";
 import {
@@ -48,7 +49,7 @@ export class CodexInsightInvoker implements InsightInvoker {
 
   async invoke(
     input: InsightInvocationInput,
-    options: { readonly signal: AbortSignal },
+    options: InsightInvocationOptions,
   ) {
     if (input.provider !== "codex-cli-account")
       return err({ reason: "execution_failed" as const });
@@ -223,24 +224,25 @@ export class CodexInsightInvoker implements InsightInvoker {
 function promptPreparationFailure(
   failure: WalkthroughPromptFailure | BriefPromptFailure,
 ) {
-  if (
-    failure.reason === "artifact_too_large" ||
-    failure.reason === "patch_too_large"
-  )
-    return {
-      reason: "execution_failed",
-      phase: "prompt_artifact_too_large",
-    } as const;
-  if (
-    failure.reason === "artifact_unreadable" ||
-    failure.reason === "patch_unreadable"
-  )
-    return {
-      reason: "runtime_unavailable",
-      phase: "prompt_artifact_unreadable",
-    } as const;
-  return {
-    reason: "execution_failed",
-    phase: "prompt_patch_not_indexable",
-  } as const;
+  switch (failure.reason) {
+    case "artifact_too_large":
+    case "patch_too_large":
+      return {
+        reason: "execution_failed",
+        phase: "prompt_artifact_too_large",
+      } as const;
+    case "artifact_unreadable":
+    case "patch_unreadable":
+      return {
+        reason: "runtime_unavailable",
+        phase: "prompt_artifact_unreadable",
+      } as const;
+    case "patch_not_indexable":
+      return {
+        reason: "execution_failed",
+        phase: "prompt_patch_not_indexable",
+      } as const;
+    default:
+      return casesHandled(failure);
+  }
 }

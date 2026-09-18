@@ -25,6 +25,14 @@ export const DEFAULT_INBOX_PAGE_SIZE: InboxPageSize = 25;
 export const INBOX_STATE_FILTER_VALUES = ["open", "merged"] as const;
 export type InboxStateFilter = (typeof INBOX_STATE_FILTER_VALUES)[number];
 
+/** The one-click filter-bar presets. A single field holds at most one of
+ * them, so their exclusivity needs no check at any layer. */
+export const INBOX_PRESET_VALUES = [
+  "awaiting_my_review",
+  "my_pull_requests",
+] as const;
+export type InboxPreset = (typeof INBOX_PRESET_VALUES)[number];
+
 /** The GitHub review states that a pull-request listing can filter to. */
 export const INBOX_REVIEW_STATE_FILTER_VALUES = [
   "none",
@@ -145,13 +153,13 @@ export type InboxFilter = {
    * and free of the double quote that would let one break out of its
    * qualifier — enforced at the route, not here. */
   readonly labels?: ReadonlyArray<string>;
-  /** The "Awaiting review from you" preset from ADR 0031 — GitHub's
-   * `user-review-requested:@me` qualifier, which GitHub itself resolves to
-   * the authenticated viewer, so Patchdesk never looks the login up. A
-   * filter preset, not a queue: it composes with `state` and `labels` rather
-   * than replacing the listing. Unlike `labels` it is not
-   * repository-scoped, so a repository change carries it over. */
-  readonly awaitingMyReview?: boolean;
+  /** The one-click preset from ADR 0031, sent as the GitHub qualifier in
+   * `INBOX_PRESET_QUALIFIERS`. Each resolves `@me` server-side, so Patchdesk
+   * never looks the viewer's login up. A filter preset, not a queue: it
+   * composes with `state` and `labels` rather than replacing the listing.
+   * Unlike `labels` it is not repository-scoped, so a repository change
+   * carries it over. */
+  readonly preset?: InboxPreset;
   /** GitHub's `review:<value>` qualifier; absent means any review state. */
   readonly reviewState?: InboxReviewStateFilter;
   /** GitHub's `status:<value>` qualifier; absent means any check status. */
@@ -164,6 +172,15 @@ export type InboxFilter = {
 
 /** GitHub's search API refuses a query longer than this. */
 export const INBOX_SEARCH_QUERY_MAX_LENGTH = 256;
+
+// `@me` is GitHub's own token for the authenticated viewer and is resolved
+// server-side, so neither preset needs a viewer login lookup. Probed
+// 2026-08-26: `author:@me` and `author:<login>` return the identical
+// `issueCount`.
+const INBOX_PRESET_QUALIFIERS = {
+  awaiting_my_review: "user-review-requested:@me",
+  my_pull_requests: "author:@me",
+} satisfies Record<InboxPreset, string>;
 
 /**
  * Builds the GitHub search qualifier string for a set of repositories and one
@@ -187,11 +204,10 @@ export function composeInboxSearchQuery(
   filter: InboxFilter,
 ): string {
   const stateQualifier = filter.state === "merged" ? "is:merged" : "is:open";
-  // `@me` is GitHub's own token for the authenticated viewer and is resolved
-  // server-side, so this needs no viewer login lookup. Probed 2026-08-26:
-  // `author:@me` and `author:<login>` return the identical `issueCount`.
   const qualifiers = [
-    ...(filter.awaitingMyReview ? ["user-review-requested:@me"] : []),
+    ...(filter.preset === undefined
+      ? []
+      : [INBOX_PRESET_QUALIFIERS[filter.preset]]),
     ...(filter.reviewState === undefined
       ? []
       : [`review:${filter.reviewState}`]),
@@ -238,6 +254,15 @@ export const INBOX_STATE_FILTERS: ReadonlyArray<{
   { state: "merged", label: "Merged pull requests" },
 ];
 
+/** Presented together in the filter bar and the command palette; one list so the two surfaces cannot drift. */
+export const INBOX_PRESET_FILTERS: ReadonlyArray<{
+  readonly preset: InboxPreset;
+  readonly label: string;
+}> = [
+  { preset: "awaiting_my_review", label: "Awaiting review from you" },
+  { preset: "my_pull_requests", label: "Your pull requests" },
+];
+
 /** Parsed inbox pagination intent; page tokens remain opaque outside the main process. */
 export type InboxPageRequest = {
   readonly filter: InboxFilter;
@@ -245,7 +270,12 @@ export type InboxPageRequest = {
   readonly pageToken?: string;
 };
 
-export type InboxCategory = "updated_since_review" | "ready_to_merge";
+/** Every inbox row category; the renderer and cache picklists are built from this list. */
+export const INBOX_CATEGORIES = [
+  "updated_since_review",
+  "ready_to_merge",
+] as const;
+export type InboxCategory = (typeof INBOX_CATEGORIES)[number];
 
 export type InboxRecommendedAction =
   | { readonly kind: "run_review" }
@@ -260,6 +290,8 @@ export type InboxReviewSummary = {
   readonly reviewedHeadSha: GitSha;
   readonly updatedAt: IsoTimestamp;
   readonly matchesCurrentHead: boolean;
+  /** The head the maintainer last left this Review at; absent until they first leave it. */
+  readonly lastLookedHeadSha?: GitSha;
 };
 
 /**
@@ -315,12 +347,28 @@ export type MaintainerInboxRow = {
    */
   readonly insights?: InboxInsightReadiness;
   readonly latestReview?: InboxReviewSummary;
+  /** New commits arrived since the maintainer last left this Review; false before they first leave it. */
+  readonly headMovedSinceLastLooked: boolean;
   readonly labels: ReadonlyArray<GitHubLabel>;
   readonly labelCount?: number;
   readonly categories: ReadonlyArray<InboxCategory>;
   readonly recommendedAction: InboxRecommendedAction;
   readonly dataFreshness: InboxDataFreshness;
 };
+
+/**
+ * Whether new commits arrived since the maintainer last left the Review. Only
+ * the head counts (#231): comment and review marks belong to Conversation.
+ */
+export function headMovedSinceLastLooked(
+  review: InboxReviewSummary | undefined,
+  currentHeadSha: GitSha,
+): boolean {
+  return (
+    review?.lastLookedHeadSha !== undefined &&
+    review.lastLookedHeadSha !== currentHeadSha
+  );
+}
 
 /** Project one PR into overlapping queue categories and one truthful primary action. */
 export function projectMaintainerInboxRow(input: {
@@ -391,6 +439,10 @@ export function projectMaintainerInboxRow(input: {
     ...scopeField,
     ...definedProps({ insights: input.insights }),
     ...latestReviewField,
+    headMovedSinceLastLooked: headMovedSinceLastLooked(
+      review,
+      input.summary.headSha,
+    ),
     labels: input.summary.labels,
     ...labelCountField,
     categories,
@@ -440,6 +492,7 @@ function projectMergedMaintainerInboxRow(input: {
     mergeability: input.summary.mergeability,
     ...scopeField,
     ...definedProps({ insights: input.insights }),
+    headMovedSinceLastLooked: false,
     labels: input.summary.labels,
     ...labelCountField,
     categories: [],

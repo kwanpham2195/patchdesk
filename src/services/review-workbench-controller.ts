@@ -1,5 +1,10 @@
 import type { Review, ReviewIdentity } from "../domain/review";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type {
+  GitSha,
+  IsoTimestamp,
+  ReviewId,
+  WorkspaceProfileId,
+} from "../domain/ids";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -10,7 +15,11 @@ import {
   createReviewId,
   parseWorkspaceProfileId,
 } from "../domain/ids";
-import { createReview, markReviewOpened } from "../domain/review";
+import {
+  createReview,
+  markReviewLeft,
+  markReviewOpened,
+} from "../domain/review";
 import type { ReviewStore } from "../adapters/storage/review-store";
 import type { ReviewRemoteStore } from "../adapters/storage/review-remote-store";
 import type { ReviewObservationJournalStore } from "../adapters/storage/review-observation-journal-store";
@@ -557,6 +566,44 @@ export class ReviewWorkbenchController {
       reviewId,
     });
     return recovered._tag === "ok" ? ok(undefined) : err({ reason: "storage" });
+  }
+
+  /**
+   * Stamps the last-looked cursor from what the renderer showed. The stored
+   * snapshot is not a substitute: a Refresh can save a newer one while the
+   * maintainer navigates away before seeing it.
+   */
+  async leave(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly headSha: GitSha;
+    readonly seenThrough: IsoTimestamp | undefined;
+  }): Promise<Result<null, ReviewWorkbenchFailure>> {
+    return this.lifecycle.coordinator.withReviewLock(
+      input.profileId,
+      input.reviewId,
+      async () => {
+        const review = await this.lifecycle.reviews.load(
+          input.profileId,
+          input.reviewId,
+        );
+        if (review._tag === "err")
+          return err({
+            reason:
+              review.error.reason === "not_found" ? "not_found" : "storage",
+          });
+        const left = markReviewLeft(review.value, {
+          headSha: input.headSha,
+          seenThrough: input.seenThrough,
+          now: this.now(),
+        });
+        const saved = await this.lifecycle.reviews.save(
+          left,
+          review.value.updatedAt,
+        );
+        return saved._tag === "ok" ? ok(null) : err({ reason: "storage" });
+      },
+    );
   }
 
   async commitDiff(

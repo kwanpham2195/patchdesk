@@ -24,6 +24,8 @@ import { InlineConversationService } from "../services/inline-conversation-servi
 import { LabelService } from "../services/label-service";
 import { AssigneeService } from "../services/assignee-service";
 import { ReviewerService } from "../services/reviewer-service";
+import { BaseBranchService } from "../services/base-branch-service";
+import { DraftStateService } from "../services/draft-state-service";
 import { PendingReviewService } from "../services/pending-review-service";
 import { PullRequestImageService } from "../services/pull-request-image-service";
 import { DirectSummaryReviewService } from "../services/direct-summary-review-service";
@@ -43,6 +45,7 @@ import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import { SidebarListingService } from "../services/sidebar-listing-service";
+import { WatchedPullRequestService } from "../services/watched-pull-request-service";
 import type { AppLogService } from "../services/app-log-service";
 
 /** The narrow log seam every request-scoped writer needs. */
@@ -70,11 +73,15 @@ export type LocalApiContainer = {
   readonly labelWrites: LabelService;
   readonly assigneeWrites: AssigneeService;
   readonly reviewerWrites: ReviewerService;
+  readonly draftStateWrites: DraftStateService;
+  readonly baseBranchWrites: BaseBranchService;
   readonly pendingReviews: PendingReviewService;
   readonly directSummaryReviews: DirectSummaryReviewService | undefined;
   readonly publishedFeedback: PublishedFeedbackService;
   readonly pullRequestImages: PullRequestImageService;
   readonly sidebarListing: SidebarListingService;
+  readonly watchedPullRequests: WatchedPullRequestService;
+  readonly reviewOperations: ReviewOperationCoordinator;
 };
 
 /** Either the built container, or the startup refusal that stopped it. */
@@ -110,6 +117,7 @@ export async function buildLocalApiContainer(
     storageArtifacts,
     lifecycleGate,
     insights,
+    watchedPullRequests,
     storageManagement,
   } = built.stores;
   await ReviewPreparationJournal.recover(
@@ -173,6 +181,7 @@ export async function buildLocalApiContainer(
     artifacts: new ReviewArtifactStorage(paths, systemNow),
     lifecycleGate,
     diagnostics,
+    notifier: configuration.desktopNotifier,
   });
   const reviewProjection = new ReviewWorkbenchProjectionService(
     profiles,
@@ -189,6 +198,7 @@ export async function buildLocalApiContainer(
     systemNow,
     recentWriteJournals,
     reviewWriteOperations,
+    configuration.desktopNotifier,
   );
   const reviewWriteRecovery = new ReviewWriteRecoveryService(
     reviewWriteGate,
@@ -205,6 +215,7 @@ export async function buildLocalApiContainer(
     systemNow,
     recentWriteJournals,
     reviewWriteOperations,
+    configuration.desktopNotifier,
   );
   const pullRequestImages = new PullRequestImageService({
     paths,
@@ -221,6 +232,7 @@ export async function buildLocalApiContainer(
     recentWriteJournals,
     reviewWriteOperations,
     avatarRailDependencies,
+    configuration.desktopNotifier,
   );
   const reviewerWrites = new ReviewerService(
     reviewWriteGate,
@@ -230,6 +242,25 @@ export async function buildLocalApiContainer(
     recentWriteJournals,
     reviewWriteOperations,
     avatarRailDependencies,
+    configuration.desktopNotifier,
+  );
+  const draftStateWrites = new DraftStateService(
+    reviewWriteGate,
+    github,
+    reviewOperations,
+    systemNow,
+    recentWriteJournals,
+    reviewWriteOperations,
+    configuration.desktopNotifier,
+  );
+  const baseBranchWrites = new BaseBranchService(
+    reviewWriteGate,
+    github,
+    reviewOperations,
+    systemNow,
+    recentWriteJournals,
+    reviewWriteOperations,
+    configuration.desktopNotifier,
   );
   const pendingReviewGateway = isGitHubPendingReviewGateway(github)
     ? github
@@ -406,6 +437,7 @@ export async function buildLocalApiContainer(
           reviewWriteGate,
           { reviews, insights },
           reviewOperations,
+          configuration.desktopNotifier,
         );
 
   return {
@@ -431,11 +463,22 @@ export async function buildLocalApiContainer(
       labelWrites,
       assigneeWrites,
       reviewerWrites,
+      draftStateWrites,
+      baseBranchWrites,
       pendingReviews,
       directSummaryReviews,
       publishedFeedback,
       pullRequestImages,
       sidebarListing,
+      watchedPullRequests: new WatchedPullRequestService({
+        profiles,
+        store: watchedPullRequests,
+        github,
+        now: systemNow,
+        notifier: configuration.desktopNotifier,
+        onChange: configuration.watchedPullRequestChanged,
+      }),
+      reviewOperations,
     },
   };
 }

@@ -24,8 +24,12 @@ import {
   type RepoRelativePath,
   type WorkspaceProfileId,
 } from "./ids";
-import type { RecentReviewWrite } from "./recent-review-write";
-import { err, ok, type Result } from "./result";
+import {
+  parseRecentReviewWrite,
+  recentReviewWriteRecordSchema,
+  type RecentReviewWrite,
+} from "./recent-review-write";
+import { err, ok, type AssertNever, type Result } from "./result";
 
 /** Revision identity that an uncertain Review write remains bound to. */
 export type ReviewWriteRevision = {
@@ -110,7 +114,42 @@ export type ReviewWriteIntent =
   | {
       readonly _tag: "RemoveReviewers";
       readonly logins: ReadonlyArray<string>;
-    };
+    }
+  | { readonly _tag: "SetDraftState"; readonly draft: boolean }
+  | { readonly _tag: "SetBaseBranch"; readonly branch: string };
+
+/** Every `ReviewWriteIntent` tag; the renderer recovery picklist and the workbench projection are built from this list. */
+export const REVIEW_WRITE_INTENT_TAGS = [
+  "CreateComment",
+  "Reply",
+  "SetThreadState",
+  "EditComment",
+  "DeleteComment",
+  "EditPublishedComment",
+  "DeletePublishedComment",
+  "DismissPublishedReview",
+  "AddLabels",
+  "RemoveLabels",
+  "AddAssignees",
+  "RemoveAssignees",
+  "RequestReviewers",
+  "RemoveReviewers",
+  "SetDraftState",
+  "SetBaseBranch",
+] as const satisfies ReadonlyArray<ReviewWriteIntent["_tag"]>;
+
+/** A `ReviewWriteIntent` tag drawn from `REVIEW_WRITE_INTENT_TAGS`. */
+export type ReviewWriteIntentTag = (typeof REVIEW_WRITE_INTENT_TAGS)[number];
+
+/**
+ * Fails to compile when `ReviewWriteIntent` gains a member that
+ * `REVIEW_WRITE_INTENT_TAGS` omits.
+ *
+ * @public Nothing imports this; the compiler is its only reader.
+ */
+export type UnlistedReviewWriteIntentTag = AssertNever<
+  Exclude<ReviewWriteIntent["_tag"], ReviewWriteIntentTag>
+>;
 
 /** One durable, per-Review direct-conversation write and its recovery state. */
 export type ReviewWriteOperation = {
@@ -193,56 +232,54 @@ const intentSchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("AddLabels"),
-    names: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+    names: v.pipe(
+      v.array(v.pipe(v.string(), v.minLength(1))),
+      v.minLength(1),
+      v.readonly(),
+    ),
   }),
   v.strictObject({
     _tag: v.literal("RemoveLabels"),
-    names: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
+    names: v.pipe(
+      v.array(v.pipe(v.string(), v.minLength(1))),
+      v.minLength(1),
+      v.readonly(),
+    ),
   }),
   v.strictObject({
     _tag: v.literal("AddAssignees"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1)),
+    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
   }),
   v.strictObject({
     _tag: v.literal("RemoveAssignees"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1)),
+    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
   }),
   v.strictObject({
     _tag: v.literal("RequestReviewers"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1)),
+    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
   }),
   v.strictObject({
     _tag: v.literal("RemoveReviewers"),
-    logins: v.pipe(v.array(v.string()), v.minLength(1)),
+    logins: v.pipe(v.array(v.string()), v.minLength(1), v.readonly()),
+  }),
+  v.strictObject({ _tag: v.literal("SetDraftState"), draft: v.boolean() }),
+  v.strictObject({
+    _tag: v.literal("SetBaseBranch"),
+    branch: v.pipe(v.string(), v.minLength(1)),
   }),
 ]);
-const recentWriteSchema = v.variant("_tag", [
-  v.strictObject({
-    _tag: v.literal("Comment"),
-    commentId: v.string(),
-    reviewId: v.optional(v.string()),
-  }),
-  v.strictObject({
-    _tag: v.literal("ThreadState"),
-    threadId: v.string(),
-    state: v.picklist(["open", "resolved"]),
-  }),
-  v.strictObject({
-    _tag: v.literal("LabelChange"),
-    added: v.array(v.string()),
-    removed: v.array(v.string()),
-  }),
-  v.strictObject({
-    _tag: v.literal("AssigneeChange"),
-    added: v.array(v.string()),
-    removed: v.array(v.string()),
-  }),
-  v.strictObject({
-    _tag: v.literal("ReviewerChange"),
-    requested: v.array(v.string()),
-    removed: v.array(v.string()),
-  }),
-]);
+
+/**
+ * Fails to compile when `intentSchema` and `REVIEW_WRITE_INTENT_TAGS` disagree
+ * in either direction, so a listed tag cannot be persisted without a variant.
+ *
+ * @public Nothing imports this; the compiler is its only reader.
+ */
+export type UnlistedIntentSchemaTag = AssertNever<
+  | Exclude<v.InferOutput<typeof intentSchema>["_tag"], ReviewWriteIntentTag>
+  | Exclude<ReviewWriteIntentTag, v.InferOutput<typeof intentSchema>["_tag"]>
+>;
+
 const operationSchema = v.strictObject({
   schemaVersion: v.literal(1),
   profileId: v.string(),
@@ -257,11 +294,16 @@ const operationSchema = v.strictObject({
     }),
     v.strictObject({
       _tag: v.literal("Confirmed"),
-      receipt: v.optional(recentWriteSchema),
+      receipt: v.optional(recentReviewWriteRecordSchema),
     }),
   ]),
   startedAt: v.string(),
 });
+
+/** The persisted form of an operation record; the store writes this, parseReviewWriteOperation reads it. */
+export type PersistedReviewWriteOperation = v.InferOutput<
+  typeof operationSchema
+>;
 
 /** Parse a persisted operation, including every branded identity at the storage boundary. */
 export function parseReviewWriteOperation(
@@ -384,6 +426,9 @@ function parseIntent(
       if (logins.some((login) => login._tag === "err")) return invalid();
       return ok(intent);
     }
+    case "SetDraftState":
+    case "SetBaseBranch":
+      return ok(intent);
   }
 }
 
@@ -412,32 +457,10 @@ function parseState(
   if (state._tag === "Requested") return state;
   if (state._tag === "OutcomeUnknown") return state;
   if (state.receipt === undefined) return { _tag: "Confirmed" };
-  if (state.receipt._tag === "Comment") {
-    return {
-      _tag: "Confirmed",
-      receipt:
-        state.receipt.reviewId === undefined
-          ? { _tag: "Comment", commentId: state.receipt.commentId }
-          : {
-              _tag: "Comment",
-              commentId: state.receipt.commentId,
-              reviewId: state.receipt.reviewId,
-            },
-    };
-  }
-  if (state.receipt._tag === "ThreadState") {
-    const threadId = parseGitHubThreadId(state.receipt.threadId);
-    if (threadId._tag === "err") return undefined;
-    return {
-      _tag: "Confirmed",
-      receipt: {
-        _tag: "ThreadState",
-        threadId: threadId.value,
-        state: state.receipt.state,
-      },
-    };
-  }
-  return { _tag: "Confirmed", receipt: state.receipt };
+  const receipt = parseRecentReviewWrite(state.receipt);
+  return receipt._tag === "err"
+    ? undefined
+    : { _tag: "Confirmed", receipt: receipt.value };
 }
 
 /** Advance a requested write immediately before its GitHub mutation. */

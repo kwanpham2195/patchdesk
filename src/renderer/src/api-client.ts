@@ -41,12 +41,47 @@ export class PatchdeskApiError extends Error {
   }
 }
 
+/** A condition the maintainer can change before retrying; `contextualMessage` words it by `reason`. */
+export type ReviewPreconditionReason =
+  | "diff_unreadable"
+  | "diff_anchor_unverifiable"
+  | "stale_finding_evidence";
+
+/**
+ * A renderer flow refused to send a request because a precondition failed.
+ * Carries a closed `reason` so the screen, not the flow, owns the copy.
+ */
+export class ReviewPreconditionError extends Error {
+  constructor(readonly reason: ReviewPreconditionReason) {
+    super(preconditionMessage(reason));
+    this.name = "ReviewPreconditionError";
+  }
+}
+
+/**
+ * A 2xx response Patchdesk could not trust after a write. Status `200` and a
+ * site-naming `correlationId` let the Logs panel tell it from an API failure.
+ */
+export function untrustedWriteResponseError(
+  correlationId: string,
+): PatchdeskApiError {
+  return new PatchdeskApiError(
+    "outcome_unknown",
+    200,
+    false,
+    correlationId,
+    "GitHub could not confirm this write. Check GitHub again before trying again.",
+  );
+}
+
 export async function requestJson(
   path: string,
   init: Omit<LocalApiDesktopRequest, "path"> = {},
 ): Promise<RawJsonValue | undefined> {
   const startedAt = performance.now();
-  const skipLogging = path === "/v1/logs" || path === "/health";
+  // Compare the pathname so the Logs panel's query-string poll is skipped too.
+  const pathname = path.split("?", 1)[0];
+  const skipLogging = pathname === "/v1/logs" || pathname === "/health";
   if (globalThis.window === undefined || !("patchdesk" in window)) {
     throw new PatchdeskApiError(
       "unavailable",
@@ -167,11 +202,12 @@ export async function selectDirectory(
  * The copy one screen shows for a failed request: the screen's own wording
  * for the kinds it words differently, and `safeMessage` for the rest.
  *
- * `fallback` is only for a cause that is not a Patchdesk API failure at all —
- * a bug, or a parse that threw — where there is no kind to word.
+ * `fallback` is only for a cause that is neither a Patchdesk API failure nor
+ * a `ReviewPreconditionError` — a bug, or a parse that threw.
  */
 export type ContextualMessages = Partial<Record<ApiFailureKind, string>> & {
   readonly fallback: string;
+  readonly precondition?: Partial<Record<ReviewPreconditionReason, string>>;
 };
 
 /**
@@ -191,6 +227,11 @@ export function contextualMessage(
   cause: unknown,
   overrides: ContextualMessages,
 ): string {
+  if (cause instanceof ReviewPreconditionError)
+    return (
+      overrides.precondition?.[cause.reason] ??
+      preconditionMessage(cause.reason)
+    );
   if (!(cause instanceof PatchdeskApiError)) return overrides.fallback;
   return overrides[cause.kind] ?? safeMessage(cause.kind);
 }
@@ -296,6 +337,17 @@ function safeMessage(kind: ApiFailureKind): string {
       return "GitHub limits a pull request to ten assignees.";
     case "internal":
       return "Patchdesk could not complete the request.";
+  }
+}
+
+function preconditionMessage(reason: ReviewPreconditionReason): string {
+  switch (reason) {
+    case "diff_unreadable":
+      return "Patchdesk could not read the current diff for this review. Refresh, then try again.";
+    case "diff_anchor_unverifiable":
+      return "Patchdesk could not verify this pending review against the current diff. Refresh, then try again.";
+    case "stale_finding_evidence":
+      return "This Finding no longer matches the current diff or pending review. Check GitHub again or refresh before changing it.";
   }
 }
 

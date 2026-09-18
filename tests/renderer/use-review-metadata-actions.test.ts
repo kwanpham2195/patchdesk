@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RawJsonValue } from "../../src/domain/json";
 import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
+import { PatchdeskApiError } from "../../src/renderer/src/api-client";
 import {
   useReviewMetadataActions,
+  type BaseBranchChangeOutcome,
   type ReviewMetadataActions,
 } from "../../src/renderer/src/flows/use-review-metadata-actions";
 import {
@@ -26,10 +28,12 @@ type ActionCase = {
     | "AddAssignees"
     | "RemoveAssignees"
     | "RequestReviewers"
-    | "RemoveReviewers";
+    | "RemoveReviewers"
+    | "SetDraftState"
+    | "SetBaseBranch";
   readonly invoke: (
     actions: ReviewMetadataActions,
-  ) => Promise<void | ReadonlyArray<string>>;
+  ) => Promise<void | ReadonlyArray<string> | BaseBranchChangeOutcome>;
   readonly receipt: RawJsonValue;
   readonly wrongReceipt: RawJsonValue;
   readonly evidence: RecentReviewWrite;
@@ -99,14 +103,33 @@ const cases: ReadonlyArray<ActionCase> = [
     wrongReceipt: { _tag: "ReviewersRemoved", removed: ["other"] },
     evidence: { _tag: "ReviewerChange", requested: [], removed: ["hubot"] },
   },
+  {
+    name: "SetDraftState",
+    path: "/v1/reviews/draft-state/command",
+    operation: "SetDraftState",
+    invoke: (a) => a.setDraftState(false),
+    receipt: { _tag: "DraftStateChanged", draft: false },
+    wrongReceipt: { _tag: "DraftStateChanged", draft: true },
+    evidence: { _tag: "DraftStateChange", draft: false },
+  },
+  {
+    name: "SetBaseBranch",
+    path: "/v1/reviews/base-branch/command",
+    operation: "SetBaseBranch",
+    invoke: (a) => a.setBaseBranch("release/1.2"),
+    receipt: { _tag: "BaseBranchChanged", branch: "release/1.2" },
+    wrongReceipt: { _tag: "BaseBranchChanged", branch: "main" },
+    evidence: { _tag: "BaseBranchChange", branch: "release/1.2" },
+  },
 ];
 
 function renderActions(
   path: string,
   response: ReturnType<typeof success> | ReturnType<typeof failure>,
   observe = vi.fn(async () => undefined),
+  requestRefresh = vi.fn(async () => projection()),
 ) {
-  installDesktopDouble({
+  const desktop = installDesktopDouble({
     [path]: async () => response,
   });
   const requireRecovery = vi.fn();
@@ -118,9 +141,17 @@ function renderActions(
       appendRecentWrites,
       observeConfirmedReviewWrite: observe,
       requireRecovery,
+      requestRefresh,
     }),
   );
-  return { ...rendered, requireRecovery, appendRecentWrites, observe };
+  return {
+    ...rendered,
+    desktop,
+    requireRecovery,
+    appendRecentWrites,
+    observe,
+    requestRefresh,
+  };
 }
 
 describe("useReviewMetadataActions", () => {
@@ -140,7 +171,12 @@ describe("useReviewMetadataActions", () => {
     it(`${row.name} sends wrong tag or membership to its exact recovery operation`, async () => {
       const rendered = renderActions(row.path, success(row.wrongReceipt));
       await act(async () => {
-        await expect(row.invoke(rendered.result.current)).rejects.toThrow();
+        const request = row.invoke(rendered.result.current);
+        await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+        await expect(request).rejects.toMatchObject({
+          kind: "outcome_unknown",
+          correlationId: "invalid-metadata-confirmation-response",
+        });
       });
       expect(rendered.requireRecovery).toHaveBeenCalledExactlyOnceWith(
         row.operation,
@@ -156,9 +192,14 @@ describe("useReviewMetadataActions", () => {
       success({ _tag: "LabelsAdded", added: ["bug"], extra: true }),
     );
     await act(async () => {
-      await expect(
-        rendered.result.current.addLabels([{ id: "LA_bug", name: "bug" }]),
-      ).rejects.toThrow();
+      const request = rendered.result.current.addLabels([
+        { id: "LA_bug", name: "bug" },
+      ]);
+      await expect(request).rejects.toBeInstanceOf(PatchdeskApiError);
+      await expect(request).rejects.toMatchObject({
+        kind: "outcome_unknown",
+        correlationId: "invalid-metadata-confirmation-response",
+      });
     });
     expect(rendered.requireRecovery).toHaveBeenCalledExactlyOnceWith(
       "AddLabels",
@@ -210,6 +251,64 @@ describe("useReviewMetadataActions", () => {
       act(async () => rendered.result.current.assignSelf()),
     ).resolves.toEqual(["octocat"]);
     await vi.waitFor(() => expect(observe).toHaveBeenCalledOnce());
+    expect(rendered.requireRecovery).not.toHaveBeenCalled();
+  });
+
+  it("sends the base-branch command and rebuilds the Review once GitHub confirms it", async () => {
+    const events: Array<string> = [];
+    const requestRefresh = vi.fn(async () => {
+      events.push("refresh");
+      return projection();
+    });
+    const rendered = renderActions(
+      "/v1/reviews/base-branch/command",
+      success({ _tag: "BaseBranchChanged", branch: "release/1.2" }),
+      vi.fn(async () => undefined),
+      requestRefresh,
+    );
+    rendered.desktop.request.mockImplementationOnce(async (input) => {
+      events.push("command");
+      expect(input).toMatchObject({
+        path: "/v1/reviews/base-branch/command",
+        method: "POST",
+        body: {
+          profileId: projection().session.key.profileId,
+          reviewId: projection().review.id,
+          command: { _tag: "SetBaseBranch", branch: "release/1.2" },
+        },
+      });
+      return success({ _tag: "BaseBranchChanged", branch: "release/1.2" });
+    });
+    await act(async () => {
+      await expect(
+        rendered.result.current.setBaseBranch("release/1.2"),
+      ).resolves.toEqual({ _tag: "Refreshed" });
+    });
+    expect(events).toEqual(["command", "refresh"]);
+  });
+
+  it("keeps a confirmed base change when the refresh fails, without retrying the write", async () => {
+    const requestRefresh = vi.fn(async () => {
+      throw new Error("refresh failed");
+    });
+    const rendered = renderActions(
+      "/v1/reviews/base-branch/command",
+      success({ _tag: "BaseBranchChanged", branch: "release/1.2" }),
+      vi.fn(async () => undefined),
+      requestRefresh,
+    );
+    await act(async () => {
+      await expect(
+        rendered.result.current.setBaseBranch("release/1.2"),
+      ).resolves.toEqual({ _tag: "RefreshFailed", branch: "release/1.2" });
+    });
+    expect(requestRefresh).toHaveBeenCalledOnce();
+    expect(
+      rendered.desktop.request.mock.calls.filter(
+        ([input]) =>
+          "path" in input && input.path === "/v1/reviews/base-branch/command",
+      ),
+    ).toHaveLength(1);
     expect(rendered.requireRecovery).not.toHaveBeenCalled();
   });
 });

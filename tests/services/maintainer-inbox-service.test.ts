@@ -254,25 +254,20 @@ describe("MaintainerInboxService search query", () => {
     );
 
     // A preset, not a queue: it composes beside the state and the label
-    // qualifiers rather than replacing them. `@me` reaches GitHub verbatim —
-    // GitHub resolves it to the authenticated viewer, so Patchdesk never
-    // looks the login up.
+    // qualifiers rather than replacing them.
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
-    await service.list(
-      { id: "cfw", ghAccount: "fixture" } as never,
-      repository,
-      {
-        filter: { state: "open", labels: ["bug"], awaitingMyReview: true },
-        pageSize: 25,
-      },
-    );
+    const profile = { id: "cfw", ghAccount: "fixture" } as never;
+    await service.list(profile, repository, {
+      filter: { state: "open", labels: ["bug"], preset: "awaiting_my_review" },
+      pageSize: 25,
+    });
 
     expect(searchQueries).toEqual([
       'repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me label:"bug"',
     ]);
   });
 
-  it("omits the Awaiting review from you qualifier when the preset is off", async () => {
+  it("omits every preset qualifier when no preset is chosen", async () => {
     const searchQueries: Array<string> = [];
     // SAFETY: this fixture implements only the GitHub reader members list() calls.
     const service = new MaintainerInboxService(
@@ -298,7 +293,7 @@ describe("MaintainerInboxService search query", () => {
     await service.list(
       { id: "cfw", ghAccount: "fixture" } as never,
       repository,
-      { filter: { state: "open", awaitingMyReview: false }, pageSize: 25 },
+      { filter: { state: "open" }, pageSize: 25 },
     );
 
     expect(searchQueries).toEqual([
@@ -306,7 +301,7 @@ describe("MaintainerInboxService search query", () => {
     ]);
   });
 
-  it("rejects a page token minted under a different Awaiting review from you preset", async () => {
+  it("rejects a page token minted under a different preset", async () => {
     // SAFETY: this fixture implements only the GitHub reader members list() calls.
     const service = new MaintainerInboxService(
       {
@@ -331,7 +326,7 @@ describe("MaintainerInboxService search query", () => {
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     const profile = { id: "cfw", ghAccount: "fixture" } as never;
     const firstPage = await service.list(profile, repository, {
-      filter: { state: "open", awaitingMyReview: true },
+      filter: { state: "open", preset: "awaiting_my_review" },
       pageSize: 25,
     });
     expect(firstPage._tag).toBe("ok");
@@ -339,15 +334,17 @@ describe("MaintainerInboxService search query", () => {
     const pageToken = firstPage.value.nextPageToken;
     if (pageToken === undefined) throw new Error("expected a next page token");
 
-    // Turning the preset off is a different search query, so its cursor is
-    // rejected the same way a label or repository change is.
-    await expect(
-      service.list(profile, repository, {
-        filter: { state: "open" },
-        pageSize: 25,
-        pageToken,
-      }),
-    ).resolves.toMatchObject({ _tag: "err", error: "invalid_page" });
+    // Switching the preset, and clearing it, are each a different search
+    // query, so the cursor is rejected the same way a label or repository
+    // change rejects it.
+    for (const filter of [
+      { state: "open" as const, preset: "my_pull_requests" as const },
+      { state: "open" as const },
+    ]) {
+      await expect(
+        service.list(profile, repository, { filter, pageSize: 25, pageToken }),
+      ).resolves.toMatchObject({ _tag: "err", error: "invalid_page" });
+    }
   });
 
   it("rejects a page token minted under a different label filter", async () => {
@@ -763,7 +760,7 @@ describe("MaintainerInboxService cache writes", () => {
     expect(served.value.rows.map((row) => row.identity.number)).toEqual([42]);
   });
 
-  it("does not cache a read that applied the Awaiting review from you preset", async () => {
+  it("does not cache a read that applied a preset", async () => {
     const saved: Array<MaintainerInboxCache> = [];
     const service = serviceRecordingSaves(
       [pullRequestEntry(7, "fixture-7")],
@@ -774,7 +771,7 @@ describe("MaintainerInboxService cache writes", () => {
     // and repository alone, so a preset-filtered result saved here would come
     // back as the repository's whole inbox.
     await service.list(profile, repository, {
-      filter: { state: "open", awaitingMyReview: true },
+      filter: { state: "open", preset: "awaiting_my_review" },
       pageSize: 25,
     });
 

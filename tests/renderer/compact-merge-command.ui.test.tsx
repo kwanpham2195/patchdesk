@@ -285,6 +285,7 @@ describe("compact merge command", () => {
     // Both reasons carry `code: "checks"`, so a key taken from the code alone
     // gives two list rows the same React identity.
     expect(reasons).toHaveLength(2);
+    // oxlint-disable-next-line patchdesk/no-method-spying -- React reports duplicate keys only through the global `console.error`, which has no seam, so capturing it is the one way to assert the warning is absent.
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);

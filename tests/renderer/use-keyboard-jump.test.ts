@@ -28,6 +28,7 @@ function trackKeydownListeners() {
   let removed = 0;
   const add = window.addEventListener.bind(window);
   const remove = window.removeEventListener.bind(window);
+  // oxlint-disable-next-line patchdesk/no-method-spying -- `useKeyboardJump` attaches to `window` with no event-target parameter, and only an add/remove census can see a listener re-attached on every render.
   vi.spyOn(window, "addEventListener").mockImplementation(
     (type, listener, options) => {
       if (type === "keydown" && listener !== null) {
@@ -37,6 +38,7 @@ function trackKeydownListeners() {
       add(type, listener, options);
     },
   );
+  // oxlint-disable-next-line patchdesk/no-method-spying -- `useKeyboardJump` detaches from `window` with no event-target parameter, and only an add/remove census can see a listener re-attached on every render.
   vi.spyOn(window, "removeEventListener").mockImplementation(
     (type, listener, options) => {
       if (type === "keydown" && listener !== null) {

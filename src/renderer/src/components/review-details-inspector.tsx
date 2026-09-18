@@ -20,6 +20,7 @@ import {
 import { LabelChip } from "./label-chip";
 import { CheckIcon } from "./inbox-row-item";
 import { ScopeGauge } from "./scope-gauge";
+import { WatchPullRequestButton } from "./watch-pull-request-button";
 import {
   ReviewOpeningButtonContent,
   type ReviewOpeningState,
@@ -123,6 +124,12 @@ export function ReviewDetailsInspector({
           </CardContent>
         </Card>
       ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <WatchPullRequestButton
+          pullRequest={row.identity}
+          className="h-8 w-full text-xs"
+        />
+      </div>
       {/* The inspector's one read-only Review entry point; every row state
           opens the same way, so the button says Open rather than naming a
           per-state action. */}

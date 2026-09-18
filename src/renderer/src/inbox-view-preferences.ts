@@ -4,6 +4,7 @@ import {
   inboxSearchQueryExcess,
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
+  INBOX_PRESET_VALUES,
   MAX_INBOX_FILTER_LABELS,
   MAX_INBOX_FILTER_LABEL_LENGTH,
   INBOX_REVIEW_STATE_FILTER_VALUES,
@@ -13,6 +14,7 @@ import {
   type InboxCheckStatusFilter,
   type InboxFilterTextFailure,
   type InboxPageSize,
+  type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../domain/maintainer-inbox";
@@ -75,10 +77,10 @@ const preferencesSchema = v.object({
     cappedStrings(MAX_INBOX_FILTER_LABELS, MAX_INBOX_FILTER_LABEL_LENGTH),
     [],
   ),
-  // The "Awaiting review from you" preset (ADR 0031). Unlike selectedLabels
-  // it is not repository-scoped — `user-review-requested:@me` means the same
-  // thing in every repository — so a repository change carries it over.
-  awaitingMyReview: v.fallback(v.boolean(), false),
+  // The one-click preset (ADR 0031). Unlike selectedLabels it is not
+  // repository-scoped — its qualifier means the same thing in every
+  // repository — so a repository change carries it over.
+  preset: v.fallback(v.optional(v.picklist(INBOX_PRESET_VALUES)), undefined),
   reviewState: v.fallback(
     v.optional(v.picklist(INBOX_REVIEW_STATE_FILTER_VALUES)),
     undefined,
@@ -107,9 +109,9 @@ export type InboxViewPreferences = {
   /** The label filter, sent to GitHub as `label:"NAME"` qualifiers — no
    * longer a local, in-page filter. */
   readonly selectedLabels: ReadonlyArray<string>;
-  /** The "Awaiting review from you" preset, sent to GitHub as
-   * `user-review-requested:@me`. Not repository-scoped — see the schema. */
-  readonly awaitingMyReview: boolean;
+  /** The one-click preset, sent to GitHub as its own qualifier. Not
+   * repository-scoped — see the schema. */
+  readonly preset?: InboxPreset;
   /** The optional GitHub `review:<value>` qualifier. */
   readonly reviewState?: InboxReviewStateFilter;
   /** The optional GitHub `status:<value>` qualifier. */
@@ -127,11 +129,13 @@ export type InboxViewPreferences = {
 };
 
 /**
- * The four More-filters fields. They differ from every other stored field in
- * that an explicitly named `undefined` clears them rather than carrying the
- * stored value over — see `saveInboxViewPreferences`.
+ * The one-click preset and the four More-filters fields. They differ from
+ * every other stored field in that an explicitly named `undefined` clears
+ * them rather than carrying the stored value over — see
+ * `saveInboxViewPreferences`.
  */
 type OptionalInboxFilterKey =
+  | "preset"
   | "reviewState"
   | "checkStatus"
   | "author"
@@ -141,6 +145,7 @@ type InboxViewPreferencesUpdate = Omit<
   Partial<InboxViewPreferences>,
   OptionalInboxFilterKey
 > & {
+  readonly preset?: InboxPreset | undefined;
   readonly reviewState?: InboxReviewStateFilter | undefined;
   readonly checkStatus?: InboxCheckStatusFilter | undefined;
   readonly author?: string | undefined;
@@ -151,7 +156,6 @@ const DEFAULT_INBOX_VIEW_PREFERENCES: InboxViewPreferences = {
   state: "open",
   pageSize: DEFAULT_INBOX_PAGE_SIZE,
   selectedLabels: [],
-  awaitingMyReview: false,
   inspectorOpen: true,
 };
 
@@ -228,8 +232,8 @@ export function inboxPreferencesWithinQueryBudget(
     {
       state: preferences.state,
       labels: preferences.selectedLabels,
-      awaitingMyReview: preferences.awaitingMyReview,
       ...definedProps({
+        preset: preferences.preset,
         reviewState: preferences.reviewState,
         checkStatus: preferences.checkStatus,
         author: preferences.author,
@@ -247,6 +251,7 @@ export function saveInboxViewPreferences(
 ): InboxViewPreferences {
   const stored = loadInboxViewPreferences(profileId);
   const {
+    preset: updatedPreset,
     reviewState: updatedReviewState,
     checkStatus: updatedCheckStatus,
     author: updatedAuthor,
@@ -254,6 +259,7 @@ export function saveInboxViewPreferences(
     ...otherUpdates
   } = update;
   const {
+    preset: storedPreset,
     reviewState: storedReviewState,
     checkStatus: storedCheckStatus,
     author: storedAuthor,
@@ -263,6 +269,7 @@ export function saveInboxViewPreferences(
   const next = withOptionalFilters(
     { ...storedWithoutFilters, ...otherUpdates },
     {
+      preset: Object.hasOwn(update, "preset") ? updatedPreset : storedPreset,
       reviewState: Object.hasOwn(update, "reviewState")
         ? updatedReviewState
         : storedReviewState,
@@ -280,7 +287,7 @@ export function saveInboxViewPreferences(
 }
 
 /**
- * Re-attaches the four More filters, leaving out each key whose value is
+ * Re-attaches the preset and the four More filters, leaving out each key whose value is
  * `undefined` rather than storing the key with an undefined value —
  * `exactOptionalPropertyTypes` treats those as different, and only an absent
  * key survives the round trip through JSON.
@@ -291,10 +298,12 @@ function withOptionalFilters(
     readonly [Key in OptionalInboxFilterKey]: InboxViewPreferences[Key];
   },
 ): InboxViewPreferences {
+  const withPreset =
+    filters.preset === undefined ? base : { ...base, preset: filters.preset };
   const withReviewState =
     filters.reviewState === undefined
-      ? base
-      : { ...base, reviewState: filters.reviewState };
+      ? withPreset
+      : { ...withPreset, reviewState: filters.reviewState };
   const withCheckStatus =
     filters.checkStatus === undefined
       ? withReviewState
@@ -316,10 +325,10 @@ function preferencesFrom(
       state: parsed.state,
       pageSize: parsed.pageSize,
       selectedLabels: parsed.selectedLabels,
-      awaitingMyReview: parsed.awaitingMyReview,
       inspectorOpen: parsed.inspectorOpen,
     },
     {
+      preset: parsed.preset,
       reviewState: parsed.reviewState,
       checkStatus: parsed.checkStatus,
       author: parsed.author,

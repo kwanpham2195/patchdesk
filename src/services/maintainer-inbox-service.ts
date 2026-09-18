@@ -13,6 +13,7 @@ import type { InsightStore } from "../adapters/storage/insight-store";
 import type { StorageFailure } from "../adapters/storage/json-file";
 import { resolveAvatarDataUris } from "../adapters/storage/avatar-cache-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
+import type { ReviewStore } from "../adapters/storage/review-store";
 import { changeScopeFromPatch, type ChangeScope } from "../domain/change-scope";
 import { definedProps } from "../domain/defined-props";
 import type { PullRequestSummary } from "../domain/github-context";
@@ -28,6 +29,7 @@ import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_CHECK_STATUS_FILTER_VALUES,
   INBOX_PAGE_SIZES,
+  INBOX_PRESET_VALUES,
   INBOX_REVIEW_STATE_FILTER_VALUES,
   parseInboxAuthorFilter,
   parseInboxBaseBranchFilter,
@@ -84,10 +86,10 @@ const inboxPageTokenSchema = v.strictObject({
    * whose label filter has changed is rejected the same way a repository
    * change is — the cursor belongs to a different search query. */
   labels: v.array(v.string()),
-  /** The "Awaiting review from you" preset the token's cursor was cut under;
-   * like a label change, flipping it is a different search query, so the
+  /** The one-click preset the token's cursor was cut under; like a label
+   * change, switching or clearing it is a different search query, so the
    * cursor no longer belongs to it. */
-  awaitingMyReview: v.boolean(),
+  preset: v.optional(v.picklist(INBOX_PRESET_VALUES)),
   /** The review-state qualifier the token's cursor was cut under. */
   reviewState: v.optional(v.picklist(INBOX_REVIEW_STATE_FILTER_VALUES)),
   /** The check-status qualifier the token's cursor was cut under. */
@@ -119,16 +121,12 @@ const inboxPageTokenSchema = v.strictObject({
 
 type InboxPageToken = v.InferOutput<typeof inboxPageTokenSchema>;
 
-/** The request's own filter with the two fields a page token compares
- * exactly: `labels` in the canonical sorted, deduplicated form and
- * `awaitingMyReview` resolved, so the token a page is cut with and the token
- * the next request presents are built from the same values. */
-type NormalizedInboxFilter = Omit<
-  InboxFilter,
-  "labels" | "awaitingMyReview"
-> & {
+/** The request's own filter with `labels` in the canonical sorted,
+ * deduplicated form a page token compares exactly, so the token a page is cut
+ * with and the token the next request presents are built from the same
+ * values. */
+type NormalizedInboxFilter = Omit<InboxFilter, "labels"> & {
   readonly labels: string[];
-  readonly awaitingMyReview: boolean;
 };
 
 /** What a supplied page token is matched against, and what the first page's own token is minted from. */
@@ -220,6 +218,11 @@ export class MaintainerInboxService {
      * no `authorAvatarDataUri` and the renderer draws the initials badge.
      */
     private readonly avatars?: AvatarRailDependencies,
+    /**
+     * Optional in the same way: without it a row carries no last-looked head
+     * and never shows that new commits arrived.
+     */
+    private readonly reviews?: Pick<ReviewStore, "load">,
   ) {}
 
   /**
@@ -271,13 +274,13 @@ export class MaintainerInboxService {
    * Reads one page of the Selected repository's inbox.
    *
    * Normalizes the request's filter once — `filter.labels` sorted and
-   * deduplicated (`normalizeInboxLabels`), `awaitingMyReview` resolved — and
+   * deduplicated (`normalizeInboxLabels`) — and
    * threads that one value through `decodeInboxPageToken`, `readRepository`,
    * and `composeInboxSearchQuery`. `cachedOrUnavailable` and `unavailablePage`
    * take `filter.state` alone, for the reason below.
    *
    * Only the wholly unfiltered listing — no labels, no review/check qualifier,
-   * no author or base branch, and no "Awaiting review from you" preset — is
+   * no author or base branch, and no one-click preset — is
    * ever written to the cache. The cache is keyed by profile and repository
    * alone, and `cachedOrUnavailable` reads it
    * back with no label argument at all — so a label-filtered result saved
@@ -300,7 +303,6 @@ export class MaintainerInboxService {
     const filter: NormalizedInboxFilter = {
       ...request.filter,
       labels: normalizeInboxLabels(request.filter.labels),
-      awaitingMyReview: request.filter.awaitingMyReview ?? false,
     };
     const pageToken = decodeInboxPageToken({
       repository,
@@ -357,7 +359,7 @@ export class MaintainerInboxService {
         repo: repository.repo,
       },
       labels: filter.labels,
-      awaitingMyReview: filter.awaitingMyReview,
+      preset: filter.preset,
       reviewState: filter.reviewState,
       checkStatus: filter.checkStatus,
       author: filter.author,
@@ -391,7 +393,7 @@ export class MaintainerInboxService {
     if (
       filter.state === "open" &&
       filter.labels.length === 0 &&
-      !filter.awaitingMyReview &&
+      filter.preset === undefined &&
       filter.reviewState === undefined &&
       filter.checkStatus === undefined &&
       filter.author === undefined &&
@@ -446,16 +448,15 @@ export class MaintainerInboxService {
     const entries = await Promise.all(
       searched.value.entries.map(
         async ({ cursor: entryCursor, pullRequest }) => {
-          const latestReview = latestReviewFor(pullRequest.summary, sessions);
-          const scope = await readCurrentHeadScope(
-            pullRequest.summary,
-            sessions,
-          );
-          const insights = await readInsightReadiness(
-            pullRequest.summary,
-            sessions,
-            this.insights,
-          );
+          const [latestReview, scope, insights] = await Promise.all([
+            withLastLookedHead(
+              latestReviewFor(pullRequest.summary, sessions),
+              profile.id,
+              this.reviews,
+            ),
+            readCurrentHeadScope(pullRequest.summary, sessions),
+            readInsightReadiness(pullRequest.summary, sessions, this.insights),
+          ]);
           const scopeField = scope === undefined ? {} : { scope };
           const input = {
             summary: pullRequest.summary,
@@ -653,8 +654,8 @@ function decodeInboxPageToken({
         repo: repository.repo,
       },
       labels: filter.labels,
-      awaitingMyReview: filter.awaitingMyReview,
     };
+    if (filter.preset !== undefined) token.preset = filter.preset;
     if (filter.reviewState !== undefined)
       token.reviewState = filter.reviewState;
     if (filter.checkStatus !== undefined)
@@ -676,7 +677,7 @@ function decodeInboxPageToken({
       value.size !== pageSize ||
       !sameRepositoryIdentity(value.repository, repository) ||
       !sameLabels(value.labels, filter.labels) ||
-      value.awaitingMyReview !== filter.awaitingMyReview ||
+      value.preset !== filter.preset ||
       value.reviewState !== filter.reviewState ||
       value.checkStatus !== filter.checkStatus ||
       value.author !== filter.author ||
@@ -832,6 +833,22 @@ function latestReviewFor(
         matchesCurrentHead: session.key.headSha === summary.headSha,
       };
 }
+/**
+ * Adds the head the maintainer last left the Review at. An unreadable Review
+ * only costs the row its new-commits mark, so it reads as no cursor.
+ */
+async function withLastLookedHead(
+  latestReview: InboxReviewSummary | undefined,
+  profileId: WorkspaceProfileId,
+  reviews: Pick<ReviewStore, "load"> | undefined,
+): Promise<InboxReviewSummary | undefined> {
+  if (latestReview === undefined || reviews === undefined) return latestReview;
+  const review = await reviews.load(profileId, latestReview.reviewId);
+  const lastLookedHeadSha =
+    review._tag === "ok" ? review.value.lastLooked?.headSha : undefined;
+  return { ...latestReview, ...definedProps({ lastLookedHeadSha }) };
+}
+
 function toCachedRow(row: MaintainerInboxRow): MaintainerInboxRow {
   return { ...row, dataFreshness: "cached" };
 }

@@ -117,7 +117,9 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     expect(browsedPaths()).toEqual(["docs/", "docs/guide.md"]);
 
     await openScopeMenu(user);
-    await user.click(screen.getByRole("menuitemradio", { name: "All files" }));
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "Clear scope" }),
+    );
     expect(browsedPaths()).toEqual([
       "docs/",
       "docs/guide.md",
@@ -154,7 +156,9 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
 
     await user.click(screen.getByRole("tab", { name: "Diff" }));
     await openScopeMenu(user);
-    await user.click(screen.getByRole("menuitemradio", { name: "All files" }));
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "Clear scope" }),
+    );
     expect(browsedPaths()).toEqual([
       "docs/",
       "docs/guide.md",
@@ -199,7 +203,9 @@ describe("ReviewWorkbenchFlow Scope filter", () => {
     });
 
     await openScopeMenu(user);
-    await user.click(screen.getByRole("menuitemradio", { name: "All files" }));
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "Clear scope" }),
+    );
     expect(namedFile()).toEqual({
       header: "docs/guide.md",
       tree: "docs/guide.md",

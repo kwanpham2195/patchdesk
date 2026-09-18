@@ -44,13 +44,19 @@ Generate brief, either Regenerate button, Try again on a failed run, and Run for
 
 Generate brief and both Regenerate buttons are disabled unless the Review is open and at least one Insight provider is available. A merged or closed Review shows them disabled. When no provider is available, the reader says "No eligible model configured. Set an API key or ambient provider credentials in the Electron process, then reload." When only the API key provider has no model, it says "No API-key model is configured. Open a run and select Codex CLI account to load its models."
 
+Each API key model in the Model list shows its pi-ai list price as input and output USD per million tokens, for example `$5.00 / $25.00`. The confirmation line repeats the selected model's price and says account billing may differ. A Codex CLI account model, or a router such as `openrouter/openrouter/auto` whose price varies per request, shows no price.
+
 Starting the run binds it to the current profile, Review session, represented head, and patch. Regeneration does not erase the retained Brief before a replacement completes.
 
 ### While the action runs
 
 Start run changes to Starting…, and the dialog cannot be closed until the start request answers. If the start request fails, the dialog shows "Insight run did not start." with "Brief could not start. Check the run options and try again."
 
-Once the run exists, the reader shows "Brief is running" with a spinner and "Started", followed by the run's start time, and "Partial results are not shown." Before the run reports its start time it says "Preparing a bounded run…". A retained Brief stays visible below that state. The header shows an icon button named Cancel Brief in place of Regenerate; while cancellation is requested it shows a spinner and is named Cancelling Brief….
+Once the run exists, the reader shows "Brief is running" with a spinner and, below it, how long ago the run started. It reads "Preparing a bounded run…" instead until Codex starts the turn. A retained Brief stays visible below that state. The header shows an icon button named Cancel Brief in place of Regenerate; while cancellation is requested it shows a spinner and is named Cancelling Brief….
+
+A Codex CLI account run also shows what it is doing. Below the start time it shows the last line of the model's reasoning summary, when the model sends one, and a **Commands** list with one row per command Codex ran: its exit status, **declined**, or a spinner while it runs; the command as plain text; and its duration. Codex asks Patchdesk before it runs any command, and Patchdesk allows only read-only inspection inside the represented worktree, so a command outside that list shows as **declined** and the run carries on without it. An API key run shows only the spinner and start time. When the run fails, times out, or is cancelled, the failure notice keeps the last command list until another run starts or the renderer reloads.
+
+> Technical note: commands are shortened to 200 characters, with paths inside the represented worktree made relative and the home directory shown as `~`, before they leave the main process. Command output is never shown. The trace is held in memory only; see [ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md). The command allowlist, and the one exception a global Codex `Allow` rule makes to it, are recorded in [ADR 0016](../../adr/0016-use-the-local-codex-cli-account.md).
 
 Patchdesk polls the run by its durable identity. Cancel requests cancellation, but final state still comes from the run status. A transient status-read failure does not discard run identity: the reader says "Brief status could not be refreshed. The current run is still active; Patchdesk will check again."
 
@@ -73,7 +79,7 @@ A failed run shows a warning that names the failure category, such as a timeout,
 | Variant | Before the action runs | While the action runs |
 | --- | --- | --- |
 | Workspace profile and GitHub account | The active profile selects local rules, checkout context, and available provider configuration. | A profile change leaves the Review; the old run stays bound to its original session. |
-| Pull request and Review state | Brief can be read for represented open or terminal Reviews. Generate brief and Regenerate are enabled only while the Review is open; a merged or closed Review shows them disabled. | A newer remote revision does not rewrite the artifact; the result remains evidence for the represented revision. |
+| Pull request and Review state | Brief can be read for represented open or terminal Reviews. Generation requires an open Review, a valid current session, and patch context; on a merged or closed Review, a muted line above the reader says generation needs an open Review and describes the disabled Generate brief and Regenerate. | A newer remote revision does not rewrite the artifact; the result remains evidence for the represented revision. |
 | GitHub permissions and merge readiness | Brief reading and generation do not require GitHub write permission or merge readiness. | The run cannot approve, comment, or merge. Its output becomes actionable only through separate explicit controls. |
 | Network, local tool, and Insight provider availability | Retained sections can be read without a provider. Generation needs an available provider; with none, the reader names the missing configuration and the generate controls stay disabled. | Provider, network, local-tool, timeout, or output failure leaves the prior retained Brief intact and retryable. |
 | Input path: mouse, keyboard, or desktop menu | Insights tabs, reader controls, run dialog, and citation chips support mouse and keyboard. | Cancel, close, and retry use the same run identity from either input path. Desktop menus do not start an Insight run. |
@@ -104,7 +110,7 @@ A failed run shows a warning that names the failure category, such as a timeout,
 
 **Concurrent operations and locking.** One run identity owns its Insight slot. Provider polling and Cancel settle through the coordinator rather than competing component state.
 
-**Feedback, errors, and diagnostics.** Progress, retained result, unavailable provider, failed start, failed run, cancelled run, timeout, and invalid result are separate outcomes. Raw provider events and prompts are not projected into the renderer.
+**Feedback, errors, and diagnostics.** Progress, retained result, unavailable provider, failed start, failed run, cancelled run, timeout, and invalid result are separate outcomes. A Codex CLI account run projects its command trace and one reasoning line into the renderer; prompts, command output, and raw provider events are not projected ([ADR 0043](../../adr/0043-project-a-bounded-codex-activity-trace.md)).
 
 **Preferences, keyboard commands, and desktop integration.** Saved provider, model, and reasoning values seed later Brief runs. No desktop menu shortcut generates Brief.
 
@@ -134,9 +140,9 @@ A failed run shows a warning that names the failure category, such as a timeout,
 - The 2026-09-14 live pass confirmed landing on Brief, the empty state, the disabled Generate brief on merged Reviews and the enabled one on an open Review, and the run dialog's Provider (API key, Codex CLI account), Model, and Reasoning controls, its confirmation line, and Cancel. No retained Brief existed in the live workspace, so the reader layout, Provenance card, and both Regenerate buttons were checked from source only.
 - Suspected defect, confirmed live and by an independent review: a disabled Generate brief or Regenerate on a merged or closed Review shows no reason on screen, while the header tells the maintainer the Review remains readable. The open-only rule is intended. See [B-11](../bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason).
 - Suspected defect: Try again, Run for latest revision, and Start here's Generate walkthrough are not disabled on a merged or closed Review, while the service rejects a run for such a Review. What the maintainer sees after Start run there is unconfirmed. See [B-19](../bug-triage.md#b-19-try-again-and-related-run-controls-stay-enabled-on-a-merged-or-closed-review).
-- Suspected defect: the running state shows the run's start time as a raw machine timestamp rather than a relative or local time. See [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
+- The raw machine timestamp in the running state, one of the slips in [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips), is fixed: the panel draws a relative time and no longer says partial results are not shown. The new wording is not yet live-verified.
 - Confirm the visible distinction between Cancel requested, cancelled, failed, and timed out runs.
 - Confirm whether switching to another Insight reader while Brief runs keeps its progress discoverable.
 - Confirm focus after closing the run dialog.
 
-Verified against Patchdesk application source commit `dd613996`.
+Baseline drafted from Patchdesk application source commit `dd613996`; verified against `737c515c`, including the Codex activity trace and the model list prices.

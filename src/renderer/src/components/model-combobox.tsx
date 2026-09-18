@@ -5,6 +5,10 @@ import { Check, ChevronDown } from "lucide-react";
 export type ModelComboboxOption = {
   readonly id: string;
   readonly label: string;
+  /** USD per million tokens; absent when the provider publishes no list price. */
+  readonly cost?:
+    | { readonly input: number; readonly output: number }
+    | undefined;
 };
 
 /** A searchable, renderer-safe picker for the enabled model catalog. */
@@ -72,7 +76,7 @@ export function ModelCombobox({
         <Combobox.Positioner className="z-50 outline-none" sideOffset={4}>
           <Combobox.Popup
             data-slot="model-combobox-content"
-            className="w-[var(--anchor-width)] max-w-[var(--available-width)] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md"
+            className="w-max min-w-[var(--anchor-width)] max-w-[var(--available-width)] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md"
           >
             <Combobox.Empty className="px-3 py-4 text-center text-sm text-muted-foreground">
               No models found.
@@ -88,6 +92,11 @@ export function ModelCombobox({
                     <Check className="size-4" aria-hidden="true" />
                   </Combobox.ItemIndicator>
                   <span className="min-w-0 truncate">{option.label}</span>
+                  {option.cost === undefined ? null : (
+                    <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+                      {`$${option.cost.input.toFixed(2)} / $${option.cost.output.toFixed(2)}`}
+                    </span>
+                  )}
                 </Combobox.Item>
               )}
             </Combobox.List>

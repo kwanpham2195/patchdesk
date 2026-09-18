@@ -80,8 +80,8 @@ describe("LabelService", () => {
     expect(addLabelsToLabelable).toHaveBeenCalledWith(
       expect.objectContaining({ labelableId: "PR_node", labelIds: ["LA_bug"] }),
     );
-    expect(recentWrites.append).toHaveBeenCalledOnce();
-    expect(recentWrites.append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledOnce();
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       { _tag: "LabelChange", added: ["bug"], removed: [] },
@@ -116,8 +116,8 @@ describe("LabelService", () => {
       value: { _tag: "LabelsRemoved", removed: ["bug"] },
     });
     expect(removeLabelsFromLabelable).toHaveBeenCalledOnce();
-    expect(recentWrites.append).toHaveBeenCalledOnce();
-    expect(recentWrites.append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledOnce();
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       { _tag: "LabelChange", added: [], removed: ["bug"] },
@@ -157,7 +157,7 @@ describe("LabelService", () => {
       service.execute({ profileId, reviewId, command: command() }),
     ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
     expect(addLabelsToLabelable).toHaveBeenCalledOnce();
-    expect(recentWrites.append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
   });
 
   it("refuses a write when permission is explicitly denied", async () => {

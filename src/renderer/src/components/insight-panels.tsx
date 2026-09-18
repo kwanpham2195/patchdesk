@@ -19,6 +19,7 @@ import type { InsightFailureCategory } from "../../../domain/insight-record";
 import { NOT_GENERATED_BRIEF, type BriefInsight } from "../brief-contracts";
 import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "../renderer-contracts";
+import type { InsightRunActivity } from "../insight-contracts";
 import {
   analysisHeadline,
   type AnalysisFindingStatus,
@@ -260,9 +261,12 @@ function InsightOverviewCard({
 export function InsightRunning({
   type,
   projection,
+  activity,
 }: {
   readonly type: InsightRunDialogType;
   readonly projection: InsightProjection | undefined;
+  /** Absent for a Pi run, which projects no trace. */
+  readonly activity: InsightRunActivity | undefined;
 }): React.JSX.Element {
   return (
     <Empty className={INSIGHT_STATE_CLASS}>
@@ -272,12 +276,70 @@ export function InsightRunning({
         </EmptyMedia>
         <EmptyTitle>{INSIGHT_NOUNS[type]} is running</EmptyTitle>
         <EmptyDescription>
-          {projection?.activeRun === undefined
-            ? "Preparing a bounded run…"
-            : `Started ${projection.activeRun.startedAt}. Partial results are not shown.`}
+          {projection?.activeRun === undefined ||
+          activity?.phase === "preparing" ? (
+            "Preparing a bounded run…"
+          ) : (
+            <RelativeTime
+              iso={projection.activeRun.startedAt}
+              prefix="Started "
+            />
+          )}
         </EmptyDescription>
       </EmptyHeader>
+      {activity === undefined ? null : (
+        <EmptyContent className="max-w-none">
+          <InsightActivityTrace activity={activity} />
+        </EmptyContent>
+      )}
     </Empty>
+  );
+}
+
+/** Commands are untrusted model output (#240), so they render as plain text with no mark that implies they were checked. */
+function InsightActivityTrace({
+  activity,
+}: {
+  readonly activity: InsightRunActivity;
+}): React.JSX.Element | null {
+  if (activity.reasoningLine === undefined && activity.commands.length === 0)
+    return null;
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-2 text-left">
+      {activity.reasoningLine === undefined ? null : (
+        <p className="truncate text-sm">{activity.reasoningLine}</p>
+      )}
+      {activity.commands.length === 0 ? null : (
+        <ol
+          aria-label="Commands"
+          className="flex max-h-72 flex-col gap-1 overflow-y-auto font-mono text-xs"
+        >
+          {activity.commands.map((command) => (
+            <li key={command.id} className="flex min-w-0 items-center gap-2">
+              <span className="w-16 shrink-0 text-muted-foreground">
+                {command.status === "in_progress" ? (
+                  <Spinner aria-label="Running" />
+                ) : command.status === "declined" ? (
+                  "declined"
+                ) : command.exitCode === undefined ? (
+                  command.status
+                ) : (
+                  `exit ${String(command.exitCode)}`
+                )}
+              </span>
+              <span className="min-w-0 flex-1 truncate" title={command.command}>
+                {command.command}
+              </span>
+              {command.durationMs === undefined ? null : (
+                <span className="shrink-0 text-muted-foreground tabular-nums">
+                  {(command.durationMs / 1000).toFixed(1)}s
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 
@@ -285,10 +347,13 @@ export function InsightFailed({
   projection,
   onRetry,
   retainedDescription,
+  activity,
 }: {
   readonly projection: InsightProjection;
   readonly onRetry: () => void;
   readonly retainedDescription?: string;
+  /** The trace the run left, so a timed-out run still shows what it was doing. */
+  readonly activity?: InsightRunActivity | undefined;
 }): React.JSX.Element {
   const failure = projection.replacementFailure;
   const message =
@@ -316,6 +381,11 @@ export function InsightFailed({
       <Button size="sm" onClick={onRetry}>
         Try again
       </Button>
+      {activity === undefined ? null : (
+        <div className="basis-full">
+          <InsightActivityTrace activity={activity} />
+        </div>
+      )}
     </Alert>
   );
 }
@@ -395,10 +465,12 @@ export function InsightEmpty({
   type,
   onRun,
   disabled,
+  describedBy,
 }: {
   readonly type: InsightRunDialogType;
   readonly onRun: () => void;
   readonly disabled: boolean;
+  readonly describedBy?: string;
 }): React.JSX.Element {
   const Icon = INSIGHT_ICONS[type];
   return (
@@ -411,7 +483,12 @@ export function InsightEmpty({
         <EmptyDescription>{INSIGHT_PURPOSES[type]}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        <Button size="sm" onClick={onRun} disabled={disabled}>
+        <Button
+          size="sm"
+          onClick={onRun}
+          disabled={disabled}
+          aria-describedby={describedBy}
+        >
           {GENERATE_LABELS[type]}
         </Button>
       </EmptyContent>

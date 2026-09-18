@@ -19,6 +19,7 @@ import {
   projectPendingReview,
 } from "../../src/services/pending-review-service";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 // SAFETY: this literal matches parseWorkspaceProfileId's accepted slug shape.
 const profileId = "cfw" as never;
@@ -166,7 +167,7 @@ function fixture(
     ...overrides,
   };
   const coordinator = new ReviewOperationCoordinator();
-  const recentWrites = { append: vi.fn(async () => ok(undefined)) };
+  const recentWrites = confirmedWriteJournal();
   return {
     service: new PendingReviewService(
       // SAFETY: this fixture mock implements only the Pick<...> subset the
@@ -600,7 +601,7 @@ describe("PendingReviewService reconcile compare-and-swap", () => {
       github as never,
       () => now,
       new ReviewOperationCoordinator(),
-      { append: vi.fn(async () => ok(undefined)) },
+      confirmedWriteJournal(),
     );
 
     await expect(

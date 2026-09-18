@@ -1,16 +1,19 @@
-import { rm } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 
 import * as v from "valibot";
 
 import {
-  parseGitHubThreadId,
   parseIsoTimestamp,
   type IsoTimestamp,
   type ReviewId,
   type WorkspaceProfileId,
 } from "../../domain/ids";
+import type { LogEntryInput } from "../../domain/log-entry";
 import { err, ok, type Result } from "../../domain/result";
-import type { RecentReviewWrite } from "../../domain/recent-review-write";
+import {
+  parseRecentReviewWrite,
+  type RecentReviewWrite,
+} from "../../domain/recent-review-write";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
   isNotFound,
@@ -29,11 +32,6 @@ const RECENT_WRITE_JOURNAL_AGE_CEILING_MS = 24 * 60 * 60 * 1000;
 /** The persisted variant of a typed own-write entry, dated for pruning. */
 export type DurableRecentReviewWrite = RecentReviewWrite & {
   readonly writtenAt: IsoTimestamp;
-};
-
-type PersistedRecentWriteJournal = {
-  readonly schemaVersion: 1;
-  readonly entries: ReadonlyArray<DurableRecentReviewWrite>;
 };
 
 const entrySchema = v.variant("_tag", [
@@ -61,20 +59,30 @@ const entrySchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("LabelChange"),
-    added: v.array(v.string()),
-    removed: v.array(v.string()),
+    added: v.pipe(v.array(v.string()), v.readonly()),
+    removed: v.pipe(v.array(v.string()), v.readonly()),
     writtenAt: v.string(),
   }),
   v.strictObject({
     _tag: v.literal("AssigneeChange"),
-    added: v.array(v.string()),
-    removed: v.array(v.string()),
+    added: v.pipe(v.array(v.string()), v.readonly()),
+    removed: v.pipe(v.array(v.string()), v.readonly()),
     writtenAt: v.string(),
   }),
   v.strictObject({
     _tag: v.literal("ReviewerChange"),
-    requested: v.array(v.string()),
-    removed: v.array(v.string()),
+    requested: v.pipe(v.array(v.string()), v.readonly()),
+    removed: v.pipe(v.array(v.string()), v.readonly()),
+    writtenAt: v.string(),
+  }),
+  v.strictObject({
+    _tag: v.literal("DraftStateChange"),
+    draft: v.boolean(),
+    writtenAt: v.string(),
+  }),
+  v.strictObject({
+    _tag: v.literal("BaseBranchChange"),
+    branch: v.string(),
     writtenAt: v.string(),
   }),
 ]);
@@ -82,6 +90,15 @@ const journalSchema = v.strictObject({
   schemaVersion: v.literal(1),
   entries: v.array(entrySchema),
 });
+
+/** Typed from the schema so a write fails to compile when `entrySchema` lacks a receipt tag. */
+type PersistedRecentWriteJournal = v.InferOutput<typeof journalSchema>;
+
+/** What a write flow needs from the journal: record a write GitHub already confirmed. */
+export type ConfirmedWriteJournal = Pick<
+  RecentWriteJournalStore,
+  "appendConfirmed"
+>;
 
 /**
  * Durable per-review record of this app session's own confirmed GitHub
@@ -92,7 +109,33 @@ const journalSchema = v.strictObject({
  * transition journal.
  */
 export class RecentWriteJournalStore {
-  constructor(private readonly paths: PatchdeskPaths) {}
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    private readonly log: { readonly write: (input: LogEntryInput) => void },
+  ) {}
+
+  /**
+   * Journals a write GitHub already confirmed. A failure is logged and
+   * swallowed: the journal only suppresses a duplicate observation, and ADR
+   * 0035 forbids a confirmed write from ending locked or retryable.
+   */
+  async appendConfirmed(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    entry: RecentReviewWrite,
+    writtenAt: IsoTimestamp,
+  ): Promise<void> {
+    const appended = await this.append(profileId, reviewId, entry, writtenAt);
+    if (appended._tag === "ok") return;
+    this.log.write({
+      process: "main",
+      level: "warn",
+      topic: "recent-write-journal",
+      message: "journal append failed; write already confirmed, continuing",
+      profileId,
+      meta: { reason: appended.error.reason, reviewId },
+    });
+  }
 
   /** Read-modify-write append; callers must already hold the review write lock. */
   async append(
@@ -173,17 +216,58 @@ export class RecentWriteJournalStore {
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<Result<ReadonlyArray<DurableRecentReviewWrite>, StorageFailure>> {
+    const read = await this.parseEntries(profileId, reviewId);
+    if (read._tag === "ok") return read;
+    if (read.error.reason === "not_found") return ok([]);
+    if (
+      read.error.reason !== "invalid_json" &&
+      read.error.reason !== "invalid_stored_value"
+    )
+      return read;
+    return this.quarantine(profileId, reviewId, read.error.reason);
+  }
+
+  private async parseEntries(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<ReadonlyArray<DurableRecentReviewWrite>, StorageFailure>> {
     const stored = await readJsonFile(
       this.paths.recentWriteJournalFile(profileId, reviewId),
     );
-    if (stored._tag === "err") {
-      return stored.error.reason === "not_found" ? ok([]) : stored;
-    }
+    if (stored._tag === "err") return stored;
     // Schema-validate at this exact I/O boundary; every downstream helper
     // works from the resulting named, non-`unknown` variant type.
     const parsed = v.safeParse(journalSchema, stored.value);
     if (!parsed.success) return invalidRead();
     return parseRecentWriteEntries(parsed.output.entries);
+  }
+
+  /**
+   * ADR 0019: an invalid journal is moved aside and restarts empty, since
+   * nothing can rebuild it and losing it costs one redundant refresh.
+   */
+  private async quarantine(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    reason: "invalid_json" | "invalid_stored_value",
+  ): Promise<Result<ReadonlyArray<DurableRecentReviewWrite>, StorageFailure>> {
+    try {
+      await rename(
+        this.paths.recentWriteJournalFile(profileId, reviewId),
+        this.paths.recentWriteJournalQuarantineFile(profileId, reviewId),
+      );
+    } catch {
+      return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
+    }
+    this.log.write({
+      process: "main",
+      level: "warn",
+      topic: "recent-write-journal",
+      message: "journal unreadable; moved aside and restarted empty",
+      profileId,
+      meta: { reason, reviewId },
+    });
+    return ok([]);
   }
 }
 
@@ -195,77 +279,22 @@ function parseRecentWriteEntries(
 ): Result<ReadonlyArray<DurableRecentReviewWrite>, StorageFailure> {
   const entries: Array<DurableRecentReviewWrite> = [];
   for (const entry of raw) {
-    const writtenAt = parseIsoTimestamp(entry.writtenAt);
-    if (writtenAt._tag === "err") return invalidRead();
-    if (entry._tag === "Comment") {
-      entries.push(
-        entry.reviewId === undefined
-          ? {
-              _tag: "Comment",
-              commentId: entry.commentId,
-              writtenAt: writtenAt.value,
-            }
-          : {
-              _tag: "Comment",
-              commentId: entry.commentId,
-              reviewId: entry.reviewId,
-              writtenAt: writtenAt.value,
-            },
-      );
-    } else if (entry._tag === "ThreadState") {
-      const threadId = parseGitHubThreadId(entry.threadId);
-      if (threadId._tag === "err") return invalidRead();
-      entries.push({
-        _tag: "ThreadState",
-        threadId: threadId.value,
-        state: entry.state,
-        writtenAt: writtenAt.value,
-      });
-    } else if (entry._tag === "PendingThread") {
-      const threadId = parseGitHubThreadId(entry.threadId);
-      if (threadId._tag === "err") return invalidRead();
-      entries.push({
-        _tag: "PendingThread",
-        threadId: threadId.value,
-        writtenAt: writtenAt.value,
-      });
-    } else if (entry._tag === "DirectSummaryReview") {
-      entries.push({
-        _tag: "DirectSummaryReview",
-        reviewId: entry.reviewId,
-        writtenAt: writtenAt.value,
-      });
-    } else if (entry._tag === "LabelChange") {
-      entries.push({
-        _tag: "LabelChange",
-        added: entry.added,
-        removed: entry.removed,
-        writtenAt: writtenAt.value,
-      });
-    } else if (entry._tag === "AssigneeChange") {
-      // Pre-existing bug fixed here: this branch previously fell into the
-      // final `else` below and was stamped `_tag: "LabelChange"` on read,
-      // silently reclassifying every persisted assignee-change entry. Since
-      // consumers key off `entry._tag === "AssigneeChange"`, a reloaded
-      // assignee write would never be recognized as one, and would instead
-      // have been read back as (and stripped like) a label change with the
-      // wrong names.
-      entries.push({
-        _tag: "AssigneeChange",
-        added: entry.added,
-        removed: entry.removed,
-        writtenAt: writtenAt.value,
-      });
-    } else {
-      entries.push({
-        _tag: "ReviewerChange",
-        requested: entry.requested,
-        removed: entry.removed,
-        writtenAt: writtenAt.value,
-      });
-    }
+    const decoded = parseRecentWriteEntry(entry);
+    if (decoded._tag === "err") return decoded;
+    entries.push(decoded.value);
   }
   return ok(entries);
+}
+
+function parseRecentWriteEntry(
+  entry: RawJournalEntry,
+): Result<DurableRecentReviewWrite, StorageFailure> {
+  const { writtenAt, ...record } = entry;
+  const parsedWrittenAt = parseIsoTimestamp(writtenAt);
+  const write = parseRecentReviewWrite(record);
+  if (parsedWrittenAt._tag === "err" || write._tag === "err")
+    return invalidRead();
+  return ok({ ...write.value, writtenAt: parsedWrittenAt.value });
 }
 
 function stripWrittenAt(entry: DurableRecentReviewWrite): RecentReviewWrite {

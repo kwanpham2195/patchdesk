@@ -1,6 +1,7 @@
 import * as v from "valibot";
 
 import { GITHUB_LOGIN_MAX_LENGTH, parseGitHubLogin } from "../../domain/ids";
+import { REVIEW_WRITE_INTENT_TAGS } from "../../domain/review-write-operation";
 
 // The findings warning carries the ids it counts so the readiness card can
 // lead to them; the union mirrors the domain's `MergeWarning`.
@@ -36,22 +37,7 @@ export function parseMergeReceipt(input: unknown): MergeReceipt | undefined {
 }
 
 export const remoteWriteRecoverySchema = v.strictObject({
-  operation: v.picklist([
-    "CreateComment",
-    "Reply",
-    "SetThreadState",
-    "EditComment",
-    "DeleteComment",
-    "AddLabels",
-    "RemoveLabels",
-    "AddAssignees",
-    "RemoveAssignees",
-    "RequestReviewers",
-    "RemoveReviewers",
-    "EditPublishedComment",
-    "DeletePublishedComment",
-    "DismissPublishedReview",
-  ]),
+  operation: v.picklist(REVIEW_WRITE_INTENT_TAGS),
   resolution: v.picklist(["check_required", "manual_resolution_required"]),
 });
 

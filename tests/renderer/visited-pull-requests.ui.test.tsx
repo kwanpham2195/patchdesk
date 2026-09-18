@@ -252,6 +252,62 @@ describe("VisitedPullRequests", () => {
     });
   });
 
+  it("gives the column one Tab stop and moves between rows with the arrow keys", async () => {
+    const user = userEvent.setup();
+    renderColumn({ rows: [titled, untitledSameRepo, merged] });
+
+    const first = await screen.findByRole("button", { name: /#125/ });
+    const second = screen.getByRole("button", { name: /#412/ });
+    const last = screen.getByRole("button", { name: /#300/ });
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    const tabStops = (): ReadonlyArray<HTMLElement> =>
+      within(column)
+        .getAllByRole("button")
+        .filter((row) => row.tabIndex === 0);
+    expect(tabStops()).toEqual([first]);
+
+    await user.tab();
+    expect(document.activeElement).toBe(first);
+
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(second);
+    expect(tabStops()).toEqual([second]);
+
+    await user.keyboard("{ArrowUp}");
+    expect(document.activeElement).toBe(first);
+    expect(tabStops()).toEqual([first]);
+
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(document.activeElement).toBe(last);
+    expect(tabStops()).toEqual([last]);
+
+    await user.tab();
+    expect(column.contains(document.activeElement)).toBe(false);
+  });
+
+  it("puts the column's Tab stop on the open pull request's row", async () => {
+    const user = userEvent.setup();
+    renderColumn({
+      rows: [titled, untitledSameRepo, merged],
+      destination: { kind: "workbench", reviewId: "review-untitled-same-repo" },
+    });
+
+    const open = await screen.findByRole("button", { name: /#412/ });
+    const column = screen.getByRole("complementary", {
+      name: "Pull requests you have opened",
+    });
+    expect(
+      within(column)
+        .getAllByRole("button")
+        .filter((row) => row.tabIndex === 0),
+    ).toEqual([open]);
+
+    await user.tab();
+    expect(document.activeElement).toBe(open);
+  });
+
   it("stamps the row with the time it was opened and never ticks it", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));

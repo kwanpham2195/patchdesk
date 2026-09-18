@@ -3,7 +3,7 @@ import type {
   GitHubReader,
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewSessionStore } from "../adapters/storage/review-session-store";
 import {
   adoptObservedPendingReview,
@@ -149,7 +149,7 @@ export class PendingReviewService {
     private readonly github: Gateway,
     private readonly now: () => IsoTimestamp,
     private readonly writeCoordinator: ReviewOperationCoordinator,
-    private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly recentWrites: ConfirmedWriteJournal,
   ) {}
 
   /**
@@ -622,12 +622,6 @@ export class PendingReviewService {
       if (unknown._tag === "ok") await this.persist(session, unknown.value);
       return err("outcome_unknown");
     }
-    // Best effort: the GitHub write already succeeded, so a durable journal
-    // failure here must not fail the confirmed command. Sequential by
-    // necessity, not oversight: RecentWriteJournalStore.append() does an
-    // unsynchronized read-modify-write per call, so running these in
-    // parallel (e.g. via Promise.all) would race against itself and could
-    // silently drop entries when Discard journals more than one thread.
     for (const entry of journalEntriesFor(
       operation,
       state,
@@ -635,7 +629,12 @@ export class PendingReviewService {
       confirmed.value,
     )) {
       // react-doctor-disable-next-line react-doctor/async-await-in-loop -- parallelizing these would race the store's read-modify-write and drop entries
-      await this.recentWrites.append(profileId, reviewId, entry, this.now());
+      await this.recentWrites.appendConfirmed(
+        profileId,
+        reviewId,
+        entry,
+        this.now(),
+      );
     }
     const {
       findingReviewReceipts: _previousReceipts,

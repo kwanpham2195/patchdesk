@@ -1,16 +1,20 @@
 import { discoverPathOnlyExecutable } from "../adapters/process/executable-discovery";
+import { definedProps } from "../domain/defined-props";
 import type {
   InsightProvider,
   InsightReasoning,
   InsightSelection,
 } from "../domain/insight-provider";
-import { err, ok, type Result } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "../domain/result";
 import type {
   CodexAppServerClient,
   CodexAppServerFailure,
   CodexModel,
 } from "../adapters/codex/codex-app-server-client";
-import type { PiRuntimeModelCatalog } from "../adapters/pi/pi-runtime-model-catalog";
+import type {
+  ModelListPrice,
+  PiRuntimeModelCatalog,
+} from "../adapters/pi/pi-runtime-model-catalog";
 
 /** Renderer-safe provider availability. It never contains a path or account detail. */
 type InsightProviderStatus = {
@@ -27,6 +31,8 @@ type InsightProviderModel = {
   readonly label: string;
   readonly reasoning: ReadonlyArray<InsightReasoning>;
   readonly defaultReasoning?: InsightReasoning;
+  /** Absent for Codex CLI account models and Pi models without a fixed list price. */
+  readonly cost?: ModelListPrice;
 };
 
 /** Complete passive or activated Insight provider catalog. */
@@ -154,6 +160,7 @@ function piModelSource(pi: PiRuntimeModelCatalog): ProviderModelSource {
               label: model.label,
               reasoning: ["low", "medium", "high"] as const,
               defaultReasoning: "medium" as const,
+              ...definedProps({ cost: model.cost }),
             }))
           : [],
     };
@@ -242,7 +249,13 @@ function mapCodexFailure(
       return "timed_out";
     case "invalid_result":
       return "invalid_result";
-    default:
+    // The catalog vocabulary has no cancelled state, so a cancelled model-list fetch reads as an unavailable runtime (#256).
+    case "cancelled":
+    case "execution_failed":
+    case "runtime_unavailable":
+    case "unexpected_failure":
       return "runtime_unavailable";
+    default:
+      return casesHandled(failure.reason);
   }
 }

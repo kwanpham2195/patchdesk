@@ -441,7 +441,7 @@ describe("App repository picker", () => {
     const user = userEvent.setup();
     const gate = promise<void>();
     const desktop = installRepoDesktop(undefined, (path) =>
-      path.includes("awaitingMyReview=1") ? gate.promise : undefined,
+      path.includes("preset=awaiting_my_review") ? gate.promise : undefined,
     );
     render(<App />);
     await screen.findByRole("heading", { name: "Pull requests" });
@@ -459,7 +459,7 @@ describe("App repository picker", () => {
     );
 
     await waitFor(() =>
-      expect(desktop.paths.at(-1)).toContain("awaitingMyReview=1"),
+      expect(desktop.paths.at(-1)).toContain("preset=awaiting_my_review"),
     );
     // Re-queried rather than reused: the row list is replaced, not updated
     // in place, when the request behind it changes.
@@ -497,7 +497,7 @@ describe("App repository picker", () => {
       screen.getByRole("button", { name: "Awaiting review from you" }),
     );
     await waitFor(() =>
-      expect(desktop.paths.at(-1)).toContain("awaitingMyReview=1"),
+      expect(desktop.paths.at(-1)).toContain("preset=awaiting_my_review"),
     );
 
     await user.click(screen.getByRole("combobox", { name: "Repository" }));
@@ -513,8 +513,10 @@ describe("App repository picker", () => {
     // Unlike the label filter, `user-review-requested:@me` means the same
     // thing in every repository, so a repository change must not clear it —
     // validation section 6 requires the preset to survive the change.
-    expect(desktop.paths.at(-1)).toContain("awaitingMyReview=1");
-    expect(loadInboxViewPreferences("profile").awaitingMyReview).toBe(true);
+    expect(desktop.paths.at(-1)).toContain("preset=awaiting_my_review");
+    expect(loadInboxViewPreferences("profile").preset).toBe(
+      "awaiting_my_review",
+    );
   });
 
   it("changing the selected repository resets the page cursor and clears the label filter, in exactly one request", async () => {
@@ -673,6 +675,7 @@ function installDesktop(
       "/v1/profiles": () => success([profile]),
       "/v1/reviews/load": () => success(asJsonBody(projection())),
       "/v1/reviews/open": () => success(asJsonBody(projection())),
+      "/v1/reviews/leave": () => success(null),
       "/v1/inbox": async () => {
         inboxRequests += 1;
         if (options.failInboxRefresh && inboxRequests > 1) {

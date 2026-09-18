@@ -143,6 +143,7 @@ describe("PullRequestDescription", () => {
   });
 
   it("keys repeated inline nodes by position so React does not warn about duplicate keys", () => {
+    // oxlint-disable-next-line patchdesk/no-method-spying -- React reports duplicate keys only through the global `console.error`, which has no seam, so capturing it is the one way to assert the warning is absent.
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});

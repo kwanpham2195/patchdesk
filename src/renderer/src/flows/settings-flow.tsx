@@ -41,6 +41,7 @@ import {
   FieldLabel,
   FieldSet,
 } from "../components/ui/field";
+import { NotificationsCard } from "./settings-notifications-card";
 import { ModelCombobox } from "../components/model-combobox";
 import {
   Select,
@@ -563,6 +564,7 @@ function GeneralSection({
           </FieldSet>
         </CardContent>
       </Card>
+      <NotificationsCard />
     </div>
   );
 }

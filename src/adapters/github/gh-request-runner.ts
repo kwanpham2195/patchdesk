@@ -44,8 +44,10 @@ export type GitHubReadOperation =
   | "search_maintainer_prs"
   | "list_repository_labels"
   | "list_assignable_users"
+  | "list_repository_branches"
   | "get_pull_request_reviewers"
   | "get_pr"
+  | "get_watched_prs"
   | "get_merge_policy"
   | "get_merge_policy_evidence"
   | "get_comments"
@@ -169,6 +171,23 @@ export class GhRequestRunner {
       });
     }
     return err({ _tag: "GitHubReadFailed", operation });
+  }
+
+  /**
+   * Whether the last response from `host` spent its whole rate limit and the
+   * reset is still ahead of `now`, so a background read can wait without
+   * asking GitHub.
+   */
+  exhaustedRateLimit(
+    host: string,
+    now: IsoTimestamp,
+  ): IsoTimestamp | undefined {
+    const cached = this.rateLimitByHost.get(host);
+    return cached !== undefined &&
+      cached.remaining === 0 &&
+      cached.resetAt > now
+      ? cached.resetAt
+      : undefined;
   }
 
   recordRateLimit(host: string, rateLimit: MaintainerRateLimit): void {

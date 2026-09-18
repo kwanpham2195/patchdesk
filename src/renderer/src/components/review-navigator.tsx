@@ -24,6 +24,8 @@ type ReviewNavigatorProps = {
   readonly patch: string;
   readonly commits: WorkbenchResponse["commits"];
   readonly conversationThreadEntries: ReadonlyArray<ReviewInlineAnnotation>;
+  /** Threads count the comments dated after this cursor; absent counts none. */
+  readonly lastLooked?: WorkbenchResponse["review"]["lastLooked"];
   /** Mapped Analysis findings per file, shown as a badge on Browse rows. */
   readonly findingCountsByPath?: ReadonlyMap<string, FileFindingCount>;
   readonly section: ReviewNavigatorSection;
@@ -44,6 +46,7 @@ export function ReviewNavigator({
   patch,
   commits,
   conversationThreadEntries,
+  lastLooked,
   findingCountsByPath,
   section,
   visiblePaths,
@@ -88,9 +91,11 @@ export function ReviewNavigator({
       projectConversationThreadRows(
         conversationThreadEntries,
         parsed.map((file) => file.path),
+        lastLooked,
       ),
-    [conversationThreadEntries, parsed],
+    [conversationThreadEntries, lastLooked, parsed],
   );
+  const needsReplyCount = threadRows.filter((row) => row.needsReply).length;
 
   const fileTreeActivePath = activePath ?? selectedPath ?? browseFiles[0]?.path;
   return (
@@ -132,6 +137,16 @@ export function ReviewNavigator({
               >
                 {threadRows.length}
               </Badge>
+              {needsReplyCount === 0 ? null : (
+                <Badge
+                  variant="warning"
+                  className="h-4 min-w-4 px-1 text-[10px]"
+                  title="Threads that need your reply"
+                >
+                  {needsReplyCount}
+                  <span className="sr-only"> need your reply</span>
+                </Badge>
+              )}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -219,10 +234,24 @@ export function ReviewNavigator({
                       <span className="min-w-0 truncate font-medium">
                         {row.author}
                       </span>
-                      <Badge variant={badge.variant} className="shrink-0">
-                        {badge.label}
-                      </Badge>
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
                     </span>
+                    {row.needsReply || row.newCount > 0 ? (
+                      <span className="flex items-center gap-1">
+                        {row.needsReply ? (
+                          <Badge variant="warning">Needs your reply</Badge>
+                        ) : null}
+                        {row.newCount > 0 ? (
+                          <Badge
+                            variant="outline"
+                            className="border-primary/40 text-primary"
+                            aria-label={`${row.newCount} new since you last looked`}
+                          >
+                            {row.newCount} new
+                          </Badge>
+                        ) : null}
+                      </span>
+                    ) : null}
                     <span className="line-clamp-2 w-full text-xs text-muted-foreground">
                       {row.preview.length === 0 ? "(no body)" : row.preview}
                     </span>

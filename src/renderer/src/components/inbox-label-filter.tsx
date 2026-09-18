@@ -159,51 +159,60 @@ function LabelFilterList({
     (label) => !selectedLabelSet.has(label.name) && !labelFits(label.name),
   );
   return (
-    <div className="max-h-64 overflow-y-auto">
-      <ul className="flex flex-col gap-0.5" aria-label="Labels">
-        {readState.labels.map((label) => {
-          const checked = selectedLabelSet.has(label.name);
-          // Clearing a selected label only shortens the query.
-          const fits = checked || labelFits(label.name);
-          return (
-            <li key={label.name}>
-              <label
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-1 py-1 text-xs",
-                  fits
-                    ? "cursor-pointer hover:bg-muted/50"
-                    : "text-muted-foreground",
-                )}
-              >
-                <Checkbox
-                  checked={checked}
-                  disabled={!fits}
-                  onCheckedChange={() =>
-                    onLabelChange(
-                      checked
-                        ? selectedLabels.filter((name) => name !== label.name)
-                        : [...selectedLabels, label.name],
-                    )
-                  }
-                />
-                <LabelColorDot color={label.color} />
-                {label.name}
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+    <>
+      {/* Outside the scroll container so it stays in view wherever the list is scrolled. */}
       {anyRefused ? (
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mb-1 text-xs text-muted-foreground">
           This filter is full. Clear a selected label to choose another.
         </p>
       ) : null}
-      {readState.totalCount > readState.labels.length ? (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Showing {readState.labels.length} of {readState.totalCount} labels.
-          Some repository labels aren&apos;t shown.
-        </p>
-      ) : null}
-    </div>
+      <div className="max-h-64 overflow-y-auto">
+        <ul className="flex flex-col gap-0.5" aria-label="Labels">
+          {readState.labels.map((label) => {
+            const checked = selectedLabelSet.has(label.name);
+            // Clearing a selected label only shortens the query.
+            const fits = checked || labelFits(label.name);
+            return (
+              <li key={label.name}>
+                <label
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-1 py-1 text-xs",
+                    fits && "cursor-pointer hover:bg-muted/50",
+                  )}
+                >
+                  <Checkbox
+                    checked={checked}
+                    disabled={!fits}
+                    onCheckedChange={() =>
+                      onLabelChange(
+                        checked
+                          ? selectedLabels.filter((name) => name !== label.name)
+                          : [...selectedLabels, label.name],
+                      )
+                    }
+                  />
+                  {/* Dimmed beside the checkbox, not on the label, because opacity compounds and the checkbox already dims itself. */}
+                  <span
+                    className={cn(
+                      "flex items-center gap-2",
+                      !fits && "opacity-50",
+                    )}
+                  >
+                    <LabelColorDot color={label.color} />
+                    {label.name}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+        {readState.totalCount > readState.labels.length ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Showing {readState.labels.length} of {readState.totalCount} labels.
+            Some repository labels aren&apos;t shown.
+          </p>
+        ) : null}
+      </div>
+    </>
   );
 }

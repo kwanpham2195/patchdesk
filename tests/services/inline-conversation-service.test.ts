@@ -18,6 +18,8 @@ import {
 import { err, ok, type Result } from "../../src/domain/result";
 import type { ReviewWriteOperation } from "../../src/domain/review-write-operation";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import type { DesktopNotificationEvent } from "../../src/services/desktop-notifier";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
@@ -53,7 +55,7 @@ const expected = { sessionId: "session-a", headSha, patchHash: "patch-hash" };
 // SAFETY: this literal is a well-formed ISO 8601 instant, satisfying the
 // branded IsoTimestamp contract the service's `now` dependency expects.
 const now = () => "2026-01-01T00:00:00.000Z" as never;
-const makeRecentWrites = () => ({ append: vi.fn(async () => ok(undefined)) });
+const makeRecentWrites = () => confirmedWriteJournal();
 
 function makeOperations() {
   let current: ReviewWriteOperation | undefined;
@@ -644,7 +646,7 @@ describe("InlineConversationService durable write lifecycle", () => {
 
   it("confirms a delete without appending a misleading comment-exists receipt", async () => {
     const operations = makeOperations();
-    const append = vi.fn(async () => ok(undefined));
+    const recentWrites = confirmedWriteJournal();
     const deleteThreadComment = vi.fn(async () => ok(undefined));
     const service = new InlineConversationService(
       makeGate(),
@@ -652,7 +654,7 @@ describe("InlineConversationService durable write lifecycle", () => {
       makeGateway({ deleteThreadComment }) as never,
       new ReviewOperationCoordinator(),
       now,
-      { append },
+      recentWrites,
       operations,
     );
     await expect(
@@ -672,12 +674,12 @@ describe("InlineConversationService durable write lifecycle", () => {
     expect(operations.confirm).toHaveBeenCalledWith(
       expect.objectContaining({ state: { _tag: "Confirmed" } }),
     );
-    expect(append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
   });
 
   it("persists confirmation and the recent-write receipt before clearing the operation", async () => {
     const operations = makeOperations();
-    const append = vi.fn(async () => ok(undefined));
+    const recentWrites = confirmedWriteJournal();
     const createThreadReply = vi.fn(async () =>
       ok({ commentId: "PRRC_reply", reviewId: "PRR_review" }),
     );
@@ -687,7 +689,7 @@ describe("InlineConversationService durable write lifecycle", () => {
       makeGateway({ createThreadReply }) as never,
       new ReviewOperationCoordinator(),
       now,
-      { append },
+      recentWrites,
       operations,
     );
     await expect(
@@ -716,7 +718,7 @@ describe("InlineConversationService durable write lifecycle", () => {
         },
       }),
     );
-    expect(append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       {
@@ -812,5 +814,81 @@ describe("FakeGitHubAdapter ownership parity", () => {
       command: command({ _tag: "Reply", threadId: "PRRT_thread" }),
     });
     expect(result).toEqual({ _tag: "err", error: "not_found" });
+  });
+});
+
+describe("InlineConversationService recovery notification", () => {
+  function reply(
+    createThreadReply: ReturnType<typeof vi.fn>,
+    events: DesktopNotificationEvent[],
+  ) {
+    const service = new InlineConversationService(
+      makeGate(),
+      // SAFETY: this gateway fixture implements every method a reply reaches.
+      makeGateway({ createThreadReply }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+      makeOperations(),
+      { notify: (event) => events.push(event) },
+    );
+    return () =>
+      service.execute({
+        profileId,
+        reviewId,
+        command: command({ _tag: "Reply", threadId: "PRRT_thread" }),
+      });
+  }
+
+  it("posts one event for a reply left outcome-unknown and none for the refused retry", async () => {
+    const events: DesktopNotificationEvent[] = [];
+    const execute = reply(
+      vi.fn(async () =>
+        err({
+          _tag: "GitHubWriteFailure",
+          category: "unavailable",
+          message: "lost",
+        }),
+      ),
+      events,
+    );
+
+    await execute();
+    await execute();
+
+    expect(events).toEqual([
+      {
+        _tag: "WriteNeedsRecovery",
+        reviewId,
+        pullRequest: {
+          host: "github.com",
+          owner: "centraldigital",
+          repo: "patchdesk",
+          number: 42,
+        },
+      },
+    ]);
+  });
+
+  it("posts nothing for a rejected reply or a confirmed one", async () => {
+    const events: DesktopNotificationEvent[] = [];
+    const execute = reply(
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          err({
+            _tag: "GitHubWriteFailure",
+            category: "forbidden",
+            message: "no",
+          }),
+        )
+        .mockResolvedValueOnce(ok({ commentId: "PRRC_ok" })),
+      events,
+    );
+
+    await execute();
+    await execute();
+
+    expect(events).toEqual([]);
   });
 });

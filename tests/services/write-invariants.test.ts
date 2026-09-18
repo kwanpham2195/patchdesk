@@ -1,34 +1,49 @@
 import { describe, expect, it } from "vitest";
 
 import { err, ok } from "../../src/domain/result";
+import {
+  confirmReviewWrite,
+  markReviewWriteOutcomeUnknown,
+  type ReviewWriteOperation,
+} from "../../src/domain/review-write-operation";
 import { DirectSummaryReviewService } from "../../src/services/direct-summary-review-service";
 import { MergeWriteController } from "../../src/services/merge-write-controller";
 import { ReviewOperationCoordinator } from "../../src/services/review-operation-coordinator";
+import { ReviewWriteRecoveryService } from "../../src/services/review-write-recovery-service";
 import {
   anchor,
   at,
   expected,
+  must,
   now,
   profileId,
   reviewId,
   reviewNodeId,
+  reviewRestId,
   values,
 } from "./review-invariant-fixtures";
 import {
   IN_FLIGHT_TAGS,
   OUTCOME_UNKNOWN,
+  confirmedWriteFailingJournal,
   freshGate,
+  gatewayWrite,
   mergeSession,
   pendingOwner,
   pendingReviewFlow,
-  recentWritesJournal,
   recorded,
+  recordedWriteFlowRun,
   recordingSessions,
+  recordingWriteOperations,
   sessionIntentTag,
+  sessionWriteLock,
   unavailable,
+  unavailableWrite,
   TracingMergeOperationStore,
+  TracingRecentWriteJournal,
   type Trace,
   type WriteFlow,
+  type WriteFlowFixture,
 } from "./write-invariant-harness";
 import { conversationFlows } from "./write-invariant-conversation-flows";
 import { metadataFlows } from "./write-invariant-metadata-flows";
@@ -62,16 +77,19 @@ import { metadataFlows } from "./write-invariant-metadata-flows";
  * must retain the same durable no-replay lock as conversation writes.
  */
 
-const writeFlows: ReadonlyArray<WriteFlow> = [
+/** Every write entry point except merge, which never journals, built under one fixture. */
+const journalingWriteFlows = (
+  fixture: WriteFlowFixture,
+): ReadonlyArray<WriteFlow> => [
   {
     name: "pending review: start",
-    run: pendingReviewFlow({ _tag: "None" }, (service) =>
+    run: pendingReviewFlow(fixture, { _tag: "None" }, (service) =>
       service.start({ profileId, reviewId, expected, anchor, body: "note" }),
     ),
   },
   {
     name: "pending review: add thread",
-    run: pendingReviewFlow(pendingOwner(), (service) =>
+    run: pendingReviewFlow(fixture, pendingOwner(), (service) =>
       service.addThread({
         profileId,
         reviewId,
@@ -84,7 +102,7 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
   },
   {
     name: "pending review: submit",
-    run: pendingReviewFlow(pendingOwner(), (service) =>
+    run: pendingReviewFlow(fixture, pendingOwner(), (service) =>
       service.submit({
         profileId,
         reviewId,
@@ -96,7 +114,7 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
   },
   {
     name: "pending review: discard",
-    run: pendingReviewFlow(pendingOwner(), (service) =>
+    run: pendingReviewFlow(fixture, pendingOwner(), (service) =>
       service.discard({ profileId, reviewId, expected, confirmation: true }),
     ),
   },
@@ -111,7 +129,12 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
         getViewerPendingReview: async () => ok({ _tag: "None" as const }),
         getViewerDirectSummaryReviews: async () =>
           ok({ reviews: [], complete: true }),
-        createDirectSummaryReview: async () => err(unavailable),
+        createDirectSummaryReview: gatewayWrite(fixture, {
+          reviewId: reviewRestId,
+          event: "COMMENT" as const,
+          headSha: values.headSha,
+          submittedAt: at,
+        }),
       };
       const service = new DirectSummaryReviewService(
         // SAFETY: this fixture gate answers with the parsed fixture Review and
@@ -123,7 +146,7 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
         recorded(trace, gateway) as never,
         now,
         new ReviewOperationCoordinator(),
-        recentWritesJournal(trace),
+        new TracingRecentWriteJournal(trace, fixture.journal),
       );
       const command = () =>
         service.submit({
@@ -133,16 +156,77 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
           event: "COMMENT",
           body: "summary",
         });
-      await command();
+      const result = await command();
       return {
         trace,
+        result,
         again: command,
         intentTag: () => sessionIntentTag(sessions.current()),
+        writeLock: () => sessionWriteLock(sessions.current()),
       };
     },
   },
-  ...conversationFlows(),
-  ...metadataFlows,
+  ...conversationFlows(fixture),
+  ...metadataFlows(fixture),
+];
+
+/**
+ * Recovery of a write whose GitHub outcome is already proven: one row for an
+ * operation confirmed before the journal failed (the #230 lock), one for an
+ * operation recovery confirms from pull request evidence.
+ */
+function recoveryFlows(): ReadonlyArray<WriteFlow> {
+  const requested: ReviewWriteOperation = {
+    schemaVersion: 1,
+    profileId,
+    reviewId,
+    sessionId: values.session.id,
+    intent: { _tag: "AddLabels", names: ["bug"] },
+    state: { _tag: "Requested" },
+    startedAt: at,
+  };
+  const outcomeUnknown = must(markReviewWriteOutcomeUnknown(requested));
+  const confirmed = must(
+    confirmReviewWrite(outcomeUnknown, {
+      _tag: "LabelChange",
+      added: ["bug"],
+      removed: [],
+    }),
+  );
+  return [
+    { name: "recovery: confirmed operation", stored: confirmed },
+    { name: "recovery: confirmed by evidence", stored: outcomeUnknown },
+  ].map(({ name, stored }) => ({
+    name,
+    run: async () => {
+      const trace: Trace = [];
+      const operations = recordingWriteOperations(trace, stored);
+      const service = new ReviewWriteRecoveryService(
+        freshGate({ current: () => values.session }),
+        // SAFETY: recovery of a label intent reads only the pull request.
+        recorded(trace, {
+          getPullRequest: async () =>
+            ok({
+              ...values.snapshot.pullRequest,
+              labels: [{ name: "bug", color: "fff" }],
+            }),
+        }) as never,
+        operations,
+        new TracingRecentWriteJournal(trace, "failed"),
+        new ReviewOperationCoordinator(),
+        now,
+      );
+      return recordedWriteFlowRun(
+        trace,
+        () => service.recover({ profileId, reviewId }),
+        operations,
+      );
+    },
+  }));
+}
+
+const writeFlows: ReadonlyArray<WriteFlow> = [
+  ...journalingWriteFlows(unavailableWrite),
   {
     name: "merge",
     run: async () => {
@@ -227,8 +311,14 @@ const writeFlows: ReadonlyArray<WriteFlow> = [
             warningCodes: [],
           },
         });
-      await command();
-      return { trace, again: command, intentTag: () => operations.intentTag() };
+      const result = await command();
+      return {
+        trace,
+        result,
+        again: command,
+        intentTag: () => operations.intentTag(),
+        writeLock: () => operations.intentTag(),
+      };
     },
   },
 ];
@@ -285,5 +375,27 @@ describe("every GitHub write persists intent before the remote boundary", () => 
         );
       },
     );
+  }
+});
+
+/** ADR 0035: once GitHub confirmed a write, a failed journal append must not keep the Review locked. */
+const confirmedWriteFlows: ReadonlyArray<WriteFlow> = [
+  ...journalingWriteFlows(confirmedWriteFailingJournal),
+  ...recoveryFlows(),
+];
+
+describe("a journal failure never blocks a confirmed write", () => {
+  for (const flow of confirmedWriteFlows) {
+    it(`${flow.name} succeeds and releases the write lock`, async () => {
+      const run = await flow.run();
+      expect(
+        run.writeLock() ?? "<released>",
+        `${flow.name} kept the Review locked`,
+      ).toBe("<released>");
+      expect(
+        run.result,
+        `${flow.name} failed the confirmed write`,
+      ).toMatchObject({ _tag: "ok" });
+    });
   }
 });

@@ -9,20 +9,17 @@ import {
   mergeGateFindings,
   type MergeGateFinding,
 } from "../domain/analysis-merge-findings";
-import type { MergeWarningCode } from "../domain/merge-readiness";
-import {
-  parseContentHash,
-  parseGitSha,
-  parseIsoTimestamp,
-  parseReviewId,
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-  type ContentHash,
-  type GitSha,
-  type IsoTimestamp,
-  type ReviewId,
-  type ReviewSessionId,
-  type WorkspaceProfileId,
+import type {
+  MergeReadiness,
+  MergeWarningCode,
+} from "../domain/merge-readiness";
+import type {
+  ContentHash,
+  GitSha,
+  IsoTimestamp,
+  ReviewId,
+  ReviewSessionId,
+  WorkspaceProfileId,
 } from "../domain/ids";
 import {
   confirmMergeOperation,
@@ -30,14 +27,66 @@ import {
   rejectMergeOperation,
   requestMergeOperation,
 } from "../domain/merge-operation";
-import { markReviewTerminal } from "../domain/review";
+import { markReviewTerminal, type Review } from "../domain/review";
 import { err, ok, type Result } from "../domain/result";
 import { parseReviewResult } from "../domain/review-result";
 import type { ReviewSession } from "../domain/review-session";
+import {
+  postDesktopNotification,
+  type DesktopNotifier,
+} from "./desktop-notifier";
 import { mergePullRequest, type MergeMethod } from "./merge-service";
-import { readObjectField } from "./read-object-field";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import type { ReviewWriteGate } from "./review-write-gate";
+import type {
+  ReviewWriteGate,
+  ReviewWriteGateFailure,
+} from "./review-write-gate";
+
+/** A merge request the route has already parsed and branded, so the controller checks policy only. */
+export type MergeCommand = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  readonly sessionId: ReviewSessionId;
+  readonly expectedHeadSha: GitSha;
+  readonly expectedBaseSha: GitSha;
+  readonly expectedPatchHash: ContentHash;
+  readonly expectedRevision: IsoTimestamp;
+  readonly method: MergeMethod;
+  readonly acknowledgedWarnings: {
+    readonly revision: {
+      readonly headSha: string;
+      readonly baseSha: string;
+      readonly patchHash: string;
+    };
+    readonly warningCodes: ReadonlyArray<MergeWarningCode>;
+  };
+};
+
+/** What a confirmed merge answers with. */
+type MergeWriteReceipt = {
+  readonly readiness: MergeReadiness;
+  readonly review: Review;
+};
+
+/** Every reason `MergeWriteController.merge` refuses or cannot confirm a merge. */
+type MergeWriteFailure = {
+  readonly reason:
+    | ReviewWriteGateFailure["reason"]
+    | MergeRejectionReason
+    | "invalid_input"
+    | "merge_in_progress"
+    | "storage_failed"
+    | "merge_outcome_unknown";
+};
+
+type MergeRejectionReason =
+  | "merge_blocked"
+  | "merge_acknowledgement_required"
+  | "stale_head"
+  | "not_fresh"
+  | "merge_rate_limited"
+  | "merge_forbidden"
+  | "merge_failed";
 
 /** Main-process merge boundary; the renderer supplies only an already-confirmed method and acknowledgement. */
 export class MergeWriteController {
@@ -57,65 +106,41 @@ export class MergeWriteController {
       readonly insights: Pick<InsightStore, "loadTyped">;
     },
     private readonly writeCoordinator: ReviewOperationCoordinator,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
+  /** Merges once the gate, the represented revision, and the acknowledgement all match what the maintainer confirmed. */
   async merge(
-    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the main-process merge route's own I/O boundary parser; readObjectField calls below run immediately and there is no earlier boundary.
-    input: unknown,
-  ): Promise<Result<unknown, { readonly reason: string }>> {
-    const profileId = parseWorkspaceProfileId(
-      readObjectField(input, "profileId"),
-    );
-    const sessionId = parseReviewSessionId(readObjectField(input, "sessionId"));
-    const reviewId = parseReviewId(readObjectField(input, "reviewId"));
-    const expectedHead = parseGitSha(readObjectField(input, "expectedHeadSha"));
-    const expectedBase = parseGitSha(readObjectField(input, "expectedBaseSha"));
-    const expectedPatch = parseContentHash(
-      readObjectField(input, "expectedPatchHash"),
-    );
-    const expectedRevision = parseIsoTimestamp(
-      readObjectField(input, "expectedRevision"),
-    );
-    const method = readObjectField(input, "method");
-    const acknowledgedWarnings = readObjectField(input, "acknowledgedWarnings");
-    if (
-      profileId._tag === "err" ||
-      sessionId._tag === "err" ||
-      reviewId._tag === "err" ||
-      expectedHead._tag === "err" ||
-      expectedBase._tag === "err" ||
-      expectedPatch._tag === "err" ||
-      expectedRevision._tag === "err" ||
-      !isMethod(method)
-    )
+    input: MergeCommand,
+  ): Promise<Result<MergeWriteReceipt, MergeWriteFailure>> {
+    const {
+      profileId,
+      reviewId,
+      sessionId,
+      expectedHeadSha,
+      expectedBaseSha,
+      expectedPatchHash,
+      expectedRevision,
+      method,
+    } = input;
+    const acknowledgedWarningCodes = warningCodesForRevision(input);
+    if (acknowledgedWarningCodes === undefined)
       return err({ reason: "invalid_input" });
-    const acknowledgement = parseAcknowledgement(
-      acknowledgedWarnings,
-      expectedHead.value,
-      expectedBase.value,
-      expectedPatch.value,
-    );
-    if (acknowledgement === undefined) return err({ reason: "invalid_input" });
-    const key = `${profileId.value}:${reviewId.value}`;
+    const key = `${profileId}:${reviewId}`;
     const acquired = this.writeCoordinator.acquire(key);
     if (!acquired) return err({ reason: "merge_in_progress" });
     try {
-      const gated = await this.writeGate.requireFresh(
-        profileId.value,
-        reviewId.value,
-        {
-          sessionId: sessionId.value,
-          headSha: expectedHead.value,
-          patchHash: expectedPatch.value,
-        },
-      );
+      const gated = await this.writeGate.requireFresh(profileId, reviewId, {
+        sessionId,
+        headSha: expectedHeadSha,
+        patchHash: expectedPatchHash,
+      });
       if (gated._tag === "err") return err({ reason: gated.error.reason });
       if (
-        gated.value.review.representedRemote?.refreshedAt !==
-        expectedRevision.value
+        gated.value.review.representedRemote?.refreshedAt !== expectedRevision
       )
         return err({ reason: "stale" });
-      if (gated.value.session.pr.baseSha !== acknowledgement.revision.baseSha)
+      if (gated.value.session.pr.baseSha !== expectedBaseSha)
         return err({ reason: "stale" });
       const [profile, session] = [
         ok(gated.value.profile),
@@ -124,12 +149,12 @@ export class MergeWriteController {
       if (profile._tag === "err" || session._tag === "err")
         return err({ reason: "not_found" });
       const findings = await this.currentAnalysisFindings(
-        profileId.value,
-        reviewId.value,
+        profileId,
+        reviewId,
         {
-          sessionId: sessionId.value,
-          headSha: expectedHead.value,
-          patchHash: expectedPatch.value,
+          sessionId,
+          headSha: expectedHeadSha,
+          patchHash: expectedPatchHash,
         },
         session.value.findingReviewReceipts,
       );
@@ -137,9 +162,9 @@ export class MergeWriteController {
       const startedAt = this.now();
       const requested = requestMergeOperation({
         operationId: `merge-${startedAt.replace(/[^0-9]/g, "")}`,
-        profileId: profileId.value,
-        reviewId: reviewId.value,
-        sessionId: sessionId.value,
+        profileId: profileId,
+        reviewId: reviewId,
+        sessionId,
         pr: {
           host: session.value.key.host,
           owner: session.value.key.owner,
@@ -148,7 +173,7 @@ export class MergeWriteController {
         },
         expectedHeadSha: session.value.key.headSha,
         method,
-        acknowledgedWarningCodes: acknowledgement.warningCodes,
+        acknowledgedWarningCodes: acknowledgedWarningCodes,
         startedAt,
       });
       if (requested._tag === "err") return err({ reason: "invalid_input" });
@@ -173,7 +198,7 @@ export class MergeWriteController {
         gateway: this.github,
         method,
         supportedMethods: this.methods,
-        acknowledgedWarningCodes: acknowledgement.warningCodes,
+        acknowledgedWarningCodes: acknowledgedWarningCodes,
       });
       if (merged._tag === "err") {
         if (merged.error._tag === "GitHubMergeOutcomeUnknown")
@@ -197,7 +222,7 @@ export class MergeWriteController {
       )
         return err({ reason: "merge_outcome_unknown" });
       const currentReview = await this.stores.reviews.load(
-        profileId.value,
+        profileId,
         requested.value.reviewId,
       );
       if (currentReview._tag !== "ok")
@@ -214,12 +239,17 @@ export class MergeWriteController {
       if (savedReview._tag === "err")
         return err({ reason: "merge_outcome_unknown" });
       const removed = await this.operations.removeAfterSessionReceipt(
-        profileId.value,
-        sessionId.value,
+        profileId,
+        sessionId,
       );
-      return removed._tag === "ok"
-        ? ok({ readiness: merged.value.readiness, review: terminalReview })
-        : err({ reason: "merge_outcome_unknown" });
+      if (removed._tag === "err")
+        return err({ reason: "merge_outcome_unknown" });
+      postDesktopNotification(this.notifier, {
+        _tag: "MergeCompleted",
+        reviewId,
+        pullRequest: requested.value.pr,
+      });
+      return ok({ readiness: merged.value.readiness, review: terminalReview });
     } finally {
       this.writeCoordinator.release(key);
     }
@@ -262,66 +292,20 @@ export class MergeWriteController {
   }
 }
 
-type MergeWarningAcknowledgement = {
-  readonly revision: {
-    readonly headSha: string;
-    readonly baseSha: string;
-    readonly patchHash: string;
-  };
-  readonly warningCodes: ReadonlyArray<MergeWarningCode>;
-};
-
-function parseAcknowledgement(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the raw acknowledgement I/O boundary parser; readObjectField calls below run immediately and there is no earlier boundary.
-  value: unknown,
-  expectedHeadSha: string,
-  expectedBaseSha: string,
-  expectedPatchHash: string,
-): MergeWarningAcknowledgement | undefined {
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw external input at this exact I/O boundary; no earlier parser exists for this primitive shape.
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return undefined;
-  const revision = readObjectField(value, "revision");
-  const warningCodes = readObjectField(value, "warningCodes");
-  if (
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field (from readObjectField, typed unknown) at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof revision !== "object" ||
-    revision === null ||
-    Array.isArray(revision) ||
-    !Array.isArray(warningCodes) ||
-    !warningCodes.every(isMergeWarningCode)
-  )
-    return undefined;
-  const headSha = readObjectField(revision, "headSha");
-  const baseSha = readObjectField(revision, "baseSha");
-  const patchHash = readObjectField(revision, "patchHash");
-  return headSha === expectedHeadSha &&
-    baseSha === expectedBaseSha &&
-    patchHash === expectedPatchHash
-    ? {
-        revision: { headSha, baseSha, patchHash },
-        warningCodes: [...new Set(warningCodes)].sort(),
-      }
+/** The acknowledged warning codes, de-duplicated and sorted, when the acknowledgement names the revision being merged. */
+function warningCodesForRevision(
+  command: MergeCommand,
+): ReadonlyArray<MergeWarningCode> | undefined {
+  const { revision, warningCodes } = command.acknowledgedWarnings;
+  return revision.headSha === command.expectedHeadSha &&
+    revision.baseSha === command.expectedBaseSha &&
+    revision.patchHash === command.expectedPatchHash
+    ? [...new Set(warningCodes)].sort()
     : undefined;
 }
 
-function isMergeWarningCode(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the warning-code I/O boundary type guard; there is no earlier boundary to move the parse to.
-  value: unknown,
-): value is MergeWarningAcknowledgement["warningCodes"][number] {
-  return (
-    value === "request_changes" || value === "findings_need_acknowledgement"
-  );
-}
-
-function isMethod(
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the merge-method I/O boundary type guard; there is no earlier boundary to move the parse to.
-  value: unknown,
-): value is MergeMethod {
-  return value === "merge" || value === "squash" || value === "rebase";
-}
 /** Exported for direct unit testing of the tag-to-wire-reason mapping without module-mocking merge-service.ts. */
-export function mergeReason(tag: string): string {
+export function mergeReason(tag: string): MergeRejectionReason {
   return tag === "MergeBlocked"
     ? "merge_blocked"
     : tag === "MergeAcknowledgementRequired"

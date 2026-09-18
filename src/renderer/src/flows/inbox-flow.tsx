@@ -22,6 +22,7 @@ import {
   type InboxCheckStatusFilter,
   type InboxFilterTextFailure,
   type InboxPageSize,
+  type InboxPreset,
   type InboxReviewStateFilter,
   type InboxStateFilter,
 } from "../../../domain/maintainer-inbox";
@@ -58,8 +59,8 @@ export function InboxFlow({
   selectedLabels = [],
   onInboxLabelsChange = () => undefined,
   labelFits = () => true,
-  awaitingMyReview = false,
-  onInboxAwaitingMyReviewChange = () => undefined,
+  preset,
+  onInboxPresetChange = () => undefined,
   reviewState,
   onInboxReviewStateChange = () => undefined,
   checkStatus,
@@ -107,10 +108,10 @@ export function InboxFlow({
   readonly onInboxLabelsChange?: (labels: ReadonlyArray<string>) => void;
   /** Whether a label may still be selected under the search-query budget; only App owns it. */
   readonly labelFits?: (name: string) => boolean;
-  /** The "Awaiting review from you" preset (ADR 0031), sent to GitHub as
-   * `user-review-requested:@me`. Only App owns its request transition. */
-  readonly awaitingMyReview?: boolean;
-  readonly onInboxAwaitingMyReviewChange?: (value: boolean) => void;
+  /** The one-click preset (ADR 0031), sent to GitHub as its own qualifier.
+   * Only App owns its request transition. */
+  readonly preset?: InboxPreset;
+  readonly onInboxPresetChange?: (value: InboxPreset | undefined) => void;
   readonly reviewState?: InboxReviewStateFilter;
   readonly onInboxReviewStateChange?: (
     value: InboxReviewStateFilter | undefined,
@@ -253,8 +254,8 @@ export function InboxFlow({
       selectedLabels={selectedLabels}
       onInboxLabelsChange={onInboxLabelsChange}
       labelFits={labelFits}
-      awaitingMyReview={awaitingMyReview}
-      onInboxAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
+      {...(preset === undefined ? {} : { preset })}
+      onInboxPresetChange={onInboxPresetChange}
       {...(reviewState === undefined ? {} : { reviewState })}
       onInboxReviewStateChange={onInboxReviewStateChange}
       {...(checkStatus === undefined ? {} : { checkStatus })}
@@ -306,8 +307,8 @@ function InboxScreen({
   selectedLabels,
   onInboxLabelsChange,
   labelFits,
-  awaitingMyReview,
-  onInboxAwaitingMyReviewChange,
+  preset,
+  onInboxPresetChange,
   reviewState,
   onInboxReviewStateChange,
   checkStatus,
@@ -349,8 +350,8 @@ function InboxScreen({
   readonly selectedLabels: ReadonlyArray<string>;
   readonly onInboxLabelsChange: (labels: ReadonlyArray<string>) => void;
   readonly labelFits: (name: string) => boolean;
-  readonly awaitingMyReview: boolean;
-  readonly onInboxAwaitingMyReviewChange: (value: boolean) => void;
+  readonly preset?: InboxPreset;
+  readonly onInboxPresetChange: (value: InboxPreset | undefined) => void;
   readonly reviewState?: InboxReviewStateFilter;
   readonly onInboxReviewStateChange: (
     value: InboxReviewStateFilter | undefined,
@@ -439,8 +440,8 @@ function InboxScreen({
           selectedLabels={selectedLabels}
           onLabelsChange={onInboxLabelsChange}
           labelFits={labelFits}
-          awaitingMyReview={awaitingMyReview}
-          onAwaitingMyReviewChange={onInboxAwaitingMyReviewChange}
+          {...(preset === undefined ? {} : { preset })}
+          onPresetChange={onInboxPresetChange}
           {...(reviewState === undefined ? {} : { reviewState })}
           onReviewStateChange={onInboxReviewStateChange}
           {...(checkStatus === undefined ? {} : { checkStatus })}

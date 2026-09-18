@@ -116,7 +116,7 @@ export function NarrativeWalkthrough({
   readonly rawPatch?: string;
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly annotations?: ReadonlyArray<ReadOnlyConversationAnnotation>;
-  readonly discussionUnavailable?: boolean;
+  readonly discussionUnavailable?: "stale" | "loading";
   readonly focused?: boolean;
   readonly onFocusedChange?: (focused: boolean) => void;
   readonly actions: NarrativeWalkthroughActions;
@@ -223,12 +223,12 @@ export function NarrativeWalkthrough({
           return;
         }
       }
-      if (event.key === "ArrowLeft" || event.key === "j") {
+      if (event.key === "ArrowLeft" || event.key === "k") {
         event.preventDefault();
         if (canGoPrev) goToOffset(-1);
         return;
       }
-      if (event.key === "ArrowRight" || event.key === "k") {
+      if (event.key === "ArrowRight" || event.key === "j") {
         event.preventDefault();
         if (canGoNext) goToOffset(1);
         return;
@@ -477,12 +477,13 @@ export function NarrativeWalkthrough({
             <p className="text-sm text-muted-foreground">
               {activeSection.prose}
             </p>
-            {discussionUnavailable ? (
+            {discussionUnavailable === undefined ? null : (
               <p role="status" className="text-sm text-muted-foreground">
-                Inline discussion is unavailable or incomplete. Refresh GitHub
-                state to check for replies.
+                {discussionUnavailable === "stale"
+                  ? "This Walkthrough is for an older revision. Regenerate it to see inline discussion."
+                  : "Inline discussion is unavailable or incomplete. Refresh GitHub state to check for replies."}
               </p>
-            ) : null}
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">
                 <CircleAlert />

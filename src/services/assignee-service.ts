@@ -7,7 +7,7 @@ import {
   resolveAvatarDataUris,
   withAvatarDataUri,
 } from "../adapters/storage/avatar-cache-store";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type {
   AssignableUser,
@@ -21,6 +21,7 @@ import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { AvatarRailDependencies } from "./avatar-sync-service";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { DesktopNotifier } from "./desktop-notifier";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import {
   mapGitHubReadFailure,
@@ -126,13 +127,14 @@ export class AssigneeService {
     private readonly github: Gateway,
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
-    private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly recentWrites: ConfirmedWriteJournal,
     private readonly operations: Pick<
       ReviewWriteOperationStore,
       "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
     >,
     /** Best-effort; see `AvatarRailDependencies`. Absent in tests/paths that never exercise avatar behaviour, in which case `list` returns every user with no `avatarDataUri`. */
     private readonly avatars?: AvatarRailDependencies,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   async execute(input: {
@@ -151,6 +153,7 @@ export class AssigneeService {
         validate: () => validateLocalCommand(input.command),
         prepare: () => this.prepareWrite(input),
         journalEntry: journalEntryFor,
+        notifier: this.notifier,
       },
     );
   }
@@ -374,6 +377,7 @@ export class AssigneeService {
       const writer = this.github.addAssigneesToAssignable.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
+        pullRequest: pr,
         intent: { _tag: "AddAssignees" as const, logins: assigneeLogins },
         write: async (): Promise<
           Result<AssigneeReceipt, AssigneeWriteFailure>
@@ -394,6 +398,7 @@ export class AssigneeService {
     const writer = this.github.removeAssigneesFromAssignable.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      pullRequest: pr,
       intent: { _tag: "RemoveAssignees" as const, logins: assigneeLogins },
       write: async (): Promise<
         Result<AssigneeReceipt, AssigneeWriteFailure>

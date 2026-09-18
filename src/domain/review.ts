@@ -103,6 +103,17 @@ export type Review = {
    */
   readonly title?: string;
   readonly lastOpenedAt?: IsoTimestamp;
+  /** What the maintainer had in front of them when they last left this Review. */
+  readonly lastLooked?: LastLooked;
+};
+
+/**
+ * `seenThrough` is GitHub's newest entry timestamp the maintainer was shown,
+ * never this machine's clock; it is absent when no timestamped entry was shown.
+ */
+type LastLooked = {
+  readonly headSha: GitSha;
+  readonly seenThrough?: IsoTimestamp;
 };
 
 export type InvalidReview = { readonly _tag: "InvalidReview" };
@@ -170,6 +181,12 @@ const reviewV2Schema = v.strictObject({
   updatedAt: v.string(),
   title: v.optional(v.string()),
   lastOpenedAt: v.optional(v.string()),
+  lastLooked: v.optional(
+    v.strictObject({
+      headSha: v.string(),
+      seenThrough: v.optional(v.string()),
+    }),
+  ),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
@@ -263,6 +280,31 @@ export function markReviewOpened(
     // An open with no title in hand keeps the title already recorded.
     ...definedProps({ title: input.title }),
     lastOpenedAt: input.now,
+    updatedAt: laterTimestamp(review.updatedAt, input.now),
+  };
+}
+
+/**
+ * Record what the maintainer saw as they left the Review. `seenThrough` never
+ * moves backwards, so leaving a projection with nothing newer keeps the cursor.
+ */
+export function markReviewLeft(
+  review: Review,
+  input: {
+    readonly headSha: GitSha;
+    readonly seenThrough: IsoTimestamp | undefined;
+    readonly now: IsoTimestamp;
+  },
+): Review {
+  const previous = review.lastLooked?.seenThrough;
+  const seenThrough =
+    previous !== undefined &&
+    (input.seenThrough === undefined || previous > input.seenThrough)
+      ? previous
+      : input.seenThrough;
+  return {
+    ...review,
+    lastLooked: { headSha: input.headSha, ...definedProps({ seenThrough }) },
     updatedAt: laterTimestamp(review.updatedAt, input.now),
   };
 }
@@ -395,6 +437,7 @@ function parseReviewBase(
     | "updatedAt"
     | "title"
     | "lastOpenedAt"
+    | "lastLooked"
   >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
@@ -440,10 +483,15 @@ function parseReviewBase(
     raw.lastOpenedAt === undefined
       ? ok(undefined)
       : parseIsoTimestamp(raw.lastOpenedAt);
+  const lastLooked =
+    raw.lastLooked === undefined
+      ? ok(undefined)
+      : parseLastLooked(raw.lastLooked);
   if (
     representedRemote._tag === "err" ||
     status._tag === "err" ||
-    lastOpenedAt._tag === "err"
+    lastOpenedAt._tag === "err" ||
+    lastLooked._tag === "err"
   )
     return invalid();
 
@@ -456,6 +504,7 @@ function parseReviewBase(
       representedRemote: representedRemote.value,
       title: raw.title,
       lastOpenedAt: lastOpenedAt.value,
+      lastLooked: lastLooked.value,
     }),
     status: status.value,
     createdAt: createdAt.value,
@@ -483,6 +532,21 @@ function parseRepresentedRemote(
     pullRequestUpdatedAt: pullRequestUpdatedAt.value,
     snapshotHash: snapshotHash.value,
     refreshedAt: refreshedAt.value,
+  });
+}
+
+function parseLastLooked(
+  raw: RawReviewV2["lastLooked"] & object,
+): Result<LastLooked, InvalidReview> {
+  const headSha = parseGitSha(raw.headSha);
+  const seenThrough =
+    raw.seenThrough === undefined
+      ? ok(undefined)
+      : parseIsoTimestamp(raw.seenThrough);
+  if (headSha._tag === "err" || seenThrough._tag === "err") return invalid();
+  return ok({
+    headSha: headSha.value,
+    ...definedProps({ seenThrough: seenThrough.value }),
   });
 }
 

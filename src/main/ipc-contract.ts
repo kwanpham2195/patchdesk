@@ -37,6 +37,38 @@ export const DESKTOP_WINDOW_FULL_SCREEN_CHANNEL =
  */
 export const DESKTOP_WINDOW_APPEARANCE_CHANNEL = "patchdesk:window-appearance";
 
+/** Main-to-renderer: the maintainer clicked a desktop notification. */
+export const DESKTOP_NOTIFICATION_CLICK_CHANNEL =
+  "patchdesk:notification-click";
+
+/**
+ * Where a clicked notification lands: a Review, with the Insight reader when
+ * the notification was about an Insight run, or a watched pull request, which
+ * opens the way a pull request pasted into the palette does.
+ */
+export type DesktopNotificationClick =
+  | {
+      readonly kind: "review";
+      readonly reviewId: string;
+      readonly insightType?: "analysis" | "walkthrough" | "brief";
+    }
+  | {
+      readonly kind: "pullRequest";
+      readonly pullRequest: {
+        readonly host: string;
+        readonly owner: string;
+        readonly repo: string;
+        readonly number: number;
+      };
+    };
+
+/**
+ * Main-to-renderer: a poll found a change on a watched pull request of the
+ * named profile, which lights the Pull requests freshness badge (ADR 0045).
+ */
+export const DESKTOP_WATCHED_PULL_REQUEST_CHANGE_CHANNEL =
+  "patchdesk:watched-pull-request-change";
+
 /** Allowlisted loopback API request projected through the desktop bridge. */
 export type LocalApiDesktopRequest = {
   readonly path: string;
@@ -55,6 +87,17 @@ type SetNavigationStateDesktopRequest = {
   readonly state: "clear" | "dirty_draft" | "write_pending";
 };
 
+/**
+ * The screen the renderer shows, so the main process can stay silent about a
+ * Review the maintainer is already looking at.
+ */
+type SetNavigationDestinationDesktopRequest = {
+  readonly operation: "setNavigationDestination";
+  readonly destination:
+    | { readonly kind: "dashboard" }
+    | { readonly kind: "workbench"; readonly reviewId: string };
+};
+
 /** Opens a validated HTTPS URL outside the isolated renderer. */
 type OpenExternalHttpsDesktopRequest = {
   readonly operation: "openExternalHttps";
@@ -66,6 +109,7 @@ export type DesktopRequest =
   | LocalApiDesktopRequest
   | SelectDirectoryDesktopRequest
   | SetNavigationStateDesktopRequest
+  | SetNavigationDestinationDesktopRequest
   | OpenExternalHttpsDesktopRequest;
 
 export type DesktopResponse = {
@@ -87,6 +131,12 @@ export type PatchdeskDesktopApi = {
   request(input: DesktopRequest): Promise<DesktopResponse>;
   openExternalHttps(url: string): Promise<boolean>;
   onMenuAction(listener: (action: DesktopMenuAction) => void): () => void;
+  /** Fires after the main process focused the window for a clicked notification. */
+  onNotificationClick(
+    listener: (click: DesktopNotificationClick) => void,
+  ): () => void;
+  /** Fires with the profile id when a poll finds a change on one of its watched pull requests. */
+  onWatchedPullRequestChange(listener: (profileId: string) => void): () => void;
   /**
    * Fires whenever the window enters or leaves native macOS full screen,
    * which the renderer cannot observe on its own: `(display-mode:

@@ -2,7 +2,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RawJsonValue } from "../../src/domain/json";
-import type { WorkbenchResponse } from "../../src/renderer/src/renderer-contracts";
+import type {
+  InsightRunResponse,
+  WorkbenchResponse,
+} from "../../src/renderer/src/renderer-contracts";
 
 import {
   useInsightRun,
@@ -71,6 +74,10 @@ const reviewProjection = (): WorkbenchResponse =>
     checks: { overall: "passing", checks: [] },
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
     mergeReasons: [],
+    analysisReviewActions: {
+      findings: { "finding-1": { state: "actionable" } },
+      canFinishWithAnalysisSummary: false,
+    },
   }) as WorkbenchResponse;
 
 type Deferred<T> = {
@@ -92,6 +99,7 @@ type InsightRunFixture = {
   readonly runId: string;
   readonly type: string;
   readonly status: string;
+  readonly activity?: InsightRunResponse["activity"];
 };
 
 /** Every response body the faux desktop bridge returns in this suite. */
@@ -236,6 +244,7 @@ describe("useInsightRun", () => {
     });
     const firstPatch: Array<unknown> = [];
     const secondPatch: Array<unknown> = [];
+    const secondActions: Array<unknown> = [];
     const firstCompleted: Array<boolean> = [];
     const secondCompleted: Array<boolean> = [];
     const { result, rerender } = renderHook(
@@ -244,7 +253,11 @@ describe("useInsightRun", () => {
           profileId: "profile",
           reviewId: "review-42",
           type: "analysis",
-          onInsightPatch: (_type, value) => patch.push(value),
+          onInsightPatch: (_type, value, options) => {
+            patch.push(value);
+            if (patch === secondPatch)
+              secondActions.push(options?.analysisReviewActions);
+          },
           onCompleted: () => completed.push(true),
         }),
       {
@@ -268,6 +281,7 @@ describe("useInsightRun", () => {
     });
     await waitFor(() => expect(secondPatch).toHaveLength(1));
     expect(firstPatch).toHaveLength(0);
+    expect(secondActions).toEqual([reviewProjection().analysisReviewActions]);
     expect(secondCompleted).toHaveLength(1);
     expect(firstCompleted).toHaveLength(0);
     expect(result.current.status).toBe("completed");
@@ -515,6 +529,39 @@ describe("useInsightRun", () => {
     expect(result.current.runId).toBe("run-new");
     expect(result.current.status).toBe("running");
     expect(result.current.error).toBe(false);
+  });
+
+  it("exposes the activity trace each poll returns", async () => {
+    const activity: InsightRunResponse["activity"] = {
+      phase: "turn",
+      reasoningLine: "Checking how citations resolve",
+      commands: [
+        {
+          id: "cmd-1",
+          command: "git diff HEAD~1",
+          status: "completed",
+          exitCode: 0,
+          durationMs: 400,
+        },
+      ],
+      approvals: { accepted: 1, declined: 0 },
+    };
+    installBridge((input) => {
+      if (input.path.endsWith("/run")) return started;
+      if (input.path.includes("/runs/")) return { ...started, activity };
+      throw new Error(input.path);
+    });
+    const { result, unmount } = renderHook(() =>
+      useInsightRun({
+        profileId: "profile",
+        reviewId: "review-42",
+        type: "analysis",
+      }),
+    );
+
+    act(() => result.current.run("codex-cli-account", "fixture-model", "low"));
+    await waitFor(() => expect(result.current.activity).toEqual(activity));
+    unmount();
   });
 
   it("retains run identity and retries polling after a status failure", async () => {

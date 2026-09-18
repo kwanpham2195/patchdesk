@@ -10,7 +10,7 @@ import { parseBriefOutput } from "../domain/brief";
 import { definedProps } from "../domain/defined-props";
 import { parseAbsolutePath, type AbsolutePath } from "../domain/ids";
 import { parseModelReviewResult } from "../domain/review-result";
-import { err, ok, type Result } from "../domain/result";
+import { casesHandled, err, ok, type Result } from "../domain/result";
 import type { BriefInput } from "./brief-operation";
 import {
   ANALYSIS_RUN_TIMEOUT_MS,
@@ -19,6 +19,7 @@ import {
 } from "./child-invocation";
 import type {
   InsightInvocationInput,
+  InsightInvocationOptions,
   InsightInvoker,
 } from "./insight-run-coordinator";
 import { readObjectField } from "./read-object-field";
@@ -108,7 +109,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
    */
   async invoke(
     input: InsightInvocationInput,
-    options: { readonly signal: AbortSignal },
+    options: InsightInvocationOptions,
   ): Promise<Result<unknown, PiInsightChildFailure>> {
     if (input.provider !== "pi") return err({ reason: "execution_failed" });
     const reasoning = input.reasoning;
@@ -334,7 +335,16 @@ function childFailureReason(
       return "runtime_unavailable";
     case "CommandTimedOut":
       return "timed_out";
-    default:
+    case "CommandForbidden":
+    case "CommandUnsupported":
+    case "CommandPendingReview":
+    case "CommandFailed":
+    case "CommandInvalidJson":
       return "execution_failed";
+    // An aborted child is a cancellation; `runChild` already reports the run's own abort before this runs.
+    case "CommandAborted":
+      return "cancelled";
+    default:
+      return casesHandled(failure);
   }
 }

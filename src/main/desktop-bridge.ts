@@ -23,6 +23,8 @@ import {
   type LocalApiDesktopRequest,
 } from "./ipc-contract";
 import { definedProps } from "../domain/defined-props";
+import { parseReviewId } from "../domain/ids";
+import type { NotificationDestination } from "./desktop-notifier";
 import type { StartedLocalApi } from "./app-lifecycle";
 
 const requestSchema = union([
@@ -38,6 +40,13 @@ const requestSchema = union([
   strictObject({
     operation: literal("setNavigationState"),
     state: picklist(["clear", "dirty_draft", "write_pending"]),
+  }),
+  strictObject({
+    operation: literal("setNavigationDestination"),
+    destination: union([
+      strictObject({ kind: literal("dashboard") }),
+      strictObject({ kind: literal("workbench"), reviewId: string() }),
+    ]),
   }),
   strictObject({
     operation: literal("openExternalHttps"),
@@ -56,6 +65,9 @@ const allowedRoutes = new Set([
   "GET /v1/inbox/labels",
   "POST /v1/watchlist",
   "DELETE /v1/watchlist",
+  "GET /v1/watched-pull-requests",
+  "POST /v1/watched-pull-requests",
+  "DELETE /v1/watched-pull-requests",
 
   "GET /v1/watchlist/suggestions",
   "GET /v1/environment",
@@ -67,6 +79,9 @@ const allowedRoutes = new Set([
   "GET /v1/reviews/assignees",
   "POST /v1/reviews/reviewers/command",
   "GET /v1/reviews/reviewers",
+  "POST /v1/reviews/draft-state/command",
+  "POST /v1/reviews/base-branch/command",
+  "GET /v1/reviews/base-branch",
   "POST /v1/reviews/pending-review/command",
   "POST /v1/reviews/pending-review/recover",
   "POST /v1/reviews/direct-summary/submit",
@@ -79,6 +94,7 @@ const allowedRoutes = new Set([
   "GET /v1/insight-providers",
   "POST /v1/insight-providers/codex/models",
   "POST /v1/reviews/load",
+  "POST /v1/reviews/leave",
   "POST /v1/reviews/detect-updates",
   "POST /v1/reviews/insights/analysis/run",
   "POST /v1/reviews/insights/walkthrough/run",
@@ -150,6 +166,9 @@ export function installDesktopRequestBridge(
     readonly setNavigationState: (
       state: "clear" | "dirty_draft" | "write_pending",
     ) => void;
+    readonly setNavigationDestination: (
+      destination: NotificationDestination,
+    ) => void;
     readonly openExternalHttps: (url: string) => Promise<boolean>;
   },
 ): void {
@@ -165,12 +184,17 @@ export function installDesktopRequestBridge(
         : "operation" in parsed.output
           ? parsed.output.operation === "setNavigationState"
             ? { operation: parsed.output.operation, state: parsed.output.state }
-            : parsed.output.operation === "openExternalHttps"
-              ? { operation: parsed.output.operation, url: parsed.output.url }
-              : {
+            : parsed.output.operation === "setNavigationDestination"
+              ? {
                   operation: parsed.output.operation,
-                  ...definedProps({ defaultPath: parsed.output.defaultPath }),
+                  destination: parsed.output.destination,
                 }
+              : parsed.output.operation === "openExternalHttps"
+                ? { operation: parsed.output.operation, url: parsed.output.url }
+                : {
+                    operation: parsed.output.operation,
+                    ...definedProps({ defaultPath: parsed.output.defaultPath }),
+                  }
           : {
               path: parsed.output.path,
               ...definedProps({
@@ -190,6 +214,18 @@ export function installDesktopRequestBridge(
       if ("operation" in request) {
         if (request.operation === "setNavigationState") {
           operations.setNavigationState(request.state);
+          return { ok: true, status: 200, body: {}, correlationId };
+        }
+        if (request.operation === "setNavigationDestination") {
+          const destination = notificationDestination(request.destination);
+          if (destination === undefined)
+            return {
+              ok: false,
+              status: 400,
+              body: { error: "invalid_input" },
+              correlationId,
+            };
+          operations.setNavigationDestination(destination);
           return { ok: true, status: 200, body: {}, correlationId };
         }
         if (request.operation === "openExternalHttps") {
@@ -287,6 +323,20 @@ export function installDesktopRequestBridge(
       }
     },
   );
+}
+
+/** Brands the renderer's workbench Review id; an unparseable one is refused, never treated as the dashboard. */
+function notificationDestination(
+  destination: Extract<
+    DesktopRequest,
+    { readonly operation: "setNavigationDestination" }
+  >["destination"],
+): NotificationDestination | undefined {
+  if (destination.kind === "dashboard") return destination;
+  const reviewId = parseReviewId(destination.reviewId);
+  return reviewId._tag === "ok"
+    ? { kind: "workbench", reviewId: reviewId.value }
+    : undefined;
 }
 
 async function readBridgeResponseBody(

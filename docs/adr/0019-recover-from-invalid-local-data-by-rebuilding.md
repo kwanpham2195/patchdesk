@@ -19,3 +19,12 @@ Patchdesk still fails closed for genuine storage failures: unreadable files, I/O
 - A review always opens when GitHub is reachable, even after an upgrade drifts a stored schema.
 - Local history of a rebuilt review is lost. The moved-aside quarantine keeps it recoverable manually.
 - The recovery path is exercised only on invalid data, so a healthy install never touches it.
+
+## Update (2026-09-17): the recent-write journal
+
+The recent-write journal (`recent-writes.json` in a Review's directory) is a fourth artifact class under this rule, and the first with no authoritative source to rebuild from. Two things set it apart from the other three:
+
+- It rebuilds empty rather than from the pull request. Its only job is suppressing a duplicate observation of a write Patchdesk just made, so losing it costs one redundant refresh. An invalid journal is moved aside and the next read starts an empty one.
+- Its quarantine copy is a single fixed-name file, `recent-writes.quarantine.json`, beside the journal and outside the retention sweep. The next quarantine overwrites it, so a Review keeps at most one copy, and it goes when the Review's directory goes.
+
+For the same reason a journal write is never fatal: once GitHub has confirmed a write, a failed journal append is logged and the write still releases its operation record and the write lock (ADR "Reconcile every uncertain GitHub write").

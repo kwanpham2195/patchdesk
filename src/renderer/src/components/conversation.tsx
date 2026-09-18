@@ -7,6 +7,10 @@ import type {
   GitHubComment,
   PublishedReview,
 } from "../../../domain/github-context";
+import {
+  conversationEntryTimestamp,
+  isNewSinceLastLooked,
+} from "../../../domain/conversation-entry-timestamp";
 import { definedProps } from "../../../domain/defined-props";
 import { parseGitHubThreadId, parseIsoTimestamp } from "../../../domain/ids";
 import type { PullRequestRef } from "../../../domain/pull-request";
@@ -54,9 +58,12 @@ export function Conversation({
   conversationActions,
   pullRequest,
   profileId,
+  lastLooked,
   rail,
 }: {
   readonly conversation: WorkbenchResponse["conversation"];
+  /** Entries later than this cursor carry a new marker; absent marks nothing. */
+  readonly lastLooked?: WorkbenchResponse["review"]["lastLooked"];
   readonly conversationActions?: ReviewConversationActions;
   readonly pullRequest?: PullRequestRef;
   readonly profileId?: string;
@@ -132,6 +139,10 @@ export function Conversation({
     pullRequest,
     profileId,
   });
+  const timeline = useRef<HTMLDivElement>(null);
+  const newCount = conversation.entries.filter((entry) =>
+    isNewSinceLastLooked(conversationEntryTimestamp(entry), lastLooked),
+  ).length;
   const generalThreadOverrides: GeneralThreadOverrides = {
     resolvedThreads,
     editedBodies,
@@ -153,6 +164,24 @@ export function Conversation({
           className="mx-auto w-full min-w-0 max-w-[680px] min-[1100px]:mx-0 min-[1100px]:flex-1"
           data-conversation-reading-column
         >
+          {newCount === 0 ? null : (
+            <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{newCount} new since you last looked</span>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  // Focus scrolls the entry into view and moves keyboard reading to it.
+                  timeline.current
+                    ?.querySelector<HTMLElement>("[data-conversation-new]")
+                    ?.focus()
+                }
+              >
+                Jump to first new
+              </Button>
+            </div>
+          )}
+
           {/* PR description */}
           {conversation.prDescription.length > 0 && (
             <div className="mb-4 rounded-md border p-4">
@@ -167,21 +196,39 @@ export function Conversation({
           )}
 
           {/* Timeline entries */}
-          <div className="flex flex-col">
+          <div className="flex flex-col" ref={timeline}>
             {conversation.prDescription.length === 0 &&
             conversation.entries.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 No conversation yet.
               </p>
             ) : (
-              conversation.entries.map((entry) => (
-                <ConversationTimelineEntry
-                  key={conversationEntryKey(entry)}
-                  entry={entry}
-                  generalThreadOverrides={generalThreadOverrides}
-                  body={body}
-                />
-              ))
+              conversation.entries.map((entry) => {
+                const isNew = isNewSinceLastLooked(
+                  conversationEntryTimestamp(entry),
+                  lastLooked,
+                );
+                return (
+                  <div
+                    key={conversationEntryKey(entry)}
+                    className="relative scroll-mt-4 outline-none"
+                    tabIndex={isNew ? -1 : undefined}
+                    data-conversation-new={isNew ? "" : undefined}
+                  >
+                    {isNew ? (
+                      <span
+                        aria-label="New since you last looked"
+                        className="absolute inset-y-2 -left-3 w-0.5 rounded-full bg-primary"
+                      />
+                    ) : null}
+                    <ConversationTimelineEntry
+                      entry={entry}
+                      generalThreadOverrides={generalThreadOverrides}
+                      body={body}
+                    />
+                  </div>
+                );
+              })
             )}
           </div>
 

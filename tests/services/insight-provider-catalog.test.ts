@@ -7,7 +7,11 @@ import type { PiRuntimeModelCatalog } from "../../src/adapters/pi/pi-runtime-mod
 
 const pi: PiRuntimeModelCatalog = {
   async get() {
-    return ok({ models: [{ id: "openai/gpt", label: "GPT" }] });
+    return ok({
+      models: [
+        { id: "openai/gpt", label: "GPT", cost: { input: 1.25, output: 10 } },
+      ],
+    });
   },
 };
 
@@ -64,6 +68,7 @@ describe("InsightProviderCatalog", () => {
             label: "GPT",
             reasoning: ["low", "medium", "high"],
             defaultReasoning: "medium",
+            cost: { input: 1.25, output: 10 },
           },
         ],
       },

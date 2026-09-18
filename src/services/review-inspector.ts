@@ -6,7 +6,8 @@ import { err, ok, type Result } from "../domain/result";
 import { isPathContained } from "../adapters/storage/path-containment";
 import { writeAtomicFile } from "../adapters/storage/json-file";
 
-const MAX_ANALYSIS_INSPECTION_CALLS = 8;
+/** Exported so the Analysis tool descriptions state the same number. */
+export const MAX_ANALYSIS_INSPECTION_CALLS = 8;
 const MAX_GIT_SHOW_BYTES = 512 * 1024;
 export type InspectorDenied = {
   readonly _tag: "InspectorDenied";

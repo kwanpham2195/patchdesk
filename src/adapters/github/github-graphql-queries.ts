@@ -101,6 +101,22 @@ export const pullRequestReviewersQuery =
 // (`GitHubAdapter.removeRequestedReviewers`) rather than this mutation.
 export const requestReviewsMutation =
   "mutation($pullRequestId: ID!, $userIds: [ID!]!) { requestReviews(input: { pullRequestId: $pullRequestId, userIds: $userIds, union: true }) { clientMutationId } }";
+// GitHub splits the draft toggle over two fields taking one identical input,
+// so the requested state picks the mutation rather than a variable — the same
+// shape `reviewThreadStateMutation` uses. Neither field is idempotent:
+// `markPullRequestReadyForReview` fails on a pull request that is already not
+// a draft, which is why `DraftStateService` refuses a no-op on fresh evidence
+// instead of letting the mutation answer for it.
+// `refs(query:)` filters branch names by substring (checked live 2026-09-17);
+// `$search` avoids gh's reserved `query` key, as `assignableUsersQuery` does.
+export const repositoryBranchesQuery =
+  'query RepositoryBranches($owner: String!, $name: String!, $search: String) { rateLimit { remaining resetAt } repository(owner: $owner, name: $name) { refs(refPrefix: "refs/heads/", first: 100, query: $search, orderBy: { field: ALPHABETICAL, direction: ASC }) { totalCount nodes { name } } } }';
+export const updatePullRequestBaseBranchMutation =
+  "mutation($pullRequestId: ID!, $baseRefName: String!) { updatePullRequest(input: { pullRequestId: $pullRequestId, baseRefName: $baseRefName }) { clientMutationId } }";
+export const markPullRequestReadyForReviewMutation =
+  "mutation($pullRequestId: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) { clientMutationId } }";
+export const convertPullRequestToDraftMutation =
+  "mutation($pullRequestId: ID!) { convertPullRequestToDraft(input: { pullRequestId: $pullRequestId }) { clientMutationId } }";
 export const mergePolicyQuery =
   "query MergePolicy($owner: String!, $name: String!, $number: Int!, $cursor: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { state isDraft headRefOid baseRefOid baseRefName mergeable mergeStateStatus reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100, after: $cursor) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } pageInfo { hasNextPage endCursor } } } } } } } } }";
 export const maxMergePolicyPages = 3;
@@ -138,3 +154,25 @@ export const updateThreadCommentMutation =
   "mutation($commentId:ID!,$body:String!){updatePullRequestReviewComment(input:{pullRequestReviewCommentId:$commentId,body:$body}){pullRequestReviewComment{id}}}";
 export const deleteThreadCommentMutation =
   "mutation($commentId:ID!){deletePullRequestReviewComment(input:{id:$commentId}){clientMutationId}}";
+/**
+ * One aliased read of every watched pull request (ADR 0045): `pr0`…`prN`,
+ * each bound to its own variables so no owner or name is spliced into the
+ * document. Twenty aliases cost one point and twenty nodes (checked live
+ * 2026-09-17).
+ */
+export function watchedPullRequestsQuery(count: number): string {
+  const indexes = Array.from({ length: count }, (_, index) => index);
+  const variables = indexes
+    .map(
+      (index) =>
+        `$owner${index}: String!, $name${index}: String!, $number${index}: Int!`,
+    )
+    .join(", ");
+  const selections = indexes
+    .map(
+      (index) =>
+        `pr${index}: repository(owner: $owner${index}, name: $name${index}) { pullRequest(number: $number${index}) { state updatedAt headRefOid reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } }`,
+    )
+    .join(" ");
+  return `query WatchedPullRequests(${variables}) { rateLimit { remaining resetAt } ${selections} }`;
+}

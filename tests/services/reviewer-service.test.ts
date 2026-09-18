@@ -118,8 +118,8 @@ describe("ReviewerService", () => {
         userIds: ["MDQ6VXNlcjE="],
       }),
     );
-    expect(recentWrites.append).toHaveBeenCalledOnce();
-    expect(recentWrites.append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledOnce();
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       { _tag: "ReviewerChange", requested: ["octocat"], removed: [] },
@@ -162,7 +162,7 @@ describe("ReviewerService", () => {
     expect(removeRequestedReviewers).toHaveBeenCalledWith(
       expect.objectContaining({ logins: ["octocat"] }),
     );
-    expect(recentWrites.append).toHaveBeenCalledWith(
+    expect(recentWrites.appendConfirmed).toHaveBeenCalledWith(
       profileId,
       reviewId,
       { _tag: "ReviewerChange", requested: [], removed: ["octocat"] },
@@ -228,7 +228,7 @@ describe("ReviewerService", () => {
     });
     expect(result).toEqual({ _tag: "err", error: "outcome_unknown" });
     expect(requestReviews).toHaveBeenCalledOnce();
-    expect(recentWrites.append).not.toHaveBeenCalled();
+    expect(recentWrites.appendConfirmed).not.toHaveBeenCalled();
   });
 
   it("surfaces which reviewer a failed request write was for, via the exact write call arguments", async () => {

@@ -10,6 +10,10 @@ The maintainer scans the rows from GitHub. A row names its pull request number a
 
 The Insights line shows one chip per Insight, Brief, Analysis, and Walkthrough, reading Ready when Patchdesk retains that Insight for the row's current head, Outdated when it is retained for an earlier head, and Not run otherwise. Beside each chip, Request Brief, Request Analysis, or Request Walkthrough starts that Insight with the profile's saved Review defaults in one click and stays on the list. A row that has never been opened first has its Review prepared in the background, which reads GitHub and writes nothing there; the button reads Preparing…, then Requesting…, then Running… until the run settles, and the listing is re-read so the chip updates. A kind whose defaults are not saved keeps its button disabled with a pointer to Settings > Review.
 
+Below the Insights line, **Watch** asks Patchdesk to watch the pull request (ADR 0045); the button then reads **Unwatch**. A watched row carries an eye mark beside its badges, and so does its row in the column of pull requests you have opened. The Review header offers the same toggle on an open Review, and the ⌘K palette offers Watch or Unwatch for a pull request reference typed into it. Watching reads the pull request once from GitHub and changes nothing there. A workspace watches at most 20 pull requests; a 21st Watch is refused with that limit named beside the button.
+
+While Patchdesk runs it checks watched pull requests on the interval set in Settings → General → Notifications and posts one macOS notification per change: a new comment or review, a changed review decision, changed checks, new commits, or the pull request merging or closing, after which it is no longer watched. A change also puts a dot on the **GitHub:** freshness badge until the next refresh; the rows themselves still change only when you refresh. No notification is posted while the pull request's Review is open in the workbench. Clicking one opens the pull request the way pasting it into the palette does.
+
 Every row opens through the same single Open action. What opening does depends on the row's state: a row that has never been reviewed has a new Review prepared for its current head, a row with a saved Review resumes that Review, and a merged row opens read-only. Ready to merge remains a category derived from fresh, passing, mergeable evidence, but it is not an action. The inspector shows that evidence among the row's facts, and merge readiness itself is reached from PR overview inside the Review workbench.
 
 ## The task, event by event
@@ -28,7 +32,7 @@ stateDiagram-v2
 
 The listing receives one page already filtered and ordered by GitHub. The header and filter bar identify the Selected repository and current query. The row list is a keyboard-operable listbox; the selected row is highlighted and the Review details inspector is open by default when the viewport allows it.
 
-Rows show the title and number, author, labels, Draft or Merged badge, Brief badge when a retained Brief exists for the current head, change statistics, CI icon, and relative update age. The author appears with their GitHub avatar when Patchdesk holds it in the local avatar cache, and with an initials circle otherwise. Missing change statistics show an em dash rather than a fabricated zero. The inspector adds branch direction, current head, checks, labels, Insight readiness chips with their Request buttons, last-review head, and local Review status.
+Rows show the title and number, author, labels, Draft or Merged badge, Brief badge when a retained Brief exists for the current head, change statistics, CI icon, and relative update age. The author appears with their GitHub avatar when Patchdesk holds it in the local avatar cache, and with an initials circle otherwise. Missing change statistics show an em dash rather than a fabricated zero. A row whose head moved since the maintainer last left its Review shows a **New** mark; new comments, reviews, labels, and checks alone do not light it, and a pull request never left in a Review shows none. The inspector adds branch direction, current head, checks, labels, Insight readiness chips with their Request buttons, last-review head, and local Review status.
 
 ### Leave unchanged
 
@@ -114,6 +118,8 @@ After a row-open failure, the row remains inspectable and can be activated again
 - Opening one row leaves unrelated rows interactive.
 - A saved Review may be missing or obsolete; opening can recover by Pull request identity.
 - Rate-limited and forbidden repository outcomes are explanatory and do not offer a retry button.
+- Watching a pull request whose repository later leaves the workspace keeps it watched; the check reads the pull request by reference.
+- A Watch refused by GitHub, such as for a pull request the account cannot read, leaves the button on Watch with a short error beside it.
 
 ## Open questions and verification
 

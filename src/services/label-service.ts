@@ -3,7 +3,7 @@ import type {
   GitHubReader,
   GitHubReviewWriter,
 } from "../adapters/github/github-adapter";
-import type { RecentWriteJournalStore } from "../adapters/storage/recent-write-journal-store";
+import type { ConfirmedWriteJournal } from "../adapters/storage/recent-write-journal-store";
 import type { ReviewWriteOperationStore } from "../adapters/storage/review-write-operation-store";
 import type {
   RepositoryLabel,
@@ -15,6 +15,7 @@ import { err, ok, type Result } from "../domain/result";
 import type { WorkspaceProfileConfig } from "../domain/workspace-profile";
 import type { ReviewWriteGate } from "./review-write-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { DesktopNotifier } from "./desktop-notifier";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
 import {
   mapGitHubReadFailure,
@@ -99,11 +100,12 @@ export class LabelService {
     private readonly github: Gateway,
     private readonly writeCoordinator: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
-    private readonly recentWrites: Pick<RecentWriteJournalStore, "append">,
+    private readonly recentWrites: ConfirmedWriteJournal,
     private readonly operations: Pick<
       ReviewWriteOperationStore,
       "load" | "begin" | "markOutcomeUnknown" | "confirm" | "reject" | "remove"
     >,
+    private readonly notifier?: DesktopNotifier,
   ) {}
 
   async execute(input: {
@@ -120,6 +122,7 @@ export class LabelService {
       now: this.now,
       validate: () => validateLocalCommand(input.command),
       prepare: () => this.prepareWrite(input),
+      notifier: this.notifier,
       journalEntry: journalEntryFor,
     });
   }
@@ -224,6 +227,7 @@ export class LabelService {
       const writer = this.github.addLabelsToLabelable.bind(this.github);
       return ok({
         sessionId: current.value.session.id,
+        pullRequest: pr,
         intent: { _tag: "AddLabels" as const, names: labelNames },
         write: async (): Promise<Result<LabelReceipt, LabelWriteFailure>> => {
           const written = await writer({
@@ -242,6 +246,7 @@ export class LabelService {
     const writer = this.github.removeLabelsFromLabelable.bind(this.github);
     return ok({
       sessionId: current.value.session.id,
+      pullRequest: pr,
       intent: { _tag: "RemoveLabels" as const, names: labelNames },
       write: async (): Promise<Result<LabelReceipt, LabelWriteFailure>> => {
         const written = await writer({

@@ -18,6 +18,7 @@ import {
 } from "./review-invariant-fixtures";
 import { refreshService, writeGate } from "./review-lock-invariant-services";
 import { lockRows } from "./review-lock-invariant-rows";
+import { confirmedWriteJournal } from "./write-invariant-harness";
 
 /**
  * One table over EVERY entry point that can touch a single Review, asserting
@@ -223,7 +224,7 @@ describe("a published-feedback write does not re-enter the lock it holds", () =>
         gatewayReachingTheWrite() as never,
         coordinator,
         now,
-        { append: async () => ok(undefined) },
+        confirmedWriteJournal(),
         {
           load: async () => ok(undefined),
           begin: async () => ok(undefined),

@@ -31,6 +31,8 @@ export type InsightRunController = {
   readonly error: boolean;
   readonly requestFailure?: InsightRunRequestFailure;
   readonly failureReason?: InsightRunResponse["failureReason"];
+  /** The last trace a poll returned; kept after a terminal poll so a failed run still shows it. */
+  readonly activity?: InsightRunResponse["activity"];
   readonly starting: boolean;
   readonly cancelling: boolean;
   readonly busy: boolean;
@@ -41,6 +43,11 @@ export type InsightRunController = {
     onAccepted?: () => void,
   ) => void;
   readonly cancel: () => void;
+};
+
+/** Workbench fields a terminal run's reload carries alongside the Insight itself. */
+export type InsightPatchOptions = {
+  readonly analysisReviewActions?: WorkbenchResponse["analysisReviewActions"];
 };
 
 /** Owns one generation-safe Insight start, poll, and cancellation lifecycle. */
@@ -55,6 +62,7 @@ export function useInsightRun(input: {
   readonly onInsightPatch?: (
     type: InsightRunType,
     projection: NonNullable<WorkbenchResponse["insights"][InsightRunType]>,
+    options?: InsightPatchOptions,
   ) => void;
   readonly onCompleted?: () => void;
 }): InsightRunController {
@@ -77,6 +85,7 @@ export function useInsightRun(input: {
     useState<InsightRunRequestFailure>();
   const [failureReason, setFailureReason] =
     useState<InsightRunResponse["failureReason"]>();
+  const [activity, setActivity] = useState<InsightRunResponse["activity"]>();
   const [starting, setStarting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const scopeRef = useRef(scope);
@@ -102,6 +111,7 @@ export function useInsightRun(input: {
       setStatus(persistedRunId === undefined ? "idle" : "running");
       setRequestFailure(undefined);
       setFailureReason(undefined);
+      setActivity(undefined);
       setStarting(false);
       setCancelling(false);
       return;
@@ -121,6 +131,7 @@ export function useInsightRun(input: {
     setStatus("running");
     setRequestFailure(undefined);
     setFailureReason(undefined);
+    setActivity(undefined);
     setCancelling(false);
   }, [persistedRunId, scope]);
 
@@ -151,6 +162,7 @@ export function useInsightRun(input: {
       setStarting(true);
       setRequestFailure(undefined);
       setFailureReason(undefined);
+      setActivity(undefined);
       void requestJson(`/v1/reviews/insights/${type}/run`, {
         method: "POST",
         body: { profileId, reviewId, type, provider, model, reasoning },
@@ -259,6 +271,7 @@ export function useInsightRun(input: {
             throw new Error("Invalid Insight status response");
           setStatus(parsed.status);
           setFailureReason(parsed.failureReason);
+          setActivity(parsed.activity);
           setRequestFailure(undefined);
           if (
             parsed.status !== "completed" &&
@@ -283,7 +296,13 @@ export function useInsightRun(input: {
             onInsightPatchRef.current !== undefined &&
             projected !== undefined
           )
-            onInsightPatchRef.current(type, projected);
+            onInsightPatchRef.current(
+              type,
+              projected,
+              definedProps({
+                analysisReviewActions: workbench.analysisReviewActions,
+              }),
+            );
           else onWorkbenchReplaceRef.current?.(workbench);
           if (terminal.parsed.status === "completed")
             onCompletedRef.current?.();
@@ -320,7 +339,7 @@ export function useInsightRun(input: {
     status,
     ...definedProps({ runId }),
     error: requestFailure !== undefined,
-    ...definedProps({ requestFailure, failureReason }),
+    ...definedProps({ requestFailure, failureReason, activity }),
     starting,
     cancelling,
     busy: starting || runId !== undefined || activeRun !== undefined,

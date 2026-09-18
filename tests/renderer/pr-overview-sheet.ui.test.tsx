@@ -36,6 +36,7 @@ function baseOverview(
     summary: "",
     checks: { overall: "passing", checks: [] },
     mergeReadiness: { _tag: "Ready", blockers: [], warnings: [] },
+    isDraft: false,
     mergeReasons: [],
     insights: {
       brief: { status: "not_generated" },
@@ -302,6 +303,20 @@ describe("pr overview sheet merge readiness", () => {
     expect(row.getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("opens and lands focus on the Checks row when asked to", async () => {
+    render(
+      <CanonicalReviewOverviewSheet
+        open
+        onOpenChange={() => undefined}
+        overview={baseOverview()}
+        focusSection="checks"
+      />,
+    );
+    const row = screen.getByRole("button", { name: "Checks" });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("keeps Open on GitHub on the unconfirmed approval card", () => {
     renderOverview(
       baseOverview({
@@ -353,6 +368,35 @@ describe("pr overview sheet merge readiness", () => {
     expect(
       screen.getAllByRole("button", { name: "Open on GitHub" }),
     ).toHaveLength(1);
+  });
+});
+
+describe("pr overview sheet draft toggle", () => {
+  it("keeps the toggle usable and shows a local error after rejection", async () => {
+    const user = userEvent.setup();
+    render(
+      <CanonicalReviewOverviewSheet
+        open
+        onOpenChange={() => undefined}
+        overview={baseOverview()}
+        onSetDraftState={async () => {
+          throw new Error("rejected");
+        }}
+      />,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Convert to draft" }),
+    );
+    expect((await screen.findByRole("alert")).getAttribute("data-slot")).toBe(
+      "inline-error",
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Convert to draft" })
+          .getAttribute("disabled"),
+      ).toBeNull(),
+    );
   });
 });
 
