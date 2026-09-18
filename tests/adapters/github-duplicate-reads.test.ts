@@ -13,6 +13,7 @@ import {
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
+  parseGitSha,
   parsePullRequestNumber,
 } from "../../src/domain/ids";
 import { type PullRequestRef } from "../../src/domain/pull-request";
@@ -84,6 +85,25 @@ const threadPayload = {
   },
 };
 
+const olderSha = "1111111111111111111111111111111111111111";
+
+const commitsPage = [
+  {
+    sha: olderSha,
+    commit: {
+      message: "Older change",
+      author: { name: "Older", date: "2026-07-16T11:00:00Z" },
+    },
+  },
+  {
+    sha: headSha,
+    commit: {
+      message: "Head change",
+      author: { name: "Head", date: "2026-07-16T12:00:00Z" },
+    },
+  },
+];
+
 /**
  * Answers by endpoint rather than by position, so a test can count how many
  * gh invocations one adapter call makes without also fixing their order.
@@ -116,6 +136,8 @@ class RoutingExecutor implements CommandExecutor {
         return json({ role_name: "write" });
       case "api GET repos/:owner/:repo/branches/:branch/protection":
         return json({ required_pull_request_reviews: null });
+      case "api GET repos/:owner/:repo/pulls/:n/commits":
+        return json([commitsPage]);
       default:
         throw new Error(`Unrouted gh call: ${label}`);
     }
@@ -162,6 +184,57 @@ describe("loadConversation gh cost", () => {
       "api GET repos/:owner/:repo/pulls/:n/reviews",
       "api GET user",
       "api graphql PullRequestThreads",
+    ]);
+  });
+});
+
+describe("getPullRequestCommits gh cost", () => {
+  it("reads the pull request only to mark isHead when the caller supplied no head", async () => {
+    const executor = new RoutingExecutor();
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    await expect(
+      adapter.getPullRequestCommits({ profile, pr }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: [
+        { sha: headSha, isHead: true },
+        { sha: olderSha, isHead: false },
+      ],
+    });
+
+    expect(executor.labels).toEqual([
+      "api GET repos/:owner/:repo/pulls/:n",
+      "api GET repos/:owner/:repo/pulls/:n/commits",
+    ]);
+  });
+
+  it("spends one call, not two, when the caller already holds the head", async () => {
+    const executor = new RoutingExecutor();
+    const adapter = new GitHubAdapter(
+      new CommandRunner(executor),
+      new StubCredentials(),
+    );
+
+    await expect(
+      adapter.getPullRequestCommits({
+        profile,
+        pr,
+        headSha: mustParse(parseGitSha(headSha)),
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: [
+        { sha: headSha, isHead: true },
+        { sha: olderSha, isHead: false },
+      ],
+    });
+
+    expect(executor.labels).toEqual([
+      "api GET repos/:owner/:repo/pulls/:n/commits",
     ]);
   });
 });

@@ -13,7 +13,7 @@ import type {
   PullRequestCommit,
   PullRequestSummary,
 } from "../../domain/github-context";
-import { parseGitSha, type IsoTimestamp } from "../../domain/ids";
+import { parseGitSha, type GitSha, type IsoTimestamp } from "../../domain/ids";
 import type { PullRequestRef } from "../../domain/pull-request";
 import type {
   InboxPageSize,
@@ -433,9 +433,11 @@ export class GitHubPullRequestReader {
   async getPullRequestCommits(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
+    /** The head this list marks `isHead`, when the caller already read it; otherwise this reader reads the pull request for it. */
+    readonly headSha?: GitSha;
   }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>> {
-    const current = await this.getPullRequest(input);
-    if (current._tag === "err") return current;
+    const headSha = await this.resolveHeadSha(input);
+    if (headSha._tag === "err") return headSha;
     const response = await this.ghJson(input.profile, {
       kind: "rest",
       paginate: true,
@@ -472,7 +474,7 @@ export class GitHubPullRequestReader {
         message: raw.commit.message,
         author: raw.commit.author?.name ?? "ghost",
         authoredAt: authoredAt.value,
-        isHead: sha.value === current.value.headSha,
+        isHead: sha.value === headSha.value,
       };
       commits.push(
         raw.html_url === undefined ? commit : { ...commit, url: raw.html_url },
@@ -482,5 +484,16 @@ export class GitHubPullRequestReader {
       right.authoredAt.localeCompare(left.authoredAt),
     );
     return ok(commits);
+  }
+
+  /** The caller's own head when it supplied one, otherwise a pull request read for it. */
+  private async resolveHeadSha(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly headSha?: GitSha;
+  }): Promise<Result<GitSha, GitHubReadFailure>> {
+    if (input.headSha !== undefined) return ok(input.headSha);
+    const current = await this.getPullRequest(input);
+    return current._tag === "err" ? current : ok(current.value.headSha);
   }
 }

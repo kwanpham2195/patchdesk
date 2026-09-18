@@ -276,6 +276,7 @@ export class FakeGitHubAdapter
   async getPullRequestCommits(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
+    readonly headSha?: GitSha;
   }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>> {
     void input;
     return ok(this.values.commits ?? []);

@@ -356,6 +356,7 @@ export class GitHubAdapter
   async getPullRequestCommits(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
+    readonly headSha?: GitSha;
   }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>> {
     return this.pullRequests.getPullRequestCommits(input);
   }

@@ -180,6 +180,10 @@ export class ReviewRefreshService {
       this.dependencies.github.getPullRequestCommits({
         profile,
         pr: pullRequest,
+        // The head the rest of this snapshot is built from, so `isHead` marks
+        // the same revision the candidate stores rather than whatever a
+        // second pull request read would have seen.
+        headSha: current.value.headSha,
       }),
       this.dependencies.github.getPullRequestChecks({
         profile,
