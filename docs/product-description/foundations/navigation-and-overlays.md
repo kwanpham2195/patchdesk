@@ -49,7 +49,7 @@ Closing Navigate without choosing a command records no destination change. Text 
 
 Opening a Review stores its validated workbench projection and changes the destination to that Review's workbench key. The Review code loads only after Patchdesk has a canonical Review projection.
 
-Back, Navigate, a Visited pull requests row, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench. A recognized pull-request reference adds `Open owner/repository#number`; activating it checks the active workspace's watchlist before using the same Review opener as the Pull requests screen.
+Back, Navigate, a Visited pull requests row, Pull request presets, switching workspace, and commands from the native menu call the same destination owners as visible buttons. A clean destination request saves its key and clears the workbench payload when leaving the workbench. A recognized pull-request reference adds `Open owner/repository#number`; activating it checks the active workspace's watchlist before using the same Review opener as the Pull requests screen. The same reference also adds `Watch owner/repository#number`, or `Unwatch` when Patchdesk already watches it, under Pull requests; [Repository listing](../pull-requests/repository-listing.md) owns what watching does.
 
 Opening Settings is refused when navigation state is not clear. ⌘K and the titlebar Settings control are also disabled or ignored. The native close path reads the same navigation state from the renderer.
 
@@ -142,4 +142,4 @@ Navigate accepts a plain GitHub pull-request URL, a URL with trailing path, quer
 - Confirm the exact visible restore after a renderer reload from each workbench tab, navigator section, and selected file.
 - The quiet launch return and the workbench-to-workbench transition were not observed live: the test workspace held no removed Review, and every Review loaded too fast to see the intermediate screen.
 
-Baseline drafted from Patchdesk application source commit `3100615`; global pull-request palette behavior updated for issue #84; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; global pull-request palette behavior updated for issue #84; revised and verified against `737c515c`.

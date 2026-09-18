@@ -115,4 +115,4 @@ After a failed or superseded read, the active scope remains the last requested w
 - Confirm the exact restore when a selected repository is removed in Settings while Pull requests is visible.
 - Confirm whether a failed new-repository read should retain the requested picker value or visibly revert to the previous confirmed value.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.

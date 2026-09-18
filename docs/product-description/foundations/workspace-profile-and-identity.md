@@ -131,4 +131,4 @@ After a switch failure, the prior profile remains active. After a rejected field
 - Confirm root grouping and watched-outside-roots presentation against real repositories, including a repository with no saved local path.
 - Cross-process edits to profile files are not described as a supported workflow. Confirm whether the next reload should warn or silently adopt them.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

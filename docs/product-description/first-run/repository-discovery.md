@@ -126,4 +126,4 @@ After a failed scan, the saved root and prior watchlist remain. After a failed r
 - Confirm the intended behavior when a watched repository's checkout is moved or its remote origin changes after it was saved.
 - Confirm that an in-flight watchlist mutation is allowed to settle during a Settings close and how the close guard presents that state.
 
-Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; follow-up behavior updated and verified through `c49045d`; revised and verified against `737c515c`.

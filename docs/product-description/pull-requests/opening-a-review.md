@@ -137,4 +137,4 @@ After failure, no partially prepared session is presented as current. Recovery r
 - Confirm the error and retry experience after a saved-review load fails and identity fallback also fails.
 - Confirm cleanup and visible behavior when preparation sees a changed head between its first and final reads.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`, including the palette entry point (issue #84), the Visited pull requests entry point, and the launch restore.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, including the palette entry point (issue #84), the Visited pull requests entry point, and the launch restore.

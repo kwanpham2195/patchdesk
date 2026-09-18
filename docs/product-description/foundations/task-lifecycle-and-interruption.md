@@ -133,4 +133,4 @@ After an interrupt, Patchdesk stays on the current surface unless navigation was
 - Feature documents must verify their own Escape behavior. This foundation defines the required categories but does not assume every Base UI dialog routes Escape through the same owner.
 - Confirm app shutdown messaging while an Insight cancellation is in progress; the durable cancellation path is documented in code, but the visible shutdown timing is not.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

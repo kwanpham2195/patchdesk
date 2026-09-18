@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Config lives under `~/.config/patchdesk` and contains profiles, the active-profile choice, Appearance, and Diff theme. Local data lives under `~/.local/share/patchdesk` and contains Review records, Review sessions, retained Insights, write intents and receipts, journals, prepared artifacts, and Diagnostics. Cache lives under `~/.cache/patchdesk` and contains re-creatable inbox data, avatars, and represented-review worktrees. The app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
+Config lives under `~/.config/patchdesk` and contains profiles, the active-profile choice, Appearance, and Diff theme. Local data lives under `~/.local/share/patchdesk` and contains Review records, Review sessions, retained Insights, write intents and receipts, journals, prepared artifacts, the pull requests each profile watches, and Diagnostics. A Review record also holds what the maintainer last looked at: the head it showed and the newest Conversation entry timestamp it showed, which is GitHub's timestamp and never this machine's clock. Cache lives under `~/.cache/patchdesk` and contains re-creatable inbox data, avatars, and represented-review worktrees. The app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
 
 The [persistence foundation](../foundations/persistence-and-recovery.md) owns these classes and their recovery behavior. A stored profile contains account settings but no credential; GitHub CLI authentication is resolved when Patchdesk needs it.
 
@@ -120,4 +120,4 @@ Clear cache removes rebuildable children while durable Review history remains. C
 - Confirm which local paths and error details remain visible in the app Logs panel and which are redacted in Review activity.
 - Confirm startup presentation after interrupted atomic writes and preparation-journal recovery.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.

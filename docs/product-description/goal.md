@@ -6,7 +6,7 @@ Complete every document in the README structure, run the consistency pass, build
 
 ## Source of truth
 
-Patchdesk is checked out at `/Users/kwanpham/Work/personal/patchdesk`. Describe the default macOS desktop app from `src/renderer/src/app.tsx`, with no fixture route active. Application behavior is pinned to committed source `dd613996`, the pin of the 2026-09-14 UX pass; documents that pass did not revise keep the pin in their footer. Uncommitted application-source changes are not evidence. Fixture routes, release packaging, unsupported platforms, assistive-technology behavior, and exact model-generated wording are out of scope.
+Patchdesk is checked out at `/Users/kwanpham/Work/personal/patchdesk`. Describe the default macOS desktop app from `src/renderer/src/app.tsx`, with no fixture route active. Application behavior is pinned to committed source `737c515c`, the pin of the 2026-09-14 UX pass after its refresh against main; documents that pass did not revise keep their own earlier pin in their footer. Uncommitted application-source changes are not evidence. Fixture routes, release packaging, unsupported platforms, assistive-technology behavior, and exact model-generated wording are out of scope.
 
 For each document, read in this order:
 
@@ -16,7 +16,7 @@ For each document, read in this order:
 4. Product language in `CONTEXT.md`, visible copy in the renderer, and the relevant public overview in `README.md`.
 5. Defaults and limits in domain constants, renderer preference modules, service options, and route parsers.
 
-Use a command such as `git show dd613996:src/main/electron-main.ts` instead of the working-tree file when a source path has uncommitted changes. Do not describe those uncommitted changes.
+Use a command such as `git show 737c515c:src/main/electron-main.ts` instead of the working-tree file when a source path has uncommitted changes. Do not describe those uncommitted changes.
 
 Do not describe code. Describe what the maintainer sees and does. Technical detail belongs only in `> Technical note:` block quotes, and only when the mechanism changes what the maintainer would expect.
 

@@ -113,4 +113,4 @@ If loading global settings fails, Patchdesk uses the current defaults, shows a p
 - Confirm how the app presents a system appearance change while a fixed Light or Dark choice is active.
 - Confirm the final visible copy when global settings cannot be read or saved.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

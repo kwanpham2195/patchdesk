@@ -27,7 +27,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Existing comments render as annotations on their mapped file, side, and line. Thread cards distinguish open, resolved, outdated, unknown, pending-review, locally publishing, published comment-only, and failed local creation states. Each card renders its comment bodies as Markdown with images and links. The Threads tab lists conversation threads for the represented revision and can move focus to the matching card.
+Existing comments render as annotations on their mapped file, side, and line. Thread cards distinguish open, resolved, outdated, unknown, pending-review, locally publishing, published comment-only, and failed local creation states. Each card renders its comment bodies as Markdown with images and links. The Threads tab lists conversation threads for the represented revision and can move focus to the matching card. It orders the threads that need the maintainer's reply first and counts them on its tab label; [Conversation and pull request metadata](conversation-and-metadata.md#arrive) owns what Needs your reply means and when it clears.
 
 The composer appears only on eligible changed lines when direct conversation authoring is enabled. A stale, closed, merged, patchless, or recovery-locked Review remains readable but does not expose the authoring action.
 
@@ -135,4 +135,4 @@ A pending-review command settles only from its returned pending-review projectio
 - Confirm navigation behavior when a non-empty composer is open and the maintainer selects another file.
 - Confirm the visible recovery path when a pending-review Start outcome is unknown and no speculative card remains.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`, with live checks from the 2026-09-14 pass.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`, with live checks from the 2026-09-14 pass.

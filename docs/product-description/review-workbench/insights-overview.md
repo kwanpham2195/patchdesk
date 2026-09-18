@@ -60,7 +60,7 @@ Both actions settle at once. The Scope filter is worked out locally from the rep
 
 Applying a bucket moves the maintainer to the Diff tab and its Browse section. The file tree and the diff pane both narrow to that bucket's files, listed in the order the patch gives them. If the file that was already selected belongs to the bucket, it stays selected; otherwise the first file of the bucket is selected instead. The chosen bucket row on the Scope card is marked as pressed.
 
-The Diff toolbar carries a Scope picker showing the active bucket in that bucket's colour, so the same filter can be chosen and changed without returning to Overview. Choosing All files there clears the filter, as does choosing the same bucket on the Scope card again. Moving to the Commits section, or choosing a commit there, clears it too, so a commit slice and a bucket slice never compete over the same pane.
+The Diff toolbar carries a Scope picker showing the active bucket in that bucket's colour, so the same filter can be chosen and changed without returning to Overview. Choosing Clear scope there clears the filter, as does choosing the same bucket on the Scope card again. Moving to the Commits section, or choosing a commit there, clears it too, so a commit slice and a bucket slice never compete over the same pane.
 
 The filter is a way of reading this diff now, not a place to return to. It is session-local and is never stored with the saved workbench position, so a reload comes back unfiltered. Moving to a newer represented revision also drops it along with the rest of the position.
 
@@ -126,10 +126,10 @@ The filter is a way of reading this diff now, not a place to return to. It is se
 ## Open questions and verification
 
 - The 2026-09-14 live pass confirmed the Scope card layout, the dimmed empty rows with a long dash, the closing line, the sliver for a small bucket, bucket navigation to Diff → Browse with the toolbar Scope picker, clearing through All files, clearing on Commits, and landing on Brief when Insights opens (three pull requests).
-- The pressed bucket row carries the pressed state, but in the live pass it was not visibly distinguishable from unpressed rows. Recorded as [UX-09](../ux-friction.md#ux-09-the-pressed-scope-bucket-row-looks-unpressed).
+- [UX-09](../ux-friction.md#ux-09-the-pressed-scope-bucket-row-looks-unpressed) is fixed: the pressed bucket row is tinted and bolded, where the live pass could not tell it apart from an unpressed row. The new treatment is not yet live-verified.
 - `.gitattributes`-marked generated files are ignored by the Scope card even though the domain rule accepts them. Filed as a product call in [B-24](../bug-triage.md#b-24-repository-marked-generated-files-do-not-reach-the-scope-gauge).
 - No retained Insight existed in the live workspace. Card headlines, retained-time wording, and the Current to Outdated change on a moved revision remain unchecked.
 - Confirm where focus lands after choosing a bucket sends the maintainer to the Diff.
 - Confirm what the Diff shows when a bucket's files are all hidden by another active view state.
 
-Baseline drafted from Patchdesk application source commit `d00c5178`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `d00c5178`; revised and verified against `737c515c`.

@@ -139,4 +139,4 @@ After an interrupted refresh, the previous represented snapshot remains the last
 - Confirm that older Insights and diffs remain readable after a new session becomes current and are labeled with their represented revision.
 - Confirm the visible boundary between same-revision remote reconciliation and new-revision preparation.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

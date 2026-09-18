@@ -1,20 +1,22 @@
 # Bug triage
 
-A consolidated record of defects raised by the product documents, the verification checklists, and the live passes. B-01 to B-08 describe the `3100615` source snapshot; all eight were fixed in later commits, and post-fix evidence is kept apart from the original live observations so the historical report remains auditable. B-09 to B-24 come from the 2026-09-14 UX pass: each cause is read from application source at `dd613996`, and the entries the live passes or the independent review confirmed on `5fe7df3b` carry a **Status** line. Friction that is not a defect lives in [ux-friction.md](ux-friction.md).
+A consolidated record of defects raised by the product documents, the verification checklists, and the live passes. B-01 to B-08 describe the `3100615` source snapshot; all eight were fixed in later commits, and post-fix evidence is kept apart from the original live observations so the historical report remains auditable. B-09 to B-24 come from the 2026-09-14 UX pass: each cause is read from application source at `dd613996`, and the entries the live passes or the independent review confirmed on `5fe7df3b` carry a **Status** line. Every entry was rechecked against `737c515c`; the ones fixed since name their fix commit and keep the original observation. Friction that is not a defect lives in [ux-friction.md](ux-friction.md).
 
 ## Summary
 
 Twenty-four entries. The eight from the first pass are fixed: one former high-severity work-loss risk and seven former medium-severity correctness, focus, or feedback risks, clustered in workspace setup, switching, and discovery. B-01, B-02, and B-07 have post-fix desktop evidence, and B-08's exact Reply-textarea live rerun remains outstanding.
 
-The UX pass adds sixteen open entries after deduplication: seven medium and nine low, none high. Five medium entries were confirmed live and by the independent review: the Workspace authentication banner, the Reviewers control on merged or closed Reviews, the unexplained disabled Generate on those Reviews, the Checks control, and the missing Review worktree. The largest cluster is merged or closed Reviews, whose read-only state is explained unevenly (B-10, B-11, B-19); the second is the Visited pull requests column's recovery from removed Review records (B-15, B-16). The review marked B-09 to B-12 fix now and B-13 and B-14 as named follow-ups; the rest wait for a decision. B-09 to B-12 are filed as [#185](https://github.com/kwanpham2195/patchdesk/issues/185) to [#188](https://github.com/kwanpham2195/patchdesk/issues/188); the other entries are not filed.
+The UX pass added sixteen entries after deduplication: seven medium and nine low, none high. Five medium entries were confirmed live and by the independent review: the Workspace authentication banner, the Reviewers control on merged or closed Reviews, the unexplained disabled Generate on those Reviews, the Checks control, and the missing Review worktree. The review marked B-09 to B-12 fix now and B-13 and B-14 as named follow-ups; the rest wait for a decision.
+
+B-09 to B-12 were filed as [#185](https://github.com/kwanpham2195/patchdesk/issues/185) to [#188](https://github.com/kwanpham2195/patchdesk/issues/188) and are fixed at `737c515c`, as is the raw start-time slip inside B-22; each entry records its fix commit. Twelve remain open: B-13 to B-21 and B-23 to B-24, plus B-22's three other slips. The largest remaining cluster is the Visited pull requests column's recovery from removed Review records (B-15, B-16); merged or closed Reviews keep only B-19, whose run controls stay enabled. The open entries are not filed as issues. Every fix here is read from source at `737c515c`; none has post-fix live evidence.
 
 | ID   | Title                                                                                      | Severity | Area                               | Resolution or decision          | Issue                                                        |
 | ---- | ------------------------------------------------------------------------------------------ | -------- | ---------------------------------- | ------------------------------- | ------------------------------------------------------------ |
 | B-01 | New profile replaces a Dirty draft without a choice                                        | high     | Settings / Workspace               | fixed (`31284f3`)               | —                                                            |
-| B-09 | Workspace settings reports GitHub authentication required while the active account works | medium   | Settings / Workspace               | fix (fix now)                   | [#185](https://github.com/kwanpham2195/patchdesk/issues/185) |
-| B-10 | The Reviewers control never loads on a merged or closed Review                            | medium   | Review workbench / Conversation    | fix (fix now)                   | [#186](https://github.com/kwanpham2195/patchdesk/issues/186) |
-| B-11 | Generate and Regenerate are disabled on a merged or closed Review with no reason          | medium   | Review workbench / Insights        | fix (fix now)                   | [#187](https://github.com/kwanpham2195/patchdesk/issues/187) |
-| B-12 | The Checks control opens PR overview on Merge readiness                                   | medium   | Review workbench / Merge           | fix (fix now)                   | [#188](https://github.com/kwanpham2195/patchdesk/issues/188) |
+| B-09 | Workspace settings reports GitHub authentication required while the active account works | medium   | Settings / Workspace               | fixed (`419138a3`)              | [#185](https://github.com/kwanpham2195/patchdesk/issues/185) |
+| B-10 | The Reviewers control never loads on a merged or closed Review                            | medium   | Review workbench / Conversation    | fixed (`0bb9054a`)              | [#186](https://github.com/kwanpham2195/patchdesk/issues/186) |
+| B-11 | Generate and Regenerate are disabled on a merged or closed Review with no reason          | medium   | Review workbench / Insights        | fixed (`e161a483`)              | [#187](https://github.com/kwanpham2195/patchdesk/issues/187) |
+| B-12 | The Checks control opens PR overview on Merge readiness                                   | medium   | Review workbench / Merge           | fixed (`50ab4b12`)              | [#188](https://github.com/kwanpham2195/patchdesk/issues/188) |
 | B-13 | Context and Preview stay unavailable when the Review worktree is missing                  | medium   | Review workbench / Diff            | fix (named follow-up)           | —                                                            |
 | B-15 | A failed load from a Visited row leaves the destination on the missing Review             | medium   | Visited pull requests column       | fix                             | —                                                            |
 | B-17 | The inline composer shortcut starts a review while its hint says comment                  | medium   | Review workbench / Inline comments | fix                             | —                                                            |
@@ -144,8 +146,8 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 - **Severity:** `medium`. Nothing is blocked, but an alarming, actionable-looking error appears on every multi-account machine with one stale account and points the maintainer at the wrong fix.
 - **Decision needed:** `fix`, fix now per the independent review. Treat a non-empty account list as ready in the route or the view, and extend `tests/renderer/reviewing-as-panel.test.tsx`.
 - **Raised by:** [Workspace settings](settings/workspace-profile-editor.md#open-questions-and-verification), [Workspace profile and identity](foundations/workspace-profile-and-identity.md#interactions-with-other-systems).
-- **Status:** confirmed 2026-09-14 on `5fe7df3b`. The settings live pass saw the alert while GitHub data loaded normally; the review read `GET /v1/environment` returning `githubAuth: "authentication_required"` together with the two working accounts, and a third account with an invalid token.
-- **Issue:** [#185](https://github.com/kwanpham2195/patchdesk/issues/185)
+- **Status:** confirmed 2026-09-14 on `5fe7df3b`. The settings live pass saw the alert while GitHub data loaded normally; the review read `GET /v1/environment` returning `githubAuth: "authentication_required"` together with the two working accounts, and a third account with an invalid token. Fixed by `419138a3`: the environment route reports `ready` whenever the account list is non-empty, so a stale account no longer decides readiness. The post-fix state is read from source, not observed live.
+- **Issue:** [#185](https://github.com/kwanpham2195/patchdesk/issues/185), closed
 
 ### B-10: The Reviewers control never loads on a merged or closed Review
 
@@ -156,8 +158,8 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 - **Severity:** `medium`. The control reads as broken on every merged or closed Review, and the maintainer cannot see who was requested.
 - **Decision needed:** `fix`, fix now per the independent review. Render a read-only state for terminal Reviews and add a rail test.
 - **Raised by:** [Conversation and pull request metadata](review-workbench/conversation-and-metadata.md#open-questions-and-verification).
-- **Status:** confirmed 2026-09-14 on `5fe7df3b` on #96, #109, #91, and #86 by the workbench live pass; the review confirmed #96 (merged) and read logs showing the reviewers endpoint answering in about 1.2 seconds for open #113 and #125.
-- **Issue:** [#186](https://github.com/kwanpham2195/patchdesk/issues/186)
+- **Status:** confirmed 2026-09-14 on `5fe7df3b` on #96, #109, #91, and #86 by the workbench live pass; the review confirmed #96 (merged) and read logs showing the reviewers endpoint answering in about 1.2 seconds for open #113 and #125. Fixed by `0bb9054a`, with the empty-list wording in `c91e9b8d`: with no reviewer actions the rail lists the stored requested reviewers read-only instead of staying on `loading`. The post-fix state is read from source, not observed live.
+- **Issue:** [#186](https://github.com/kwanpham2195/patchdesk/issues/186), closed
 
 ### B-11: Generate and Regenerate are disabled on a merged or closed Review with no reason
 
@@ -168,8 +170,8 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 - **Severity:** `medium`. An unexplained disabled primary action on every terminal Review.
 - **Decision needed:** `fix`, fix now per the independent review. Add a terminal branch to the empty-state copy; the page Variants rows already state the rule.
 - **Raised by:** [Brief](review-workbench/brief.md#open-questions-and-verification), [Analysis](review-workbench/analysis.md#open-questions-and-verification), [Walkthrough](review-workbench/walkthrough.md#open-questions-and-verification).
-- **Status:** confirmed 2026-09-14 on `5fe7df3b` on merged #96 and #91 against open #113 by the Insights live pass, and by the review from source.
-- **Issue:** [#187](https://github.com/kwanpham2195/patchdesk/issues/187)
+- **Status:** confirmed 2026-09-14 on `5fe7df3b` on merged #96 and #91 against open #113 by the Insights live pass, and by the review from source. Fixed by `e161a483`: a merged or closed Review now shows "This Review is merged or closed. Generating an Insight needs an open Review; retained Insights stay readable." above the reader, and that reason replaces provider errors. The post-fix state is read from source, not observed live. [B-19](#b-19-try-again-and-related-run-controls-stay-enabled-on-a-merged-or-closed-review) is unchanged: Try again and Run for latest revision are still ungated.
+- **Issue:** [#187](https://github.com/kwanpham2195/patchdesk/issues/187), closed
 
 ### B-12: The Checks control opens PR overview on Merge readiness
 
@@ -180,8 +182,8 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 - **Severity:** `medium`. The dedicated control shows the wrong row and needs a second click.
 - **Decision needed:** `fix`, fix now per the independent review. Add a `checks` focus section with its own trigger ref and default-open, call it from the header, and mirror the Merge test.
 - **Raised by:** [Merge](review-workbench/merge.md#open-questions-and-verification), [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#variants).
-- **Status:** confirmed 2026-09-14 on `5fe7df3b` on #113 by the workbench live pass, and by the review's accessibility snapshot of the drawer.
-- **Issue:** [#188](https://github.com/kwanpham2195/patchdesk/issues/188)
+- **Status:** confirmed 2026-09-14 on `5fe7df3b` on #113 by the workbench live pass, and by the review's accessibility snapshot of the drawer. Fixed by `50ab4b12`: `OverviewFocusSection` now carries `checks`, and the Checks control opens the drawer with the Checks row expanded and focused. The post-fix state is read from source, not observed live.
+- **Issue:** [#188](https://github.com/kwanpham2195/patchdesk/issues/188), closed
 
 ### B-13: Context and Preview stay unavailable when the Review worktree is missing
 
@@ -293,13 +295,13 @@ The UX pass adds sixteen open entries after deduplication: seven medium and nine
 
 - **Where the user meets it:** Four places, each a copy or formatting slip.
 - **What happens / what was expected:**
-  - The running Insight state reads "Started 2026-09-14T08:32:10.123Z. Partial results are not shown." with a raw machine timestamp, while every other retained time in Insights is relative. Cause: `src/renderer/src/components/insight-panels.tsx:277`.
+  - Fixed by `686f8d25`: the running Insight state read "Started 2026-09-14T08:32:10.123Z. Partial results are not shown." with a raw machine timestamp, while every other retained time in Insights was relative. It now draws a relative time and drops the partial-results sentence. Cause was `src/renderer/src/components/insight-panels.tsx:277`.
   - A ready Walkthrough says "Each section maps to one part of the patch. Use Back to files when you're done." The Walkthrough has no Back to files control. Cause: `src/renderer/src/review-copy.ts:37-41`, shown at `src/renderer/src/components/narrative-walkthrough.tsx:622`.
   - Review activity title-cases hyphenated phase names but shows underscore names raw, such as `Retention_sweep`. Cause: `activityLabel` at `src/renderer/src/flows/settings-flow.tsx:860-865` splits on `-` only.
   - The no-eligible-model guidance says to set credentials "in the Electron process, then reload", naming an internal process, while a key added to the login shell after launch needs a relaunch. Cause: `src/renderer/src/components/review-insights-slot.tsx:113` and `src/renderer/src/flows/settings-flow.tsx:750-755`.
 - **Reproduce:** Start an Insight run and read the running state; open a retained Walkthrough; open Settings → Data & recovery and Load activity after a retention sweep; open Insights or Settings → Review with no eligible model.
 - **Severity:** `low`. Cosmetic or misleading copy with no state at risk.
-- **Decision needed:** `fix`. Format the start time as other retained times are, remove the Back to files sentence, split phase names on `_` as well, and reword the guidance to say relaunch Patchdesk.
+- **Decision needed:** `fix`, for the three that remain. Remove the Back to files sentence, split phase names on `_` as well, and reword the guidance to say relaunch Patchdesk.
 - **Raised by:** [Brief](review-workbench/brief.md#open-questions-and-verification), [Walkthrough](review-workbench/walkthrough.md#open-questions-and-verification), [Logs and diagnostics](settings/logs-and-diagnostics.md#open-questions-and-verification), [Review defaults](settings/review-defaults.md#open-questions-and-verification).
 - **Status:** 2026-09-14 on `5fe7df3b`: `Retention_sweep` was seen raw in Review activity by the settings live pass; the other three were read from source.
 - **Issue:** —
@@ -338,4 +340,4 @@ From the 2026-09-14 UX pass:
 - The stale comment at `src/renderer/src/components/finish-review-dialog.tsx:44`, which says Discard is not offered while the dialog offers Discard review, has no user-visible effect.
 - The blank Visited pull requests column on a fresh install, before the first workspace exists, is unobserved and stays an open question in [Visited pull requests](foundations/visited-pull-requests.md#open-questions-and-verification).
 
-B-09 to B-12 are filed as GitHub issues #185 to #188; no issue or external tracker entry has been created for any other entry. The first pass's source snapshot is `3100615`; the UX pass's is `dd613996`.
+B-09 to B-12 were filed as GitHub issues #185 to #188, all four now closed as completed; no issue or external tracker entry has been created for any other entry. The first pass's source snapshot is `3100615`; the UX pass drafted against `dd613996` and rechecked every entry against `737c515c`.

@@ -118,4 +118,4 @@ An outcome-unknown write settles only after explicit reconciliation proves the r
 - Confirm focus placement after Retry, Reload, Check GitHub again, and recovery-required states.
 - Confirm the visible distinction between an unavailable read and an empty successful result in every screen that has both.
 
-Baseline drafted from Patchdesk application source commit `3100615`; verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; verified against `737c515c`.

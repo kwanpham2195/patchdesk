@@ -117,4 +117,4 @@ After an interrupt the maintainer stays on Pull requests with whatever was saved
 - Confirm what a fresh install shows between the account save and the first environment read settling.
 - Confirm the presentation when the account save fails on a machine with no stored workspace.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

@@ -119,4 +119,4 @@ If the provider catalog fails, Settings shows the no-eligible-model guidance and
 - Confirm whether a failed preference write has visible feedback outside the current tests.
 - Confirm the exact handoff from Settings defaults to the Analysis run dialog.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

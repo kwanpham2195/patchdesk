@@ -139,4 +139,4 @@ After an interrupt the maintainer stays in Settings with the values the server l
 - Confirm what the maintainer sees when a save is still in flight as Settings closes.
 - Confirm that a workspace created from the dialog appears in the Active workspace selector without a reload.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

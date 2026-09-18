@@ -35,6 +35,8 @@ Each row shows the pull request's title, cut off to fit, with the full title on 
 
 A merged pull request carries `Merged · seen 3d` in the informational blue, and a closed one carries `Closed · seen 12d` in red, at the right of that line. An open pull request carries no marker. The marker comes from the stored Review, never from a live GitHub read, which is why it is dated.
 
+A pull request the maintainer watches carries an eye mark on that same line, titled `Watched`, before any terminal marker. [Repository listing](../pull-requests/repository-listing.md) owns Watch and Unwatch; the column only reflects the choice.
+
 > Technical note: the date on a marker is when Patchdesk first observed the terminal state. A merge reconciled by startup recovery is dated from GitHub's own merge time instead, so it can read older than Patchdesk's sighting. A terminal Review is never observed again, so the date never moves.
 
 A Review stored before Patchdesk recorded opens has no title and no open time. Its row uses the reference as its label and shows no age, and it is ordered by the time its record was last updated until the next time it is opened.
@@ -49,7 +51,7 @@ Reading the column, scrolling it, and hovering a title or an age record nothing.
 
 ### Begin an action
 
-Clicking a row, or pressing Enter or Space on a focused row, asks for that Review's workbench as the destination. The request uses the same [navigation guard](navigation-and-overlays.md#begin-an-action) as Back and Navigate. When navigation is clear the destination changes at once. An unsaved Review draft or a pending GitHub write parks the request behind the leave dialog.
+Clicking a row, or pressing Enter or Space on a focused row, asks for that Review's workbench as the destination. Arrow Down and Arrow Up move focus to the next or previous row without asking for anything; at the first and last row they do nothing. The request uses the same [navigation guard](navigation-and-overlays.md#begin-an-action) as Back and Navigate. When navigation is clear the destination changes at once. An unsaved Review draft or a pending GitHub write parks the request behind the leave dialog.
 
 A row has no select step and no pending state of its own, unlike a [Pull requests row](../pull-requests/opening-a-review.md), which shows `Opening…` while it works.
 
@@ -78,10 +80,10 @@ A failed list read keeps its failure line until the column reads again: after a 
 | Variant                                                | Before the action runs                                                                                                                                                                         | While the action runs                                                                                                                                                             |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Workspace profile and GitHub account                   | The column lists only the active workspace's Reviews and names that workspace in its header. The collapse choice is shared by every workspace.                                               | A workspace switch blanks the header and list until the new workspace loads, then reads its list. An answer for the workspace being left is discarded.                           |
-| Pull request and Review state                          | Open pull requests carry no marker; merged and closed ones carry a dated marker. The row of the Review on screen is highlighted and inert.                                                   | Titles and markers are as stored when the column last read. A pull request renamed, merged, or closed since then reads as before until the column reads again.                  |
+| Pull request and Review state                          | Open pull requests carry no marker; merged and closed ones carry a dated marker, and a watched one carries an eye mark. The row of the Review on screen is highlighted and inert.                                                   | Titles and markers are as stored when the column last read. A pull request renamed, merged, or closed since then reads as before until the column reads again.                  |
 | GitHub permissions and merge readiness                 | Listing needs no GitHub permission. Rows show no checks, readiness, or permission state.                                                                                                     | Opening loads the local Review. Permission and readiness affect controls inside the workbench, not the column.                                                                   |
 | Network, local tool, and Insight provider availability | The list needs no network, GitHub CLI, or Insight provider, and works offline.                                                                                                                | A local storage failure shows the failure line. One unreadable Review record is skipped and the rest are listed.                                                                  |
-| Input path: mouse, keyboard, or desktop menu           | Rows open on click, Enter, or Space. The toggle works by mouse or keyboard. No desktop menu command or shortcut reaches the column. Rows sit in the Tab order after the titlebar controls. | Every input path reaches the same navigation guard. Skip to content moves focus past the column to the main content.                                                              |
+| Input path: mouse, keyboard, or desktop menu           | Rows open on click, Enter, or Space. The toggle works by mouse or keyboard. No desktop menu command or shortcut reaches the column. The column is one Tab stop after the titlebar controls, and Arrow Down and Arrow Up move between rows inside it. | Every input path reaches the same navigation guard. Skip to content moves focus past the column to the main content.                                                              |
 
 ## Cancel and interrupt
 
@@ -115,7 +117,7 @@ After an interrupt the column keeps the list it last read. Nothing in it is a dr
 
 **Preferences, keyboard commands, and desktop integration.** The collapse choice is a per-machine view preference. The column has no shortcut and no menu entry.
 
-**Supported input and accessibility limits.** Rows and the toggle are keyboard operable. The row of the Review on screen is announced as the current page and stays focusable. Patchdesk does not claim screen-reader, touch, or pen support.
+**Supported input and accessibility limits.** Rows and the toggle are keyboard operable. The column carries one Tab stop, which lands on the row of the Review on screen where there is one and on the first row otherwise; Arrow Down and Arrow Up move between rows. The row of the Review on screen is announced as the current page and stays focusable. Patchdesk does not claim screen-reader, touch, or pen support.
 
 > Technical note: the column reads `GET /v1/sidebar/reviews` for the active profile. The route lists every Review record under the profile, orders them by last open (falling back to last update for older records), and returns the first 20. It is not polled; it re-reads on a workspace switch, on every Review open, and when the column mounts.
 
@@ -128,6 +130,7 @@ After an interrupt the column keeps the list it last read. Nothing in it is a dr
 - A row whose Review has no stored title uses its reference as its label, and a row with no recorded open shows no age.
 - A stored empty title counts as no title rather than failing the whole list.
 - A repository removed from the watchlist keeps its rows until retention removes their records.
+- The eye mark reads the workspace's watched list, not the row's stored Review, so watching a pull request from anywhere marks its row without the column reading again.
 - The toggle hides the column completely; collapsing and expanding reads the list again.
 - On a fresh install the column draws its frame with no label and no empty line until the first account save creates the workspace.
 - The column is present beside workspace setup and beside a Pull requests load failure.
@@ -135,10 +138,10 @@ After an interrupt the column keeps the list it last read. Nothing in it is a dr
 ## Open questions and verification
 
 - A read-only live pass on 2026-09-14 confirmed: the column on the Pull requests screen and on five Review workbenches; `Today`, `This week`, and `Earlier` headings; a just-opened pull request moving to the top of Today; single-click and Enter opening a row with no select step and no per-row pending state; the open Review's row ignoring Enter; the toggle's alternating label; and the collapse choice surviving a renderer reload.
-- Not observed live: the empty line, the failure line, the blank state before the first read, cross-repository references, whether the collapse choice holds across a workspace switch, a double click on a row, and a Navigate pull-request action adding its row.
+- Not observed live: the empty line, the failure line, the blank state before the first read, cross-repository references, whether the collapse choice holds across a workspace switch, a double click on a row, a Navigate pull-request action adding its row, and the watched eye mark.
 - Suspected defect: after a failed load from the column, the destination stays on the missing Review. The titlebar names the Review workbench over the Pull requests screen, the stored destination still names that Review, and its row is inert, so the maintainer cannot retry from the column. See [B-15](../bug-triage.md#b-15-a-failed-load-from-a-visited-row-leaves-the-destination-on-the-missing-review).
 - Suspected defect: Clear local review data and the retention sweep remove Review records without the column reading again. Removed rows stay listed until the next open or workspace switch, and clicking one leads to the failed-load state above. See [B-16](../bug-triage.md#b-16-the-visited-pull-requests-column-keeps-rows-for-removed-reviews).
 - Confirm whether the blank column on a fresh install, with no label and no empty line, is intended.
 - The workbench-to-workbench transition could not be slowed enough live to see the Pull requests screen or skeleton beneath the busy bar; every Review in the test workspace loaded at once.
 
-Drafted from and verified against Patchdesk application source commit `dd613996`; live observations from the 2026-09-14 read-only pass.
+Drafted from `dd613996` and verified against Patchdesk application source commit `737c515c`; live observations from the 2026-09-14 read-only pass.

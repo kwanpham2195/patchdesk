@@ -31,6 +31,8 @@ stateDiagram-v2
 
 Startup creates the local API, recovers Insight run state, recovers preparation journals and Review state through their owners, sweeps retained storage, and opens the window only after the local service passes its health check. If the local service cannot start, Patchdesk shows a native error and exits without beginning a Review or GitHub write.
 
+A profile's durable data also holds the pull requests it watches, as one file per profile carrying the snapshot each check compares against, and each Review record carries the head and newest Conversation entry timestamp the maintainer last saw. Both are ordinary local records: they are validated on read and never reach the renderer as trusted state when invalid.
+
 Missing configuration is a normal first-run state. Missing optional Review records can be an empty state. Invalid JSON, invalid domain values, sensitive content, or inconsistent artifacts are failures and never become rendered product state.
 
 Listing a workspace's Reviews skips a record it cannot read and counts it, so one corrupt file no longer empties the whole list. The [Visited pull requests column](visited-pull-requests.md) shows the readable rows, and the count goes to a redacted Diagnostic. Insight recovery at startup does the same: it recovers the readable Reviews and records a listing failure for the rest.
@@ -134,4 +136,4 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 - Confirm that cache clearing re-creates represented-review worktrees when an older Review opens again and clearly reports any missing local checkout.
 - Confirm native Trash behavior and recovery options for quarantined entries; the current Settings surface does not expose every lower-level storage-management action.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

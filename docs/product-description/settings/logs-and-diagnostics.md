@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Logs starts with up to 300 recent entries, then asks for entries after the last delivered sequence every two seconds. It shows All levels, Error, Warn, Info, or Debug and All processes, Main, or Renderer. The visible list holds at most 1,000 entries.
+Logs starts with up to 300 recent entries, then asks for entries after the last delivered sequence every two seconds. The panel's own poll is not logged, so it does not fill the tail it draws. It shows All levels, Error, Warn, Info, or Debug and All processes, Main, or Renderer. The visible list holds at most 1,000 entries.
 
 Each row shows time, level, process, topic, message, and bounded metadata when present. Credentials are masked. The stream is also appended to the local `patchdesk.jsonl` log file, which is separate from Review Diagnostic records.
 
@@ -113,9 +113,10 @@ If the app log request fails, Logs shows `Logs unavailable` and keeps any entrie
 
 - A read-only live pass on 2026-09-14 confirmed the live tail row layout, Pause holding the tail still and Resume restoring updates, the level filter choices All levels, Error, Warn, Info, and Debug, the process filter choices All processes, Main, and Renderer, and Load activity returning redacted `Retention_sweep` cleanup events.
 - Suspected defect: hyphen-named phases read as title-cased words, but underscore-named phases keep their raw name, such as `Retention_sweep`. See [B-22](../bug-triage.md#b-22-small-copy-and-rendering-slips).
+- [UX-08](../ux-friction.md#ux-08-the-logs-tail-is-filled-by-its-own-polling) is fixed: the tail no longer logs its own two-second poll, so an idle session's rows are other work. The quieter tail is not yet live-verified.
 - Confirm log tail focus and scroll behavior in a real window.
 - Confirm the visible distinction between app logs and Review activity when both contain the same lifecycle failure.
 - Confirm the exact number of entries shown after a long-running tail exceeds its display bound.
 - Confirm the user-facing recovery path when local app logs or profile Diagnostics cannot be read.
 
-Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `dd613996`.
+Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.

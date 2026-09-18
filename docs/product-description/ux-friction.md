@@ -4,39 +4,41 @@ This file records places where Patchdesk works as built but costs the maintainer
 
 The items come from four read-only live passes and one independent review on 2026-09-14, run over CDP 9233 against the maintainer's running `pnpm dev` app at `5fe7df3b`. That commit is the pinned `dd613996` plus renderer failure copy for comment and Finding actions. The passes covered the Pull requests and cross-cutting pages, the foundations, first-run, and Settings pages, the Review workbench core pages, and the Insights pages, in the maintainer's Personal workspace watching one repository. Three items (UX-10 to UX-12) were raised from source by the page revisions and were not reachable live, because no Review in that workspace had a retained Insight. Screenshots from the passes were temporary and are described in words here.
 
-Every item carries one disposition: fix now, a named follow-up issue, or rejected with evidence. UX-01 to UX-12 are filed as #190 to #201; the rejected items are not filed.
+Every item carries one disposition: fix now, a named follow-up issue, or rejected with evidence. UX-01 to UX-12 were filed as #190 to #201; the rejected items are not filed.
+
+All twelve issues are closed as completed and their changes are in `737c515c`; each item names its fix commit and keeps the original observation. None of the fixes has post-fix live evidence: they are read from source. The three rejected items stand.
 
 ## Summary
 
 Medium:
 
-- [UX-01](#ux-01-tab-walks-every-visited-row-before-the-screen): Tab walks every Visited row before the screen. Named follow-up. [#190](https://github.com/kwanpham2195/patchdesk/issues/190)
-- [UX-02](#ux-02-keyboard-navigation-does-nothing-in-selected-with-no-hint): Keyboard navigation does nothing in Selected, with no hint. Named follow-up. [#191](https://github.com/kwanpham2195/patchdesk/issues/191)
-- [UX-03](#ux-03-the-filter-is-full-line-sits-below-the-label-list): The filter-is-full line sits below the label list. Named follow-up. [#192](https://github.com/kwanpham2195/patchdesk/issues/192)
-- [UX-04](#ux-04-the-insight-run-dialog-gives-no-cost-signal): The Insight run dialog gives no cost signal. Named follow-up. [#193](https://github.com/kwanpham2195/patchdesk/issues/193)
-- [UX-05](#ux-05-two-all-files-controls-sit-side-by-side-in-the-diff-toolbar): Two All files controls sit side by side in the diff toolbar. Named follow-up. [#194](https://github.com/kwanpham2195/patchdesk/issues/194)
+- [UX-01](#ux-01-tab-walks-every-visited-row-before-the-screen): Tab walks every Visited row before the screen. Fixed in `d9503e49`. [#190](https://github.com/kwanpham2195/patchdesk/issues/190)
+- [UX-02](#ux-02-keyboard-navigation-does-nothing-in-selected-with-no-hint): Keyboard navigation does nothing in Selected, with no hint. Fixed in `7d7300a0`. [#191](https://github.com/kwanpham2195/patchdesk/issues/191)
+- [UX-03](#ux-03-the-filter-is-full-line-sits-below-the-label-list): The filter-is-full line sits below the label list. Fixed in `10562bde`. [#192](https://github.com/kwanpham2195/patchdesk/issues/192)
+- [UX-04](#ux-04-the-insight-run-dialog-gives-no-cost-signal): The Insight run dialog gives no cost signal. Fixed in `9e06b7d5`. [#193](https://github.com/kwanpham2195/patchdesk/issues/193)
+- [UX-05](#ux-05-two-all-files-controls-sit-side-by-side-in-the-diff-toolbar): Two All files controls sit side by side in the diff toolbar. Fixed in `479eaf59`. [#194](https://github.com/kwanpham2195/patchdesk/issues/194)
 
 Low:
 
-- [UX-06](#ux-06-disabled-label-checkboxes-look-almost-enabled): Disabled label checkboxes look almost enabled. Named follow-up. [#195](https://github.com/kwanpham2195/patchdesk/issues/195)
-- [UX-07](#ux-07-the-visited-pull-requests-column-toggle-has-no-tooltip): The Visited pull requests column toggle has no tooltip. Named follow-up. [#196](https://github.com/kwanpham2195/patchdesk/issues/196)
-- [UX-08](#ux-08-the-logs-tail-is-filled-by-its-own-polling): The Logs tail is filled by its own polling. Named follow-up. [#197](https://github.com/kwanpham2195/patchdesk/issues/197)
-- [UX-09](#ux-09-the-pressed-scope-bucket-row-looks-unpressed): The pressed Scope bucket row looks unpressed. Named follow-up. [#198](https://github.com/kwanpham2195/patchdesk/issues/198)
-- [UX-10](#ux-10-verification-ticks-are-lost-without-warning): Verification ticks are lost without warning. Named follow-up. [#199](https://github.com/kwanpham2195/patchdesk/issues/199)
-- [UX-11](#ux-11-walkthrough-j-and-k-run-opposite-to-the-vim-convention): Walkthrough `j` and `k` run opposite to the Vim convention. Named follow-up. [#200](https://github.com/kwanpham2195/patchdesk/issues/200)
-- [UX-12](#ux-12-the-inline-discussion-notice-does-not-say-what-failed): The inline-discussion notice does not say what failed. Named follow-up. [#201](https://github.com/kwanpham2195/patchdesk/issues/201)
+- [UX-06](#ux-06-disabled-label-checkboxes-look-almost-enabled): Disabled label checkboxes look almost enabled. Fixed in `901cd439`. [#195](https://github.com/kwanpham2195/patchdesk/issues/195)
+- [UX-07](#ux-07-the-visited-pull-requests-column-toggle-has-no-tooltip): The Visited pull requests column toggle has no tooltip. Fixed in `293f32f2`. [#196](https://github.com/kwanpham2195/patchdesk/issues/196)
+- [UX-08](#ux-08-the-logs-tail-is-filled-by-its-own-polling): The Logs tail is filled by its own polling. Fixed in `f7716d83`. [#197](https://github.com/kwanpham2195/patchdesk/issues/197)
+- [UX-09](#ux-09-the-pressed-scope-bucket-row-looks-unpressed): The pressed Scope bucket row looks unpressed. Fixed in `fa934380`. [#198](https://github.com/kwanpham2195/patchdesk/issues/198)
+- [UX-10](#ux-10-verification-ticks-are-lost-without-warning): Verification ticks are lost without warning. Fixed in `e5091235`. [#199](https://github.com/kwanpham2195/patchdesk/issues/199)
+- [UX-11](#ux-11-walkthrough-j-and-k-run-opposite-to-the-vim-convention): Walkthrough `j` and `k` run opposite to the Vim convention. Fixed in `5b74ffd2`. [#200](https://github.com/kwanpham2195/patchdesk/issues/200)
+- [UX-12](#ux-12-the-inline-discussion-notice-does-not-say-what-failed): The inline-discussion notice does not say what failed. Fixed in `6a0cbeb7`. [#201](https://github.com/kwanpham2195/patchdesk/issues/201)
 - [UX-13](#ux-13-the-open-reviews-visited-row-does-nothing-on-enter): The open Review's Visited row does nothing on Enter. Rejected with evidence.
 - [UX-14](#ux-14-skip-to-content-leaves-main-content-in-the-address): Skip to content leaves `#main-content` in the address. Rejected with evidence.
 - [UX-15](#ux-15-the-merge-conflicts-notice-asks-for-a-push-patchdesk-cannot-make): The Merge conflicts notice asks for a push Patchdesk cannot make. Rejected with evidence.
 
-Count: 15 items, 5 medium and 10 low; 12 named follow-ups, 3 rejected with evidence, none fix now.
+Count: 15 items, 5 medium and 10 low; 12 named follow-ups, all now fixed, and 3 rejected with evidence.
 
 Friction the passes reported that is a defect, with the independent review's disposition, is tracked in bug-triage.md:
 
-- [B-09](bug-triage.md#b-09-workspace-settings-reports-github-authentication-required-while-the-active-account-works): the Workspace authentication alert on a multi-account machine. Fix now.
-- [B-10](bug-triage.md#b-10-the-reviewers-control-never-loads-on-a-merged-or-closed-review): Reviewers stuck loading on merged or closed Reviews. Fix now.
-- [B-11](bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason): Generate silently disabled on merged or closed Reviews. Fix now.
-- [B-12](bug-triage.md#b-12-the-checks-control-opens-pr-overview-on-merge-readiness): the Checks control opening PR overview on Merge readiness. Fix now.
+- [B-09](bug-triage.md#b-09-workspace-settings-reports-github-authentication-required-while-the-active-account-works): the Workspace authentication alert on a multi-account machine. Fixed.
+- [B-10](bug-triage.md#b-10-the-reviewers-control-never-loads-on-a-merged-or-closed-review): Reviewers stuck loading on merged or closed Reviews. Fixed.
+- [B-11](bug-triage.md#b-11-generate-and-regenerate-are-disabled-on-a-merged-or-closed-review-with-no-reason): Generate silently disabled on merged or closed Reviews. Fixed.
+- [B-12](bug-triage.md#b-12-the-checks-control-opens-pr-overview-on-merge-readiness): the Checks control opening PR overview on Merge readiness. Fixed.
 - [B-13](bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing): Context and Preview unavailable with no worktree rebuild. Named follow-up.
 - [B-14](bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change): heading focus cancelled by a re-render, with its missing test. Named follow-up.
 - [B-18](bug-triage.md#b-18-a-markdown-syntax-image-never-opens-the-full-size-view): Markdown-syntax screenshots that never zoom. Awaiting a decision.
@@ -53,6 +55,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** medium.
 - **Disposition:** named follow-up, from the independent review.
 - **Issue:** [#190](https://github.com/kwanpham2195/patchdesk/issues/190)
+- **Status:** fixed by `d9503e49`: the column is one Tab stop with Arrow Up and Arrow Down moving between rows. Read from source at `737c515c`, not observed live.
 - **Page:** [Keyboard, focus, and desktop](cross-cutting/keyboard-focus-and-desktop.md#arrive), [Visited pull requests](foundations/visited-pull-requests.md#variants).
 
 ### UX-02: Keyboard navigation does nothing in Selected, with no hint
@@ -65,6 +68,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** medium.
 - **Disposition:** named follow-up, from the independent review. The gating itself is intended since `14b47d13` and test-asserted.
 - **Issue:** [#191](https://github.com/kwanpham2195/patchdesk/issues/191)
+- **Status:** fixed by `7d7300a0`: a navigation key pressed in Selected now shows "Keyboard navigation works in All files." Read from source at `737c515c`, not observed live.
 - **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#leave-unchanged).
 
 ### UX-03: The filter-is-full line sits below the label list
@@ -77,6 +81,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** medium.
 - **Disposition:** named follow-up.
 - **Issue:** [#192](https://github.com/kwanpham2195/patchdesk/issues/192)
+- **Status:** fixed by `10562bde`: the line sits outside the scrolling label list, so it stays in view. Read from source at `737c515c`, not observed live.
 - **Page:** [Filters, pagination, and refresh](pull-requests/filters-pagination-and-refresh.md#begin-an-action).
 
 ### UX-04: The Insight run dialog gives no cost signal
@@ -89,6 +94,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** medium.
 - **Disposition:** named follow-up.
 - **Issue:** [#193](https://github.com/kwanpham2195/patchdesk/issues/193)
+- **Status:** fixed by `9e06b7d5`: each API key model shows its list price, and the confirmation line repeats it. Read from source at `737c515c`, not observed live.
 - **Page:** [Brief](review-workbench/brief.md#begin-an-action).
 
 ### UX-05: Two All files controls sit side by side in the diff toolbar
@@ -101,6 +107,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** medium.
 - **Disposition:** named follow-up.
 - **Issue:** [#194](https://github.com/kwanpham2195/patchdesk/issues/194)
+- **Status:** fixed by `479eaf59`: the Scope picker entry is now Clear scope. Read from source at `737c515c`, not observed live.
 - **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#edge-cases).
 
 ## Low
@@ -115,6 +122,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low.
 - **Disposition:** named follow-up.
 - **Issue:** [#195](https://github.com/kwanpham2195/patchdesk/issues/195)
+- **Status:** fixed by `901cd439`: a refused row dims its colour dot and name beside the disabled checkbox. Read from source at `737c515c`, not observed live.
 - **Page:** [Filters, pagination, and refresh](pull-requests/filters-pagination-and-refresh.md#begin-an-action).
 
 ### UX-07: The Visited pull requests column toggle has no tooltip
@@ -127,6 +135,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low.
 - **Disposition:** named follow-up.
 - **Issue:** [#196](https://github.com/kwanpham2195/patchdesk/issues/196)
+- **Status:** fixed by `293f32f2`: the collapse toggle and Back both carry a tooltip. Read from source at `737c515c`, not observed live.
 - **Page:** [Keyboard, focus, and desktop](cross-cutting/keyboard-focus-and-desktop.md#edge-cases).
 
 ### UX-08: The Logs tail is filled by its own polling
@@ -139,6 +148,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low.
 - **Disposition:** named follow-up.
 - **Issue:** [#197](https://github.com/kwanpham2195/patchdesk/issues/197)
+- **Status:** fixed by `f7716d83`: the check compares the pathname, so the panel no longer logs its own poll. Read from source at `737c515c`, not observed live.
 - **Page:** [Logs and diagnostics](settings/logs-and-diagnostics.md#arrive).
 
 ### UX-09: The pressed Scope bucket row looks unpressed
@@ -151,6 +161,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low.
 - **Disposition:** named follow-up.
 - **Issue:** [#198](https://github.com/kwanpham2195/patchdesk/issues/198)
+- **Status:** fixed by `fa934380`: the pressed row is tinted and bolded. Read from source at `737c515c`, not observed live.
 - **Page:** [Insights overview](review-workbench/insights-overview.md#settle).
 
 ### UX-10: Verification ticks are lost without warning
@@ -163,6 +174,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low. Raised from source; not reachable live.
 - **Disposition:** named follow-up.
 - **Issue:** [#199](https://github.com/kwanpham2195/patchdesk/issues/199)
+- **Status:** fixed by `e5091235`: the Verification card says the ticks are not saved. Read from source at `737c515c`, not observed live.
 - **Page:** [Analysis](review-workbench/analysis.md#leave-unchanged).
 
 ### UX-11: Walkthrough `j` and `k` run opposite to the Vim convention
@@ -175,6 +187,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low. Raised from source; not reachable live.
 - **Disposition:** named follow-up.
 - **Issue:** [#200](https://github.com/kwanpham2195/patchdesk/issues/200)
+- **Status:** fixed by `5b74ffd2`: `j` moves to the next section and `k` to the previous. Read from source at `737c515c`, not observed live.
 - **Page:** [Walkthrough](review-workbench/walkthrough.md#begin-an-action).
 
 ### UX-12: The inline-discussion notice does not say what failed
@@ -187,6 +200,7 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Severity:** low. Raised from source; not reachable live.
 - **Disposition:** named follow-up.
 - **Issue:** [#201](https://github.com/kwanpham2195/patchdesk/issues/201)
+- **Status:** fixed by `6a0cbeb7`: an outdated Walkthrough now says to regenerate it rather than to refresh. Read from source at `737c515c`, not observed live.
 - **Page:** [Walkthrough](review-workbench/walkthrough.md#arrive).
 
 ### UX-13: The open Review's Visited row does nothing on Enter
@@ -222,4 +236,4 @@ Friction the passes reported that is a defect, with the independent review's dis
 - **Disposition:** rejected with evidence. The live pass on #113 read the notice as clearly describing work outside Patchdesk: it says "in your own local checkout" and names both branches.
 - **Page:** [Files, diff, commits, and navigation](review-workbench/files-diff-and-navigation.md#edge-cases).
 
-Drafted from the 2026-09-14 live passes at `5fe7df3b` and the independent review; source citations are from application commit `dd613996`.
+Drafted from the 2026-09-14 live passes at `5fe7df3b` and the independent review; source citations rechecked against application commit `737c515c`.
