@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 
 import * as v from "valibot";
 
+import { definedProps } from "../../domain/defined-props";
 import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
 import { err, ok, type Result } from "../../domain/result";
 import { discoverExecutable } from "../process/executable-discovery";
@@ -64,6 +65,20 @@ export type CommandExecution =
 export interface CommandExecutor {
   execute(input: CommandRequest): Promise<CommandExecution>;
 }
+
+/**
+ * One finished child process, as the spawn logger sees it. It carries the
+ * normalized label only — never argv, environment, stdout, or stderr — because
+ * `git -c credential.https://<host>.helper=...` puts a credential command in
+ * argv and this record is written to the local log file.
+ */
+export type CommandSpawnRecord = {
+  readonly executable: string;
+  readonly label: string;
+  readonly durationMs: number;
+  readonly outcome: CommandExecution["_tag"];
+  readonly exitCode?: number;
+};
 
 /**
  * `ForbiddenReason` itself lives in the domain layer (see
@@ -155,11 +170,21 @@ export class NodeCommandExecutor implements CommandExecutor {
       executable: string,
     ) => Promise<string | undefined> = discoverExecutable,
     private readonly spawnProcess: typeof spawn = spawn,
+    /**
+     * Fires once per child process that settles, so duplicated GitHub reads
+     * are countable. Defaults to a no-op; production call sites wire it to
+     * AppLogService.
+     */
+    private readonly onSpawn: (record: CommandSpawnRecord) => void = () =>
+      undefined,
   ) {}
 
   async execute(input: CommandRequest): Promise<CommandExecution> {
     const executable = input.argv[0];
     if (executable === undefined) return { _tag: "Unavailable" };
+    // Started before discovery so the duration matches what the caller waited.
+    const startedAt = Date.now();
+    const label = normalizeCommandLabel(input.argv);
     const resolvedExecutable = await this.discover(executable);
     if (resolvedExecutable === undefined || input.signal?.aborted) {
       return { _tag: "Unavailable" };
@@ -205,6 +230,16 @@ export class NodeCommandExecutor implements CommandExecutor {
         clearTimeout(timeout);
         if (forceKill !== undefined) clearTimeout(forceKill);
         input.signal?.removeEventListener("abort", onAbort);
+        this.onSpawn({
+          executable,
+          label,
+          durationMs: Date.now() - startedAt,
+          outcome: execution._tag,
+          ...definedProps({
+            exitCode:
+              execution._tag === "Exited" ? execution.exitCode : undefined,
+          }),
+        });
         resolve(execution);
       };
       const timeout = setTimeout(() => {
@@ -253,6 +288,170 @@ export class NodeCommandExecutor implements CommandExecutor {
       });
     });
   }
+}
+
+/** gh flags that consume the next argument, so an endpoint operand is never confused with a flag value. */
+const GH_API_FLAGS_WITH_VALUE: ReadonlySet<string> = new Set([
+  "--hostname",
+  "-H",
+  "--header",
+  "-f",
+  "--raw-field",
+  "-F",
+  "--field",
+  "-X",
+  "--method",
+  "-q",
+  "--jq",
+  "-t",
+  "--template",
+  "--input",
+  "--cache",
+  "--preview",
+]);
+
+/** git global options that consume the next argument; `-c` carries the credential helper, so it must never be read. */
+const GIT_GLOBAL_FLAGS_WITH_VALUE: ReadonlySet<string> = new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--exec-path",
+  "--super-prefix",
+]);
+
+/**
+ * REST route words whose following segment is a caller-supplied value rather
+ * than part of the route. Collapsing those is what makes two calls to the
+ * same logical endpoint produce the same label.
+ */
+const REST_PLACEHOLDER_AFTER = new Map([
+  ["branches", ":branch"],
+  ["collaborators", ":user"],
+  ["commits", ":sha"],
+  ["compare", ":range"],
+  ["contents", ":path"],
+  ["orgs", ":org"],
+  ["users", ":user"],
+]);
+
+/**
+ * Collapse one argv to a label that identifies the logical call and nothing
+ * else: identical calls share a label, so duplicates are countable, and no
+ * caller-supplied value survives. Every branch emits either a fixed word or a
+ * placeholder, so a token in argv can never reach the log.
+ */
+export function normalizeCommandLabel(argv: ReadonlyArray<string>): string {
+  const executable = argv[0];
+  if (executable === undefined) return "unknown";
+  if (executable === "git") return normalizeGitLabel(argv);
+  if (executable === "gh") return normalizeGhLabel(argv);
+  return "unknown";
+}
+
+function normalizeGitLabel(argv: ReadonlyArray<string>): string {
+  for (let index = 1; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === undefined) continue;
+    if (!token.startsWith("-")) return routeWord(token);
+    if (GIT_GLOBAL_FLAGS_WITH_VALUE.has(token)) index += 1;
+    else if (token === "--version" || token === "--help") return token.slice(2);
+  }
+  return "unknown";
+}
+
+function normalizeGhLabel(argv: ReadonlyArray<string>): string {
+  const rest = argv.slice(1);
+  if (rest[0] !== "api") {
+    const words = rest
+      .filter((token) => !token.startsWith("-"))
+      .slice(0, 2)
+      .map(routeWord);
+    if (words.length > 0) return words.join(" ");
+    return rest.includes("--version") ? "version" : "unknown";
+  }
+
+  let method = "GET";
+  let operand: string | undefined;
+  for (let index = 1; index < rest.length; index += 1) {
+    const token = rest[index];
+    if (token === undefined) continue;
+    if (GH_API_FLAGS_WITH_VALUE.has(token)) {
+      if (token === "-X" || token === "--method") {
+        method = normalizeHttpMethod(rest[index + 1]);
+      }
+      index += 1;
+      continue;
+    }
+    if (token.startsWith("-")) continue;
+    operand ??= token;
+  }
+
+  if (operand === undefined) return "api unknown";
+  if (operand === "graphql") {
+    return `api graphql ${graphqlOperationName(rest)}`;
+  }
+  return `api ${method} ${normalizeRestPath(operand)}`;
+}
+
+function normalizeHttpMethod(value: string | undefined): string {
+  if (value === undefined) return "GET";
+  const upper = value.toUpperCase();
+  return /^[A-Z]{3,7}$/.test(upper) ? upper : "GET";
+}
+
+/**
+ * The GraphQL document travels as one `query=<document>` argument. Its
+ * operation name identifies the call; an anonymous document (every mutation
+ * in github-graphql-queries.ts) is identified by its root field instead.
+ */
+function graphqlOperationName(argv: ReadonlyArray<string>): string {
+  const field = argv.find((token) => token.startsWith("query="));
+  if (field === undefined) return "unknown";
+  const document = field.slice("query=".length);
+  const named = /^\s*(?:query|mutation)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(
+    document,
+  );
+  if (named?.[1] !== undefined) return named[1];
+  const rootField =
+    /^\s*(?:query|mutation)\s*(?:\([^)]*\))?\s*\{\s*([A-Za-z_][A-Za-z0-9_]*)/.exec(
+      document,
+    );
+  return rootField?.[1] ?? "unknown";
+}
+
+function normalizeRestPath(path: string): string {
+  const route = path.split(/[?#]/)[0] ?? "";
+  const segments = route.split("/").filter((segment) => segment.length > 0);
+  const labeled: Array<string> = [];
+  let index = 0;
+  // `repos/<owner>/<repo>` is positional: neither value is announced by a
+  // preceding route word the way `branches/<branch>` is.
+  if (segments[0] === "repos") {
+    labeled.push("repos", ":owner", ":repo");
+    index = 3;
+  }
+  for (; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (segment === undefined) continue;
+    const placeholder = REST_PLACEHOLDER_AFTER.get(labeled.at(-1) ?? "");
+    if (placeholder === ":path") {
+      // A contents path is many segments; the whole tail is one value.
+      labeled.push(":path");
+      break;
+    }
+    labeled.push(placeholder ?? routeWord(segment));
+  }
+  return labeled.join("/");
+}
+
+/** Keep a fixed route word; replace anything that looks like a value. */
+function routeWord(segment: string): string {
+  if (/^\d+$/.test(segment)) return ":n";
+  if (/^[0-9a-f]{7,40}$/i.test(segment)) return ":sha";
+  if (segment.includes("...")) return ":range";
+  return /^[a-z][a-z0-9_-]{0,39}$/.test(segment) ? segment : ":x";
 }
 
 /** Merges the ambient request signal in only when the caller did not already supply one explicitly. */

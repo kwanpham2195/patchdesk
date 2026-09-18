@@ -4,10 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CommandRunner,
   NodeCommandExecutor,
+  normalizeCommandLabel,
   type CommandExecution,
   type CommandExecutor,
   type CommandRequest,
 } from "../../src/adapters/github/command-runner";
+import {
+  addLabelsToLabelableMutation,
+  maintainerInboxQuery,
+} from "../../src/adapters/github/github-graphql-queries";
 
 class FakeCommandExecutor implements CommandExecutor {
   constructor(private readonly execution: CommandExecution) {}
@@ -70,5 +75,96 @@ describe("CommandRunner", () => {
       _tag: "err",
       error: { _tag: "CommandRateLimited" },
     });
+  });
+});
+
+describe("normalizeCommandLabel", () => {
+  it("strips the query string and collapses the owner, repo and pull request number", () => {
+    expect(
+      normalizeCommandLabel([
+        "gh",
+        "api",
+        "--hostname",
+        "github.com",
+        "repos/kwanpham2195/patchdesk/pulls/246/comments?per_page=100&page=1",
+      ]),
+    ).toBe("api GET repos/:owner/:repo/pulls/:n/comments");
+  });
+
+  it("keeps the method so a read and a write on one path stay distinct", () => {
+    const path = "repos/kwanpham2195/patchdesk/pulls/246/reviews";
+    expect(normalizeCommandLabel(["gh", "api", path])).toBe(
+      "api GET repos/:owner/:repo/pulls/:n/reviews",
+    );
+    expect(normalizeCommandLabel(["gh", "api", "--method", "POST", path])).toBe(
+      "api POST repos/:owner/:repo/pulls/:n/reviews",
+    );
+  });
+
+  it("collapses a branch, a commit sha and a compare range", () => {
+    expect(
+      normalizeCommandLabel([
+        "gh",
+        "api",
+        "repos/o/r/branches/feat%2Fspawn-log/protection",
+      ]),
+    ).toBe("api GET repos/:owner/:repo/branches/:branch/protection");
+    expect(
+      normalizeCommandLabel([
+        "gh",
+        "api",
+        "repos/o/r/commits/8f2a1c9d4b6e0a3f5c7d9e1b2a4c6e8f0d2b4a69/check-runs",
+      ]),
+    ).toBe("api GET repos/:owner/:repo/commits/:sha/check-runs");
+    expect(
+      normalizeCommandLabel([
+        "gh",
+        "api",
+        "repos/o/r/compare/abc1234...def5678",
+      ]),
+    ).toBe("api GET repos/:owner/:repo/compare/:range");
+  });
+
+  it("names a GraphQL call by its operation, and an anonymous one by its root field", () => {
+    expect(
+      normalizeCommandLabel([
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        `query=${maintainerInboxQuery}`,
+        "-F",
+        "owner=kwanpham2195",
+      ]),
+    ).toBe("api graphql MaintainerInbox");
+    expect(
+      normalizeCommandLabel([
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        `query=${addLabelsToLabelableMutation}`,
+      ]),
+    ).toBe("api graphql addLabelsToLabelable");
+  });
+
+  it("reduces a git command to its subcommand, never reading the credential helper", () => {
+    const label = normalizeCommandLabel([
+      "git",
+      "-c",
+      "credential.https://github.com.helper=!'/opt/homebrew/bin/gh' auth git-credential",
+      "-C",
+      "/Users/someone/worktrees/patchdesk",
+      "fetch",
+      "origin",
+      "8f2a1c9:refs/patchdesk/head",
+      "--no-tags",
+    ]);
+    expect(label).toBe("fetch");
+  });
+
+  it("labels a gh subcommand that is not api", () => {
+    expect(normalizeCommandLabel(["gh", "auth", "status"])).toBe("auth status");
+    expect(normalizeCommandLabel(["gh", "--version"])).toBe("version");
   });
 });
