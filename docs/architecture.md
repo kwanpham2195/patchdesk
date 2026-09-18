@@ -32,7 +32,7 @@ flowchart TB
         end
     end
     subgraph External["External"]
-        GitHub["GitHub<br/>gh CLI, REST and GraphQL"]
+        GitHub["GitHub<br/>REST and GraphQL over HTTPS<br/>gh CLI for credentials"]
         Insight["Pi agent one-shot child<br/>one per Insight run"]
         Codex["Local Codex CLI account<br/>app server"]
         Files["Local files<br/>JSON stores, worktree, logs"]
@@ -159,9 +159,9 @@ They never parse raw input themselves and never trust the renderer's claims.
 
 The I/O layer. This is the only place that touches GitHub, files, and processes.
 
-- `github/github-adapter.ts` is the GitHub boundary. It runs the `gh` CLI through `command-runner.ts`, issues bounded REST and GraphQL queries, and maps every outcome to a typed result. `FakeGitHubAdapter` provides the same surface for tests.
-- `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell.
-- `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every `gh` call runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). Tokens stay in memory, are never logged or persisted, and reach the child only through its environment.
+- `github/github-adapter.ts` is the GitHub boundary. It issues bounded REST and GraphQL requests over HTTPS and maps every outcome to a typed result (ADR "Call the GitHub API directly"). `FakeGitHubAdapter` provides the same surface for tests.
+- `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell. Its remaining callers are `git` and the `gh auth` commands that read the credential store.
+- `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every GitHub request runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). It reads the token through `gh auth token`. Tokens stay in memory, are never logged or persisted, and reach GitHub only as a request header.
 - `storage/json-file.ts` reads and writes one JSON value per file with atomic replacement and a sensitive-value guard.
 - `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, and others.
 - `storage/review-remote-store.ts` stores remote snapshots by content hash. A stored snapshot that does not match its hash fails the hash check and is never trusted.
