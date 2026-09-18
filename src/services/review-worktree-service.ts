@@ -65,6 +65,12 @@ export type WorktreeCleanupInput = {
   readonly targetPath: string;
 };
 
+/** One immutable SHA and the managed ref a fetch writes it to. */
+type ManagedFetchRefspec = {
+  readonly sha: GitSha;
+  readonly ref: string;
+};
+
 type WorktreeInput = {
   readonly profileId: WorkspaceProfileId;
   readonly profile: WorkspaceProfileConfig;
@@ -156,37 +162,19 @@ export class ReviewWorktreeService {
       ...environment.value,
       GIT_TERMINAL_PROMPT: "0",
     };
-    const fetchedBase = await this.git.run(
-      [
-        ...buildGitHubManagedFetchCommand(
-          input.host,
-          ghPath,
-          repositoryPath,
-          input.baseSha,
-          baseRef,
-        ),
-      ],
+    const fetched = await this.git.run(
+      buildGitHubManagedFetchCommand(input.host, ghPath, repositoryPath, [
+        { sha: input.baseSha, ref: baseRef },
+        { sha: input.sha, ref: headRef },
+      ]),
       fetchEnvironment,
     );
-    if (fetchedBase._tag === "err")
-      return ok({
-        mode: "metadata_only",
-        warning: "local_checkout_unavailable",
-      });
-    const fetchedHead = await this.git.run(
-      [
-        ...buildGitHubManagedFetchCommand(
-          input.host,
-          ghPath,
-          repositoryPath,
-          input.sha,
-          headRef,
-        ),
-      ],
-      fetchEnvironment,
-    );
-    if (fetchedHead._tag === "err") {
+    if (fetched._tag === "err") {
+      // A single fetch can update one refspec and still exit nonzero on the
+      // other, so neither ref can be assumed absent. Deleting a ref that was
+      // never written is a harmless no-op; leaving an orphan is not.
       await this.deleteManagedRef(repositoryPath, baseRef);
+      await this.deleteManagedRef(repositoryPath, headRef);
       return ok({
         mode: "metadata_only",
         warning: "local_checkout_unavailable",
@@ -416,13 +404,16 @@ function joinMetadata(path: string): string {
  * That same `/bin/sh` splits the helper on whitespace, so the path is single
  * quoted: an unquoted directory containing a space resolves to the wrong
  * command, and the fetch then fails as an unauthenticated read.
+ *
+ * All refspecs travel in one invocation. Every extra `git fetch` spawns its
+ * own `gh auth git-credential` helper process, which has a measured floor of
+ * roughly 240ms before any network work begins.
  */
 function buildGitHubManagedFetchCommand(
   host: GitHubHost,
   ghPath: string,
   repositoryPath: string,
-  sha: GitSha,
-  ref: string,
+  refspecs: ReadonlyArray<ManagedFetchRefspec>,
 ): ReadonlyArray<string> {
   return [
     "git",
@@ -438,7 +429,7 @@ function buildGitHubManagedFetchCommand(
     repositoryPath,
     "fetch",
     "origin",
-    `${sha}:${ref}`,
+    ...refspecs.map(({ sha, ref }) => `${sha}:${ref}`),
     "--no-tags",
   ];
 }

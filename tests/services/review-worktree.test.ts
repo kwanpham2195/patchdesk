@@ -40,8 +40,7 @@ class RecordingGit implements GitReadExecutor {
   readonly calls: Array<ReadonlyArray<string>> = [];
   readonly environments: Array<Readonly<Record<string, string>> | undefined> =
     [];
-  fetchCount = 0;
-  failFetchNumber?: number;
+  failFetch = false;
   failWorktreeAdd = false;
   async run(
     argv: ReadonlyArray<string>,
@@ -54,11 +53,8 @@ class RecordingGit implements GitReadExecutor {
         _tag: "ok" as const,
         value: { stdout: " M dirty.ts\n?? untracked.ts\n" },
       };
-    if (argv.includes("fetch")) {
-      this.fetchCount += 1;
-      if (this.fetchCount === this.failFetchNumber)
-        return err({ _tag: "GitReadFailed" as const });
-    }
+    if (this.failFetch && argv.includes("fetch"))
+      return err({ _tag: "GitReadFailed" as const });
     if (this.failWorktreeAdd && argv.includes("add"))
       return err({ _tag: "GitReadFailed" as const });
     return { _tag: "ok" as const, value: { stdout: "" } };
@@ -129,32 +125,34 @@ describe("ReviewWorktreeService", () => {
         value: { mode: "worktree", dirty: { tracked: true, untracked: true } },
       });
       const fetches = git.calls.filter((argv) => argv.includes("fetch"));
-      expect(fetches).toHaveLength(2);
+      // Both refspecs ride one invocation: a second `git fetch` would spawn a
+      // second `gh auth git-credential` helper for no extra work.
+      expect(fetches).toHaveLength(1);
       // The helper string must carry `resolveGitHubCli`'s absolute path, not
       // a bare `gh`: Git spawns it via `/bin/sh` with the inherited PATH,
       // which a Finder-launched Electron app does not extend with Homebrew's
       // `bin`, so a bare `gh` is not reliably discoverable there.
-      expect(fetches[0]).toEqual(
-        expect.arrayContaining([
-          `url.https://${ids.host}/.insteadOf=git@${ids.host}:`,
-          `url.https://${ids.host}/.insteadOf=ssh://git@${ids.host}/`,
-          `credential.https://${ids.host}.helper=`,
-          `credential.https://${ids.host}.helper=!'${ghPath}' auth git-credential`,
-          `${ids.baseSha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/base`,
-          "--no-tags",
-        ]),
-      );
-      expect(fetches[1]).toEqual(
-        expect.arrayContaining([
-          `${ids.sha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/head`,
-        ]),
-      );
+      expect(fetches[0]).toEqual([
+        "git",
+        "-c",
+        `url.https://${ids.host}/.insteadOf=git@${ids.host}:`,
+        "-c",
+        `url.https://${ids.host}/.insteadOf=ssh://git@${ids.host}/`,
+        "-c",
+        `credential.https://${ids.host}.helper=`,
+        "-c",
+        `credential.https://${ids.host}.helper=!'${ghPath}' auth git-credential`,
+        "-C",
+        await realpath(local),
+        "fetch",
+        "origin",
+        `${ids.baseSha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/base`,
+        `${ids.sha}:refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/head`,
+        "--no-tags",
+      ]);
       expect(
         git.environments.filter((environment) => environment !== undefined),
-      ).toEqual([
-        { GH_TOKEN: "profile-token", GIT_TERMINAL_PROMPT: "0" },
-        { GH_TOKEN: "profile-token", GIT_TERMINAL_PROMPT: "0" },
-      ]);
+      ).toEqual([{ GH_TOKEN: "profile-token", GIT_TERMINAL_PROMPT: "0" }]);
       expect(git.calls.flat()).not.toContain("profile-token");
       expect(git.calls.flat()).not.toContain("pull");
       expect(git.calls.flat()).not.toContain("checkout");
@@ -186,13 +184,13 @@ describe("ReviewWorktreeService", () => {
     }
   });
 
-  it("falls back to metadata-only when the base fetch fails", async () => {
+  it("deletes both managed refs when the combined fetch fails", async () => {
     const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
     try {
       const local = join(root, "repo");
       await mkdir(local);
       const git = new RecordingGit();
-      git.failFetchNumber = 1;
+      git.failFetch = true;
       const prepared = await new ReviewWorktreeService(
         PatchdeskPaths.forTest(root),
         git,
@@ -209,45 +207,16 @@ describe("ReviewWorktreeService", () => {
         _tag: "ok",
         value: { mode: "metadata_only", warning: "local_checkout_unavailable" },
       });
-      expect(git.calls.filter((argv) => argv.includes("update-ref"))).toEqual(
-        [],
-      );
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("deletes the partial base ref when the head fetch fails", async () => {
-    const root = await mkdtemp(join(tmpdir(), "patchdesk-worktree-"));
-    try {
-      const local = join(root, "repo");
-      await mkdir(local);
-      const git = new RecordingGit();
-      git.failFetchNumber = 2;
-      const prepared = await new ReviewWorktreeService(
-        PatchdeskPaths.forTest(root),
-        git,
-        credentials,
-        resolveGh,
-      ).prepare({
-        ...ids,
-        profile,
-        sessionId,
-        localPath: local,
-      });
-
-      expect(prepared).toMatchObject({
-        _tag: "ok",
-        value: { mode: "metadata_only", warning: "local_checkout_unavailable" },
-      });
+      // One fetch carrying both refspecs can write one ref and still exit
+      // nonzero on the other, and the exit status does not say which. Neither
+      // ref may be left behind on the user's checkout.
+      const managedRefs =
+        "refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab";
       expect(
-        git.calls.some(
-          (argv) =>
-            argv.includes("update-ref") &&
-            argv.at(-1) ===
-              "refs/patchdesk/reviews/cfw/github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-00000000__0123456789ab/base",
-        ),
-      ).toBe(true);
+        git.calls
+          .filter((argv) => argv.includes("update-ref"))
+          .map((argv) => argv.at(-1)),
+      ).toEqual([`${managedRefs}/base`, `${managedRefs}/head`]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -634,7 +603,7 @@ describe("ReviewWorktreeService", () => {
         value: { mode: "worktree" },
       });
       const fetches = git.calls.filter((argv) => argv.includes("fetch"));
-      expect(fetches).toHaveLength(2);
+      expect(fetches).toHaveLength(1);
       expect(fetches[0]).toEqual(
         expect.arrayContaining([
           `url.https://${enterpriseHost}/.insteadOf=git@${enterpriseHost}:`,
@@ -644,7 +613,6 @@ describe("ReviewWorktreeService", () => {
       expect(
         git.environments.filter((environment) => environment !== undefined),
       ).toEqual([
-        { GH_ENTERPRISE_TOKEN: "enterprise-token", GIT_TERMINAL_PROMPT: "0" },
         { GH_ENTERPRISE_TOKEN: "enterprise-token", GIT_TERMINAL_PROMPT: "0" },
       ]);
       expect(git.calls.flat()).not.toContain("enterprise-token");

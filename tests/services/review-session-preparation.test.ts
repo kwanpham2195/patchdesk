@@ -82,7 +82,7 @@ function value<T>(result: Result<T, unknown>): T {
 type DiffInput = Parameters<GitHubReader["getPullRequestDiff"]>[0];
 
 type GitFailureOptions = {
-  readonly failFetchNumber?: number;
+  readonly failFetch?: boolean;
   readonly failWorktreeAdd?: boolean;
 };
 
@@ -176,7 +176,6 @@ function git(options: GitFailureOptions = {}): GitReadExecutor & {
   readonly calls: ReadonlyArray<ReadonlyArray<string>>;
 } {
   const calls: ReadonlyArray<string>[] = [];
-  let fetchCount = 0;
   return {
     calls,
     async run(argv) {
@@ -188,9 +187,7 @@ function git(options: GitFailureOptions = {}): GitReadExecutor & {
       if (argv.includes("status") || argv.includes("worktree"))
         return ok({ stdout: "" });
       if (argv.includes("fetch")) {
-        fetchCount += 1;
-        if (fetchCount === options.failFetchNumber)
-          return err({ _tag: "GitReadFailed" });
+        if (options.failFetch === true) return err({ _tag: "GitReadFailed" });
         return ok({ stdout: "" });
       }
       if (argv.includes("rev-parse")) return ok({ stdout: `${baseSha}\n` });
@@ -405,12 +402,12 @@ describe("ReviewSessionPreparation", () => {
     expect(context).toMatchObject({ changedFiles: ["src/café.ts"] });
   });
 
-  it("saves a metadata-only session when the managed head fetch fails", async () => {
+  it("saves a metadata-only session when the managed fetch fails", async () => {
     const localRepo = await mkdtemp(join(tmpdir(), "patchdesk-local-repo-"));
     roots.push(localRepo);
     const fixture = await setup({
       localPath: localRepo,
-      gitFailure: { failFetchNumber: 2 },
+      gitFailure: { failFetch: true },
     });
 
     const prepared = await fixture.preparation.prepare({
