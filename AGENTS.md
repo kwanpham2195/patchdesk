@@ -39,6 +39,16 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Verification commands live in `CONTRIBUTING.md`. `pnpm check` (typecheck,
   renderer error surfaces, root test suite, staged lint) is the pre-handoff
   command.
+- Run it as `pnpm check > /tmp/check.txt 2>&1; echo "EXIT=$?"` and read the
+  file. Piping it into `tail`, `head`, or `grep` reports the pipeline's exit
+  status rather than the command's, so a failing gate reads as a passing one.
+- `pnpm check` ends in `lint:changed` against a base ref, which reads the git
+  **index**, not the working tree (see `scripts/check-changed-source.mjs`).
+  Stage or commit your paths first, or it reports violations you have already
+  fixed on disk.
+- `pnpm format` runs `oxfmt` repo-wide and reformats unrelated Markdown across
+  `docs/`, `AGENTS.md`, and `README.md`. Format explicit paths with
+  `npx oxfmt <paths>` instead.
 - Drive the running app with `agent-browser` over CDP. Read-only by default; ask before any write. A renderer change is finished only when you have looked at a screenshot of the affected screen taken after the change loaded; an API response, a log line, or a passing test is not live verification, so say which you have.
 - `location.reload()` is swallowed by this app: a `window` global survives the call. Reload with `agent-browser reload` (CDP `Page.reload`).
 - After a change that adds or removes a Tailwind utility class, reload rather than waiting on HMR. Vite's regenerated CSS can fail to reach the running renderer, leaving the stale rule in `document.styleSheets` indefinitely.
