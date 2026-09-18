@@ -371,12 +371,15 @@ function ReviewersSection({
     _tag: "loading",
   });
 
+  // Depending on the read itself rather than on `actions` keeps this effect off
+  // the identity of an actions object the workbench rebuilds on every render.
+  const fetchReviewers = actions?.fetchReviewers;
+
   useEffect(() => {
-    if (actions === undefined) return;
+    if (fetchReviewers === undefined) return;
     let cancelled = false;
     setReadState({ _tag: "loading" });
-    actions
-      .fetchReviewers()
+    fetchReviewers()
       .then((response) => {
         if (cancelled) return;
         setReadState(projectReviewerSectionReadState(response));
@@ -389,7 +392,7 @@ function ReviewersSection({
     };
     // `refreshedAt` re-triggers the fetch on every workbench re-baseline;
     // it is intentionally in the dependency list purely as a re-fetch key.
-  }, [actions, refreshedAt]);
+  }, [fetchReviewers, refreshedAt]);
 
   // Without reviewer actions (a terminal Review or locked writes) nothing is fetched, and the stored list only knows who is still requested.
   const bodyReadState: ReviewerSectionReadState =
@@ -483,15 +486,18 @@ function AssigneesSection({
     ReadonlyMap<string, string>
   >(() => new Map());
 
+  // Depending on the read itself rather than on `actions` keeps this effect off
+  // the identity of an actions object the workbench rebuilds on every render.
+  const fetchAssignableUsers = actions?.fetchAssignableUsers;
+
   useEffect(() => {
-    if (actions === undefined) {
+    if (fetchAssignableUsers === undefined) {
       setPermission("unknown");
       setAvatarDataUriByLogin(new Map());
       return;
     }
     let cancelled = false;
-    actions
-      .fetchAssignableUsers()
+    fetchAssignableUsers()
       .then((response) => {
         if (cancelled) return;
         setPermission(
@@ -511,7 +517,7 @@ function AssigneesSection({
     };
     // `refreshedAt` re-triggers the fetch on every workbench re-baseline;
     // it is intentionally in the dependency list purely as a re-fetch key.
-  }, [actions, refreshedAt]);
+  }, [fetchAssignableUsers, refreshedAt]);
 
   const [selfAssignPending, setSelfAssignPending] = useState<
     ReadonlyArray<string>
