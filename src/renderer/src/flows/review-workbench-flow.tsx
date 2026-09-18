@@ -1,17 +1,11 @@
-import { parseRepoRelativePath } from "../../../domain/ids";
 import {
   ReviewWorkbench,
   type ReviewWorkbenchInitialState,
 } from "../components/review-workbench";
-import type { AssigneesSectionActions } from "../components/assignee-picker";
-import type { LabelPickerActions } from "../components/label-picker";
-import type { ReviewerPickerActions } from "../components/reviewer-picker";
-import type { ChangeBaseBranchActions } from "../components/change-base-branch-dialog";
-import type { LocalCommentAuthoring } from "../components/review-diff-view";
 import type { WorkbenchResponse } from "../renderer-contracts";
 
 import { InsightsSlot } from "../components/review-insights-slot";
-import { loadReviewCommitDiff } from "./review-workbench-commit-diff";
+import { useWorkbenchActions } from "./use-workbench-actions";
 import { useAnalysisReviewActions } from "./use-analysis-review-actions";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
@@ -76,14 +70,7 @@ export function ReviewWorkbenchFlow({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
   });
-  const {
-    saveInlineComment,
-    setThreadState,
-    replyToThread,
-    editComment,
-    deleteComment,
-    dismissReview,
-  } = useDirectConversationActions({
+  const conversation = useDirectConversationActions({
     workbench,
     runDirectCommand,
     appendRecentWrites,
@@ -108,21 +95,7 @@ export function ReviewWorkbenchFlow({
     !writeRecovery.githubWritesLocked &&
     workbench.pullRequest?.author.toLowerCase() ===
       workbench.viewerLogin.toLowerCase();
-  const {
-    fetchLabels,
-    addLabels,
-    removeLabels,
-    fetchAssignableUsers,
-    addAssignees,
-    removeAssignees,
-    assignSelf,
-    fetchReviewers,
-    requestReviewers,
-    removeReviewers,
-    setDraftState,
-    fetchBaseBranches,
-    setBaseBranch,
-  } = useReviewMetadataActions({
+  const metadata = useReviewMetadataActions({
     workbench,
     runDirectCommand,
     appendRecentWrites,
@@ -154,17 +127,6 @@ export function ReviewWorkbenchFlow({
     observeConfirmedDirectSummary: (reviewId) =>
       observeConfirmedReviewWrite([{ _tag: "DirectSummaryReview", reviewId }]),
   });
-  const localCommentAuthoring: LocalCommentAuthoring | undefined =
-    canWriteDirectConversation
-      ? {
-          enabled: true,
-          onSave: saveInlineComment,
-          onSelectionChange: (location) => {
-            const path = parseRepoRelativePath(location.path);
-            if (path._tag === "ok") void path;
-          },
-        }
-      : undefined;
   const { mergeAction } = useReviewMergeAction({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
@@ -176,102 +138,27 @@ export function ReviewWorkbenchFlow({
     runDirectCommand,
   });
 
-  const conversationActions = canWriteDirectConversation
-    ? {
-        setThreadState,
-        replyToThread,
-        editComment,
-        deleteComment,
-        dismissReview,
-      }
-    : undefined;
-  const labelActions: LabelPickerActions | undefined = canWriteLabels
-    ? { fetchLabels, addLabels, removeLabels }
-    : undefined;
-  const assigneeActions: AssigneesSectionActions | undefined = canWriteAssignees
-    ? { fetchAssignableUsers, addAssignees, removeAssignees, assignSelf }
-    : undefined;
-  const reviewerActions: ReviewerPickerActions | undefined = canWriteReviewers
-    ? { fetchReviewers, requestReviewers, removeReviewers }
-    : undefined;
-  const draftStateAction = canWriteDraftState ? setDraftState : undefined;
-  const baseBranchActions: ChangeBaseBranchActions | undefined =
-    canWriteBaseBranch
-      ? { fetchBaseBranches, setBaseBranch, refresh }
-      : undefined;
-
-  const workbenchActionsBase = {
-    detectUpdates: runDetect,
-    refresh,
-    loadCommitDiff: (commitSha: string) =>
-      loadReviewCommitDiff(
-        workbench.session.key.profileId,
-        workbench.review.id,
-        commitSha,
-      ),
+  const workbenchActions = useWorkbenchActions({
+    profileId: workbench.session.key.profileId,
+    reviewId: workbench.review.id,
+    capabilities: {
+      labels: canWriteLabels,
+      assignees: canWriteAssignees,
+      reviewers: canWriteReviewers,
+      draftState: canWriteDraftState,
+      baseBranch: canWriteBaseBranch,
+      directConversation: canWriteDirectConversation,
+      githubWritesLocked: writeRecovery.githubWritesLocked,
+    },
+    metadata,
+    conversation,
+    observation: { runDetect, refresh, refreshing, refreshError },
+    merge: mergeAction,
+    pendingReviewComposer,
+    pendingReview,
+    directSummary,
     reportNavigationState: onNavigationStateChange,
-  };
-  const workbenchActionsWithRefreshing =
-    refreshing === true
-      ? { ...workbenchActionsBase, refreshing: true as const }
-      : workbenchActionsBase;
-  const workbenchActionsWithRefreshError =
-    refreshError === true
-      ? { ...workbenchActionsWithRefreshing, refreshError: true as const }
-      : workbenchActionsWithRefreshing;
-  const workbenchActionsWithMerge =
-    mergeAction === undefined || writeRecovery.githubWritesLocked
-      ? workbenchActionsWithRefreshError
-      : { ...workbenchActionsWithRefreshError, merge: mergeAction };
-  const workbenchActionsWithLocalCommentAuthoring =
-    localCommentAuthoring === undefined
-      ? workbenchActionsWithMerge
-      : { ...workbenchActionsWithMerge, localCommentAuthoring };
-  const workbenchActionsWithPendingReviewComposer =
-    pendingReviewComposer === undefined || writeRecovery.githubWritesLocked
-      ? workbenchActionsWithLocalCommentAuthoring
-      : {
-          ...workbenchActionsWithLocalCommentAuthoring,
-          pendingReviewComposer,
-        };
-  const workbenchActionsWithPendingReviewPanel =
-    pendingReview === undefined || writeRecovery.githubWritesLocked
-      ? workbenchActionsWithPendingReviewComposer
-      : {
-          ...workbenchActionsWithPendingReviewComposer,
-          pendingReview,
-        };
-  const workbenchActionsWithDirectSummaryPanel =
-    directSummary === undefined || writeRecovery.githubWritesLocked
-      ? workbenchActionsWithPendingReviewPanel
-      : {
-          ...workbenchActionsWithPendingReviewPanel,
-          directSummary,
-        };
-  const workbenchActionsWithLabels =
-    labelActions === undefined
-      ? workbenchActionsWithDirectSummaryPanel
-      : { ...workbenchActionsWithDirectSummaryPanel, labels: labelActions };
-  const workbenchActionsWithAssignees =
-    assigneeActions === undefined
-      ? workbenchActionsWithLabels
-      : { ...workbenchActionsWithLabels, assignees: assigneeActions };
-  const workbenchActionsWithReviewers =
-    reviewerActions === undefined
-      ? workbenchActionsWithAssignees
-      : { ...workbenchActionsWithAssignees, reviewers: reviewerActions };
-  const workbenchActionsWithDraftState =
-    draftStateAction === undefined
-      ? workbenchActionsWithReviewers
-      : { ...workbenchActionsWithReviewers, setDraftState: draftStateAction };
-  const workbenchActionsWithBaseBranch =
-    baseBranchActions === undefined
-      ? workbenchActionsWithDraftState
-      : { ...workbenchActionsWithDraftState, baseBranch: baseBranchActions };
-  const workbenchActions =
-    conversationActions === undefined
-      ? workbenchActionsWithBaseBranch
-      : { ...workbenchActionsWithBaseBranch, ...conversationActions };
+  });
 
   return (
     <>
