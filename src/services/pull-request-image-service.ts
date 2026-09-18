@@ -45,7 +45,7 @@ export type ImageHttpFetch = (
 export type PullRequestImageDependencies = {
   readonly paths: PatchdeskPaths;
   readonly profiles: Pick<ProfileStore, "load">;
-  readonly credentials: GitHubCredentials;
+  readonly credentials: Pick<GitHubCredentials, "environmentFor">;
   readonly fetch: ImageHttpFetch;
   /** Best-effort diagnostics; a refused image is already visible as a placeholder. */
   readonly log?: Pick<AppLogService, "write">;

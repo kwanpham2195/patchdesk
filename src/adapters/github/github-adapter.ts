@@ -225,11 +225,13 @@ export class GitHubAdapter
   private readonly conversation: GitHubConversationReader;
   private readonly diffs: GitHubDiffReader;
   private readonly collaborators: GitHubCollaborators;
+  private readonly credentials: GitHubCredentials;
 
   constructor(
     commands: CommandRunner,
     credentials: GitHubCredentials = new GitHubCliCredentials(commands),
   ) {
+    this.credentials = credentials;
     this.requests = new GhRequestRunner(commands, credentials);
     this.pullRequests = new GitHubPullRequestReader(this.requests);
     this.threads = new GitHubThreadReader(this.requests);
@@ -445,6 +447,11 @@ export class GitHubAdapter
   async resolveAuthenticatedAccount(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>> {
+    // The answer is a property of the credential, not of the moment: while the
+    // same token is cached, who it authenticates as cannot change. An
+    // observation asks three times, and only the first need reach GitHub.
+    if (this.credentials.verifiedAccount(profile) === profile.ghAccount)
+      return ok({ host: profile.githubHost, account: profile.ghAccount });
     const response = await this.ghText(profile, {
       // `gh auth status` exits nonzero if any stale, inactive account is
       // invalid, even when the configured active account can make API calls.
@@ -463,6 +470,7 @@ export class GitHubAdapter
         operation: "auth_status",
       });
     }
+    this.credentials.recordVerifiedAccount(profile, profile.ghAccount);
     return ok({ host: profile.githubHost, account: profile.ghAccount });
   }
 

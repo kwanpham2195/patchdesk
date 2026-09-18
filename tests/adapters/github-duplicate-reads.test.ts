@@ -5,10 +5,9 @@ import {
   normalizeCommandLabel,
   type CommandExecution,
   type CommandExecutor,
-  type CommandFailure,
 } from "../../src/adapters/github/command-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { type GitHubCredentials } from "../../src/adapters/github/github-credentials";
+import { StubCredentials } from "./stub-github-credentials";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -17,7 +16,6 @@ import {
   parsePullRequestNumber,
 } from "../../src/domain/ids";
 import { type PullRequestRef } from "../../src/domain/pull-request";
-import { ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 
 const headSha = "abcdef1234567890abcdef1234567890abcdef12";
@@ -144,17 +142,6 @@ class RoutingExecutor implements CommandExecutor {
   }
 }
 
-/** Resolves a fixed credential so command expectations stay about gh argv. */
-class StubCredentials implements GitHubCredentials {
-  async environmentFor(): Promise<
-    Result<Readonly<Record<string, string>>, CommandFailure>
-  > {
-    return ok({ GH_TOKEN: "profile-token" });
-  }
-
-  forget(): void {}
-}
-
 describe("loadConversation gh cost", () => {
   /**
    * `ReviewRefreshService` and `ReviewObservationService` already read the
@@ -185,6 +172,35 @@ describe("loadConversation gh cost", () => {
       "api GET user",
       "api graphql PullRequestThreads",
     ]);
+  });
+});
+
+describe("resolveAuthenticatedAccount gh cost", () => {
+  it("asks GitHub once per cached credential, not once per caller", async () => {
+    const executor = new RoutingExecutor();
+    const credentials = new StubCredentials();
+    const adapter = new GitHubAdapter(new CommandRunner(executor), credentials);
+
+    const expected = { host: "github.com", account: "pmquan2cfw" };
+    await expect(adapter.resolveAuthenticatedAccount(profile)).resolves.toEqual(
+      { _tag: "ok", value: expected },
+    );
+    await expect(adapter.resolveAuthenticatedAccount(profile)).resolves.toEqual(
+      { _tag: "ok", value: expected },
+    );
+    await expect(adapter.resolveAuthenticatedAccount(profile)).resolves.toEqual(
+      { _tag: "ok", value: expected },
+    );
+
+    // One `GET user` for the three an observation makes.
+    expect(executor.labels).toEqual(["api GET user"]);
+
+    // The proof belongs to the credential: dropping it re-reads GitHub.
+    credentials.forget(profile);
+    await expect(adapter.resolveAuthenticatedAccount(profile)).resolves.toEqual(
+      { _tag: "ok", value: expected },
+    );
+    expect(executor.labels).toEqual(["api GET user", "api GET user"]);
   });
 });
 

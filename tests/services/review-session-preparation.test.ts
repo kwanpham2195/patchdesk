@@ -258,7 +258,6 @@ async function setup(
           options.credentialFailure === true
             ? err({ _tag: "CommandAuthenticationRequired" })
             : ok({ GH_TOKEN: "profile-token" }),
-        forget: () => undefined,
       },
       async () => (options.ghUnresolvable === true ? undefined : "/usr/bin/gh"),
     ),

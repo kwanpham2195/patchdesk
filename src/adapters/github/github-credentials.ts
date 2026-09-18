@@ -19,6 +19,16 @@ export interface GitHubCredentials {
   ): Promise<Result<GitHubCommandEnvironment, CommandFailure>>;
   /** Drop a cached credential the host rejected so the next call re-reads it. */
   forget(profile: WorkspaceProfileConfig): void;
+  /**
+   * The login a live GitHub read already proved the currently cached
+   * credential authenticates as, or `undefined` when nothing is proven for
+   * the credential in hand. A token's identity cannot change while that same
+   * token is cached, so a caller may trust this instead of asking GitHub
+   * again.
+   */
+  verifiedAccount(profile: WorkspaceProfileConfig): string | undefined;
+  /** Record what a live read proved about the credential currently cached for this profile. */
+  recordVerifiedAccount(profile: WorkspaceProfileConfig, account: string): void;
 }
 
 /**
@@ -28,7 +38,12 @@ export interface GitHubCredentials {
 export class GitHubCliCredentials implements GitHubCredentials {
   private readonly cached = new Map<
     string,
-    { readonly token: string; readonly expiresAt: number }
+    {
+      readonly token: string;
+      readonly expiresAt: number;
+      /** The login a live read proved this exact token authenticates as. */
+      readonly verifiedAccount?: string;
+    }
   >();
 
   constructor(private readonly commands: CommandRunner) {}
@@ -66,6 +81,25 @@ export class GitHubCliCredentials implements GitHubCredentials {
 
   forget(profile: WorkspaceProfileConfig): void {
     this.cached.delete(accountKey(profile));
+  }
+
+  verifiedAccount(profile: WorkspaceProfileConfig): string | undefined {
+    const cached = this.cached.get(accountKey(profile));
+    return cached !== undefined && cached.expiresAt > Date.now()
+      ? cached.verifiedAccount
+      : undefined;
+  }
+
+  recordVerifiedAccount(
+    profile: WorkspaceProfileConfig,
+    account: string,
+  ): void {
+    const key = accountKey(profile);
+    const cached = this.cached.get(key);
+    // Bound to the exact cached token: once it expires or `forget` drops it,
+    // the proof goes with it and the next call re-reads GitHub.
+    if (cached === undefined) return;
+    this.cached.set(key, { ...cached, verifiedAccount: account });
   }
 }
 

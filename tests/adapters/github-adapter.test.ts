@@ -1,3 +1,4 @@
+import { StubCredentials } from "./stub-github-credentials";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -8,7 +9,6 @@ import {
   CommandRunner,
   type CommandExecution,
   type CommandExecutor,
-  type CommandFailure,
 } from "../../src/adapters/github/command-runner";
 import {
   createFetchedDiffRefs,
@@ -40,11 +40,8 @@ import {
   parseRepoRelativePath,
 } from "../../src/domain/ids";
 import { type PullRequestRef } from "../../src/domain/pull-request";
-import { err, ok, type Result } from "../../src/domain/result";
-import {
-  parseWorkspaceProfileConfig,
-  type WorkspaceProfileConfig,
-} from "../../src/domain/workspace-profile";
+import { err, ok } from "../../src/domain/result";
+import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 
 const fixtureRoot = join(
   import.meta.dirname,
@@ -114,21 +111,6 @@ class FakeProcessExecutor implements CommandExecutor {
     if (response === undefined)
       throw new Error("Missing fake command response");
     return response;
-  }
-}
-
-/** Resolves a fixed credential so command expectations stay about gh argv. */
-class StubCredentials implements GitHubCredentials {
-  readonly forgotten: Array<string> = [];
-
-  async environmentFor(): Promise<
-    Result<Readonly<Record<string, string>>, CommandFailure>
-  > {
-    return ok({ GH_TOKEN: "profile-token" });
-  }
-
-  forget(profile: WorkspaceProfileConfig): void {
-    this.forgotten.push(profile.ghAccount);
   }
 }
 

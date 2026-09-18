@@ -62,7 +62,6 @@ async function service(
     profiles: { load: async () => ok(profile) },
     credentials: {
       environmentFor: async () => ok({ GH_TOKEN: "secret-token" }),
-      forget: () => {},
     },
     fetch,
   });

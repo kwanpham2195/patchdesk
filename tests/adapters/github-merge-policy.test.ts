@@ -1,13 +1,12 @@
+import { StubCredentials } from "./stub-github-credentials";
 import { describe, expect, it } from "vitest";
 
 import {
   CommandRunner,
   type CommandExecution,
   type CommandExecutor,
-  type CommandFailure,
 } from "../../src/adapters/github/command-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
-import { type GitHubCredentials } from "../../src/adapters/github/github-credentials";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -16,7 +15,6 @@ import {
   parsePullRequestNumber,
 } from "../../src/domain/ids";
 import { type PullRequestRef } from "../../src/domain/pull-request";
-import { ok, type Result } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 
 const headSha = "abcdef1234567890abcdef1234567890abcdef12";
@@ -67,17 +65,6 @@ class FakeProcessExecutor implements CommandExecutor {
       throw new Error("Missing fake command response");
     return response;
   }
-}
-
-/** Resolves a fixed credential so command expectations stay about gh argv. */
-class StubCredentials implements GitHubCredentials {
-  async environmentFor(): Promise<
-    Result<Readonly<Record<string, string>>, CommandFailure>
-  > {
-    return ok({ GH_TOKEN: "profile-token" });
-  }
-
-  forget(): void {}
 }
 
 function testAdapter(commands: CommandRunner): GitHubAdapter {
