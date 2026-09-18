@@ -14,7 +14,10 @@ import {
   string,
 } from "valibot";
 
-import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
+import {
+  runWithCoalescedGitHubReads,
+  runWithRequestAbortSignal,
+} from "../../adapters/github/command-runner";
 import {
   parseContentHash,
   parseGitSha,
@@ -43,19 +46,25 @@ export function registerReviewLifecycleRoutes(
   app.post("/v1/reviews/open", async (context) => {
     const parsed = safeParse(reviewOpenSchema, await jsonBody(context));
     return parsed.success
-      ? response(context, await reviewWorkbench.open(parsed.output))
+      ? runWithCoalescedGitHubReads(async () =>
+          response(context, await reviewWorkbench.open(parsed.output)),
+        )
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/open-merged", async (context) => {
     const parsed = safeParse(reviewOpenSchema, await jsonBody(context));
     return parsed.success
-      ? response(context, await reviewWorkbench.openMerged(parsed.output))
+      ? runWithCoalescedGitHubReads(async () =>
+          response(context, await reviewWorkbench.openMerged(parsed.output)),
+        )
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/load", async (context) => {
     const parsed = safeParse(reviewLoadSchema, await jsonBody(context));
     return parsed.success
-      ? response(context, await reviewWorkbench.load(parsed.output))
+      ? runWithCoalescedGitHubReads(async () =>
+          response(context, await reviewWorkbench.load(parsed.output)),
+        )
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/leave", async (context) => {
@@ -98,7 +107,9 @@ export function registerReviewLifecycleRoutes(
     );
     if (reconciled.failed > 0)
       return context.json({ error: "outcome_unknown" }, 409);
-    return response(context, await reviewWorkbench.load(parsed.output));
+    return runWithCoalescedGitHubReads(async () =>
+      response(context, await reviewWorkbench.load(parsed.output)),
+    );
   });
   app.post("/v1/reviews/detect-updates", async (context) => {
     const parsed = safeParse(reviewUpdateSchema, await jsonBody(context));
@@ -121,12 +132,14 @@ export function registerReviewLifecycleRoutes(
       reviewId: reviewId.value,
     };
     return runWithRequestAbortSignal(context.req.raw.signal, async () =>
-      response(
-        context,
-        await reviewWorkbench.detectUpdates(
-          recentWrites.length === 0
-            ? detectUpdatesInput
-            : { ...detectUpdatesInput, recentWrites },
+      runWithCoalescedGitHubReads(async () =>
+        response(
+          context,
+          await reviewWorkbench.detectUpdates(
+            recentWrites.length === 0
+              ? detectUpdatesInput
+              : { ...detectUpdatesInput, recentWrites },
+          ),
         ),
       ),
     );
@@ -134,7 +147,9 @@ export function registerReviewLifecycleRoutes(
   app.post("/v1/reviews/refresh", async (context) => {
     const parsed = safeParse(reviewUpdateSchema, await jsonBody(context));
     return parsed.success
-      ? response(context, await reviewWorkbench.refresh(parsed.output))
+      ? runWithCoalescedGitHubReads(async () =>
+          response(context, await reviewWorkbench.refresh(parsed.output)),
+        )
       : context.json({ error: "invalid_input" }, 400);
   });
   app.post("/v1/reviews/commit-diff", async (context) => {
