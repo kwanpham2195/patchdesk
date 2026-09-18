@@ -464,10 +464,10 @@ function countingGitHub(input: { readonly terminal: boolean }) {
 
 /**
  * Like `fakeGitHub`, but reports the represented session's own headSha for
- * the first two `getPullRequest` calls (the terminal-state read and the
- * first identity proof), then reports a changed headSha from the third call
- * onward — simulating a push landing in the gap between the first identity
- * read and the cheap second-check recheck.
+ * the first `getPullRequest` call (the terminal-state read, which the first
+ * identity proof now reuses), then reports a changed headSha from the second
+ * call onward — simulating a push landing in the gap between the first
+ * identity read and the cheap second-check recheck.
  */
 function fakeGitHubChangedMidObservation(input: {
   readonly terminal: boolean;
@@ -480,7 +480,7 @@ function fakeGitHubChangedMidObservation(input: {
       async getPullRequest(...args: Parameters<typeof base.getPullRequest>) {
         counts.getPullRequest += 1;
         const result = await base.getPullRequest(...args);
-        if (result._tag === "err" || counts.getPullRequest <= 2) return result;
+        if (result._tag === "err" || counts.getPullRequest <= 1) return result;
         return ok({ ...result.value, headSha: otherSha });
       },
       async getPullRequestDiff(
@@ -944,6 +944,9 @@ describe("ReviewObservationService", () => {
     // The full diff is fetched once (the first, gating identity read); the
     // torn-read guard after the fan-out reconfirms headSha/baseSha only.
     expect(counts.getPullRequestDiff).toBe(1);
+    // Two pull request reads, not three: the terminal-state read feeds the
+    // first identity proof, and only the torn-read guard reads again.
+    expect(counts.getPullRequest).toBe(2);
   });
 
   it("reaches the same RevisionChanged outcome when the cheap recheck catches a mid-observation push", async () => {

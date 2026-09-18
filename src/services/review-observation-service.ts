@@ -258,6 +258,10 @@ export class ReviewObservationService {
       profile,
       pr: reviewRef(review),
       session,
+      // Nothing has awaited since `terminalRead`, so this is the same instant
+      // a read here would observe. The diff it hashes is still fetched fresh,
+      // and `recheckUnchanged` below still reads the network for real.
+      current: terminalRead.value,
     });
     if (first._tag === "err")
       return this.markUnavailable(input, review, detectedAt, "github_read");
