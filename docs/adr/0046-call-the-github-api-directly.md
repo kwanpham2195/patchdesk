@@ -145,10 +145,25 @@ successors anyway.
   and never persisted. Request log records carry method, normalized endpoint
   label, status, and duration — never headers, and never a URL with a query
   string.
-- **Proxy and certificate authority behaviour moves to the HTTP client.**
-  `gh` read `HTTPS_PROXY` and the system trust store on Patchdesk's behalf; the
-  client now has to, and a maintainer behind a proxy or a custom CA is
-  configuring the app rather than the CLI.
+- **Proxy and certificate authority behaviour stays with the platform.**
+  `gh` read `HTTPS_PROXY` and the system trust store on Patchdesk's behalf, and
+  Node's `fetch` reads neither. The client therefore takes the function that
+  reaches the network as a constructor option, and `src/main` injects
+  Electron's `net.fetch`: Chromium's stack honours the system proxy
+  configuration and the system trust store, so a maintainer behind a proxy or
+  a private CA keeps configuring the machine rather than the app. The adapter
+  layer stays free of Electron; the default remains Node's `fetch`, which is
+  what the loopback fixture tests run against.
+
+  Two Chromium behaviours `gh` did not have are switched off where the fetch
+  is injected, both measured against Electron 43 rather than assumed.
+  `cache: "no-store"`, because GitHub answers an authenticated read with
+  `Cache-Control: private, max-age=60` and Chromium otherwise serves a repeat
+  call from its cache without asking GitHub. `credentials: "omit"`, because the
+  default session's cookie jar otherwise sends back a cookie GitHub set on an
+  earlier response. Chromium's `AbortSignal` support, `Link` and rate-limit
+  header reads, streamed body reads, and redirect following were checked in the
+  same run and behave as the Node path does.
 - **Rate-limit headers become readable.** `X-RateLimit-Remaining`,
   `X-RateLimit-Reset`, and `Retry-After` arrive on every response. ADR 0023
   deferred reading them for exactly one reason — gh exposed them only by
