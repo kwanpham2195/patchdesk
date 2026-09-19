@@ -1,3 +1,5 @@
+import type { BranchProtectionRead } from "../../src/adapters/github/github-merge-policy";
+import type { PullRequestReviewsRead } from "../../src/adapters/github/github-pull-request-reviews";
 import type { ReviewRemoteSnapshot } from "../../src/adapters/storage/review-remote-store";
 import {
   parseGitHubHost,
@@ -151,6 +153,86 @@ export function countingGitHub(input: { readonly terminal: boolean }) {
       },
     },
     counts,
+  };
+}
+
+/** The value each consumer of a shared read was handed, or `undefined` when it was handed none. */
+type ConsumedSharedReads = {
+  publishedFeedbackBranchProtection: BranchProtectionRead | undefined;
+  publishedFeedbackReviews: PullRequestReviewsRead | undefined;
+  mergeEvidenceBranchProtection: BranchProtectionRead | undefined;
+  pendingReviewReviews: PullRequestReviewsRead | undefined;
+};
+
+/**
+ * Wraps `fakeGitHub` with the two reads a cycle is meant to start once, and
+ * records the value each of their consumers was handed. The recorded values
+ * are compared by identity, so a consumer that started its own read shows up
+ * as a different object rather than an equal one.
+ */
+export function sharedReadGitHub() {
+  const base = fakeGitHub({ terminal: false });
+  const shared = {
+    branchProtection: {
+      dismissal: ok({ protected: true, allowedDismissers: [] }),
+      evidence: ok({
+        state: "available" as const,
+        value: { requiredApprovingReviewCount: 1 },
+      }),
+    } satisfies BranchProtectionRead,
+    reviews: { _tag: "Reviews", reviews: [] } satisfies PullRequestReviewsRead,
+  };
+  const counts = { readBranchProtection: 0, readPullRequestReviews: 0 };
+  const received: ConsumedSharedReads = {
+    publishedFeedbackBranchProtection: undefined,
+    publishedFeedbackReviews: undefined,
+    mergeEvidenceBranchProtection: undefined,
+    pendingReviewReviews: undefined,
+  };
+  return {
+    shared,
+    counts,
+    received,
+    github: {
+      ...base,
+      async readBranchProtection() {
+        counts.readBranchProtection += 1;
+        return shared.branchProtection;
+      },
+      async readPullRequestReviews() {
+        counts.readPullRequestReviews += 1;
+        return shared.reviews;
+      },
+      async getPullRequestPublishedFeedback(input: {
+        readonly branchProtection?: BranchProtectionRead;
+        readonly reviews?: PullRequestReviewsRead;
+      }) {
+        received.publishedFeedbackBranchProtection = input.branchProtection;
+        received.publishedFeedbackReviews = input.reviews;
+        return base.getPullRequestPublishedFeedback();
+      },
+      async getMergePolicyEvidence(input: {
+        readonly branchProtection?: BranchProtectionRead;
+      }) {
+        received.mergeEvidenceBranchProtection = input.branchProtection;
+        return ok({
+          branchProtection: {
+            state: "available" as const,
+            value: { requiredApprovingReviewCount: 1 },
+          },
+          appliedRuleset: {
+            state: "unavailable" as const,
+            reason: "not_found" as const,
+          },
+        });
+      },
+      async getViewerPendingReview(input: {
+        readonly reviews?: PullRequestReviewsRead;
+      }) {
+        received.pendingReviewReviews = input.reviews;
+        return base.getViewerPendingReview();
+      },
+    },
   };
 }
 

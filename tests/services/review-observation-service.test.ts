@@ -45,6 +45,7 @@ import {
   otherSha,
   patch,
   profileId,
+  sharedReadGitHub,
   snapshot,
 } from "./review-observation-fixture";
 import { ReviewWorkbenchController } from "../../src/services/review-workbench-controller";
@@ -781,6 +782,46 @@ describe("ReviewObservationService", () => {
     // Two pull request reads, not three: the terminal-state read feeds the
     // first identity proof, and only the torn-read guard reads again.
     expect(counts.getPullRequest).toBe(2);
+  });
+
+  it("starts branch protection and the review list once and hands each to both consumers", async () => {
+    const value = await fixture();
+    const { github, shared, counts, received } = sharedReadGitHub();
+    const observation = new ReviewObservationService({
+      profiles: new ProfileStore(value.paths),
+      reviews: value.reviews,
+      sessions: value.sessions,
+      remote: value.remote,
+      journals: value.journals,
+      recentWrites: value.recentWrites,
+      github,
+      pendingReview: {
+        adoptObservedState() {
+          return { pendingReview: { _tag: "None" as const } };
+        },
+      },
+      coordinator: new ReviewOperationCoordinator(),
+      now: () => observedAt,
+    });
+
+    await expect(
+      observation.observe({ profileId, reviewId: value.review.id }),
+    ).resolves.toMatchObject({ _tag: "ok", value: { _tag: "Reconciled" } });
+
+    expect(counts).toEqual({
+      readBranchProtection: 1,
+      readPullRequestReviews: 1,
+    });
+    // Identity, not equality: a consumer left to read for itself would hand
+    // back an equal object that cost a second round trip.
+    expect(received.publishedFeedbackBranchProtection).toBe(
+      shared.branchProtection,
+    );
+    expect(received.mergeEvidenceBranchProtection).toBe(
+      shared.branchProtection,
+    );
+    expect(received.publishedFeedbackReviews).toBe(shared.reviews);
+    expect(received.pendingReviewReviews).toBe(shared.reviews);
   });
 
   it("reaches the same RevisionChanged outcome when the cheap recheck catches a mid-observation push", async () => {
