@@ -523,18 +523,30 @@ export function ReviewWorkbench({
         readOnlyConversationAnnotations,
       ],
     );
+  // The builder reads only the pending-review projection, so that is the
+  // dependency: `model` as a whole would also change for a refreshed check or
+  // a new comment, and every new array identity here recomputes
+  // `annotationKey` in `use-review-diff-model.ts`.
+  const pendingReview = model.pendingReview;
   const pendingReviewAnnotations: ReadonlyArray<ReviewInlineAnnotation> =
-    buildPendingReviewAnnotations(model);
+    useMemo(
+      () => buildPendingReviewAnnotations({ pendingReview }),
+      [pendingReview],
+    );
   // A pending-review thread is also visible to the thread reader; dedupe
   // lives in `deriveConversationThreadEntries` so the diff and (eventually) a
   // Threads navigator section agree on the same entry list by construction.
-  const conversationThreadEntries = deriveConversationThreadEntries(
-    conversationAnnotations,
-    pendingReviewAnnotations,
+  const conversationThreadEntries = useMemo(
+    () =>
+      deriveConversationThreadEntries(
+        conversationAnnotations,
+        pendingReviewAnnotations,
+      ),
+    [conversationAnnotations, pendingReviewAnnotations],
   );
-  const annotations: ReadonlyArray<ReviewInlineAnnotation> = buildAnnotations(
-    findings,
-    conversationThreadEntries,
+  const annotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
+    () => buildAnnotations(findings, conversationThreadEntries),
+    [conversationThreadEntries, findings],
   );
   const commitDiffError = commitDiffState._tag === "Failed";
   const displayedPatch = commitDiff?.patch ?? model.fullPatch;
