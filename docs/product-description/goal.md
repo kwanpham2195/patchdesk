@@ -6,7 +6,7 @@ Complete every document in the README structure, run the consistency pass, build
 
 ## Source of truth
 
-Patchdesk is checked out at `/Users/kwanpham/Work/personal/patchdesk`. Describe the default macOS desktop app from `src/renderer/src/app.tsx`, with no fixture route active. Application behavior is pinned to committed source `737c515c`, the pin of the 2026-09-14 UX pass after its refresh against main; documents that pass did not revise keep their own earlier pin in their footer. Uncommitted application-source changes are not evidence. Fixture routes, release packaging, unsupported platforms, assistive-technology behavior, and exact model-generated wording are out of scope.
+Patchdesk is checked out at the repository root. Describe the default macOS desktop app from `src/renderer/src/app.tsx`, with no fixture route active. Application behavior is pinned to committed source `737c515c`, the pin of the 2026-09-14 UX pass after its refresh against main; documents that pass did not revise keep their own earlier pin in their footer. Uncommitted application-source changes are not evidence. Fixture routes, release packaging, unsupported platforms, assistive-technology behavior, and exact model-generated wording are out of scope.
 
 For each document, read in this order:
 
@@ -32,7 +32,7 @@ Do not describe code. Describe what the maintainer sees and does. Technical deta
 - Cross-reference the document that owns a behavior instead of repeating it. `foundations/task-lifecycle-and-interruption.md` owns task phases and interrupts. `foundations/review-session-and-revision.md` owns freshness and represented-revision rules. `foundations/persistence-and-recovery.md` owns durable state and recovery.
 - Every feature document ends with `## Open questions and verification`, then bullets, then a footer naming the baseline source commit and any scoped follow-up source commit.
 - Use one Mermaid `stateDiagram-v2` per interaction. Include only the states the maintainer passes through.
-- Follow `/Users/kwanpham/.agents/skills/references/writing-guide.md` and `/Users/kwanpham/.agents/skills/references/docs-guide.md`. Preserve the canonical product wording in `CONTEXT.md`.
+- Follow `~/.agents/skills/references/writing-guide.md` and `~/.agents/skills/references/docs-guide.md`. Preserve the canonical product wording in `CONTEXT.md`.
 
 ## Things already established
 
@@ -125,7 +125,7 @@ Update the README coverage table to `drafted` as documents land. Never mark a do
 - If source and tests do not determine a behavior, write what they do determine, record the rest under Open questions and verification, and move on.
 - The pilot target is roughly 150 to 200 lines. Hard Review-workbench documents can be longer. Completeness matters more than length.
 - If the planned structure is wrong, update README.md structure and coverage before creating, removing, splitting, or merging a document.
-- Run `python3 /Users/kwanpham/.claude/skills/product-description/references/check-links.py /Users/kwanpham/Work/personal/patchdesk/docs/product-description` during the consistency pass.
+- Run `python3 ~/.claude/skills/product-description/references/check-links.py docs/product-description` from the repository root during the consistency pass.
 - Run live verification only with the required Patchdesk dev and log panes observable. Insight runs cost provider usage; use the configured low-cost Codex CLI account model and do not run them merely to test fixed UI structure.
 
 The documentation set is complete when no coverage row says `not started`, the consistency pass passes, the checklists and triage exist, live results are reported without overclaiming, and all product-description changes are committed.

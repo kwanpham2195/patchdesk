@@ -211,7 +211,7 @@ Status is one of `not started`, `drafted`, or `verified`. A document is `verifie
 
 ## Reference
 
-The source of truth is Patchdesk at `/Users/kwanpham/Work/personal/patchdesk`. The baseline pin is application-source commit `3100615`; documents changed by the follow-up reflect behavior through `c49045d`, and documents revised by the 2026-09-14 UX pass are pinned to `737c515c`. Each document's footer names its own pin. Relevant locations are:
+The source of truth is Patchdesk at the repository root. The baseline pin is application-source commit `3100615`; documents changed by the follow-up reflect behavior through `c49045d`, and documents revised by the 2026-09-14 UX pass are pinned to `737c515c`. Each document's footer names its own pin. Relevant locations are:
 
 - [`src/renderer/src/app.tsx`](../../src/renderer/src/app.tsx): root screen routing, Settings overlay, profile switching, and leave guards.
 - [`src/renderer/src/flows/`](../../src/renderer/src/flows/): Pull requests, Review workbench, Settings, and their interaction hooks.

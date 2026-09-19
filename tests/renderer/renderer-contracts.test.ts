@@ -16,7 +16,7 @@ import {
 const sessionProjection = {
   id: "github.com__centraldigital__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",
   key: {
-    profileId: "cfw",
+    profileId: "acme",
     host: "github.com",
     owner: "centraldigital",
     repo: "patchdesk",
@@ -51,7 +51,7 @@ const reviewProjection = {
 describe("parseInboxResponse", () => {
   const response = {
     profile: {
-      id: "cfw",
+      id: "acme",
       label: "Profile",
       githubHost: "github.com",
       ghAccount: "fixture",
@@ -95,14 +95,14 @@ describe("parseInboxResponse", () => {
           {
             host: "github.com",
             owner: "centraldigital",
-            repo: "cfw-sales-crm-api",
-            localPath: "/Users/kwanpham/Work/cfw/cfw-sales-crm-api",
+            repo: "acme-api",
+            localPath: "/Users/example/Work/acme/acme-api",
           },
         ],
       },
     });
     expect(parsed?.profile.repos?.[0]?.localPath).toBe(
-      "/Users/kwanpham/Work/cfw/cfw-sales-crm-api",
+      "/Users/example/Work/acme/acme-api",
     );
   });
 
@@ -115,7 +115,7 @@ describe("parseInboxResponse", () => {
           {
             host: "github.com",
             owner: "centraldigital",
-            repo: "cfw-bo-customer-management-service",
+            repo: "acme-customer-service",
           },
         ],
       },
