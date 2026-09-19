@@ -25,9 +25,11 @@ import {
 } from "../../src/domain/review-session";
 import {
   createPendingReviewRequestId,
+  parseGitHubThreadId,
   parseIsoTimestamp,
   type IsoTimestamp,
 } from "../../src/domain/ids";
+import type { GitHubConversationThread } from "../../src/domain/github-context";
 import { err, ok } from "../../src/domain/result";
 import { parseWorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { runWithRequestAbortSignal } from "../../src/adapters/github/command-runner";
@@ -62,6 +64,21 @@ const competingSessionAt = must(parseIsoTimestamp("2026-08-12T00:00:30.000Z"));
 /** `RecentWriteJournalStore.load` filters against the real clock's 24h ceiling, so a durable receipt must be dated now, not at this fixture's pinned instant. */
 const justWrittenAt = () => must(parseIsoTimestamp(new Date().toISOString()));
 
+/** The thread a discarded pending review held, which GitHub no longer serves. */
+const discardedThreadId = must(parseGitHubThreadId("PRRT_discarded"));
+const discardedThread: GitHubConversationThread = {
+  id: discardedThreadId,
+  state: "open",
+  comments: [
+    {
+      id: "PRRC_discarded",
+      author: "fixture",
+      body: "draft",
+      createdAt: observedAt,
+    },
+  ],
+};
+
 afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
@@ -76,6 +93,8 @@ async function fixture(
     readonly failSessionSave?: boolean;
     readonly failJournalRemove?: boolean;
     readonly project?: boolean;
+    /** Threads GitHub still serves, for a snapshot that predates a discard. */
+    readonly remoteThreads?: ReadonlyArray<GitHubConversationThread>;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "patchdesk-observation-"));
@@ -170,7 +189,17 @@ async function fixture(
     }),
   );
   await reviews.save(review);
-  const github = fakeGitHub({ terminal: options.terminal === true });
+  const baseGitHub = fakeGitHub({ terminal: options.terminal === true });
+  const remoteThreads = options.remoteThreads;
+  const github =
+    remoteThreads === undefined
+      ? baseGitHub
+      : {
+          ...baseGitHub,
+          async getPullRequestComments() {
+            return ok({ threads: remoteThreads, complete: true });
+          },
+        };
   let failed = options.failReviewSave === true;
   const journals = new ReviewObservationJournalStore(paths);
   const recentWrites = new RecentWriteJournalStore(paths, {
@@ -427,6 +456,56 @@ describe("ReviewObservationService", () => {
         expect(result.value.projection).toBeUndefined();
     },
   );
+
+  it("prunes a discarded-thread receipt once GitHub no longer carries the thread", async () => {
+    const value = await fixture({ project: true });
+    await value.recentWrites.append(
+      profileId,
+      value.review.id,
+      { _tag: "DiscardedThread", threadId: discardedThreadId },
+      justWrittenAt(),
+    );
+    const observed = await value.observation.observe({
+      profileId,
+      reviewId: value.review.id,
+    });
+    expect(observed).toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Reconciled", projection: { state: "review" } },
+    });
+    await expect(
+      value.recentWrites.load(profileId, value.review.id),
+    ).resolves.toEqual({ _tag: "ok", value: [] });
+  });
+
+  it("keeps a discarded-thread receipt while the snapshot still carries the thread", async () => {
+    const value = await fixture({
+      project: true,
+      remoteThreads: [discardedThread],
+    });
+    await value.recentWrites.append(
+      profileId,
+      value.review.id,
+      { _tag: "DiscardedThread", threadId: discardedThreadId },
+      justWrittenAt(),
+    );
+    const observed = await value.observation.observe({
+      profileId,
+      reviewId: value.review.id,
+    });
+    expect(observed).toMatchObject({
+      _tag: "ok",
+      value: { _tag: "Reconciled" },
+    });
+    if (observed._tag === "ok" && observed.value._tag === "Reconciled")
+      expect(observed.value.projection).toBeUndefined();
+    await expect(
+      value.recentWrites.load(profileId, value.review.id),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: [{ _tag: "DiscardedThread", threadId: discardedThreadId }],
+    });
+  });
 
   it("withholds the projection for a receipt appended while a lock holder was parked", async () => {
     // Regression for issue #179. The durable union used to be read before the

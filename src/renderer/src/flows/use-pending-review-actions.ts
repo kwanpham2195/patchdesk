@@ -229,7 +229,7 @@ export function usePendingReviewActions({
           if (priorThreadIds.length > 0) {
             appendRecentWrites(
               priorThreadIds.map((threadId) => ({
-                _tag: "PendingThread" as const,
+                _tag: "DiscardedThread" as const,
                 threadId,
               })),
             );

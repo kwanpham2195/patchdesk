@@ -831,6 +831,11 @@ function containsRecentWrites(
         return snapshot.comments.threads.some(
           (thread) => thread.id === write.threadId,
         );
+      case "DiscardedThread":
+        // A discard is proven by absence: the thread the draft held is gone.
+        return !snapshot.comments.threads.some(
+          (thread) => thread.id === write.threadId,
+        );
       case "ThreadState":
         return snapshot.comments.threads.some(
           (thread) =>

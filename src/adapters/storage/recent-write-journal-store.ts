@@ -53,6 +53,11 @@ const entrySchema = v.variant("_tag", [
     writtenAt: v.string(),
   }),
   v.strictObject({
+    _tag: v.literal("DiscardedThread"),
+    threadId: v.string(),
+    writtenAt: v.string(),
+  }),
+  v.strictObject({
     _tag: v.literal("DirectSummaryReview"),
     reviewId: v.string(),
     writtenAt: v.string(),

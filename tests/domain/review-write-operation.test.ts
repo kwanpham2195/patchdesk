@@ -134,6 +134,7 @@ const confirmedReceipts = {
     state: "resolved",
   },
   PendingThread: { _tag: "PendingThread", threadId: receiptThreadId.value },
+  DiscardedThread: { _tag: "DiscardedThread", threadId: receiptThreadId.value },
   DirectSummaryReview: { _tag: "DirectSummaryReview", reviewId: "PRR_1" },
   LabelChange: { _tag: "LabelChange", added: ["bug"], removed: [] },
   AssigneeChange: { _tag: "AssigneeChange", added: ["octocat"], removed: [] },

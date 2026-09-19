@@ -821,11 +821,13 @@ function reconcileObservedFindingReceipts(input: {
 /**
  * The typed own-write journal entries one confirmed pending-review write
  * proves. Start/AddThread journal the thread the adapter reports it created
- * (`createdThreadId`, never guessed locally). A confirmed Discard that
- * resolved to `None` journals each thread the pre-operation Pending draft
- * held, mirroring the renderer's `threadIdsOf()` derivation. Submit is
- * intentionally not journaled: no `RecentReviewWrite` variant represents
- * "pending threads became a published review".
+ * (`createdThreadId`, never guessed locally) as `PendingThread`, which an
+ * observation satisfies by finding it. A confirmed Discard that resolved to
+ * `None` journals each thread the pre-operation Pending draft held as
+ * `DiscardedThread`, satisfied by its absence, mirroring the renderer's
+ * `threadIdsOf()` derivation. Submit is intentionally not journaled: no
+ * `RecentReviewWrite` variant represents "pending threads became a published
+ * review".
  */
 function journalEntriesFor(
   operation: PendingReviewOperation,
@@ -846,7 +848,7 @@ function journalEntriesFor(
     priorState._tag === "Pending"
   ) {
     return priorState.review.comments.map((comment) => ({
-      _tag: "PendingThread" as const,
+      _tag: "DiscardedThread" as const,
       threadId: comment.threadId,
     }));
   }
