@@ -159,6 +159,25 @@ and a fixture-server test pins that the client's `Link` following answers the
 same array of pages `--paginate --slurp` answered with, which is the shape the
 250-entry truncation guard reads. It moves when a window has compared it.
 
+Eleven GraphQL queries stay on `gh`, none of them exercised in a shadow window
+yet:
+
+    api graphql MaintainerInbox
+    api graphql RepositoryLabels
+    api graphql AssignableUsers
+    api graphql PullRequestReviewers
+    api graphql RepositoryBranches
+    api graphql WatchedPullRequests
+    api graphql PendingReviewThreads
+    api graphql ReviewThreadComments
+    api graphql ReviewThreadTarget
+    api graphql ReviewCommentTarget
+    api graphql ConfirmCreatedCommentThread
+
+Every mutation stays on `gh` too, and stays there past T2 whatever its label:
+a mutation is labelled by its root field, so `isQueryDocument` rather than the
+allowlist is what keeps it off the HTTPS path.
+
 **The compare read is hashed, so its bytes are the contract.** `Response.text()`
 and a default `TextDecoder` both strip a leading UTF-8 byte order mark; gh
 wrote its stdout through Node's utf8 stream decoder, which keeps it. The
