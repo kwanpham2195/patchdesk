@@ -1,11 +1,11 @@
 ---
 name: find-animation-opportunities
-description: Search a codebase or UI for places that don't animate but should, and reject everything that shouldn't. Read-only; it proposes motion with exact values, it does not implement it. Use when the user asks "what could be animated here?" or wants to "make this feel more alive". For fixing existing animations, use improve-animations or review-animations instead.
+description: Search a codebase or UI for places that don't animate but should, and reject everything that shouldn't. Read-only; it proposes motion with exact values, it does not implement it. Use when the user asks "what could be animated here?" or wants to "make this feel more alive". For existing animation audits, use improve-animations; for a changed animation diff, use code-review with the improve-animations AUDIT.md criteria.
 ---
 
 # Finding Animation Opportunities
 
-A search skill. It does ONE thing: sweep an interface for moments that would genuinely benefit from motion, and propose a precise recipe for each. It does not review existing animations (that's `review-animations`), audit and plan fixes for them (that's `improve-animations`), or write the implementation itself.
+A search skill. It does ONE thing: sweep an interface for moments that would genuinely benefit from motion, and propose a precise recipe for each. For an animation diff, use `~/.agents/skills/code-review/SKILL.md` with the applicable [improve-animations AUDIT.md](../improve-animations/AUDIT.md) criteria. It does not audit existing animations or write implementations.
 
 ## Operating Posture
 
@@ -131,7 +131,7 @@ This section is what separates this skill from an animation wishlist.
 
 ### Part 3 — Verdict
 
-One short paragraph: how much motion this interface actually needs, whether it's already close to right, and which single suggestion has the highest leverage. Close by pointing at the handoff: `improve-animations plan <suggestion>` to turn any row into a self-contained implementation plan.
+One short paragraph: how much motion this interface actually needs, whether it's already close to right, and which single suggestion has the highest leverage. Close by pointing at the handoff: `improve-animations plan <suggestion>` can turn any selected row into a self-contained plan in the authorized workspace context.
 
 ## Tone
 

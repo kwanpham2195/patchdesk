@@ -2,13 +2,15 @@
 
 ## Non-negotiables
 
-Subagents do not read this file. Paste these five lines into every brief.
+Child briefs must include applicable rules below or readable absolute paths to them. Paste these five lines into every implementation brief.
 
 - Commit each accepted slice with explicit paths, and end the report with the SHA.
 - A renderer change is finished only after you looked at a screenshot of the affected screen over CDP.
 - Run `pnpm check` before handoff.
 - No compatibility shims or fallbacks unless asked for.
 - Ask before removing code that looks intentional.
+
+These commit and check gates apply to accepted authorized changes, including instruction edits. For read-only work or a blocked, partial, or checkpoint report, name dirty-file ownership, checks actually run, and pending gates instead of claiming completion.
 
 ## Project Structure
 
@@ -29,16 +31,14 @@ See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the
 
 ## Development and Verification
 
-Before starting any task, make sure the dev log tails are live in herdr:
+For runtime work, make sure the dev log tails are live in herdr:
 
 - Log tail tab: raw `patchdesk.jsonl` (tail of `~/.local/share/patchdesk/logs/patchdesk.jsonl`).
 - Dev tab: the `pnpm dev` console (renderer/api log lines and HMR output).
-- If either pane is gone or idle, start/restart it before doing the work.
+- If either pane is gone or idle, start or restart only a process you own. Ask before restarting the maintainer's app or a shared 9233 session.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
-- Verification commands live in `CONTRIBUTING.md`. `pnpm check` (typecheck,
-  renderer error surfaces, root test suite, staged lint) is the pre-handoff
-  command.
+- `CONTRIBUTING.md` and the package scripts define verification commands. `pnpm check` is the pre-handoff command for completed authorized implementation, including instruction edits.
 - Run it as `pnpm check > /tmp/check.txt 2>&1; echo "EXIT=$?"` and read the
   file. Piping it into `tail`, `head`, or `grep` reports the pipeline's exit
   status rather than the command's, so a failing gate reads as a passing one.
@@ -52,16 +52,10 @@ Before starting any task, make sure the dev log tails are live in herdr:
 - Drive the running app with `agent-browser` over CDP. Read-only by default; ask before any write. A renderer change is finished only when you have looked at a screenshot of the affected screen taken after the change loaded; an API response, a log line, or a passing test is not live verification, so say which you have.
 - `location.reload()` is swallowed by this app: a `window` global survives the call. Reload with `agent-browser reload` (CDP `Page.reload`).
 - After a change that adds or removes a Tailwind utility class, reload rather than waiting on HMR. Vite's regenerated CSS can fail to reach the running renderer, leaving the stale rule in `document.styleSheets` indefinitely.
-- CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, never kills a process it did not start, and asks before restarting 9233. `pnpm cdp:ready` checks the port: run it before claiming anything about the running app, before reporting, and before delegating a live-verification slice.
+- CDP: `pnpm dev` listens only with `REMOTE_DEBUGGING_PORT` set. Port 9233 is the maintainer's app; a session that needs its own takes `REMOTE_DEBUGGING_PORT=924N` and its own user-data dir, never kills a process it did not start, and asks before restarting 9233. `pnpm cdp:ready` checks the port: run it before claiming runtime evidence, reporting live verification, or delegating a live-verification slice.
 - Package only when asked, when the change is packaging-specific, or when distribution proof is required. A packaged app is evidence only for the commit it was built from.
 - Insight runs started for testing (Brief, Analysis, Walkthrough) spend the maintainer's provider account. Use a low-cost model such as `gpt-5.6-luna` on the Codex CLI account provider, not `gpt-5.6-sol`; pick it in the run dialog rather than changing the maintainer's stored preference.
-- Subagent models by role, for Claude Code. Names drift; the split is the rule.
-
-  | Role | Model |
-  | --- | --- |
-  | Exploration and research | `sonnet` |
-  | Implementation | `implementer` agent (Opus, low effort, in `~/.claude/agents/`; pass `model: opus` to the Agent tool when a session does not list it) |
-  | Review | `fable`, default effort |
+- Before delegating or resuming a child, read `~/.agents/skills/delegated-execution/references/model-policy.md`. It owns role, model, effort, concurrency, and unavailable-model rules; the active harness owns launch and failure protocol.
 
 - An audit or inventory ships with a disposition per finding: fix now, a named follow-up, or an evidence-backed rejection.
 - A remediation program pins its metric to one exact command in its plan file; every progress report reruns it.
@@ -118,12 +112,12 @@ Committing:
 - Only commit files YOU changed in THIS session.
 - Stage explicit paths (`git add <path1> <path2>`); never `git add -A` / `git add .`.
 - Before committing, run `git status` and verify you are only staging your files.
-- Commit each accepted phase or milestone after its verification gate, and report with the SHA. A report may not say "uncommitted" or list pending work while your own files are dirty.
+- For accepted authorized changes, commit each phase or milestone after its verification gate and report the SHA. For read-only, blocked, partial, or checkpoint reports, state dirty-file ownership, checks actually run, and pending gates truthfully.
 - Message format: informative and concise.
 
 Stopping:
 
-- Stop only for a decision the plan does not cover, a failed gate, or a GitHub write, and name the decision you are waiting on. "Continue with the next step?" is not a stop. The `delegated-execution` skill has the full rule.
+- Stop for a user-requested human review, an explicit pause, a decision the plan does not cover, a failed gate, or a GitHub write. Name the review, pause, decision, or blocker; "Continue with the next step?" is not a stop. The `delegated-execution` skill has the full rule.
 
 Never run (destroys other agents' work or bypasses checks):
 
@@ -140,15 +134,15 @@ If rebase conflicts occur:
 Use the named skill when its trigger matches the task. Read the skill file before acting; it is the canonical workflow.
 
 - `code-review`: before any handoff that changed `src/`. Run it yourself; do not wait to be asked.
-- `delegated-execution`: work that spans several files or several subagents.
+- `delegated-execution`: substantial exploration, work that spans several files, or several subagents.
 - `react-doctor`: finishing React work or checking React diagnostics before handoff.
 - `diffs`: working with `@pierre/diffs`, code views, patches, or review surfaces.
 - `trees`: working with `@pierre/trees` file trees.
 - `shadcn`: adding, debugging, or composing shadcn/ui components.
 - `agent-browser`: live browser or Electron verification over CDP.
 - `herdr`: dev servers, log tails, watchers, and named panes.
-- `github`: GitHub issues, pull requests, reviews, CI, or releases. Use its more specific leaf skill when applicable.
-- `issue`: every bug, request, decision, or idea worth tracking becomes an issue through this skill, and triage runs through it too, unless the user says not to.
+- `issue`: every bug, request, decision, or idea worth tracking goes through GitHub or workspace issue intake and handoff. Use `~/.agents/skills/issue/SKILL.md`; its permission and destination rules decide whether anything is published.
+- `pr`: pull request inspection, updates, CI, and landing. Use `~/.agents/skills/pr/SKILL.md`.
 - `product-description`: a user-visible behaviour change updates its page under `docs/product-description/`; a new page, checklist, or triage entry follows the skill's "Resuming and extending an existing repo" steps. Read that folder's README.md and goal.md before writing.
 - `librarian`: caching or consulting an upstream repository or dependency source.
 - `update-changelog`: before editing a changelog.
@@ -159,12 +153,6 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 
 ## Memory
 
-- Put stand-alone research notes in `.agents/research/`. Use `.agents/tasks/`
-  for task packages whose specification and design come first, and
-  `.agents/PLANS/` only for long-running execution plans.
-- A completed task package is closed reference material. Do not add research,
-  plans, or implementation artifacts to it; route follow-up work using the
-  locations above.
-- Update the plan file in the same commit as the work it describes.
-- Run `node .agents/PLANS/program/program.mjs status` before reporting
-  progress on the program.
+- Route new private research, work records, and plans with `~/.agents/skills/references/context-routing.md` to the registered workspace context. Do not create a universal repository `plans/` directory for new work.
+- Existing repository plans and completed task packages retain their locations and remain readable. Do not migrate or duplicate them. A completed task package is closed reference material: do not append follow-up research, plans, or implementation artifacts; route new follow-up work through workspace context. Existing active plans remain authoritative. Repository documentation, ADRs, changelogs, and the domain glossary keep their repository-required homes.
+- Update an existing plan in the same commit as the work it describes. Run `node .agents/PLANS/program/program.mjs status` before reporting progress on an existing program.

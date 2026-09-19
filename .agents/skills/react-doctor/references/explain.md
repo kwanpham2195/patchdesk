@@ -1,8 +1,6 @@
 # Explaining and configuring rules
 
-Explain React Doctor rules and edit `doctor.config.*` safely. Use this when a user
-wants to understand a rule or change which rules run — not for fixing diagnostics
-(that is the main `react-doctor` skill / `/doctor`).
+Explain React Doctor rules and, only with explicit authorization, edit `doctor.config.*`. Use this when a user wants to understand a rule or change which rules run — not for fixing diagnostics (the main `react-doctor` skill owns those).
 
 Triggers: "why did this rule fire", "I disagree with this rule", "turn this rule off",
 "stop flagging X", "too noisy", "disable design rules".
@@ -16,9 +14,10 @@ Triggers: "why did this rule fire", "I disagree with this rule", "turn this rule
 npx react-doctor@latest rules explain react-doctor/no-array-index-as-key
 ```
 
-3. Pick the narrowest control that matches the user's intent (see decision guide).
-4. Apply it with a `rules` subcommand (edits your `doctor.config.*` or `package.json#reactDoctor` in place, preserving other fields and formatting).
-5. Validate the change did what they wanted:
+3. Pick the narrowest proposed control that matches the user's intent (see decision guide).
+4. Confirm the task authorizes the affected configuration file. Without authorization, report the command and stop.
+5. Apply it with a `rules` subcommand, preserving other fields and formatting.
+6. Validate the authorized change did what they wanted:
 
 ```bash
 npx react-doctor@latest --verbose --diff

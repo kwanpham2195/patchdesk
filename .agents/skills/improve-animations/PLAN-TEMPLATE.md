@@ -1,6 +1,6 @@
 # Plan Template
 
-Every plan written by `improve-animations` follows this structure. The executor may be a less capable model with zero context and zero taste — the plan must contain everything, exactly. No references to "the audit above" or "the easing we discussed."
+Every plan written by `improve-animations` follows this structure. The executor has zero context — the plan must contain everything needed. New private plans live in the registered workspace work item selected by `~/.agents/skills/references/context-routing.md`; existing repository plans retain their location. Do not create a root `plans/` directory. No references to "the audit above" or "the easing we discussed."
 
 ```markdown
 # NNN — <Short imperative title>
@@ -70,4 +70,4 @@ imitate (token names, file placement, prop patterns):
 - One plan per finding. If two findings share every file and the same fix pattern (e.g. the same easing token swap across components), they may merge into one plan.
 - Pull every value from [AUDIT.md](AUDIT.md) — never approximate from memory.
 - The feel check is not optional. Motion can be mechanically correct and still feel wrong; give the executor (or the human reviewing the executor's diff) concrete things to watch for in slow motion.
-- After writing plans, create or update `plans/README.md` with: a table of plans (number, title, severity, status), the recommended execution order, and any dependencies between plans.
+- After writing plans, update the authoritative plan index or workspace work-item checkpoint with plan title, severity, status, recommended order, and dependencies. Do not create a duplicate index.

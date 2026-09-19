@@ -19,11 +19,9 @@ transforming, and record gaps in the report.
 2. Detect the package manager (packageManager field / lockfile:
    pnpm-lock.yaml, bun.lock, yarn.lock, package-lock.json) and use IT for
    every install. Never leave a stale lockfile.
-3. Require a clean git tree; work on a branch; one commit per component.
-4. Baseline check BEFORE touching dependencies: run the project's
-   typecheck/build so pre-existing failures are never attributed to you.
-5. Install `@base-ui/react` alongside radix. Radix packages are removed only
-   after the LAST component is migrated (both coexist fine).
+3. Inspect `git status` and preserve unrelated changes. Ask before creating or switching branches. Use the repository's authorized local commit policy; do not infer branch or commit permission from this skill.
+4. Baseline check BEFORE touching dependencies: run the project's typecheck/build so pre-existing failures are never attributed to you.
+5. Install `@base-ui/react` alongside Radix only when dependency changes are authorized. Radix packages are removed only after the LAST component is migrated.
 
 ## Strategy: golden pair first, transformation engine second
 
@@ -71,7 +69,7 @@ transforming, and record gaps in the report.
   legacy whole-project migration, FLAG (do not fix): the style name still
   reads as radix to the CLI, so future `shadcn add` will deliver radix
   variants; the user decides whether to switch style or add manually.
-- **Transformation engine (fallback).** Hand-rolled radix code, non-shadcn
+- **Transformation engine (alternative).** Hand-rolled radix code, non-shadcn
   projects, unknown styles: transform using `universal-patterns.md` (imports
   in BOTH forms: `radix-ui` and `@radix-ui/react-*`; asChild->render with the
   worked example; Portal>Positioner>Popup; the positioner FORWARD rule; part
@@ -94,7 +92,7 @@ transforming, and record gaps in the report.
    strategy above); typecheck. Repoint consumers ONE AT A TIME (imports + the
    call-site props in `consumer-props.md`); typecheck each. When no consumer
    imports the original: delete it, rename `-base` -> original, flip imports
-   back, final check, commit. When the LAST radix wrapper in the project is
+   back, final check, then commit only under the repository's authorized local commit policy. When the LAST radix wrapper in the project is
    finalized, flip `components.json` to `base-<style>` and remove radix deps.
 
 **Whole project** (only when explicitly asked): same per-component work in
@@ -108,15 +106,10 @@ full build.
 - NEVER touch non-radix libraries or their wrappers: cmdk (command), vaul
   (drawer), sonner, input-otp, react-day-picker (calendar), recharts (chart).
   Report them as intentionally untouched.
-- No Base UI counterpart: AspectRatio -> CSS aspect-ratio div; Label ->
-  native `<label>`; VisuallyHidden -> `sr-only`; Direction -> Direction
-  Provider (`direction` prop, not `dir`). Popover Anchor and NavigationMenu
-  Indicator have no equivalent: inert passthrough + flag.
+- For a missing Base UI counterpart or unsupported behavior substitution, stop and ask before replacing it. Do not add a compatibility shim or fallback unless authorized. Candidate reference information: AspectRatio can use a CSS `aspect-ratio` div, Label a native `<label>`, VisuallyHidden `sr-only`, and Direction a Direction Provider (`direction`, not `dir`); Popover Anchor and NavigationMenu Indicator have no direct equivalent. These candidates do not approve substitution and must be flagged for a decision.
 - `button.tsx` migrates to the REAL `@base-ui/react/button` primitive, never
   a hand-rolled useRender wrapper.
-- Behavior deltas are FLAGGED, never silently patched (tabs manual
-  activation, menu items not closing on click, nav-menu 50ms delay). The
-  target is idiomatic Base UI matching the shadcn base registry.
+- Behavior deltas are FLAGGED, never silently patched: tabs manual activation, menu items not closing on click, and the navigation-menu 50 ms delay are examples. Ask before substituting unsupported behavior or adding a compatibility shim. The target is idiomatic Base UI matching the shadcn base registry only within the approved behavior boundary.
 - Honest reporting: skipped/reverted files are listed as flagged, never as
   migrated. Pre-existing failures are named as pre-existing.
 

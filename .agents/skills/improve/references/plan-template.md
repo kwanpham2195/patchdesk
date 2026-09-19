@@ -8,7 +8,7 @@ Three properties make a plan executable by a weaker model:
 2. **Verification gates** — every step ends with a command and its expected result. The executor never has to _judge_ whether it succeeded.
 3. **Hard boundaries and escape hatches** — explicit out-of-scope list, and "STOP and report" conditions instead of letting the model improvise when reality doesn't match the plan.
 
-File naming: `plans/NNN-short-slug.md`, numbered in recommended execution order.
+For new private work, place the plan under the registered workspace work item selected by `~/.agents/skills/references/context-routing.md`. Reuse an existing repository plan location and naming scheme; do not create a root `plans/` directory.
 
 ---
 
@@ -20,9 +20,8 @@ File naming: `plans/NNN-short-slug.md`, numbered in recommended execution order.
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving to the
 > next step. If anything in the "STOP conditions" section occurs, stop and
-> report — do not improvise. When done, update the status row for this plan
-> in `plans/README.md` — unless a reviewer dispatched you and told you they
-> maintain the index.
+> report — do not improvise. When done, update this plan's authoritative
+> status record — unless a reviewer dispatched you and maintains it.
 >
 > **Drift check (run first)**: `git diff --stat <planned-at SHA>..HEAD -- <in-scope paths>`
 > If any in-scope file changed since this plan was written, compare the
@@ -34,7 +33,7 @@ File naming: `plans/NNN-short-slug.md`, numbered in recommended execution order.
 - **Priority**: P1 | P2 | P3
 - **Effort**: S | M | L
 - **Risk**: LOW | MED | HIGH
-- **Depends on**: plans/NNN-*.md (or "none")
+- **Depends on**: authoritative plan path(s) (or "none")
 - **Category**: bug | security | perf | tests | tech-debt | migration | dx | docs | direction
 - **Planned at**: commit `<short SHA>`, <YYYY-MM-DD>
 - **Issue**: <GitHub issue URL — only when published via `--issues`; omit otherwise>
@@ -99,8 +98,8 @@ executor's environment. Skip the section otherwise.)
 
 (Filled from recon — match the repo's observed conventions.)
 
-- Branch: `advisor/NNN-<slug>` (or the repo's branch-naming convention if one is evident)
-- Commit per step or per logical unit; message style: <match repo, e.g. conventional commits — include an example from `git log`>
+- Ask before creating or switching branches. If authorized, use the repository's branch convention.
+- Commit only under the repository's authorized local commit policy; message style: <match repository history, e.g. conventional commits — include an example from `git log`>.
 - Do NOT push or open a PR unless the operator instructed it.
 
 ## Steps
@@ -135,7 +134,7 @@ Machine-checkable. ALL must hold:
 - [ ] `pnpm test` exits 0; new tests for <X> exist and pass
 - [ ] `grep -rn "<old pattern>" src/` returns no matches
 - [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `plans/README.md` status row updated
+- [ ] Authoritative plan status record updated
 
 ## STOP conditions
 
@@ -159,9 +158,9 @@ For the human/agent who owns this code after the change lands:
 
 ---
 
-## Index file: `plans/README.md`
+## Plan index
 
-Written once by the advisor after all plans, updated by executors:
+For an existing repository plan collection, use its established index. For new private work, use the registered workspace work item's `index.md` or `plan.md`; do not create a root `plans/README.md`. An established index can use this shape:
 
 ```markdown
 # Implementation Plans
