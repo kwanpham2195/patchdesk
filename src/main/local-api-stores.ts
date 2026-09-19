@@ -24,6 +24,8 @@ import {
   GitHubCliCredentials,
   type GitHubCredentials,
 } from "../adapters/github/github-credentials";
+import { GitHubHttpClient } from "../adapters/github/github-http-client";
+import { TransportShadow } from "../adapters/github/transport-shadow";
 import {
   CommandRunner,
   NodeCommandExecutor,
@@ -64,6 +66,24 @@ export function createReadOnlyGitExecutor(
         : err({ _tag: "GitReadFailed" as const });
     },
   };
+}
+
+/**
+ * The shadow comparison of the HTTP transport against gh, when this launch
+ * asked for one with `PATCHDESK_TRANSPORT_SHADOW=1` (issue #292). It doubles
+ * read traffic against the same rate limit, so it is read here, once, rather
+ * than consulted per call.
+ */
+function transportShadow(
+  credentials: GitHubCredentials,
+  logs: Pick<AppLogService, "write">,
+): TransportShadow | undefined {
+  if (process.env["PATCHDESK_TRANSPORT_SHADOW"] !== "1") return undefined;
+  return new TransportShadow(
+    new GitHubHttpClient(credentials),
+    credentials,
+    (entry) => logs.write(entry),
+  );
 }
 
 /** Every store, adapter and seam the loopback API's services are built from. */
@@ -148,7 +168,12 @@ export async function buildLocalApiStores(
   const credentials =
     configuration.githubCredentials ?? new GitHubCliCredentials(commands);
   const github =
-    configuration.github ?? new GitHubAdapter(commands, credentials);
+    configuration.github ??
+    new GitHubAdapter(
+      commands,
+      credentials,
+      transportShadow(credentials, logs),
+    );
   const readOnlyGit = createReadOnlyGitExecutor(commands);
   const resolveGitHubCli =
     configuration.resolveGitHubCli ?? (() => discoverExecutable("gh"));

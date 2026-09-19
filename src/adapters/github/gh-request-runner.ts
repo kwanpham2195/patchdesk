@@ -14,6 +14,7 @@ import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import { parseGitHubTimestamp } from "./github-wire-projections";
 import { ghInvocationFor, type GitHubRequest } from "./github-request";
 import type { MaintainerRateLimit } from "./github-wire-schemas";
+import type { TransportShadow } from "./transport-shadow";
 
 export type GitHubReadFailure =
   | {
@@ -110,6 +111,11 @@ export class GhRequestRunner {
     private readonly credentials: GitHubCredentials = new GitHubCliCredentials(
       commands,
     ),
+    /**
+     * Compares the HTTP transport against gh for reads when one is supplied
+     * (issue #292). It never contributes to the result this returns.
+     */
+    private readonly shadow?: TransportShadow,
   ) {}
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
@@ -117,9 +123,13 @@ export class GhRequestRunner {
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
-    return this.runAsProfileAccount(profile, ghCommandFor(request), (input) =>
-      this.commands.runJson(input),
+    const served = this.runAsProfileAccount(
+      profile,
+      ghCommandFor(request),
+      (input) => this.commands.runJson(input),
     );
+    this.shadow?.observe({ profile, request, served, body: "json" });
+    return served;
   }
 
   /** Run a request that returns text as the profile's configured GitHub account. */
@@ -127,9 +137,13 @@ export class GhRequestRunner {
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
-    return this.runAsProfileAccount(profile, ghCommandFor(request), (input) =>
-      this.commands.runText(input),
+    const served = this.runAsProfileAccount(
+      profile,
+      ghCommandFor(request),
+      (input) => this.commands.runText(input),
     );
+    this.shadow?.observe({ profile, request, served, body: "text" });
+    return served;
   }
 
   async runAsProfileAccount<T>(
