@@ -196,9 +196,10 @@ yet, each for a reason of its own:
 - `api graphql ConfirmCreatedCommentThread` — runs inside the thread-create
   write flow.
 
-Every mutation stays on `gh` too, and stays there past T2 whatever its label:
-a mutation is labelled by its root field, so `isQueryDocument` rather than the
-allowlist is what keeps it off the HTTPS path.
+Through T2 every mutation stayed on `gh` whatever its label: a mutation is
+labelled by its root field, so `isQueryDocument` rather than the allowlist is
+what kept it off the HTTPS path. T3 gives the writes an allowlist of their own,
+below.
 
 **The compare read is hashed, so its bytes are the contract.** `Response.text()`
 and a default `TextDecoder` both strip a leading UTF-8 byte order mark; gh
@@ -208,8 +209,161 @@ client therefore decodes the response stream with `ignoreBOM`, so the bytes
 endings, non-ASCII text, and a missing trailing newline already survived
 unchanged.
 
-T2 extends the list; T4 deletes it together with the last `gh api` argv and
-the gh-specific classification named under Consequences.
+T2 extends the list; T3 adds a second one for the writes, below; T4 deletes
+both together with the last `gh api` argv and the gh-specific classification
+named under Consequences.
+
+### The writes, and why their proof is different
+
+A read was proven by running both transports on the same call and comparing.
+A write cannot be sent twice, so there is no shadow and no comparison window.
+Its proof is three other things: request-shape equality against the `gh api`
+argv and stdin the same call encodes today, a failure-classification table
+driven from real HTTP responses and real socket conditions on a loopback
+server, and one manual live check the maintainer runs before the default
+flips.
+
+`httpServedWriteLabels` in `gh-request-runner.ts` is the write half of the
+cutover record. `transportRouteFor` classifies every request as exactly one of
+read, write, or stays-on-gh; the read gate is the unchanged conservative
+predicate, so no write can reach the read path by matching a read label. A
+write label names **the method GitHub receives**, not the one in the argv:
+`gh api --input -` with no `--method` posts, so a body-carrying request
+normalizes to a GET label that would otherwise collide with a read's.
+
+Nine REST writes. All nine carry the default `Accept:
+application/vnd.github+json`, and only those with a body carry a
+`Content-Type`. The two bodyless DELETEs are also the two writes whose answer
+the call site reads as text rather than JSON.
+
+| label | call site | body |
+| --- | --- | --- |
+| `POST repos/:owner/:repo/pulls/:n/reviews` | `createPendingReview`, `startPendingReviewWithThread`, `createDirectSummaryReview` | `commit_id`, and `body`/`comments`/`event` per caller |
+| `POST repos/:owner/:repo/pulls/:n/reviews/:n/events` | `submitPendingReview` | `event`, `body` |
+| `PUT repos/:owner/:repo/pulls/:n/reviews/:n/dismissals` | `dismissReview` | `message` |
+| `DELETE repos/:owner/:repo/pulls/:n/reviews/:n` | `discardPendingReview` | none |
+| `PUT repos/:owner/:repo/pulls/:n/merge` | `mergePullRequest` | `sha`, `merge_method` |
+| `POST repos/:owner/:repo/pulls/:n/comments` | `createInlineComment` | `body`, `commit_id`, the anchor coordinates |
+| `PATCH repos/:owner/:repo/pulls/comments/:n` | `updateReviewComment` | `body` |
+| `DELETE repos/:owner/:repo/pulls/comments/:n` | `deleteReviewComment` | none |
+| `DELETE repos/:owner/:repo/pulls/:n/requested_reviewers` | `removeRequestedReviewers` | `reviewers` |
+
+Fourteen mutations. The kind column is the flag gh sent each variable with:
+`-F` inferred a type from the text, `-f` always sent a String, and `name[]=`
+repeated per element is a real GraphQL list.
+
+| label | variables |
+| --- | --- |
+| `addLabelsToLabelable` | `labelableId` -F, `labelIds` list |
+| `removeLabelsFromLabelable` | `labelableId` -F, `labelIds` list |
+| `addAssigneesToAssignable` | `assignableId` -F, `assigneeIds` list |
+| `removeAssigneesFromAssignable` | `assignableId` -F, `assigneeIds` list |
+| `requestReviews` | `pullRequestId` -F, `userIds` list |
+| `updatePullRequest` | `pullRequestId` -F, `baseRefName` -f |
+| `markPullRequestReadyForReview` | `pullRequestId` -F |
+| `convertPullRequestToDraft` | `pullRequestId` -F |
+| `addPullRequestReviewThread` | `reviewId` -F, `path` -F, `line` -F, `body` -f |
+| `addPullRequestReviewThreadReply` | `threadId` -F, `body` -f |
+| `resolveReviewThread` | `threadId` -F |
+| `unresolveReviewThread` | `threadId` -F |
+| `updatePullRequestReviewComment` | `commentId` -F, `body` -f |
+| `deletePullRequestReviewComment` | `commentId` -F |
+
+Resolve and unresolve, ready-for-review and convert-to-draft, and the two
+diff sides of `addPullRequestReviewThread` each pick a GraphQL field or an
+enum in the document rather than a variable, so the document is what differs
+and, for the first two pairs, the label too.
+
+**The write switch is temporary, and separate from the rollback.**
+`PATCHDESK_GITHUB_WRITES=http`, read once in `githubTransports()` beside the
+other two, serves those labels over HTTPS. Absent, every write stays on `gh`,
+which is the default: a write has no shadow, so it stays a per-launch opt-in
+until the live check below passes. `PATCHDESK_GITHUB_TRANSPORT=gh` still
+overrides it and puts writes back on `gh` with the reads. After the live check
+the default flips and `PATCHDESK_GITHUB_WRITES` goes; T4 deletes both
+allowlists.
+
+**Three things the client had to be taught, found by writing the shape tests.**
+
+- *A body with no method is a POST.* `restMethodFor` in `github-request.ts` is
+  now the one place that rule lives, read by both the client's `method` and
+  the write label. No current call site relies on it — every write names its
+  method — but a request that did would have been sent as a GET.
+- *The response body mode belongs to the caller, not to the media type.*
+  `ghText` and `ghJson` are what `runText` and `runJson` were, so the client
+  gained `restText`, which hands over the response bytes unparsed, while
+  `rest` always parses. The media type no longer decides. This is what
+  `discardPendingReview` needs: gh handed it any exit-0 stdout as the receipt,
+  and GitHub answers that endpoint 200 with the deleted review as JSON, which
+  the previous content-type sniffing turned into a parsed object the text
+  caller then failed on. It also restores `CommandInvalidJson` for a JSON
+  caller handed an empty 204 or a non-JSON 200, which is what `runJson` did
+  with the same stdout.
+- *`X-GitHub-Api-Version`.* The client sends `2022-11-28` on every REST call.
+  gh 2.100.0 carries the same header name and the same value in its own
+  binary, so this matches rather than adds.
+
+**No write is retried, and one risk cannot be closed here.** Neither the
+client nor `writeFailure` retries: a failed write is the call's failure, and
+there is no fallback to `gh`. Node's `fetch` does not retry either — undici's
+retry is opt-in through `RetryAgent`/`RetryHandler` and the default dispatcher
+has none. Electron's `net.fetch` is the one that cannot be ruled out.
+Chromium's `HttpNetworkTransaction::ShouldResendRequest` reads
+
+    bool connection_is_proven = stream_->IsConnectionReused();
+    bool has_received_headers = GetResponseHeaders() != nullptr;
+    return connection_is_proven && !has_received_headers;
+
+and the HTTP method is not consulted anywhere in that decision, so a POST on a
+reused keep-alive connection that fails with `ERR_CONNECTION_RESET`,
+`ERR_CONNECTION_CLOSED`, `ERR_EMPTY_RESPONSE` or `ERR_SOCKET_NOT_CONNECTED`
+before any response header arrives is resent by the network stack, invisibly
+to this app.
+
+`gh` was not free of this either, but its rule was narrower. Go's
+`persistConn.shouldRetryRequest` replays a non-idempotent request on a reused
+connection only for `nothingWrittenError` — nothing of the request reached the
+socket — and only when the body can be rewound; every other error goes through
+`Request.isReplayable`, which a POST without an `Idempotency-Key` header fails.
+Chromium asks neither question. So the window in which a write can be sent
+twice is wider over `net.fetch` than it was over `gh`, by the amount of a
+request that was written before the reset.
+
+Nothing here adds retry logic, and nothing should. What handles a duplicate is
+ADR 0035: the intent is persisted before the call, and a write whose outcome is
+unknown is reconciled by a read rather than re-sent. This is recorded as the
+one part of the write cutover that the loopback fixture server cannot prove,
+because it happens below the `fetch` seam.
+
+### Live write check
+
+Run before the default flips, against a throwaway pull request on a throwaway
+repository, with the dev app launched as
+`PATCHDESK_GITHUB_WRITES=http pnpm dev` and the log tail open. One of each
+write family. After every one, confirm three things: the write landed on
+GitHub exactly once, the Review write journal entry cleared, and no recovery
+banner appeared.
+
+1. Post an inline comment on a diff line.
+2. Reply to the thread it created.
+3. Resolve the thread, then unresolve it.
+4. Edit the reply's body.
+5. Delete the reply.
+6. Add a label, then remove it.
+7. Add an assignee.
+8. Request a reviewer, then remove the request.
+9. Start a pending review on one line, add a second thread to it, then submit
+   it.
+10. Start another pending review and discard it instead.
+11. Publish a direct summary review.
+12. Toggle the pull request to draft and back.
+
+Base-branch change and merge are optional and destructive: run them last, on a
+pull request that is finished with, or not at all.
+
+Record the run in this ADR's Cutover record with the date, the commit, and the
+`github-http` entry count for each label. A duplicate write, a stuck journal
+entry, or a recovery banner stops the flip.
 
 **The rollback switch is temporary.** `PATCHDESK_GITHUB_TRANSPORT=gh`, read
 once at composition beside `PATCHDESK_TRANSPORT_SHADOW`, leaves every read on
@@ -304,10 +458,15 @@ successors anyway.
   the bytes of GitHub's compare response. The same compare must be hashed
   through both transports and the hashes confirmed equal before the read path
   moves, or every open Review reports a revision change that did not happen.
-- **ADR 0035 constrains the write cutover.** `writeFailure` in
-  `github-write-failures.ts` maps `CommandFailed` to `rejected`, which removes
-  the write intent, and everything else to `unavailable`, which keeps the
-  Review locked for reconciliation. A transport that reported a dropped
-  connection or a 5xx as `CommandFailed` would clear an intent whose mutation
-  may already have landed on GitHub. Network errors, timeouts, and 5xx
-  responses must classify as unavailable or timed out, never as a rejection.
+- **ADR 0035 constrains the write cutover.** `rejected` removes the write
+  intent, so only a status that proves GitHub refused may produce it.
+  Everything else must answer `unavailable` and keep the Review locked for
+  reconciliation, because the mutation may already have landed on GitHub:
+  network errors, timeouts, 5xx responses, and a success body that did not
+  parse are never a rejection. `writeFailure` in `github-write-failures.ts`
+  mapped `CommandFailed` to `rejected` when this was written, which is exactly
+  that bug; issue #288 fixed it before the write cutover, and `rejected` is
+  now produced only by Patchdesk's own "No review content is selected." check.
+  `tests/adapters/github-http-write-failures.test.ts` is the table the HTTP
+  transport is pinned against, with the gh path's category asserted beside
+  each row.
