@@ -32,7 +32,7 @@ flowchart TB
         end
     end
     subgraph External["External"]
-        GitHub["GitHub<br/>gh CLI, REST and GraphQL"]
+        GitHub["GitHub<br/>REST and GraphQL over HTTPS"]
         Insight["Pi agent one-shot child<br/>one per Insight run"]
         Codex["Local Codex CLI account<br/>app server"]
         Files["Local files<br/>JSON stores, worktree, logs"]
@@ -95,7 +95,7 @@ It is the only place that knows about Electron.
 - `local-api.ts` starts the Hono API on `127.0.0.1` with a random port. It builds the container (`local-api-container.ts` over `local-api-stores.ts`), registers the route modules in `routes/`, and listens. Most routes parse their body with a Valibot schema, call a service, and serialize the typed result; the merge, inline-conversation, and Review recovery routes use strict schemas that reject unknown fields. The Settings, profile, and watchlist routes in `dashboard-routes.ts` parse inside `DashboardController` instead, the profile-select route reads one id field, and the diff-file route parses inside `ReviewDiffSourceService`.
 - `desktop-bridge.ts` is the only IPC surface the renderer can reach. It validates the requested route against an allowlist, forwards the request to the local API with the capability and renderer-origin headers, caps responses at 8 MiB, and applies a 30-second timeout.
 - `app-capability.ts` generates the per-launch capability and compares presented values with constant-time equality.
-- `preload.ts` exposes the minimal `window.patchdesk` bridge to the sandboxed renderer: `request`, `openExternalHttps`, `onMenuAction` for the native menu, and `onWindowFullScreen` with the `windowFullScreenAtLoad` value it reads as the renderer loads — the renderer cannot see native full screen for itself.
+- `preload.ts` exposes the minimal `window.patchdesk` bridge to the sandboxed renderer: `request`, `openExternalHttps`, `onMenuAction` for the native menu, `onNotificationClick`, `onWatchedPullRequestChange`, `qaScrollDiagnosticsEnabled`, `setWindowAppearance`, and `onWindowFullScreen` with the `windowFullScreenAtLoad` and `appearanceAtLoad` values it reads as the renderer loads — the renderer cannot see native full screen for itself.
 - `renderer-origin.ts` parses and verifies the renderer origin.
 - `desktop-close-guard.ts` protects an unsaved review draft and an in-flight GitHub write during close.
 - `external-navigation.ts` opens external links only over HTTPS, with no credentials and no custom port. A link the user clicked in a rendered body may go to any host (`isUserActivatedExternalUrl`), because comment bodies link off GitHub constantly; a navigation the page starts on its own is still confined to the allowlisted hosts (`isAllowedExternalUrl`).
@@ -119,9 +119,9 @@ The types and invariants of the system. This is the **API Boundary** every other
 - `result.ts` defines `Result<T, E>`. Errors are typed values, never thrown exceptions.
 - `review.ts` models the Review aggregate: identity, current session, freshness, and terminal state. Pure functions such as `reconcileReviewRemoteState` and `markReviewTerminal` are the only state transitions.
 - `review-session.ts` models a session pinned to one pull-request revision.
-- `insight-record.ts` models the run lifecycle of an Insight: queued, running, completed, failed, superseded.
+- `insight-record.ts` models the run lifecycle of an Insight: an `InsightRun` is `queued`, `running`, or `cancelling`, a run that produces a validated result becomes a `RetainedInsight` bound to the analyzed revision, and a run that ends without one becomes an `InsightFailure` whose reason is `cancelled`, `failed`, `invalid_result`, or `superseded`.
 - `pending-review.ts`, `merge-operation.ts`, and `direct-summary-review.ts` model write intents and their receipts.
-- `patch.ts` and `diff-anchor.ts` parse the unified patch and map Findings to diff locations.
+- `patch.ts` maps Findings to diff locations (`mapFindingLocation`, `toGitHubReviewCoordinates`), and `diff-anchor.ts` fingerprints the diff context around a `PendingReviewAnchor` so one inline command can be validated against the represented diff. Both read the patch through the tokenizer in `unified-patch.ts`.
 - `github-context.ts` describes the GitHub shapes the app consumes.
 - `contracts.ts` holds the schemas for the global config file.
 
@@ -142,10 +142,10 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-workbench-projection.ts` assembles the projection the renderer displays.
 - `review-operation-coordinator.ts` serializes every mutation or reconciliation for one Review.
 - `review-lifecycle-gate.ts` serializes durable lifecycle mutations per workspace profile.
-- `review-write-gate.ts` is the shared precondition for every GitHub write: the Review must be Fresh.
+- `review-write-gate.ts` holds the two write preconditions: `requireFresh` for review-content writes — comment, publish, merge — and `requireCurrentSession` for pull-request metadata writes. Label, assignee, reviewer, base-branch, and draft-state writes need only a current, non-stale, non-terminal session (ADR 0025).
 - `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results.
 - `pi-insight-child-invoker.ts` and `codex-insight-invoker.ts` start model children.
-- `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` over the represented-review worktree, so no model gains a search capability (ADR 0036).
+- `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` per symbol name — over the proposed names and over the removed symbols it derives from the patch — in a represented-review worktree it first confirms with `git rev-parse HEAD`, so no model gains a search capability (ADR 0036).
 - `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows.
 - `review-worktree-service.ts` owns the read-only git commands that create a session checkout.
 - `review-diff-source-service.ts`, `review-patch-index.ts`, and `review-inspector.ts` read the diff and expose a bounded, immutable inspector to model agents.
@@ -235,7 +235,7 @@ The design concentrates authority in the main process and removes it from everyw
 
 - The renderer is sandboxed. It reaches the main process only through the preload bridge, and the bridge only allows listed routes.
 - Every local API request requires the per-launch capability and the renderer origin.
-- Every GitHub write requires a Fresh Review, checked by `review-write-gate.ts`.
+- Every GitHub write requires a current, non-stale, non-terminal Review session, checked by `review-write-gate.ts`. Review-content writes — comment, publish, merge — also require a Fresh Review; pull-request metadata writes do not.
 - Merge and Published feedback deletion or dismissal require explicit confirmation.
 - A confirmed write is followed by one read-only post-write reconciliation. The reconciliation never repeats the write.
 - If Patchdesk cannot confirm a write outcome, it locks further writes for explicit GitHub reconciliation. It never retries automatically.
@@ -274,7 +274,7 @@ An Insight run is cancelled when the user asks, when the represented revision ch
 
 Cancellation is owned at both boundaries:
 
-- The renderer and the coordinator hold an `AbortController` per run.
+- The coordinator holds an `AbortController` per run. The renderer holds none: it POSTs the cancel route and guards the reply with a generation counter and `cancellingRef` (`use-insight-run.ts`).
 - The coordinator signals the child, and the child aborts its running Pi agent before it exits.
 - The parent retains owned process-group termination as the hard backstop.
 
@@ -301,8 +301,8 @@ A panic in one feature must not corrupt the local state of another.
 Patchdesk is a desktop process; understanding what happens inside it matters for support.
 
 - The app writes an append-only JSONL log to `~/.local/share/patchdesk/logs/patchdesk.jsonl`. It is tail-f friendly and records requests, model runs, and lifecycle events.
-- `review-diagnostic-service.ts` records incidents with phases, durations, and retryability. It powers the Diagnostics surface.
-- A support bundle collects diagnostics and logs on demand.
+- `review-diagnostic-service.ts` records incidents with phases, durations, and retryability. `GET /v1/diagnostics` serves them as the redacted local activity list in Settings → Data & recovery.
+- A support bundle exports those diagnostic events on demand. It carries no logs, and no renderer path calls the export route today: it is reachable only through the allowlisted API route.
 - The renderer mirrors logs through `appLog` in `src/renderer/src/lib/logger.ts`.
 
 ### Testing
@@ -319,7 +319,9 @@ The renderer boundary uses jsdom and Testing Library.
 `renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
 
 The outermost boundary is the built app.
-Playwright browser tests run against the packaged renderer with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus a dedicated performance suite. There is no accessibility suite; ADR 0034 rules out assistive-technology tests.
+Playwright browser tests run against the built renderer bundle (`out/renderer`) served over loopback, with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus a dedicated performance suite.
+`local-api-workbench.spec.ts` and `protected-loopback-workflow.spec.ts` point that bridge at a real main-process local API started over `FakeGitHubAdapter`.
+There is no accessibility suite; ADR 0034 rules out assistive-technology tests.
 Package smoke runs the packaged app with a fixed faux provider before UI checks.
 
 **Architecture Invariant:** tests are reproducible and local-only.
