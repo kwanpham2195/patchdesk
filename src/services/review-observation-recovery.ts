@@ -5,7 +5,13 @@ import {
 } from "../domain/review";
 import type { PendingReviewState } from "../domain/pending-review";
 import type { ReviewSession } from "../domain/review-session";
-import type { IsoTimestamp, ReviewId, WorkspaceProfileId } from "../domain/ids";
+import type {
+  ContentHash,
+  IsoTimestamp,
+  ReviewId,
+  WorkspaceProfileId,
+} from "../domain/ids";
+import type { StorageFailure } from "../adapters/storage/json-file";
 import { err, ok, type Result } from "../domain/result";
 import type {
   ReviewObservation,
@@ -204,10 +210,11 @@ export class ReviewObservationRecovery {
         "reconciliation_incomplete",
       );
     }
-    const removed = await this.dependencies.journals.remove(
-      input.profileId,
-      input.reviewId,
-    );
+    const removed = await completeObservationJournal(this.dependencies, {
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      representedSnapshotHash: adoptedReview.representedRemote?.snapshotHash,
+    });
     return removed._tag === "ok"
       ? ok({ _tag: "Reconciled", detectedAt: this.dependencies.now() })
       : this.markUnavailable(
@@ -217,6 +224,38 @@ export class ReviewObservationRecovery {
           "reconciliation_incomplete",
         );
   }
+}
+
+/**
+ * Remove the journal one adoption completed, then drop the snapshots the
+ * adopted Review no longer names. The prune follows the removal so a crash
+ * between them is harmless: the journal is gone, the Review is adopted, and
+ * the next adoption lists the directory and removes what this one left.
+ */
+export async function completeObservationJournal(
+  dependencies: Pick<ReviewObservationDependencies, "journals" | "remote">,
+  input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly representedSnapshotHash: ContentHash | undefined;
+  },
+): Promise<Result<void, StorageFailure>> {
+  const removed = await dependencies.journals.remove(
+    input.profileId,
+    input.reviewId,
+  );
+  if (removed._tag === "err" || input.representedSnapshotHash === undefined)
+    return removed;
+  // Best effort: the Review has already adopted the snapshot, so a failed
+  // prune must never fail the adoption.
+  await dependencies.remote
+    .pruneExcept({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      keep: [input.representedSnapshotHash],
+    })
+    .catch(() => undefined);
+  return removed;
 }
 
 export function applySessionAdoption(

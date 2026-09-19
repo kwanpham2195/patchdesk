@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -517,6 +517,12 @@ describe("ReviewObservationService", () => {
           conversation: { prDescription: "current description" },
         },
       });
+      // The snapshot this one superseded goes with the adoption (#297).
+      const directory = join(
+        value.paths.reviewDirectory(profileId, value.review.id),
+        "remote",
+      );
+      expect(await readdir(directory)).toEqual([`${snapshotHash}.json`]);
     }
     await expect(
       new ReviewObservationJournalStore(value.paths).load(
