@@ -177,6 +177,9 @@ const diagnostics = new ReviewDiagnosticService(
  * session's cookie jar out of it; by default a cookie GitHub set on one
  * response is sent back on the next. The bearer token is a header the client
  * sets itself, so neither is needed to authenticate.
+ *
+ * Writes accept Chromium's transparent resend of a POST as a known risk rather
+ * than avoiding it (ADR 0046).
  */
 const githubFetch: GitHubFetch = (url, init) =>
   net.fetch(url, { ...init, cache: "no-store", credentials: "omit" });
