@@ -63,19 +63,20 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
     // SAFETY: the Insight routes call only `start`, `cancel`, and `observe` here; casting
     // to `never` stands in for the full coordinator interface the
     // configuration declares.
-    insights: {
-      async start(input: { readonly type: string }) {
-        calls.push(`start:${input.type}`);
-        return ok({ runId, type: input.type, status: "queued" });
-      },
-      async cancel(input: { readonly type: string }) {
-        calls.push(`cancel:${input.type}`);
-        return ok({ runId, type: input.type, status: "cancelling" });
-      },
-      async observe(input: { readonly type: string }) {
-        return ok({ runId, type: input.type, status: "queued", activity });
-      },
-    } as never,
+    insights: () =>
+      ({
+        async start(input: { readonly type: string }) {
+          calls.push(`start:${input.type}`);
+          return ok({ runId, type: input.type, status: "queued" });
+        },
+        async cancel(input: { readonly type: string }) {
+          calls.push(`cancel:${input.type}`);
+          return ok({ runId, type: input.type, status: "cancelling" });
+        },
+        async observe(input: { readonly type: string }) {
+          return ok({ runId, type: input.type, status: "queued", activity });
+        },
+      }) as never,
   });
   if (started._tag !== "started") throw new Error("local API did not start");
   server = started.server;
