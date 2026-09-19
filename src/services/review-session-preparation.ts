@@ -461,6 +461,10 @@ export class ReviewSessionPreparation {
         _tag: "SessionStorageUnavailable",
       });
     const normalizedPatch = normalizeReviewPatch(diff.value);
+    // The stored patch's own hash. It is also the canonical hash in snapshot
+    // mode, where `diff` already is GitHub's compare rendering; in worktree
+    // mode the canonical hash below comes from different bytes.
+    const normalizedPatchHash = hashReviewArtifactContent(normalizedPatch);
     const wrotePatch = await writeAtomicFile(patchPath, normalizedPatch);
     if (wrotePatch._tag === "err")
       return await this.abort(input.journal, {
@@ -473,9 +477,7 @@ export class ReviewSessionPreparation {
     // a PR must never become more fragile because of this proof (ADR 0026).
     let canonicalPatchHash: ContentHash | undefined;
     if (fetchedRefs === undefined) {
-      const parsed = parseContentHash(
-        hashReviewArtifactContent(normalizedPatch),
-      );
+      const parsed = parseContentHash(normalizedPatchHash);
       if (parsed._tag === "ok") canonicalPatchHash = parsed.value;
     } else if (canonical !== undefined && canonical._tag === "ok") {
       const parsed = parseContentHash(
@@ -514,10 +516,7 @@ export class ReviewSessionPreparation {
       comments: comments.value,
       checks: checks.value,
       changedFiles: changedFiles(diff.value),
-      patch: {
-        path: patchPath,
-        sha256: hashReviewArtifactContent(normalizedPatch),
-      },
+      patch: { path: patchPath, sha256: normalizedPatchHash },
       rulePaths: input.profile.rulePaths,
     });
     return context._tag === "ok"
