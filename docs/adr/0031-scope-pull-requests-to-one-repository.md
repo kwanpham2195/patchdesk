@@ -9,15 +9,10 @@
 > **Historical implementation note (superseded by the progress update below):**
 > At acceptance, this ADR recorded state, label, and the
 > `user-review-requested:@me` preset as the shipped filter surface. The remaining
-> fields stayed scheduled in
-> `.agents/PLANS/2026-08-26-remaining-pull-request-filter-fields.md`, not
-> dropped: this ADR still describes the target. The validation proof requiring
-> the author and review-state filters to survive a repository change could not
-> then be written, so the equivalent proof for the preset was written instead.
-> Current shape recorded in `.agents/research/2026-08-25-maintainer-inbox.md`;
-> GitHub's capabilities in
-> `.agents/research/2026-08-25-github-pr-search-capabilities.md` — both are local
-> working notes under a gitignored path, not in the repository.
+> fields stayed scheduled for later work, not dropped: this ADR still describes
+> the target. The validation proof requiring the author and review-state filters
+> to survive a repository change could not then be written, so the equivalent
+> proof for the preset was written instead.
 
 > **Progress update (2026-09-02):** Review state and check status are now
 > implemented in `359770f` on `main`, including the `More filters` controls and

@@ -69,8 +69,7 @@ import { metadataFlows } from "./write-invariant-metadata-flows";
  * unconfirmed write is how one comment becomes two.
  *
  * Rows that fail today are `it.todo` and name the program item that will make
- * them pass. Their exact observed failure is recorded in
- * `.agents/PLANS/program/reports/E12.md`; the one-line reason is on the row.
+ * them pass. The one-line reason is on each row.
  *
  * Pull-request metadata writes are ordinary rows in this table. Replaying a
  * reviewer request can notify a human again, and all metadata uncertainty

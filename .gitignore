@@ -22,10 +22,7 @@ coverage/
 .opencode/
 agent-browser.json
 
-# Local agent scratch: session state, worktrees, plans, task packages, research
+# Local agent scratch: session state and worktrees
 .claude/
-.agents/PLANS/
-.agents/tasks/
-.agents/research/
 .pi/artifacts
 .pi/workspace.local.json

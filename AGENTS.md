@@ -153,6 +153,4 @@ Use the named skill when its trigger matches the task. Read the skill file befor
 
 ## Memory
 
-- Route new private research, work records, and plans with `~/.agents/skills/references/context-routing.md` to the registered workspace context. Do not create a universal repository `plans/` directory for new work.
-- Existing repository plans and completed task packages retain their locations and remain readable. Do not migrate or duplicate them. A completed task package is closed reference material: do not append follow-up research, plans, or implementation artifacts; route new follow-up work through workspace context. Existing active plans remain authoritative. Repository documentation, ADRs, changelogs, and the domain glossary keep their repository-required homes.
-- Update an existing plan in the same commit as the work it describes. Run `node .agents/PLANS/program/program.mjs status` before reporting progress on an existing program.
+- Route new private work records with `~/.agents/skills/references/context-routing.md` to the registered workspace context. Do not create local repository folders for them.
