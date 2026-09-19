@@ -11,7 +11,7 @@ export type GitHubRequest =
 /** The verbs this adapter sends; an absent method is a GET. */
 type GitHubRestMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
-type GitHubRestRequest = {
+export type GitHubRestRequest = {
   readonly kind: "rest";
   readonly host: string;
   /** Path under the API root, query string included, already URL-encoded by the caller. */
@@ -27,7 +27,7 @@ type GitHubRestRequest = {
   readonly paginate?: boolean;
 };
 
-type GitHubGraphQlRequest = {
+export type GitHubGraphQlRequest = {
   readonly kind: "graphql";
   readonly host: string;
   readonly document: string;
