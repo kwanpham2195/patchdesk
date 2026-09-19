@@ -59,8 +59,9 @@ describe("review write failure copy", () => {
     expect(message("stale_head")).toBe(
       "The pull request changed. Refresh, then finish the review.",
     );
-    expect(message("rejected")).toBe("GitHub rejected the submission.");
-    expect(message("github_rejected")).toBe("GitHub rejected the submission.");
+    expect(message("github_rejected")).toBe(
+      "The submission was refused. Refresh to see this review's current state, then finish it again.",
+    );
     expect(message("no_pending_review")).toBe(
       "The pending review changed. Check GitHub again or refresh.",
     );
@@ -89,9 +90,8 @@ describe("review write failure copy", () => {
     expect(message("stale_head")).toBe(
       "The pull request changed. Refresh before submitting a review summary.",
     );
-    expect(message("rejected")).toBe("GitHub rejected the review summary.");
     expect(message("github_rejected")).toBe(
-      "GitHub rejected the review summary.",
+      "The review summary was refused. Refresh to see this review's current state, then submit it again.",
     );
     expect(message("forbidden")).toBe(
       "GitHub blocked this review summary: the repository or organization restricts access here. Retrying will not help — check GitHub's access settings for this organization.",
@@ -143,7 +143,7 @@ describe("review write failure copy", () => {
     const summary = (kind: ApiFailureKind): string =>
       contextualMessage(apiError(kind), DIRECT_SUMMARY_MESSAGES);
 
-    for (const kind of ["stale_head", "rejected", "forbidden"] as const)
+    for (const kind of ["stale_head", "github_rejected", "forbidden"] as const)
       expect(finish(kind)).not.toBe(summary(kind));
     // And together where they must not drift apart.
     for (const kind of [
@@ -240,7 +240,6 @@ describe("isOutcomeUnknownRetry", () => {
       "timeout",
     ];
     const known: ReadonlyArray<ApiFailureKind> = [
-      "rejected",
       "github_rejected",
       "stale_head",
       "pending_review",

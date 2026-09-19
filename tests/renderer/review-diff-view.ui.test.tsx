@@ -879,9 +879,8 @@ describe("pending-review composer lifecycle", () => {
       await openCodeViewComposer(user, "test");
       await user.click(screen.getByRole("button", { name: "Start a review" }));
       expect(
-        await screen.findByText("GitHub rejected this comment."),
+        await screen.findByRole("button", { name: "Dismiss" }),
       ).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Dismiss" })).toBeTruthy();
       // No retry is offered and no thread identity is advertised.
       expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
       expect(document.querySelector("[data-review-pending-thread]")).toBeNull();

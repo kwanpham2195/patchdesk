@@ -15,7 +15,6 @@ export type ApiFailureKind =
   | "github_rejected"
   | "pending_review"
   | "ambiguous_write"
-  | "rejected"
   | "outcome_unknown"
   | "no_pending_review"
   | "pending_review_locked"
@@ -286,6 +285,10 @@ function failureKind(status: number, code: string | undefined): ApiFailureKind {
   if (status === 401 || status === 403 || code?.includes("auth") === true)
     return "auth";
   if (status === 400 || code === "invalid_input") return "invalid_input";
+  // Every remaining conflict: the write gate refusing this Review, a missing
+  // confirmation, a pending review that changed under the request. GitHub is
+  // the source of none of them, which is why `github_rejected`'s copy names
+  // the refusal without attributing it (issue #310).
   if (status === 409 || status === 422) return "github_rejected";
   if (status >= 500) return "unavailable";
   return "internal";
@@ -312,13 +315,11 @@ function safeMessage(kind: ApiFailureKind): string {
     case "revision_conflict":
       return "This draft changed elsewhere. Reload it before continuing.";
     case "github_rejected":
-      return "GitHub rejected this action.";
+      return "This action was refused. Refresh to see the current state, then try again.";
     case "pending_review":
       return "You have an unfinished review on this pull request on GitHub. Submit or discard it there, then comment again.";
     case "ambiguous_write":
       return "Patchdesk could not confirm whether GitHub completed the write.";
-    case "rejected":
-      return "GitHub rejected the pending review write.";
     case "outcome_unknown":
       return "GitHub could not confirm the pending review write. Check GitHub again before continuing.";
     case "no_pending_review":

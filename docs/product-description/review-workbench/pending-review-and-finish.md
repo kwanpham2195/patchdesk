@@ -105,6 +105,7 @@ A confirmed rejection leaves the dialog or composer retryable with bounded conte
 - Reverse settlement of cumulative Add commands cannot replace a newer projection with one missing its target.
 - Submit can be confirmed even if the later observation refresh fails; Patchdesk must not resubmit.
 - Pending-review state can be unavailable, distinct from confirmed `none`.
+- Starting a review when GitHub says one is already pending is not treated as a refusal on its own. Patchdesk reads the viewer's pending review first: if it holds the comment this start meant to create, the start is confirmed and that review becomes the Review's pending review. If it holds different work, the composer names the unfinished review and the Review adopts it, so the next comment is added to it rather than starting a second review. If the read proves neither, the comment stays pending and the Review offers Check GitHub again.
 - Recovery may find the remote review but still be unable to match an exact Analysis Finding comment.
 
 ## Open questions and verification

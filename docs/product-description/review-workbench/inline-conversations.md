@@ -60,7 +60,8 @@ A direct `CommentCreated` receipt confirms the comment. If it includes a GitHub 
 A composer that fails keeps its text and shows a message for the cause:
 
 - The pull request changed: "This pull request has changed. Refresh and try again."
-- GitHub rejected the comment: "GitHub rejected this comment."
+- GitHub already holds an unfinished review: "GitHub already holds an unfinished review on this pull request. Refresh, then add this comment to that review."
+- The write was refused without GitHub being the one to refuse it — the Review's own write gate, a missing confirmation, or a pending review that changed: "This comment was refused. Refresh to see the current state, then try again."
 - The location no longer fits the diff: "This comment cannot be published against the current diff."
 - GitHub could not confirm the write: "GitHub could not confirm this write. Check GitHub again before trying again."
 - The pending review changed or is locked: "The pending review changed. Refresh to see its current state."
