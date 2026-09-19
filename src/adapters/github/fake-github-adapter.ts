@@ -54,6 +54,7 @@ import {
   type WatchedPullRequestRead,
 } from "./github-adapter";
 import type { WatchedSnapshot } from "../../domain/watched-pull-request";
+import type { BranchProtectionRead } from "./github-merge-policy";
 import { samePullRequest } from "./github-wire-projections";
 import { missing } from "./github-write-failures";
 
@@ -254,6 +255,7 @@ export class FakeGitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly branch: string;
+    readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>> {
     void input;
     return this.values.mergePolicyEvidence === undefined
@@ -284,6 +286,7 @@ export class FakeGitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly baseBranch?: string;
+    readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
     void input;
     return ok(this.publishedFeedback());
@@ -326,6 +329,22 @@ export class FakeGitHubAdapter
     return this.values.branchProtection === undefined
       ? missing("get_branch_protection")
       : ok(this.values.branchProtection);
+  }
+
+  async readBranchProtection(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly branch: string;
+  }): Promise<BranchProtectionRead> {
+    return {
+      dismissal: await this.getBranchProtection(input),
+      evidence: ok(
+        this.values.mergePolicyEvidence?.branchProtection ?? {
+          state: "unavailable",
+          reason: "not_found",
+        },
+      ),
+    };
   }
 
   async getPullRequestComments(input: {

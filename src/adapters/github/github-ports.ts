@@ -1,4 +1,5 @@
 import type { GitHubReadFailure } from "./gh-request-runner";
+import type { BranchProtectionRead } from "./github-merge-policy";
 import type {
   AuthenticatedGitHubAccount,
   BranchProtectionEvidence,
@@ -124,6 +125,8 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
     readonly branch: string;
+    /** The branch protection read, when the caller already made it; otherwise the adapter reads it. */
+    readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>>;
   getMergeOutcome(input: {
     readonly profile: WorkspaceProfileConfig;
@@ -150,6 +153,8 @@ export interface GitHubReader {
     readonly pr: PullRequestRef;
     /** The branch whose protection decides `canDismiss`, when the caller already read it; otherwise the adapter reads the pull request for it. */
     readonly baseBranch?: string;
+    /** The branch protection `canDismiss` derives from, when the caller already read it; otherwise the adapter reads it. */
+    readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>>;
   /** Bounded authenticated repository permission evidence used for record capabilities. */
   getRepositoryPermission?(input: {
@@ -163,6 +168,12 @@ export interface GitHubReader {
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>>;
+  /** The one branch protection read a cycle can hand to both `getPullRequestPublishedFeedback` and `getMergePolicyEvidence`. */
+  readBranchProtection?(input: {
+    readonly profile: WorkspaceProfileConfig;
+    readonly pr: PullRequestRef;
+    readonly branch: string;
+  }): Promise<BranchProtectionRead>;
   getPullRequestCommits(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
