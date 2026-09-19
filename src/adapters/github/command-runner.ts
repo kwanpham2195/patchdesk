@@ -708,11 +708,18 @@ function extractGraphqlErrorSignal(
  * INTERNAL, and SERVICE_UNAVAILABLE were never observed or confirmed, so
  * they intentionally fall through to the regex fallback rather than being
  * guessed at.
+ *
+ * RATE_LIMITED is mapped here rather than left to the stderr fallback
+ * because the HTTP transport has no stderr: gh reached CommandRateLimited
+ * through the rate-limit phrase in its own error output, and a GraphQL
+ * budget exhausted over HTTPS arrives as a 200 whose only signal is this
+ * type (issue #276, step T2).
  */
 function classifyGraphqlSignal(
   signal: GraphqlErrorSignal,
 ): CommandFailure | undefined {
   if (signal.type === "NOT_FOUND") return { _tag: "CommandNotFound" };
+  if (signal.type === "RATE_LIMITED") return { _tag: "CommandRateLimited" };
   if (signal.type === "INSUFFICIENT_SCOPES") {
     return { _tag: "CommandForbidden", reason: "insufficient_scopes" };
   }

@@ -231,66 +231,8 @@ describe("GitHubHttpClient GraphQL requests", () => {
     });
   });
 
-  it("classifies a resolution error carried under HTTP 200", async () => {
-    fixture.respondWith(
-      json(200, {
-        data: null,
-        errors: [
-          { type: "NOT_FOUND", message: "Could not resolve to a Repository" },
-        ],
-      }),
-    );
-    const result = await fixture.client().graphql(profile, {
-      kind: "graphql",
-      host: "github.com",
-      document: "query Repo { repository { id } }",
-      variables: [],
-    });
-
-    expect(errorOf(result)).toEqual({ _tag: "CommandNotFound" });
-  });
-
-  it("attributes a forbidden error to the reason GitHub gave", async () => {
-    fixture.respondWith(
-      json(200, {
-        errors: [
-          {
-            type: "FORBIDDEN",
-            message: "Resource protected by organization SAML enforcement.",
-            extensions: { saml_failure: true },
-          },
-        ],
-      }),
-    );
-    const result = await fixture.client().graphql(profile, {
-      kind: "graphql",
-      host: "github.com",
-      document: "query Repo { repository { id } }",
-      variables: [],
-    });
-
-    expect(errorOf(result)).toEqual({
-      _tag: "CommandForbidden",
-      reason: "saml",
-    });
-  });
-
-  it("reports an unclassifiable GraphQL error rather than answering with its data", async () => {
-    fixture.respondWith(
-      json(200, {
-        data: { repository: null },
-        errors: [{ extensions: { code: "undefinedField" } }],
-      }),
-    );
-    const result = await fixture.client().graphql(profile, {
-      kind: "graphql",
-      host: "github.com",
-      document: "query Repo { repository { nope } }",
-      variables: [],
-    });
-
-    expect(errorOf(result)._tag).toBe("CommandFailed");
-  });
+  // What a 200 carrying `errors` means on both transports is pinned in
+  // `github-graphql-errors.test.ts`, which asserts gh's tag for each body.
 
   it("classifies a GraphQL 5xx as unavailable", async () => {
     fixture.respondWith(json(502, { message: "Bad gateway" }));
