@@ -51,7 +51,7 @@ const expectedMetadata = {
   CFBundleDisplayName: "Patchdesk",
   CFBundleName: "Patchdesk",
   CFBundleExecutable: "Patchdesk",
-  CFBundleIdentifier: "com.octo-org.patchdesk",
+  CFBundleIdentifier: "com.centraldigital.patchdesk",
   CFBundleShortVersionString: version,
 };
 for (const [name, expected] of Object.entries(expectedMetadata)) {
