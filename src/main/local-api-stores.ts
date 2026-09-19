@@ -71,23 +71,48 @@ export function createReadOnlyGitExecutor(
   };
 }
 
+/** What a `GitHubAdapter` is built with beside `gh`: the served HTTP transport, and the shadow comparison. */
+export type GitHubTransports = {
+  /** Serves the reads in `httpServedReadLabels`; absent leaves every read on gh (issue #276). */
+  readonly http: GitHubHttpClient | undefined;
+  /** Compares the HTTP transport against gh for the reads still on gh (issue #292). */
+  readonly shadow: TransportShadow | undefined;
+};
+
 /**
- * The shadow comparison of the HTTP transport against gh, when this launch
- * asked for one with `PATCHDESK_TRANSPORT_SHADOW=1` (issue #292). It doubles
- * read traffic against the same rate limit, so it is read here, once, rather
- * than consulted per call.
+ * Builds the HTTP transport the GitHub adapter reads through, and the shadow
+ * that compares it against gh. Both switches are launch-wide, so they are read
+ * here once rather than consulted per call.
+ *
+ * `PATCHDESK_GITHUB_TRANSPORT=gh` is the soak release's rollback: it puts every
+ * allowlisted read back on a `gh api` child without a rebuild. It is temporary
+ * and goes with the allowlist at T4 (ADR 0046).
+ *
+ * `PATCHDESK_TRANSPORT_SHADOW=1` doubles read traffic against the same rate
+ * limit, which is why it is off by default.
  */
-function transportShadow(
+export function githubTransports(
   credentials: GitHubCredentials,
   logs: Pick<AppLogService, "write">,
   githubFetch: GitHubFetch | undefined,
-): TransportShadow | undefined {
-  if (process.env["PATCHDESK_TRANSPORT_SHADOW"] !== "1") return undefined;
-  return new TransportShadow(
-    new GitHubHttpClient(credentials, undefined, undefined, githubFetch),
+): GitHubTransports {
+  const shadowed = process.env["PATCHDESK_TRANSPORT_SHADOW"] === "1";
+  const served = process.env["PATCHDESK_GITHUB_TRANSPORT"] !== "gh";
+  if (!shadowed && !served) return { http: undefined, shadow: undefined };
+  // One client for both, so the served reads and the shadow's comparison share
+  // its connection pool rather than opening two.
+  const client = new GitHubHttpClient(
     credentials,
-    (entry) => logs.write(entry),
+    undefined,
+    undefined,
+    githubFetch,
   );
+  return {
+    http: served ? client : undefined,
+    shadow: shadowed
+      ? new TransportShadow(client, credentials, (entry) => logs.write(entry))
+      : undefined,
+  };
 }
 
 /** Every store, adapter and seam the loopback API's services are built from. */
@@ -171,12 +196,18 @@ export async function buildLocalApiStores(
   });
   const credentials =
     configuration.githubCredentials ?? new GitHubCliCredentials(commands);
+  const transports = githubTransports(
+    credentials,
+    logs,
+    configuration.githubFetch,
+  );
   const github =
     configuration.github ??
     new GitHubAdapter(
       commands,
       credentials,
-      transportShadow(credentials, logs, configuration.githubFetch),
+      transports.shadow,
+      transports.http,
     );
   const readOnlyGit = createReadOnlyGitExecutor(commands);
   const resolveGitHubCli =

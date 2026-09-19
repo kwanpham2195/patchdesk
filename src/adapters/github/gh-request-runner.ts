@@ -1,20 +1,27 @@
-import type {
-  CommandFailure,
-  CommandRequest,
-  CommandRunner,
-  ForbiddenReason,
+import * as v from "valibot";
+
+import {
+  normalizeCommandLabel,
+  type CommandFailure,
+  type CommandRequest,
+  type CommandRunner,
+  type ForbiddenReason,
 } from "./command-runner";
 import {
   GitHubCliCredentials,
   type GitHubCredentials,
 } from "./github-credentials";
 import type { IsoTimestamp } from "../../domain/ids";
-import { err, type Result } from "../../domain/result";
+import { err, ok, type Result } from "../../domain/result";
 import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import { parseGitHubTimestamp } from "./github-wire-projections";
-import { ghInvocationFor, type GitHubRequest } from "./github-request";
+import {
+  ghInvocationFor,
+  type GitHubRequest,
+  type GitHubRestRequest,
+} from "./github-request";
 import type { MaintainerRateLimit } from "./github-wire-schemas";
-import type { TransportShadow } from "./transport-shadow";
+import { isShadowableRead, type TransportShadow } from "./transport-shadow";
 
 export type GitHubReadFailure =
   | {
@@ -72,6 +79,38 @@ export type GitHubReadOperation =
 /** Wall-clock budget for one gh invocation, shared by every GitHub module. */
 export const commandTimeoutMs = 15_000;
 
+/**
+ * The reads served over HTTPS rather than by a `gh api` child, named by the
+ * label `normalizeCommandLabel` prints for them (ADR 0046, issue #276, step
+ * T1a). Every label here read clean against gh for a whole shadow window
+ * before it was added.
+ *
+ * This list is the cutover record: T1b and T2 extend it as their labels prove
+ * clean, and T4 deletes it together with the last `gh api` argv.
+ */
+export const httpServedReadLabels: ReadonlySet<string> = new Set([
+  "api GET repos/:owner/:repo/commits/:sha/check-runs",
+  "api GET repos/:owner/:repo/commits/:sha/status",
+  "api GET repos/:owner/:repo/collaborators/:user/permission",
+  "api GET repos/:owner/:repo/branches/:branch/protection",
+  "api GET repos/:owner/:repo/branches/:branch/protection/required_status_checks",
+  "api GET repos/:owner/:repo/rules/branches/:branch",
+  "api GET repos/:owner/:repo/issues/:n/comments",
+  "api GET user",
+]);
+
+/**
+ * The HTTP transport an allowlisted read is served through, narrowed to the
+ * one call the runner makes of it. `GitHubHttpClient` satisfies it; a test
+ * supplies its own.
+ */
+export interface GitHubRestTransport {
+  rest(
+    profile: WorkspaceProfileConfig,
+    request: GitHubRestRequest,
+  ): Promise<Result<unknown, CommandFailure>>;
+}
+
 /** A gh invocation whose account environment the runner supplies from the profile. */
 export type GhCommandRequest = Omit<
   CommandRequest,
@@ -116,6 +155,12 @@ export class GhRequestRunner {
      * (issue #292). It never contributes to the result this returns.
      */
     private readonly shadow?: TransportShadow,
+    /**
+     * Serves the reads in `httpServedReadLabels` when one is supplied; absent,
+     * every read stays on gh. There is no fallback in either direction: an
+     * HTTP failure is this call's failure, and gh is not tried after it.
+     */
+    private readonly http?: GitHubRestTransport,
   ) {}
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
@@ -123,6 +168,8 @@ export class GhRequestRunner {
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
+    const overHttp = this.httpServed(profile, request);
+    if (overHttp !== undefined) return overHttp;
     const served = this.runAsProfileAccount(
       profile,
       ghCommandFor(request),
@@ -137,6 +184,8 @@ export class GhRequestRunner {
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
+    const overHttp = this.httpServed(profile, request);
+    if (overHttp !== undefined) return asText(await overHttp);
     const served = this.runAsProfileAccount(
       profile,
       ghCommandFor(request),
@@ -144,6 +193,26 @@ export class GhRequestRunner {
     );
     this.shadow?.observe({ profile, request, served, body: "text" });
     return served;
+  }
+
+  /**
+   * The HTTP transport's answer when this request is one of the reads that
+   * has moved off `gh api`, or undefined when it stays on gh. A request served
+   * here is not shadowed: the shadow compares the two transports on a read gh
+   * is answering, and there is no gh answer left to compare against.
+   */
+  private httpServed(
+    profile: WorkspaceProfileConfig,
+    request: GitHubRequest,
+  ): Promise<Result<unknown, CommandFailure>> | undefined {
+    const http = this.http;
+    if (http === undefined || request.kind !== "rest") return undefined;
+    // A write, or a body with no method (`gh api --input` defaults to POST),
+    // stays on gh whatever its label normalizes to.
+    if (!isShadowableRead(request)) return undefined;
+    const label = normalizeCommandLabel(ghInvocationFor(request).argv);
+    if (!httpServedReadLabels.has(label)) return undefined;
+    return http.rest(profile, request);
   }
 
   async runAsProfileAccount<T>(
@@ -219,4 +288,18 @@ export class GhRequestRunner {
         resetAt: resumeAt.value,
       });
   }
+}
+
+/**
+ * An HTTP answer narrowed to the stdout bytes `ghText`'s callers read. The
+ * client answers a non-JSON response as its text, which is what a text read
+ * asks for; a JSON body arriving here is a response gh would have handed over
+ * verbatim, so the read fails rather than silently changing shape.
+ */
+function asText(
+  response: Result<unknown, CommandFailure>,
+): Result<string, CommandFailure> {
+  if (response._tag === "err") return response;
+  const text = v.safeParse(v.string(), response.value);
+  return text.success ? ok(text.output) : err({ _tag: "CommandFailed" });
 }
