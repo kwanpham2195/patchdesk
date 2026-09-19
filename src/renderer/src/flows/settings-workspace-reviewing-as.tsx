@@ -63,7 +63,10 @@ export function useReviewingAsProbe(
 ): ReviewingAsProbeHook {
   const [reviewingAsAttempt, setReviewingAsAttempt] = useState(0);
   const reviewingAsDefaultApplied = useRef(false);
-  const reviewingAs = useEnvironmentCheck(reviewingAsAttempt);
+  const reviewingAs = useEnvironmentCheck({
+    restartKey: reviewingAsAttempt,
+    askGhAgain: reviewingAsAttempt > 0,
+  });
   const onAdoptRef = useLatestCommitted(onAdopt);
 
   // Defaults the account selection the first time authenticated accounts

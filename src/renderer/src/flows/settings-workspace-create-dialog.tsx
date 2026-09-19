@@ -34,7 +34,9 @@ export function CreateWorkspaceDialog({
   readonly onOpenChange: (open: boolean) => void;
   readonly onCreated: () => Promise<void>;
 }): React.JSX.Element {
-  const probe = useEnvironmentCheck(0);
+  // Opening the dialog is itself the ask: it offers no Re-check, and an
+  // account authenticated since launch has to appear in its list.
+  const probe = useEnvironmentCheck({ restartKey: 0, askGhAgain: true });
   const checking = probe.kind === "checking";
   const accounts =
     probe.kind === "loaded" ? probe.value.githubAccounts : EMPTY_ACCOUNTS;
