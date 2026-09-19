@@ -40,7 +40,6 @@ export type ManagedWorktree = {
   readonly path: string;
   readonly baseRef: string;
   readonly headRef: string;
-  readonly dirty: { readonly tracked: boolean; readonly untracked: boolean };
 };
 export type MetadataOnlyReview = {
   readonly mode: "metadata_only";
@@ -125,27 +124,6 @@ export class ReviewWorktreeService {
         warning: "local_checkout_unavailable",
       });
     }
-    const status = await this.git.run([
-      "git",
-      "-C",
-      repositoryPath,
-      "status",
-      "--porcelain=v1",
-      "--untracked-files=all",
-    ]);
-    if (status._tag === "err")
-      return ok({
-        mode: "metadata_only",
-        warning: "local_checkout_unavailable",
-      });
-    const dirty = {
-      tracked: status.value.stdout
-        .split("\n")
-        .some((line) => line.startsWith(" ") || /^[MADRCU]/.test(line)),
-      untracked: status.value.stdout
-        .split("\n")
-        .some((line) => line.startsWith("?? ")),
-    };
     const baseRef = `refs/patchdesk/reviews/${input.profileId}/${input.sessionId}/base`;
     const headRef = `refs/patchdesk/reviews/${input.profileId}/${input.sessionId}/head`;
     // Both failures below are authentication problems, not local-checkout
@@ -256,7 +234,7 @@ export class ReviewWorktreeService {
         return err({ _tag: "WorktreeStorageUnavailable" });
       }
     }
-    return ok({ mode: "worktree", path, baseRef, headRef, dirty });
+    return ok({ mode: "worktree", path, baseRef, headRef });
   }
 
   /**
