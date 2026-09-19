@@ -1,0 +1,314 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  CommandRunner,
+  normalizeCommandLabel,
+  type CommandExecution,
+  type CommandExecutor,
+  type CommandFailure,
+  type CommandRequest,
+} from "../../src/adapters/github/command-runner";
+import {
+  GhRequestRunner,
+  httpServedReadLabels,
+  type GitHubRestTransport,
+} from "../../src/adapters/github/gh-request-runner";
+import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { ghInvocationFor } from "../../src/adapters/github/github-request";
+import type {
+  GitHubRequest,
+  GitHubRestRequest,
+} from "../../src/adapters/github/github-request";
+import { TransportShadow } from "../../src/adapters/github/transport-shadow";
+import {
+  parseGitHubHost,
+  parseGitHubOwner,
+  parseGitHubRepoName,
+  parsePullRequestNumber,
+} from "../../src/domain/ids";
+import type { LogEntryInput } from "../../src/domain/log-entry";
+import type { PullRequestRef } from "../../src/domain/pull-request";
+import { err, ok, type Result } from "../../src/domain/result";
+import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
+import { json, profile, useFixtureServer } from "./github-http-fixture-server";
+import { StubCredentials } from "./stub-github-credentials";
+
+/**
+ * T1a moved a first set of REST reads off `gh api` onto the HTTP client
+ * (issue #276). What these tests pin is the routing decision itself: which
+ * transport answers, that only one of them runs, and that a request the
+ * allowlist does not name is untouched.
+ */
+
+class RecordingGhExecutor implements CommandExecutor {
+  /** `normalizeCommandLabel` of every gh invocation, in call order. */
+  readonly labels: Array<string> = [];
+
+  constructor(private readonly execution: CommandExecution) {}
+
+  async execute(input: CommandRequest): Promise<CommandExecution> {
+    this.labels.push(normalizeCommandLabel(input.argv));
+    return this.execution;
+  }
+}
+
+class RecordingHttpTransport implements GitHubRestTransport {
+  readonly requests: Array<GitHubRestRequest> = [];
+
+  constructor(
+    private readonly answer: Result<unknown, CommandFailure> = ok({}),
+  ) {}
+
+  async rest(
+    _profile: WorkspaceProfileConfig,
+    request: GitHubRestRequest,
+  ): Promise<Result<unknown, CommandFailure>> {
+    this.requests.push(request);
+    return this.answer;
+  }
+}
+
+class RecordingShadowTransport {
+  readonly requests: Array<GitHubRequest> = [];
+
+  constructor(private readonly answer: Result<unknown, CommandFailure>) {}
+
+  async rest(
+    _profile: WorkspaceProfileConfig,
+    request: GitHubRestRequest,
+  ): Promise<Result<unknown, CommandFailure>> {
+    this.requests.push(request);
+    return this.answer;
+  }
+
+  async graphql(
+    _profile: WorkspaceProfileConfig,
+    request: GitHubRequest,
+  ): Promise<Result<unknown, CommandFailure>> {
+    this.requests.push(request);
+    return this.answer;
+  }
+}
+
+const exited = (stdout: string): CommandExecution => ({
+  _tag: "Exited",
+  exitCode: 0,
+  stdout,
+  stderr: "",
+});
+
+/** An allowlisted read and one the allowlist does not name, as their call sites write them. */
+const issueComments: GitHubRestRequest = {
+  kind: "rest",
+  host: "github.com",
+  path: "repos/centraldigital/patchdesk/issues/42/comments?per_page=100&page=1",
+};
+const pullRequest: GitHubRestRequest = {
+  kind: "rest",
+  host: "github.com",
+  path: "repos/centraldigital/patchdesk/pulls/42",
+};
+
+function mustParse<T, E>(result: Result<T, E>): T {
+  if (result._tag === "err") throw new Error("Expected test value to parse");
+  return result.value;
+}
+
+const pr: PullRequestRef = {
+  host: mustParse(parseGitHubHost("github.com")),
+  owner: mustParse(parseGitHubOwner("centraldigital")),
+  repo: mustParse(parseGitHubRepoName("patchdesk")),
+  number: mustParse(parsePullRequestNumber(42)),
+};
+
+function harness(options: {
+  readonly execution?: CommandExecution;
+  readonly answer?: Result<unknown, CommandFailure>;
+  readonly http?: boolean;
+}) {
+  const executor = new RecordingGhExecutor(options.execution ?? exited("{}"));
+  const http = new RecordingHttpTransport(options.answer ?? ok({}));
+  const runner = new GhRequestRunner(
+    new CommandRunner(executor),
+    new StubCredentials(),
+    undefined,
+    options.http === false ? undefined : http,
+  );
+  return { executor, http, runner };
+}
+
+describe("httpServedReadLabels", () => {
+  it("names labels normalizeCommandLabel actually prints", () => {
+    const labels = [issueComments, pullRequest].map((request) =>
+      normalizeCommandLabel(ghInvocationFor(request).argv),
+    );
+
+    expect(labels).toEqual([
+      "api GET repos/:owner/:repo/issues/:n/comments",
+      "api GET repos/:owner/:repo/pulls/:n",
+    ]);
+    expect(httpServedReadLabels.has(labels[0] ?? "")).toBe(true);
+    expect(httpServedReadLabels.has(labels[1] ?? "")).toBe(false);
+  });
+});
+
+describe("routing a read to the HTTP transport", () => {
+  it("serves an allowlisted read over HTTP and spawns no gh child", async () => {
+    const { executor, http, runner } = harness({
+      answer: ok([{ id: 9 }]),
+    });
+
+    await expect(runner.ghJson(profile, issueComments)).resolves.toEqual(
+      ok([{ id: 9 }]),
+    );
+    expect(http.requests).toEqual([issueComments]);
+    expect(executor.labels).toEqual([]);
+  });
+
+  it("leaves a read the allowlist does not name on gh, with no HTTP call", async () => {
+    const { executor, http, runner } = harness({
+      execution: exited('{"number":42}'),
+    });
+
+    await expect(runner.ghJson(profile, pullRequest)).resolves.toEqual(
+      ok({ number: 42 }),
+    );
+    expect(executor.labels).toEqual(["api GET repos/:owner/:repo/pulls/:n"]);
+    expect(http.requests).toEqual([]);
+  });
+
+  it("leaves every read on gh when no HTTP transport was supplied", async () => {
+    const { executor, http, runner } = harness({
+      execution: exited("[]"),
+      http: false,
+    });
+
+    await runner.ghJson(profile, issueComments);
+
+    expect(executor.labels).toEqual([
+      "api GET repos/:owner/:repo/issues/:n/comments",
+    ]);
+    expect(http.requests).toEqual([]);
+  });
+
+  it("keeps a write on gh even though its path is an allowlisted read", async () => {
+    const { executor, http, runner } = harness({ execution: exited("{}") });
+
+    await runner.ghJson(profile, {
+      ...issueComments,
+      method: "POST",
+      jsonBody: '{"body":"hello"}',
+    });
+
+    expect(executor.labels).toEqual([
+      "api POST repos/:owner/:repo/issues/:n/comments",
+    ]);
+    expect(http.requests).toEqual([]);
+  });
+
+  it("keeps a body-without-method request on gh although its label matches", async () => {
+    const { executor, http, runner } = harness({ execution: exited("{}") });
+
+    // `gh api --input` defaults to POST, so this normalizes to the allowlisted
+    // GET label while still being a write.
+    const request: GitHubRestRequest = {
+      ...issueComments,
+      jsonBody: '{"body":"hello"}',
+    };
+    expect(
+      httpServedReadLabels.has(
+        normalizeCommandLabel(ghInvocationFor(request).argv),
+      ),
+    ).toBe(true);
+
+    await runner.ghJson(profile, request);
+
+    expect(executor.labels).toEqual([
+      "api GET repos/:owner/:repo/issues/:n/comments",
+    ]);
+    expect(http.requests).toEqual([]);
+  });
+
+  it("returns the HTTP failure without trying gh after it", async () => {
+    const { executor, runner } = harness({
+      answer: err({ _tag: "CommandUnavailable" }),
+    });
+
+    await expect(runner.ghJson(profile, issueComments)).resolves.toEqual(
+      err({ _tag: "CommandUnavailable" }),
+    );
+    expect(executor.labels).toEqual([]);
+  });
+
+  it("shadows only the reads the allowlist leaves on gh", async () => {
+    const entries: Array<LogEntryInput> = [];
+    const shadowTransport = new RecordingShadowTransport(ok({ number: 42 }));
+    const credentials = new StubCredentials();
+    const runner = new GhRequestRunner(
+      new CommandRunner(new RecordingGhExecutor(exited('{"number":42}'))),
+      credentials,
+      new TransportShadow(shadowTransport, credentials, (entry) =>
+        entries.push(entry),
+      ),
+      new RecordingHttpTransport(ok({ number: 42 })),
+    );
+
+    await runner.ghJson(profile, issueComments);
+    await runner.ghJson(profile, pullRequest);
+
+    // The comparison is detached, so wait for the one entry it writes.
+    await vi.waitFor(() => expect(entries).toHaveLength(1));
+    expect(entries[0]?.meta).toMatchObject({
+      label: "api GET repos/:owner/:repo/pulls/:n",
+      outcome: "match",
+    });
+    expect(shadowTransport.requests).toEqual([pullRequest]);
+  });
+});
+
+describe("reads served over the real HTTP client", () => {
+  const server = useFixtureServer();
+
+  function adapter(): GitHubAdapter {
+    const credentials = new StubCredentials();
+    return new GitHubAdapter(
+      new CommandRunner(
+        new RecordingGhExecutor({
+          _tag: "Exited",
+          exitCode: 1,
+          stdout: "",
+          stderr: "no gh child may run for a served read",
+        }),
+      ),
+      credentials,
+      undefined,
+      server.client(credentials),
+    );
+  }
+
+  it("reads a 404 on branch protection as the unprotected-branch evidence", async () => {
+    server.respondWith(json(404, { message: "Branch not protected" }));
+
+    const read = await adapter().readBranchProtection({
+      profile,
+      pr,
+      branch: "main",
+    });
+
+    expect(read.dismissal).toEqual(
+      ok({ protected: false, allowedDismissers: [] }),
+    );
+    expect(server.requests()[0]?.url).toBe(
+      "/repos/centraldigital/patchdesk/branches/main/protection",
+    );
+  });
+
+  it("parses the authenticated login out of the whole user body", async () => {
+    server.respondWith(json(200, { login: "pmquan2cfw", id: 1 }));
+
+    await expect(
+      adapter().resolveAuthenticatedAccount(profile),
+    ).resolves.toEqual(ok({ host: "github.com", account: "pmquan2cfw" }));
+    expect(server.requests()[0]?.url).toBe("/user");
+  });
+});

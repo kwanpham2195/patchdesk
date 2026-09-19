@@ -49,6 +49,7 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "./local-api";
+import { githubTransports } from "./local-api-stores";
 import { CommandRunner } from "../adapters/github/command-runner";
 import { PatchdeskPaths } from "../adapters/storage/patchdesk-paths";
 import { ProfileStore } from "../adapters/storage/profile-store";
@@ -371,6 +372,8 @@ function createInsightCoordinator(
     undefined,
     logUnclassifiedCommandFailure,
   );
+  const packCredentials = new GitHubCliCredentials(packCommands);
+  const packTransports = githubTransports(packCredentials, logs, githubFetch);
   return new InsightRunCoordinator(
     new ReviewStore(paths),
     new ReviewSessionStore(paths),
@@ -383,7 +386,9 @@ function createInsightCoordinator(
       profiles: new ProfileStore(paths),
       github: new GitHubAdapter(
         packCommands,
-        new GitHubCliCredentials(packCommands),
+        packCredentials,
+        packTransports.shadow,
+        packTransports.http,
       ),
       context: new ReviewContextService(),
       paths,

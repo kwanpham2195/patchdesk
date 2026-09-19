@@ -1,7 +1,11 @@
 import * as v from "valibot";
 
 import type { CommandFailure, CommandRunner } from "./command-runner";
-import { GhRequestRunner, type GitHubReadFailure } from "./gh-request-runner";
+import {
+  GhRequestRunner,
+  type GitHubReadFailure,
+  type GitHubRestTransport,
+} from "./gh-request-runner";
 import type { GitHubRequest } from "./github-request";
 import type { TransportShadow } from "./transport-shadow";
 import {
@@ -256,9 +260,11 @@ export class GitHubAdapter
     credentials: GitHubCredentials = new GitHubCliCredentials(commands),
     /** Compares the HTTP transport against gh for reads when one is supplied (issue #292). */
     shadow?: TransportShadow,
+    /** Serves the reads in `httpServedReadLabels` when one is supplied (issue #276). */
+    http?: GitHubRestTransport,
   ) {
     this.credentials = credentials;
-    this.requests = new GhRequestRunner(commands, credentials, shadow);
+    this.requests = new GhRequestRunner(commands, credentials, shadow, http);
     this.pullRequests = new GitHubPullRequestReader(this.requests);
     this.threads = new GitHubThreadReader(this.requests);
     this.threadWrites = new GitHubThreadWriter(this.requests);
