@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatShadowReport,
   summarizeCycles,
+  summarizeShadow,
   summarizeSpawns,
 } from "../../scripts/gh-spawn-report-lib.mjs";
 import { parseArguments } from "../../scripts/gh-spawn-report.mjs";
@@ -215,5 +217,121 @@ describe("parseArguments", () => {
     expect(parsed._tag === "ok" && parsed.value.route).toBe(
       "POST /v1/reviews/detect-updates",
     );
+  });
+
+  it("reads --shadow as its own mode", () => {
+    const parsed = parseArguments(["--shadow"]);
+
+    expect(parsed._tag === "ok" && parsed.value.shadow).toBe(true);
+  });
+
+  it("rejects --shadow together with a route", () => {
+    expect(parseArguments(["--shadow", "--cycles"])._tag).toBe("err");
+  });
+});
+
+/** A `transport-shadow` line as `TransportShadow` writes it (issue #292). */
+const shadowLine = (options: {
+  readonly at: string;
+  readonly outcome: "match" | "diverged" | "skipped";
+  readonly label?: string;
+  readonly firstDifference?: string;
+}): string =>
+  JSON.stringify({
+    schemaVersion: 1,
+    at: options.at,
+    process: "main",
+    level: options.outcome === "diverged" ? "warn" : "debug",
+    topic: "transport-shadow",
+    message: `${options.outcome} ${options.label ?? "api GET user"}`,
+    meta: {
+      label: options.label ?? "api GET user",
+      outcome: options.outcome,
+      firstDifference: options.firstDifference,
+      ghMs: 740,
+      shadowMs: 420,
+    },
+  });
+
+describe("shadow summary", () => {
+  const contents = [
+    spawnLine({ endedAt: "2026-09-18T10:00:04.000Z", durationMs: 3000 }),
+    shadowLine({ at: "2026-09-18T10:00:01.000Z", outcome: "match" }),
+    shadowLine({ at: "2026-09-18T10:00:02.000Z", outcome: "skipped" }),
+    shadowLine({
+      at: "2026-09-18T10:00:03.000Z",
+      outcome: "diverged",
+      firstDifference: "$.login",
+    }),
+    shadowLine({
+      at: "2026-09-18T10:00:04.000Z",
+      outcome: "diverged",
+      firstDifference: "$.login",
+    }),
+    shadowLine({
+      at: "2026-09-18T10:00:05.000Z",
+      outcome: "diverged",
+      firstDifference: "$.name",
+    }),
+    shadowLine({
+      at: "2026-09-18T10:00:06.000Z",
+      outcome: "match",
+      label: "api GET repos/:owner/:repo/pulls/:n",
+    }),
+  ].join("\n");
+
+  it("counts each outcome per label and names the commonest first difference", () => {
+    const rows = summarizeShadow(contents);
+
+    expect(rows).toEqual([
+      {
+        label: "api GET repos/:owner/:repo/pulls/:n",
+        calls: 1,
+        match: 1,
+        diverged: 0,
+        skipped: 0,
+        firstDifference: "-",
+      },
+      {
+        label: "api GET user",
+        calls: 5,
+        match: 1,
+        diverged: 3,
+        skipped: 1,
+        firstDifference: "$.login",
+      },
+    ]);
+  });
+
+  it("keeps only the comparisons inside the window", () => {
+    const rows = summarizeShadow(contents, {
+      since: Date.parse("2026-09-18T10:00:05.000Z"),
+    });
+
+    expect(rows.map((row) => row.label)).toEqual([
+      "api GET repos/:owner/:repo/pulls/:n",
+      "api GET user",
+    ]);
+    expect(rows[1]?.calls).toBe(1);
+  });
+
+  it("reads nothing from a log with no shadow entries", () => {
+    expect(
+      summarizeShadow(
+        spawnLine({ endedAt: "2026-09-18T10:00:04.000Z", durationMs: 3000 }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("prints one row per label, ordered by label", () => {
+    const report = formatShadowReport(
+      summarizeShadow(contents),
+      "/tmp/patchdesk.jsonl",
+    );
+
+    expect(report).toContain("labels: 2");
+    expect(report).toMatch(/calls\s+match\s+diverged\s+skipped\s+label/);
+    expect(report).toMatch(/5\s+1\s+3\s+1\s+api GET user\s+\$\.login/);
+    expect(report).toMatch(/6\s+2\s+3\s+1\s+TOTAL/);
   });
 });

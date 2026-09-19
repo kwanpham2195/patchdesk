@@ -17,6 +17,12 @@
  * however long the app happened to be running. `--since`/`--until` bound it to
  * a window, and `--cycles` bounds it to the requests of one route, which is
  * what makes a published baseline reproducible.
+ *
+ * `--shadow` reports the other stream in the same log: the `transport-shadow`
+ * entries a launch with `PATCHDESK_TRANSPORT_SHADOW=1` writes, one per read
+ * answered by `gh` and compared against the HTTP client (issue #292). It
+ * answers one question per endpoint label — did the two transports agree —
+ * which is what decides whether that label can be cut over.
  */
 
 import { readFile } from "node:fs/promises";
@@ -27,8 +33,10 @@ import { fileURLToPath } from "node:url";
 import {
   asInstantMs,
   formatCycleReport,
+  formatShadowReport,
   formatSpawnReport,
   summarizeCycles,
+  summarizeShadow,
   summarizeSpawns,
 } from "./gh-spawn-report-lib.mjs";
 
@@ -36,7 +44,7 @@ import {
 export const defaultCycleRoute = "POST /v1/reviews/detect-updates";
 
 const usage =
-  "Usage: node scripts/gh-spawn-report.mjs [<log-file>] [--since <iso8601>] [--until <iso8601>] [--cycles] [--route <message>]\n";
+  "Usage: node scripts/gh-spawn-report.mjs [<log-file>] [--since <iso8601>] [--until <iso8601>] [--cycles] [--route <message>] [--shadow]\n";
 
 const defaultLogFile = join(
   homedir(),
@@ -53,6 +61,7 @@ const defaultLogFile = join(
  *   readonly since?: number;
  *   readonly until?: number;
  *   readonly route?: string;
+ *   readonly shadow?: boolean;
  * }} Invocation
  */
 
@@ -69,10 +78,15 @@ export function parseArguments(args) {
   let until;
   /** @type {string | undefined} */
   let route;
+  let shadow = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     if (token === undefined) continue;
+    if (token === "--shadow") {
+      shadow = true;
+      continue;
+    }
     if (token === "--cycles") {
       route ??= defaultCycleRoute;
       continue;
@@ -104,12 +118,21 @@ export function parseArguments(args) {
   if (since !== undefined && until !== undefined && since > until) {
     return { _tag: "err", message: "--since is after --until.\n" };
   }
+  if (shadow && route !== undefined) {
+    // The two read different entries; one command answering both would have to
+    // say which number came from which stream.
+    return {
+      _tag: "err",
+      message: "--shadow reports shadowed reads, not route cycles.\n",
+    };
+  }
 
-  /** @type {{ logFile: string; since?: number; until?: number; route?: string }} */
+  /** @type {{ logFile: string; since?: number; until?: number; route?: string; shadow?: boolean }} */
   const value = { logFile: resolve(logFile ?? defaultLogFile) };
   if (since !== undefined) value.since = since;
   if (until !== undefined) value.until = until;
   if (route !== undefined) value.route = route;
+  if (shadow) value.shadow = true;
   return { _tag: "ok", value };
 }
 
@@ -130,7 +153,7 @@ export async function reportGhSpawns({ args, readSource, output }) {
     output.stderr(invocation.message);
     return 2;
   }
-  const { logFile, since, until, route } = invocation.value;
+  const { logFile, since, until, route, shadow } = invocation.value;
   /** @type {string} */
   let contents;
   try {
@@ -144,6 +167,18 @@ export async function reportGhSpawns({ args, readSource, output }) {
   const window = {};
   if (since !== undefined) window.since = since;
   if (until !== undefined) window.until = until;
+
+  if (shadow === true) {
+    const rows = summarizeShadow(contents, window);
+    if (rows.length === 0) {
+      output.stderr(
+        `No transport-shadow entries in ${logFile}. Run the app with PATCHDESK_TRANSPORT_SHADOW=1, then rerun this command.\n`,
+      );
+      return 1;
+    }
+    output.stdout(formatShadowReport(rows, logFile, window));
+    return 0;
+  }
 
   if (route !== undefined) {
     const { cycles, ambiguous } = summarizeCycles(contents, route, window);
