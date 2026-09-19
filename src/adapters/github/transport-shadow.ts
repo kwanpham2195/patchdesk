@@ -45,6 +45,17 @@ type ShadowDivergenceKind = "value" | "failure_tag" | "ok_vs_err";
 const maxFirstDifferenceLength = 120;
 
 /**
+ * Paths excluded from a GraphQL comparison because GitHub recomputes them per
+ * request: the shadow and the gh call spend two budgets against one account,
+ * so `rateLimit` cannot agree by design (observed on
+ * `api graphql MaintainerInboxSearch` in the first shadow window).
+ */
+const volatileGraphQlPaths: ReadonlySet<string> = new Set(["$.data.rateLimit"]);
+
+/** Every path is compared for a REST answer; only GraphQL carries a volatile one. */
+const noVolatilePaths: ReadonlySet<string> = new Set();
+
+/**
  * The HTTP transport the shadow compares against, narrowed to the two calls
  * it makes. `GitHubHttpClient` satisfies it; a test supplies its own.
  */
@@ -145,7 +156,14 @@ export class TransportShadow {
       settledCall(shadowed, startedAt),
     ]);
 
-    const divergence = divergenceOf(gh.result, shadow.result, observation.body);
+    const divergence = divergenceOf(
+      gh.result,
+      shadow.result,
+      observation.body,
+      observation.request.kind === "graphql"
+        ? volatileGraphQlPaths
+        : noVolatilePaths,
+    );
     this.record({
       label,
       outcome: divergence === undefined ? "match" : "diverged",
@@ -229,6 +247,7 @@ function divergenceOf(
   gh: Result<unknown, CommandFailure>,
   shadow: Result<unknown, CommandFailure>,
   body: ShadowResponseBody,
+  volatilePaths: ReadonlySet<string>,
 ): ShadowDivergence | undefined {
   if (gh._tag === "err" || shadow._tag === "err") {
     const ghTag = gh._tag === "err" ? gh.error._tag : "ok";
@@ -256,7 +275,12 @@ function divergenceOf(
   if (!ghJson.success || !shadowJson.success) {
     return { kind: "value", firstDifference: "$" };
   }
-  const path = firstDifferingPath(ghJson.output, shadowJson.output, "$");
+  const path = firstDifferingPath(
+    ghJson.output,
+    shadowJson.output,
+    "$",
+    volatilePaths,
+  );
   return path === undefined
     ? undefined
     : {
@@ -289,6 +313,7 @@ function firstDifferingPath(
   gh: RawJsonValue,
   shadow: RawJsonValue,
   path: string,
+  volatilePaths: ReadonlySet<string>,
 ): string | undefined {
   if (Array.isArray(gh) || Array.isArray(shadow)) {
     if (!Array.isArray(gh) || !Array.isArray(shadow)) return path;
@@ -298,6 +323,7 @@ function firstDifferingPath(
         item,
         shadow[index] ?? null,
         `${path}[${index}]`,
+        volatilePaths,
       );
       if (at !== undefined) return at;
     }
@@ -306,7 +332,9 @@ function firstDifferingPath(
 
   const ghObject = v.is(jsonObjectSchema, gh);
   const shadowObject = v.is(jsonObjectSchema, shadow);
-  if (ghObject && shadowObject) return firstDifferingKey(gh, shadow, path);
+  if (ghObject && shadowObject) {
+    return firstDifferingKey(gh, shadow, path, volatilePaths);
+  }
   if (ghObject || shadowObject) return path;
   return gh === shadow ? undefined : path;
 }
@@ -320,13 +348,22 @@ function firstDifferingKey(
   gh: Readonly<Record<string, RawJsonValue>>,
   shadow: Readonly<Record<string, RawJsonValue>>,
   path: string,
+  volatilePaths: ReadonlySet<string>,
 ): string | undefined {
   for (const [key, value] of Object.entries(gh)) {
-    if (!Object.hasOwn(shadow, key)) return `${path}.${key}`;
-    const at = firstDifferingPath(value, shadow[key] ?? null, `${path}.${key}`);
-    if (at !== undefined) return at;
+    const at = `${path}.${key}`;
+    if (volatilePaths.has(at)) continue;
+    if (!Object.hasOwn(shadow, key)) return at;
+    const differing = firstDifferingPath(
+      value,
+      shadow[key] ?? null,
+      at,
+      volatilePaths,
+    );
+    if (differing !== undefined) return differing;
   }
   for (const key of Object.keys(shadow)) {
+    if (volatilePaths.has(`${path}.${key}`)) continue;
     if (!Object.hasOwn(gh, key)) return `${path}.${key}`;
   }
   return undefined;

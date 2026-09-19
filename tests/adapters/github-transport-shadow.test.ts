@@ -93,6 +93,15 @@ const readRequest: GitHubRequest = {
   path: "repos/centraldigital/patchdesk/pulls/42",
 };
 
+/** The one live-observed divergence: `rateLimit` is answered per request. */
+const inboxSearchRequest: GitHubRequest = {
+  kind: "graphql",
+  host: "github.com",
+  document:
+    "query MaintainerInboxSearch($search: String!) { rateLimit { remaining resetAt } search(query: $search, type: ISSUE) { issueCount } }",
+  variables: [{ kind: "string", name: "search", value: "is:open" }],
+};
+
 function harness(
   execution: CommandExecution,
   answer: ShadowAnswer,
@@ -409,6 +418,45 @@ describe("GhRequestRunner transport shadow", () => {
       reason: "no_token",
     });
     expect(transport.requests).toEqual([]);
+  });
+
+  it("ignores GraphQL rate-limit accounting, which two requests cannot share", async () => {
+    const { runner, entries } = harness(
+      exited(
+        '{"data":{"rateLimit":{"remaining":4987},"search":{"issueCount":3}}}',
+      ),
+      async () =>
+        ok({
+          data: { rateLimit: { remaining: 4986 }, search: { issueCount: 3 } },
+        }),
+    );
+
+    await runner.ghJson(profile, inboxSearchRequest);
+
+    expect(await shadowMeta(entries)).toMatchObject({
+      label: "api graphql MaintainerInboxSearch",
+      outcome: "match",
+    });
+  });
+
+  it("still reports a real divergence beside the ignored rate limit", async () => {
+    const { runner, entries } = harness(
+      exited(
+        '{"data":{"rateLimit":{"remaining":4987},"search":{"issueCount":3}}}',
+      ),
+      async () =>
+        ok({
+          data: { rateLimit: { remaining: 4986 }, search: { issueCount: 4 } },
+        }),
+    );
+
+    await runner.ghJson(profile, inboxSearchRequest);
+
+    expect(await shadowMeta(entries)).toMatchObject({
+      outcome: "diverged",
+      kind: "value",
+      firstDifference: "$.data.search.issueCount",
+    });
   });
 
   it("never shadows a write", async () => {
