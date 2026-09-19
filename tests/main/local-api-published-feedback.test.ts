@@ -12,13 +12,13 @@ import type {
 
 const expected = {
   sessionId:
-    "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
+    "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
   headSha: "a".repeat(40),
   patchHash: "b".repeat(64),
 };
 const common = {
-  profileId: "cfw",
-  reviewId: "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+  profileId: "acme",
+  reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
   expected,
 };
 

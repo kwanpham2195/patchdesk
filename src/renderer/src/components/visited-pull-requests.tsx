@@ -189,7 +189,7 @@ type VisitedLabelScope = "number" | "repo" | "owner-repo";
  * The narrowest label that still tells the listed rows apart: the repository is
  * named only when the rows span more than one, and its owner only when they
  * span more than one owner. In a workspace whose rows all sit under one owner
- * the owner is roughly half the width of `centraldigital/acme-api#98`
+ * the `octo-org/` prefix takes nearly half the width of `octo-org/acme-api#98`
  * and distinguishes nothing, which pushed the age off the meta line.
  */
 function visitedLabelScope(

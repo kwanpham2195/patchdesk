@@ -12,10 +12,8 @@ function derive(label: string, taken: ReadonlySet<string> = noneTaken): string {
 
 describe("deriveWorkspaceProfileId", () => {
   it("lowercases the name and collapses every run of non-alphanumerics", () => {
-    expect(derive("CFW")).toBe("cfw");
-    expect(derive("Central   Digital / Platform")).toBe(
-      "central-digital-platform",
-    );
+    expect(derive("ACME")).toBe("acme");
+    expect(derive("Octo   Org / Platform")).toBe("octo-org-platform");
     expect(derive("  Work_2026!  ")).toBe("work-2026");
   });
 
@@ -28,9 +26,9 @@ describe("deriveWorkspaceProfileId", () => {
   });
 
   it("takes the first free numeric suffix on collision", () => {
-    expect(derive("CFW", new Set(["cfw"]))).toBe("cfw-2");
-    expect(derive("CFW", new Set(["cfw", "cfw-2"]))).toBe("cfw-3");
-    expect(derive("CFW", new Set(["cfw-2"]))).toBe("cfw");
+    expect(derive("ACME", new Set(["acme"]))).toBe("acme-2");
+    expect(derive("ACME", new Set(["acme", "acme-2"]))).toBe("acme-3");
+    expect(derive("ACME", new Set(["acme-2"]))).toBe("acme");
   });
 
   it("derives an id the workspace-profile parser accepts", () => {

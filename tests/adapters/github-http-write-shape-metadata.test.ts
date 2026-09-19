@@ -153,7 +153,7 @@ describe("reviewer removal over HTTP", () => {
       kind: "rest",
       host: "github.com",
       method: "DELETE",
-      path: "repos/centraldigital/patchdesk/pulls/42/requested_reviewers",
+      path: "repos/octo-org/patchdesk/pulls/42/requested_reviewers",
       jsonBody: JSON.stringify({ reviewers: ["ann", "bo"] }),
     });
   });

@@ -28,10 +28,10 @@ const must = <T>(result: Result<T, unknown>): T => {
   return result.value;
 };
 
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const pr = {
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   number: must(parsePullRequestNumber(42)),
 };
@@ -41,7 +41,7 @@ const otherSha = must(parseGitSha("c".repeat(40)));
 const profile = must(
   parseWorkspaceProfileConfig({
     id: profileId,
-    label: "CFW",
+    label: "ACME",
     githubHost: "github.com",
     ghAccount: "fixture",
     workspaceRoots: [],

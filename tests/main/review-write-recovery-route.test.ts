@@ -11,8 +11,8 @@ import type {
 } from "../../src/services/review-write-recovery-service";
 
 const body = {
-  profileId: "cfw",
-  reviewId: "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+  profileId: "acme",
+  reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
 };
 
 function routeFixture(

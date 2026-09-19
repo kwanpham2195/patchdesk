@@ -13,7 +13,7 @@ export const paths = PatchdeskPaths.forTest(
 
 export const profileId =
   // SAFETY: this profile fixture satisfies the branded profile id's runtime shape.
-  "cfw" as never;
+  "acme" as never;
 export const headSha =
   // SAFETY: a 40-char hex string already satisfies GitSha's runtime shape.
   "a".repeat(40) as never;
@@ -22,13 +22,13 @@ export const at =
   "2026-08-09T11:35:00.000Z" as never;
 export const sessionId =
   // SAFETY: this composite string satisfies SessionId's runtime shape.
-  "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca" as never;
+  "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca" as never;
 export const identity = {
   profileId,
   // SAFETY: a plain host string already satisfies GitHubHost's runtime shape.
   host: "github.com" as never,
   // SAFETY: a plain owner string already satisfies GitHubOwner's runtime shape.
-  owner: "centraldigital" as never,
+  owner: "octo-org" as never,
   // SAFETY: a plain repo name already satisfies GitHubRepoName's runtime shape.
   repo: "patchdesk" as never,
   // SAFETY: a positive integer already satisfies PullRequestNumber's runtime shape.

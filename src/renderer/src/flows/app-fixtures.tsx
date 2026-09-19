@@ -61,7 +61,7 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
   Object.entries({
     "#mermaid-fixture": () => {
       const parsedPullRequest = parsePullRequestInput(
-        "https://github.com/centraldigital/patchdesk/pull/42",
+        "https://github.com/octo-org/patchdesk/pull/42",
       );
       if (parsedPullRequest._tag === "err")
         throw new Error("Fixture pull request is invalid");
@@ -324,7 +324,7 @@ const fixtureRenderers = new Map<string, FixtureRenderer>(
             ],
           }}
           context={{
-            repo: "centraldigital/patchdesk",
+            repo: "octo-org/patchdesk",
             prNumber: 42,
             title: "Protect review writes",
             base: "sit",
@@ -423,7 +423,7 @@ function renderMergeReadinessFixture(
       ]
     : [];
   const parsedPullRequest = parsePullRequestInput(
-    "https://github.com/centraldigital/patchdesk/pull/42",
+    "https://github.com/octo-org/patchdesk/pull/42",
   );
   if (parsedPullRequest._tag === "err")
     throw new Error("Fixture pull request is invalid");

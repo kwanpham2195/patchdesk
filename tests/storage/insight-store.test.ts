@@ -3,15 +3,15 @@ import { parseInsightRecord } from "../../src/adapters/storage/insight-store";
 
 const currentRecord = {
   schemaVersion: 2 as const,
-  reviewId: "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+  reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
   type: "walkthrough" as const,
   nextToken: 3,
   retained: {
     runId:
-      "insight-walkthrough-2-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      "insight-walkthrough-2-aaaaaaaaaaaa-github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
     revision: {
       sessionId:
-        "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca",
+        "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__b48f8e2e76ca",
       headSha: "a".repeat(40),
       patchHash: "b".repeat(64),
     },
@@ -30,7 +30,7 @@ const currentRecord = {
   },
   replacementFailure: {
     runId:
-      "insight-walkthrough-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      "insight-walkthrough-1-aaaaaaaaaaaa-github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
     reason: "failed" as const,
     category: "execution_failed" as const,
     provider: "pi" as const,
@@ -56,13 +56,12 @@ describe("InsightStore schema", () => {
   it("round-trips a Brief record", () => {
     const briefRecord = {
       schemaVersion: 2 as const,
-      reviewId:
-        "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
       type: "brief" as const,
       nextToken: 2,
       retained: {
         runId:
-          "insight-brief-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+          "insight-brief-1-aaaaaaaaaaaa-github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
         revision: currentRecord.retained.revision,
         generatedAt: "2026-08-01T00:00:00.000Z",
         provenance: {
@@ -106,13 +105,12 @@ it("rejects schema-2 records without current failure provenance", () => {
   expect(
     parseInsightRecord({
       schemaVersion: 2,
-      reviewId:
-        "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+      reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
       type: "analysis",
       nextToken: 1,
       replacementFailure: {
         runId:
-          "insight-analysis-1-aaaaaaaaaaaa-github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+          "insight-analysis-1-aaaaaaaaaaaa-github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
         reason: "failed",
         retryable: true,
         failedAt: "2026-08-01T00:00:00.000Z",

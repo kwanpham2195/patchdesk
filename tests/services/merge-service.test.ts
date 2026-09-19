@@ -7,11 +7,11 @@ import { mergePullRequest } from "../../src/services/merge-service";
 const sha = "abcdef1234567890abcdef1234567890abcdef12" as never;
 // SAFETY: This fixture supplies the session fields exercised by mergePullRequest; unrelated stored fields are not needed by this behavior test.
 const session = {
-  id: "github.com__centraldigital__patchdesk__pr-1__sha-abcdef12__base-00000000__0123456789ab",
+  id: "github.com__octo-org__patchdesk__pr-1__sha-abcdef12__base-00000000__0123456789ab",
   key: {
-    profileId: "cfw",
+    profileId: "acme",
     host: "github.com",
-    owner: "centraldigital",
+    owner: "octo-org",
     repo: "patchdesk",
     prNumber: 1,
     headSha: sha,
@@ -35,7 +35,7 @@ describe("merge service", () => {
             value: {
               ref: {
                 host: "github.com",
-                owner: "centraldigital",
+                owner: "octo-org",
                 repo: "patchdesk",
                 number: 1,
               },
@@ -85,7 +85,7 @@ describe("merge service", () => {
         value: {
           ref: {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number: 1,
           },

@@ -1,6 +1,6 @@
 {
-  "profileId": "cfw",
-  "sessionId": "github.com__centraldigital__patchdesk__pr-1__sha-abcdef12__0123456789ab",
+  "profileId": "acme",
+  "sessionId": "github.com__octo-org__patchdesk__pr-1__sha-abcdef12__0123456789ab",
   "attemptId": "001",
   "contextPath": "fixtures/insight-runtime/runtime/context.json",
   "reviewInputPath": "fixtures/insight-runtime/runtime/review-input.md",

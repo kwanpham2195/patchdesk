@@ -32,7 +32,7 @@ function renderDialog(readState: BaseBranchReadState) {
     <ChangeBaseBranchDialog
       open
       onOpenChange={() => undefined}
-      repository="centraldigital/patchdesk"
+      repository="octo-org/patchdesk"
       query=""
       onQueryChange={onQueryChange}
       readState={readState}

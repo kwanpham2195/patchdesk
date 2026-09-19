@@ -21,14 +21,14 @@ const cases: ReadonlyArray<{
     request: {
       kind: "rest",
       host: "github.com",
-      path: "repos/centraldigital/patchdesk/pulls?state=open&per_page=100",
+      path: "repos/octo-org/patchdesk/pulls?state=open&per_page=100",
     },
     argv: [
       "gh",
       "api",
       "--hostname",
       "github.com",
-      "repos/centraldigital/patchdesk/pulls?state=open&per_page=100",
+      "repos/octo-org/patchdesk/pulls?state=open&per_page=100",
     ],
   },
   {
@@ -46,7 +46,7 @@ const cases: ReadonlyArray<{
       kind: "rest",
       host: "github.com",
       method: "POST",
-      path: "repos/centraldigital/patchdesk/pulls/42/reviews",
+      path: "repos/octo-org/patchdesk/pulls/42/reviews",
       jsonBody: '{"commit_id":"abc"}',
     },
     argv: [
@@ -56,7 +56,7 @@ const cases: ReadonlyArray<{
       "github.com",
       "--method",
       "POST",
-      "repos/centraldigital/patchdesk/pulls/42/reviews",
+      "repos/octo-org/patchdesk/pulls/42/reviews",
       "--input",
       "-",
     ],
@@ -68,7 +68,7 @@ const cases: ReadonlyArray<{
       kind: "rest",
       host: "github.com",
       method: "DELETE",
-      path: "repos/centraldigital/patchdesk/pulls/42/reviews/7",
+      path: "repos/octo-org/patchdesk/pulls/42/reviews/7",
     },
     argv: [
       "gh",
@@ -77,7 +77,7 @@ const cases: ReadonlyArray<{
       "github.com",
       "--method",
       "DELETE",
-      "repos/centraldigital/patchdesk/pulls/42/reviews/7",
+      "repos/octo-org/patchdesk/pulls/42/reviews/7",
     ],
   },
   {
@@ -86,7 +86,7 @@ const cases: ReadonlyArray<{
       kind: "rest",
       host: "github.com",
       accept: "application/vnd.github.v3.diff",
-      path: "repos/centraldigital/patchdesk/compare/base...head",
+      path: "repos/octo-org/patchdesk/compare/base...head",
     },
     argv: [
       "gh",
@@ -95,7 +95,7 @@ const cases: ReadonlyArray<{
       "github.com",
       "-H",
       "Accept: application/vnd.github.v3.diff",
-      "repos/centraldigital/patchdesk/compare/base...head",
+      "repos/octo-org/patchdesk/compare/base...head",
     ],
   },
   {
@@ -104,7 +104,7 @@ const cases: ReadonlyArray<{
       kind: "rest",
       paginate: true,
       host: "github.com",
-      path: "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
+      path: "repos/octo-org/patchdesk/pulls/42/commits?per_page=100",
     },
     argv: [
       "gh",
@@ -113,7 +113,7 @@ const cases: ReadonlyArray<{
       "--slurp",
       "--hostname",
       "github.com",
-      "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
+      "repos/octo-org/patchdesk/pulls/42/commits?per_page=100",
     ],
   },
   {
@@ -123,7 +123,7 @@ const cases: ReadonlyArray<{
       host: "github.com",
       document: "query MergePolicy",
       variables: [
-        { kind: "typed", name: "owner", value: "centraldigital" },
+        { kind: "typed", name: "owner", value: "octo-org" },
         { kind: "typed", name: "name", value: "patchdesk" },
         { kind: "typed", name: "number", value: 42 },
         { kind: "typed", name: "cursor", value: "Y3Vyc29y" },
@@ -138,7 +138,7 @@ const cases: ReadonlyArray<{
       "-f",
       "query=query MergePolicy",
       "-F",
-      "owner=centraldigital",
+      "owner=octo-org",
       "-F",
       "name=patchdesk",
       "-F",

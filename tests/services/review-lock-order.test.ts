@@ -112,17 +112,17 @@ function must<T>(result: Result<T, unknown>): T {
   return result.value;
 }
 
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const headSha = must(parseGitSha("a".repeat(40)));
 const baseSha = must(parseGitSha("b".repeat(40)));
 const pullRequest = {
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   number: must(parsePullRequestNumber(42)),
 };
-const reviewId = "github.com__centraldigital__patchdesk__pr-42__review-aaaa";
+const reviewId = "github.com__octo-org__patchdesk__pr-42__review-aaaa";
 const sessionId = createReviewSessionId({
   profileId,
   host: pullRequest.host,

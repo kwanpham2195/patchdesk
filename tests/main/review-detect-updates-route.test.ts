@@ -11,8 +11,8 @@ import type { RecentReviewWrite } from "../../src/domain/recent-review-write";
 import { registerReviewLifecycleRoutes } from "../../src/main/routes/review-lifecycle-routes";
 
 const body = {
-  profileId: "cfw",
-  reviewId: "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+  profileId: "acme",
+  reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
 };
 
 function routeFixture() {

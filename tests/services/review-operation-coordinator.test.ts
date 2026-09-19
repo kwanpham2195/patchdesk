@@ -7,19 +7,19 @@ describe("ReviewOperationCoordinator", () => {
     const coordinator = new ReviewOperationCoordinator();
     const events: string[] = [];
     let releaseFirst!: () => void;
-    const first = coordinator.withReviewLock("cfw", "review", async () => {
+    const first = coordinator.withReviewLock("acme", "review", async () => {
       events.push("first-start");
       await new Promise<void>((resolve) => {
         releaseFirst = resolve;
       });
       events.push("first-end");
     });
-    const second = coordinator.withReviewLock("cfw", "review", async () => {
+    const second = coordinator.withReviewLock("acme", "review", async () => {
       events.push("second");
     });
 
     expect(events).toEqual(["first-start"]);
-    expect(coordinator.acquire("cfw:review")).toBe(false);
+    expect(coordinator.acquire("acme:review")).toBe(false);
 
     releaseFirst();
     await Promise.all([first, second]);
@@ -29,9 +29,9 @@ describe("ReviewOperationCoordinator", () => {
   it("releases a command lock for the next operation", async () => {
     const coordinator = new ReviewOperationCoordinator();
 
-    expect(coordinator.acquire("cfw:review")).toBe(true);
-    expect(coordinator.acquire("cfw:review")).toBe(false);
-    coordinator.release("cfw:review");
-    expect(coordinator.acquire("cfw:review")).toBe(true);
+    expect(coordinator.acquire("acme:review")).toBe(true);
+    expect(coordinator.acquire("acme:review")).toBe(false);
+    coordinator.release("acme:review");
+    expect(coordinator.acquire("acme:review")).toBe(true);
   });
 });

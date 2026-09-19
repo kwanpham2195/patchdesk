@@ -37,14 +37,14 @@ function operation(
 ): ConversationOperation {
   const expected = {
     sessionId:
-      "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
+      "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
     headSha: "1".repeat(40),
     patchHash: "a".repeat(64),
   };
   const parsed = parseReviewWriteOperation({
     schemaVersion: 1,
-    profileId: "cfw",
-    reviewId: "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+    profileId: "acme",
+    reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
     sessionId: expected.sessionId,
     intent:
       tag === "CreateComment"
@@ -347,7 +347,7 @@ describe("ReviewWriteRecoveryService", () => {
             session: {
               key: {
                 host: "github.com",
-                owner: "centraldigital",
+                owner: "octo-org",
                 repo: "patchdesk",
                 prNumber: 42,
                 headSha: value.intent.expected.headSha,
@@ -392,7 +392,7 @@ describe("ReviewWriteRecoveryService", () => {
             session: {
               key: {
                 host: "github.com",
-                owner: "centraldigital",
+                owner: "octo-org",
                 repo: "patchdesk",
                 prNumber: 42,
                 headSha: value.intent.expected.headSha,

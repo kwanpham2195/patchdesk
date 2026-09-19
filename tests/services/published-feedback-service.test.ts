@@ -23,15 +23,14 @@ type PublishedFeedbackWriteInput =
 // SAFETY: literals model already-validated revision evidence; this test owns write ordering, not parser coverage.
 const expected = {
   sessionId:
-    "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456" as never,
+    "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456" as never,
   headSha: "a".repeat(40) as never,
   patchHash: "b".repeat(64) as never,
 };
 // SAFETY: literals model already-validated route identifiers; parser coverage belongs to the route suite.
 const input = {
-  profileId: "cfw" as never,
-  reviewId:
-    "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456" as never,
+  profileId: "acme" as never,
+  reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456" as never,
   expected,
 };
 // SAFETY: requireFresh returns this fixture unchanged; no profile fields are read by this service test.
@@ -41,7 +40,7 @@ const session = {
   id: expected.sessionId,
   key: {
     host: "github.com",
-    owner: "centraldigital",
+    owner: "octo-org",
     repo: "patchdesk",
     prNumber: 42,
     headSha: expected.headSha,

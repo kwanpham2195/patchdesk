@@ -16,12 +16,12 @@ import {
 } from "./fake-desktop-response";
 
 const profile: Profile = {
-  id: "cfw",
-  label: "CFW",
+  id: "acme",
+  label: "ACME",
   githubHost: "github.com",
   ghAccount: "patchdesk",
-  workspaceRoots: ["/workspace/cfw"],
-  rulePaths: ["/workspace/cfw/AGENTS.md"],
+  workspaceRoots: ["/workspace/acme"],
+  rulePaths: ["/workspace/acme/AGENTS.md"],
 };
 
 let desktop: DesktopDouble | undefined;
@@ -36,12 +36,12 @@ afterEach(() => {
 describe("workspace root discovery", () => {
   it("shows a per-root count of repositories found and watched", async () => {
     installDesktopApi({
-      suggestions: readyDiscovery("/workspace/cfw", [
+      suggestions: readyDiscovery("/workspace/acme", [
         {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
-          localPath: "/workspace/cfw/patchdesk",
+          localPath: "/workspace/acme/patchdesk",
         },
       ]),
     });
@@ -50,9 +50,9 @@ describe("workspace root discovery", () => {
       repos: [
         {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "watched-repo",
-          localPath: "/workspace/cfw/watched-repo",
+          localPath: "/workspace/acme/watched-repo",
         },
       ],
     };
@@ -65,7 +65,7 @@ describe("workspace root discovery", () => {
   });
 
   it("shows the explicit zero-found state for a saved root with no discoveries", async () => {
-    installDesktopApi({ suggestions: readyDiscovery("/workspace/cfw", []) });
+    installDesktopApi({ suggestions: readyDiscovery("/workspace/acme", []) });
 
     renderSettings();
 
@@ -87,7 +87,7 @@ describe("workspace root discovery", () => {
   });
 
   it("says nothing about a folder row the saved profile does not carry", async () => {
-    installDesktopApi({ suggestions: readyDiscovery("/workspace/cfw", []) });
+    installDesktopApi({ suggestions: readyDiscovery("/workspace/acme", []) });
     const user = userEvent.setup();
 
     renderSettings();
@@ -111,13 +111,13 @@ describe("workspace root discovery", () => {
           repositories: [
             {
               host: "github.com",
-              owner: "centraldigital",
+              owner: "octo-org",
               repo: "ready-repo",
               localPath: "/ready/ready-repo",
             },
             {
               host: "github.com",
-              owner: "centraldigital",
+              owner: "octo-org",
               repo: "unwatched-failed-repo",
               localPath: "/failed/unwatched-failed-repo",
             },
@@ -133,7 +133,7 @@ describe("workspace root discovery", () => {
       repos: [
         {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "watched-failed-repo",
           localPath: "/failed/watched-failed-repo",
         },
@@ -154,13 +154,13 @@ describe("workspace root discovery", () => {
     expect(
       within(failedRepositories)
         .getByRole("checkbox", {
-          name: "centraldigital/watched-failed-repo /failed/watched-failed-repo",
+          name: "octo-org/watched-failed-repo /failed/watched-failed-repo",
         })
         .getAttribute("aria-checked"),
     ).toBe("true");
     expect(
       within(failedRepositories).queryByRole("checkbox", {
-        name: "centraldigital/unwatched-failed-repo /failed/unwatched-failed-repo",
+        name: "octo-org/unwatched-failed-repo /failed/unwatched-failed-repo",
       }),
     ).toBeNull();
 
@@ -170,9 +170,9 @@ describe("workspace root discovery", () => {
         path: "/v1/watchlist",
         method: "POST",
         body: {
-          profileId: "cfw",
+          profileId: "acme",
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "ready-repo",
           localPath: "/ready/ready-repo",
         },
@@ -225,7 +225,7 @@ function installDesktopApi(
     "/v1/watchlist/suggestions": () =>
       options.suggestions === "reject"
         ? failure({ error: "storage" })
-        : success(options.suggestions ?? readyDiscovery("/workspace/cfw", [])),
+        : success(options.suggestions ?? readyDiscovery("/workspace/acme", [])),
   });
   return desktop;
 }

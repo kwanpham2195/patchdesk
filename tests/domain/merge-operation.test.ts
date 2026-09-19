@@ -9,13 +9,13 @@ import {
 
 const operation = {
   operationId: "merge-20260801000000000",
-  profileId: "cfw",
-  reviewId: "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa",
+  profileId: "acme",
+  reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
   sessionId:
-    "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab",
+    "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab",
   pr: {
     host: "github.com",
-    owner: "centraldigital",
+    owner: "octo-org",
     repo: "patchdesk",
     number: 42,
   },

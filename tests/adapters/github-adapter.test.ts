@@ -85,10 +85,10 @@ function mustParse<T, E>(
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],
@@ -97,7 +97,7 @@ const profile = mustParse(
 
 const pr: PullRequestRef = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(42)),
 };
@@ -226,8 +226,8 @@ function pullRequestPayload(
     updated_at: "2026-07-16T12:00:00Z",
     mergeable_state: "clean",
     labels: [{ name: "review", color: "0e8a16" }],
-    requested_reviewers: [{ login: "pmquan2cfw" }],
-    assignees: [{ login: "pmquan2cfw" }],
+    requested_reviewers: [{ login: "octo-dev" }],
+    assignees: [{ login: "octo-dev" }],
     additions: 12,
     deletions: 3,
     changed_files: 2,
@@ -398,14 +398,14 @@ describe("GitHubAdapter optional merge-policy evidence", () => {
         "api",
         "--hostname",
         "github.com",
-        "repos/centraldigital/patchdesk/branches/sit/protection",
+        "repos/octo-org/patchdesk/branches/sit/protection",
       ],
       [
         "gh",
         "api",
         "--hostname",
         "github.com",
-        "repos/centraldigital/patchdesk/rules/branches/sit",
+        "repos/octo-org/patchdesk/rules/branches/sit",
       ],
     ]);
   });
@@ -659,7 +659,7 @@ describe("GitHubAdapter repository label permission", () => {
         adapter.getRepositoryPermission({
           profile,
           pr,
-          account: "pmquan2cfw",
+          account: "octo-dev",
         }),
       ).resolves.toMatchObject({
         _tag: "ok",
@@ -673,7 +673,7 @@ describe("GitHubAdapter repository label permission", () => {
       orderedTransport([JSON.stringify({ role_name: "triage" })]),
     );
     await expect(
-      adapter.getRepositoryPermission({ profile, pr, account: "pmquan2cfw" }),
+      adapter.getRepositoryPermission({ profile, pr, account: "octo-dev" }),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
@@ -693,7 +693,7 @@ describe("GitHubAdapter repository label permission", () => {
       orderedTransport([JSON.stringify({ role_name: "security-champion" })]),
     );
     await expect(
-      adapter.getRepositoryPermission({ profile, pr, account: "pmquan2cfw" }),
+      adapter.getRepositoryPermission({ profile, pr, account: "octo-dev" }),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
@@ -715,7 +715,7 @@ describe("repositoryLabelPermission", () => {
     expect(
       repositoryLabelPermission(
         ok({
-          account: "pmquan2cfw",
+          account: "octo-dev",
           permission: "triage",
           pullRequestsWrite: false,
           canManageLabels: true,
@@ -728,7 +728,7 @@ describe("repositoryLabelPermission", () => {
     expect(
       repositoryLabelPermission(
         ok({
-          account: "pmquan2cfw",
+          account: "octo-dev",
           permission: "read",
           pullRequestsWrite: false,
           canManageLabels: false,
@@ -756,7 +756,7 @@ describe("pullRequestWritePermission", () => {
     expect(
       pullRequestWritePermission(
         ok({
-          account: "pmquan2cfw",
+          account: "octo-dev",
           permission: "write",
           pullRequestsWrite: true,
           canManageLabels: true,
@@ -769,7 +769,7 @@ describe("pullRequestWritePermission", () => {
     expect(
       pullRequestWritePermission(
         ok({
-          account: "pmquan2cfw",
+          account: "octo-dev",
           permission: "triage",
           pullRequestsWrite: false,
           canManageLabels: true,
@@ -816,7 +816,7 @@ describe("GitHubAdapter read boundary", () => {
                     pageInfo: { hasNextPage: false },
                   },
                   reviewRequests: {
-                    nodes: [{ requestedReviewer: { login: "pmquan2cfw" } }],
+                    nodes: [{ requestedReviewer: { login: "octo-dev" } }],
                   },
                   assignees: { nodes: [] },
                   commits: {
@@ -1488,7 +1488,7 @@ describe("GitHubAdapter read boundary", () => {
         pageInfo: { hasNextPage: false },
       },
       reviewRequests: {
-        nodes: [{ requestedReviewer: { login: "pmquan2cfw" } }],
+        nodes: [{ requestedReviewer: { login: "octo-dev" } }],
       },
       assignees: { nodes: [] },
       commits: {
@@ -1512,14 +1512,14 @@ describe("GitHubAdapter read boundary", () => {
       await adapter.searchMaintainerPullRequests({
         profile,
         repo: pr,
-        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+        searchQuery: "repo:octo-org/patchdesk is:pr is:open",
         state: "open",
         pageSize: 25,
       });
 
       expect(transport.requests).toHaveLength(1);
       expect(sent(transport, 0).argv).toContain(
-        "search=repo:centraldigital/patchdesk is:pr is:open",
+        "search=repo:octo-org/patchdesk is:pr is:open",
       );
       expect(sent(transport, 0).argv).toContain("first=25");
     });
@@ -1541,7 +1541,7 @@ describe("GitHubAdapter read boundary", () => {
       const result = await adapter.searchMaintainerPullRequests({
         profile,
         repo: pr,
-        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+        searchQuery: "repo:octo-org/patchdesk is:pr is:open",
         state: "open",
         pageSize: 25,
       });
@@ -1587,7 +1587,7 @@ describe("GitHubAdapter read boundary", () => {
       const searchResult = await searchAdapter.searchMaintainerPullRequests({
         profile,
         repo: pr,
-        searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+        searchQuery: "repo:octo-org/patchdesk is:pr is:open",
         state: "open",
         pageSize: 25,
       });
@@ -1616,7 +1616,7 @@ describe("GitHubAdapter read boundary", () => {
       getChecks,
       getStatuses,
       getDiff,
-      '{"login":"pmquan2cfw"}',
+      '{"login":"octo-dev"}',
     ]);
     const adapter = testAdapter(transport);
 
@@ -1628,8 +1628,8 @@ describe("GitHubAdapter read boundary", () => {
         {
           title: "Add safe GitHub reads",
           changedFileCount: 2,
-          requestedReviewers: ["pmquan2cfw"],
-          assignees: ["pmquan2cfw"],
+          requestedReviewers: ["octo-dev"],
+          assignees: ["octo-dev"],
         },
       ],
     });
@@ -1715,7 +1715,7 @@ describe("GitHubAdapter read boundary", () => {
     });
     expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
       _tag: "ok",
-      value: { host: "github.com", account: "pmquan2cfw" },
+      value: { host: "github.com", account: "octo-dev" },
     });
 
     await expect(
@@ -2174,7 +2174,7 @@ describe("GitHubAdapter read boundary", () => {
         [
           {
             sha: olderSha,
-            html_url: "https://github.com/centraldigital/patchdesk/commit/111",
+            html_url: "https://github.com/octo-org/patchdesk/commit/111",
             commit: {
               message: "Older change",
               author: { name: "Older", date: "2026-07-16T11:00:00Z" },
@@ -2184,7 +2184,7 @@ describe("GitHubAdapter read boundary", () => {
         [
           {
             sha: headSha,
-            html_url: "https://github.com/centraldigital/patchdesk/commit/head",
+            html_url: "https://github.com/octo-org/patchdesk/commit/head",
             commit: {
               message: "Head change",
               author: { name: "Head", date: "2026-07-16T12:00:00Z" },
@@ -2210,7 +2210,7 @@ describe("GitHubAdapter read boundary", () => {
       "--slurp",
       "--hostname",
       "github.com",
-      "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
+      "repos/octo-org/patchdesk/pulls/42/commits?per_page=100",
     ]);
   });
 
@@ -2502,7 +2502,7 @@ describe("GitHubAdapter review write boundary", () => {
                   id: "PRRC_c1",
                   pullRequest: {
                     repository: {
-                      owner: { login: "centraldigital" },
+                      owner: { login: "octo-org" },
                       name: "patchdesk",
                     },
                     number: 42,
@@ -2545,7 +2545,7 @@ describe("GitHubAdapter review write boundary", () => {
                   id: "PRRC_c1",
                   pullRequest: {
                     repository: {
-                      owner: { login: "centraldigital" },
+                      owner: { login: "octo-org" },
                       name: "patchdesk",
                     },
                     number: 99,
@@ -2601,7 +2601,7 @@ describe("GitHubAdapter review write boundary", () => {
             viewerDidAuthor: true,
             pullRequest: {
               repository: {
-                owner: { login: "centraldigital" },
+                owner: { login: "octo-org" },
                 name: "patchdesk",
               },
               number: 42,
@@ -2636,7 +2636,7 @@ describe("GitHubAdapter review write boundary", () => {
             viewerDidAuthor: true,
             pullRequest: {
               repository: {
-                owner: { login: "centraldigital" },
+                owner: { login: "octo-org" },
                 name: "patchdesk",
               },
               number: 99,
@@ -2661,7 +2661,7 @@ describe("GitHubAdapter review write boundary", () => {
             viewerDidAuthor: false,
             pullRequest: {
               repository: {
-                owner: { login: "centraldigital" },
+                owner: { login: "octo-org" },
                 name: "patchdesk",
               },
               number: 42,
@@ -2728,12 +2728,12 @@ describe("GitHubAdapter review write boundary", () => {
 });
 
 describe("GitHubAdapter pending-review gateway", () => {
-  const account = "pmquan2cfw";
+  const account = "octo-dev";
   const reviewId = 9001;
   const reviewNodeId = "PRR_kwDORJzsQM7e6QwJ";
   const threadId = "PRRT_kwDORJzsQM0001";
   const commentId = "PRRC_kwDORJzsQM7fI2Rd";
-  const reviewListUrl = `repos/centraldigital/patchdesk/pulls/42/reviews?per_page=100&page=1`;
+  const reviewListUrl = `repos/octo-org/patchdesk/pulls/42/reviews?per_page=100&page=1`;
 
   function reviewsPayload(): string {
     return JSON.stringify([
@@ -3202,7 +3202,7 @@ describe("GitHubAdapter pending-review discard", () => {
       "github.com",
       "--method",
       "DELETE",
-      "repos/centraldigital/patchdesk/pulls/42/reviews/9001",
+      "repos/octo-org/patchdesk/pulls/42/reviews/9001",
     ]);
   });
 
@@ -3244,7 +3244,7 @@ describe("GitHubAdapter pending-review discard", () => {
 
   it("keeps the fake discard seam unimplemented until a fixture is supplied", async () => {
     const adapter = new FakeGitHubAdapter({
-      authenticatedAccount: { host: "github.com", account: "pmquan2cfw" },
+      authenticatedAccount: { host: "github.com", account: "octo-dev" },
     });
     await expect(
       adapter.discardPendingReview({
@@ -3266,7 +3266,7 @@ describe("GitHubAdapter direct summary reads", () => {
         JSON.stringify([
           {
             id: 100,
-            user: { login: "pmquan2cfw" },
+            user: { login: "octo-dev" },
             state: "DISMISSED",
             commit_id: headSha,
             submitted_at: "2026-08-01T00:00:00Z",
@@ -3274,7 +3274,7 @@ describe("GitHubAdapter direct summary reads", () => {
           },
           {
             id: 101,
-            user: { login: "pmquan2cfw" },
+            user: { login: "octo-dev" },
             state: "COMMENTED",
             commit_id: headSha,
             submitted_at: "2026-08-01T00:01:00Z",
@@ -3288,7 +3288,7 @@ describe("GitHubAdapter direct summary reads", () => {
       adapter.getViewerDirectSummaryReviews({
         profile,
         pr,
-        account: mustParse(parseGitHubLogin("pmquan2cfw")),
+        account: mustParse(parseGitHubLogin("octo-dev")),
       }),
     ).resolves.toMatchObject({
       _tag: "ok",
@@ -3367,15 +3367,7 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
     ).resolves.toMatchObject({ _tag: "ok" });
 
     expect(executor.requests).toEqual([
-      [
-        "gh",
-        "auth",
-        "token",
-        "--hostname",
-        "github.com",
-        "--user",
-        "pmquan2cfw",
-      ],
+      ["gh", "auth", "token", "--hostname", "github.com", "--user", "octo-dev"],
     ]);
     expect(served.authorizations).toEqual(["Bearer profile-token"]);
   });
@@ -3404,7 +3396,7 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
         _tag: "Exited",
         exitCode: 1,
         stdout: "",
-        stderr: "no oauth token found for github.com account pmquan2cfw",
+        stderr: "no oauth token found for github.com account octo-dev",
       },
     ]);
     const served = servedAdapter(executor, []);
@@ -3448,14 +3440,14 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
   it("resolves the authenticated account against the profile's own credential", async () => {
     const executor = new FakeProcessExecutor([exited("profile-token\n")]);
     const served = servedAdapter(executor, [
-      { status: 200, body: '{"login":"pmquan2cfw"}' },
+      { status: 200, body: '{"login":"octo-dev"}' },
     ]);
 
     await expect(
       served.adapter.resolveAuthenticatedAccount(profile),
     ).resolves.toEqual({
       _tag: "ok",
-      value: { host: "github.com", account: "pmquan2cfw" },
+      value: { host: "github.com", account: "octo-dev" },
     });
     expect(served.authorizations).toEqual(["Bearer profile-token"]);
   });

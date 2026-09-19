@@ -33,10 +33,10 @@ function mustParse<T, E>(
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],
@@ -45,7 +45,7 @@ const profile = mustParse(
 
 const pr: PullRequestRef = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(42)),
 };
@@ -117,7 +117,7 @@ function transportAnswering(
       case "api GET repos/:owner/:repo/issues/:n/comments":
         return jsonAnswer([]);
       case "api GET user":
-        return jsonAnswer({ login: "pmquan2cfw" });
+        return jsonAnswer({ login: "octo-dev" });
       case "api GET repos/:owner/:repo/collaborators/:user/permission":
         return jsonAnswer({ role_name: "write" });
       case "api GET repos/:owner/:repo/branches/:branch/protection":
@@ -153,7 +153,7 @@ describe("resolveAuthenticatedAccount request cost", () => {
       transport,
     );
 
-    const expected = { host: "github.com", account: "pmquan2cfw" };
+    const expected = { host: "github.com", account: "octo-dev" };
     await expect(adapter.resolveAuthenticatedAccount(profile)).resolves.toEqual(
       { _tag: "ok", value: expected },
     );
@@ -339,7 +339,7 @@ describe("branch protection request cost", () => {
 
 const reviewsLabel = "api GET repos/:owner/:repo/pulls/:n/reviews";
 
-const account = mustParse(parseGitHubLogin("pmquan2cfw"));
+const account = mustParse(parseGitHubLogin("octo-dev"));
 
 describe("pull request reviews request cost", () => {
   it("reads the reviews endpoint twice when each consumer reads it itself", async () => {

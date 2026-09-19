@@ -64,7 +64,7 @@ export const workbenchFixtureData = {
   pullRequest: {
     ref: {
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 42,
     },
@@ -151,7 +151,7 @@ export const workbenchFixtureData = {
             author: "reviewer",
             body: "Existing GitHub review comment.",
             createdAt: "2026-07-16T00:00:00.000Z",
-            url: "https://github.com/centraldigital/patchdesk/pull/1#discussion_r1",
+            url: "https://github.com/octo-org/patchdesk/pull/1#discussion_r1",
           },
         ],
       },
@@ -165,7 +165,7 @@ export const workbenchFixtureData = {
         required: true as const,
         status: "completed" as const,
         conclusion: "failure" as const,
-        url: "https://github.com/centraldigital/patchdesk/actions/runs/1",
+        url: "https://github.com/octo-org/patchdesk/actions/runs/1",
       },
       { name: "docs", required: false as const, status: "queued" as const },
     ],
@@ -261,13 +261,13 @@ export const longWorkbenchFixtureData = {
     ...workbenchFixtureData.pullRequest,
     ref: {
       ...workbenchFixtureData.pullRequest.ref,
-      owner: "centraldigital-platform-engineering-maintainers",
+      owner: "octo-org-platform-engineering-maintainers",
       repo: "patchdesk-desktop-review-workbench-with-a-long-repository-name",
     },
     title: longFixtureTitle,
     author: "reviewer-with-a-long-github-handle-for-layout-validation",
     headBranch:
-      "feat/CFW-1234-preserve-authoritative-review-coordination-across-desktop-restarts",
+      "feat/ACME-1234-preserve-authoritative-review-coordination-across-desktop-restarts",
     baseBranch: "release/2026-07-operational-readiness-and-accessibility",
   },
   result: {

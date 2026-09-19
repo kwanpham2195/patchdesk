@@ -18,7 +18,7 @@ import { ok } from "../../src/domain/result";
 // identity types these fixtures never need to parse.
 const repository = {
   host: "github.com",
-  owner: "centraldigital",
+  owner: "octo-org",
   repo: "patchdesk",
 } as never;
 
@@ -47,8 +47,8 @@ describe("MaintainerInboxService author avatars", () => {
     const paths = PatchdeskPaths.forTest(root);
     const written = await writeAvatar(
       paths,
-      // SAFETY: "cfw" is the profile id every fixture in this file lists under.
-      "cfw" as never,
+      // SAFETY: "acme" is the profile id every fixture in this file lists under.
+      "acme" as never,
       hashAvatarUrl(avatarUrl),
       new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     );
@@ -74,7 +74,7 @@ describe("MaintainerInboxService author avatars", () => {
                   summary: {
                     ref: {
                       host: "github.com",
-                      owner: "centraldigital",
+                      owner: "octo-org",
                       repo: "patchdesk",
                       number: 42,
                     },
@@ -110,7 +110,7 @@ describe("MaintainerInboxService author avatars", () => {
   }
 
   // SAFETY: this minimal profile supplies exactly the fields list() reads.
-  const profile = { id: "cfw", ghAccount: "fixture" } as never;
+  const profile = { id: "acme", ghAccount: "fixture" } as never;
 
   it("attaches the cached avatar as a data URI, warming it first", async () => {
     const paths = await warmedPaths();

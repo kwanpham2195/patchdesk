@@ -20,11 +20,11 @@ function makeProfile(
   } = {},
 ) {
   return {
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: overrides.githubHost ?? "github.com",
     ghAccount: overrides.ghAccount ?? "",
-    workspaceRoots: ["/workspace/cfw"],
+    workspaceRoots: ["/workspace/acme"],
     rulePaths: [],
   } satisfies Profile;
 }
@@ -360,6 +360,6 @@ function installDesktopApi(
     // here is about the environment, so this supplies the saved root's empty,
     // successful outcome rather than an unrelated missing-root scan failure.
     "/v1/watchlist/suggestions": () =>
-      success([{ root: "/workspace/cfw", state: "ready", repositories: [] }]),
+      success([{ root: "/workspace/acme", state: "ready", repositories: [] }]),
   });
 }

@@ -53,7 +53,7 @@ function installWatchRoutes(
 
 function wrapper({ children }: { readonly children: ReactNode }) {
   return (
-    <WatchedPullRequestsProvider profileId="cfw">
+    <WatchedPullRequestsProvider profileId="acme">
       {children}
     </WatchedPullRequestsProvider>
   );
@@ -75,7 +75,7 @@ describe("useWatchedPullRequests", () => {
           ? [[input.method, input.body]]
           : [],
       ),
-    ).toEqual([["POST", { profileId: "cfw", pullRequest: ref }]]);
+    ).toEqual([["POST", { profileId: "acme", pullRequest: ref }]]);
     expect(result.current?.isWatched(ref)).toBe(true);
   });
 
@@ -139,7 +139,7 @@ describe("watched pull request change", () => {
       success({ pullRequests: [ref] }),
     );
     const inbox = (refreshedAt: string) => (
-      <WatchedPullRequestsProvider profileId="cfw">
+      <WatchedPullRequestsProvider profileId="acme">
         <MaintainerInbox
           profileId="watch-badge"
           profileLabel="P"
@@ -159,7 +159,7 @@ describe("watched pull request change", () => {
     expect(
       screen.queryByRole("button", { name: /A watched pull request changed/ }),
     ).toBeNull();
-    act(() => double.sendWatchedPullRequestChange("cfw"));
+    act(() => double.sendWatchedPullRequestChange("acme"));
     expect(
       screen.getByRole("button", { name: /A watched pull request changed/ }),
     ).toBeTruthy();
@@ -179,14 +179,14 @@ describe("watched pull request unwatched by a poll", () => {
     });
     installed = double;
     render(
-      <WatchedPullRequestsProvider profileId="cfw">
+      <WatchedPullRequestsProvider profileId="acme">
         <WatchPullRequestButton pullRequest={ref} />
       </WatchedPullRequestsProvider>,
     );
     await screen.findByRole("button", { name: "Unwatch" });
 
     list = { pullRequests: [] };
-    act(() => double.sendWatchedPullRequestChange("cfw"));
+    act(() => double.sendWatchedPullRequestChange("acme"));
 
     expect(await screen.findByRole("button", { name: "Watch" })).toBeTruthy();
   });
@@ -198,7 +198,7 @@ describe("Watch toggle surfaces", () => {
       success({ pullRequests: [ref] }),
     );
     render(
-      <WatchedPullRequestsProvider profileId="cfw">
+      <WatchedPullRequestsProvider profileId="acme">
         <MaintainerInbox
           profileId="watch-inspector"
           profileLabel="P"
@@ -229,7 +229,7 @@ describe("Watch toggle surfaces", () => {
     const parsed = parsePullRequestInput("acme/widgets#7");
     if (parsed._tag === "err") throw new Error("invalid fixture");
     render(
-      <WatchedPullRequestsProvider profileId="cfw">
+      <WatchedPullRequestsProvider profileId="acme">
         <ReviewWorkbenchHeader
           model={model}
           actions={{
@@ -239,7 +239,7 @@ describe("Watch toggle surfaces", () => {
             reportNavigationState: vi.fn(),
           }}
           title="Canonical workbench"
-          repository="centraldigital/patchdesk"
+          repository="octo-org/patchdesk"
           checksLabel="Passing"
           freshnessLabel="Current"
           mergeStatus="Ready"

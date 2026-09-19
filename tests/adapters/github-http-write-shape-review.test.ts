@@ -39,7 +39,7 @@ function adapter(): GitHubAdapter {
   return writeAdapter(server);
 }
 
-const reviewsPath = "repos/centraldigital/patchdesk/pulls/42/reviews";
+const reviewsPath = "repos/octo-org/patchdesk/pulls/42/reviews";
 
 describe("creating a review over HTTP", () => {
   it("posts the summary and its comments as gh's --input did", async () => {
@@ -262,7 +262,7 @@ describe("published review writes over HTTP", () => {
       kind: "rest",
       host: "github.com",
       method: "PUT",
-      path: "repos/centraldigital/patchdesk/pulls/42/merge",
+      path: "repos/octo-org/patchdesk/pulls/42/merge",
       jsonBody: JSON.stringify({
         sha: headSha,
         merge_method: "squash",

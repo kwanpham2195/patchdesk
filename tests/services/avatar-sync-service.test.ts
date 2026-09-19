@@ -24,7 +24,7 @@ const must = <T>(result: Result<T, unknown>): T =>
     : (() => {
         throw new Error("fixture");
       })();
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const roots: string[] = [];
 
 afterEach(async () => {

@@ -27,11 +27,11 @@ const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "err") throw new Error("fixture");
   return result.value;
 };
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const identity = {
   profileId,
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
 };

@@ -73,7 +73,7 @@ describe("ReviewWorkbenchController", () => {
       value.controller.open({
         profileId,
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       }),
@@ -100,7 +100,7 @@ describe("ReviewWorkbenchController", () => {
       value.controller.open({
         profileId,
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       }),
@@ -163,7 +163,7 @@ describe("ReviewWorkbenchController", () => {
     const opened = value.controller.open({
       profileId,
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 42,
     });
@@ -244,7 +244,7 @@ describe("ReviewWorkbenchController", () => {
     const input = {
       profileId,
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 42,
     };
@@ -297,7 +297,7 @@ describe("ReviewWorkbenchController", () => {
       value.controller.open({
         profileId,
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       }),
@@ -331,7 +331,7 @@ describe("ReviewWorkbenchController", () => {
       value.controller.open({
         profileId,
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       }),
@@ -346,7 +346,7 @@ describe("ReviewWorkbenchController", () => {
       value.controller.open({
         profileId,
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       }),
@@ -370,7 +370,7 @@ describe("ReviewWorkbenchController", () => {
       value.controller.openMerged({
         profileId,
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       }),
@@ -397,7 +397,7 @@ describe("ReviewWorkbenchController", () => {
       value.controller.openMerged({
         profileId,
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       }),
@@ -550,7 +550,7 @@ describe("ReviewWorkbenchController", () => {
     const opened = value.controller.open({
       profileId,
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 42,
     });
@@ -659,7 +659,7 @@ describe("ReviewWorkbenchController", () => {
     const opened = value.controller.open({
       profileId,
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 42,
     });

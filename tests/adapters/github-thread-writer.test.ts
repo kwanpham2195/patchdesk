@@ -33,10 +33,10 @@ function mustParse<T, E>(
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],
@@ -44,7 +44,7 @@ const profile = mustParse(
 );
 const pr: PullRequestRef = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(42)),
 };
@@ -137,7 +137,7 @@ describe("GitHubThreadWriter REST receipts", () => {
     const request = restRequest(transport.requests[0]);
     expect(request.method).toBe("DELETE");
     expect(request.path).toBe(
-      "repos/centraldigital/patchdesk/pulls/comments/3888149868",
+      "repos/octo-org/patchdesk/pulls/comments/3888149868",
     );
   });
 });

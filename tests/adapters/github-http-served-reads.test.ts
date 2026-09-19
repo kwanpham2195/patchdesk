@@ -37,7 +37,7 @@ function mustParse<T, E>(result: Result<T, E>): T {
 
 const pr: PullRequestRef = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(42)),
 };
@@ -74,16 +74,16 @@ describe("reads served over the real HTTP client", () => {
       ok({ protected: false, allowedDismissers: [] }),
     );
     expect(server.requests()[0]?.url).toBe(
-      "/repos/centraldigital/patchdesk/branches/main/protection",
+      "/repos/octo-org/patchdesk/branches/main/protection",
     );
   });
 
   it("parses the authenticated login out of the whole user body", async () => {
-    server.respondWith(json(200, { login: "pmquan2cfw", id: 1 }));
+    server.respondWith(json(200, { login: "octo-dev", id: 1 }));
 
     await expect(
       adapter().resolveAuthenticatedAccount(profile),
-    ).resolves.toEqual(ok({ host: "github.com", account: "pmquan2cfw" }));
+    ).resolves.toEqual(ok({ host: "github.com", account: "octo-dev" }));
     expect(server.requests()[0]?.url).toBe("/user");
   });
 
@@ -104,7 +104,7 @@ describe("reads served over the real HTTP client", () => {
     expect(server.requests()[0]?.url).toBe("/graphql");
     expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
       query: mergePolicyQuery,
-      variables: { owner: "centraldigital", name: "patchdesk", number: 42 },
+      variables: { owner: "octo-org", name: "patchdesk", number: 42 },
     });
   });
 
@@ -115,7 +115,7 @@ describe("reads served over the real HTTP client", () => {
 
     expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
       query: threadQuery,
-      variables: { owner: "centraldigital", name: "patchdesk", number: 42 },
+      variables: { owner: "octo-org", name: "patchdesk", number: 42 },
     });
   });
 
@@ -125,7 +125,7 @@ describe("reads served over the real HTTP client", () => {
     await adapter().searchMaintainerPullRequests({
       profile,
       repo: pr,
-      searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+      searchQuery: "repo:octo-org/patchdesk is:pr is:open",
       state: "open",
       pageSize: 25,
       cursor: "Y3Vyc29yOnYyOpHOAAE",
@@ -134,7 +134,7 @@ describe("reads served over the real HTTP client", () => {
     expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
       query: maintainerInboxSearchQuery,
       variables: {
-        search: "repo:centraldigital/patchdesk is:pr is:open",
+        search: "repo:octo-org/patchdesk is:pr is:open",
         first: 25,
         cursor: "Y3Vyc29yOnYyOpHOAAE",
       },
@@ -177,7 +177,7 @@ describe("reads served over the real HTTP client", () => {
       expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
         query: assignableUsersQuery,
         variables: {
-          owner: "centraldigital",
+          owner: "octo-org",
           name: "patchdesk",
           search: inferred,
         },
@@ -199,7 +199,7 @@ describe("reads served over the real HTTP client", () => {
       expect(JSON.parse(server.requests()[0]?.body ?? "")).toEqual({
         query: repositoryBranchesQuery,
         variables: {
-          owner: "centraldigital",
+          owner: "octo-org",
           name: "patchdesk",
           search: typed,
         },
@@ -226,7 +226,7 @@ describe("reads served over the real HTTP client", () => {
     await github.searchMaintainerPullRequests({
       profile,
       repo: pr,
-      searchQuery: "repo:centraldigital/patchdesk is:pr is:open",
+      searchQuery: "repo:octo-org/patchdesk is:pr is:open",
       state: "open",
       pageSize: 25,
     });

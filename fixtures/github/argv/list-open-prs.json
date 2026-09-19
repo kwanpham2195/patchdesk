@@ -3,5 +3,5 @@
   "api",
   "--hostname",
   "github.com",
-  "repos/centraldigital/patchdesk/pulls?state=open&per_page=100"
+  "repos/octo-org/patchdesk/pulls?state=open&per_page=100"
 ]

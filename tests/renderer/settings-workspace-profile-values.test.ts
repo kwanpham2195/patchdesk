@@ -29,21 +29,21 @@ describe("rowsFor", () => {
   it("gives one row per persisted folder", () => {
     const rows = rowsFor(
       profileValuesFor({
-        id: "cfw",
-        label: "CFW",
+        id: "acme",
+        label: "ACME",
         githubHost: "github.com",
         ghAccount: "patchdesk",
-        workspaceRoots: ["/workspace/cfw", "/workspace/other"],
-        rulePaths: ["/workspace/cfw/AGENTS.md"],
+        workspaceRoots: ["/workspace/acme", "/workspace/other"],
+        rulePaths: ["/workspace/acme/AGENTS.md"],
       }),
     );
 
     expect(rows.workspaceRoots.map((entry) => entry.value)).toEqual([
-      "/workspace/cfw",
+      "/workspace/acme",
       "/workspace/other",
     ]);
     expect(rows.rulePaths.map((entry) => entry.value)).toEqual([
-      "/workspace/cfw/AGENTS.md",
+      "/workspace/acme/AGENTS.md",
     ]);
   });
 });

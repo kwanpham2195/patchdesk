@@ -47,12 +47,12 @@ describe("desktop hardening", () => {
   });
 
   it("opens only exact allowlisted HTTPS hosts without embedded credentials", async () => {
-    const allowed = normalizeExternalHosts(["github.com", "git.cfw.example"]);
+    const allowed = normalizeExternalHosts(["github.com", "git.acme.example"]);
     const openExternal = vi.fn(async () => undefined);
 
     await expect(
       openAllowedExternalUrl(
-        "https://github.com/centraldigital/patchdesk/pull/42",
+        "https://github.com/octo-org/patchdesk/pull/42",
         allowed,
         openExternal,
       ),
@@ -60,10 +60,10 @@ describe("desktop hardening", () => {
     expect(openExternal).toHaveBeenCalledOnce();
 
     for (const url of [
-      "http://github.com/centraldigital/patchdesk",
-      "https://github.com.evil.example/centraldigital/patchdesk",
-      "https://user:password@github.com/centraldigital/patchdesk",
-      "https://github.com:8443/centraldigital/patchdesk",
+      "http://github.com/octo-org/patchdesk",
+      "https://github.com.evil.example/octo-org/patchdesk",
+      "https://user:password@github.com/octo-org/patchdesk",
+      "https://github.com:8443/octo-org/patchdesk",
       "javascript:alert(1)",
       "file:///tmp/review.html",
     ]) {
@@ -83,9 +83,9 @@ describe("desktop hardening", () => {
     expect(openExternal).toHaveBeenCalledOnce();
 
     for (const url of [
-      "http://github.com/centraldigital/patchdesk",
-      "https://user:password@github.com/centraldigital/patchdesk",
-      "https://github.com:8443/centraldigital/patchdesk",
+      "http://github.com/octo-org/patchdesk",
+      "https://user:password@github.com/octo-org/patchdesk",
+      "https://github.com:8443/octo-org/patchdesk",
       "javascript:alert(1)",
       "file:///tmp/review.html",
     ]) {

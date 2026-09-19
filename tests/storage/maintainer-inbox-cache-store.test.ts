@@ -51,17 +51,17 @@ async function fixtureStore(): Promise<{
   directories.push(root);
   return {
     store: new MaintainerInboxCacheStore(PatchdeskPaths.forTest(root)),
-    profileId: must(parseWorkspaceProfileId("cfw")),
+    profileId: must(parseWorkspaceProfileId("acme")),
   };
 }
 
 const updatedAt = must(parseIsoTimestamp("2026-07-18T00:00:00.000Z"));
 const sha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
 const earlierSha = must(parseGitSha("1".repeat(40)));
-const cfw = must(parseWorkspaceProfileId("cfw"));
+const acme = must(parseWorkspaceProfileId("acme"));
 const repository = {
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
 };
 
@@ -76,7 +76,7 @@ describe("maintainer inbox cache store", () => {
           remoteState: "open" as const,
           identity: {
             host: must(parseGitHubHost("github.com")),
-            owner: must(parseGitHubOwner("centraldigital")),
+            owner: must(parseGitHubOwner("octo-org")),
             repo: must(parseGitHubRepoName("patchdesk")),
             number: must(parsePullRequestNumber(42)),
           },
@@ -93,7 +93,7 @@ describe("maintainer inbox cache store", () => {
           mergeability: "unknown" as const,
           latestReview: {
             reviewId: createReviewId({
-              profileId: cfw,
+              profileId: acme,
               ...repository,
               prNumber: must(parsePullRequestNumber(42)),
             }),
@@ -133,7 +133,7 @@ describe("maintainer inbox cache store", () => {
       remoteState: "open" as const,
       identity: {
         host: must(parseGitHubHost("github.com")),
-        owner: must(parseGitHubOwner("centraldigital")),
+        owner: must(parseGitHubOwner("octo-org")),
         repo: must(parseGitHubRepoName("patchdesk")),
         number: must(parsePullRequestNumber(42)),
       },
@@ -187,7 +187,7 @@ describe("maintainer inbox cache store", () => {
           remoteState: "open" as const,
           identity: {
             host: must(parseGitHubHost("github.com")),
-            owner: must(parseGitHubOwner("centraldigital")),
+            owner: must(parseGitHubOwner("octo-org")),
             repo: must(parseGitHubRepoName("patchdesk")),
             number: must(parsePullRequestNumber(42)),
           },
@@ -237,7 +237,7 @@ describe("maintainer inbox cache store", () => {
       remoteState: "open",
       identity: {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       },
@@ -264,7 +264,7 @@ describe("maintainer inbox cache store", () => {
       repository: {
         identity: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
         },
         state: "ready",
@@ -284,7 +284,7 @@ describe("maintainer inbox cache store", () => {
           remoteState: "open",
           identity: {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number: 42,
           },
@@ -309,7 +309,7 @@ describe("maintainer inbox cache store", () => {
       repository: {
         identity: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
         },
         state: "ready",
@@ -356,7 +356,7 @@ describe("maintainer inbox cache store", () => {
           remoteState: "open" as const,
           identity: {
             host: must(parseGitHubHost("github.com")),
-            owner: must(parseGitHubOwner("centraldigital")),
+            owner: must(parseGitHubOwner("octo-org")),
             repo: must(parseGitHubRepoName("patchdesk")),
             number: must(parsePullRequestNumber(42)),
           },
@@ -406,7 +406,7 @@ describe("maintainer inbox cache store", () => {
           remoteState: "open",
           identity: {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number: 42,
           },
@@ -431,7 +431,7 @@ describe("maintainer inbox cache store", () => {
       repository: {
         identity: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
         },
         state: "ready",
@@ -458,7 +458,7 @@ describe("maintainer inbox cache store", () => {
         {
           identity: {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number: 42,
           },
@@ -484,7 +484,7 @@ describe("maintainer inbox cache store", () => {
       repository: {
         identity: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
         },
         state: "ready",
@@ -515,7 +515,7 @@ describe("maintainer inbox cache store", () => {
         {
           identity: {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             number: 42,
           },
@@ -534,14 +534,12 @@ describe("maintainer inbox cache store", () => {
           recommendedAction: {
             kind: "open_saved_review",
             label: "Open Review",
-            reviewId:
-              "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+            reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
           },
           secondaryAction: {
             kind: "open_merge_readiness",
             label: "Open merge readiness",
-            reviewId:
-              "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+            reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
           },
           dataFreshness: "fresh",
         },
@@ -549,7 +547,7 @@ describe("maintainer inbox cache store", () => {
       repository: {
         identity: {
           host: "github.com",
-          owner: "centraldigital",
+          owner: "octo-org",
           repo: "patchdesk",
         },
         state: "ready",
@@ -577,7 +575,7 @@ describe("maintainer inbox cache store", () => {
           remoteState: "open" as const,
           identity: {
             host: must(parseGitHubHost("github.com")),
-            owner: must(parseGitHubOwner("centraldigital")),
+            owner: must(parseGitHubOwner("octo-org")),
             repo: must(parseGitHubRepoName("patchdesk")),
             number: must(parsePullRequestNumber(42)),
           },
@@ -642,7 +640,7 @@ describe("maintainer inbox cache store", () => {
           remoteState: "open" as const,
           identity: {
             host: must(parseGitHubHost("github.com")),
-            owner: must(parseGitHubOwner("centraldigital")),
+            owner: must(parseGitHubOwner("octo-org")),
             repo: must(parseGitHubRepoName("patchdesk")),
             number: must(parsePullRequestNumber(43)),
           },
@@ -666,7 +664,7 @@ describe("maintainer inbox cache store", () => {
                 required: "unknown" as const,
                 status: "completed" as const,
                 conclusion: "failure" as const,
-                url: "https://github.com/centraldigital/patchdesk/runs/1",
+                url: "https://github.com/octo-org/patchdesk/runs/1",
               },
             ],
           },

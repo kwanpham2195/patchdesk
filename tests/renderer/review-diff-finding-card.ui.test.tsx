@@ -98,12 +98,11 @@ describe("inline finding cards", () => {
   });
 });
 
-const imageMarkdown =
-  "![Screenshot](/centraldigital/patchdesk/raw/main/shot.png)";
+const imageMarkdown = "![Screenshot](/octo-org/patchdesk/raw/main/shot.png)";
 
 const pullRequest = (() => {
   const parsed = parsePullRequestInput(
-    "https://github.com/centraldigital/patchdesk/pull/42",
+    "https://github.com/octo-org/patchdesk/pull/42",
   );
   if (parsed._tag === "err") throw new Error("Fixture pull request is invalid");
   return parsed.value;
@@ -211,7 +210,7 @@ describe("inline card body context", () => {
 
       renderAnnotationCard(overlay, {
         pullRequest,
-        profileId: "centraldigital",
+        profileId: "octo-org",
       });
 
       const image = await screen.findByRole("img", { name: "Screenshot" });

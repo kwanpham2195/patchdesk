@@ -19,7 +19,7 @@ const must = <T>(result: Result<T, unknown>): T =>
     : (() => {
         throw new Error("fixture");
       })();
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const headSha = must(parseGitSha("1".repeat(40)));
 const baseSha = must(parseGitSha("0".repeat(40)));
 const commitSha = must(parseGitSha("2".repeat(40)));
@@ -27,7 +27,7 @@ const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const identity = {
   profileId,
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
 };

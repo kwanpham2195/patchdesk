@@ -92,7 +92,7 @@ const untitledSameRepo = {
 // spans two owners as well as two repositories.
 const otherOwner = {
   reviewId: "review-other-owner",
-  owner: "centraldigital",
+  owner: "octo-org",
   repo: "acme-api",
   number: 98,
   sortedAt: OPENED_AT,
@@ -214,7 +214,7 @@ describe("VisitedPullRequests", () => {
     expect(row.textContent).toContain("kwanpham2195/patchdesk#125 · ");
     // The titleless row carries the same rule in its fallback label.
     expect(screen.getByRole("button", { name: /#98/ }).textContent).toContain(
-      "centraldigital/acme-api#98",
+      "octo-org/acme-api#98",
     );
   });
 

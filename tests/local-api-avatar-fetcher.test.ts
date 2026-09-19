@@ -59,7 +59,7 @@ function summary() {
   return {
     ref: {
       host: "github.com",
-      owner: "centraldigital",
+      owner: "octo-org",
       repo: "patchdesk",
       number: 1,
     },
@@ -82,9 +82,9 @@ function summary() {
 async function seedRepresentedReview(
   paths: PatchdeskPaths,
 ): Promise<{ readonly reviewId: string }> {
-  const profileId = must(parseWorkspaceProfileId("cfw"));
+  const profileId = must(parseWorkspaceProfileId("acme"));
   const host = must(parseGitHubHost("github.com"));
-  const owner = must(parseGitHubOwner("centraldigital"));
+  const owner = must(parseGitHubOwner("octo-org"));
   const repo = must(parseGitHubRepoName("patchdesk"));
   const number = must(parsePullRequestNumber(1));
   const headSha = must(parseGitSha("abcdef1234567890abcdef1234567890abcdef12"));
@@ -92,8 +92,8 @@ async function seedRepresentedReview(
   await new ProfileStore(paths).save(
     must(
       parseWorkspaceProfileConfig({
-        id: "cfw",
-        label: "CFW",
+        id: "acme",
+        label: "ACME",
         githubHost: "github.com",
         ghAccount: "fixture",
         workspaceRoots: [],
@@ -237,7 +237,7 @@ describe("local API avatar fetcher configuration seam", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        profileId: "cfw",
+        profileId: "acme",
         reviewId: seeded.reviewId,
       }),
     });

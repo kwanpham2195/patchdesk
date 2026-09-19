@@ -42,7 +42,7 @@ function must<T>(result: Result<T, unknown>): T {
   return result.value;
 }
 
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const headSha = must(parseGitSha("1".repeat(40)));
 const baseSha = must(parseGitSha("b".repeat(40)));
 const patchHash = must(parseContentHash("a".repeat(64)));
@@ -50,7 +50,7 @@ const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const identity: ReviewIdentity = {
   profileId,
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
 };

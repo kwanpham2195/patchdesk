@@ -150,7 +150,7 @@ describe("review checks", () => {
   it("opens a same-host check URL through the desktop bridge instead of a native anchor", async () => {
     const user = userEvent.setup();
     const parsed = parsePullRequestInput(
-      "https://github.com/centraldigital/patchdesk/pull/42",
+      "https://github.com/octo-org/patchdesk/pull/42",
     );
     if (parsed._tag === "err")
       throw new Error("Fixture pull request is invalid");
@@ -168,7 +168,7 @@ describe("review checks", () => {
               required: true,
               status: "completed",
               conclusion: "success",
-              url: "/centraldigital/patchdesk/actions/runs/1",
+              url: "/octo-org/patchdesk/actions/runs/1",
             },
           ],
         }}
@@ -180,7 +180,7 @@ describe("review checks", () => {
       screen.getByRole("button", { name: "Open unit in GitHub" }),
     );
     expect(openExternalHttps).toHaveBeenCalledWith(
-      "https://github.com/centraldigital/patchdesk/actions/runs/1",
+      "https://github.com/octo-org/patchdesk/actions/runs/1",
     );
   });
 });

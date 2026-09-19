@@ -47,12 +47,12 @@ describe("log entry redaction", () => {
       apiKey: "k-123",
       password: "hunter2",
       token: "t-1",
-      profileId: "cfw",
+      profileId: "acme",
       status: 500,
       path: "/tmp/workspace",
     });
     expect(meta).toEqual({
-      profileId: "cfw",
+      profileId: "acme",
       status: 500,
       path: "/tmp/workspace",
     });

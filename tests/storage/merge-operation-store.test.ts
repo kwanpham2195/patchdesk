@@ -19,19 +19,19 @@ describe("MergeOperationStore", () => {
     roots.push(root);
     const sessionId =
       // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-      "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab" as never;
+      "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab" as never;
     const reviewId =
       // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-      "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+      "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const operation = {
       operationId: "merge-1",
-      profileId: "cfw",
+      profileId: "acme",
       reviewId,
       sessionId,
       pr: {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       },
@@ -44,10 +44,12 @@ describe("MergeOperationStore", () => {
     const store = new MergeOperationStore(PatchdeskPaths.forTest(root));
     await expect(store.begin(operation)).resolves.toMatchObject({ _tag: "ok" });
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-    await expect(store.load("cfw" as never, sessionId)).resolves.toMatchObject({
-      _tag: "ok",
-      value: { reviewId },
-    });
+    await expect(store.load("acme" as never, sessionId)).resolves.toMatchObject(
+      {
+        _tag: "ok",
+        value: { reviewId },
+      },
+    );
   });
 
   it("does not overwrite unresolved merge evidence", async () => {
@@ -55,19 +57,19 @@ describe("MergeOperationStore", () => {
     roots.push(root);
     const sessionId =
       // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-      "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab" as never;
+      "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-12345678__0123456789ab" as never;
     const reviewId =
       // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-      "github.com__centraldigital__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
+      "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa" as never;
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const operation = {
       operationId: "merge-1",
-      profileId: "cfw",
+      profileId: "acme",
       reviewId,
       sessionId,
       pr: {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       },
@@ -84,12 +86,12 @@ describe("MergeOperationStore", () => {
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     const retry = {
       operationId: "merge-2",
-      profileId: "cfw",
+      profileId: "acme",
       reviewId,
       sessionId,
       pr: {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         number: 42,
       },
@@ -104,9 +106,11 @@ describe("MergeOperationStore", () => {
       error: { _tag: "MergeOperationExists" },
     });
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
-    await expect(store.load("cfw" as never, sessionId)).resolves.toMatchObject({
-      _tag: "ok",
-      value: { operationId: "merge-1", state: { _tag: "OutcomeUnknown" } },
-    });
+    await expect(store.load("acme" as never, sessionId)).resolves.toMatchObject(
+      {
+        _tag: "ok",
+        value: { operationId: "merge-1", state: { _tag: "OutcomeUnknown" } },
+      },
+    );
   });
 });

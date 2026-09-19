@@ -20,12 +20,12 @@ import {
 } from "./fake-desktop-response";
 
 const profile = {
-  id: "cfw",
-  label: "CFW",
+  id: "acme",
+  label: "ACME",
   githubHost: "github.com",
   ghAccount: "patchdesk",
-  workspaceRoots: ["/workspace/cfw"],
-  rulePaths: ["/workspace/cfw/AGENTS.md"],
+  workspaceRoots: ["/workspace/acme"],
+  rulePaths: ["/workspace/acme/AGENTS.md"],
 };
 
 const dashboard = { profile, dashboard: { repos: [] } };
@@ -156,7 +156,7 @@ describe("SettingsModal", () => {
       expect(desktopApi.request).toHaveBeenCalledWith({
         path: "/v1/storage/clear-local-data",
         method: "POST",
-        body: { profileId: "cfw" },
+        body: { profileId: "acme" },
       }),
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -282,7 +282,7 @@ describe("SettingsModal", () => {
 
     await waitFor(() =>
       expect(desktopApi.request).toHaveBeenCalledWith({
-        path: "/v1/diagnostics?profileId=cfw",
+        path: "/v1/diagnostics?profileId=acme",
       }),
     );
     expect(within(activityCard).getAllByRole("status")).toHaveLength(1);
@@ -427,7 +427,7 @@ describe("SettingsModal", () => {
     );
 
     expect(
-      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.cfw"),
+      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.acme"),
     ).toBe(
       JSON.stringify({
         provider: "pi",
@@ -479,7 +479,7 @@ describe("SettingsModal", () => {
     await user.click(screen.getByRole("option", { name: "Extra high" }));
 
     expect(
-      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.cfw"),
+      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.acme"),
     ).toBe(
       JSON.stringify({
         provider: "pi",
@@ -491,7 +491,7 @@ describe("SettingsModal", () => {
 
   it("does not overwrite a Codex-provider Analysis preference just by opening Settings", async () => {
     window.localStorage.setItem(
-      "patchdesk.insight-run.v1.analysis.cfw",
+      "patchdesk.insight-run.v1.analysis.acme",
       JSON.stringify({
         provider: "codex-cli-account",
         model: "gpt-5-codex",
@@ -525,7 +525,7 @@ describe("SettingsModal", () => {
     await screen.findByRole("combobox", { name: "Default model" });
 
     expect(
-      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.cfw"),
+      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.acme"),
     ).toBe(
       JSON.stringify({
         provider: "codex-cli-account",
@@ -573,7 +573,7 @@ describe("SettingsModal", () => {
     await user.keyboard("{ArrowDown}{Enter}");
 
     expect(
-      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.cfw"),
+      window.localStorage.getItem("patchdesk.insight-run.v1.analysis.acme"),
     ).toBe(
       JSON.stringify({
         provider: "pi",
@@ -663,7 +663,7 @@ function installDesktopApi(
     // is mistaken for a settings request.
     "/v1/logs": () => success({ entries: [] }),
     "/v1/watchlist/suggestions": () =>
-      success([{ root: "/workspace/cfw", state: "ready", repositories: [] }]),
+      success([{ root: "/workspace/acme", state: "ready", repositories: [] }]),
     "/v1/insight-providers": () => success(options.models ?? {}),
     "/v1/diagnostics": () =>
       options.activityFails === true

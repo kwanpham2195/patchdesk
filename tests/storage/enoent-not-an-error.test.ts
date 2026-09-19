@@ -53,11 +53,11 @@ const must = <T>(result: Result<T, unknown>): T => {
   if (result._tag === "ok") return result.value;
   throw new Error("fixture");
 };
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const reviewId = createReviewId({
   profileId,
   host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("centraldigital")),
+  owner: must(parseGitHubOwner("octo-org")),
   repo: must(parseGitHubRepoName("patchdesk")),
   prNumber: must(parsePullRequestNumber(42)),
 });

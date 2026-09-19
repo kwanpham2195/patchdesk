@@ -74,7 +74,7 @@ describe("review diff hydration", () => {
         collapsedPaths={new Set()}
         onPreferencesChange={() => undefined}
         onCollapsedPathsChange={() => undefined}
-        sourceSession={{ profileId: "cfw", sessionId: "session" }}
+        sourceSession={{ profileId: "acme", sessionId: "session" }}
         virtualized={false}
       />,
     );

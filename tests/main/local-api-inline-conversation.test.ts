@@ -81,8 +81,7 @@ async function postCommand(
     },
     body: JSON.stringify({
       profileId: "profile",
-      reviewId:
-        "github.com__centraldigital__patchdesk__pr-42__review-abcdef123456",
+      reviewId: "github.com__octo-org__patchdesk__pr-42__review-abcdef123456",
       command,
     }),
   });
@@ -127,7 +126,7 @@ describe("POST /v1/reviews/inline-conversations/command parse failures", () => {
       _tag: "CreateComment",
       expected: {
         sessionId:
-          "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__abcdef123456",
+          "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__abcdef123456",
         headSha: "a".repeat(40),
         patchHash: "c".repeat(64),
       },

@@ -30,12 +30,12 @@ function must<T>(result: Result<T, unknown>): T {
   return result.value;
 }
 
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const headSha = must(parseGitSha("1".repeat(40)));
 const baseSha = must(parseGitSha("b".repeat(40)));
 const createdAt = must(parseIsoTimestamp("2026-01-01T00:00:00.000Z"));
 const host = must(parseGitHubHost("github.com"));
-const owner = must(parseGitHubOwner("centraldigital"));
+const owner = must(parseGitHubOwner("octo-org"));
 const repo = must(parseGitHubRepoName("patchdesk"));
 
 /** One stored Review per pull request number, with the timestamps under test. */

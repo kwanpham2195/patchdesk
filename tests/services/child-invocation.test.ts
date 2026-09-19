@@ -73,7 +73,7 @@ describe("resolveWalkthroughTimeoutMs", () => {
 /** The same artifacts as above, dressed as the child's own input. */
 async function walkthroughInput(): Promise<WalkthroughInput> {
   return {
-    profileId: "cfw",
+    profileId: "acme",
     sessionId: "session",
     model: "test-model",
     reasoning: "medium",

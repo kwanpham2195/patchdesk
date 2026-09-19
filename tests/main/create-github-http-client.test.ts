@@ -38,11 +38,11 @@ describe("createGitHubHttpClient", () => {
     await client.rest(profile, {
       kind: "rest",
       host: "github.com",
-      path: "repos/centraldigital/patchdesk/pulls?state=open",
+      path: "repos/octo-org/patchdesk/pulls?state=open",
     });
 
     expect(urls).toEqual([
-      "https://api.github.com/repos/centraldigital/patchdesk/pulls?state=open",
+      "https://api.github.com/repos/octo-org/patchdesk/pulls?state=open",
     ]);
   });
 
@@ -55,7 +55,7 @@ describe("createGitHubHttpClient", () => {
     await client.rest(profile, {
       kind: "rest",
       host: "github.com",
-      path: "repos/centraldigital/patchdesk/branches/main/protection",
+      path: "repos/octo-org/patchdesk/branches/main/protection",
     });
 
     expect(logs.entries).toHaveLength(1);
@@ -69,6 +69,6 @@ describe("createGitHubHttpClient", () => {
         status: 404,
       },
     });
-    expect(JSON.stringify(logs.entries[0])).not.toContain("centraldigital");
+    expect(JSON.stringify(logs.entries[0])).not.toContain("octo-org");
   });
 });

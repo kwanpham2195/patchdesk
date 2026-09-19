@@ -31,10 +31,10 @@ function must<T>(result: Result<T, unknown>): T {
   return result.value;
 }
 
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const otherProfileId = must(parseWorkspaceProfileId("other"));
 const host = must(parseGitHubHost("github.com"));
-const owner = must(parseGitHubOwner("centraldigital"));
+const owner = must(parseGitHubOwner("octo-org"));
 const repo = must(parseGitHubRepoName("patchdesk"));
 const anotherRepo = must(parseGitHubRepoName("patchdesk-fork"));
 const prNumber = must(parsePullRequestNumber(42));

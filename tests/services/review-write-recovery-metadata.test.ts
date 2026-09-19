@@ -51,10 +51,10 @@ describe("metadata recovery evidence", () => {
   ): ReviewWriteOperation => {
     const parsed = parseReviewWriteOperation({
       schemaVersion: 1,
-      profileId: "cfw",
-      reviewId: "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+      profileId: "acme",
+      reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
       sessionId:
-        "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
+        "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
       intent,
       state: { _tag: "OutcomeUnknown", resolution: "check_required" },
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -171,7 +171,7 @@ describe("metadata recovery evidence", () => {
           id: value.sessionId,
           key: {
             host: "github.com",
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
             prNumber: 42,
             headSha: "1".repeat(40),
@@ -229,10 +229,10 @@ describe("metadata recovery evidence", () => {
     // path leaves it, so recovery reads it back before appending its own.
     const parsed = parseReviewWriteOperation({
       schemaVersion: 1,
-      profileId: "cfw",
-      reviewId: "cfw__centraldigital__patchdesk__pr-42__review-abcdef123456",
+      profileId: "acme",
+      reviewId: "acme__octo-org__patchdesk__pr-42__review-abcdef123456",
       sessionId:
-        "github.com__centraldigital__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
+        "github.com__octo-org__patchdesk__pr-42__sha-11111111__base-22222222__abcdef123456",
       intent: { _tag: "SetDraftState", draft: true },
       state: {
         _tag: "Confirmed",

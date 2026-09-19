@@ -10,7 +10,7 @@ import { ok } from "../../src/domain/result";
 
 // SAFETY: InboxRefreshCoordinator reads only the profile id to separate
 // in-flight requests; these fixtures provide that sole dependency.
-const profile = { id: "cfw" } as WorkspaceProfileConfig;
+const profile = { id: "acme" } as WorkspaceProfileConfig;
 // SAFETY: InboxRefreshCoordinator reads only the profile id to separate
 // in-flight requests; these fixtures provide that sole dependency.
 const secondProfile = { id: "other" } as WorkspaceProfileConfig;
@@ -19,14 +19,14 @@ const secondProfile = { id: "other" } as WorkspaceProfileConfig;
 // types this fixture never needs to parse.
 const repository = {
   host: "github.com",
-  owner: "centraldigital",
+  owner: "octo-org",
   repo: "patchdesk",
 } as InboxRepositoryRef;
 // SAFETY: same rationale as `repository` above — a second, distinct watched
 // repository under the same profile.
 const secondRepository = {
   host: "github.com",
-  owner: "centraldigital",
+  owner: "octo-org",
   repo: "other-repo",
 } as InboxRepositoryRef;
 const inbox = {

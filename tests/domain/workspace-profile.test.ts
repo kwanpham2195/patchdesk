@@ -53,7 +53,7 @@ describe("retired profile settings", () => {
   it("still loads a profile stored with the removed owner-filter key, dropping it", () => {
     const parsed = parseWorkspaceProfileConfig({
       ...profile,
-      ownerFilters: ["centraldigital"],
+      ownerFilters: ["octo-org"],
     });
 
     expect(parsed).toMatchObject({ _tag: "ok", value: { id: "fixture" } });

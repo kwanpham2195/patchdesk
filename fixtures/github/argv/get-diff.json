@@ -5,5 +5,5 @@
   "github.com",
   "-H",
   "Accept: application/vnd.github.v3.diff",
-  "repos/centraldigital/patchdesk/compare/1234567890abcdef1234567890abcdef12345678...abcdef1234567890abcdef1234567890abcdef12"
+  "repos/octo-org/patchdesk/compare/1234567890abcdef1234567890abcdef12345678...abcdef1234567890abcdef1234567890abcdef12"
 ]

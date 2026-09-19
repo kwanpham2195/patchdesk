@@ -50,7 +50,7 @@ function mustParse<T, E>(result: Result<T, E>): T {
 
 const pr: PullRequestRef = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(42)),
 };
@@ -88,14 +88,14 @@ const compareRequest: GitHubRestRequest = {
   kind: "rest",
   host: "github.com",
   accept: "application/vnd.github.v3.diff",
-  path: `repos/centraldigital/patchdesk/compare/${baseSha}...${headSha}`,
+  path: `repos/octo-org/patchdesk/compare/${baseSha}...${headSha}`,
 };
 
 const commitsRequest: GitHubRestRequest = {
   kind: "rest",
   paginate: true,
   host: "github.com",
-  path: "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
+  path: "repos/octo-org/patchdesk/pulls/42/commits?per_page=100",
 };
 
 /** One commit list entry, as `pullRequestCommitSchema` reads it. */
@@ -136,7 +136,7 @@ function pagedCommits(
     if (firstPage) {
       headers.set(
         "Link",
-        `<http://127.0.0.1:${port}/repos/centraldigital/patchdesk/pulls/42/commits?per_page=100&page=2>; rel="next"`,
+        `<http://127.0.0.1:${port}/repos/octo-org/patchdesk/pulls/42/commits?per_page=100&page=2>; rel="next"`,
       );
     }
     response.writeHead(200, Object.fromEntries(headers));
@@ -279,8 +279,8 @@ describe("the paginated commits read over HTTP", () => {
       JSON.stringify([first, second]),
     );
     expect(server.requests().map((request) => request.url)).toEqual([
-      "/repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
-      "/repos/centraldigital/patchdesk/pulls/42/commits?per_page=100&page=2",
+      "/repos/octo-org/patchdesk/pulls/42/commits?per_page=100",
+      "/repos/octo-org/patchdesk/pulls/42/commits?per_page=100&page=2",
     ]);
   });
 

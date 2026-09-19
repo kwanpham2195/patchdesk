@@ -703,7 +703,7 @@ describe("InsightRunCoordinator desktop notifications", () => {
         insightType: "analysis",
         outcome: "completed",
         pullRequest: expect.objectContaining({
-          owner: "centraldigital",
+          owner: "octo-org",
           number: 42,
         }),
       }),

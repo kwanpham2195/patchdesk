@@ -25,7 +25,7 @@ async function storeFixture(): Promise<{
   return { paths, store: new WatchedPullRequestStore(paths) };
 }
 
-const profile = parseWorkspaceProfileId("cfw");
+const profile = parseWorkspaceProfileId("acme");
 const list = parseWatchedPullRequests([
   {
     ref: { host: "github.com", owner: "acme", repo: "widgets", number: 7 },

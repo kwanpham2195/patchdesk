@@ -39,11 +39,11 @@ afterEach(async () => {
 
 const current = {
   schemaVersion: 6,
-  id: "github.com__centraldigital__patchdesk__pr-42__sha-abcdef12__base-12345678__8492b7d8150b",
+  id: "github.com__octo-org__patchdesk__pr-42__sha-abcdef12__base-12345678__0590d6532d32",
   key: {
-    profileId: "cfw",
+    profileId: "acme",
     host: "github.com",
-    owner: "centraldigital",
+    owner: "octo-org",
     repo: "patchdesk",
     prNumber: 42,
     headSha: "abcdef1234567890abcdef1234567890abcdef12",
@@ -168,11 +168,11 @@ describe("ReviewSession storage", () => {
     roots.push(root);
     const paths = PatchdeskPaths.forTest(root);
     const store = new ReviewSessionStore(paths);
-    const profileId = must(parseWorkspaceProfileId("cfw"));
+    const profileId = must(parseWorkspaceProfileId("acme"));
     const key = {
       profileId,
       host: must(parseGitHubHost("github.com")),
-      owner: must(parseGitHubOwner("centraldigital")),
+      owner: must(parseGitHubOwner("octo-org")),
       repo: must(parseGitHubRepoName("patchdesk")),
       prNumber: must(parsePullRequestNumber(42)),
       headSha: must(parseGitSha("a".repeat(40))),

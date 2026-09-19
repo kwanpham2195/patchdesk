@@ -644,7 +644,7 @@ describe("AssigneeService", () => {
       expect(listAssignableUsers).toHaveBeenCalledWith(
         expect.objectContaining({
           repo: expect.objectContaining({
-            owner: "centraldigital",
+            owner: "octo-org",
             repo: "patchdesk",
           }),
         }),

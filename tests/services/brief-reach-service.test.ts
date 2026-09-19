@@ -21,11 +21,11 @@ const must = <T>(value: Result<T, unknown>): T => {
   if (value._tag === "ok") return value.value;
   throw new Error("fixture value is invalid");
 };
-const profileId = must(parseWorkspaceProfileId("cfw"));
+const profileId = must(parseWorkspaceProfileId("acme"));
 const headSha = "a".repeat(40);
 const sessionId = must(
   parseReviewSessionId(
-    "github.com__centraldigital__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__aaaaaaaaaaaa",
+    "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__aaaaaaaaaaaa",
   ),
 );
 

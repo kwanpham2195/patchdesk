@@ -145,11 +145,11 @@ export type ReviewRefreshFixtureCalls = {
 
 /** Create parsed, valid domain values for one refresh test. */
 export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
-  const profileId = must(parseWorkspaceProfileId("cfw"));
+  const profileId = must(parseWorkspaceProfileId("acme"));
   const identity = {
     profileId,
     host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("centraldigital")),
+    owner: must(parseGitHubOwner("octo-org")),
     repo: must(parseGitHubRepoName("patchdesk")),
     prNumber: must(parsePullRequestNumber(42)),
   } satisfies ReviewIdentity;

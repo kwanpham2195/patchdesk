@@ -29,12 +29,12 @@ function requireFixture<T, E>(result: Result<T, E>): T {
 }
 
 const parsedRepository = requireFixture(
-  parsePullRequestInput("centraldigital/patchdesk#1"),
+  parsePullRequestInput("octo-org/patchdesk#1"),
 );
 const repository: InboxRepositoryRef = parsedRepository;
 const profile = requireFixture(
   parseWorkspaceProfileConfig({
-    id: "cfw",
+    id: "acme",
     label: "Fixture",
     githubHost: parsedRepository.host,
     ghAccount: "fixture",
@@ -115,7 +115,7 @@ describe("MaintainerInboxService review and check filters", () => {
     });
 
     expect(searchQueries).toEqual([
-      'repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me review:approved status:failure label:"bug"',
+      'repo:octo-org/patchdesk is:pr is:open user-review-requested:@me review:approved status:failure label:"bug"',
     ]);
   });
 
@@ -191,7 +191,7 @@ describe("MaintainerInboxService author and base branch filters", () => {
     });
 
     expect(searchQueries).toEqual([
-      'repo:centraldigital/patchdesk is:pr is:open user-review-requested:@me review:approved status:failure author:"octocat" base:"release/1.0" label:"bug"',
+      'repo:octo-org/patchdesk is:pr is:open user-review-requested:@me review:approved status:failure author:"octocat" base:"release/1.0" label:"bug"',
     ]);
   });
 
@@ -208,7 +208,7 @@ describe("MaintainerInboxService author and base branch filters", () => {
     });
 
     expect(searchQueries).toEqual([
-      'repo:centraldigital/patchdesk is:pr is:open author:"@me"',
+      'repo:octo-org/patchdesk is:pr is:open author:"@me"',
     ]);
   });
 
@@ -266,7 +266,7 @@ function pullRequestEntry(
   cursor: string,
 ): MaintainerPullRequestSearchPage["entries"][number] {
   const ref = requireFixture(
-    parsePullRequestInput(`centraldigital/patchdesk#${number}`),
+    parsePullRequestInput(`octo-org/patchdesk#${number}`),
   );
   return {
     cursor,

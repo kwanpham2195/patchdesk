@@ -109,7 +109,7 @@ describe("GitHubHttpClient status classification", () => {
       path: "user",
     });
 
-    expect(credentials.forgotten).toEqual(["pmquan2cfw"]);
+    expect(credentials.forgotten).toEqual(["octo-dev"]);
   });
 
   it("reports an unmapped 4xx as a rejection carrying GitHub's message", async () => {
@@ -139,7 +139,7 @@ describe("GitHubHttpClient never reports a transport failure as a rejection", ()
         kind: "rest",
         host: "github.com",
         method: "POST",
-        path: "repos/centraldigital/patchdesk/pulls/42/reviews",
+        path: "repos/octo-org/patchdesk/pulls/42/reviews",
         jsonBody: "{}",
       });
 
@@ -160,7 +160,7 @@ describe("GitHubHttpClient never reports a transport failure as a rejection", ()
       kind: "rest",
       host: "github.com",
       method: "POST",
-      path: "repos/centraldigital/patchdesk/pulls/42/reviews",
+      path: "repos/octo-org/patchdesk/pulls/42/reviews",
       jsonBody: "{}",
     });
 
@@ -208,7 +208,7 @@ describe("GitHubHttpClient GraphQL requests", () => {
       host: "github.com",
       document: "query Repo($owner: String!) { repository { id } }",
       variables: [
-        { kind: "typed", name: "owner", value: "centraldigital" },
+        { kind: "typed", name: "owner", value: "octo-org" },
         { kind: "typed", name: "number", value: 42 },
         { kind: "string", name: "baseRefName", value: "2024" },
         { kind: "list", name: "ids", values: ["MDQ6VXNlcjE=", "MDQ6VXNlcjI="] },
@@ -223,7 +223,7 @@ describe("GitHubHttpClient GraphQL requests", () => {
     expect(JSON.parse(fixture.requests()[0]?.body ?? "")).toEqual({
       query: "query Repo($owner: String!) { repository { id } }",
       variables: {
-        owner: "centraldigital",
+        owner: "octo-org",
         number: 42,
         baseRefName: "2024",
         ids: ["MDQ6VXNlcjE=", "MDQ6VXNlcjI="],

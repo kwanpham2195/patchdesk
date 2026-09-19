@@ -125,7 +125,7 @@ describe("ReviewWorkbenchProjectionService analysis finding lock", () => {
       author: "fixture" as never,
       pr: {
         host: "github.com" as never,
-        owner: "centraldigital" as never,
+        owner: "octo-org" as never,
         repo: "patchdesk" as never,
         number: 42 as never,
       },

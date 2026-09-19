@@ -20,10 +20,10 @@ import {
 const reviewRaw = {
   restId: "4891263665",
   nodeId: "PRR_kwDORJzsQM7e6QwJ",
-  author: "pmquan2cfw",
+  author: "octo-dev",
   pr: {
     host: "github.com",
-    owner: "centraldigital",
+    owner: "octo-org",
     repo: "patchdesk",
     number: 80,
   },
@@ -198,7 +198,7 @@ describe("parsePendingReviewState", () => {
           // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           host: "github.com" as never,
           // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
-          owner: "centraldigital" as never,
+          owner: "octo-org" as never,
           // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           repo: "patchdesk" as never,
           // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
@@ -327,7 +327,7 @@ describe("unresolved Finding ownership", () => {
       findingId: "finding-1" as never,
       sessionId:
         // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
-        "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never,
+        "github.com__octo-org__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never,
       // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
       headSha: reviewRaw.headSha as never,
       // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
@@ -519,7 +519,7 @@ describe("parseFindingReviewReceipts", () => {
     if (threadId === undefined) throw new Error("fixture");
     const sessionId =
       // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
-      "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never;
+      "github.com__octo-org__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never;
     const receipt = {
       analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture",
       findingId: "finding-1",
@@ -567,7 +567,7 @@ describe("parseFindingReviewReceipts", () => {
             analysisRunId: "insight-analysis-1-aaaaaaaaaaaa-fixture",
             findingId: "finding-1",
             sessionId:
-              "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab",
+              "github.com__octo-org__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab",
             headSha: reviewRaw.headSha,
             patchHash: "a".repeat(64),
             threadId,
@@ -577,7 +577,7 @@ describe("parseFindingReviewReceipts", () => {
         ],
         {
           // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
-          id: "github.com__centraldigital__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never,
+          id: "github.com__octo-org__patchdesk__pr-80__sha-3cc09e86__base-12345678__0123456789ab" as never,
           // SAFETY: This test-only value is intentionally constructed for the parser boundary; valid values come from the production parser and malformed values exercise rejection.
           headSha: reviewRaw.headSha as never,
           pendingReview,

@@ -30,7 +30,7 @@ describe("listAuthenticatedGitHubAccounts", () => {
           {
             active: true,
             host: "github.com",
-            login: "pmquan2cfw",
+            login: "octo-dev",
             state: "success",
             scopes: ["repo", "read:org"],
             gitProtocol: "https",
@@ -62,7 +62,7 @@ describe("listAuthenticatedGitHubAccounts", () => {
     const accounts = await listAuthenticatedGitHubAccounts(commands, 10_000);
 
     expect(accounts).toEqual([
-      { host: "github.com", login: "pmquan2cfw", active: true },
+      { host: "github.com", login: "octo-dev", active: true },
       { host: "github.com", login: "kwanpham2195", active: false },
       { host: "github.com", login: "matthew-opn", active: false },
     ]);
@@ -135,7 +135,7 @@ describe("listAuthenticatedGitHubAccounts", () => {
           {
             active: true,
             host: "github.com",
-            login: "pmquan2cfw",
+            login: "octo-dev",
             state: "success",
             scopes: ["repo", "read:org"],
             gitProtocol: "https",
@@ -149,7 +149,7 @@ describe("listAuthenticatedGitHubAccounts", () => {
     const accounts = await listAuthenticatedGitHubAccounts(commands, 10_000);
 
     expect(accounts).toEqual([
-      { host: "github.com", login: "pmquan2cfw", active: true },
+      { host: "github.com", login: "octo-dev", active: true },
     ]);
     for (const account of accounts) {
       expect(Object.keys(account).sort()).toEqual(["active", "host", "login"]);

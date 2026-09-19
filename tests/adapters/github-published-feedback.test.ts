@@ -40,10 +40,10 @@ function mustParse<T, E>(
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: [],
     rulePaths: [],
     repos: [],
@@ -52,7 +52,7 @@ const profile = mustParse(
 
 const pr: PullRequestRef = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
   repo: mustParse(parseGitHubRepoName("patchdesk")),
   number: mustParse(parsePullRequestNumber(42)),
 };
@@ -71,7 +71,7 @@ function restRequest(request: GitHubRequest | undefined): GitHubRestRequest {
   return request;
 }
 
-const account = jsonAnswer({ login: "pmquan2cfw" });
+const account = jsonAnswer({ login: "octo-dev" });
 
 function pullRequestPayload() {
   return {
@@ -89,7 +89,7 @@ function pullRequestPayload() {
 
 const approvedReview = {
   id: 7,
-  user: { login: "pmquan2cfw" },
+  user: { login: "octo-dev" },
   body: "ok",
   state: "APPROVED",
   submitted_at: "2026-08-01T00:00:00Z",
@@ -97,7 +97,7 @@ const approvedReview = {
 
 const reviewComment = {
   id: 8,
-  user: { login: "pmquan2cfw" },
+  user: { login: "octo-dev" },
   body: "comment",
   created_at: "2026-08-01T00:00:00Z",
 };
@@ -193,7 +193,7 @@ describe("GitHubAdapter Published feedback capabilities", () => {
     const transport = orderedTransport(
       feedbackAnswers({
         reviews: [
-          { id: 6, user: { login: "pmquan2cfw" }, body: "", state: "PENDING" },
+          { id: 6, user: { login: "octo-dev" }, body: "", state: "PENDING" },
           approvedReview,
         ],
         comments: [],
@@ -222,13 +222,13 @@ describe("GitHubAdapter issue comments", () => {
             id: 9,
             node_id: "IC_9",
             user: {
-              login: "pmquan2cfw",
-              avatar_url: "https://avatars.example/pmquan2cfw",
+              login: "octo-dev",
+              avatar_url: "https://avatars.example/octo-dev",
             },
             body: "![shot](https://github.com/user-attachments/assets/1)",
             created_at: "2026-08-02T00:00:00Z",
             updated_at: "2026-08-03T00:00:00Z",
-            html_url: "https://github.com/centraldigital/patchdesk/pull/42",
+            html_url: "https://github.com/octo-org/patchdesk/pull/42",
           },
         ],
         permission: jsonAnswer({ role_name: "write" }),
@@ -239,7 +239,7 @@ describe("GitHubAdapter issue comments", () => {
       { profile, pr },
     );
     expect(restRequest(transport.requests[2]).path).toBe(
-      "repos/centraldigital/patchdesk/issues/42/comments?per_page=100&page=1",
+      "repos/octo-org/patchdesk/issues/42/comments?per_page=100&page=1",
     );
     expect(result).toMatchObject({
       _tag: "ok",
@@ -249,12 +249,12 @@ describe("GitHubAdapter issue comments", () => {
           {
             id: "9",
             nodeId: "IC_9",
-            author: "pmquan2cfw",
-            authorAvatarUrl: "https://avatars.example/pmquan2cfw",
+            author: "octo-dev",
+            authorAvatarUrl: "https://avatars.example/octo-dev",
             body: "![shot](https://github.com/user-attachments/assets/1)",
             createdAt: "2026-08-02T00:00:00.000Z",
             updatedAt: "2026-08-03T00:00:00.000Z",
-            url: "https://github.com/centraldigital/patchdesk/pull/42",
+            url: "https://github.com/octo-org/patchdesk/pull/42",
             canEdit: true,
             canDelete: true,
           },

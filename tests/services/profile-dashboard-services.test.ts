@@ -80,16 +80,16 @@ function mustParse<T, E>(
 
 const profile = mustParse(
   parseWorkspaceProfileConfig({
-    id: "cfw",
-    label: "CFW",
+    id: "acme",
+    label: "ACME",
     githubHost: "github.com",
-    ghAccount: "pmquan2cfw",
+    ghAccount: "octo-dev",
     workspaceRoots: ["/workspace"],
     rulePaths: [],
     repos: [
       {
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
         localPath: "/workspace/patchdesk",
       },
@@ -99,7 +99,7 @@ const profile = mustParse(
 
 const ids = {
   host: mustParse(parseGitHubHost("github.com")),
-  owner: mustParse(parseGitHubOwner("centraldigital")),
+  owner: mustParse(parseGitHubOwner("octo-org")),
 };
 
 describe("profile settings and dashboard services", () => {
@@ -117,26 +117,26 @@ describe("profile settings and dashboard services", () => {
       );
 
       const saved = await controller.saveProfile({
-        id: "cfw",
-        label: "CFW updated",
+        id: "acme",
+        label: "ACME updated",
         githubHost: "github.com",
         ghAccount: "patchdesk",
-        workspaceRoots: ["/workspace/cfw", "/workspace/platform"],
-        rulePaths: ["/workspace/cfw/AGENTS.md"],
+        workspaceRoots: ["/workspace/acme", "/workspace/platform"],
+        rulePaths: ["/workspace/acme/AGENTS.md"],
       });
 
       expect(saved).toMatchObject({
         _tag: "ok",
         value: {
-          workspaceRoots: ["/workspace/cfw", "/workspace/platform"],
-          rulePaths: ["/workspace/cfw/AGENTS.md"],
+          workspaceRoots: ["/workspace/acme", "/workspace/platform"],
+          rulePaths: ["/workspace/acme/AGENTS.md"],
           repos: [{ repo: "patchdesk" }],
         },
       });
       expect(await store.load(profile.id)).toMatchObject({
         _tag: "ok",
         value: {
-          rulePaths: ["/workspace/cfw/AGENTS.md"],
+          rulePaths: ["/workspace/acme/AGENTS.md"],
           repos: [{ repo: "patchdesk" }],
         },
       });
@@ -159,19 +159,19 @@ describe("profile settings and dashboard services", () => {
       );
 
       const created = await controller.saveProfile({
-        label: "CFW",
+        label: "ACME",
         githubHost: "github.com",
         ghAccount: "patchdesk",
         workspaceRoots: [],
         rulePaths: [],
       });
 
-      // "CFW" slugs to the stored profile's own id, so the collision suffix
+      // "ACME" slugs to the stored profile's own id, so the collision suffix
       // is what keeps the create from overwriting it.
-      expect(created).toMatchObject({ _tag: "ok", value: { id: "cfw-2" } });
+      expect(created).toMatchObject({ _tag: "ok", value: { id: "acme-2" } });
       expect(await store.load(profile.id)).toMatchObject({
         _tag: "ok",
-        value: { label: "CFW", repos: [{ repo: "patchdesk" }] },
+        value: { label: "ACME", repos: [{ repo: "patchdesk" }] },
       });
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -389,7 +389,7 @@ describe("profile settings and dashboard services", () => {
       const added = await controller.addWatchlistRepo({
         profileId: profile.id,
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "new-repo",
         localPath: "/workspace/new-repo",
       });
@@ -397,7 +397,7 @@ describe("profile settings and dashboard services", () => {
       expect(added).toMatchObject({
         _tag: "ok",
         value: {
-          id: "cfw",
+          id: "acme",
           repos: [{ repo: "patchdesk" }, { repo: "new-repo" }],
         },
       });
@@ -430,7 +430,7 @@ describe("profile settings and dashboard services", () => {
       const removed = await controller.removeWatchlistRepo({
         profileId: "gone",
         host: "github.com",
-        owner: "centraldigital",
+        owner: "octo-org",
         repo: "patchdesk",
       });
 
@@ -559,7 +559,7 @@ describe("dashboard service", () => {
           state: "ready",
           origins: [
             {
-              origin: "https://github.com/centraldigital/discovered.git",
+              origin: "https://github.com/octo-org/discovered.git",
               localPath: "/ready/discovered",
             },
           ],
@@ -577,7 +577,7 @@ describe("dashboard service", () => {
           repositories: [
             {
               host: "github.com",
-              owner: "centraldigital",
+              owner: "octo-org",
               repo: "discovered",
               localPath: "/ready/discovered",
             },
@@ -612,7 +612,7 @@ describe("dashboard service", () => {
           state: "ready",
           origins: [
             {
-              origin: "git@github.com:centraldigital/patchdesk.git",
+              origin: "git@github.com:octo-org/patchdesk.git",
               localPath: "/workspace/patchdesk",
             },
           ],
@@ -656,7 +656,7 @@ describe("dashboard service", () => {
           state: "ready",
           origins: [
             {
-              origin: "https://github.com/centraldigital/discovered.git",
+              origin: "https://github.com/octo-org/discovered.git",
               localPath: "/outer/discovered",
             },
           ],
@@ -666,7 +666,7 @@ describe("dashboard service", () => {
           state: "ready",
           origins: [
             {
-              origin: "git@github.com:centraldigital/discovered.git",
+              origin: "git@github.com:octo-org/discovered.git",
               localPath: "/outer/nested/discovered",
             },
           ],
@@ -683,7 +683,7 @@ describe("dashboard service", () => {
           repositories: [
             {
               host: "github.com",
-              owner: "centraldigital",
+              owner: "octo-org",
               repo: "discovered",
               localPath: "/outer/discovered",
             },

@@ -26,9 +26,9 @@ import { ReviewPreparationJournal } from "../../src/services/review-preparation-
 import { StorageManagementService } from "../../src/services/storage-management-service";
 
 const roots: string[] = [];
-const profileId = unwrap(parseWorkspaceProfileId("cfw"));
+const profileId = unwrap(parseWorkspaceProfileId("acme"));
 const host = unwrap(parseGitHubHost("github.com"));
-const owner = unwrap(parseGitHubOwner("centraldigital"));
+const owner = unwrap(parseGitHubOwner("octo-org"));
 const repo = unwrap(parseGitHubRepoName("patchdesk"));
 const prNumber = unwrap(parsePullRequestNumber(42));
 const headSha = unwrap(parseGitSha("a".repeat(40)));
