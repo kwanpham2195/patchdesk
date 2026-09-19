@@ -21,7 +21,6 @@ import { GitHubCollaborators } from "./github-collaborators";
 import type {
   AssignableUserListing,
   CheckSummary,
-  Conversation,
   GitHubComments,
   GitHubMergePolicyEvidence,
   GitHubPublishedFeedback,
@@ -243,7 +242,6 @@ export class GitHubAdapter
     this.conversation = new GitHubConversationReader(
       this.requests,
       this.pullRequests,
-      this.threads,
       this.mergePolicy,
       this,
     );
@@ -773,13 +771,6 @@ export class GitHubAdapter
     Result<{ readonly mergeCommitSha?: GitSha }, GitHubWriteFailure>
   > {
     return this.mergePolicy.mergePullRequest(input);
-  }
-
-  async loadConversation(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-  }): Promise<Result<Conversation, GitHubReadFailure>> {
-    return this.conversation.loadConversation(input);
   }
 }
 

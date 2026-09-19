@@ -297,17 +297,7 @@ export function createReviewRefreshFixture(
     pullRequestRead += 1;
     return result ?? ok(currentPullRequest);
   };
-  // Present but poisoned: one refresh assembles the Conversation from the
-  // reads it already made, and `loadConversation` would re-run all of them
-  // (nine more gh calls, see tests/adapters/github-conversation-reads.test.ts).
-  const github: ReviewRefreshDependencies["github"] & {
-    readonly loadConversation: () => never;
-  } = {
-    loadConversation: () => {
-      throw new Error(
-        "loadConversation re-reads what the refresh already holds",
-      );
-    },
+  const github: ReviewRefreshDependencies["github"] = {
     getPullRequest: readPullRequest,
     getPullRequestChecks: async () =>
       options.checksResult ?? ok(values.snapshot.checks),

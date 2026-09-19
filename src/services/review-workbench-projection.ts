@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { GitHubReader } from "../adapters/github/github-adapter";
+import type { GitHubReadFailure } from "../adapters/github/gh-request-runner";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -159,7 +160,7 @@ export type WorkbenchProjectionFailure =
 /** Live-read evidence `project` combines with the durable Session; absent when no GitHub read was attempted. */
 type ProjectRemoteInput = {
   readonly current: Awaited<ReturnType<GitHubReader["getPullRequest"]>>;
-  readonly conversation: Awaited<ReturnType<GitHubReader["loadConversation"]>>;
+  readonly conversation: Result<Conversation, GitHubReadFailure>;
   readonly commits?: ReadonlyArray<PullRequestCommit>;
   /** Whichever check read classified `required`; see `loadRepresented`. */
   readonly checks: Awaited<ReturnType<GitHubReader["getPullRequestChecks"]>>;

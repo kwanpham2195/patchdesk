@@ -218,7 +218,7 @@ export class ReviewRefreshService {
     )
       return err({ reason: "github_read" });
     // The conversation is a projection of reads this batch already made, so it
-    // is assembled here rather than re-fetched through `loadConversation`.
+    // is assembled here rather than re-fetched from GitHub.
     const conversation = assembleConversation(
       current.value.description ?? "",
       publishedFeedback.value ?? noPublishedFeedback,
