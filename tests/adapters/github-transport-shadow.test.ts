@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import * as v from "valibot";
 
 import {
   CommandRunner,
@@ -57,12 +58,51 @@ class FakeShadowTransport implements GitHubShadowTransport {
     return this.answer();
   }
 
+  async restText(
+    _profile: WorkspaceProfileConfig,
+    request: GitHubRestRequest,
+  ): Promise<Result<string, CommandFailure>> {
+    this.requests.push(request);
+    const answer = await this.answer();
+    if (answer._tag === "err") return answer;
+    const text = v.safeParse(v.string(), answer.value);
+    return text.success ? ok(text.output) : err({ _tag: "CommandFailed" });
+  }
+
   async graphql(
     _profile: WorkspaceProfileConfig,
     request: GitHubGraphQlRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     this.requests.push(request);
     return this.answer();
+  }
+}
+
+/**
+ * The client's two REST seams over one stored response body: `rest` parses it
+ * as `runJson` did, `restText` hands over its bytes as `runText` did. A
+ * shadow that asked for the wrong one would report `CommandInvalidJson`
+ * against gh's success, so this is the double that can catch it.
+ */
+class BodyModeShadowTransport implements GitHubShadowTransport {
+  constructor(private readonly body: string) {}
+
+  async rest(): Promise<Result<unknown, CommandFailure>> {
+    try {
+      // SAFETY: JSON.parse's return type is `any`; this cast only narrows it
+      // to `unknown`, which is what the client's own parse answers with.
+      return ok(JSON.parse(this.body) as unknown);
+    } catch {
+      return err({ _tag: "CommandInvalidJson" });
+    }
+  }
+
+  async restText(): Promise<Result<string, CommandFailure>> {
+    return ok(this.body);
+  }
+
+  async graphql(): Promise<Result<unknown, CommandFailure>> {
+    return err({ _tag: "CommandFailed" });
   }
 }
 
@@ -298,6 +338,55 @@ describe("GhRequestRunner transport shadow", () => {
       _tag: "ok",
       value: "diff --git a/a.ts b/a.ts\n",
     });
+    expect(await shadowMeta(entries)).toMatchObject({
+      outcome: "diverged",
+      kind: "value",
+      firstDifference: "byte 11",
+    });
+  });
+
+  /**
+   * A text read reaches the client through `restText`, which does not parse.
+   * Shadowing it through `rest` instead would answer `CommandInvalidJson` for
+   * every non-JSON body and report a divergence the transports do not have.
+   */
+  it("compares a text read through the transport's text seam", async () => {
+    const diff = "diff --git a/a.ts b/a.ts\n";
+    const entries: Array<LogEntryInput> = [];
+    const credentials = new StubCredentials();
+    const runner = new GhRequestRunner(
+      new CommandRunner(new FakeGhExecutor(exited(diff))),
+      credentials,
+      new TransportShadow(
+        new BodyModeShadowTransport(diff),
+        credentials,
+        (entry) => entries.push(entry),
+      ),
+    );
+
+    const result = await runner.ghText(profile, readRequest);
+
+    expect(result).toEqual({ _tag: "ok", value: diff });
+    expect(await shadowMeta(entries)).toMatchObject({ outcome: "match" });
+  });
+
+  it("names the first differing byte of a text read the client answered", async () => {
+    const entries: Array<LogEntryInput> = [];
+    const credentials = new StubCredentials();
+    const runner = new GhRequestRunner(
+      new CommandRunner(
+        new FakeGhExecutor(exited("diff --git a/a.ts b/a.ts\n")),
+      ),
+      credentials,
+      new TransportShadow(
+        new BodyModeShadowTransport("diff --git b/a.ts b/a.ts\n"),
+        credentials,
+        (entry) => entries.push(entry),
+      ),
+    );
+
+    await runner.ghText(profile, readRequest);
+
     expect(await shadowMeta(entries)).toMatchObject({
       outcome: "diverged",
       kind: "value",
