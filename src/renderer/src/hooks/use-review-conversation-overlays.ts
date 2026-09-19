@@ -12,6 +12,7 @@ import {
   type GitHubThreadId,
 } from "../../../domain/ids";
 import { composerErrorMessage } from "../components/review-diff-authoring-errors";
+import { useLatestCommitted } from "./use-latest-committed";
 import type {
   ConversationThreadCardData,
   ReviewConversationActions,
@@ -51,7 +52,10 @@ type CreatedThreadOverlay =
       readonly end: number;
       readonly side: "new" | "old";
       readonly body: string;
+      /** GitHub's REST id for the created comment, which the create receipt reports. */
       readonly commentId: string;
+      /** The same comment's GraphQL node id, which is the id space every projected thread comment uses. */
+      readonly commentNodeId: string;
       readonly threadId?: GitHubThreadId;
     };
 
@@ -128,6 +132,8 @@ export function useReviewConversationOverlays({
     ReadonlyMap<string, "open" | "resolved">
   >(() => new Map());
 
+  const createdThreadsRef = useLatestCommitted(createdThreads);
+
   // Published writes are authoritative (the receipt is GitHub's 200) and the
   // projection only changes on an explicit refresh or reload. Local mutation
   // overrides keep cards truthful until the projection catches up.
@@ -145,10 +151,21 @@ export function useReviewConversationOverlays({
         commentBodies.set(comment.id, comment.body);
       }
     }
+    // Once the projection represents a published overlay, the projection is
+    // authoritative: drop the overlay rather than hiding it at render, or it
+    // reappears with stale actions the moment the projection drops the thread
+    // again (a delete). Both comment id spaces are compared because the create
+    // receipt reports the REST id while the projection carries the node id.
     setCreatedThreads((current) => {
       const reconciled = current.filter(
         (entry) =>
-          entry._tag !== "published" || !commentIds.has(entry.commentId),
+          entry._tag !== "published" ||
+          !(
+            (entry.threadId !== undefined &&
+              threadStates.has(entry.threadId)) ||
+            commentIds.has(entry.commentId) ||
+            commentIds.has(entry.commentNodeId)
+          ),
       );
       return reconciled.length === current.length ? current : reconciled;
     });
@@ -276,9 +293,14 @@ export function useReviewConversationOverlays({
               ? {
                   ...publishedBase,
                   commentId: receipt.commentId,
+                  commentNodeId: receipt.commentNodeId,
                   threadId: parsedThreadId.value,
                 }
-              : { ...publishedBase, commentId: receipt.commentId }
+              : {
+                  ...publishedBase,
+                  commentId: receipt.commentId,
+                  commentNodeId: receipt.commentNodeId,
+                }
             : {
                 _tag: "failed" as const,
                 localId,
@@ -525,6 +547,7 @@ export function useReviewConversationOverlays({
       for (const comment of thread.comments)
         projectionCommentIds.add(comment.id);
     }
+    const projectionEntries = new Set<ReviewInlineAnnotation>(annotations);
     const displayed: Array<ReviewInlineAnnotation> = [];
     for (const annotation of renderedAnnotations) {
       const thread = annotation.conversationThread;
@@ -532,20 +555,18 @@ export function useReviewConversationOverlays({
         displayed.push(annotation);
         continue;
       }
-      if (annotations.some((projection) => projection === annotation)) {
-        displayed.push(annotation);
-        continue;
-      }
-      const projectionTargetThreadId =
-        thread.target._tag === "thread" ? thread.target.id : undefined;
-      if (
-        projectionTargetThreadId !== undefined &&
-        projectionThreadIds.has(projectionTargetThreadId)
-      )
-        continue;
-      if (projectionCommentIds.has(thread.comments[0]?.id ?? "")) continue;
       const targetThreadId =
         thread.target._tag === "thread" ? thread.target.id : undefined;
+      // Only an overlay is dropped for matching the projection; a projection
+      // entry matches its own ids and must always be displayed.
+      if (!projectionEntries.has(annotation)) {
+        if (
+          targetThreadId !== undefined &&
+          projectionThreadIds.has(targetThreadId)
+        )
+          continue;
+        if (projectionCommentIds.has(thread.comments[0]?.id ?? "")) continue;
+      }
       const state =
         targetThreadId === undefined
           ? thread.state
@@ -556,6 +577,16 @@ export function useReviewConversationOverlays({
         return [body === undefined ? comment : { ...comment, body }];
       });
       if (comments.length === 0) continue;
+      // Keep the annotation's identity when no override touched it, so an
+      // unaffected card is not re-rendered by an override on another card.
+      if (
+        state === thread.state &&
+        comments.length === thread.comments.length &&
+        comments.every((comment, index) => comment === thread.comments[index])
+      ) {
+        displayed.push(annotation);
+        continue;
+      }
       displayed.push({
         ...annotation,
         conversationThread: { ...thread, state, comments },
@@ -598,9 +629,13 @@ export function useReviewConversationOverlays({
           ? undefined
           : async (commentId, body) => {
               await edit(commentId, body);
+              const ids = commentIdAliases(
+                createdThreadsRef.current,
+                commentId,
+              );
               setEditedBodies((current) => {
                 const next = new Map(current);
-                next.set(commentId, body);
+                for (const id of ids) next.set(id, body);
                 return next;
               });
             };
@@ -609,23 +644,22 @@ export function useReviewConversationOverlays({
           ? undefined
           : async (commentId) => {
               await remove(commentId);
+              const ids = commentIdAliases(
+                createdThreadsRef.current,
+                commentId,
+              );
               setDeletedCommentIds((current) => {
                 const next = new Set(current);
-                next.add(commentId);
+                for (const id of ids) next.add(id);
                 return next;
               });
-              setCreatedThreads((current) =>
-                current.some(
+              setCreatedThreads((current) => {
+                const kept = current.filter(
                   (entry) =>
-                    entry._tag === "published" && entry.commentId === commentId,
-                )
-                  ? current.filter(
-                      (entry) =>
-                        entry._tag !== "published" ||
-                        entry.commentId !== commentId,
-                    )
-                  : current,
-              );
+                    entry._tag !== "published" || !ids.has(entry.commentId),
+                );
+                return kept.length === current.length ? current : kept;
+              });
             };
       // Each override only replaces the incoming field when it is wired;
       // `definedProps` drops the undefined ones so `...thread`'s own value
@@ -640,7 +674,7 @@ export function useReviewConversationOverlays({
         }),
       };
     },
-    [conversationActions],
+    [conversationActions, createdThreadsRef],
   );
 
   const beginAuthoring = useCallback(
@@ -672,4 +706,23 @@ export function useReviewConversationOverlays({
     beginAuthoring,
     decorateConversationThread,
   };
+}
+
+/**
+ * Every id this hook knows for one comment. A card may pass either GitHub id
+ * space for a comment created in this session: the overlay card carries the
+ * create receipt's REST id, while the projected card carries the node id.
+ */
+function commentIdAliases(
+  overlays: ReadonlyArray<CreatedThreadOverlay>,
+  commentId: string,
+): ReadonlySet<string> {
+  const match = overlays.find(
+    (entry) =>
+      entry._tag === "published" &&
+      (entry.commentId === commentId || entry.commentNodeId === commentId),
+  );
+  return match === undefined || match._tag !== "published"
+    ? new Set([commentId])
+    : new Set([match.commentId, match.commentNodeId]);
 }

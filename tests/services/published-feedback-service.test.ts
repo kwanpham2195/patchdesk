@@ -285,7 +285,7 @@ describe("PublishedFeedbackService", () => {
     ],
   ] as const)(
     "confirms %s without fabricating a comment-existence journal",
-    async (_name, issue, intentTag, receiptTag) => {
+    async (name, issue, intentTag, receiptTag) => {
       const built = fixture();
       const result = await issue(built.service);
       expect(result).toMatchObject({ _tag: "ok", value: { _tag: receiptTag } });
@@ -294,8 +294,24 @@ describe("PublishedFeedbackService", () => {
           intent: expect.objectContaining({ _tag: intentTag }),
         }),
       );
-      expect(built.appendConfirmed).not.toHaveBeenCalled();
-      expect(built.trace.slice(-2)).toEqual(["intent:Confirmed", "remove"]);
+      if (name === "delete") {
+        // A `DeletedComment` receipt is proven by absence; journaling a
+        // `Comment` here would gate every projection (#329, the #322 class).
+        expect(built.appendConfirmed).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.anything(),
+          { _tag: "DeletedComment", commentId: "201", nodeId: "PRRC_201" },
+          expect.anything(),
+        );
+        expect(built.trace.slice(-3)).toEqual([
+          "intent:Confirmed",
+          "journal",
+          "remove",
+        ]);
+      } else {
+        expect(built.appendConfirmed).not.toHaveBeenCalled();
+        expect(built.trace.slice(-2)).toEqual(["intent:Confirmed", "remove"]);
+      }
     },
   );
 

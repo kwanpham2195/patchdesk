@@ -243,10 +243,18 @@ describe("review diff hydration", () => {
     ) {
       window.CSSStyleSheet.prototype.replaceSync = () => undefined;
     }
-    let resolveSave!: (value: { readonly commentId: string } | void) => void;
+    let resolveSave!: (
+      value: {
+        readonly commentId: string;
+        readonly commentNodeId: string;
+      } | void,
+    ) => void;
     const onSave = vi.fn(
       async () =>
-        new Promise<{ readonly commentId: string } | void>((resolve) => {
+        new Promise<{
+          readonly commentId: string;
+          readonly commentNodeId: string;
+        } | void>((resolve) => {
           resolveSave = resolve;
         }),
     );
@@ -291,7 +299,7 @@ describe("review diff hydration", () => {
         screen.getByRole("article", { name: "Publishing conversation" }),
       ).toBeTruthy();
       expect(screen.queryByRole("textbox", { name: "Reply" })).toBeNull();
-      resolveSave({ commentId: "PRRC_real" });
+      resolveSave({ commentId: "2145998877", commentNodeId: "PRRC_real" });
       await waitFor(() =>
         expect(
           screen.queryByRole("article", { name: "Publishing conversation" }),
@@ -329,7 +337,8 @@ describe("review diff hydration", () => {
       window.CSSStyleSheet.prototype.replaceSync = () => undefined;
     }
     const onSave = vi.fn(async () => ({
-      commentId: "PRRC_real",
+      commentId: "2145998877",
+      commentNodeId: "PRRC_real",
       threadId: "PRRT_confirmed",
     }));
     const patch =
@@ -634,10 +643,18 @@ it("keeps Reply and Resolve off a published create card even when all global con
   ) {
     window.CSSStyleSheet.prototype.replaceSync = () => undefined;
   }
-  let resolveSave!: (value: { readonly commentId: string } | void) => void;
+  let resolveSave!: (
+    value: {
+      readonly commentId: string;
+      readonly commentNodeId: string;
+    } | void,
+  ) => void;
   const onSave = vi.fn(
     async () =>
-      new Promise<{ readonly commentId: string } | void>((resolve) => {
+      new Promise<{
+        readonly commentId: string;
+        readonly commentNodeId: string;
+      } | void>((resolve) => {
         resolveSave = resolve;
       }),
   );
@@ -687,7 +704,7 @@ it("keeps Reply and Resolve off a published create card even when all global con
     expect(
       screen.getByRole("article", { name: "Publishing conversation" }),
     ).toBeTruthy();
-    resolveSave({ commentId: "PRRC_real" });
+    resolveSave({ commentId: "2145998877", commentNodeId: "PRRC_real" });
     await waitFor(() =>
       expect(
         screen.queryByRole("article", { name: "Publishing conversation" }),

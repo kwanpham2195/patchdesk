@@ -60,7 +60,14 @@ const annotations = [
     conversationThread: {
       target: { _tag: "unresolved" as const },
       state: "open" as const,
-      comments: [],
+      comments: [
+        {
+          id: "PRRC_a",
+          author: "reviewer",
+          body: "thread body",
+          createdAt: "2026-09-19T00:00:00.000Z",
+        },
+      ],
     },
   },
   {
@@ -75,7 +82,14 @@ const annotations = [
     conversationThread: {
       target: { _tag: "unresolved" as const },
       state: "open" as const,
-      comments: [],
+      comments: [
+        {
+          id: "PRRC_b",
+          author: "reviewer",
+          body: "thread body",
+          createdAt: "2026-09-19T00:00:00.000Z",
+        },
+      ],
     },
   },
 ];

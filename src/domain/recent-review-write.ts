@@ -26,6 +26,17 @@ export type RecentReviewWrite =
       readonly threadId: GitHubThreadId;
     }
   | {
+      /**
+       * A published comment this app deleted; satisfied once the snapshot has
+       * dropped it. `nodeId` carries the same comment's other GitHub id space
+       * when the delete path read it, because the `Comment` receipt this one
+       * supersedes may hold either.
+       */
+      readonly _tag: "DeletedComment";
+      readonly commentId: string;
+      readonly nodeId?: string;
+    }
+  | {
       readonly _tag: "DirectSummaryReview";
       readonly reviewId: string;
     }
@@ -75,6 +86,11 @@ export const recentReviewWriteRecordSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("DiscardedThread"),
     threadId: v.pipe(v.string(), v.minLength(1)),
+  }),
+  v.strictObject({
+    _tag: v.literal("DeletedComment"),
+    commentId: v.pipe(v.string(), v.minLength(1)),
+    nodeId: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
   v.strictObject({
     _tag: v.literal("DirectSummaryReview"),
@@ -157,6 +173,16 @@ export function parseRecentReviewWrite(
         ? invalidRecentReviewWrite()
         : ok({ _tag: "DiscardedThread", threadId: threadId.value });
     }
+    case "DeletedComment":
+      return ok(
+        record.nodeId === undefined
+          ? { _tag: "DeletedComment", commentId: record.commentId }
+          : {
+              _tag: "DeletedComment",
+              commentId: record.commentId,
+              nodeId: record.nodeId,
+            },
+      );
     case "DirectSummaryReview":
     case "LabelChange":
     case "AssigneeChange":
@@ -175,7 +201,9 @@ function invalidRecentReviewWrite(): Result<never, InvalidRecentReviewWrite> {
  * Append receipts to a journal, dropping the ones the new receipts have made
  * unsatisfiable. A `DiscardedThread` is proven by the thread's absence, so the
  * `PendingThread` that created the same thread can never be found again and
- * would otherwise withhold every later projection until it aged out.
+ * would otherwise withhold every later projection until it aged out. A
+ * `DeletedComment` stands in the same relation to the `Comment` receipt that
+ * created or edited the comment it removed.
  */
 export function appendRecentWriteReceipts<T extends RecentReviewWrite>(
   journal: ReadonlyArray<T>,
@@ -191,11 +219,17 @@ function supersedes(
   receipt: RecentReviewWrite,
   entry: RecentReviewWrite,
 ): boolean {
-  return (
-    receipt._tag === "DiscardedThread" &&
-    entry._tag === "PendingThread" &&
-    entry.threadId === receipt.threadId
-  );
+  if (receipt._tag === "DiscardedThread")
+    return (
+      entry._tag === "PendingThread" && entry.threadId === receipt.threadId
+    );
+  if (receipt._tag === "DeletedComment")
+    return (
+      entry._tag === "Comment" &&
+      (entry.commentId === receipt.commentId ||
+        entry.commentId === receipt.nodeId)
+    );
+  return false;
 }
 
 /**
@@ -229,6 +263,8 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       return `PendingThread:${entry.threadId}`;
     case "DiscardedThread":
       return `DiscardedThread:${entry.threadId}`;
+    case "DeletedComment":
+      return `DeletedComment:${entry.commentId}`;
     case "DirectSummaryReview":
       return `DirectSummaryReview:${entry.reviewId}`;
     case "LabelChange":

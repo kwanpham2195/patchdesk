@@ -285,6 +285,8 @@ export interface GitHubReviewWriter {
     Result<
       {
         readonly commentId: string;
+        /** The same comment's GraphQL node id, the id space every projected thread comment uses. */
+        readonly commentNodeId: string;
         readonly reviewId?: string;
         readonly threadId?: string;
       },

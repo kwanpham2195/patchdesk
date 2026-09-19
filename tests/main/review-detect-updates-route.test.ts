@@ -56,6 +56,11 @@ describe("POST /v1/reviews/detect-updates", () => {
     },
     PendingThread: { _tag: "PendingThread", threadId: threadId.value },
     DiscardedThread: { _tag: "DiscardedThread", threadId: threadId.value },
+    DeletedComment: {
+      _tag: "DeletedComment",
+      commentId: "2145998877",
+      nodeId: "PRRC_deleted",
+    },
     DirectSummaryReview: { _tag: "DirectSummaryReview", reviewId: "PRR_1" },
     LabelChange: { _tag: "LabelChange", added: ["bug"], removed: [] },
     AssigneeChange: { _tag: "AssigneeChange", added: ["octocat"], removed: [] },

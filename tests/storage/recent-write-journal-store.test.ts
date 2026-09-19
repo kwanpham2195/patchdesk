@@ -68,6 +68,11 @@ describe("RecentWriteJournalStore", () => {
         _tag: "DiscardedThread",
         threadId: must(parseGitHubThreadId("PRRT_discarded")),
       },
+      DeletedComment: {
+        _tag: "DeletedComment",
+        commentId: "2145998877",
+        nodeId: "PRRC_deleted",
+      },
       DirectSummaryReview: { _tag: "DirectSummaryReview", reviewId: "PRR_1" },
       LabelChange: { _tag: "LabelChange", added: ["bug"], removed: ["wip"] },
       AssigneeChange: { _tag: "AssigneeChange", added: [], removed: ["hubot"] },

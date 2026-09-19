@@ -29,6 +29,7 @@ export type DirectConversationActions = {
     input: LocalCommentAuthoringSaveInput,
   ) => Promise<{
     readonly commentId: string;
+    readonly commentNodeId: string;
     readonly threadId?: string;
   } | void>;
   readonly setThreadState: (
@@ -122,6 +123,7 @@ export function useDirectConversationActions({
       input: LocalCommentAuthoringSaveInput,
     ): Promise<{
       readonly commentId: string;
+      readonly commentNodeId: string;
       readonly threadId?: string;
     } | void> => {
       const patchHash = workbench.revision.patchHash;
@@ -165,7 +167,10 @@ export function useDirectConversationActions({
               reviewId: receipt.reviewId,
             };
       confirmRecentWrite(commentWrite);
-      const created = { commentId: receipt.commentId };
+      const created = {
+        commentId: receipt.commentId,
+        commentNodeId: receipt.commentNodeId,
+      };
       return receipt.threadId === undefined
         ? created
         : { ...created, threadId: receipt.threadId };
@@ -277,13 +282,16 @@ export function useDirectConversationActions({
           candidate._tag === "PublishedCommentEdited" &&
           candidate.commentId === commentId,
       );
-      if (
-        receipt?._tag === "PublishedCommentEdited" &&
-        receipt.reconciliation === "required"
-      )
+      if (receipt?._tag !== "PublishedCommentEdited") return;
+      if (receipt.reconciliation === "required") {
         requireRecovery("EditPublishedComment");
+        return;
+      }
+      // The service already journalled this write durably; observing now is
+      // what lets the Diff card show the new body before the next cycle.
+      void observeConfirmedReviewWrite().catch(() => undefined);
     },
-    [requireRecovery, runCommand, workbench],
+    [observeConfirmedReviewWrite, requireRecovery, runCommand, workbench],
   );
 
   const deleteComment = useCallback(
@@ -306,13 +314,18 @@ export function useDirectConversationActions({
           candidate._tag === "PublishedCommentDeleted" &&
           candidate.commentId === commentId,
       );
-      if (
-        receipt?._tag === "PublishedCommentDeleted" &&
-        receipt.reconciliation === "required"
-      )
+      if (receipt?._tag !== "PublishedCommentDeleted") return;
+      if (receipt.reconciliation === "required") {
         requireRecovery("DeletePublishedComment");
+        return;
+      }
+      // A `DeletedComment` receipt, not a `Comment` one: a deleted comment can
+      // never be found again, and this receipt supersedes the create or edit
+      // receipt for the same comment that would otherwise gate every
+      // projection until it aged out.
+      confirmRecentWrite({ _tag: "DeletedComment", commentId });
     },
-    [requireRecovery, runCommand, workbench],
+    [confirmRecentWrite, requireRecovery, runCommand, workbench],
   );
 
   const dismissReview = useCallback(

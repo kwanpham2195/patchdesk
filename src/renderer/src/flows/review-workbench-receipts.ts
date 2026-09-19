@@ -8,6 +8,7 @@ export type DirectConversationReceipt =
   | {
       readonly _tag: "CommentCreated";
       readonly commentId: string;
+      readonly commentNodeId: string;
       readonly reviewId?: string;
       readonly threadId?: string;
     }
@@ -28,6 +29,7 @@ const directConversationReceiptSchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("CommentCreated"),
     commentId: v.pipe(v.string(), v.minLength(1)),
+    commentNodeId: v.pipe(v.string(), v.minLength(1)),
     reviewId: v.optional(v.pipe(v.string(), v.minLength(1))),
     threadId: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
@@ -79,6 +81,7 @@ export function parseDirectConversationReceipt(
   return {
     _tag: "CommentCreated",
     commentId: output.commentId,
+    commentNodeId: output.commentNodeId,
     ...definedProps({
       reviewId: output.reviewId,
       threadId: output.threadId,

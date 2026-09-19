@@ -187,6 +187,16 @@ export class PublishedFeedbackService {
             commentId: allowed.value.id,
           }),
         { _tag: "PublishedCommentDeleted", commentId: input.commentId },
+        // The create or edit receipt for this comment can never be satisfied
+        // again once GitHub has dropped it, so journal the delete: the domain
+        // supersedes that receipt instead of letting it gate every projection.
+        allowed.value.nodeId === undefined
+          ? { _tag: "DeletedComment", commentId: allowed.value.id }
+          : {
+              _tag: "DeletedComment",
+              commentId: allowed.value.id,
+              nodeId: allowed.value.nodeId,
+            },
       );
     });
   }

@@ -14,12 +14,14 @@ describe("review workbench receipt parsers", () => {
       parseDirectConversationReceipt({
         _tag: "CommentCreated",
         commentId: "comment-1",
+        commentNodeId: "PRRC_comment-1",
         reviewId: "review-1",
         threadId: "thread-1",
       }),
     ).toEqual({
       _tag: "CommentCreated",
       commentId: "comment-1",
+      commentNodeId: "PRRC_comment-1",
       reviewId: "review-1",
       threadId: "thread-1",
     });

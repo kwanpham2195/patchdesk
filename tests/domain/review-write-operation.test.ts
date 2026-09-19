@@ -135,6 +135,11 @@ const confirmedReceipts = {
   },
   PendingThread: { _tag: "PendingThread", threadId: receiptThreadId.value },
   DiscardedThread: { _tag: "DiscardedThread", threadId: receiptThreadId.value },
+  DeletedComment: {
+    _tag: "DeletedComment",
+    commentId: "2145998877",
+    nodeId: "PRRC_deleted",
+  },
   DirectSummaryReview: { _tag: "DirectSummaryReview", reviewId: "PRR_1" },
   LabelChange: { _tag: "LabelChange", added: ["bug"], removed: [] },
   AssigneeChange: { _tag: "AssigneeChange", added: ["octocat"], removed: [] },
