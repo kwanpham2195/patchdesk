@@ -303,31 +303,77 @@ allowlists.
   gh 2.100.0 carries the same header name and the same value in its own
   binary, so this matches rather than adds.
 
-**No write is retried, and one risk cannot be closed here.** Neither the
+**No write is retried, and Chromium's resend is an accepted risk.** Neither the
 client nor `writeFailure` retries: a failed write is the call's failure, and
 there is no fallback to `gh`. Node's `fetch` does not retry either — undici's
 retry is opt-in through `RetryAgent`/`RetryHandler` and the default dispatcher
-has none. Electron's `net.fetch` is the one that cannot be ruled out.
-Chromium's `HttpNetworkTransaction::ShouldResendRequest` reads
+has none. Electron's `net.fetch` is the one that resends. Chromium's
+`HttpNetworkTransaction::ShouldResendRequest` reads
 
     bool connection_is_proven = stream_->IsConnectionReused();
     bool has_received_headers = GetResponseHeaders() != nullptr;
     return connection_is_proven && !has_received_headers;
 
-and the HTTP method is not consulted anywhere in that decision, so a POST on a
-reused keep-alive connection that fails with `ERR_CONNECTION_RESET`,
-`ERR_CONNECTION_CLOSED`, `ERR_EMPTY_RESPONSE` or `ERR_SOCKET_NOT_CONNECTED`
-before any response header arrives is resent by the network stack, invisibly
-to this app.
+and the HTTP method is not consulted anywhere in that decision. On 2026-09-19
+this was accepted rather than closed: writes stay on `net.fetch`, and a
+transparent resend of a POST is a risk this app carries.
+
+**The window is wider than an idle reused socket.** `api.github.com` speaks
+HTTP/2, and `SpdySession::IsReused()` answers true once any frame has arrived
+on the session. The server's opening `SETTINGS` frame is such a frame, and it
+arrives before the first request is sent, so `connection_is_proven` is true for
+every write rather than only for a write on a socket the app already used. A
+write that fails with `ERR_CONNECTION_RESET`, `ERR_CONNECTION_CLOSED`,
+`ERR_EMPTY_RESPONSE`, or `ERR_SOCKET_NOT_CONNECTED` before any response header
+arrives is resent by the network stack, invisibly to this app. Both function
+bodies were read from Chromium `main`; neither was checked against the revision
+Electron 43 pins.
 
 `gh` was not free of this either, but its rule was narrower. Go's
 `persistConn.shouldRetryRequest` replays a non-idempotent request on a reused
 connection only for `nothingWrittenError` — nothing of the request reached the
 socket — and only when the body can be rewound; every other error goes through
 `Request.isReplayable`, which a POST without an `Idempotency-Key` header fails.
-Chromium asks neither question. So the window in which a write can be sent
-twice is wider over `net.fetch` than it was over `gh`, by the amount of a
-request that was written before the reset.
+Chromium asks neither question, and it counts a fresh HTTP/2 session as proven,
+so the window in which a write can be sent twice is wider over `net.fetch` than
+it was over `gh`.
+
+**Most resends end correctly.** In the dominant case the server closed the
+connection without processing the request, so the resend is the only delivery
+and there is no duplicate. When the first request did land, a resent submit,
+dismiss, merge, discard, or delete acts on something the first one already
+consumed, and GitHub answers 404, 405, or 422. `classifyRestStatus` in
+`src/adapters/github/command-runner.ts` maps those to `CommandNotFound` and
+`CommandUnsupported`; `writeFailure` in
+`src/adapters/github/github-write-failures.ts` maps both to `unavailable`,
+which is the category that keeps the Review locked for ADR 0035
+reconciliation. The reconciling read then reports what the first request did.
+
+**Four labels can leave a duplicate the maintainer sees.** Each of them creates
+something new, so a second delivery creates a second one:
+`POST repos/:owner/:repo/pulls/:n/reviews` from `createDirectSummaryReview`,
+`POST repos/:owner/:repo/pulls/:n/comments`, `addPullRequestReviewThread`, and
+`addPullRequestReviewThreadReply`. That is the exposure github.com's own
+comment form already has, since it posts through the same network stack, and
+the worst outcome is one extra comment the maintainer can read and delete.
+
+**One resend drops the write intent: starting a pending review.** If the first
+`POST repos/:owner/:repo/pulls/:n/reviews` from `startPendingReviewWithThread`
+landed, the resend answers 422 with GitHub's "pending review per pull request"
+message. `isPendingReviewFailure` matches that phrase and `classifyRestStatus`
+answers `CommandPendingReview` (`command-runner.ts:650-653` and `:837-841`),
+which `writeFailure` maps to the `pending_review` category
+(`github-write-failures.ts:36-42`). That category is not `unavailable`, so
+`executeWrite` in `pending-review-service.ts:575-598` takes the refusal branch:
+`rejectPendingReviewWrite` returns `{ _tag: "None" }` for a start
+(`domain/pending-review.ts:254-265`), the persisted intent is dropped, and the
+service answers `rejected`. The maintainer is told GitHub rejected the
+submission and is left with no locked review, while GitHub holds the pending
+review the first request created. Nothing stays locked, so ADR 0035
+reconciliation never runs for it. The next unlocked reconcile adopts the
+observed pending review (`adoptObservedPendingReview`,
+`pending-review-service.ts:278`), so the state comes back on a read rather than
+through the write path.
 
 Nothing here adds retry logic, and nothing should. What handles a duplicate is
 ADR 0035: the intent is persisted before the call, and a write whose outcome is
@@ -344,8 +390,10 @@ write family. After every one, confirm three things: the write landed on
 GitHub exactly once, the Review write journal entry cleared, and no recovery
 banner appeared.
 
-1. Post an inline comment on a diff line.
-2. Reply to the thread it created.
+1. Post an inline comment on a diff line. Count it on GitHub's own timeline:
+   the app does not show a duplicate as a failure.
+2. Reply to the thread it created, and count the replies on GitHub the same
+   way.
 3. Resolve the thread, then unresolve it.
 4. Edit the reply's body.
 5. Delete the reply.
@@ -353,10 +401,13 @@ banner appeared.
 7. Add an assignee.
 8. Request a reviewer, then remove the request.
 9. Start a pending review on one line, add a second thread to it, then submit
-   it.
+   it. Count the published threads on GitHub's own timeline.
 10. Start another pending review and discard it instead.
-11. Publish a direct summary review.
+11. Publish a direct summary review, and count the reviews on GitHub's own
+    timeline.
 12. Toggle the pull request to draft and back.
+13. Leave the app idle for ten minutes, then post one inline comment. Confirm
+    it landed exactly once and that the journal entry cleared.
 
 Base-branch change and merge are optional and destructive: run them last, on a
 pull request that is finished with, or not at all.
@@ -393,6 +444,21 @@ classifiers and two error vocabularies maintained in parallel, indefinitely, for
 the path whose cost was never the spawn — writes are rare and already dominated
 by GitHub's own latency. The cutover moves reads first and writes second
 (see the program plan); it does not stop in between.
+
+**Node `fetch` for the writes, to avoid Chromium's resend.** Node's fetch does
+not resend a POST, but it also reads no system proxy, no PAC file, and no OS
+certificate store. Node 24's `--use-env-proxy` and `--use-system-ca` read
+environment variables, which a macOS app launched from Finder does not have,
+and `EnvHttpProxyAgent` would add a new `undici` dependency to reach the same
+place. After T4 removes `gh api`, a maintainer behind a proxy would have no
+working write path at all. It would close one resend window at the cost of
+every proxied and private-CA install.
+
+**A dedicated session with `closeAllConnections()` before each write.** It
+would not close the window: Chromium counts a fresh HTTP/2 session as reused
+once the server's `SETTINGS` frame arrives, so `connection_is_proven` is true
+on the first request anyway. It would also abort a write already in flight on
+that session.
 
 **Octokit.** It would add a second HTTP client and a second error model on top
 of an API surface the adapter already validates field by field with valibot
