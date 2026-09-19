@@ -262,9 +262,17 @@ export class GitHubAdapter
     shadow?: TransportShadow,
     /** Serves the reads in `httpServedReadLabels` when one is supplied (issue #276). */
     http?: GitHubServedTransport,
+    /** Also serves the writes in `httpServedWriteLabels` over that transport (issue #276, step T3). */
+    writesOverHttp: boolean = false,
   ) {
     this.credentials = credentials;
-    this.requests = new GhRequestRunner(commands, credentials, shadow, http);
+    this.requests = new GhRequestRunner(
+      commands,
+      credentials,
+      shadow,
+      http,
+      writesOverHttp,
+    );
     this.pullRequests = new GitHubPullRequestReader(this.requests);
     this.threads = new GitHubThreadReader(this.requests);
     this.threadWrites = new GitHubThreadWriter(this.requests);

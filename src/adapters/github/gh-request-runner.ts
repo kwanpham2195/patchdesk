@@ -17,6 +17,7 @@ import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import { parseGitHubTimestamp } from "./github-wire-projections";
 import {
   ghInvocationFor,
+  restMethodFor,
   type GitHubGraphQlRequest,
   type GitHubRequest,
   type GitHubRestRequest,
@@ -115,8 +116,89 @@ export const httpServedReadLabels: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The HTTP transport an allowlisted read is served through, narrowed to the
- * two calls the runner makes of it. `GitHubHttpClient` satisfies it; a test
+ * The writes served over HTTPS rather than by a `gh api` child, named by the
+ * label the write routing prints for them (ADR 0046, issue #276, step T3).
+ * Every REST write here is named by the method GitHub receives rather than the
+ * one in the argv, so no write label can ever collide with a read's.
+ *
+ * A write is only served when the launch also asked for it
+ * (`PATCHDESK_GITHUB_WRITES=http`): a write cannot be shadowed, so this list
+ * is proven by request-shape and failure-classification tests plus one manual
+ * live check, not by a comparison window. T4 deletes it together with
+ * `httpServedReadLabels`.
+ *
+ * The three read-back lookups that run inside write flows --
+ * `ReviewThreadTarget`, `ReviewCommentTarget`, `ConfirmCreatedCommentThread`
+ * -- are queries and belong on neither list until they have read clean.
+ */
+export const httpServedWriteLabels: ReadonlySet<string> = new Set([
+  "api POST repos/:owner/:repo/pulls/:n/reviews",
+  "api POST repos/:owner/:repo/pulls/:n/reviews/:n/events",
+  "api PUT repos/:owner/:repo/pulls/:n/reviews/:n/dismissals",
+  "api DELETE repos/:owner/:repo/pulls/:n/reviews/:n",
+  "api PUT repos/:owner/:repo/pulls/:n/merge",
+  "api POST repos/:owner/:repo/pulls/:n/comments",
+  "api PATCH repos/:owner/:repo/pulls/comments/:n",
+  "api DELETE repos/:owner/:repo/pulls/comments/:n",
+  "api DELETE repos/:owner/:repo/pulls/:n/requested_reviewers",
+  "api graphql addLabelsToLabelable",
+  "api graphql removeLabelsFromLabelable",
+  "api graphql addAssigneesToAssignable",
+  "api graphql removeAssigneesFromAssignable",
+  "api graphql requestReviews",
+  "api graphql updatePullRequest",
+  "api graphql markPullRequestReadyForReview",
+  "api graphql convertPullRequestToDraft",
+  "api graphql addPullRequestReviewThread",
+  "api graphql addPullRequestReviewThreadReply",
+  "api graphql resolveReviewThread",
+  "api graphql unresolveReviewThread",
+  "api graphql updatePullRequestReviewComment",
+  "api graphql deletePullRequestReviewComment",
+]);
+
+/** Which transport answers one request, decided once per call by `transportRouteFor`. */
+export type GitHubTransportRoute = "http_read" | "http_write" | "gh";
+
+/**
+ * The transport one request takes. Every request is exactly one of the three:
+ * an allowlisted read served over HTTPS, an allowlisted write served over
+ * HTTPS once the launch switched writes on, or a `gh api` child.
+ *
+ * The read gate is the shadow's conservative predicate, so a REST write, a
+ * REST body with no method, and a GraphQL mutation can never take the read
+ * path whatever their label normalizes to.
+ */
+export function transportRouteFor(
+  request: GitHubRequest,
+  writesOverHttp: boolean,
+): GitHubTransportRoute {
+  if (isShadowableRead(request)) {
+    const label = normalizeCommandLabel(ghInvocationFor(request).argv);
+    return httpServedReadLabels.has(label) ? "http_read" : "gh";
+  }
+  if (!writesOverHttp) return "gh";
+  return httpServedWriteLabels.has(writeLabel(request)) ? "http_write" : "gh";
+}
+
+/**
+ * The label a write is matched against. `normalizeCommandLabel` reads the
+ * method off the argv, and `gh api` sends a body-carrying request with no
+ * `--method` as a POST, so such a request normalizes to a GET label that could
+ * collide with a read's. Naming the method GitHub receives keeps every write
+ * label distinct from every read label.
+ */
+function writeLabel(request: GitHubRequest): string {
+  if (request.kind !== "rest")
+    return normalizeCommandLabel(ghInvocationFor(request).argv);
+  const method = restMethodFor(request);
+  const named = method === "GET" ? request : { ...request, method };
+  return normalizeCommandLabel(ghInvocationFor(named).argv);
+}
+
+/**
+ * The HTTP transport an allowlisted request is served through, narrowed to the
+ * three calls the runner makes of it. `GitHubHttpClient` satisfies it; a test
  * supplies its own.
  */
 export interface GitHubServedTransport {
@@ -124,6 +206,11 @@ export interface GitHubServedTransport {
     profile: WorkspaceProfileConfig,
     request: GitHubRestRequest,
   ): Promise<Result<unknown, CommandFailure>>;
+  /** The response bytes, as `gh api`'s stdout reached `runText` (see `ghText`). */
+  restText(
+    profile: WorkspaceProfileConfig,
+    request: GitHubRestRequest,
+  ): Promise<Result<string, CommandFailure>>;
   graphql(
     profile: WorkspaceProfileConfig,
     request: GitHubGraphQlRequest,
@@ -180,6 +267,13 @@ export class GhRequestRunner {
      * HTTP failure is this call's failure, and gh is not tried after it.
      */
     private readonly http?: GitHubServedTransport,
+    /**
+     * Whether the launch also serves the writes in `httpServedWriteLabels`
+     * over that transport (issue #276, step T3). Default is gh, because a
+     * write cannot be shadowed: it is switched on per launch until the live
+     * check passes, and the option goes with both allowlists at T4.
+     */
+    private readonly writesOverHttp: boolean = false,
   ) {}
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
@@ -187,8 +281,12 @@ export class GhRequestRunner {
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
-    const overHttp = this.httpServed(profile, request);
-    if (overHttp !== undefined) return overHttp;
+    const http = this.httpServing(request);
+    if (http !== undefined) {
+      return request.kind === "rest"
+        ? http.rest(profile, request)
+        : http.graphql(profile, request);
+    }
     const served = this.runAsProfileAccount(
       profile,
       ghCommandFor(request),
@@ -203,8 +301,12 @@ export class GhRequestRunner {
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
-    const overHttp = this.httpServed(profile, request);
-    if (overHttp !== undefined) return asText(await overHttp);
+    const http = this.httpServing(request);
+    if (http !== undefined) {
+      return request.kind === "rest"
+        ? http.restText(profile, request)
+        : asText(await http.graphql(profile, request));
+    }
     const served = this.runAsProfileAccount(
       profile,
       ghCommandFor(request),
@@ -215,26 +317,18 @@ export class GhRequestRunner {
   }
 
   /**
-   * The HTTP transport's answer when this request is one of the reads that
-   * has moved off `gh api`, or undefined when it stays on gh. A request served
-   * here is not shadowed: the shadow compares the two transports on a read gh
-   * is answering, and there is no gh answer left to compare against.
+   * The HTTP transport when it serves this request, or undefined when the
+   * request stays on gh. A request served here is not shadowed: the shadow
+   * compares the two transports on a read gh is answering, and there is no gh
+   * answer left to compare against.
    */
-  private httpServed(
-    profile: WorkspaceProfileConfig,
+  private httpServing(
     request: GitHubRequest,
-  ): Promise<Result<unknown, CommandFailure>> | undefined {
+  ): GitHubServedTransport | undefined {
     const http = this.http;
     if (http === undefined) return undefined;
-    // Same conservative read predicate the shadow uses: a REST write, a REST
-    // body with no method (`gh api --input` defaults to POST), and a GraphQL
-    // mutation stay on gh whatever their label normalizes to.
-    if (!isShadowableRead(request)) return undefined;
-    const label = normalizeCommandLabel(ghInvocationFor(request).argv);
-    if (!httpServedReadLabels.has(label)) return undefined;
-    return request.kind === "rest"
-      ? http.rest(profile, request)
-      : http.graphql(profile, request);
+    const route = transportRouteFor(request, this.writesOverHttp);
+    return route === "gh" ? undefined : http;
   }
 
   async runAsProfileAccount<T>(
@@ -313,10 +407,10 @@ export class GhRequestRunner {
 }
 
 /**
- * An HTTP answer narrowed to the stdout bytes `ghText`'s callers read. The
- * client answers a non-JSON response as its text, which is what a text read
- * asks for; a JSON body arriving here is a response gh would have handed over
- * verbatim, so the read fails rather than silently changing shape.
+ * A GraphQL answer narrowed to the stdout bytes `ghText`'s callers read. Every
+ * REST text caller takes `restText`, which hands over the response bytes; a
+ * GraphQL document read as text would arrive here already parsed, so the read
+ * fails rather than silently changing shape.
  */
 function asText(
   response: Result<unknown, CommandFailure>,

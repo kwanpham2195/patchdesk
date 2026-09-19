@@ -23,6 +23,38 @@ describe("githubTransports", () => {
     expect(transports.shadow).toBeUndefined();
   });
 
+  it("leaves writes on gh by default", () => {
+    expect(
+      githubTransports(new StubCredentials(), logs, undefined).writesOverHttp,
+    ).toBe(false);
+  });
+
+  it("serves writes over HTTP when the launch asked for them", () => {
+    vi.stubEnv("PATCHDESK_GITHUB_WRITES", "http");
+
+    expect(
+      githubTransports(new StubCredentials(), logs, undefined).writesOverHttp,
+    ).toBe(true);
+  });
+
+  it("keeps writes on gh when the rollback overrides the write switch", () => {
+    vi.stubEnv("PATCHDESK_GITHUB_WRITES", "http");
+    vi.stubEnv("PATCHDESK_GITHUB_TRANSPORT", "gh");
+
+    const transports = githubTransports(new StubCredentials(), logs, undefined);
+
+    expect(transports.http).toBeUndefined();
+    expect(transports.writesOverHttp).toBe(false);
+  });
+
+  it("ignores a write switch set to anything but http", () => {
+    vi.stubEnv("PATCHDESK_GITHUB_WRITES", "1");
+
+    expect(
+      githubTransports(new StubCredentials(), logs, undefined).writesOverHttp,
+    ).toBe(false);
+  });
+
   it("puts every read back on gh when the launch asked for the rollback", () => {
     vi.stubEnv("PATCHDESK_GITHUB_TRANSPORT", "gh");
 
