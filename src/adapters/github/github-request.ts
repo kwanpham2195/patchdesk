@@ -5,8 +5,8 @@
  */
 export type GitHubRequest = GitHubRestRequest | GitHubGraphQlRequest;
 
-/** The verbs this adapter sends; an absent method is a GET. */
-type GitHubRestMethod = "POST" | "PUT" | "PATCH" | "DELETE";
+/** The verbs this adapter sends; an absent method is a GET, or a POST with a body (see `restMethodFor`). */
+export type GitHubRestMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
 export type GitHubRestRequest = {
   readonly kind: "rest";
@@ -62,6 +62,19 @@ export type GhInvocation = {
   readonly argv: ReadonlyArray<string>;
   readonly stdin?: string;
 };
+
+/**
+ * The verb GitHub actually receives for a REST request. An absent method is a
+ * GET, except when the request carries a body: `gh api` sends `--input -`
+ * without `--method` as a POST, so a body alone makes the request a write.
+ * The HTTP client and the write routing both read the method from here, so
+ * neither can disagree with what gh sent.
+ */
+export function restMethodFor(
+  request: GitHubRestRequest,
+): GitHubRestMethod | "GET" {
+  return request.method ?? (request.jsonBody === undefined ? "GET" : "POST");
+}
 
 export function ghInvocationFor(request: GitHubRequest): GhInvocation {
   if (request.kind === "graphql") return { argv: graphQlArgv(request) };

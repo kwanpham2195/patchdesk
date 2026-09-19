@@ -4,14 +4,11 @@ import {
   CommandRunner,
   normalizeCommandLabel,
   type CommandExecution,
-  type CommandExecutor,
   type CommandFailure,
-  type CommandRequest,
 } from "../../src/adapters/github/command-runner";
 import {
   GhRequestRunner,
   httpServedReadLabels,
-  type GitHubServedTransport,
 } from "../../src/adapters/github/gh-request-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import {
@@ -46,6 +43,11 @@ import type { PullRequestRef } from "../../src/domain/pull-request";
 import { err, ok, type Result } from "../../src/domain/result";
 import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { json, profile, useFixtureServer } from "./github-http-fixture-server";
+import {
+  exited,
+  RecordingGhExecutor,
+  RecordingHttpTransport,
+} from "./github-transport-doubles";
 import { StubCredentials } from "./stub-github-credentials";
 
 /**
@@ -55,42 +57,6 @@ import { StubCredentials } from "./stub-github-credentials";
  * runs, that a request the allowlist does not name is untouched, and that a
  * mutation stays on gh whatever its label.
  */
-
-class RecordingGhExecutor implements CommandExecutor {
-  /** `normalizeCommandLabel` of every gh invocation, in call order. */
-  readonly labels: Array<string> = [];
-
-  constructor(private readonly execution: CommandExecution) {}
-
-  async execute(input: CommandRequest): Promise<CommandExecution> {
-    this.labels.push(normalizeCommandLabel(input.argv));
-    return this.execution;
-  }
-}
-
-class RecordingHttpTransport implements GitHubServedTransport {
-  readonly requests: Array<GitHubRequest> = [];
-
-  constructor(
-    private readonly answer: Result<unknown, CommandFailure> = ok({}),
-  ) {}
-
-  async rest(
-    _profile: WorkspaceProfileConfig,
-    request: GitHubRestRequest,
-  ): Promise<Result<unknown, CommandFailure>> {
-    this.requests.push(request);
-    return this.answer;
-  }
-
-  async graphql(
-    _profile: WorkspaceProfileConfig,
-    request: GitHubGraphQlRequest,
-  ): Promise<Result<unknown, CommandFailure>> {
-    this.requests.push(request);
-    return this.answer;
-  }
-}
 
 class RecordingShadowTransport {
   readonly requests: Array<GitHubRequest> = [];
@@ -113,13 +79,6 @@ class RecordingShadowTransport {
     return this.answer;
   }
 }
-
-const exited = (stdout: string): CommandExecution => ({
-  _tag: "Exited",
-  exitCode: 0,
-  stdout,
-  stderr: "",
-});
 
 /** Allowlisted reads, as their call sites write them. */
 const issueComments: GitHubRestRequest = {

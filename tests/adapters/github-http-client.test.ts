@@ -79,14 +79,21 @@ describe("GitHubHttpClient REST requests", () => {
     );
   });
 
-  it("answers a non-JSON media type with the response text", async () => {
+  /**
+   * Which seam the caller took decides how the body is read, as `runText` and
+   * `runJson` decided it for the same `gh api` stdout. The response's media
+   * type does not: `discardPendingReview` reads a text answer GitHub sends as
+   * JSON, and a JSON caller handed an unparseable 200 has to fail the way
+   * `runJson` failed rather than answer with the prose.
+   */
+  it("answers a text caller with the response bytes whatever the media type", async () => {
     fixture.respondWith((_request, response) => {
       response.writeHead(200, {
         "Content-Type": "application/vnd.github.v3.diff",
       });
       response.end("diff --git a/a.ts b/a.ts\n");
     });
-    const result = await fixture.client().rest(profile, {
+    const result = await fixture.client().restText(profile, {
       kind: "rest",
       host: "github.com",
       accept: "application/vnd.github.v3.diff",
@@ -99,7 +106,37 @@ describe("GitHubHttpClient REST requests", () => {
     );
   });
 
-  it("answers an empty 204 with an empty body", async () => {
+  it("answers a text caller's empty 204 with an empty body", async () => {
+    fixture.respondWith((_request, response) => {
+      response.writeHead(204);
+      response.end();
+    });
+    const result = await fixture.client().restText(profile, {
+      kind: "rest",
+      host: "github.com",
+      method: "DELETE",
+      path: "repos/centraldigital/patchdesk/pulls/comments/9",
+    });
+
+    expect(result).toEqual({ _tag: "ok", value: "" });
+  });
+
+  it("answers a text caller with a JSON body unparsed", async () => {
+    fixture.respondWith(json(200, { id: 9, state: "PENDING" }));
+    const result = await fixture.client().restText(profile, {
+      kind: "rest",
+      host: "github.com",
+      method: "DELETE",
+      path: "repos/centraldigital/patchdesk/pulls/42/reviews/9",
+    });
+
+    expect(result).toEqual({
+      _tag: "ok",
+      value: '{"id":9,"state":"PENDING"}',
+    });
+  });
+
+  it("fails a JSON caller's empty 204 the way runJson failed on empty stdout", async () => {
     fixture.respondWith((_request, response) => {
       response.writeHead(204);
       response.end();
@@ -111,7 +148,21 @@ describe("GitHubHttpClient REST requests", () => {
       path: "repos/centraldigital/patchdesk/pulls/42/reviews/9",
     });
 
-    expect(result).toEqual({ _tag: "ok", value: "" });
+    expect(errorOf(result)).toEqual({ _tag: "CommandInvalidJson" });
+  });
+
+  it("fails a JSON caller handed a non-JSON 200", async () => {
+    fixture.respondWith((_request, response) => {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<html>proxy</html>");
+    });
+    const result = await fixture.client().rest(profile, {
+      kind: "rest",
+      host: "github.com",
+      path: "user",
+    });
+
+    expect(errorOf(result)).toEqual({ _tag: "CommandInvalidJson" });
   });
 
   it("follows every page and answers one array of pages", async () => {

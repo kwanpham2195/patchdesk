@@ -18,6 +18,7 @@ import {
 } from "./github-credentials";
 import {
   ghInvocationFor,
+  restMethodFor,
   type GitHubGraphQlRequest,
   type GitHubRequest,
   type GitHubRestRequest,
@@ -98,6 +99,15 @@ type GraphQlVariable = GitHubGraphQlRequest["variables"][number];
 /** How many response bytes a call may still buffer, shared across a paginated read's pages. */
 type ByteBudget = { remaining: number };
 
+/**
+ * Which of the runner's two seams asked for this call, so the answer reaches
+ * the caller the way the equivalent `gh api` stdout did: `runJson` parsed it,
+ * `runText` handed it over. The response's own media type does not decide,
+ * because gh's did not either -- an unparseable 200 is `CommandInvalidJson`
+ * for a JSON caller and a success for a text one.
+ */
+type ResponseBodyMode = "json" | "text";
+
 const graphQlErrorsSchema = v.looseObject({
   errors: v.optional(v.array(v.unknown())),
 });
@@ -146,9 +156,31 @@ export class GitHubHttpClient {
   ): Promise<Result<unknown, CommandFailure>> {
     return this.asProfileAccount(profile, (token) =>
       withRequestDeadline(signal, (deadline) =>
-        this.sendRest(request, token, deadline),
+        this.sendRest(request, token, deadline, "json"),
       ),
     );
+  }
+
+  /**
+   * Run a REST request whose answer the caller reads as the response bytes,
+   * the way `gh api`'s stdout reached `CommandRunner.runText`. The body is
+   * never parsed here whatever its media type: the diff read wants the bytes,
+   * and the two DELETE writes treat any success as their receipt, one of which
+   * (`discardPendingReview`) GitHub answers with JSON.
+   */
+  async restText(
+    profile: WorkspaceProfileConfig,
+    request: GitHubRestRequest,
+    signal?: AbortSignal,
+  ): Promise<Result<string, CommandFailure>> {
+    const response = await this.asProfileAccount(profile, (token) =>
+      withRequestDeadline(signal, (deadline) =>
+        this.sendRest(request, token, deadline, "text"),
+      ),
+    );
+    if (response._tag === "err") return response;
+    const text = v.safeParse(v.string(), response.value);
+    return text.success ? ok(text.output) : err({ _tag: "CommandFailed" });
   }
 
   /** Run a GraphQL request as the profile's configured GitHub account. */
@@ -189,6 +221,7 @@ export class GitHubHttpClient {
     request: GitHubRestRequest,
     token: string,
     signal: AbortSignal,
+    responseBody: ResponseBodyMode,
   ): Promise<Result<unknown, CommandFailure>> {
     const headers = new Headers({
       Authorization: `Bearer ${token}`,
@@ -199,7 +232,7 @@ export class GitHubHttpClient {
     if (request.jsonBody !== undefined)
       headers.set("Content-Type", "application/json");
     const init: RequestInit = {
-      method: request.method ?? "GET",
+      method: restMethodFor(request),
       headers,
       signal,
       ...definedProps({ body: request.jsonBody }),
@@ -224,7 +257,11 @@ export class GitHubHttpClient {
       if (body._tag === "err") return body;
       const failure = responseFailure(response.status, body.value);
       if (failure !== undefined) return err(failure);
-      if (request.paginate !== true) return decodeBody(response, body.value);
+      if (request.paginate !== true) {
+        return responseBody === "text"
+          ? ok(body.value)
+          : parseJsonBody(body.value);
+      }
       const page = parseJsonBody(body.value);
       if (page._tag === "err") return page;
       pages.push(page.value);
@@ -375,15 +412,6 @@ function responseFailure(
 /** The label the same request spawned under, so one endpoint reads the same whichever transport served it. */
 function labelOf(request: GitHubRequest): string {
   return normalizeCommandLabel(ghInvocationFor(request).argv);
-}
-
-/** JSON is parsed; anything else — a diff, an empty 204 — is the text gh would have written to stdout. */
-function decodeBody(
-  response: Response,
-  text: string,
-): Result<unknown, CommandFailure> {
-  const contentType = response.headers.get("content-type") ?? "";
-  return contentType.includes("json") ? parseJsonBody(text) : ok(text);
 }
 
 function parseJsonBody(text: string): Result<unknown, CommandFailure> {
