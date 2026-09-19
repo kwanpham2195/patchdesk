@@ -63,6 +63,7 @@ import type { ReviewOperationCoordinator } from "./review-operation-coordinator"
 import { requestAbortContext } from "../adapters/github/command-runner";
 import {
   applySessionAdoption,
+  completeObservationJournal,
   nextTimestamp,
   ReviewObservationRecovery,
 } from "./review-observation-recovery";
@@ -118,7 +119,10 @@ export type ReviewObservationDependencies = {
   readonly profiles: Pick<ProfileStore, "load">;
   readonly reviews: Pick<ReviewStore, "load" | "save">;
   readonly sessions: Pick<ReviewSessionStore, "load" | "save">;
-  readonly remote: Pick<ReviewRemoteStore, "load" | "saveCandidate">;
+  readonly remote: Pick<
+    ReviewRemoteStore,
+    "load" | "saveCandidate" | "pruneExcept"
+  >;
   readonly journals: Pick<
     ReviewObservationJournalStore,
     "load" | "save" | "remove"
@@ -564,10 +568,12 @@ export class ReviewObservationService {
         "reconciliation_incomplete",
       );
     }
-    const removed = await this.dependencies.journals.remove(
-      input.profileId,
-      input.reviewId,
-    );
+    const removed = await completeObservationJournal(this.dependencies, {
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      representedSnapshotHash:
+        adoptedReview.value.representedRemote?.snapshotHash,
+    });
     if (removed._tag === "err") {
       return this.markUnavailable(
         input,

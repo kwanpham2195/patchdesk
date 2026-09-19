@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -585,6 +585,44 @@ describe("ReviewRemoteStore", () => {
         },
       }),
     ).toMatchObject({ _tag: "err" });
+  });
+
+  it("prunes every stored snapshot except the hashes it is told to keep", async () => {
+    const root = await mkdtemp(join(tmpdir(), "patchdesk-remote-"));
+    roots.push(root);
+    const paths = PatchdeskPaths.forTest(root);
+    const store = new ReviewRemoteStore(paths);
+    // A Review that has never stored a snapshot has no directory to list.
+    expect(
+      await store.pruneExcept({ profileId, reviewId, keep: [] }),
+    ).toMatchObject({ _tag: "ok" });
+    const hashes = [];
+    for (const title of ["first", "second", "third"]) {
+      const saved = await store.saveCandidate({
+        profileId,
+        reviewId,
+        snapshot: {
+          ...snapshot,
+          pullRequest: { ...snapshot.pullRequest, title },
+        },
+      });
+      if (saved._tag === "err") throw new Error("fixture");
+      hashes.push(saved.value.snapshotHash);
+    }
+    const directory = join(
+      paths.reviewDirectory(profileId, reviewId),
+      "remote",
+    );
+    expect((await readdir(directory)).length).toBe(3);
+    // Two kept hashes stand for what an open observation journal still names:
+    // the snapshot the Review represents and the one it is moving to.
+    const keep = hashes.slice(1);
+    expect(
+      await store.pruneExcept({ profileId, reviewId, keep }),
+    ).toMatchObject({ _tag: "ok" });
+    expect((await readdir(directory)).sort()).toEqual(
+      keep.map((hash) => `${hash}.json`).sort(),
+    );
   });
 
   it("rejects an address whose contents do not match its hash", async () => {

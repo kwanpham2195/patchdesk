@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import * as v from "valibot";
@@ -30,10 +31,13 @@ import {
   type WorkspaceProfileId,
 } from "../../domain/ids";
 import { definedProps } from "../../domain/defined-props";
+import { mapConcurrent } from "../../domain/map-concurrent";
 import { err, ok, type Result } from "../../domain/result";
 import { projectChecks } from "./check-summary-schema";
 import {
+  isNotFound,
   readJsonFile,
+  removePath,
   type StorageFailure,
   writeAtomicJson,
 } from "./json-file";
@@ -119,6 +123,40 @@ export class ReviewRemoteStore {
     if (parsed._tag === "err") return parsed;
     if (hashSnapshot(parsed.value) !== snapshotHash) return invalidRead();
     return parsed;
+  }
+
+  /**
+   * Delete one Review's stored snapshots except the hashes in `keep`. Writes
+   * are content-addressed, so every observed change adds a file and nothing
+   * ever replaces one; this call is the only thing that frees a superseded
+   * snapshot (#297). It lists the directory rather than taking a hash to
+   * delete, so snapshots a crashed earlier prune left behind go too.
+   */
+  async pruneExcept(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly keep: ReadonlyArray<ContentHash>;
+  }): Promise<Result<void, StorageFailure>> {
+    const directory = remoteSnapshotDirectory(
+      this.paths,
+      input.profileId,
+      input.reviewId,
+    );
+    let entries: ReadonlyArray<string>;
+    try {
+      entries = await readdir(directory);
+    } catch (cause: unknown) {
+      if (isNotFound(cause)) return ok(undefined);
+      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+    const kept = new Set(input.keep.map((hash) => `${hash}.json`));
+    const superseded = entries.filter(
+      (entry) => entry.endsWith(".json") && !kept.has(entry),
+    );
+    const removals = await mapConcurrent(superseded, 8, (entry) =>
+      removePath(join(directory, entry)),
+    );
+    return removals.find((removal) => removal._tag === "err") ?? ok(undefined);
   }
 }
 
@@ -765,6 +803,14 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
+function remoteSnapshotDirectory(
+  paths: PatchdeskPaths,
+  profileId: WorkspaceProfileId,
+  reviewId: ReviewId,
+): string {
+  return join(paths.reviewDirectory(profileId, reviewId), "remote");
+}
+
 function remoteSnapshotPath(
   paths: PatchdeskPaths,
   profileId: WorkspaceProfileId,
@@ -772,8 +818,7 @@ function remoteSnapshotPath(
   snapshotHash: ContentHash,
 ): string {
   return join(
-    paths.reviewDirectory(profileId, reviewId),
-    "remote",
+    remoteSnapshotDirectory(paths, profileId, reviewId),
     `${snapshotHash}.json`,
   );
 }
