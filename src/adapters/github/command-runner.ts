@@ -7,6 +7,7 @@ import { definedProps } from "../../domain/defined-props";
 import type { ForbiddenReason } from "../../domain/github-forbidden-reason";
 import { err, ok, type Result } from "../../domain/result";
 import { discoverExecutable } from "../process/executable-discovery";
+import { whenLoginShellEnvironmentImported } from "../process/login-shell-import";
 
 const FORCE_KILL_AFTER_MS = 2_000;
 
@@ -182,7 +183,12 @@ export class NodeCommandExecutor implements CommandExecutor {
   async execute(input: CommandRequest): Promise<CommandExecution> {
     const executable = input.argv[0];
     if (executable === undefined) return { _tag: "Unavailable" };
-    // Started before discovery so the duration matches what the caller waited.
+    // Discovery below and the child's environment both read the PATH and the
+    // credentials the login shell imports, so a spawn asked for while that
+    // import is still running waits for it (ADR 0038, amended 2026-09-19).
+    await whenLoginShellEnvironmentImported();
+    // Started after that wait and before discovery, so the duration is this
+    // command's own cost rather than the launch's one-off shell import.
     const startedAt = Date.now();
     const label = normalizeCommandLabel(input.argv);
     const resolvedExecutable = await this.discover(executable);

@@ -37,6 +37,24 @@ export type DesktopLifecycle = {
   stop(): Promise<void>;
 };
 
+/**
+ * Starts the login-shell import and the desktop together, so the local API
+ * and the window never wait for a shell to source the maintainer's dotfiles
+ * (ADR 0038, amended 2026-09-19). The import is started first and kept, so
+ * every reader that waits on it — a child spawn, the Pi child invoker, the
+ * provider catalog, Codex discovery — waits for this launch's one import
+ * rather than starting a second one. The caller owns both promises: it reads
+ * `started` to decide whether the app can run at all, and awaits `imported`
+ * afterwards.
+ */
+export function startDesktopBesideLoginShellImport(
+  lifecycle: Pick<DesktopLifecycle, "start">,
+  importLoginShellEnvironment: () => Promise<void>,
+) {
+  const imported = importLoginShellEnvironment();
+  return { started: lifecycle.start(), imported };
+}
+
 /** Owns local API startup, health verification, workbench display, and shutdown ordering. */
 export function createDesktopLifecycle(
   dependencies: DesktopLifecycleDependencies,
