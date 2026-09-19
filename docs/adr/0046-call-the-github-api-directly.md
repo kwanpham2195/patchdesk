@@ -92,9 +92,11 @@ it is swallowed, so switching it on cannot change what a read returns or when.
 It doubles read traffic against the same 5000-per-hour limit, which is why it
 is off by default.
 
-A read `gh` projects with `jq` is recorded as skipped rather than compared:
-`gh` answers the projected value and the client the whole body, so the two are
-not comparable and a standing divergence there would bury the real ones.
+A read `gh` projected with `jq` was recorded as skipped rather than compared:
+`gh` answered the projected value and the client the whole body, so the two
+were not comparable. There was one such read, `GET user`, and it now parses
+the login out of the whole body on both transports; `jq` is gone from
+`GitHubRestRequest` with its last caller, and so is the skip.
 
 Each comparison writes one `transport-shadow` log entry carrying the normalized
 endpoint label, the outcome, and where the two first differed — never a
@@ -102,6 +104,47 @@ response body, a token, or a header value.
 `node scripts/gh-spawn-report.mjs --shadow [--since <iso>] [--until <iso>]`
 sums those entries into one row per label, so a label is cut over on a count of
 clean reads rather than on a judgement (issue #292).
+
+## Cutover record
+
+`httpServedReadLabels` in `gh-request-runner.ts` is the list of reads served
+over HTTPS, named by the label `normalizeCommandLabel` prints. A request is
+served there when the runner holds an HTTP transport, the request is a read,
+and its label is in the list; everything else spawns `gh api` unchanged, and a
+served request is not shadowed because there is no `gh` answer left to compare
+it against. There is no fallback in either direction: an HTTP failure is the
+read's failure, classified from the response status rather than from stderr.
+
+As of T1a the list holds these eight labels, each of which read clean against
+`gh` for a whole shadow window on two transports first:
+
+    api GET repos/:owner/:repo/commits/:sha/check-runs
+    api GET repos/:owner/:repo/commits/:sha/status
+    api GET repos/:owner/:repo/collaborators/:user/permission
+    api GET repos/:owner/:repo/branches/:branch/protection
+    api GET repos/:owner/:repo/branches/:branch/protection/required_status_checks
+    api GET repos/:owner/:repo/rules/branches/:branch
+    api GET repos/:owner/:repo/issues/:n/comments
+    api GET user
+
+None of them paginates. Repository labels are read through GraphQL, not
+`repos/:owner/:repo/labels`, so they move with T2 rather than here.
+
+T1b and T2 extend the list; T4 deletes it together with the last `gh api`
+argv and the gh-specific classification named under Consequences.
+
+**The rollback switch is temporary.** `PATCHDESK_GITHUB_TRANSPORT=gh`, read
+once at composition beside `PATCHDESK_TRANSPORT_SHADOW`, leaves every read on
+`gh` without a rebuild. It exists for the soak release that carries the first
+cutover and is deleted with the allowlist at T4. It is an operational
+rollback, not a fallback: nothing consults it per call, and no failure ever
+switches transport.
+
+A served read spawns nothing, so it writes one `github-http` log entry per
+request — method-bearing normalized label, status, duration, and no URL —
+which `scripts/gh-spawn-report.mjs` counts in its own section and its own
+per-cycle column. Spawn counts therefore keep comparing with the program's
+earlier measurements.
 
 ## Rejected alternatives
 

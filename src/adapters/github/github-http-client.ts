@@ -105,7 +105,8 @@ const graphQlErrorsSchema = v.looseObject({
 /**
  * Calls the GitHub API over HTTPS as the account a workspace profile names,
  * replacing the `gh api` child process every read and write paid for (ADR
- * 0046). Nothing routes through it yet.
+ * 0046). The reads in `httpServedReadLabels` route through it; the rest still
+ * spawn `gh`.
  *
  * Connections are kept alive by the runtime's own fetch dispatcher, which
  * pools per origin, so a burst of calls to one host repeats neither the
