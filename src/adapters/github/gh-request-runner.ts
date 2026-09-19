@@ -1,9 +1,8 @@
-import {
-  requestCoalescingContext,
-  type CommandFailure,
-  type CommandRequest,
-  type CommandRunner,
-  type ForbiddenReason,
+import type {
+  CommandFailure,
+  CommandRequest,
+  CommandRunner,
+  ForbiddenReason,
 } from "./command-runner";
 import {
   GitHubCliCredentials,
@@ -84,72 +83,6 @@ function ghCommandFor(request: GitHubRequest): GhCommandRequest {
 }
 
 /**
- * The identity two reads have to share before one may join the other, or
- * `undefined` for a request this runner must always send itself.
- *
- * Host and account lead the key because `runAsProfileAccount` injects that
- * profile's own token (ADR 0021), so two profiles must never share an entry
- * even when their invocations are identical; the shape mirrors `accountKey`
- * in `github-credentials.ts`. The rest is the exact invocation, argv and
- * stdin, which is what decides the response.
- *
- * Only a request this runner can prove is a read is eligible. Coalescing a
- * write would drop one of two deliberate mutations, so a REST call carrying a
- * method is excluded, and a GraphQL document is eligible only when it opens
- * with the `query` keyword -- a mutation operation cannot.
- */
-function coalescingKey(
-  profile: WorkspaceProfileConfig,
-  request: GitHubRequest,
-  command: GhCommandRequest,
-): string | undefined {
-  if (!provablyRead(request)) return undefined;
-  return [
-    profile.githubHost,
-    profile.ghAccount,
-    ...command.argv,
-    command.stdin ?? "",
-  ].join("\u0000");
-}
-
-function provablyRead(request: GitHubRequest): boolean {
-  if (request.kind === "pull_request_diff") return true;
-  if (request.kind === "graphql") return request.document.startsWith("query ");
-  return request.method === undefined;
-}
-
-/**
- * Joins the identical read already running under `key`, or starts one and
- * publishes it for the rest of this request to join.
- *
- * Both callers await the one promise, so a failure is shared exactly as a
- * success is: they are the same call and cannot be told different answers.
- * The entry is removed in the `finally` before that promise resolves, so by
- * the time any awaiter resumes it is already gone -- a read issued after one
- * completes is its own round trip, which is what keeps every re-verification
- * in the Review path honest (`review-refresh-service.ts` reads the pull
- * request, awaits the rest of the snapshot, then reads it again to prove the
- * revision did not move).
- */
-function joinInFlight<T>(
-  inFlight: Map<string, Promise<Result<T, CommandFailure>>>,
-  key: string,
-  start: () => Promise<Result<T, CommandFailure>>,
-): Promise<Result<T, CommandFailure>> {
-  const joined = inFlight.get(key);
-  if (joined !== undefined) return joined;
-  const started = (async () => {
-    try {
-      return await start();
-    } finally {
-      inFlight.delete(key);
-    }
-  })();
-  inFlight.set(key, started);
-  return started;
-}
-
-/**
  * Runs every gh invocation the GitHub adapter makes, as the profile's own
  * account, and classifies what comes back.
  *
@@ -159,11 +92,6 @@ function joinInFlight<T>(
  * host has to be explained. That is why the runner is a collaborator rather
  * than a set of free functions -- the cache and the classification that reads
  * it belong together.
- *
- * Inside a request that entered `runWithCoalescedGitHubReads`, a read whose
- * identical twin is already running joins it instead of spawning a second
- * child (see `coalescingKey` and `joinInFlight`). That scope holds nothing
- * once a call settles, so it never answers from a completed result.
  */
 export class GhRequestRunner {
   /**
@@ -189,16 +117,9 @@ export class GhRequestRunner {
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
-    const command = ghCommandFor(request);
-    const start = (): Promise<Result<unknown, CommandFailure>> =>
-      this.runAsProfileAccount(profile, command, (input) =>
-        this.commands.runJson(input),
-      );
-    const scope = requestCoalescingContext.getStore();
-    const key = coalescingKey(profile, request, command);
-    return scope === undefined || key === undefined
-      ? start()
-      : joinInFlight(scope.json, key, start);
+    return this.runAsProfileAccount(profile, ghCommandFor(request), (input) =>
+      this.commands.runJson(input),
+    );
   }
 
   /** Run a request that returns text as the profile's configured GitHub account. */
@@ -206,16 +127,9 @@ export class GhRequestRunner {
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
-    const command = ghCommandFor(request);
-    const start = (): Promise<Result<string, CommandFailure>> =>
-      this.runAsProfileAccount(profile, command, (input) =>
-        this.commands.runText(input),
-      );
-    const scope = requestCoalescingContext.getStore();
-    const key = coalescingKey(profile, request, command);
-    return scope === undefined || key === undefined
-      ? start()
-      : joinInFlight(scope.text, key, start);
+    return this.runAsProfileAccount(profile, ghCommandFor(request), (input) =>
+      this.commands.runText(input),
+    );
   }
 
   async runAsProfileAccount<T>(
