@@ -71,6 +71,14 @@ class RecordingShadowTransport {
     return this.answer;
   }
 
+  async restText(
+    _profile: WorkspaceProfileConfig,
+    request: GitHubRestRequest,
+  ): Promise<Result<string, CommandFailure>> {
+    this.requests.push(request);
+    return this.answer._tag === "err" ? this.answer : ok("");
+  }
+
   async graphql(
     _profile: WorkspaceProfileConfig,
     request: GitHubRequest,

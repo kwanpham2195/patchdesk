@@ -64,6 +64,11 @@ export interface GitHubShadowTransport {
     profile: WorkspaceProfileConfig,
     request: GitHubRestRequest,
   ): Promise<Result<unknown, CommandFailure>>;
+  /** The response bytes, for a read gh answered through `ghText` (see `send`). */
+  restText(
+    profile: WorkspaceProfileConfig,
+    request: GitHubRestRequest,
+  ): Promise<Result<string, CommandFailure>>;
   graphql(
     profile: WorkspaceProfileConfig,
     request: GitHubGraphQlRequest,
@@ -140,7 +145,11 @@ export class TransportShadow {
     }
 
     const startedAt = Date.now();
-    const shadowed = this.send(observation.profile, observation.request);
+    const shadowed = this.send(
+      observation.profile,
+      observation.request,
+      observation.body,
+    );
     const [gh, shadow] = await Promise.all([
       settledCall(observation.served, startedAt),
       settledCall(shadowed, startedAt),
@@ -176,12 +185,25 @@ export class TransportShadow {
     });
   }
 
+  /**
+   * The shadow call, made through the same seam gh's answer came back on: the
+   * client parses a JSON read and hands over a text read's bytes, so asking
+   * for the wrong one would report `CommandInvalidJson` against gh's success
+   * and log a divergence that is the shadow's own.
+   *
+   * A GraphQL document observed as text stays on `graphql`. There is no such
+   * caller, and if one appeared the comparison would fail on shape rather than
+   * on bytes -- the same outcome `asText` produces for it on the served path.
+   */
   private async send(
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
+    body: ShadowResponseBody,
   ): Promise<Result<unknown, CommandFailure>> {
-    return request.kind === "graphql"
-      ? this.transport.graphql(profile, request)
+    if (request.kind === "graphql")
+      return this.transport.graphql(profile, request);
+    return body === "text"
+      ? this.transport.restText(profile, request)
       : this.transport.rest(profile, request);
   }
 
