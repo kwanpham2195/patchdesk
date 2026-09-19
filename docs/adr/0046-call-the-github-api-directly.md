@@ -115,7 +115,7 @@ served request is not shadowed because there is no `gh` answer left to compare
 it against. There is no fallback in either direction: an HTTP failure is the
 read's failure, classified from the response status rather than from stderr.
 
-As of T1a the list holds these eight labels, each of which read clean against
+As of T1b the list holds these twelve labels, each of which read clean against
 `gh` for a whole shadow window on two transports first:
 
     api GET repos/:owner/:repo/commits/:sha/check-runs
@@ -126,12 +126,31 @@ As of T1a the list holds these eight labels, each of which read clean against
     api GET repos/:owner/:repo/rules/branches/:branch
     api GET repos/:owner/:repo/issues/:n/comments
     api GET user
+    api GET repos/:owner/:repo/pulls/:n
+    api GET repos/:owner/:repo/compare/:range
+    api GET repos/:owner/:repo/pulls/:n/reviews
+    api GET repos/:owner/:repo/pulls/:n/comments
 
 None of them paginates. Repository labels are read through GraphQL, not
 `repos/:owner/:repo/labels`, so they move with T2 rather than here.
 
-T1b and T2 extend the list; T4 deletes it together with the last `gh api`
-argv and the gh-specific classification named under Consequences.
+Three REST reads stay on `gh`, none of them observed in a shadow window yet:
+`pulls/:n/commits`, `contents/:path`, and the open pull request list
+`repos/:owner/:repo/pulls`. The commits read is the only one that paginates,
+and a fixture-server test pins that the client's `Link` following answers the
+same array of pages `--paginate --slurp` answered with, which is the shape the
+250-entry truncation guard reads. It moves when a window has compared it.
+
+**The compare read is hashed, so its bytes are the contract.** `Response.text()`
+and a default `TextDecoder` both strip a leading UTF-8 byte order mark; gh
+wrote its stdout through Node's utf8 stream decoder, which keeps it. The
+client therefore decodes the response stream with `ignoreBOM`, so the bytes
+`canonicalPatchHash` covers are the bytes GitHub served (ADR 0026). CRLF
+endings, non-ASCII text, and a missing trailing newline already survived
+unchanged.
+
+T2 extends the list; T4 deletes it together with the last `gh api` argv and
+the gh-specific classification named under Consequences.
 
 **The rollback switch is temporary.** `PATCHDESK_GITHUB_TRANSPORT=gh`, read
 once at composition beside `PATCHDESK_TRANSPORT_SHADOW`, leaves every read on

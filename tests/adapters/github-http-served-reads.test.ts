@@ -14,6 +14,7 @@ import {
   type GitHubRestTransport,
 } from "../../src/adapters/github/gh-request-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
+import { fullJsonMediaType } from "../../src/adapters/github/github-pull-request-reviews";
 import { ghInvocationFor } from "../../src/adapters/github/github-request";
 import type {
   GitHubRequest,
@@ -97,7 +98,7 @@ const exited = (stdout: string): CommandExecution => ({
   stderr: "",
 });
 
-/** An allowlisted read and one the allowlist does not name, as their call sites write them. */
+/** Allowlisted reads, as their call sites write them. */
 const issueComments: GitHubRestRequest = {
   kind: "rest",
   host: "github.com",
@@ -108,6 +109,42 @@ const pullRequest: GitHubRestRequest = {
   host: "github.com",
   path: "repos/centraldigital/patchdesk/pulls/42",
 };
+const compare: GitHubRestRequest = {
+  kind: "rest",
+  host: "github.com",
+  accept: "application/vnd.github.v3.diff",
+  path: `repos/centraldigital/patchdesk/compare/${"b".repeat(40)}...${"c".repeat(40)}`,
+};
+/** The two media types the one review-list read is asked for, which share a label. */
+const fullReviews: GitHubRestRequest = {
+  kind: "rest",
+  host: "github.com",
+  accept: fullJsonMediaType,
+  path: "repos/centraldigital/patchdesk/pulls/42/reviews?per_page=100&page=1",
+};
+const plainReviews: GitHubRestRequest = {
+  kind: "rest",
+  host: "github.com",
+  path: "repos/centraldigital/patchdesk/pulls/42/reviews?per_page=100&page=1",
+};
+const reviewComments: GitHubRestRequest = {
+  kind: "rest",
+  host: "github.com",
+  accept: fullJsonMediaType,
+  path: "repos/centraldigital/patchdesk/pulls/42/comments?per_page=100&page=1",
+};
+
+/** The commits read, which no shadow window has compared, so it stays on gh. */
+const commits: GitHubRestRequest = {
+  kind: "rest",
+  paginate: true,
+  host: "github.com",
+  path: "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
+};
+
+function labelFor(request: GitHubRestRequest): string {
+  return normalizeCommandLabel(ghInvocationFor(request).argv);
+}
 
 function mustParse<T, E>(result: Result<T, E>): T {
   if (result._tag === "err") throw new Error("Expected test value to parse");
@@ -139,16 +176,32 @@ function harness(options: {
 
 describe("httpServedReadLabels", () => {
   it("names labels normalizeCommandLabel actually prints", () => {
-    const labels = [issueComments, pullRequest].map((request) =>
-      normalizeCommandLabel(ghInvocationFor(request).argv),
-    );
+    const labels = [
+      issueComments,
+      pullRequest,
+      compare,
+      fullReviews,
+      plainReviews,
+      reviewComments,
+    ].map(labelFor);
 
     expect(labels).toEqual([
       "api GET repos/:owner/:repo/issues/:n/comments",
       "api GET repos/:owner/:repo/pulls/:n",
+      "api GET repos/:owner/:repo/compare/:range",
+      "api GET repos/:owner/:repo/pulls/:n/reviews",
+      "api GET repos/:owner/:repo/pulls/:n/reviews",
+      "api GET repos/:owner/:repo/pulls/:n/comments",
     ]);
-    expect(httpServedReadLabels.has(labels[0] ?? "")).toBe(true);
-    expect(httpServedReadLabels.has(labels[1] ?? "")).toBe(false);
+    for (const label of labels)
+      expect(httpServedReadLabels.has(label)).toBe(true);
+  });
+
+  it("leaves the commits read, which no shadow window compared, off the list", () => {
+    expect(labelFor(commits)).toBe(
+      "api GET repos/:owner/:repo/pulls/:n/commits",
+    );
+    expect(httpServedReadLabels.has(labelFor(commits))).toBe(false);
   });
 });
 
@@ -167,13 +220,13 @@ describe("routing a read to the HTTP transport", () => {
 
   it("leaves a read the allowlist does not name on gh, with no HTTP call", async () => {
     const { executor, http, runner } = harness({
-      execution: exited('{"number":42}'),
+      execution: exited("[[]]"),
     });
 
-    await expect(runner.ghJson(profile, pullRequest)).resolves.toEqual(
-      ok({ number: 42 }),
-    );
-    expect(executor.labels).toEqual(["api GET repos/:owner/:repo/pulls/:n"]);
+    await expect(runner.ghJson(profile, commits)).resolves.toEqual(ok([[]]));
+    expect(executor.labels).toEqual([
+      "api GET repos/:owner/:repo/pulls/:n/commits",
+    ]);
     expect(http.requests).toEqual([]);
   });
 
@@ -242,27 +295,27 @@ describe("routing a read to the HTTP transport", () => {
 
   it("shadows only the reads the allowlist leaves on gh", async () => {
     const entries: Array<LogEntryInput> = [];
-    const shadowTransport = new RecordingShadowTransport(ok({ number: 42 }));
+    const shadowTransport = new RecordingShadowTransport(ok([[]]));
     const credentials = new StubCredentials();
     const runner = new GhRequestRunner(
-      new CommandRunner(new RecordingGhExecutor(exited('{"number":42}'))),
+      new CommandRunner(new RecordingGhExecutor(exited("[[]]"))),
       credentials,
       new TransportShadow(shadowTransport, credentials, (entry) =>
         entries.push(entry),
       ),
-      new RecordingHttpTransport(ok({ number: 42 })),
+      new RecordingHttpTransport(ok([[]])),
     );
 
     await runner.ghJson(profile, issueComments);
-    await runner.ghJson(profile, pullRequest);
+    await runner.ghJson(profile, commits);
 
     // The comparison is detached, so wait for the one entry it writes.
     await vi.waitFor(() => expect(entries).toHaveLength(1));
     expect(entries[0]?.meta).toMatchObject({
-      label: "api GET repos/:owner/:repo/pulls/:n",
+      label: "api GET repos/:owner/:repo/pulls/:n/commits",
       outcome: "match",
     });
-    expect(shadowTransport.requests).toEqual([pullRequest]);
+    expect(shadowTransport.requests).toEqual([commits]);
   });
 });
 

@@ -400,6 +400,11 @@ function parseJsonBody(text: string): Result<unknown, CommandFailure> {
  * Reads the body as it streams and stops at the budget instead of buffering
  * whatever arrives, so a large diff cannot exhaust the main process. The
  * `CommandFailed` tag matches what `OutputExceeded` classified to.
+ *
+ * `ignoreBOM` keeps a leading U+FEFF in the text, which the default decoder
+ * and `Response.text()` both strip. gh wrote its stdout through Node's utf8
+ * stream decoder, which keeps it, and one byte of difference in a compare
+ * response changes `canonicalPatchHash` (ADR 0026).
  */
 async function readCappedText(
   response: Response,
@@ -408,7 +413,7 @@ async function readCappedText(
   const stream = response.body;
   if (stream === null) return ok("");
   const reader = stream.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
   let text = "";
   for (;;) {
     const chunk = await reader.read();
