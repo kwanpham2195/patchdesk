@@ -316,6 +316,38 @@ describe("InlineConversationService", () => {
     expect(result).toEqual({ _tag: "err", error: "not_found" });
     expect(updateThreadComment).not.toHaveBeenCalled();
   });
+
+  it("reports a delete whose ownership read failed as unknown, not as a comment that is gone", async () => {
+    const gate = makeGate();
+    const deleteThreadComment = vi.fn();
+    const getReviewCommentTarget = vi.fn(async () => ({
+      _tag: "err",
+      error: { _tag: "GitHubReadFailed", operation: "get_comment_target" },
+    }));
+    const service = new InlineConversationService(
+      gate,
+      // SAFETY: the mock only implements the Gateway methods this test
+      // exercises; the service never calls any method left unimplemented.
+      makeGateway({ deleteThreadComment, getReviewCommentTarget }) as never,
+      new ReviewOperationCoordinator(),
+      now,
+      makeRecentWrites(),
+      makeOperations(),
+    );
+    const result = await service.execute({
+      profileId,
+      reviewId,
+      command: command({
+        _tag: "DeleteComment",
+        commentId: "PRRC_1",
+        confirmation: true,
+      }),
+    });
+
+    expect(result).toEqual({ _tag: "err", error: "github_read_failed" });
+    expect(deleteThreadComment).not.toHaveBeenCalled();
+  });
+
   it("does not enter while a direct-summary write owns the Review write coordinator", async () => {
     const gate = makeGate();
     const createThreadReply = vi.fn(async () =>

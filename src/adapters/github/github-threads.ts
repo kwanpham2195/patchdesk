@@ -37,7 +37,7 @@ import {
   parseComment,
   parseLocation,
 } from "./github-wire-projections";
-import { invalid, missing } from "./github-write-failures";
+import { invalid } from "./github-write-failures";
 import type { GitHubCommentTarget, GitHubThreadTarget } from "./github-adapter";
 
 /**
@@ -218,6 +218,23 @@ export class GitHubThreadReader {
     return { comments, complete: false };
   }
 
+  /**
+   * What a failed node lookup means. Only GitHub answering NOT_FOUND is
+   * evidence that the node does not exist; a forbidden, rate-limited,
+   * unavailable, timed-out, or unauthenticated read means the membership is
+   * unknown, and reporting that as "not a member" would hand a caller absence
+   * it never established (ADR 0024, ADR 0035).
+   */
+  private lookupFailure(
+    operation: GitHubReadOperation,
+    failure: CommandFailure,
+    host: string,
+  ): Result<{ readonly found: false }, GitHubReadFailure> {
+    return failure._tag === "CommandNotFound"
+      ? ok({ found: false })
+      : this.commandFailure(operation, failure, host);
+  }
+
   async getReviewThreadTarget(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
@@ -229,7 +246,13 @@ export class GitHubThreadReader {
       document: reviewThreadTargetQuery,
       variables: [{ kind: "typed", name: "id", value: input.threadId }],
     });
-    if (response._tag === "err") return missing("get_thread_target");
+    if (response._tag === "err") {
+      return this.lookupFailure(
+        "get_thread_target",
+        response.error,
+        input.profile.githubHost,
+      );
+    }
     const parsed = v.safeParse(reviewThreadTargetSchema, response.value);
     // A missing node, an unexpected node type, or a thread with no first
     // comment is a completed read whose target is simply not a member.
@@ -254,7 +277,13 @@ export class GitHubThreadReader {
       document: reviewCommentTargetQuery,
       variables: [{ kind: "typed", name: "id", value: input.commentId }],
     });
-    if (response._tag === "err") return missing("get_comment_target");
+    if (response._tag === "err") {
+      return this.lookupFailure(
+        "get_comment_target",
+        response.error,
+        input.profile.githubHost,
+      );
+    }
     const parsed = v.safeParse(reviewCommentTargetSchema, response.value);
     if (!parsed.success) return ok({ found: false });
     const node = parsed.output.data.node;
