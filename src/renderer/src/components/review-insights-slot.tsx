@@ -312,6 +312,10 @@ export function InsightsSlot({
   const selectedRequestFailure = selectedRunning?.requestFailure;
   const selectedInsightName =
     selectedInsight === "overview" ? "Insight" : INSIGHT_NOUNS[selectedInsight];
+  const showDocumentHeader =
+    selectedRetained !== undefined ||
+    selectedRunning?.busy === true ||
+    selectedProjection?.status === "running";
   const dialogRun =
     configuration.runDialogType === null
       ? undefined
@@ -359,7 +363,7 @@ export function InsightsSlot({
             />
           ) : (
             <>
-              {walkthroughFocusActive ? null : (
+              {walkthroughFocusActive || !showDocumentHeader ? null : (
                 <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
                   <InsightDocumentIdentity
                     retained={selectedRetained}

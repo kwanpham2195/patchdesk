@@ -75,7 +75,7 @@ export function InsightNavRail({
   return (
     <nav
       aria-label="Insight navigation"
-      className="shrink-0 overflow-x-auto border-b"
+      className="shrink-0 overflow-x-auto overflow-y-hidden border-b"
     >
       <Tabs
         value={selectedInsight}
