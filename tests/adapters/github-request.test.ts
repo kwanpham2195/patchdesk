@@ -37,9 +37,8 @@ const cases: ReadonlyArray<{
       kind: "rest",
       host: "github.com",
       path: "user",
-      jq: ".login",
     },
-    argv: ["gh", "api", "--hostname", "github.com", "user", "--jq", ".login"],
+    argv: ["gh", "api", "--hostname", "github.com", "user"],
   },
   {
     name: "createPendingReview",

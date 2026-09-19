@@ -18,8 +18,6 @@ export type GitHubRestRequest = {
   readonly accept?: string;
   /** Serialized JSON request body, sent to gh on stdin rather than through a shell. */
   readonly jsonBody?: string;
-  /** jq filter gh applies to the response. */
-  readonly jq?: string;
   /** Follow every page and answer one array of pages (`--paginate --slurp`). */
   readonly paginate?: boolean;
 };
@@ -83,7 +81,6 @@ function restInvocation(request: GitHubRestRequest): GhInvocation {
       : ["-H", `Accept: ${request.accept}`]),
     request.path,
     ...(request.jsonBody === undefined ? [] : ["--input", "-"]),
-    ...(request.jq === undefined ? [] : ["--jq", request.jq]),
   ];
   return request.jsonBody === undefined
     ? { argv }

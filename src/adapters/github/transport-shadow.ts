@@ -35,8 +35,8 @@ type ShadowResponseBody = "json" | "text";
 /** What the shadow call reported about one request, as one log entry. */
 type ShadowOutcome = "match" | "diverged" | "skipped";
 
-/** Why a read was not compared. Neither is a divergence. */
-type ShadowSkipReason = "no_token" | "jq_projection";
+/** Why a read was not compared. Not a divergence. */
+type ShadowSkipReason = "no_token";
 
 /** How two answers to the same request disagreed. */
 type ShadowDivergenceKind = "value" | "failure_tag" | "ok_vs_err";
@@ -133,16 +133,6 @@ export class TransportShadow {
     const label = normalizeCommandLabel(
       ghInvocationFor(observation.request).argv,
     );
-    // gh answers a `jq` request with the projected value and the HTTP client
-    // with the whole body, so the two answers are not comparable at all; a
-    // standing divergence here would bury the real ones.
-    if (
-      observation.request.kind === "rest" &&
-      observation.request.jq !== undefined
-    ) {
-      this.skip(label, "jq_projection");
-      return;
-    }
     const token = await this.credentials.tokenFor(observation.profile);
     if (token._tag === "err") {
       this.skip(label, "no_token");

@@ -1893,7 +1893,7 @@ describe("GitHubAdapter read boundary", () => {
       {
         _tag: "Exited",
         exitCode: 0,
-        stdout: "pmquan2cfw\n",
+        stdout: '{"login":"pmquan2cfw"}',
         stderr: "",
       },
     ]);
@@ -4020,7 +4020,7 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
   it("resolves the authenticated account against the profile's own credential", async () => {
     const executor = new FakeProcessExecutor([
       exited("profile-token\n"),
-      exited("pmquan2cfw\n"),
+      exited('{"login":"pmquan2cfw"}'),
     ]);
 
     await expect(

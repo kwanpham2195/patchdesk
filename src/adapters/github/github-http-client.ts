@@ -69,13 +69,6 @@ export type GitHubRateLimitObservation = {
   readonly retryAfterSeconds?: number;
 };
 
-/**
- * `jq` was gh projecting the response before this app saw it; over HTTP the
- * whole body arrives, and a caller that wants one field reads it from the
- * parsed value. Excluding the field keeps that migration from being silent.
- */
-type GitHubHttpRestRequest = Omit<GitHubRestRequest, "jq">;
-
 /** One GraphQL variable value, as gh's field-type inference produced it. */
 type GraphQlVariableValue = string | number | boolean | null;
 
@@ -118,7 +111,7 @@ export class GitHubHttpClient {
   /** Run a REST request as the profile's configured GitHub account. */
   async rest(
     profile: WorkspaceProfileConfig,
-    request: GitHubHttpRestRequest,
+    request: GitHubRestRequest,
     signal?: AbortSignal,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.asProfileAccount(profile, (token) =>
@@ -163,7 +156,7 @@ export class GitHubHttpClient {
   }
 
   private async sendRest(
-    request: GitHubHttpRestRequest,
+    request: GitHubRestRequest,
     token: string,
     signal: AbortSignal,
   ): Promise<Result<unknown, CommandFailure>> {

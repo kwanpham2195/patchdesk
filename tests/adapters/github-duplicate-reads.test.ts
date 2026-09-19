@@ -134,12 +134,7 @@ class RoutingExecutor implements CommandExecutor {
       case "api GET repos/:owner/:repo/issues/:n/comments":
         return json([]);
       case "api GET user":
-        return {
-          _tag: "Exited",
-          exitCode: 0,
-          stdout: "pmquan2cfw\n",
-          stderr: "",
-        };
+        return json({ login: "pmquan2cfw" });
       case "api GET repos/:owner/:repo/collaborators/:user/permission":
         return json({ role_name: "write" });
       case "api GET repos/:owner/:repo/branches/:branch/protection":

@@ -87,7 +87,7 @@ function json(value: unknown): CommandExecution {
 const account: CommandExecution = {
   _tag: "Exited",
   exitCode: 0,
-  stdout: "pmquan2cfw\n",
+  stdout: '{"login":"pmquan2cfw"}',
   stderr: "",
 };
 
