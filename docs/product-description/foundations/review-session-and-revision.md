@@ -32,7 +32,7 @@ stateDiagram-v2
 
 A Review identity contains the active profile, GitHub host, owner, repository, and pull-request number. Its stable Review ID follows that identity. The Review points to one current session ID and current head SHA.
 
-A session adds head SHA, base SHA, pull-request snapshot, prepared context, patch path, optional canonical patch hash, represented-review worktree, and local GitHub-write evidence. Its ID is deterministic for that full key. Reopening the same prepared revision reuses the stored session.
+A session adds head SHA, base SHA, pull-request snapshot, patch path, optional canonical patch hash, represented-review worktree, and local GitHub-write evidence. Its ID is deterministic for that full key. Reopening the same prepared revision reuses the stored session.
 
 A new Review begins Remote state unavailable with reason reconciliation incomplete. It becomes Fresh only after Patchdesk adopts a represented remote snapshot for the prepared session.
 
@@ -46,7 +46,7 @@ Leaving the workbench preserves the durable Review and sessions. Position persis
 
 Preparation reads the current pull request and requires both head and base. It derives the deterministic session ID, then serializes work for that profile and session. When a valid session already exists, it resumes it instead of rebuilding.
 
-For a new session, Patchdesk creates a recovery journal, prepares a represented-review worktree or metadata-only fallback, fetches comments, checks, diff, and canonical comparison evidence, writes prepared artifacts, then reads the pull request again before committing the session.
+For a new session, Patchdesk creates a recovery journal, prepares a represented-review worktree or metadata-only fallback, fetches diff and canonical comparison evidence, writes the patch, then reads the pull request again before committing the session. The model context an Insight reads is not written here; the first Insight run builds it, with comments and checks as they stand at that run.
 
 Explicit refresh loads the active profile, Review, and current session, verifies that their identities agree, then reads the current pull request and the remote content used by the workbench.
 

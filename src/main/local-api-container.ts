@@ -41,7 +41,6 @@ import { ReviewCommitService } from "../services/review-commit-service";
 import { ReviewPreparationJournal } from "../services/review-preparation-journal";
 import { MergeWriteController } from "../services/merge-write-controller";
 import { ReviewRecoveryService } from "../services/review-recovery-service";
-import { ReviewContextService } from "../services/review-context-service";
 import { ReviewWorktreeService } from "../services/review-worktree-service";
 import { ReviewDiffSourceService } from "../services/review-diff-source-service";
 import { SidebarListingService } from "../services/sidebar-listing-service";
@@ -177,7 +176,6 @@ export async function buildLocalApiContainer(
       credentials,
       resolveGitHubCli,
     ),
-    context: new ReviewContextService(),
     artifacts: new ReviewArtifactStorage(paths, systemNow),
     lifecycleGate,
     diagnostics,

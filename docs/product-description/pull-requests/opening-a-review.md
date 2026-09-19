@@ -2,7 +2,7 @@
 
 ## Summary
 
-Opening a Review turns one Pull requests row, a palette reference, or a row in the [Visited pull requests column](../foundations/visited-pull-requests.md) into a readable Review workbench. The maintainer can start a new Review, load a saved Review session, or view a merged pull request. Patchdesk reads and prepares an immutable represented revision, local context, checks, comments, and diff before changing screens. Opening is read-only and performs no GitHub write.
+Opening a Review turns one Pull requests row, a palette reference, or a row in the [Visited pull requests column](../foundations/visited-pull-requests.md) into a readable Review workbench. The maintainer can start a new Review, load a saved Review session, or view a merged pull request. Patchdesk reads and prepares an immutable represented revision, checks, comments, and diff before changing screens. Opening is read-only and performs no GitHub write.
 
 ## The simple case
 
@@ -44,9 +44,11 @@ The main process resolves the profile, reads current pull-request identity and r
 
 ### While the action runs
 
-Opening reads the pull request again at preparation checkpoints. It obtains comments, checks, and diff data, writes the represented patch and prepared context, and prepares a managed worktree when the watched repository has a local path. Without a usable local checkout, the workbench can use a GitHub snapshot and names the local-checkout limitation.
+Opening reads the pull request again at preparation checkpoints. It obtains diff data, writes the represented patch, and prepares a managed worktree when the watched repository has a local path. Without a usable local checkout, the workbench can use a GitHub snapshot and names the local-checkout limitation. Opening no longer gathers the repository rules and pull-request evidence an Insight reads; the first Insight run gathers those, so opening takes less and the first Insight run on a Review takes a moment longer than later ones.
 
-Preparation rechecks the pull request and revision before committing the session. A changed head, changed terminal state, unavailable GitHub read, storage failure, worktree failure, or context failure prevents a partial session from being adopted. The operation is serialized for the profile and session identity, and its journal can recover an interrupted preparation.
+> Technical note: preparation writes only the patch and the worktree. The context pack an Insight run reads — repository rules, comments, checks, and the changed-file list — is built when a run first needs it and rebuilt whenever it does not describe the session's patch. An Insight therefore describes the pull request as of the run rather than as of the open.
+
+Preparation rechecks the pull request and revision before committing the session. A changed head, changed terminal state, unavailable GitHub read, storage failure, or worktree failure prevents a partial session from being adopted. The operation is serialized for the profile and session identity, and its journal can recover an interrupted preparation.
 
 The row and inspector show Opening… only for that row. Other rows can be opened concurrently, each with its own operation state. The shared busy indicator remains until every tracked opening settles.
 

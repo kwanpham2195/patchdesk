@@ -130,6 +130,37 @@ describe("Insight run context pack", () => {
     });
   });
 
+  it("lists a git-quoted changed path in the built pack", async () => {
+    // Git C-quotes any path with a non-ASCII byte, so the `+++ b/` prefix
+    // test this list used to run never matched one and the file went
+    // unlisted. Moved here with the builder from the prepare suite.
+    const value = await fixture(completes);
+    await writeFile(
+      value.session.patchPath,
+      [
+        'diff --git "a/src/caf\\303\\251.ts" "b/src/caf\\303\\251.ts"',
+        '--- "a/src/caf\\303\\251.ts"',
+        '+++ "b/src/caf\\303\\251.ts"',
+        "@@ -1 +1 @@",
+        "-old",
+        "+new",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await run(value);
+
+    expect(
+      JSON.parse(
+        await readFile(
+          value.paths.preparedContextFile(profileId, value.session.id),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({ changedFiles: ["src/café.ts"] });
+  });
+
   it("builds once when two runs start together", async () => {
     const value = await fixture(completes);
 
