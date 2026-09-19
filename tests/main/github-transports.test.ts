@@ -17,10 +17,9 @@ afterEach(() => {
 
 describe("githubTransports", () => {
   it("serves the allowlisted reads over HTTP by default", () => {
-    const transports = githubTransports(new StubCredentials(), logs, undefined);
-
-    expect(transports.http).toBeDefined();
-    expect(transports.shadow).toBeUndefined();
+    expect(
+      githubTransports(new StubCredentials(), logs, undefined).http,
+    ).toBeDefined();
   });
 
   it("leaves writes on gh by default", () => {
@@ -61,23 +60,5 @@ describe("githubTransports", () => {
     expect(
       githubTransports(new StubCredentials(), logs, undefined).http,
     ).toBeUndefined();
-  });
-
-  it("builds the shadow only when the launch asked for one", () => {
-    vi.stubEnv("PATCHDESK_TRANSPORT_SHADOW", "1");
-
-    expect(
-      githubTransports(new StubCredentials(), logs, undefined).shadow,
-    ).toBeDefined();
-  });
-
-  it("still shadows the reads left on gh under the rollback", () => {
-    vi.stubEnv("PATCHDESK_GITHUB_TRANSPORT", "gh");
-    vi.stubEnv("PATCHDESK_TRANSPORT_SHADOW", "1");
-
-    const transports = githubTransports(new StubCredentials(), logs, undefined);
-
-    expect(transports.http).toBeUndefined();
-    expect(transports.shadow).toBeDefined();
   });
 });

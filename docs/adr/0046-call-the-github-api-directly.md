@@ -83,6 +83,13 @@ environment variable to a request header in this process.
 
 ## Shadow window
 
+> **Completed history.** The shadow finished its job on 2026-09-19: twenty read
+> labels were cut over on its counts, and a live write check that day shadowed
+> the lookups inside the write flows with no divergence. T4 deleted the
+> machinery — `transport-shadow.ts`, `PATCHDESK_TRANSPORT_SHADOW`, and the
+> report's `--shadow` mode. The text below records how the evidence was
+> gathered; none of it can be run today.
+
 No call site moves onto the HTTP client on the strength of a fixture. A launch
 with `PATCHDESK_TRANSPORT_SHADOW=1` runs the client concurrently with `gh` for
 every read and compares the two answers — byte equality for text, deep equality
@@ -110,10 +117,9 @@ clean reads rather than on a judgement (issue #292).
 `httpServedReadLabels` in `gh-request-runner.ts` is the list of reads served
 over HTTPS, named by the label `normalizeCommandLabel` prints. A request is
 served there when the runner holds an HTTP transport, the request is a read,
-and its label is in the list; everything else spawns `gh api` unchanged, and a
-served request is not shadowed because there is no `gh` answer left to compare
-it against. There is no fallback in either direction: an HTTP failure is the
-read's failure, classified from the response status rather than from stderr.
+and its label is in the list; everything else spawns `gh api` unchanged. There
+is no fallback in either direction: an HTTP failure is the read's failure,
+classified from the response status rather than from stderr.
 
 As of T2 the list holds these twenty labels, each of which read clean against
 `gh` for a whole shadow window on two transports first:
@@ -156,8 +162,8 @@ read as a filename to take the value from, now reaches GitHub as the text.
 **A GraphQL label is not enough to be served.** Queries and mutations share one
 endpoint and a mutation is labelled by its root field, so a mutation could
 carry an allowlisted label. The routing therefore serves a GraphQL request only
-when `isQueryDocument` also reads the document as a query, the same predicate
-the shadow uses to decide what it may run twice.
+when `isQueryDocument` in `github-request.ts` also reads the document as a
+query.
 
 **A 200 carrying `errors` is a failure on both transports.** `gh api graphql`
 exited nonzero whenever the response held a non-empty `errors` array, partial
@@ -417,8 +423,7 @@ Record the run in this ADR's Cutover record with the date, the commit, and the
 entry, or a recovery banner stops the flip.
 
 **The rollback switch is temporary.** `PATCHDESK_GITHUB_TRANSPORT=gh`, read
-once at composition beside `PATCHDESK_TRANSPORT_SHADOW`, leaves every read on
-`gh` without a rebuild. It exists for the soak release that carries the first
+once at composition, leaves every read on `gh` without a rebuild. It exists for the soak release that carries the first
 cutover and is deleted with the allowlist at T4. It is an operational
 rollback, not a fallback: nothing consults it per call, and no failure ever
 switches transport.

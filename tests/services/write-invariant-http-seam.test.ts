@@ -99,7 +99,6 @@ function pendingReviewOverHttp(trace: Trace) {
   const github = new GitHubAdapter(
     new CommandRunner(new RefusingGhExecutor()),
     credentials,
-    undefined,
     new TracingHttpTransport(trace),
     true,
   );

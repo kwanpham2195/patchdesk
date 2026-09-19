@@ -76,6 +76,26 @@ export function restMethodFor(
   return request.method ?? (request.jsonBody === undefined ? "GET" : "POST");
 }
 
+/**
+ * Whether a request only reads, judged conservatively: anything that might
+ * mutate is treated as a write. A REST request carrying a body but no method
+ * is not a read — `gh api --input` defaults to POST. The transport routing
+ * gates the read path on this, so no write can reach it by matching a read's
+ * label (ADR 0046).
+ */
+export function isReadRequest(request: GitHubRequest): boolean {
+  if (request.kind === "rest") {
+    return request.method === undefined && request.jsonBody === undefined;
+  }
+  return isQueryDocument(request.document);
+}
+
+/** GraphQL sends reads and writes to one endpoint; only the document says which. */
+export function isQueryDocument(document: string): boolean {
+  const body = document.replace(/^(?:\s|#[^\n]*)*/, "");
+  return body.startsWith("{") || /^query\b/.test(body);
+}
+
 export function ghInvocationFor(request: GitHubRequest): GhInvocation {
   if (request.kind === "graphql") return { argv: graphQlArgv(request) };
   return restInvocation(request);

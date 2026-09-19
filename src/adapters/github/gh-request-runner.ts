@@ -17,13 +17,13 @@ import type { WorkspaceProfileConfig } from "../../domain/workspace-profile";
 import { parseGitHubTimestamp } from "./github-wire-projections";
 import {
   ghInvocationFor,
+  isReadRequest,
   restMethodFor,
   type GitHubGraphQlRequest,
   type GitHubRequest,
   type GitHubRestRequest,
 } from "./github-request";
 import type { MaintainerRateLimit } from "./github-wire-schemas";
-import { isShadowableRead, type TransportShadow } from "./transport-shadow";
 
 export type GitHubReadFailure =
   | {
@@ -85,7 +85,7 @@ export const commandTimeoutMs = 15_000;
  * The reads served over HTTPS rather than by a `gh api` child, named by the
  * label `normalizeCommandLabel` prints for them (ADR 0046, issue #276, steps
  * T1a, T1b, and T2). Every label here read clean against gh for a whole
- * shadow window before it was added.
+ * comparison window before it was added.
  *
  * This list is the cutover record: T2 extends it as its labels prove clean,
  * and T4 deletes it together with the last `gh api` argv. A GraphQL label is
@@ -122,7 +122,7 @@ export const httpServedReadLabels: ReadonlySet<string> = new Set([
  * one in the argv, so no write label can ever collide with a read's.
  *
  * A write is only served when the launch also asked for it
- * (`PATCHDESK_GITHUB_WRITES=http`): a write cannot be shadowed, so this list
+ * (`PATCHDESK_GITHUB_WRITES=http`): a write cannot be run twice, so this list
  * is proven by request-shape and failure-classification tests plus one manual
  * live check, not by a comparison window. T4 deletes it together with
  * `httpServedReadLabels`.
@@ -165,15 +165,15 @@ export type GitHubTransportRoute = "http_read" | "http_write" | "gh";
  * an allowlisted read served over HTTPS, an allowlisted write served over
  * HTTPS once the launch switched writes on, or a `gh api` child.
  *
- * The read gate is the shadow's conservative predicate, so a REST write, a
- * REST body with no method, and a GraphQL mutation can never take the read
+ * The read gate is `isReadRequest`'s conservative predicate, so a REST write,
+ * a REST body with no method, and a GraphQL mutation can never take the read
  * path whatever their label normalizes to.
  */
 export function transportRouteFor(
   request: GitHubRequest,
   writesOverHttp: boolean,
 ): GitHubTransportRoute {
-  if (isShadowableRead(request)) {
+  if (isReadRequest(request)) {
     const label = normalizeCommandLabel(ghInvocationFor(request).argv);
     return httpServedReadLabels.has(label) ? "http_read" : "gh";
   }
@@ -257,11 +257,6 @@ export class GhRequestRunner {
       commands,
     ),
     /**
-     * Compares the HTTP transport against gh for reads when one is supplied
-     * (issue #292). It never contributes to the result this returns.
-     */
-    private readonly shadow?: TransportShadow,
-    /**
      * Serves the reads in `httpServedReadLabels` when one is supplied; absent,
      * every read stays on gh. There is no fallback in either direction: an
      * HTTP failure is this call's failure, and gh is not tried after it.
@@ -270,8 +265,8 @@ export class GhRequestRunner {
     /**
      * Whether the launch also serves the writes in `httpServedWriteLabels`
      * over that transport (issue #276, step T3). Default is gh, because a
-     * write cannot be shadowed: it is switched on per launch until the live
-     * check passes, and the option goes with both allowlists at T4.
+     * write cannot be proven by comparison: it is switched on per launch until
+     * the live check passes, and the option goes with both allowlists at T4.
      */
     private readonly writesOverHttp: boolean = false,
   ) {}
@@ -287,13 +282,9 @@ export class GhRequestRunner {
         ? http.rest(profile, request)
         : http.graphql(profile, request);
     }
-    const served = this.runAsProfileAccount(
-      profile,
-      ghCommandFor(request),
-      (input) => this.commands.runJson(input),
+    return this.runAsProfileAccount(profile, ghCommandFor(request), (input) =>
+      this.commands.runJson(input),
     );
-    this.shadow?.observe({ profile, request, served, body: "json" });
-    return served;
   }
 
   /** Run a request that returns text as the profile's configured GitHub account. */
@@ -307,21 +298,12 @@ export class GhRequestRunner {
         ? http.restText(profile, request)
         : asText(await http.graphql(profile, request));
     }
-    const served = this.runAsProfileAccount(
-      profile,
-      ghCommandFor(request),
-      (input) => this.commands.runText(input),
+    return this.runAsProfileAccount(profile, ghCommandFor(request), (input) =>
+      this.commands.runText(input),
     );
-    this.shadow?.observe({ profile, request, served, body: "text" });
-    return served;
   }
 
-  /**
-   * The HTTP transport when it serves this request, or undefined when the
-   * request stays on gh. A request served here is not shadowed: the shadow
-   * compares the two transports on a read gh is answering, and there is no gh
-   * answer left to compare against.
-   */
+  /** The HTTP transport when it serves this request, or undefined when the request stays on gh. */
   private httpServing(
     request: GitHubRequest,
   ): GitHubServedTransport | undefined {

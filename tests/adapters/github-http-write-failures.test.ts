@@ -272,7 +272,6 @@ describe("a write whose outcome GitHub never reported is unavailable", () => {
     const unreachable = new GitHubAdapter(
       new CommandRunner(new FailingGhExecutor("", "no gh child may run")),
       credentials,
-      undefined,
       new GitHubHttpClient(
         credentials,
         () => undefined,

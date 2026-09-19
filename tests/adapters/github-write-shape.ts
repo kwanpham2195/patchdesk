@@ -45,7 +45,6 @@ export function writeAdapter(server: FixtureServer): GitHubAdapter {
       }),
     ),
     credentials,
-    undefined,
     server.client(credentials),
     true,
   );

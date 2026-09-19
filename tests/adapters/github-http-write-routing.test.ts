@@ -14,10 +14,11 @@ import {
   reviewCommentTargetQuery,
   reviewThreadTargetQuery,
 } from "../../src/adapters/github/github-graphql-queries";
-import type {
-  GitHubGraphQlRequest,
-  GitHubRequest,
-  GitHubRestRequest,
+import {
+  isReadRequest,
+  type GitHubGraphQlRequest,
+  type GitHubRequest,
+  type GitHubRestRequest,
 } from "../../src/adapters/github/github-request";
 import { err, ok } from "../../src/domain/result";
 import { profile } from "./github-http-fixture-server";
@@ -30,8 +31,8 @@ import { StubCredentials } from "./stub-github-credentials";
 import { writeRequests } from "./github-write-inventory";
 
 /**
- * T3 lets a write leave `gh api` (issue #276). A write cannot be shadowed, so
- * what these tests pin is the routing itself: every request is classified as
+ * T3 lets a write leave `gh api` (issue #276). A write cannot be sent twice to
+ * prove it, so what these tests pin is the routing itself: every request is classified as
  * exactly one of read, write, or stays-on-gh, a write only moves when the
  * launch asked for it, and no write can reach the read path by matching a read
  * label.
@@ -46,7 +47,6 @@ function harness(options: {
   const runner = new GhRequestRunner(
     new CommandRunner(executor),
     new StubCredentials(),
-    undefined,
     options.http === false ? undefined : http,
     options.writesOverHttp ?? true,
   );
@@ -91,6 +91,106 @@ const writeFlowLookups: ReadonlyArray<readonly [string, GitHubGraphQlRequest]> =
       },
     ],
   ];
+
+describe("isReadRequest", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly request: GitHubRequest;
+    readonly read: boolean;
+  }> = [
+    {
+      name: "a plain REST GET",
+      request: { kind: "rest", host: "github.com", path: "user" },
+      read: true,
+    },
+    {
+      name: "a REST GET that asks for a media type",
+      request: {
+        kind: "rest",
+        host: "github.com",
+        path: "repos/o/r/compare/a...b",
+        accept: "application/vnd.github.v3.diff",
+      },
+      read: true,
+    },
+    {
+      name: "a paginated REST GET",
+      request: {
+        kind: "rest",
+        host: "github.com",
+        path: "repos/o/r/pulls/42/commits",
+        paginate: true,
+      },
+      read: true,
+    },
+    {
+      name: "a REST request with a method",
+      request: {
+        kind: "rest",
+        host: "github.com",
+        method: "POST",
+        path: "repos/o/r/pulls/42/reviews",
+      },
+      read: false,
+    },
+    {
+      // `gh api --input` defaults to POST, so a body with no method is a write.
+      name: "a REST request carrying a body but no method",
+      request: {
+        kind: "rest",
+        host: "github.com",
+        path: "repos/o/r/pulls/42/reviews",
+        jsonBody: '{"event":"COMMENT"}',
+      },
+      read: false,
+    },
+    {
+      name: "a named GraphQL query",
+      request: {
+        kind: "graphql",
+        host: "github.com",
+        document: "query PullRequestThreads($owner: String!) { viewer { id } }",
+        variables: [],
+      },
+      read: true,
+    },
+    {
+      name: "a GraphQL query behind a comment",
+      request: {
+        kind: "graphql",
+        host: "github.com",
+        document:
+          "\n  # the thread this comment belongs to\n  query { viewer { id } }",
+        variables: [],
+      },
+      read: true,
+    },
+    {
+      name: "an anonymous GraphQL selection set",
+      request: {
+        kind: "graphql",
+        host: "github.com",
+        document: "{ viewer { id } }",
+        variables: [],
+      },
+      read: true,
+    },
+    {
+      name: "a GraphQL mutation",
+      request: {
+        kind: "graphql",
+        host: "github.com",
+        document: "mutation { addComment(input: {}) { clientMutationId } }",
+        variables: [],
+      },
+      read: false,
+    },
+  ];
+
+  it.each(cases)("reads $name: $read", ({ request, read }) => {
+    expect(isReadRequest(request)).toBe(read);
+  });
+});
 
 describe("transportRouteFor classifies every request kind", () => {
   const rows: ReadonlyArray<{
@@ -268,7 +368,6 @@ describe("routing a write to the HTTP transport", () => {
     const runner = new GhRequestRunner(
       new CommandRunner(executor),
       new StubCredentials(),
-      undefined,
       new RecordingHttpTransport(err({ _tag: "CommandUnavailable" })),
       true,
     );
