@@ -64,6 +64,7 @@ describe("RecentWriteJournalStore", () => {
       Comment: { _tag: "Comment", commentId: "PRRC_1", reviewId: "PRR_1" },
       ThreadState: { _tag: "ThreadState", threadId, state: "resolved" },
       PendingThread: { _tag: "PendingThread", threadId },
+      DiscardedThread: { _tag: "DiscardedThread", threadId },
       DirectSummaryReview: { _tag: "DirectSummaryReview", reviewId: "PRR_1" },
       LabelChange: { _tag: "LabelChange", added: ["bug"], removed: ["wip"] },
       AssigneeChange: { _tag: "AssigneeChange", added: [], removed: ["hubot"] },

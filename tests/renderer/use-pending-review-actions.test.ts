@@ -232,7 +232,7 @@ describe("usePendingReviewActions commands", () => {
       await panelOf(result).onDiscard();
     });
     expect(appendRecentWrites).toHaveBeenCalledWith([
-      { _tag: "PendingThread", threadId: "PRRT_1" },
+      { _tag: "DiscardedThread", threadId: "PRRT_1" },
     ]);
     expect(observeConfirmedReviewWrite).not.toHaveBeenCalled();
 

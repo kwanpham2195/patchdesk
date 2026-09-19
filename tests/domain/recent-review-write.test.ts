@@ -57,4 +57,16 @@ describe("parseRecentReviewWrite", () => {
       }),
     ).toEqual({ _tag: "err", error: { _tag: "InvalidRecentReviewWrite" } });
   });
+
+  it("brands a DiscardedThread receipt as its own variant", () => {
+    expect(
+      parseRecentReviewWrite({
+        _tag: "DiscardedThread",
+        threadId: "PRRT_discarded",
+      }),
+    ).toEqual({
+      _tag: "ok",
+      value: { _tag: "DiscardedThread", threadId: "PRRT_discarded" },
+    });
+  });
 });

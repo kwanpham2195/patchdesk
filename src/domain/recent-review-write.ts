@@ -16,7 +16,13 @@ export type RecentReviewWrite =
       readonly state: "open" | "resolved";
     }
   | {
+      /** A pending thread this app created; satisfied once the snapshot carries it. */
       readonly _tag: "PendingThread";
+      readonly threadId: GitHubThreadId;
+    }
+  | {
+      /** A pending thread this app discarded; satisfied once the snapshot has dropped it. */
+      readonly _tag: "DiscardedThread";
       readonly threadId: GitHubThreadId;
     }
   | {
@@ -64,6 +70,10 @@ export const recentReviewWriteRecordSchema = v.variant("_tag", [
   }),
   v.strictObject({
     _tag: v.literal("PendingThread"),
+    threadId: v.pipe(v.string(), v.minLength(1)),
+  }),
+  v.strictObject({
+    _tag: v.literal("DiscardedThread"),
     threadId: v.pipe(v.string(), v.minLength(1)),
   }),
   v.strictObject({
@@ -141,6 +151,12 @@ export function parseRecentReviewWrite(
         ? invalidRecentReviewWrite()
         : ok({ _tag: "PendingThread", threadId: threadId.value });
     }
+    case "DiscardedThread": {
+      const threadId = parseGitHubThreadId(record.threadId);
+      return threadId._tag === "err"
+        ? invalidRecentReviewWrite()
+        : ok({ _tag: "DiscardedThread", threadId: threadId.value });
+    }
     case "DirectSummaryReview":
     case "LabelChange":
     case "AssigneeChange":
@@ -184,6 +200,8 @@ function recentWriteDedupeKey(entry: RecentReviewWrite): string {
       return `ThreadState:${entry.threadId}:${entry.state}`;
     case "PendingThread":
       return `PendingThread:${entry.threadId}`;
+    case "DiscardedThread":
+      return `DiscardedThread:${entry.threadId}`;
     case "DirectSummaryReview":
       return `DirectSummaryReview:${entry.reviewId}`;
     case "LabelChange":
