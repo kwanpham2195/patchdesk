@@ -159,6 +159,15 @@ async function fixture(
       return ok(undefined);
     },
   );
+  const loadReview = vi.fn(
+    async (_profile: WorkspaceProfileId, reviewId: ReviewId) => {
+      if (options.reviewLoader !== undefined)
+        return options.reviewLoader(reviewId);
+      return options.review === undefined
+        ? err({ reason: "not_found" })
+        : ok(options.review);
+    },
+  );
   const dependencies = {
     profiles: {
       async load() {
@@ -176,16 +185,7 @@ async function fixture(
         return ok({ sessions: [retained], invalidEntries: [] });
       },
     },
-    reviews: {
-      async load(_profile: WorkspaceProfileId, reviewId: ReviewId) {
-        if (options.reviewLoader !== undefined)
-          return options.reviewLoader(reviewId);
-        return options.review === undefined
-          ? err({ reason: "not_found" })
-          : ok(options.review);
-      },
-      delete: deleteReview,
-    },
+    reviews: { load: loadReview, delete: deleteReview },
     writeOperations: {
       async load() {
         return options.writeOperationFails === true
@@ -248,7 +248,14 @@ async function fixture(
   const service = new StorageManagementService(
     storageDependencies(dependencies),
   );
-  return { service, removeSession, removeQuarantined, deleteReview, paths };
+  return {
+    service,
+    removeSession,
+    removeQuarantined,
+    deleteReview,
+    loadReview,
+    paths,
+  };
 }
 
 describe("StorageManagementService", () => {
@@ -351,6 +358,17 @@ describe("StorageManagementService", () => {
         value.service.sweepRetained(profileId, at),
       ).resolves.toMatchObject({ _tag: "ok" });
       expect(value.removeSession).toHaveBeenCalledWith(profileId, sessionId);
+    });
+
+    it("reads each session's Review record once", async () => {
+      const value = await fixture({
+        review: terminalReview,
+        sessions: [oldSession],
+      });
+      await expect(
+        value.service.sweepRetained(profileId, at),
+      ).resolves.toMatchObject({ _tag: "ok" });
+      expect(value.loadReview).toHaveBeenCalledTimes(1);
     });
 
     it("removes a terminal review's record along with its session", async () => {

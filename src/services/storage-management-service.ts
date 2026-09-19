@@ -6,6 +6,7 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "../domain/ids";
+import type { Review } from "../domain/review";
 import type { ReviewSession } from "../domain/review-session";
 import { isDirectSummaryReviewLocked } from "../domain/direct-summary-review";
 import { isPendingReviewLocked } from "../domain/pending-review";
@@ -53,6 +54,14 @@ export type StorageDeleteQuarantinedInput = {
   readonly profileId: WorkspaceProfileId;
   readonly entryName: string;
 };
+/** The running-state answer, carrying the Review record that decided it when the session is idle. */
+type SessionRunningState =
+  | { readonly running: true }
+  | {
+      readonly running: false;
+      readonly review: Result<Review, StorageFailure>;
+    };
+
 const RETAIN_TERMINAL_SESSIONS_MS = 14 * 24 * 60 * 60 * 1000;
 const RETAIN_QUARANTINE_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -113,7 +122,7 @@ export class StorageManagementService {
     for (const session of sessions.value) {
       const running = await this.isRunningState(profileId, session);
       if (running._tag === "err") return running;
-      projected.push(projectSession(session, !running.value));
+      projected.push(projectSession(session, !running.value.running));
     }
     return ok({
       sessions: projected,
@@ -137,7 +146,7 @@ export class StorageManagementService {
       );
     const running = await this.isRunningState(input.profileId, session.value);
     if (running._tag === "err") return running;
-    if (running.value) return err({ _tag: "SessionProtected" });
+    if (running.value.running) return err({ _tag: "SessionProtected" });
     const removed = await this.deps.artifacts.removeSession(
       input.profileId,
       session.value.id,
@@ -191,7 +200,7 @@ export class StorageManagementService {
       for (const session of scanned.value.sessions) {
         const running = await this.isRunningState(profileId, session);
         if (running._tag === "err") return running;
-        if (running.value) continue;
+        if (running.value.running) continue;
         const removed = await this.deps.artifacts.removeSession(
           profileId,
           session.id,
@@ -218,11 +227,15 @@ export class StorageManagementService {
     });
   }
 
-  /** True while the session is actively in motion and must never be removed. */
+  /**
+   * True while the session is actively in motion and must never be removed.
+   * A session that is not running carries out the Review record this answer
+   * was decided from, so the sweep does not read it a second time.
+   */
   private async isRunningState(
     profileId: WorkspaceProfileId,
     session: ReviewSession,
-  ): Promise<Result<boolean, StorageManagementFailure>> {
+  ): Promise<Result<SessionRunningState, StorageManagementFailure>> {
     const preparation = await ReviewPreparationJournal.activeFor(
       this.deps.paths,
       profileId,
@@ -230,7 +243,7 @@ export class StorageManagementService {
       this.deps.diagnostics,
     );
     if (preparation._tag === "err") return err({ _tag: "StorageUnavailable" });
-    if (preparation.value !== undefined) return ok(true);
+    if (preparation.value !== undefined) return ok({ running: true });
     const reviewId = createReviewId(session.key);
     const [review, analysis, walkthrough, merge] = await Promise.all([
       this.deps.reviews.load(profileId, reviewId),
@@ -249,20 +262,24 @@ export class StorageManagementService {
       review.value.status._tag === "Open" &&
       review.value.currentSessionId === session.id
     )
-      return ok(true);
+      return ok({ running: true });
     if (
       (analysis._tag === "ok" &&
         analysis.value.activeRun?.revision.sessionId === session.id) ||
       (walkthrough._tag === "ok" &&
         walkthrough.value.activeRun?.revision.sessionId === session.id)
     )
-      return ok(true);
+      return ok({ running: true });
     if (
       isPendingReviewLocked(session.pendingReview) ||
       isDirectSummaryReviewLocked(session.directSummaryReview)
     )
-      return ok(true);
-    return ok(merge._tag === "ok" && merge.value.state._tag !== "Rejected");
+      return ok({ running: true });
+    return ok(
+      merge._tag === "ok" && merge.value.state._tag !== "Rejected"
+        ? { running: true }
+        : { running: false, review },
+    );
   }
 
   /**
@@ -318,18 +335,11 @@ export class StorageManagementService {
       );
       return false;
     }
-    if (running.value) return false;
+    if (running.value.running) return false;
     const reviewId = createReviewId(session.key);
-    const review = await this.deps.reviews.load(profileId, reviewId);
-    if (review._tag === "err" && review.error.reason !== "not_found") {
-      await this.recordSweepDiagnostic(
-        profileId,
-        session.id,
-        "review load failed",
-        true,
-      );
-      return false;
-    }
+    // The running-state check already read this record, and a read that
+    // failed for any reason other than absence made it a failure there.
+    const review = running.value.review;
     const orphaned =
       review._tag === "err" &&
       isOlderThan(session.updatedAt, at, RETAIN_TERMINAL_SESSIONS_MS);
