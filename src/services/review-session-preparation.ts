@@ -497,12 +497,17 @@ export class ReviewSessionPreparation {
       input.input.profileId,
       input.sessionId,
     );
-    for (const path of [contextPath, reviewInputPath, debugPath]) {
-      if ((await input.journal.record(path))._tag === "err")
-        return await this.abort(input.journal, {
-          _tag: "SessionStorageUnavailable",
-        });
-    }
+    // One writer (`context.prepare` below) creates all three, so all three
+    // are recorded in one write before it runs.
+    const recorded = await input.journal.recordAll([
+      contextPath,
+      reviewInputPath,
+      debugPath,
+    ]);
+    if (recorded._tag === "err")
+      return await this.abort(input.journal, {
+        _tag: "SessionStorageUnavailable",
+      });
     const context = await this.dependencies.context.prepare({
       worktreePath:
         input.prepared.mode === "worktree"

@@ -248,9 +248,22 @@ export class ReviewPreparationJournal {
   async record(
     target: string,
   ): Promise<Result<void, PreparationJournalFailure>> {
+    return this.recordAll([target]);
+  }
+
+  /**
+   * Append several final artifact paths in one durable write. Use it when one
+   * writer creates all of them: recovery only ever reads the whole `targets`
+   * list, so recording them together before that writer runs leaves exactly
+   * the same recorded-before-created guarantee as recording them one at a
+   * time, in one atomic write instead of several.
+   */
+  async recordAll(
+    targets: ReadonlyArray<string>,
+  ): Promise<Result<void, PreparationJournalFailure>> {
     this.content = {
       ...this.content,
-      targets: [...this.content.targets, target],
+      targets: [...this.content.targets, ...targets],
     };
     return this.write();
   }
