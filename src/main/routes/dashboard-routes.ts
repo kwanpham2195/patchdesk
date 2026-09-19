@@ -2,7 +2,6 @@ import type { Hono } from "hono";
 import { err, ok, type Result } from "../../domain/result";
 
 import { runWithRequestAbortSignal } from "../../adapters/github/command-runner";
-import { listAuthenticatedGitHubAccounts } from "../../adapters/github/github-auth-accounts";
 import {
   DEFAULT_INBOX_PAGE_SIZE,
   INBOX_CHECK_STATUS_FILTER_VALUES,
@@ -27,6 +26,7 @@ import {
   parseGitHubRepoName,
   parseWorkspaceProfileId,
 } from "../../domain/ids";
+import { GitHubEnvironmentProbe } from "../../services/github-environment-probe";
 import type { InboxRepositoryRef } from "../../services/maintainer-inbox-service";
 import { readObjectField } from "../../services/read-object-field";
 import type { LocalApiContainer } from "../local-api-container";
@@ -221,13 +221,15 @@ export function registerDashboardRoutes(
   app.get("/v1/watchlist/suggestions", async (context) =>
     response(context, await dashboard.discoverWorkspaceRepos()),
   );
+  // One per local API start, which is one per launch: that is the window its
+  // ready answer is held for.
+  const environment = new GitHubEnvironmentProbe(commands);
   app.get("/v1/environment", async (context) => {
-    const [git, gh, ghAuth, githubAccounts] = await Promise.all([
-      commands.runText({ argv: ["git", "--version"], timeoutMs: 5_000 }),
-      commands.runText({ argv: ["gh", "--version"], timeoutMs: 5_000 }),
-      commands.runText({ argv: ["gh", "auth", "status"], timeoutMs: 10_000 }),
-      listAuthenticatedGitHubAccounts(commands, 10_000),
-    ]);
+    // `recheck=1` is the Re-check button on the Reviewing-as panel, the one
+    // explicit "ask gh again" the renderer offers.
+    const snapshot = await environment.read({
+      recheck: context.req.query("recheck") === "1",
+    });
     return context.json({
       ...(parsedConfiguration.output.appMetadata ?? {
         productName: "Patchdesk",
@@ -235,16 +237,7 @@ export function registerDashboardRoutes(
         architecture: process.arch,
         distribution: "development" as const,
       }),
-      git: git._tag === "ok" ? "ready" : "missing",
-      gh: gh._tag === "ok" ? "ready" : "missing",
-      // Plain `gh auth status` exits nonzero when any listed account is invalid, so a working account decides readiness first.
-      githubAuth:
-        githubAccounts.length > 0 || ghAuth._tag === "ok"
-          ? "ready"
-          : ghAuth.error._tag === "CommandAuthenticationRequired"
-            ? "authentication_required"
-            : "unavailable",
-      githubAccounts,
+      ...snapshot,
       runtime: "bundled",
     });
   });
