@@ -1,10 +1,9 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve, win32 } from "node:path";
 
 import { mapConcurrent } from "../domain/map-concurrent";
 import { err, ok, type Result } from "../domain/result";
 import { isPathContained } from "../adapters/storage/path-containment";
-import { writeAtomicFile } from "../adapters/storage/json-file";
 
 /** Exported so the Analysis tool descriptions state the same number. */
 export const MAX_ANALYSIS_INSPECTION_CALLS = 8;
@@ -185,10 +184,14 @@ export class ReviewInspector {
     } catch {
       /* Context owns the initial diagnostic artifact. */
     }
-    await writeAtomicFile(
+    // Four diagnostic counters, rewritten inside the model's tool-call round
+    // trip. Nothing reads this file for recovery or correctness, so it takes
+    // a plain write rather than the atomic write's two fsyncs.
+    await writeFile(
       this.input.debugPath,
       JSON.stringify({ ...this.debug(), profileRuleLoadFailureCount }, null, 2),
-    );
+      { encoding: "utf8", mode: 0o600 },
+    ).catch(() => undefined);
   }
 }
 
