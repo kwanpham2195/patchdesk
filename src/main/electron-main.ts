@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  net,
   Notification,
   screen,
   shell,
@@ -56,6 +57,7 @@ import { ReviewStore } from "../adapters/storage/review-store";
 import { InsightStore } from "../adapters/storage/insight-store";
 import { GitHubAdapter } from "../adapters/github/github-adapter";
 import { GitHubCliCredentials } from "../adapters/github/github-credentials";
+import type { GitHubFetch } from "../adapters/github/github-http-client";
 import { ReviewContextPackService } from "../services/review-context-pack-service";
 import { ReviewContextService } from "../services/review-context-service";
 import {
@@ -161,6 +163,25 @@ const diagnostics = new ReviewDiagnosticService(
     },
   },
 );
+/**
+ * How the GitHub HTTP client reaches the network in the desktop app:
+ * Chromium's stack, which honours the system proxy and the system trust store
+ * that `gh` honoured and Node's fetch does not (ADR 0046). Only this entry
+ * point knows about Electron, so the local API takes it as configuration and
+ * falls back to Node's fetch wherever it runs outside the desktop app.
+ *
+ * Both options are load-bearing and were measured against Electron 43 rather
+ * than assumed. `cache: "no-store"` keeps Chromium's HTTP cache out of the
+ * path: GitHub answers an authenticated read with `Cache-Control: private,
+ * max-age=60`, and by default a repeat call within that minute is served from
+ * the cache without reaching GitHub. `credentials: "omit"` keeps the default
+ * session's cookie jar out of it; by default a cookie GitHub set on one
+ * response is sent back on the next. The bearer token is a header the client
+ * sets itself, so neither is needed to authenticate.
+ */
+const githubFetch: GitHubFetch = (url, init) =>
+  net.fetch(url, { ...init, cache: "no-store", credentials: "omit" });
+
 /** Clicking a notification raises the window before the renderer routes to its Review. */
 const desktopNotifier = createDesktopNotifier({
   windowFocused: () =>
@@ -203,6 +224,7 @@ const desktopLifecycle = createDesktopLifecycle({
           reviewOperations,
         ),
         insightProviders,
+        githubFetch,
         lifecycleGate,
         retentionSweep: true,
         watchedPullRequestPolling: true,
