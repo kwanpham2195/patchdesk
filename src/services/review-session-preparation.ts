@@ -295,7 +295,6 @@ export class ReviewSessionPreparation {
       headSha: revision.headSha,
       baseSha: revision.baseSha,
       sessionId,
-      worktreePath,
       prepared: prepared.value,
       journal,
     });
@@ -381,7 +380,6 @@ export class ReviewSessionPreparation {
     readonly headSha: GitSha;
     readonly baseSha: GitSha;
     readonly sessionId: ReviewSessionId;
-    readonly worktreePath: string;
     readonly prepared: ManagedWorktree | MetadataOnlyReview;
     readonly journal: ReviewPreparationJournal;
   }): Promise<Result<WriteArtifactsResult, PrepareReviewSessionFailure>> {
