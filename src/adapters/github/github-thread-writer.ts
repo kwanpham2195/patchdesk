@@ -105,6 +105,8 @@ export class GitHubThreadWriter {
     Result<
       {
         readonly commentId: string;
+        /** The same comment's GraphQL node id, the only id space every projected thread comment uses. */
+        readonly commentNodeId: string;
         readonly reviewId?: string;
         readonly threadId?: string;
       },
@@ -150,6 +152,7 @@ export class GitHubThreadWriter {
         created.output.id === undefined
           ? created.output.node_id
           : String(created.output.id),
+      commentNodeId: created.output.node_id,
     };
     const withReviewId =
       reviewId === undefined || reviewId.length === 0

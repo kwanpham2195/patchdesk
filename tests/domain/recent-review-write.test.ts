@@ -5,6 +5,7 @@ import {
   appendRecentWriteReceipts,
   parseRecentReviewWrite,
   unionRecentWrites,
+  type RecentReviewWrite,
 } from "../../src/domain/recent-review-write";
 
 const threadId = parseGitHubThreadId("PRRT_thread");
@@ -25,6 +26,55 @@ describe("appendRecentWriteReceipts", () => {
     ).toEqual([
       { _tag: "PendingThread", threadId: otherThreadId.value },
       { _tag: "DiscardedThread", threadId: threadId.value },
+    ]);
+  });
+
+  it("drops the create receipt for a comment the same session deleted, in either id space", () => {
+    expect(
+      appendRecentWriteReceipts<RecentReviewWrite>(
+        [
+          { _tag: "Comment", commentId: "2145998877" },
+          { _tag: "Comment", commentId: "PRRC_reply" },
+          { _tag: "Comment", commentId: "PRRC_other" },
+        ],
+        [
+          {
+            _tag: "DeletedComment",
+            commentId: "2145998877",
+            nodeId: "PRRC_created",
+          },
+          { _tag: "DeletedComment", commentId: "PRRC_reply" },
+        ],
+      ),
+    ).toEqual([
+      { _tag: "Comment", commentId: "PRRC_other" },
+      {
+        _tag: "DeletedComment",
+        commentId: "2145998877",
+        nodeId: "PRRC_created",
+      },
+      { _tag: "DeletedComment", commentId: "PRRC_reply" },
+    ]);
+  });
+
+  it("drops the create receipt a delete names only by node id", () => {
+    expect(
+      appendRecentWriteReceipts<RecentReviewWrite>(
+        [{ _tag: "Comment", commentId: "PRRC_created" }],
+        [
+          {
+            _tag: "DeletedComment",
+            commentId: "2145998877",
+            nodeId: "PRRC_created",
+          },
+        ],
+      ),
+    ).toEqual([
+      {
+        _tag: "DeletedComment",
+        commentId: "2145998877",
+        nodeId: "PRRC_created",
+      },
     ]);
   });
 });

@@ -85,7 +85,10 @@ function inlineConversationFlows(
         getReviewThreadTarget: async () => ok({ found: true }),
         getReviewCommentTarget: async () =>
           ok({ found: true, viewerDidAuthor: true }),
-        createInlineComment: gatewayWrite(fixture, { commentId: "comment-2" }),
+        createInlineComment: gatewayWrite(fixture, {
+          commentId: "comment-2",
+          commentNodeId: "PRRC_comment-2",
+        }),
         createThreadReply: gatewayWrite(fixture, { commentId: "comment-2" }),
         setReviewThreadState: gatewayWrite(fixture, undefined),
         updateThreadComment: gatewayWrite(fixture, undefined),

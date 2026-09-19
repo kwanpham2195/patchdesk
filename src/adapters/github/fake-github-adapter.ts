@@ -413,6 +413,7 @@ export class FakeGitHubAdapter
     Result<
       {
         readonly commentId: string;
+        readonly commentNodeId: string;
         readonly reviewId?: string;
         readonly threadId?: string;
       },
@@ -836,6 +837,7 @@ export type FakeGitHubAdapterValues = {
   /** Confirmed writer receipts; an absent writer keeps the fake unimplemented. */
   readonly createInlineComment?: {
     readonly commentId: string;
+    readonly commentNodeId: string;
     readonly reviewId?: string;
     readonly threadId?: string;
   };

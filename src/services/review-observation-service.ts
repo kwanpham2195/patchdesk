@@ -827,6 +827,25 @@ function containsRecentWrites(
               comment.nodeId === write.commentId,
           ) === true
         );
+      case "DeletedComment": {
+        // Proven by absence, like `DiscardedThread`, and checked in both id
+        // spaces because the renderer journals whichever id the card carried.
+        const ids = new Set(
+          write.nodeId === undefined
+            ? [write.commentId]
+            : [write.commentId, write.nodeId],
+        );
+        return (
+          !snapshot.comments.threads.some((thread) =>
+            thread.comments.some((comment) => ids.has(comment.id)),
+          ) &&
+          snapshot.publishedFeedback?.comments.some(
+            (comment) =>
+              ids.has(comment.id) ||
+              (comment.nodeId !== undefined && ids.has(comment.nodeId)),
+          ) !== true
+        );
+      }
       case "PendingThread":
         return snapshot.comments.threads.some(
           (thread) => thread.id === write.threadId,

@@ -76,6 +76,8 @@ export type DirectConversationReceipt =
   | {
       readonly _tag: "CommentCreated";
       readonly commentId: string;
+      /** The created comment's GraphQL node id, so the renderer can match it against a projected thread comment. */
+      readonly commentNodeId: string;
       readonly reviewId?: string;
       readonly threadId?: string;
     }
@@ -239,6 +241,7 @@ export class InlineConversationService {
             const receipt = {
               _tag: "CommentCreated" as const,
               commentId: created.commentId,
+              commentNodeId: created.commentNodeId,
             };
             const withReviewId =
               created.reviewId === undefined

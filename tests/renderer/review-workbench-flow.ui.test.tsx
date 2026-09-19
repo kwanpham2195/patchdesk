@@ -358,7 +358,11 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
       name: "an inline comment",
       workbench: (): WorkbenchResponse => projection(),
       path: "/v1/reviews/inline-conversations/command",
-      answer: { _tag: "CommentCreated", commentId: "comment-1" },
+      answer: {
+        _tag: "CommentCreated",
+        commentId: "comment-1",
+        commentNodeId: "PRRC_comment-1",
+      },
       write: (): void => {
         fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
         const add = screen
@@ -689,6 +693,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
           return {
             _tag: "CommentCreated",
             commentId: "comment-1",
+            commentNodeId: "PRRC_comment-1",
             threadId: "thread-1",
           };
         throw new Error(input.path);
@@ -745,7 +750,11 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
         if (input.path === "/v1/reviews/detect-updates")
           return { updatesAvailable: false };
         if (input.path === "/v1/reviews/inline-conversations/command")
-          return { _tag: "CommentCreated", commentId: "comment-1" };
+          return {
+            _tag: "CommentCreated",
+            commentId: "comment-1",
+            commentNodeId: "PRRC_comment-1",
+          };
         throw new Error(input.path);
       });
       const user = setupCodeViewUser();

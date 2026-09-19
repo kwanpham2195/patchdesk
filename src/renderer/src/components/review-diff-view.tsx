@@ -189,6 +189,8 @@ export type LocalCommentAuthoring = {
   readonly onSelectionChange?: (input: LocalCommentLocation) => void;
   readonly onSave: (input: LocalCommentAuthoringSaveInput) => Promise<{
     readonly commentId: string;
+    /** The same comment's GraphQL node id: the id space a projected thread comment uses. */
+    readonly commentNodeId: string;
     readonly threadId?: string;
   } | void>;
 };

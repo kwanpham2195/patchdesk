@@ -60,6 +60,7 @@ const cases: ReadonlyArray<ActionCase> = [
     receipt: {
       _tag: "CommentCreated",
       commentId: "comment-created",
+      commentNodeId: "PRRC_comment-created",
       reviewId: "review-created",
       threadId: "thread-created",
     },
@@ -132,6 +133,7 @@ const cases: ReadonlyArray<ActionCase> = [
       commentId: "comment-1",
       reconciliation: "complete",
     },
+    evidence: { _tag: "DeletedComment", commentId: "comment-1" },
   },
 ];
 
@@ -250,21 +252,14 @@ describe("useDirectConversationActions", () => {
 
   it.each(cases)(
     "$name journals only valid evidence and schedules one exact observation",
-    async ({ operation, invoke, receipt, evidence }) => {
+    async ({ invoke, receipt, evidence }) => {
       const rendered = renderActions(() => success(receipt));
       await expect(invoke(rendered.result.current)).resolves.not.toThrow();
       expect(rendered.requireRecovery).not.toHaveBeenCalled();
       if (evidence === undefined) {
         expect(rendered.appendRecentWrites).not.toHaveBeenCalled();
-        if (
-          operation === "EditPublishedComment" ||
-          operation === "DeletePublishedComment"
-        )
-          expect(rendered.observeConfirmedReviewWrite).not.toHaveBeenCalled();
-        else {
-          expect(rendered.observeConfirmedReviewWrite).toHaveBeenCalledOnce();
-          expect(rendered.observeConfirmedReviewWrite).toHaveBeenCalledWith();
-        }
+        expect(rendered.observeConfirmedReviewWrite).toHaveBeenCalledOnce();
+        expect(rendered.observeConfirmedReviewWrite).toHaveBeenCalledWith();
       } else {
         expect(rendered.appendRecentWrites).toHaveBeenCalledOnce();
         expect(rendered.appendRecentWrites).toHaveBeenCalledWith(evidence);
@@ -433,6 +428,7 @@ describe("useDirectConversationActions", () => {
     const rendered = renderActions(() => success(cases[0]?.receipt ?? null));
     await expect(cases[0]?.invoke(rendered.result.current)).resolves.toEqual({
       commentId: "comment-created",
+      commentNodeId: "PRRC_comment-created",
       threadId: "thread-created",
     });
   });

@@ -118,6 +118,7 @@ describe("GitHubThreadWriter REST receipts", () => {
       _tag: "ok",
       value: {
         commentId: "201",
+        commentNodeId: "PRRC_comment",
         reviewId: "42",
         threadId: "PRRT_thread",
       },

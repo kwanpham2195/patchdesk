@@ -662,6 +662,7 @@ export class GitHubAdapter
     Result<
       {
         readonly commentId: string;
+        readonly commentNodeId: string;
         readonly reviewId?: string;
         readonly threadId?: string;
       },

@@ -2236,6 +2236,12 @@ describe("GitHubAdapter read boundary", () => {
   });
 });
 
+/** The create receipt for a REST response carrying only `node_id`: both ids are it. */
+const created = {
+  commentId: "PRRC_comment",
+  commentNodeId: "PRRC_comment",
+};
+
 describe("GitHubAdapter review write boundary", () => {
   it("creates a pending review and submits its selected event through JSON stdin", async () => {
     const [createArgv, submitArgv, createPayload, submitPayload] =
@@ -2415,7 +2421,7 @@ describe("GitHubAdapter review write boundary", () => {
       await vi.advanceTimersByTimeAsync(500);
       await expect(pending).resolves.toEqual({
         _tag: "ok",
-        value: { commentId: "PRRC_comment", threadId: "PRRT_thread" },
+        value: { ...created, threadId: "PRRT_thread" },
       });
       expect(transport.requests).toHaveLength(3);
     } finally {
@@ -2449,10 +2455,7 @@ describe("GitHubAdapter review write boundary", () => {
       });
       await vi.advanceTimersByTimeAsync(500);
       await vi.advanceTimersByTimeAsync(1500);
-      await expect(pending).resolves.toEqual({
-        _tag: "ok",
-        value: { commentId: "PRRC_comment" },
-      });
+      await expect(pending).resolves.toEqual({ _tag: "ok", value: created });
       expect(transport.requests).toHaveLength(4);
     } finally {
       vi.useRealTimers();
@@ -2480,10 +2483,7 @@ describe("GitHubAdapter review write boundary", () => {
       });
       await vi.advanceTimersByTimeAsync(500);
       await vi.advanceTimersByTimeAsync(1500);
-      await expect(pending).resolves.toEqual({
-        _tag: "ok",
-        value: { commentId: "PRRC_comment" },
-      });
+      await expect(pending).resolves.toEqual({ _tag: "ok", value: created });
       expect(transport.requests).toHaveLength(4);
     } finally {
       vi.useRealTimers();
@@ -2693,7 +2693,7 @@ describe("GitHubAdapter review write boundary", () => {
         coordinates: { path: "src/a.ts", line: 5, side: "RIGHT" },
         body: "Body",
       }),
-    ).resolves.toEqual({ _tag: "ok", value: { commentId: "PRRC_comment" } });
+    ).resolves.toEqual({ _tag: "ok", value: created });
     // A transport/command error stops the read-back immediately: retrying
     // against a hard failure is a different problem than eventual
     // consistency, and the create must not be held hostage to it.
