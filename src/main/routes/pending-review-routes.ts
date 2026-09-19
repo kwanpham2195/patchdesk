@@ -204,6 +204,7 @@ function pendingReviewFailureStatus(
     failure === "review_write_in_progress" ||
     failure === "no_pending_review" ||
     failure === "pending_review_locked" ||
+    failure === "pending_review" ||
     failure === "pending_review_exists"
   )
     return 409;

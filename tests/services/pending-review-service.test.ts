@@ -94,6 +94,35 @@ function pending(): ViewerPendingReview {
     updatedAt: now,
   };
 }
+// SAFETY: this literal matches parseGitHubReviewNodeId's opaque slug format.
+const otherNodeId = "PRR_kwDORJzsQM7e6QwK" as never;
+
+/** Someone else's unfinished review: the same anchor, a body this write never sent. */
+function otherPending(): ViewerPendingReview {
+  const base = pending();
+  return {
+    ...base,
+    nodeId: otherNodeId,
+    comments: base.comments.map((comment) => ({
+      ...comment,
+      body: "an earlier draft",
+    })),
+  };
+}
+
+/** Two threads carrying the same body at the same anchor: an ambiguous creation. */
+function duplicatedPending(): ViewerPendingReview {
+  const base = pending();
+  return {
+    ...base,
+    comments: base.comments.flatMap((comment) => [
+      comment,
+      // SAFETY: this literal matches parseGitHubThreadId's opaque slug format.
+      { ...comment, threadId: "PRRT_kwDORJzsQM0002" as never },
+    ]),
+  };
+}
+
 function session(
   state?: PendingReviewState,
   findingReviewReceipts?: ReviewSession["findingReviewReceipts"],
@@ -398,6 +427,123 @@ describe("PendingReviewService", () => {
         body: "comment",
       }),
     ).resolves.toEqual({ _tag: "err", error: "forbidden" });
+  });
+
+  // A start that answers 422 "pending review per pull request" is not proof
+  // the write failed: GitHub answers the same way when the first request
+  // landed and the transport resent it (ADR 0046). One read decides.
+  it("adopts the pending review a resent start already created", async () => {
+    const value = fixture(
+      { _tag: "None" },
+      {
+        startPendingReviewWithThread: vi.fn(async () =>
+          err({ category: "pending_review" }),
+        ),
+        getViewerPendingReview: vi.fn(async () =>
+          ok({ _tag: "Pending", review: pending() }),
+        ),
+      },
+    );
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "body",
+        finding,
+      }),
+    ).resolves.toMatchObject({
+      _tag: "ok",
+      value: { state: { _tag: "Pending" } },
+    });
+    expect(value.saves[1]).toMatchObject({
+      pendingReview: { _tag: "Pending" },
+      findingReviewReceipts: [
+        { findingId: finding.findingId, threadId, state: "pending" },
+      ],
+    });
+  });
+
+  it("names the collision when the pending review on GitHub is not this write's", async () => {
+    const value = fixture(
+      { _tag: "None" },
+      {
+        startPendingReviewWithThread: vi.fn(async () =>
+          err({ category: "pending_review" }),
+        ),
+        getViewerPendingReview: vi.fn(async () =>
+          ok({ _tag: "Pending", review: otherPending() }),
+        ),
+      },
+    );
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "body",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "pending_review" });
+    // The write did not land, so the draft stays in the renderer's composer;
+    // what the session gains is the owner the read proved, so the next attempt
+    // appends to it instead of starting a second review.
+    expect(value.current()).toMatchObject({
+      pendingReview: { _tag: "Pending", review: { nodeId: otherNodeId } },
+    });
+  });
+
+  it("keeps the start intent when the reconciling read cannot answer", async () => {
+    const value = fixture(
+      { _tag: "None" },
+      {
+        startPendingReviewWithThread: vi.fn(async () =>
+          err({ category: "pending_review" }),
+        ),
+        getViewerPendingReview: vi.fn(async () =>
+          err({ _tag: "GitHubReadFailed", operation: "get_pending_review" }),
+        ),
+      },
+    );
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "body",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
+    expect(value.current()).toMatchObject({
+      pendingReview: { _tag: "OutcomeUnknown", operation: { _tag: "Start" } },
+    });
+  });
+
+  it("keeps the start intent when two threads match it", async () => {
+    const value = fixture(
+      { _tag: "None" },
+      {
+        startPendingReviewWithThread: vi.fn(async () =>
+          err({ category: "pending_review" }),
+        ),
+        getViewerPendingReview: vi.fn(async () =>
+          ok({ _tag: "Pending", review: duplicatedPending() }),
+        ),
+      },
+    );
+    await expect(
+      value.service.start({
+        profileId,
+        reviewId,
+        expected,
+        anchor,
+        body: "body",
+      }),
+    ).resolves.toEqual({ _tag: "err", error: "outcome_unknown" });
+    expect(value.current()).toMatchObject({
+      pendingReview: { _tag: "OutcomeUnknown" },
+    });
   });
 
   it("adds only once for an exact Finding while its receipt owns the pending thread", async () => {

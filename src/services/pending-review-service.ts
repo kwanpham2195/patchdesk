@@ -11,6 +11,7 @@ import {
   confirmPendingReviewWrite,
   isPendingReviewLocked,
   markPendingReviewOutcomeUnknown,
+  matchPendingReviewThread,
   reconcilePendingReviewState,
   rejectPendingReviewWrite,
   type GitHubReviewEvent,
@@ -46,6 +47,12 @@ import type {
   GitHubPublishedFeedback,
 } from "../domain/github-context";
 import type { RecentReviewWrite } from "../domain/recent-review-write";
+import {
+  hasFindingReceipt,
+  nextFindingReceipts,
+  reconcileObservedFindingReceipts,
+  sameFindingSource,
+} from "./pending-review-finding-receipts";
 
 export type StartPendingReviewInput = {
   readonly profileId: WorkspaceProfileId;
@@ -83,6 +90,7 @@ export type PendingReviewServiceFailure =
   | "permission_denied"
   | "forbidden"
   | "rejected"
+  | "pending_review"
   | "unavailable"
   | "rate_limited"
   | "outcome_unknown"
@@ -94,6 +102,19 @@ export type PendingReviewCommandResult = {
   readonly session: ReviewSession;
   readonly state: PendingReviewState;
 };
+
+/** The one thread a Start or AddThread meant to create, as the write sent it. */
+type PendingReviewThreadIntent = {
+  readonly profile: WorkspaceProfileConfig;
+  readonly anchor: PendingReviewAnchor;
+  readonly body: string;
+};
+
+/** What the reconciling read proved about a `pending_review` refusal. */
+type PendingReviewConflictOutcome =
+  | { readonly _tag: "Landed"; readonly write: PendingReviewThreadWrite }
+  | { readonly _tag: "Refused"; readonly observed: PendingReviewRead }
+  | { readonly _tag: "Uncertain" };
 
 /** The session-level fields `adoptObservedState` decides to update, if any. */
 export type PendingReviewObservedAdoption = {
@@ -365,6 +386,7 @@ export class PendingReviewService {
               ? ok(created.value)
               : err(created.error);
           },
+          { profile, anchor: input.anchor, body: input.body },
         );
       },
     );
@@ -427,6 +449,12 @@ export class PendingReviewService {
               ? ok(appended.value)
               : err(appended.error);
           },
+          // GitHub answers a GraphQL refusal under HTTP 200 and
+          // `classifyGraphqlSignal` never produces CommandPendingReview, so
+          // an append reaches this only through the shared HTTP status path.
+          // Reconciling it costs one read and keeps both thread writes
+          // answering the same way.
+          { profile, anchor: input.anchor, body: input.body },
         );
       },
     );
@@ -559,6 +587,7 @@ export class PendingReviewService {
         GitHubWriteFailure
       >
     >,
+    conflict?: PendingReviewThreadIntent,
   ): Promise<Result<PendingReviewCommandResult, PendingReviewServiceFailure>> {
     const begun = beginPendingReviewWrite(state, operation, this.now());
     if (begun._tag === "err") {
@@ -571,19 +600,38 @@ export class PendingReviewService {
     // Persist the operation intent before crossing the remote write boundary.
     if (!(await this.persist(session, begun.value)))
       return err("outcome_unknown");
-    const written = await write();
+    let written = await write();
+    if (
+      written._tag === "err" &&
+      written.error.category === "pending_review" &&
+      conflict !== undefined
+    ) {
+      const resolved = await this.resolvePendingReviewConflict(
+        session,
+        conflict,
+      );
+      if (resolved._tag === "Landed") written = ok(resolved.write);
+      if (resolved._tag === "Uncertain")
+        return err(await this.lockOutcomeUnknown(session, begun.value));
+      if (resolved._tag === "Refused") {
+        // GitHub holds a pending review that is not this write's: the write
+        // did not land. Record the owner the read proved so the Review stops
+        // claiming there is none, and name the collision in the failure.
+        const rejected = rejectPendingReviewWrite(begun.value);
+        if (rejected._tag === "ok") {
+          await this.persist(
+            session,
+            adoptObservedPendingReview(rejected.value, resolved.observed),
+          );
+        }
+        return err("pending_review");
+      }
+    }
     if (written._tag === "err") {
       if (written.error.category === "unavailable") {
         // Timeout, lost response, or unconfirmable outcome: lock and require
         // read-side reconciliation; never retry automatically.
-        const unknown = markPendingReviewOutcomeUnknown(begun.value);
-        if (
-          unknown._tag === "ok" &&
-          !(await this.persist(session, unknown.value))
-        ) {
-          return err("outcome_unknown");
-        }
-        return err("outcome_unknown");
+        return err(await this.lockOutcomeUnknown(session, begun.value));
       }
       // GitHub flatly refused the request rather than leaving the outcome
       // ambiguous, so this locks and rejects the same as any other refusal;
@@ -593,6 +641,8 @@ export class PendingReviewService {
       if (rejected._tag === "ok") await this.persist(session, rejected.value);
       if (written.error.category === "rate_limited") return err("rate_limited");
       if (written.error.category === "forbidden") return err("forbidden");
+      if (written.error.category === "pending_review")
+        return err("pending_review");
       return err(
         written.error.category === "auth" ? "permission_denied" : "rejected",
       );
@@ -611,17 +661,11 @@ export class PendingReviewService {
       written.value,
       confirmed.value,
     );
-    if (receipts === undefined) {
-      const unknown = markPendingReviewOutcomeUnknown(begun.value);
-      if (unknown._tag === "ok") await this.persist(session, unknown.value);
-      return err("outcome_unknown");
-    }
+    if (receipts === undefined)
+      return err(await this.lockOutcomeUnknown(session, begun.value));
     // A confirmed receipt must be durable before success is reported.
-    if (!(await this.persist(session, confirmed.value, receipts))) {
-      const unknown = markPendingReviewOutcomeUnknown(begun.value);
-      if (unknown._tag === "ok") await this.persist(session, unknown.value);
-      return err("outcome_unknown");
-    }
+    if (!(await this.persist(session, confirmed.value, receipts)))
+      return err(await this.lockOutcomeUnknown(session, begun.value));
     for (const entry of journalEntriesFor(
       operation,
       state,
@@ -652,6 +696,63 @@ export class PendingReviewService {
           : { ...sessionUpdate, findingReviewReceipts: receipts },
       state: confirmed.value,
     });
+  }
+
+  /** Keep the intent and lock the Review for read-side recovery (ADR 0035). */
+  private async lockOutcomeUnknown(
+    session: ReviewSession,
+    begun: PendingReviewState,
+  ): Promise<PendingReviewServiceFailure> {
+    const unknown = markPendingReviewOutcomeUnknown(begun);
+    if (unknown._tag === "ok") await this.persist(session, unknown.value);
+    return "outcome_unknown";
+  }
+
+  /**
+   * What a `pending_review` refusal of a Start or AddThread really means.
+   * GitHub answers the same 422 whether it already held the viewer's pending
+   * review or the first request landed and the renderer's transport resent it
+   * (ADR 0046), so the refusal alone is not evidence the write failed. One
+   * read of the viewer's pending review decides: it holds the intended
+   * thread, it holds someone else's work, or it proves nothing and the write
+   * stays uncertain.
+   */
+  private async resolvePendingReviewConflict(
+    session: ReviewSession,
+    intent: PendingReviewThreadIntent,
+  ): Promise<PendingReviewConflictOutcome> {
+    const account = await this.github.resolveAuthenticatedAccount(
+      intent.profile,
+    );
+    if (account._tag === "err") return { _tag: "Uncertain" };
+    const login = parseGitHubLogin(account.value.account);
+    if (login._tag === "err") return { _tag: "Uncertain" };
+    const read = await this.github.getViewerPendingReview({
+      profile: intent.profile,
+      pr: sessionPr(session),
+      account: login.value,
+    });
+    if (read._tag === "err" || read.value._tag === "Unavailable")
+      return { _tag: "Uncertain" };
+    // GitHub refused because a pending review exists, so a read finding none
+    // contradicts the refusal: one of the two is stale and the outcome is not
+    // established. Incomplete evidence stays check-required (ADR 0035).
+    if (read.value._tag === "None") return { _tag: "Uncertain" };
+    const matched = matchPendingReviewThread(
+      read.value.review,
+      intent.anchor,
+      intent.body,
+    );
+    if (matched._tag === "Ambiguous") return { _tag: "Uncertain" };
+    return matched._tag === "Match"
+      ? {
+          _tag: "Landed",
+          write: {
+            review: read.value.review,
+            createdThreadId: matched.threadId,
+          },
+        }
+      : { _tag: "Refused", observed: read.value };
   }
 
   private async persist(
@@ -728,34 +829,6 @@ function sessionPr(session: ReviewSession): PullRequestRef {
   };
 }
 
-function sameFindingSource(
-  left: FindingReviewSource,
-  right: FindingReviewSource | undefined,
-): boolean {
-  return (
-    right !== undefined &&
-    left.analysisRunId === right.analysisRunId &&
-    left.findingId === right.findingId &&
-    left.sessionId === right.sessionId &&
-    left.headSha === right.headSha &&
-    left.patchHash === right.patchHash
-  );
-}
-
-function hasFindingReceipt(
-  receipts: ReadonlyArray<FindingReviewReceipt> | undefined,
-  finding: FindingReviewSource,
-): boolean {
-  return (receipts ?? []).some(
-    (receipt) =>
-      receipt.analysisRunId === finding.analysisRunId &&
-      receipt.findingId === finding.findingId &&
-      receipt.sessionId === finding.sessionId &&
-      receipt.headSha === finding.headSha &&
-      receipt.patchHash === finding.patchHash,
-  );
-}
-
 function samePendingReviewState(
   left: PendingReviewState,
   right: PendingReviewState,
@@ -768,54 +841,6 @@ function mapGateFailure(reason: string): PendingReviewServiceFailure {
   if (reason === "terminal" || reason === "stale") return "permission_denied";
   if (reason === "not_fresh") return "not_fresh";
   return "unavailable";
-}
-
-function reconcileObservedFindingReceipts(input: {
-  readonly receipts: ReadonlyArray<FindingReviewReceipt> | undefined;
-  readonly pendingReview: PendingReviewState;
-  readonly evidenceComplete: boolean;
-  readonly comments: GitHubComments;
-  readonly publishedFeedback?: GitHubPublishedFeedback;
-}): ReadonlyArray<FindingReviewReceipt> {
-  const receipts = input.receipts ?? [];
-  if (!input.evidenceComplete) {
-    return receipts.map((receipt) =>
-      receipt.state === "pending"
-        ? { ...receipt, state: "historical" as const }
-        : receipt,
-    );
-  }
-  const remoteThreadIds = new Set(
-    input.comments.threads.map((thread) => thread.id),
-  );
-  const publishedIds = new Set<string>();
-  for (const comment of input.publishedFeedback?.comments ?? []) {
-    publishedIds.add(comment.id);
-    if (comment.nodeId !== undefined) publishedIds.add(comment.nodeId);
-  }
-  const next: FindingReviewReceipt[] = [];
-  for (const receipt of receipts) {
-    const remainsPending =
-      input.pendingReview._tag === "Pending" &&
-      input.pendingReview.review.nodeId === receipt.pendingReviewNodeId &&
-      input.pendingReview.review.comments.some(
-        (comment) => comment.threadId === receipt.threadId,
-      );
-    if (remainsPending) {
-      next.push({ ...receipt, state: "pending" });
-      continue;
-    }
-    // Complete Conversation and published-feedback evidence still needs to
-    // contain the exact known receipt identifier before it can keep a Finding
-    // non-actionable. Anything less stays Historical and cannot re-enable it.
-    if (
-      remoteThreadIds.has(receipt.threadId) ||
-      publishedIds.has(receipt.threadId)
-    ) {
-      next.push({ ...receipt, state: "historical" });
-    }
-  }
-  return next;
 }
 
 /**
@@ -853,71 +878,4 @@ function journalEntriesFor(
     }));
   }
   return [];
-}
-
-function nextFindingReceipts(
-  existing: ReadonlyArray<FindingReviewReceipt> | undefined,
-  begun: PendingReviewState,
-  written: PendingReviewThreadWrite | ViewerPendingReview | undefined,
-  confirmed: PendingReviewState,
-): ReadonlyArray<FindingReviewReceipt> | undefined {
-  const receipts = existing ?? [];
-  if (begun._tag !== "WriteInFlight") return undefined;
-  const operation = begun.operation;
-  const finding =
-    operation._tag === "Start" || operation._tag === "AddThread"
-      ? operation.finding
-      : undefined;
-  if (finding !== undefined) {
-    if (
-      written === undefined ||
-      !("createdThreadId" in written) ||
-      confirmed._tag !== "Pending"
-    )
-      return undefined;
-    if (
-      finding.sessionId === "" ||
-      finding.headSha !== confirmed.review.headSha ||
-      receipts.some(
-        (receipt) =>
-          receipt.analysisRunId === finding.analysisRunId &&
-          receipt.findingId === finding.findingId &&
-          receipt.sessionId === finding.sessionId &&
-          receipt.headSha === finding.headSha &&
-          receipt.patchHash === finding.patchHash,
-      )
-    )
-      return undefined;
-    if (
-      !confirmed.review.comments.some(
-        (comment) => comment.threadId === written.createdThreadId,
-      )
-    )
-      return undefined;
-    return [
-      ...receipts,
-      {
-        ...finding,
-        threadId: written.createdThreadId,
-        pendingReviewNodeId: confirmed.review.nodeId,
-        state: "pending",
-      },
-    ];
-  }
-  if (operation._tag === "Submit" && begun.review !== undefined) {
-    return receipts.map((receipt) =>
-      receipt.state === "pending" &&
-      receipt.pendingReviewNodeId === begun.review?.nodeId
-        ? { ...receipt, state: "published" as const }
-        : receipt,
-    );
-  }
-  if (operation._tag === "Discard" && begun.review !== undefined) {
-    return receipts.filter(
-      (receipt) =>
-        receipt.state !== "pending" ||
-        receipt.pendingReviewNodeId !== begun.review?.nodeId,
-    );
-  }
-  return receipts;
 }
