@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   CommandRunner,
@@ -29,7 +29,6 @@ import type {
   GitHubRequest,
   GitHubRestRequest,
 } from "../../src/adapters/github/github-request";
-import { TransportShadow } from "../../src/adapters/github/transport-shadow";
 import {
   parseGitHubHost,
   parseGitHubOwner,
@@ -38,10 +37,8 @@ import {
   parseIsoTimestamp,
   parsePullRequestNumber,
 } from "../../src/domain/ids";
-import type { LogEntryInput } from "../../src/domain/log-entry";
 import type { PullRequestRef } from "../../src/domain/pull-request";
 import { err, ok, type Result } from "../../src/domain/result";
-import type { WorkspaceProfileConfig } from "../../src/domain/workspace-profile";
 import { json, profile, useFixtureServer } from "./github-http-fixture-server";
 import {
   exited,
@@ -57,36 +54,6 @@ import { StubCredentials } from "./stub-github-credentials";
  * runs, that a request the allowlist does not name is untouched, and that a
  * mutation stays on gh whatever its label.
  */
-
-class RecordingShadowTransport {
-  readonly requests: Array<GitHubRequest> = [];
-
-  constructor(private readonly answer: Result<unknown, CommandFailure>) {}
-
-  async rest(
-    _profile: WorkspaceProfileConfig,
-    request: GitHubRestRequest,
-  ): Promise<Result<unknown, CommandFailure>> {
-    this.requests.push(request);
-    return this.answer;
-  }
-
-  async restText(
-    _profile: WorkspaceProfileConfig,
-    request: GitHubRestRequest,
-  ): Promise<Result<string, CommandFailure>> {
-    this.requests.push(request);
-    return this.answer._tag === "err" ? this.answer : ok("");
-  }
-
-  async graphql(
-    _profile: WorkspaceProfileConfig,
-    request: GitHubRequest,
-  ): Promise<Result<unknown, CommandFailure>> {
-    this.requests.push(request);
-    return this.answer;
-  }
-}
 
 /** Allowlisted reads, as their call sites write them. */
 const issueComments: GitHubRestRequest = {
@@ -132,7 +99,7 @@ const commits: GitHubRestRequest = {
   path: "repos/centraldigital/patchdesk/pulls/42/commits?per_page=100",
 };
 
-/** The open pull request list, which no shadow window has compared, so it stays on gh. */
+/** The open pull request list, which no comparison window covered, so it stays on gh. */
 const openPullRequests: GitHubRestRequest = {
   kind: "rest",
   host: "github.com",
@@ -214,7 +181,7 @@ const repositoryBranches: GitHubGraphQlRequest = {
   ],
 };
 
-/** A GraphQL read no shadow window has exercised either, so it stays on gh too. */
+/** A GraphQL read no comparison window exercised either, so it stays on gh too. */
 const watchedPullRequests: GitHubGraphQlRequest = {
   kind: "graphql",
   host: "github.com",
@@ -252,7 +219,6 @@ function harness(options: {
   const runner = new GhRequestRunner(
     new CommandRunner(executor),
     new StubCredentials(),
-    undefined,
     options.http === false ? undefined : http,
   );
   return { executor, http, runner };
@@ -283,7 +249,7 @@ describe("httpServedReadLabels", () => {
       expect(httpServedReadLabels.has(label)).toBe(true);
   });
 
-  it("names the GraphQL labels a shadow window compared", () => {
+  it("names the GraphQL labels a comparison window covered", () => {
     const labels = [
       mergePolicy,
       threads,
@@ -307,12 +273,12 @@ describe("httpServedReadLabels", () => {
       expect(httpServedReadLabels.has(label)).toBe(true);
   });
 
-  it("leaves the open pull request list, which no shadow window compared, off the list", () => {
+  it("leaves the open pull request list, which no comparison window covered, off the list", () => {
     expect(labelFor(openPullRequests)).toBe("api GET repos/:owner/:repo/pulls");
     expect(httpServedReadLabels.has(labelFor(openPullRequests))).toBe(false);
   });
 
-  it("leaves a GraphQL query no shadow window exercised off the list", () => {
+  it("leaves a GraphQL query no comparison window exercised off the list", () => {
     expect(labelFor(watchedPullRequests)).toBe(
       "api graphql WatchedPullRequests",
     );
@@ -463,31 +429,6 @@ describe("routing a read to the HTTP transport", () => {
     );
     expect(executor.labels).toEqual([]);
   });
-
-  it("shadows only the reads the allowlist leaves on gh", async () => {
-    const entries: Array<LogEntryInput> = [];
-    const shadowTransport = new RecordingShadowTransport(ok([]));
-    const credentials = new StubCredentials();
-    const runner = new GhRequestRunner(
-      new CommandRunner(new RecordingGhExecutor(exited("[]"))),
-      credentials,
-      new TransportShadow(shadowTransport, credentials, (entry) =>
-        entries.push(entry),
-      ),
-      new RecordingHttpTransport(ok([])),
-    );
-
-    await runner.ghJson(profile, issueComments);
-    await runner.ghJson(profile, openPullRequests);
-
-    // The comparison is detached, so wait for the one entry it writes.
-    await vi.waitFor(() => expect(entries).toHaveLength(1));
-    expect(entries[0]?.meta).toMatchObject({
-      label: "api GET repos/:owner/:repo/pulls",
-      outcome: "match",
-    });
-    expect(shadowTransport.requests).toEqual([openPullRequests]);
-  });
 });
 
 describe("reads served over the real HTTP client", () => {
@@ -505,7 +446,6 @@ describe("reads served over the real HTTP client", () => {
         }),
       ),
       credentials,
-      undefined,
       server.client(credentials),
     );
   }

@@ -28,7 +28,6 @@ import {
   GitHubHttpClient,
   type GitHubFetch,
 } from "../adapters/github/github-http-client";
-import { TransportShadow } from "../adapters/github/transport-shadow";
 import {
   CommandRunner,
   NodeCommandExecutor,
@@ -71,47 +70,37 @@ export function createReadOnlyGitExecutor(
   };
 }
 
-/** What a `GitHubAdapter` is built with beside `gh`: the served HTTP transport, and the shadow comparison. */
+/** What a `GitHubAdapter` is built with beside `gh`: the served HTTP transport. */
 export type GitHubTransports = {
   /** Serves the reads in `httpServedReadLabels`; absent leaves every read on gh (issue #276). */
   readonly http: GitHubHttpClient | undefined;
-  /** Compares the HTTP transport against gh for the reads still on gh (issue #292). */
-  readonly shadow: TransportShadow | undefined;
   /** Also serves the writes in `httpServedWriteLabels` over that transport (issue #276, step T3). */
   readonly writesOverHttp: boolean;
 };
 
 /**
- * Builds the HTTP transport the GitHub adapter reads through, and the shadow
- * that compares it against gh. Both switches are launch-wide, so they are read
- * here once rather than consulted per call.
+ * Builds the HTTP transport the GitHub adapter reads through. Both switches
+ * are launch-wide, so they are read here once rather than consulted per call.
  *
  * `PATCHDESK_GITHUB_TRANSPORT=gh` is the soak release's rollback: it puts every
  * allowlisted read back on a `gh api` child without a rebuild. It is temporary
  * and goes with the allowlist at T4 (ADR 0046).
  *
  * `PATCHDESK_GITHUB_WRITES=http` serves the writes in `httpServedWriteLabels`
- * too. It is off by default because a write cannot be shadowed: it stays a
- * per-launch opt-in until the manual live check in ADR 0046 passes, after
- * which the default flips and this variable goes. `PATCHDESK_GITHUB_TRANSPORT=gh`
- * still overrides it, putting writes back on gh with the reads.
- *
- * `PATCHDESK_TRANSPORT_SHADOW=1` doubles read traffic against the same rate
- * limit, which is why it is off by default.
+ * too. It is off by default because a write cannot be proven by comparison: it
+ * stays a per-launch opt-in until the manual live check in ADR 0046 passes,
+ * after which the default flips and this variable goes.
+ * `PATCHDESK_GITHUB_TRANSPORT=gh` still overrides it, putting writes back on gh
+ * with the reads.
  */
 export function githubTransports(
   credentials: GitHubCredentials,
   logs: Pick<AppLogService, "write">,
   githubFetch: GitHubFetch | undefined,
 ): GitHubTransports {
-  const shadowed = process.env["PATCHDESK_TRANSPORT_SHADOW"] === "1";
-  const served = process.env["PATCHDESK_GITHUB_TRANSPORT"] !== "gh";
-  const writesOverHttp =
-    served && process.env["PATCHDESK_GITHUB_WRITES"] === "http";
-  if (!shadowed && !served)
-    return { http: undefined, shadow: undefined, writesOverHttp: false };
-  // One client for both, so the served reads and the shadow's comparison share
-  // its connection pool rather than opening two.
+  if (process.env["PATCHDESK_GITHUB_TRANSPORT"] === "gh")
+    return { http: undefined, writesOverHttp: false };
+  const writesOverHttp = process.env["PATCHDESK_GITHUB_WRITES"] === "http";
   const client = new GitHubHttpClient(
     credentials,
     undefined,
@@ -133,13 +122,7 @@ export function githubTransports(
       });
     },
   );
-  return {
-    http: served ? client : undefined,
-    shadow: shadowed
-      ? new TransportShadow(client, credentials, (entry) => logs.write(entry))
-      : undefined,
-    writesOverHttp,
-  };
+  return { http: client, writesOverHttp };
 }
 
 /** Every store, adapter and seam the loopback API's services are built from. */
@@ -233,7 +216,6 @@ export async function buildLocalApiStores(
     new GitHubAdapter(
       commands,
       credentials,
-      transports.shadow,
       transports.http,
       transports.writesOverHttp,
     );

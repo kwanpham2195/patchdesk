@@ -170,7 +170,6 @@ describe("the compare read over HTTP", () => {
     return new GitHubAdapter(
       new CommandRunner(new UnusableGhExecutor()),
       credentials,
-      undefined,
       server.client(credentials),
     );
   }
@@ -239,7 +238,6 @@ describe("a failed compare read", () => {
     const http = new GhRequestRunner(
       new CommandRunner(new UnusableGhExecutor()),
       credentials,
-      undefined,
       server.client(credentials),
     );
     const gh = new GhRequestRunner(
@@ -309,7 +307,6 @@ describe("the paginated commits read over HTTP", () => {
     return new GitHubAdapter(
       new CommandRunner(new UnusableGhExecutor()),
       credentials,
-      undefined,
       server.client(credentials),
     );
   }

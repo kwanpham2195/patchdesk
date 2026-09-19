@@ -7,7 +7,6 @@ import {
   type GitHubServedTransport,
 } from "./gh-request-runner";
 import type { GitHubRequest } from "./github-request";
-import type { TransportShadow } from "./transport-shadow";
 import {
   GitHubCliCredentials,
   type GitHubCredentials,
@@ -258,8 +257,6 @@ export class GitHubAdapter
   constructor(
     commands: CommandRunner,
     credentials: GitHubCredentials = new GitHubCliCredentials(commands),
-    /** Compares the HTTP transport against gh for reads when one is supplied (issue #292). */
-    shadow?: TransportShadow,
     /** Serves the reads in `httpServedReadLabels` when one is supplied (issue #276). */
     http?: GitHubServedTransport,
     /** Also serves the writes in `httpServedWriteLabels` over that transport (issue #276, step T3). */
@@ -269,7 +266,6 @@ export class GitHubAdapter
     this.requests = new GhRequestRunner(
       commands,
       credentials,
-      shadow,
       http,
       writesOverHttp,
     );

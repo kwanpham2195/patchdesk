@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeCommandLabel } from "../../src/adapters/github/command-runner";
 import * as queries from "../../src/adapters/github/github-graphql-queries";
-import { ghInvocationFor } from "../../src/adapters/github/github-request";
-import { isQueryDocument } from "../../src/adapters/github/transport-shadow";
+import {
+  ghInvocationFor,
+  isQueryDocument,
+} from "../../src/adapters/github/github-request";
 
 /**
  * Every GraphQL document this adapter sends, the label it spawns under, and
