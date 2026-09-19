@@ -1,16 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  CommandRunner,
-  runWithRequestAbortSignal,
-  type CommandExecution,
-  type CommandExecutor,
-  type CommandRequest,
-} from "../../src/adapters/github/command-runner";
+import { runWithRequestAbortSignal } from "../../src/adapters/github/command-runner";
 import { commandTimeoutMs } from "../../src/adapters/github/gh-request-runner";
 import { GitHubAdapter } from "../../src/adapters/github/github-adapter";
 import { GitHubHttpClient } from "../../src/adapters/github/github-http-client";
-import { writeFailure } from "../../src/adapters/github/github-write-failures";
 import type { GitHubWriteFailure } from "../../src/domain/github-write";
 import { parseGitHubThreadId } from "../../src/domain/ids";
 import {
@@ -19,6 +12,7 @@ import {
   useFixtureServer,
   type Handler,
 } from "./github-http-fixture-server";
+import { noChildProcesses } from "./github-transport-doubles";
 import { mustParse, pr, writeAdapter } from "./github-write-shape";
 import { StubCredentials } from "./stub-github-credentials";
 
@@ -33,8 +27,7 @@ import { StubCredentials } from "./stub-github-credentials";
  * landed.
  *
  * Every row below comes from a real HTTP response or a real socket condition
- * on the loopback server, and each REST and GraphQL response is also driven
- * through the gh path so the two transports are asserted to agree.
+ * on the loopback server.
  */
 
 const server = useFixtureServer();
@@ -68,35 +61,7 @@ async function mutationWrite(handler: Handler): Promise<GitHubWriteFailure> {
   return result.error;
 }
 
-class FailingGhExecutor implements CommandExecutor {
-  constructor(
-    private readonly stdout: string,
-    private readonly stderr: string,
-  ) {}
-
-  async execute(_input: CommandRequest): Promise<CommandExecution> {
-    return {
-      _tag: "Exited",
-      exitCode: 1,
-      stdout: this.stdout,
-      stderr: this.stderr,
-    };
-  }
-}
-
-/** The same response as gh reported it: the error body on stdout, its own line on stderr. */
-async function ghWriteCategory(
-  stdout: string,
-  stderr: string,
-): Promise<WriteCategory> {
-  const result = await new CommandRunner(
-    new FailingGhExecutor(stdout, stderr),
-  ).runText({ argv: ["gh", "api"], timeoutMs: 1_000 });
-  if (result._tag !== "err") throw new Error("Expected a failed execution");
-  return writeFailure(result.error).category;
-}
-
-describe("a REST status on a write classifies the same on both transports", () => {
+describe("a REST status on a write is the category that status means", () => {
   const statuses: ReadonlyArray<{
     readonly name: string;
     readonly status: number;
@@ -179,21 +144,19 @@ describe("a REST status on a write classifies the same on both transports", () =
   ];
 
   it.each(statuses)(
-    "classifies $name as $expected over HTTP and through gh",
+    "classifies $name as $expected",
     async ({ status, message, expected }) => {
-      const body = JSON.stringify({ message, status: String(status) });
-      const overHttp = await restWrite(
+      const failure = await restWrite(
         json(status, { message, status: String(status) }),
       );
 
-      expect(overHttp.category).toBe(expected);
-      expect(overHttp.category).not.toBe("rejected");
-      await expect(ghWriteCategory(body, "")).resolves.toBe(expected);
+      expect(failure.category).toBe(expected);
+      expect(failure.category).not.toBe("rejected");
     },
   );
 });
 
-describe("a GraphQL error on a write classifies the same on both transports", () => {
+describe("a GraphQL error on a write is the category its type means", () => {
   const errors: ReadonlyArray<{
     readonly type: string;
     readonly message: string;
@@ -229,16 +192,14 @@ describe("a GraphQL error on a write classifies the same on both transports", ()
   ];
 
   it.each(errors)(
-    "classifies a $type error as $expected over HTTP and through gh",
+    "classifies a $type error as $expected",
     async ({ type, message, expected }) => {
-      const body = { data: null, errors: [{ type, message }] };
-      const overHttp = await mutationWrite(json(200, body));
-
-      expect(overHttp.category).toBe(expected);
-      expect(overHttp.category).not.toBe("rejected");
-      await expect(ghWriteCategory(JSON.stringify(body), "")).resolves.toBe(
-        expected,
+      const failure = await mutationWrite(
+        json(200, { data: null, errors: [{ type, message }] }),
       );
+
+      expect(failure.category).toBe(expected);
+      expect(failure.category).not.toBe("rejected");
     },
   );
 });
@@ -270,7 +231,7 @@ describe("a write whose outcome GitHub never reported is unavailable", () => {
   it("classifies a refused connection", async () => {
     const credentials = new StubCredentials();
     const unreachable = new GitHubAdapter(
-      new CommandRunner(new FailingGhExecutor("", "no gh child may run")),
+      noChildProcesses(),
       credentials,
       new GitHubHttpClient(
         credentials,
@@ -341,9 +302,6 @@ describe("a write whose outcome GitHub never reported is unavailable", () => {
     });
 
     expect(failure.category).toBe("unavailable");
-    await expect(ghWriteCategory('{"id":24123', "")).resolves.toBe(
-      "unavailable",
-    );
   });
 
   it("classifies a 200 that is not JSON at all", async () => {

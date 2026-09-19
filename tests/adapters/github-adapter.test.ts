@@ -236,25 +236,6 @@ function pullRequestPayload(
 }
 
 describe("CommandRunner", () => {
-  it("classifies the one-pending-review rejection distinctly from generic 422s", async () => {
-    const executor = new FakeProcessExecutor([
-      {
-        _tag: "Exited",
-        exitCode: 1,
-        stdout: "",
-        stderr:
-          "HTTP 422: Validation Failed - user_id can only have one pending review per pull request",
-      },
-    ]);
-    const runner = new CommandRunner(executor);
-    await expect(
-      runner.runJson({ argv: ["gh", "api", "x"], timeoutMs: 2_500 }),
-    ).resolves.toEqual({
-      _tag: "err",
-      error: { _tag: "CommandPendingReview" },
-    });
-  });
-
   it("captures JSON through explicit argv without exposing stderr", async () => {
     const executor = new FakeProcessExecutor([
       {
@@ -265,17 +246,16 @@ describe("CommandRunner", () => {
       },
     ]);
     const runner = new CommandRunner(executor);
+    const argv = ["gh", "auth", "status", "--json", "hosts"];
 
-    const result = await runner.runJson({
-      argv: ["gh", "api", "user"],
-      timeoutMs: 2_500,
-    });
+    const result = await runner.runJson({ argv, timeoutMs: 2_500 });
 
     expect(result).toEqual({ _tag: "ok", value: { status: "ok" } });
-    expect(executor.requests).toEqual([["gh", "api", "user"]]);
+    expect(executor.requests).toEqual([argv]);
   });
 
   it("classifies timeout, invalid JSON, and authentication without command output", async () => {
+    const argv = ["gh", "auth", "status"];
     const timeout = new CommandRunner(
       new FakeProcessExecutor([
         {
@@ -306,48 +286,42 @@ describe("CommandRunner", () => {
       ]),
     );
 
-    expect(
-      await timeout.runJson({ argv: ["gh", "api", "user"], timeoutMs: 5 }),
-    ).toEqual({
+    expect(await timeout.runJson({ argv, timeoutMs: 5 })).toEqual({
       _tag: "err",
       error: { _tag: "CommandTimedOut" },
     });
-    expect(
-      await invalidJson.runJson({ argv: ["gh", "api", "user"], timeoutMs: 5 }),
-    ).toEqual({
+    expect(await invalidJson.runJson({ argv, timeoutMs: 5 })).toEqual({
       _tag: "err",
       error: { _tag: "CommandInvalidJson" },
     });
-
-    describe("GitHubAdapter direct summary writes", () => {
-      it("fails closed when gh exits generically after the request may have dispatched", async () => {
-        const adapter = testAdapter(
-          orderedTransport([{ _tag: "CommandUnavailable" }]),
-        );
-
-        await expect(
-          adapter.createDirectSummaryReview({
-            profile,
-            pr,
-            headSha: mustParse(parseGitSha(headSha)),
-            event: "COMMENT",
-            body: "Summary",
-          }),
-        ).resolves.toEqual({
-          _tag: "err",
-          error: {
-            _tag: "GitHubWriteFailure",
-            category: "unavailable",
-            message: "GitHub review request could not be confirmed.",
-          },
-        });
-      });
-    });
-    expect(
-      await auth.runJson({ argv: ["gh", "api", "user"], timeoutMs: 5 }),
-    ).toEqual({
+    expect(await auth.runJson({ argv, timeoutMs: 5 })).toEqual({
       _tag: "err",
       error: { _tag: "CommandAuthenticationRequired" },
+    });
+  });
+});
+
+describe("GitHubAdapter direct summary writes", () => {
+  it("fails closed when the request may have dispatched without an answer", async () => {
+    const adapter = testAdapter(
+      orderedTransport([{ _tag: "CommandUnavailable" }]),
+    );
+
+    await expect(
+      adapter.createDirectSummaryReview({
+        profile,
+        pr,
+        headSha: mustParse(parseGitSha(headSha)),
+        event: "COMMENT",
+        body: "Summary",
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: {
+        _tag: "GitHubWriteFailure",
+        category: "unavailable",
+        message: "GitHub review request could not be confirmed.",
+      },
     });
   });
 });
@@ -2161,24 +2135,9 @@ describe("GitHubAdapter read boundary", () => {
     expect(executor.requests).toHaveLength(1);
   });
 
-  it("classifies a successful status for a different gh account as github_auth", async () => {
+  it("classifies a credential that authenticates as another account as github_auth", async () => {
     const adapter = testAdapter(
-      orderedTransport([
-        "github.com\n  ✓ Logged in to github.com account another-user (keyring)\n",
-      ]),
-    );
-
-    expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({
-      _tag: "err",
-      error: { _tag: "GitHubAuthenticationFailed", operation: "auth_status" },
-    });
-  });
-
-  it("classifies a configured account that is listed but inactive as github_auth", async () => {
-    const adapter = testAdapter(
-      orderedTransport([
-        "github.com\n  ✓ Logged in to github.com account pmquan2cfw (keyring)\n  - Active account: false\n  ✓ Logged in to github.com account another-user (keyring)\n  - Active account: true\n",
-      ]),
+      orderedTransport([JSON.stringify({ login: "another-user", id: 5 })]),
     );
 
     expect(await adapter.resolveAuthenticatedAccount(profile)).toEqual({

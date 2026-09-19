@@ -5,22 +5,11 @@ import {
   CommandRunner,
   NodeCommandExecutor,
   normalizeCommandLabel,
-  type CommandExecution,
-  type CommandExecutor,
-  type CommandRequest,
 } from "../../src/adapters/github/command-runner";
 import {
   addLabelsToLabelableMutation,
   maintainerInboxQuery,
 } from "../../src/adapters/github/github-graphql-queries";
-
-class FakeCommandExecutor implements CommandExecutor {
-  constructor(private readonly execution: CommandExecution) {}
-
-  execute(_input: CommandRequest): Promise<CommandExecution> {
-    return Promise.resolve(this.execution);
-  }
-}
 
 describe("CommandRunner", () => {
   it("does not spawn when cancellation happens during executable discovery", async () => {
@@ -56,25 +45,6 @@ describe("CommandRunner", () => {
       error: { _tag: "CommandUnavailable" },
     });
     expect(spawnCallCount).toBe(0);
-  });
-
-  it("classifies a 403 rate-limit response as CommandRateLimited, not CommandForbidden", async () => {
-    const executor = new FakeCommandExecutor({
-      _tag: "Exited",
-      exitCode: 1,
-      stdout: "",
-      stderr: "gh: API rate limit exceeded (HTTP 403)",
-    });
-
-    const result = await new CommandRunner(executor).runText({
-      argv: ["gh", "api", "graphql"],
-      timeoutMs: 1_000,
-    });
-
-    expect(result).toEqual({
-      _tag: "err",
-      error: { _tag: "CommandRateLimited" },
-    });
   });
 });
 

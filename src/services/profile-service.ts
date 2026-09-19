@@ -17,6 +17,7 @@ import type {
 import type { StorageFailure } from "../adapters/storage/json-file";
 import type { ProfileStore } from "../adapters/storage/profile-store";
 import type { CommandRunner } from "../adapters/github/command-runner";
+import { listAuthenticatedGitHubAccounts } from "../adapters/github/github-auth-accounts";
 import type {
   WatchedRepoConfig,
   WorkspaceProfileConfig,
@@ -107,29 +108,25 @@ export class ProfileSettingsService {
 const accountDetectionTimeoutMs = 5_000;
 
 /**
- * Best-effort read of the login `gh` would authenticate API calls as right
- * now — no configured profile, no `--user` override, so it reflects
- * whichever account the local GitHub CLI is currently active as. Mirrors the
- * `gh api ... user --jq .login` shape `GitHubAdapter.resolveAuthenticatedAccount`
- * already uses to confirm a *known* profile's account
- * (`src/adapters/github/github-adapter.ts`), reusing the same `CommandRunner`
- * boundary rather than shelling out ad hoc. Unlike that method, this runs
- * before any profile exists, so there is no account to confirm against yet.
- * Returns `undefined` on any failure — missing `gh`, no `gh auth login`,
- * timeout, or unexpected output — since an undetectable account is a normal
- * first-run state, not an error worth surfacing.
+ * The login the local GitHub CLI is currently active as on this host, read
+ * from the account list `gh auth status --json hosts` already reports. This
+ * runs before any profile exists, so there is no credential to call the
+ * GitHub API with; the CLI's own `active` flag names the same account an
+ * unqualified API call would have authenticated as. Answers `undefined` for
+ * every failure — missing `gh`, no `gh auth login`, timeout, or no active
+ * entry for this host — since an undetectable account is a normal first-run
+ * state, not an error worth surfacing.
  */
 async function detectActiveGitHubAccount(
   commands: CommandRunner,
   host: GitHubHost,
 ): Promise<string | undefined> {
-  const response = await commands.runText({
-    argv: ["gh", "api", "--hostname", host, "user", "--jq", ".login"],
-    timeoutMs: accountDetectionTimeoutMs,
-  });
-  if (response._tag === "err") return undefined;
-  const login = response.value.trim();
-  return login.length === 0 ? undefined : login;
+  const accounts = await listAuthenticatedGitHubAccounts(
+    commands,
+    accountDetectionTimeoutMs,
+  );
+  return accounts.find((account) => account.host === host && account.active)
+    ?.login;
 }
 
 /** The user's home directory, only if it validates as an absolute path. */

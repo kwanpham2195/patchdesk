@@ -33,7 +33,7 @@ Reviewing as checks the GitHub CLI while the section is open. One authenticated 
 
 The unauthenticated state follows the exit status of `gh auth status`, which fails when any account signed in to the GitHub CLI has an invalid token. On a machine with several accounts, one stale account is enough: the card shows `GitHub authentication required` and "Not authenticated. Run `gh auth login`, then re-check." even while the active account works and the rest of Patchdesk reads GitHub normally. Working accounts in the CLI's account list do not clear this state.
 
-> Technical note: the environment route maps a nonzero `gh auth status` exit to `authentication_required`, and the card treats that value as failed whatever accounts are listed. Patchdesk's GitHub reads resolve the account with `gh api` instead, because the same exit status is known not to prove an authentication failure.
+> Technical note: the environment route maps a nonzero `gh auth status` exit to `authentication_required`, and the card treats that value as failed whatever accounts are listed. Patchdesk's GitHub reads ask GitHub who the workspace's account is instead, over the API with that account's own credential, because the same exit status is known not to prove an authentication failure.
 
 Repositories shows the folder rows under the legend `Folders`, each with Choose folder and a remove button, plus Add folder below them. Every saved folder shows its scan status and, when the scan found something, a checkbox per repository. Watched repositories whose local path is under no saved folder are grouped under `Watched outside these folders`.
 

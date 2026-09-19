@@ -75,7 +75,7 @@ export function createReadOnlyGitExecutor(
  * over (ADR 0046, issue #276). There is no second transport and no switch:
  * `gh` is reached only for sign-in and for git credentials.
  */
-export function githubTransports(
+export function createGitHubHttpClient(
   credentials: GitHubCredentials,
   logs: Pick<AppLogService, "write">,
   githubFetch: GitHubFetch | undefined,
@@ -189,7 +189,7 @@ export async function buildLocalApiStores(
     new GitHubAdapter(
       commands,
       credentials,
-      githubTransports(credentials, logs, configuration.githubFetch),
+      createGitHubHttpClient(credentials, logs, configuration.githubFetch),
     );
   const readOnlyGit = createReadOnlyGitExecutor(commands);
   const resolveGitHubCli =
