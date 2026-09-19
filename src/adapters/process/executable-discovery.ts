@@ -11,13 +11,22 @@ const macDesktopPaths = [
   "/bin",
 ];
 
+/**
+ * Resolves a command through the supplied PATH, then the macOS fallback
+ * directories. Given no PATH it reads this process's, which the login shell
+ * may still be replacing, so it waits for that import first (ADR 0038,
+ * amended 2026-09-19) — a `gh` installed by mise, nix, or asdf is on the
+ * imported PATH and on no fallback list.
+ */
 export async function discoverExecutable(
   executable: string,
-  pathValue = process.env.PATH,
+  suppliedPath?: string,
 ): Promise<string | undefined> {
   if (isAbsolute(executable) || executable.includes("/")) {
     return (await executableFile(executable)) ? executable : undefined;
   }
+  if (suppliedPath === undefined) await whenLoginShellEnvironmentImported();
+  const pathValue = suppliedPath ?? process.env.PATH;
   const search = [
     ...(pathValue?.split(delimiter).filter((value) => value.length > 0) ?? []),
     ...(process.platform === "darwin" ? macDesktopPaths : []),
