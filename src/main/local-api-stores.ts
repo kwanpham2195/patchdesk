@@ -106,6 +106,21 @@ export function githubTransports(
     undefined,
     undefined,
     githubFetch,
+    (record) => {
+      // A read served here spawns nothing, so without this entry the same
+      // cycle reads as having lost work in `scripts/gh-spawn-report.mjs`.
+      logs.write({
+        process: "main",
+        level: "debug",
+        topic: "github-http",
+        message: record.label,
+        meta: {
+          label: record.label,
+          status: record.status,
+          durationMs: record.durationMs,
+        },
+      });
+    },
   );
   return {
     http: served ? client : undefined,

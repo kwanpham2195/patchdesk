@@ -7,6 +7,7 @@ import { runWithRequestAbortSignal } from "../../src/adapters/github/command-run
 import {
   gitHubApiOrigin,
   GitHubHttpClient,
+  type GitHubHttpRequestRecord,
   type GitHubRateLimitObservation,
 } from "../../src/adapters/github/github-http-client";
 import {
@@ -360,5 +361,107 @@ describe("GitHubHttpClient injected fetch", () => {
     expect(new Headers(calls[0]?.init.headers).get("authorization")).toBe(
       "Bearer profile-token",
     );
+  });
+});
+
+/**
+ * A read served over HTTPS spawns nothing, so `scripts/gh-spawn-report.mjs`
+ * reads these entries where it used to read a `command-spawn` (issue #276).
+ */
+describe("GitHubHttpClient request records", () => {
+  function recordingClient(
+    records: Array<GitHubHttpRequestRecord>,
+  ): GitHubHttpClient {
+    return new GitHubHttpClient(
+      new StubCredentials(),
+      undefined,
+      () => fixture.origin(),
+      undefined,
+      (record) => records.push(record),
+    );
+  }
+
+  it("records one request under the label the gh path would have logged", async () => {
+    const records: Array<GitHubHttpRequestRecord> = [];
+    fixture.respondWith(json(200, { login: "pmquan2cfw" }));
+
+    await recordingClient(records).rest(profile, {
+      kind: "rest",
+      host: "github.com",
+      path: "user",
+    });
+
+    expect(records).toEqual([
+      { label: "api GET user", status: 200, durationMs: expect.any(Number) },
+    ]);
+  });
+
+  it("records a GraphQL request under its operation name", async () => {
+    const records: Array<GitHubHttpRequestRecord> = [];
+    fixture.respondWith(json(200, { data: { viewer: { id: "1" } } }));
+
+    await recordingClient(records).graphql(profile, {
+      kind: "graphql",
+      host: "github.com",
+      document: "query MergePolicy { viewer { id } }",
+      variables: [],
+    });
+
+    expect(records.map((record) => record.label)).toEqual([
+      "api graphql MergePolicy",
+    ]);
+  });
+
+  it("records every page of a paginated read", async () => {
+    const records: Array<GitHubHttpRequestRecord> = [];
+    fixture.respondWith((request, response) => {
+      if (request.url === "/repos/centraldigital/patchdesk/pulls/42/commits") {
+        response.writeHead(200, {
+          "Content-Type": "application/json",
+          Link: `<${fixture.origin().rest}/page2>; rel="next"`,
+        });
+        response.end("[]");
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end("[]");
+    });
+
+    await recordingClient(records).rest(profile, {
+      kind: "rest",
+      host: "github.com",
+      paginate: true,
+      path: "repos/centraldigital/patchdesk/pulls/42/commits",
+    });
+
+    expect(records.map((record) => record.label)).toEqual([
+      "api GET repos/:owner/:repo/pulls/:n/commits",
+      "api GET repos/:owner/:repo/pulls/:n/commits",
+    ]);
+  });
+
+  it("records a request that never got a response with no status", async () => {
+    const records: Array<GitHubHttpRequestRecord> = [];
+    const client = new GitHubHttpClient(
+      new StubCredentials(),
+      undefined,
+      () => fixture.origin(),
+      async () => {
+        throw new Error("connection reset");
+      },
+      (record) => records.push(record),
+    );
+
+    const result = await client.rest(profile, {
+      kind: "rest",
+      host: "github.com",
+      path: "user",
+    });
+
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "CommandUnavailable" },
+    });
+    expect(records.map((record) => record.status)).toEqual([0]);
   });
 });
