@@ -8,7 +8,6 @@ import type {
 import type {
   AssignableUserListing,
   CheckSummary,
-  Conversation,
   GitHubComments,
   GitHubMergePolicyEvidence,
   GitHubPublishedFeedback,
@@ -150,10 +149,6 @@ export interface GitHubReader {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>>;
-  loadConversation(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-  }): Promise<Result<Conversation, GitHubReadFailure>>;
   /** Bounded authenticated repository permission evidence used for record capabilities. */
   getRepositoryPermission?(input: {
     readonly profile: WorkspaceProfileConfig;

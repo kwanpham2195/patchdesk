@@ -330,14 +330,13 @@ export class ReviewObservationService {
       checks._tag === "err" ||
       mergePolicy._tag === "err" ||
       // The conversation is assembled from this read, so a failed one leaves
-      // no conversation to reconcile — exactly as a failed `loadConversation`
-      // did when it made this same read itself.
+      // no conversation to reconcile.
       publishedFeedback?._tag === "err"
     ) {
       return this.markUnavailable(input, review, detectedAt, "github_read");
     }
-    // A projection of reads this batch already made, rather than a
-    // `loadConversation` call that would re-run every one of them.
+    // A projection of reads this batch already made; a GitHub-side conversation
+    // read would re-run every one of them.
     const conversation = assembleConversation(
       terminalRead.value.description ?? "",
       publishedFeedback?.value ?? noPublishedFeedback,

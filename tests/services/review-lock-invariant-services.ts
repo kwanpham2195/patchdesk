@@ -55,10 +55,6 @@ export function gateway(track: Recorder) {
       "getMergePolicy",
       err({ _tag: "GitHubReadFailed" }),
     ),
-    loadConversation: track.stub(
-      "loadConversation",
-      ok(values.snapshot.conversation),
-    ),
     resolveAuthenticatedAccount: track.stub(
       "resolveAuthenticatedAccount",
       err({ _tag: "GitHubReadFailed" }),

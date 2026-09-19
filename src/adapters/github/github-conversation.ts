@@ -8,8 +8,6 @@ import {
 } from "./gh-request-runner";
 import type { GitHubRequest } from "./github-request";
 import type {
-  Conversation,
-  GitHubComments,
   GitHubImageRewrites,
   GitHubPublishedFeedback,
   PublishedIssueComment,
@@ -42,10 +40,6 @@ import {
   parseGitHubTimestamp,
   parseLocation,
 } from "./github-wire-projections";
-import {
-  assembleConversation,
-  noPublishedFeedback,
-} from "./github-conversation-assembly";
 import { extractImageRewrites } from "./github-image-rewrites";
 import { directSummaryWriteFailure, invalid } from "./github-write-failures";
 import { definedProps } from "../../domain/defined-props";
@@ -56,7 +50,6 @@ import type {
   RepositoryPermissionEvidence,
 } from "./github-adapter";
 import type { GitHubPullRequestReader } from "./github-pull-request-reader";
-import type { GitHubThreadReader } from "./github-threads";
 import type { GitHubMergePolicyReader } from "./github-merge-policy";
 
 /**
@@ -92,7 +85,6 @@ export class GitHubConversationReader {
   constructor(
     private readonly requests: GhRequestRunner,
     private readonly pullRequests: GitHubPullRequestReader,
-    private readonly threads: GitHubThreadReader,
     private readonly mergePolicy: GitHubMergePolicyReader,
     private readonly accounts: AuthenticatedAccountReader,
   ) {}
@@ -118,13 +110,6 @@ export class GitHubConversationReader {
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestSummary, GitHubReadFailure>> {
     return this.pullRequests.getPullRequest(input);
-  }
-
-  private async getPullRequestComments(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-  }): Promise<Result<GitHubComments, GitHubReadFailure>> {
-    return this.threads.getPullRequestComments(input);
   }
 
   private async getRepositoryPermission(input: {
@@ -475,28 +460,5 @@ export class GitHubConversationReader {
       });
     }
     return ok({ reviews, complete: parsed.output.length < 100 });
-  }
-
-  async loadConversation(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-  }): Promise<Result<Conversation, GitHubReadFailure>> {
-    const [prResult, commentsResult, feedbackResult] = await Promise.all([
-      this.getPullRequest(input),
-      this.getPullRequestComments(input),
-      this.getPullRequestPublishedFeedback?.(input) ??
-        Promise.resolve(ok(noPublishedFeedback)),
-    ]);
-    if (commentsResult._tag === "err") return commentsResult;
-    if (feedbackResult._tag === "err") return feedbackResult;
-    const prDescription =
-      prResult._tag === "ok" ? (prResult.value.description ?? "") : "";
-    return ok(
-      assembleConversation(
-        prDescription,
-        feedbackResult.value,
-        commentsResult.value,
-      ),
-    );
   }
 }

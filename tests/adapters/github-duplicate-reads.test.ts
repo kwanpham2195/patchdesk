@@ -142,39 +142,6 @@ class RoutingExecutor implements CommandExecutor {
   }
 }
 
-describe("loadConversation gh cost", () => {
-  /**
-   * `ReviewRefreshService` and `ReviewObservationService` already read the
-   * pull request, its comments, and its published feedback themselves, and
-   * now assemble the Conversation from those. This records what calling
-   * `loadConversation` on top of them used to cost each cycle, so a future
-   * caller that reintroduces it can see the price.
-   */
-  it("re-reads the pull request, comments, and the whole published-feedback subtree", async () => {
-    const executor = new RoutingExecutor();
-    const adapter = new GitHubAdapter(
-      new CommandRunner(executor),
-      new StubCredentials(),
-    );
-
-    await expect(
-      adapter.loadConversation({ profile, pr }),
-    ).resolves.toMatchObject({ _tag: "ok" });
-
-    expect(executor.labels.slice().sort()).toEqual([
-      "api GET repos/:owner/:repo/branches/:branch/protection",
-      "api GET repos/:owner/:repo/collaborators/:user/permission",
-      "api GET repos/:owner/:repo/issues/:n/comments",
-      "api GET repos/:owner/:repo/pulls/:n",
-      "api GET repos/:owner/:repo/pulls/:n",
-      "api GET repos/:owner/:repo/pulls/:n/comments",
-      "api GET repos/:owner/:repo/pulls/:n/reviews",
-      "api GET user",
-      "api graphql PullRequestThreads",
-    ]);
-  });
-});
-
 describe("resolveAuthenticatedAccount gh cost", () => {
   it("asks GitHub once per cached credential, not once per caller", async () => {
     const executor = new RoutingExecutor();

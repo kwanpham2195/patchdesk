@@ -391,12 +391,6 @@ function fakeGitHub(input: { readonly terminal: boolean }) {
     async getPullRequestComments() {
       return ok({ threads: [], complete: true });
     },
-    // Present but poisoned: one observation assembles the Conversation from
-    // the reads it already made, and `loadConversation` would re-run all of
-    // them (nine more gh calls, see github-conversation-reads.test.ts).
-    async loadConversation() {
-      throw new Error("loadConversation re-reads what the cycle already holds");
-    },
     async getPullRequestChecks() {
       return ok({ overall: "passing" as const, checks: [] });
     },

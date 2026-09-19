@@ -1,7 +1,6 @@
 import type {
   AssignableUserListing,
   CheckSummary,
-  Conversation,
   GitHubComments,
   GitHubMergePolicyEvidence,
   GitHubPublishedFeedback,
@@ -56,7 +55,6 @@ import {
 } from "./github-adapter";
 import type { WatchedSnapshot } from "../../domain/watched-pull-request";
 import { samePullRequest } from "./github-wire-projections";
-import { assembleConversation } from "./github-conversation-assembly";
 import { missing } from "./github-write-failures";
 
 /** A fixture-oriented GitHubReader with no process, filesystem, or network behavior. */
@@ -722,22 +720,6 @@ export class FakeGitHubAdapter
           message: "Missing merge fixture.",
         })
       : ok(this.values.mergeResult);
-  }
-
-  async loadConversation(input: {
-    readonly profile: WorkspaceProfileConfig;
-    readonly pr: PullRequestRef;
-  }): Promise<Result<Conversation, GitHubReadFailure>> {
-    void input;
-    const pr = this.values.pullRequest;
-    const threads = this.values.comments ?? { threads: [], complete: true };
-    return ok(
-      assembleConversation(
-        pr?.description ?? "",
-        this.publishedFeedback(),
-        threads,
-      ),
-    );
   }
 }
 
